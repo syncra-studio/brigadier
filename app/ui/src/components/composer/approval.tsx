@@ -2,7 +2,8 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
-import { Commit, Dock, Globe, Key, PencilSquare, Reply, Sparkle } from "../../icons";
+import { Commit, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
+import { MentionedWorker } from "../../workers/live";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
@@ -10,7 +11,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { ActionCard, ActionCardActions, ActionCardTitle, ActionFileList, ActionFreeText, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, ToolBox, useCardKeys } from "./decision-parts";
 import { plainText } from "./draft";
 import { ComposerField, type ComposerFieldHandle } from "./field";
-import { RailItem } from "./rail";
 
 /** An approval as Rust sends it (msgs/w18-fields-4.md, boss D177). Agent text (`reason`, `body`) passes as is. */
 export type PendingApproval = {
@@ -38,6 +38,12 @@ export type PendingApproval = {
   grant?: { scope: "command" | "edits" | "network" | "tool"; pattern: string } | null;
   /** The subagent that asks, by its title. */
   agent?: string;
+  /** A plan its adversarial review holds: the reviewer, a worker, and its model's name (§6). */
+  review?: { by: string; name: string };
+  /** A plan's review line: "Plan reviewed by ‹model›: 5 findings, 4 fixed, 1 rejected", or "Review didn't run: ‹why›". */
+  reviewed?: string;
+  /** A plan sent back, kept while its agent revises it: its next plan takes this card (D401). */
+  revising?: boolean;
 };
 
 export type ApprovalDecision = "allow" | "allowSession" | "deny";
@@ -109,8 +115,17 @@ export function describe(approval: PendingApproval): Shown {
         allow: "Land",
       };
     // The plan the agent proposed in its plan mode: build it, or reply to change it.
+    // While its review holds it, or its agent revises it, nothing to answer yet (§6, D401).
     case "plan":
-      return { icon: <Sparkle />, kind: "Plan", title: reason || "Build this plan?", body: prose, allow: "Build it", noDeny: true };
+      return {
+        icon: <Sparkle />,
+        kind: "Plan",
+        title: approval.revising ? "Revising this plan" : approval.review ? `Reviewing this plan · ${approval.review.name}` : reason || "Build this plan?",
+        detail: approval.reviewed,
+        body: prose,
+        allow: "Build it",
+        noDeny: true,
+      };
     case "message":
       return {
         icon: <Sparkle />,
@@ -158,10 +173,8 @@ export const forgetReasons = (session: string, keep: ReadonlySet<string>) => for
 /** Where a card stands among the approvals waiting: "1 of 3", with ‹ › to step between them. */
 export type ApprovalStep = { index: number; total: number; onStep: (index: number) => void };
 
-// A button making way for a typed reason: its width eases to nothing, or its height where the buttons stack, and
-// the row's gap goes with it.
-const MAKES_WAY =
-  "makes-way grid @min-card-narrow/approval-card:data-gone:w-0 @min-card-narrow/approval-card:data-gone:-ms-2 @max-card-narrow/approval-card:data-gone:h-0 @max-card-narrow/approval-card:data-gone:-mt-2";
+// A button making way for a typed reason: its width eases to nothing, and the row's gap goes with it.
+const MAKES_WAY = "makes-way grid data-gone:w-0 data-gone:-ms-2";
 
 const ENTER_KEY = (
   <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
@@ -196,13 +209,11 @@ function Morph({ from, to, morphed }: { from: ReactNode; to: ReactNode; morphed:
 /**
  * An approval, compact: kind, the reason as the title, the exact command, then [Deny `Esc`] [Allow … for this
  * session] [Allow once `⏎`]. Esc denies from anywhere in the view. The card takes focus as it comes, unless the user
- * is typing elsewhere, and Enter anywhere in it answers with its main button (D186); a held Enter counts once, so it
- * can't answer the next card. With `onReason` a field beside the buttons takes
+ * is typing elsewhere, and Enter anywhere in it answers with its main button (D186); a held Enter counts once, so it can't answer the next card. With `onReason` a field beside the buttons takes
  * what the agent should do instead (D192). With words in it the card turns to refusing (D182): Deny and the session
  * grant make way, Allow becomes Send, which denies with the words and never allows. Esc clears the words and
- * brings the card back (D183); only with the field empty does it deny.
- * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card. With `onReply`, Reply…
- * steps past it to the composer it covers, as the old app's.
+ * brings the card back (D183); only with the field empty does it deny. A plan has no Deny: its words keep the agent planning (D400).
+ * While an answer goes (`busy`) the buttons wait, and a refusal shows its `error` on the card.
  */
 export function ApprovalCard({
   approval,
@@ -213,7 +224,6 @@ export function ApprovalCard({
   onReason,
   step,
   dismiss,
-  onReply,
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -226,7 +236,6 @@ export function ApprovalCard({
   step?: ApprovalStep;
   /** Nothing waits on it any more: Dismiss beside its error puts it away. */
   dismiss?: () => void;
-  onReply?: () => void;
 }) {
   const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
@@ -234,7 +243,7 @@ export function ApprovalCard({
   };
   const deny = () => answer("deny");
   const shown = describe(approval);
-  const asksReason = Boolean(onReason) && !shown.noDeny;
+  const asksReason = Boolean(onReason);
   const refusing = asksReason && typed.trim() !== "";
   const primary = () => answer(refusing ? "deny" : "allow");
   const message = approval.action === "message";
@@ -242,20 +251,27 @@ export function ApprovalCard({
   const escape = () => {
     if (busy) return;
     if (refusing) field.current?.set([]);
-    else deny();
+    else if (!shown.noDeny) deny();
   };
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
     // In the composer's place it takes focus from the composer it hides, which would drop it to the page.
     const active = document.activeElement;
-    if (!inField(active) || (onReply && active?.closest("[data-slot=composer-card]"))) card.current?.focus({ preventScroll: true });
+    if (!inField(active) || active?.closest("[data-slot=composer-card]")) card.current?.focus({ preventScroll: true });
   }, []);
-  useCardKeys(!busy, { enter: primary, escape: shown.noDeny ? undefined : escape }, card);
+  const reviewing = approval.revising ? undefined : approval.review;
+  const waits = Boolean(approval.review || approval.revising);
+  useCardKeys(!busy && !waits, { enter: primary, escape }, card);
 
   const grant = approval.grant ? grantTip(approval.grant) : null;
   const allow = shown.allow ?? "Allow once";
   return (
-    <ActionCard ref={card} tabIndex={0} aria-label="Approval" data-action="approval">
+    <ActionCard
+      ref={card}
+      tabIndex={0}
+      aria-label="Approval"
+      data-action="approval"
+    >
       <div className="flex min-w-0 flex-col gap-2 px-4 pt-3.5 pb-2.5">
         <div className="flex min-w-0 items-center gap-2 text-code leading-5 text-card-kind svg:size-4.5 svg:shrink-0">
           {shown.icon}
@@ -276,23 +292,23 @@ export function ApprovalCard({
         <div role="alert" aria-atomic="true">
           <ActionCardTitle detail={shown.detail && <CodeSpans text={shown.detail} />}>
             <CodeSpans text={shown.title} />
+            {reviewing && (
+              <>
+                {" "}
+                <MentionedWorker id={reviewing.by} />
+              </>
+            )}
           </ActionCardTitle>
         </div>
       </div>
       {shown.body}
       <ErrorLine error={error} className="px-4 pt-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
-      <ActionCardActions
-        leading={
-          <>
-            {onReply && (
-              <button type="button" className="inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1.5 rounded-capsule px-2 text-code text-toolbar-foreground transition-colors hover:bg-fill hover:text-foreground focus-visible:focus-ring svg:size-icon-sm" onClick={onReply}>
-                <Reply />
-                Reply…
-              </button>
-            )}
-            {asksReason && (
+      {!waits && (
+        <ActionCardActions
+          leading={
+            asksReason && (
               <ActionFreeText
-                className="-ms-2 min-w-40 flex-1"
+                className="-ms-2 min-w-40 flex-1 @max-card-one-row/approval-card:basis-full"
                 field={
                   <div className="min-w-0 flex-1">
                     <ComposerField
@@ -314,76 +330,76 @@ export function ApprovalCard({
                   </div>
                 }
               />
-            )}
-          </>
-        }
-      >
-        {!shown.noDeny && (
-          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
-            <button type="button" className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")} disabled={busy} onClick={deny}>
-              {shown.deny ?? "Deny"}
-              <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
-                Esc
-              </Kbd>
-            </button>
-          </div>
-        )}
-        {grant && (
-          <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  className={actionButton("outline", "@max-card-narrow/approval-card:justify-center")}
-                  disabled={busy}
-                  onClick={() => answer("allowSession")}
-                />
-              }
-            >
-              Allow for this session
-            </TooltipTrigger>
-            <TooltipContent>{grant}</TooltipContent>
-          </Tooltip>
-          </div>
-        )}
-        <button
-          type="button"
-          className={actionButton("primary", "max-w-full @max-card-narrow/approval-card:justify-center")}
-          disabled={busy}
-          onClick={primary}
+            )
+          }
         >
-          {asksReason ? (
-            <Morph
-              morphed={refusing}
-              from={
-                <>
-                  {allow}
-                  {ENTER_KEY}
-                </>
-              }
-              to={
-                <>
-                  {message ? "Send instead" : "Send"}
-                  {ENTER_KEY}
-                </>
-              }
-            />
-          ) : (
-            <>
-              {allow}
-              {ENTER_KEY}
-            </>
+          {!shown.noDeny && (
+            <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
+              <button type="button" className={actionButton("outline")} disabled={busy} onClick={deny}>
+                {shown.deny ?? "Deny"}
+                <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
+                  Esc
+                </Kbd>
+              </button>
+            </div>
           )}
-        </button>
-      </ActionCardActions>
+          {grant && (
+            <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className={actionButton("outline")}
+                    disabled={busy}
+                    onClick={() => answer("allowSession")}
+                  />
+                }
+              >
+                Allow for this session
+              </TooltipTrigger>
+              <TooltipContent>{grant}</TooltipContent>
+            </Tooltip>
+            </div>
+          )}
+          <button
+            type="button"
+            className={actionButton("primary", "max-w-full")}
+            disabled={busy}
+            onClick={primary}
+          >
+            {asksReason ? (
+              <Morph
+                morphed={refusing}
+                from={
+                  <>
+                    {allow}
+                    {ENTER_KEY}
+                  </>
+                }
+                to={
+                  <>
+                    {message ? "Send instead" : "Send"}
+                    {ENTER_KEY}
+                  </>
+                }
+              />
+            ) : (
+              <>
+                {allow}
+                {ENTER_KEY}
+              </>
+            )}
+          </button>
+        </ActionCardActions>
+      )}
     </ActionCard>
   );
 }
 
 /**
- * The approvals waiting, oldest first, one at a time, in the composer's place as the composer card (D96), its Reply…
- * (`onReply`) stepping past them to the composer; without `onReply`, on the rail above it. Answering one shows the next.
+ * The approvals waiting, oldest first, one at a time, in the composer's place as the composer card (D96).
+ * Answering one shows the next.
  */
 export function ApprovalSlot({
   approvals,
@@ -392,7 +408,6 @@ export function ApprovalSlot({
   session = "",
   dismiss,
   error,
-  onReply,
 }: {
   approvals: readonly PendingApproval[];
   /** `reason`: what to do instead, typed with a deny. */
@@ -403,9 +418,8 @@ export function ApprovalSlot({
   session?: string;
   /** A refused card nothing waits on any more: its Dismiss. */
   dismiss?: (id: string) => (() => void) | undefined;
-  /** A refusal kept outside the slot, which moves between places. */
+  /** Rust's refusal, kept with the answer. */
   error?: (id: string) => string | null;
-  onReply?: () => void;
 }) {
   // The card shown, by id, so another going doesn't change it; where it was, for the one after it when it goes.
   const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
@@ -430,29 +444,19 @@ export function ApprovalSlot({
       .catch((cause: unknown) => setErrors((map) => new Map(map).set(id, cause instanceof Error ? cause.message : String(cause))))
       .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
   };
-  const card = (
-    <ApprovalCard
-      key={id}
-      approval={approval}
-      onAnswer={answer}
-      busy={sending.has(id)}
-      error={errors.get(id) ?? error?.(id) ?? null}
-      reason={reasons.get(cardKey(session, id))}
-      onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
-      dismiss={dismiss?.(id)}
-      onReply={onReply}
-      step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
-    />
-  );
-  if (!onReply)
-    return (
-      <RailItem variant="decision" label="Waiting for you">
-        {card}
-      </RailItem>
-    );
   return (
     <div data-slot="approval-slot" className={cx("relative w-full rounded-composer bg-composer shadow-composer", opens && "motion-safe:animate-rail-open")}>
-      {card}
+      <ApprovalCard
+        key={id}
+        approval={approval}
+        onAnswer={answer}
+        busy={sending.has(id)}
+        error={errors.get(id) ?? error?.(id) ?? null}
+        reason={reasons.get(cardKey(session, id))}
+        onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
+        dismiss={dismiss?.(id)}
+        step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
+      />
     </div>
   );
 }

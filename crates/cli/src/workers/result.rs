@@ -7,6 +7,7 @@
 
 mod take;
 
+use super::review::{self, last_of_turn};
 use super::{Link, Record, closing, git, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
@@ -20,7 +21,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
-pub use take::{take, take_ask};
+use take::said;
+pub use take::{going, hop, reported, take, take_ask, told, unrun, went_with, with_next};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -39,9 +41,13 @@ pub(super) struct Res {
     pub how: String,
     pub text: String,
     pub at: u64,
-    /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, not sent,
-    /// proposed) | taken (by the parent's own `wait`) | dropped (its family is being deleted)
+    /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, till a turn
+    /// of the parent's ends or its next message; `ended` by the user, till that message [D330]) |
+    /// taken (by the parent's own `wait` or its next message) | dropped (its family is deleted) |
+    /// review (a reviewer the switch started: its findings go to its worker instead [D3026])
     pub state: String,
+    #[serde(default)]
+    pub ended: bool,
     /// The hop of the turn it reports, so a parent it wakes carries the chain on [D2034].
     #[serde(default)]
     pub hop: u64,
@@ -108,12 +114,13 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed.
 pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
-    let Some(l) = link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
+    let Some(mut l) =
+        link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
     else {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    for turn in &l.report {
+    for turn in &reported(&l, &f) {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
@@ -121,8 +128,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         }
         let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
         // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
-        // conversation, whose own end reports instead [D88, D108].
-        if f.cut.as_deref() == Some(turn)
+        // conversation, whose own end reports instead [D88, D108], unless it ended done first.
+        if (f.cut.as_deref() == Some(turn) && !last.is_some_and(|l| l["outcome"] == "done"))
             || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
         {
             continue;
@@ -139,10 +146,16 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
             _ => "failed",
         };
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
-        // ended by itself before the Pause took reports as ever.
-        if l.paused && how == "stopped" {
+        // ended by itself before the Pause took reports as ever; one a later wake hid, as stopped.
+        // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
+        // A reviewer and a fix turn end at their limit [D3026].
+        let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
+        if (l.paused && (how == "stopped" || last.is_none())) || moves {
             continue;
         }
+        let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
+            continue;
+        };
         write(data, &l, wid, turn, how, None)?;
     }
     Ok(())
@@ -154,9 +167,14 @@ pub(super) fn failed(data: &Path, pid: &str, r: &Record) {
         parent: pid.into(),
         title: r.title.clone(),
         ran: json!({"agent": r.backend, "model": r.model, "effort": r.effort}),
+        review: r.review.clone(),
         ..Default::default()
     };
-    let _ = write(data, &l, &r.wid, &r.cid, "failed", r.error.as_deref());
+    let error = r.error.as_deref();
+    match l.review["of"].is_string() {
+        true => review::after(data, &l, &r.wid, &r.cid, "failed", error),
+        false => drop(write(data, &l, &r.wid, &r.cid, "failed", error)),
+    }
 }
 
 fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
@@ -172,7 +190,7 @@ fn git_lines(dir: &str, args: &[&str], most: usize) -> Vec<String> {
 
 /// Writes one result: the sender's record, first, in the parent's folder [D54]. Then the worker's
 /// row shows how it ended. `error`: a start that failed, whose worker never ran.
-fn write(
+pub(super) fn write(
     data: &Path,
     l: &Link,
     wid: &str,
@@ -187,6 +205,7 @@ fn write(
     let base = core::worktrees::base(&dir);
     let word = match how {
         "finished" => "finished",
+        "stopped" if l.last["by"] == "user" => "was ended by the user",
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
         "context" => "stopped: its context is full",
@@ -200,7 +219,7 @@ fn write(
     // Proposed: the extras past how it ended, its last message, branch and commits: the diff
     // stat, uncommitted files, the receipt and the `read` pointer [D3029].
     let (mut added, mut removed, mut commits) = (0u64, 0u64, 0usize);
-    let landed = core::worktrees::unlanded(&dir).ok().flatten().is_none();
+    let landed = core::worktrees::merged(&dir).unwrap_or(true);
     // Its own commits since it began; merged once they're all in the parent's branch [D97].
     let start = (core::worktrees::lands(&dir).ok().flatten()).map(|l| l.base_commit);
     let made = start.as_ref().map_or(0, |c| {
@@ -253,8 +272,6 @@ fn write(
                 .unwrap_or_default();
             let why = if git(&to, &["rev-parse", "-q", "--verify", "MERGE_HEAD"]).is_some() {
                 format!("{to} is mid-merge")
-            } else if !dirty.is_empty() {
-                "it left changes uncommitted".into()
             } else {
                 format!("{ahead} commits {base} doesn't have")
             };
@@ -268,13 +285,16 @@ fn write(
         .filter_map(|v| v.as_str())
         .collect();
     text += &format!("Ran on {}.\n", ran.join(" · "));
+    text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
     // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
-    let said = (core::fold(&dir, true).ok())
-        .and_then(|f| f.fold.last)
-        .filter(|_| l.session);
-    let said = said.as_ref().and_then(|l| l["id"].as_str()).unwrap_or(turn);
-    if let Some(mut last) = last_of_turn(data, wid, said) {
+    let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
+    let said = (ended.as_ref().filter(|_| l.session)).and_then(|l| l["id"].as_str());
+    // A failure that passes by itself: the parent may try it again [D340].
+    let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
+    let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
+    text += &why.map_or(String::new(), |w| take::retry(wid, w));
+    if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
         if last.len() > LAST {
             let mut at = LAST;
             while !last.is_char_boundary(at) {
@@ -293,9 +313,14 @@ fn write(
         how: how.into(),
         text,
         at: log::now_ms(),
-        // Proposed: a stopped task's result is kept, never sent: its parent or the user stopped
-        // it on purpose, and it would wake a parent the user just stopped [O3000].
-        state: if how == "stopped" { "held" } else { "written" }.into(),
+        // A stopped task's result never wakes the parent: it goes with its next turn [D314].
+        state: match how {
+            _ if l.review["switch"] == true || l.review["plan"].is_string() => "review",
+            "stopped" => "held",
+            _ => "written",
+        }
+        .into(),
+        ended: how == "stopped" && l.last["by"] == "user",
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
     };
@@ -306,31 +331,14 @@ fn write(
     if let Some(mut l) = read_json::<Link>(&link_path) {
         l.last = json!({"how": how, "at": res.at, "landed": landed, "merged": merged,
             "commits": commits, "added": added, "removed": removed});
+        crate::routing::real(&dir, &mut l.ran);
         write_json(&link_path, &l)?;
         if spec.is_some() {
-            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at});
+            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why});
             let _ = owner::call(data, wid, json!({"op": "note", "data": end}));
         }
     }
     Ok(())
-}
-
-/// A turn's own last message, by the turn's stable id.
-pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
-    let mut thread = core::thread::Thread::default();
-    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| thread.push(i));
-    let items = thread.session(id, "", None, None)["items"].take();
-    (items.as_array().into_iter().flatten().rev())
-        .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
-        .and_then(|i| i["text"].as_str().map(String::from))
-}
-
-/// The hop a result carries, by its command id in the parent.
-pub(crate) fn hop(data: &Path, pid: &str, id: &str) -> Option<u64> {
-    all(data, pid)
-        .into_iter()
-        .find(|(_, r)| r.id == id)
-        .map(|(_, r)| r.hop)
 }
 
 /// The daemon's pass: each parent with an open result, between turns, gets its oldest one, off
@@ -359,8 +367,9 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
             }
         }
         let (data, pid, state) = (data.to_path_buf(), pid.clone(), row["state"].clone());
+        let finished = row["finished"].as_u64().unwrap_or(0);
         thread::spawn(move || {
-            if let Err(e) = settle(&data, &pid, state.as_str().unwrap_or("")) {
+            if let Err(e) = settle(&data, &pid, state.as_str().unwrap_or(""), finished) {
                 eprintln!("brigadierd: worker result for {pid}: {e}");
             }
             SENDING.lock().unwrap().as_mut().map(|s| s.remove(&pid));
@@ -371,14 +380,6 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
 /// Whether a result still has something to say: a worker's ask only while it waits.
 pub(super) fn fresh(data: &Path, r: &Res) -> bool {
     r.how != "asks" || super::asks::waits(data, &r.wid, &r.turn)
-}
-
-/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
-fn said(r: &Res) -> String {
-    match r.merge.as_str() {
-        "" => format!("{}:{}", r.how, r.wid),
-        m => format!("{}:{}:{m}", r.how, r.wid),
-    }
 }
 
 fn has_sent(data: &Path, pid: &str) -> bool {
@@ -404,8 +405,20 @@ pub(crate) fn settled(f: &fold::Fold, id: &str, state: &str) -> Option<&'static 
 
 /// Moves a parent's results on: a sent one settles by the parent's log, then the oldest written
 /// one is sent. A parent with none left open leaves the set.
-fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
-    let results = all(data, pid);
+fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> {
+    let mut results = all(data, pid);
+    // A stopped worker's result goes once a turn of the parent's ends after it [D314].
+    let due = |r: &Res| r.state == "held" && !r.ended && r.at < finished;
+    for (path, r) in results.iter_mut().filter(|(_, r)| due(r)) {
+        r.state = "written".into();
+        write_json(path, r)?;
+    }
+    // Only held ones: kept open, not folded, while the parent idles.
+    let any = |s: &str| results.iter().any(|(_, r)| r.state == s);
+    let held = any("held");
+    if held && !any("written") && !any("sent") {
+        return Ok(());
+    }
     let dir = core::session_dir(data, pid);
     if closing(data, pid) {
         for (path, mut r) in results.into_iter().filter(|(_, r)| r.state == "written") {
@@ -434,7 +447,7 @@ fn settle(data: &Path, pid: &str, state: &str) -> io::Result<()> {
         .into_iter()
         .find(|(_, r)| r.state == "written");
     let Some((path, mut r)) = next else {
-        if !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
+        if !held && !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
             OPEN.lock().unwrap().as_mut().map(|o| o.remove(pid));
         }
         return Ok(());

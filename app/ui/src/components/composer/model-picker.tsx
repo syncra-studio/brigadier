@@ -2,10 +2,12 @@ import { Popover as BasePopover } from "@base-ui/react/popover";
 import { type HTMLAttributes, type KeyboardEvent, type ReactElement, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { Bolt, MagnifyingGlassSmSearch, Terminal, X } from "../../icons";
+import { run } from "../../onboarding/api";
 import { cx } from "../cx";
 import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { fuzzyMatch, MatchedText } from "./menus";
 import { moveKeys, named, useClosesOnTyping } from "./model-keys";
+import { type Quota, QuotaLines } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
 
 /** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
@@ -36,6 +38,8 @@ export type ModelGroup = {
   mark: string | null;
   models: Model[];
   unavailable?: "install" | "sign-in" | null;
+  /** Each signed-in account's limits, where Rust serves them [D337]. */
+  usage?: Quota[] | null;
 };
 
 /** What the session runs on; `fast` on its model's fast tier. */
@@ -137,6 +141,12 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   const root = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
+  // Usage moves while the list stays: each open reads it again, as the Usage popover does [D2039].
+  const [usage, setUsage] = useState<Record<string, Quota[] | null>>({});
+  useEffect(() => {
+    run(["models"]).then((reply) => setUsage(Object.fromEntries(reply.groups.map((each: ModelGroup) => [each.provider, each.usage ?? null]))), () => {});
+  }, []);
+  const quota = group && (group.provider in usage ? usage[group.provider] : group.usage);
   // It opens with the keyboard on the chip in use (else the first), scrolled into view.
   useEffect(() => {
     const chosen = root.current?.querySelector<HTMLElement>("[data-picker-part=models] [tabindex='0']");
@@ -344,6 +354,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
               {needle && listed.length === 0 && <p className="text-xs text-placeholder">No models match “{needle}”</p>}
             </div>
           )}
+          {!group?.unavailable && !needle && quota && <QuotaLines usage={quota} />}
         </div>
         {efforts && RULE}
         {efforts && (

@@ -82,18 +82,25 @@ fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
 /// computer's login), or, with `--auto`, to the one the settings allow, if any. A refused resume
 /// starts a new conversation with a hand-off on the same account (D90 Q4).
 pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
-    let mut r = attempt(data, id, pick, auto);
+    let mut r = attempt(data, id, pick, auto, None);
     // A log moved meanwhile (a note, a check) is no reason to give up on an automatic switch.
     for _ in 0..3 {
         match &r {
-            Ok(v) if auto && v["error"] == "changed" => r = attempt(data, id, pick, auto),
+            Ok(v) if auto && v["error"] == "changed" => r = attempt(data, id, pick, auto, None),
             _ => break,
         }
     }
     // One that can't happen says so on its limit's row, with Try again, not only in a log [D51].
     let failed = match &r {
         Ok(v) if v["ok"] == true => None,
-        Ok(v) if matches!(v["error"].as_str(), Some("off" | "not_limited" | "changed")) => None,
+        Ok(v)
+            if matches!(
+                v["error"].as_str(),
+                Some("off" | "not_limited" | "changed" | "held")
+            ) =>
+        {
+            None
+        }
         Ok(v) => Some((v["message"].as_str().or(v["error"].as_str()).unwrap_or("")).to_string()),
         Err(e) => Some(e.to_string()),
     };
@@ -105,7 +112,21 @@ pub fn switch_session(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> 
     r
 }
 
-fn attempt(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<Value> {
+/// Where a switch goes: the agent, the account, and the model and effort where they change.
+pub(crate) type To = (&'static dyn Adapter, String, Option<String>, Option<String>);
+
+/// A worker's move the user's call on its hold made: to `to`, behind the same divider [D2028].
+pub(crate) fn switch_to(data: &Path, id: &str, to: To) -> io::Result<Value> {
+    attempt(data, id, None, false, Some(to))
+}
+
+fn attempt(
+    data: &Path,
+    id: &str,
+    pick: Option<&str>,
+    auto: bool,
+    to: Option<To>,
+) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     owner::ensure(data, &spec)?;
     crate::rewind::settled(data, &spec)?;
@@ -132,48 +153,99 @@ fn attempt(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<
         if why == "limited" {
             let until = f.resets.unwrap_or(log::now_ms() + SKIP_MS);
             v["limited"][format!("{b}/{cur}")] = until.into();
+            v["limited_at"][format!("{b}/{cur}")] = log::now_ms().into();
             save(data, &v)?;
         }
         v
     };
     let from = label(&v, a, &cur);
-    let mut target: Option<(&dyn Adapter, String, Option<String>)> = None;
+    let mut target: Option<To> = None;
     let mut kind = "accounts";
-    if let Some(pick) = pick {
+    let mut ran = Value::Null;
+    let link = crate::workers::link(data, id);
+    // A reviewer's limit, or a fix turn's, is its end: never moved, its result goes on [D3026].
+    if to.is_none() && pick.is_none() && link.as_ref().is_some_and(|l| !crate::workers::moves(l)) {
+        return Ok(
+            json!({"ok": false, "error": "review", "message": "A review's turn ends at its limit."}),
+        );
+    }
+    let worker = link.is_some();
+    if to.is_some() {
+        target = to;
+    } else if worker && pick.is_none() && auto {
+        // A worker moves within its own job, never by the session switch; out of it, it holds
+        // for the user's call [D2037, D2041, D2028].
+        if f.hold.is_some() {
+            return Ok(
+                json!({"ok": false, "error": "held", "message": "It waits on the user's call."}),
+            );
+        }
+        match crate::routing::next(data, id, &spec, &f, &cur)? {
+            Some((t, r)) => (target, ran, kind) = (Some(t), r, "job"),
+            None => {
+                return Ok(
+                    json!({"ok": false, "error": "held", "message": "Its job is out; the user decides."}),
+                );
+            }
+        }
+    } else if let Some(pick) = pick {
         if pick == cur || !accounts_of(&v, b).iter().any(|(x, _)| x == pick) {
             return Ok(
                 json!({"ok": false, "error": "bad_account", "message": "Pick another account of this agent."}),
             );
         }
-        target = Some((a, pick.to_string(), None));
+        target = Some((a, pick.to_string(), None, None));
     } else if why == "unresumable" && (!auto || listed(&v, "auto", b)) {
-        target = Some((a, cur.clone(), None));
+        target = Some((a, cur.clone(), None, None));
     } else if !auto {
         return Ok(
             json!({"ok": false, "error": "pick", "message": "Pick an account to switch to."}),
         );
     } else {
         if listed(&v, "auto", b) {
-            target = pick_account(data, &v, a, &cur, &spec.cwd).map(|id| (a, id, None));
+            target = pick_account(data, &v, a, &cur, &spec.cwd).map(|id| (a, id, None, None));
         }
         if target.is_none() && v["agents"] == true {
             kind = "agents";
-            target = pick_agent(data, &v, b, &spec.cwd).map(|(a, id, m)| (a, id, Some(m)));
+            let now = f
+                .models
+                .get(b)
+                .cloned()
+                .or(spec.model.clone())
+                .unwrap_or_default();
+            target =
+                pick_agent(data, &v, b, &now, &spec.cwd).map(|(a, id, m, e)| (a, id, Some(m), e));
         }
     }
-    let Some((to, account, model)) = target else {
+    let Some((to, account, model, effort)) = target else {
         return Ok(
             json!({"ok": false, "error": "no_target", "message": "No other account or agent has room."}),
         );
     };
     let to_label = label(&v, to, &account);
-    let name = (model.as_deref()).and_then(|m| model_name(data, to.name(), m, &spec.cwd));
+    let name = (model.as_deref()).and_then(|m| crate::routing::name_of(data, id, to.name(), m));
+    // "Opus 5.5 had no account with room, so the next in Write code ran: Codex · GPT-6.1-Sol · High".
+    let moved = ran["note"]
+        .as_str()
+        .filter(|_| ran["job"].is_string())
+        .map(|n| {
+            let words = [
+                Some(to.short_label().to_string()),
+                name.clone().or(model.clone()),
+                effort.as_deref().map(crate::routing::capital),
+            ];
+            format!(
+                "{n}: {}",
+                words.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+            )
+        });
     // Asked again last: a setting turned off meanwhile stops an automatic switch [D51].
     let still = || {
         let v = load(data);
         !auto
             || match kind {
                 "agents" => v["agents"] == true,
+                "job" => true,
                 _ => listed(&v, "auto", b),
             }
     };
@@ -182,22 +254,20 @@ fn attempt(data: &Path, id: &str, pick: Option<&str>, auto: bool) -> io::Result<
         backend: to.name(),
         account: &account,
         model: model.as_deref(),
+        effort: effort.as_deref(),
         name: name.as_deref(),
         label: &to_label,
         from: &from,
+        moved: moved.as_deref(),
     };
-    let mut reply = switch::switch(&spec, &f, &ping, &call, &target, auto, &still);
+    let told = crate::routing::told(data, &spec);
+    let mut reply = switch::switch(&told, &f, &ping, &call, &target, auto, &still);
+    // The turn it carries on reports in place of the one cut, by the log [D2041].
+    if reply["ok"] == true && worker && !ran.is_null() {
+        crate::routing::set_ran(data, id, ran)?;
+    }
     reply["to"] = to_label.into();
     Ok(reply)
-}
-
-/// A model's name as the picker shows it, from the agent's last check here.
-fn model_name(data: &Path, agent: &str, model: &str, cwd: &str) -> Option<String> {
-    let args = ["agents", agent, "--cwd", cwd, "--cached"].map(String::from);
-    let checks = crate::setup::run(data, &args).ok()?;
-    let models = checks["agents"][0]["models"].as_array()?;
-    let m = models.iter().find(|m| m["id"] == model)?;
-    m["name"].as_str().map(String::from)
 }
 
 fn recent(v: &Value, key: &str) -> bool {
@@ -219,32 +289,32 @@ fn pick_account(data: &Path, v: &Value, a: &dyn Adapter, cur: &str, cwd: &str) -
         })
 }
 
-/// The next agent that is on, in adapter order (proposed), with a model usable in this project
-/// on its login (or, when it switches accounts automatically, on one of its accounts with room),
-/// and that model: the first it lists (proposed). Sign-in counts only where the model needs it,
-/// which the agent's own model list already says [D43, D89].
+/// The next entry on another agent in the first job that holds the session's model, in the user's
+/// order, on its login or, where it switches accounts automatically, an account with room; none
+/// and it stays at its limit [D2028, D376]. Sign-in
+/// counts only where the model needs it, which the agent's own model list already says [D43, D89].
 fn pick_agent(
     data: &Path,
     v: &Value,
     from: &str,
+    model: &str,
     cwd: &str,
-) -> Option<(&'static dyn Adapter, String, String)> {
-    agents()
-        .filter(|a| a.name() != from && a.exe().is_some())
-        .filter(|a| crate::settings::enabled(data, a.name()))
-        .find_map(|a| {
-            let ids: Vec<String> = accounts_of(v, a.name())
-                .into_iter()
-                .map(|(id, _)| id)
-                .filter(|id| id.is_empty() || listed(v, "auto", a.name()))
-                .filter(|id| !recent(v, &format!("{}/{id}", a.name())))
-                .collect();
-            ids.into_iter().find_map(|id| {
-                let c = check(a, data, &id, cwd);
-                let model = c["models"][0].as_str()?.to_string();
-                (c["kept_apart"] == true).then_some((a, id, model))
-            })
+) -> Option<(&'static dyn Adapter, String, String, Option<String>)> {
+    let entries = crate::routing::after(data, from, model);
+    entries.into_iter().find_map(|(a, m, e)| {
+        let a = agents().find(|x| x.name() == a && x.exe().is_some())?;
+        let ids: Vec<String> = accounts_of(v, a.name())
+            .into_iter()
+            .map(|(id, _)| id)
+            .filter(|id| id.is_empty() || listed(v, "auto", a.name()))
+            .filter(|id| !recent(v, &format!("{}/{id}", a.name())))
+            .collect();
+        ids.into_iter().find_map(|id| {
+            let c = check(a, data, &id, cwd);
+            let listed = (c["models"].as_array().into_iter().flatten()).any(|x| x == m.as_str());
+            (c["kept_apart"] == true && listed).then(|| (a, id, m.clone(), e.clone()))
         })
+    })
 }
 
 /// Whether the settings let the daemon act on a limit of `backend`: read once per limit, so off
@@ -253,7 +323,7 @@ fn pick_agent(
 /// setting or account change asks again about a session still at its limit [D51].
 pub fn switch_settings(data: &Path) -> Value {
     let mut v = load(data);
-    v["limited"] = Value::Null;
+    (v["limited"], v["limited_at"]) = (Value::Null, Value::Null);
     v
 }
 

@@ -13,8 +13,15 @@ pub(crate) const RESUME: &str = "[The user stopped you, then asked you to resume
 
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
 /// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
-/// turn continues through the backend's resume id.
-pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -> Value {
+/// turn continues through the backend's resume id. `more`: what goes with the user's Resume [D329].
+pub fn recover(
+    spec: &Spec,
+    f: &Fold,
+    live: &Live,
+    child: Running,
+    call: Call,
+    more: &str,
+) -> Value {
     let status = fold::status(f, live);
     let state = status["state"].as_str().unwrap_or("");
     let now = log::now_ms();
@@ -114,6 +121,12 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             let backend = last["backend"].as_str().filter(|b| !b.is_empty());
             let old = last["cid"].as_str().unwrap_or("");
             let resend = last["never_ran"] == true && last["origin"] == "user";
+            // Stopped before the agent said or did anything for it, and with no ack proving it
+            // took it, the user's message may never have reached it (a stop drops what it hadn't
+            // read): it goes with the Resume, so nothing they sent is lost [D82, D154].
+            let acked = last["delivered"] == true
+                && adapters::get(backend.unwrap_or(&f.backend)).is_some_and(|a| a.acks());
+            let carried = !resend && last["origin"] == "user" && last["said"] == false && !acked;
             let (cid, origin, said) = match resend {
                 true => (format!("{old}.r{now}"), "user", "resent"),
                 false => (format!("rs{now}"), "system", "continued"),
@@ -122,17 +135,24 @@ pub fn recover(spec: &Spec, f: &Fold, live: &Live, child: Running, call: Call) -
             let picked = f.picked.is_some();
             // With no agent alive and no conversation to resume, the line would start a new one without the request.
             if !resend
+                && !carried
                 && !picked
                 && child.is_none()
                 && !f.resume.contains_key(backend.unwrap_or(&f.backend))
             {
                 return json!({"ok": false, "error": "The agent stopped before its conversation began, so there's nothing to carry on. Send your message again."});
             }
-            let msg = if resend {
+            let mut msg = if resend {
                 again(spec, last["text"].as_str().unwrap_or(""), &last["parts"])
             } else {
                 Message::plain(RESUME)
             };
+            if carried {
+                let m = again(spec, last["text"].as_str().unwrap_or(""), &last["parts"]);
+                msg.agent = format!("{RESUME}\n\n{}", m.agent);
+                msg.images = m.images;
+            }
+            msg.agent += more;
             let mut reply = send(
                 spec,
                 f,

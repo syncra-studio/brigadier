@@ -99,5 +99,6 @@ export function sessionSendWords(state: SessionSendState): string {
   }
 }
 
-/** The caption over a message another session sent: "Sent by API work from another session". */
-export const sentByCaption = (title: string) => `Sent by ${title} from another session`;
+/** The caption over a message another session sent: "Sent by API work from another session"; one of this session's
+ * workers, "Sent by API work, a worker of this session" [D394]. */
+export const sentByCaption = (title: string, worker = false) => `Sent by ${title}${worker ? ", a worker of this session" : " from another session"}`;

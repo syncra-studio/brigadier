@@ -24,8 +24,20 @@ const SHARE = 0.5;
 const MIN_SHARE = 0.25;
 const MAX_SHARE = 0.75;
 
-// Each note's chat view and width while the app runs, as the old app kept them on its tab.
+// Each note's chat view and width while the app runs, as the old app kept them on its tab. By the note's id alone, so
+// Home's note keeps them as it comes into the session [D287].
 const views = new Map<string, { view: View; share: number }>();
+
+// Each chat's thread as last peeked, so it shows again at once, with no empty column while Rust's comes [D288].
+// shortcut: one page per chat, never dropped while the app runs; bound it as daemon.ts's kept threads if chats grow many.
+const snapshots = new Map<string, Session>();
+const peek = (id: string) =>
+  new Promise<Session | null>((done) =>
+    ask({ op: "peek", session: id }, (reply) => {
+      if (reply.ok) snapshots.set(id, reply.session);
+      done(reply.ok ? reply.session : null);
+    }),
+  );
 
 /**
  * A note with its own chat, as the old app's page tab: the note, and while the chat is open a resizable split with
@@ -33,12 +45,11 @@ const views = new Map<string, { view: View; share: number }>();
  * back [D281]. A note on Home has one too, on the new chat's picked agent, and it comes into the session with it [D287].
  */
 export function NoteWithChat({ owner, note, offline, onChat, children }: { owner: string; note: string; offline: boolean; onChat: (id: string) => void; children: ReactNode }) {
-  const key = `${owner}/${note}`;
-  const [{ view, share }, setState] = useState(() => views.get(key) ?? { view: "hidden" as View, share: SHARE });
+  const [{ view, share }, setState] = useState(() => views.get(note) ?? { view: "hidden" as View, share: SHARE });
   const set = (next: Partial<{ view: View; share: number }>) =>
     setState((was) => {
       const now = { ...was, ...next };
-      views.set(key, now);
+      views.set(note, now);
       return now;
     });
   // The chat's id, made by Rust on first open.
@@ -52,9 +63,11 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
     set({ view: "split" });
     if (chat && "id" in chat && !how) return;
     if (!pick) return setChat({ error: "Pick a model for the new chat first." });
-    setChat(null);
+    // A reopened chat replaces the one shown only once its thread is in, so it never shows empty.
+    if (typeof how !== "object") setChat(null);
     const args = typeof how === "object" ? [how.reopen, "--open"] : [newId(), ...(how ? [how] : [])];
-    void daemonRun(["note", owner, "chat", note, ...args, ...pick]).then((reply) => {
+    void daemonRun(["note", owner, "chat", note, ...args, ...pick]).then(async (reply) => {
+      if (reply.ok && typeof how === "object" && !snapshots.has(reply.chat)) await peek(reply.chat);
       setChat(reply.ok ? { id: reply.chat } : { error: failure(reply) });
       if (reply.ok) onChat(reply.chat);
     });
@@ -210,7 +223,7 @@ function Divider({ share, row, onShare }: { share: number; row: React.RefObject<
 function ChatThread({ id, offline }: { id: string; offline: boolean }) {
   const row = useChatRow(id);
   const source = useMemo(() => {
-    let session: Session | null = null;
+    let session = snapshots.get(id) ?? null;
     const listeners = new Set<() => void>();
     return {
       subscribe: (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener)),
@@ -220,11 +233,11 @@ function ChatThread({ id, offline }: { id: string; offline: boolean }) {
         for (const listener of listeners) listener();
       },
     } satisfies Source & { set(next: Session): void };
-  }, []);
+  }, [id]);
   const updated = row?.updated;
   useEffect(() => {
     let live = true;
-    ask({ op: "peek", session: id }, (reply) => live && reply.ok && source.set(reply.session));
+    void peek(id).then((session) => live && session && source.set(session));
     return () => {
       live = false;
     };

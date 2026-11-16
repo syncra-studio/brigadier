@@ -11,9 +11,9 @@ mod rewind;
 pub mod setup;
 mod shell;
 
-pub use classify::classify;
-pub use files::{change, counts, denied, drop_lines, encode, question, sha1, under, uuid};
-pub use model::{Check, Limit, ModelInfo, Who, iso_ms, mark_superseded, versioned};
+pub use classify::{classify, temporary};
+pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
+pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
 pub use shell::{shell_step, unwrap_shell};
@@ -52,6 +52,8 @@ pub enum Event {
     Limited(String, Option<u64>),
     /// The account has no credits left: no limit, it never comes back by itself.
     OutOfCredits,
+    /// Its usage limits as its CLI reported them during a run, each window it named [D28, D2039].
+    Limits(Vec<Limit>),
     SignIn(String),
     /// The CLI refused to resume this conversation on this account: only a new one goes on (D90 Q4).
     Unresumable(String),
@@ -62,6 +64,9 @@ pub enum Event {
     /// command, cwd, paths, files, branch, host, input, body, to, grant}`; structure only [D65].
     /// Optional `tool`: the normalised tool id whose work awaits this approval.
     Approval(Value),
+    /// The folder a tool call runs in, by the call's id, where its CLI says it only beside its ask:
+    /// the ask carries it [D391].
+    Cwd(String, String),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),
     /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
@@ -91,9 +96,12 @@ pub enum Event {
     },
     /// The CLI ran this request on another model than the one asked: from (where it says), to [D487].
     Rerouted(Option<String>, String),
+    /// The model the CLI says this conversation runs on, by its own id (`claude-opus-5-5` behind
+    /// `opus`): a worker's `ran.real` [D383].
+    Model(String),
     /// A failed turn's error, with its cause where the CLI says it as structure [D487]: "capacity",
     /// "model" (not available), "blocked" (a reply withheld), "ended" (the conversation can't go
-    /// on), "review" (its own reviewer ended the turn); "" for any other.
+    /// on), "review" (its own reviewer ended the turn), "timeout", "connection"; "" for any other.
     Failed(&'static str, String),
     /// The CLI holds its reply for extra safety checks (true), or let it go (false) [D487].
     Checking(bool),
@@ -214,12 +222,19 @@ pub enum Retune {
 /// What a turn runs with, as its input frame records it.
 pub fn setup(spec: &Spec) -> Value {
     let mut setup = json!({"model": spec.model, "effort": spec.effort, "level": spec.level});
-    // Only where on, so a setup without them reads as before; a worker's asks go to its parent [D131].
+    // Only where on, so a setup without them reads as before; a worker's asks go to its parent
+    // [D131]. A plan reviewer's go to the user, as a session's: its author is held on that plan
+    // while it lives, so it can't answer them [D395, D355].
+    let reviewer = spec.opts.contains_key("plan_review");
     let on = [
         ("fast", spec.fast),
-        ("worker", spec.naked || spec.boss.is_some()),
+        ("worker", (spec.naked || spec.boss.is_some()) && !reviewer),
     ];
     (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
+    // Its subagents' allowlist, launch-only, so a change restarts an idle child [D376].
+    if let Some(models) = &spec.ruled.models {
+        setup["allowed"] = models.clone().into();
+    }
     setup
 }
 
@@ -421,7 +436,27 @@ pub trait Adapter: Sync {
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }
+    /// Its entries in the default jobs, as (job, model id, effort), in its order; routing keeps
+    /// the ones its list names [D392 P1].
+    fn seeds(&self) -> &'static [Seed] {
+        &[]
+    }
+    /// Whether it hands Brigadier a plan to approve, so the Adversarial review reviews its plans.
+    fn plans(&self) -> bool {
+        false
+    }
+    /// What its CLI lets the rules make of its own subagents [D376].
+    fn subagents(&self) -> Subagents {
+        Subagents::Untold
+    }
+    /// The model a launch of `spec` runs, where it names one when none is picked [D376].
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        spec.model.clone()
+    }
 }
+
+/// A default job's entry: (job, model id, effort).
+pub type Seed = (&'static str, &'static str, Option<&'static str>);
 
 pub fn all() -> [&'static dyn Adapter; 4] {
     [
@@ -449,6 +484,14 @@ pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
         Some((_, home)) => home.join(rest),
         None => home_path(default).join(rest),
     }
+}
+
+/// Whether a session grant is for this exact command in this folder, as Codex keys its own cache:
+/// such a repeat is answered without asking the user [D193, D247, D389].
+pub fn repeat(g: &Value, command: &Value, cwd: &Value) -> bool {
+    // An unknown folder never matches: the user is asked again [D391].
+    let folder = !cwd.is_null() && g["cli"]["cwd"] == *cwd;
+    g["grant"]["scope"] == "command" && g["grant"]["pattern"] == *command && folder
 }
 
 /// Text of a JSON line's field, or empty.

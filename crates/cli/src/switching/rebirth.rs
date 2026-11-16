@@ -55,7 +55,16 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         // Logged before the stop, so its end is known as this one's, never the user's Stop.
         let cut = json!({"op": "note", "data": {"event": "rebirth_cut", "turn": t.id, "switch": why == "switch"}});
         owner::call(data, id, cut)?;
-        if crate::control::interrupt(data, id, "rebirth")?.is_none() {
+        let done = |f: &core::fold::Fold| {
+            f.turns.is_empty()
+                && f.last
+                    .as_ref()
+                    .is_some_and(|l| l["id"] == t.id.as_str() && l["outcome"] == "done")
+        };
+        // A turn that ended on its own first is left be: it rebirths at the next message [D108].
+        if crate::control::interrupt(data, id, "rebirth")?.is_none()
+            && !done(&core::fold(&spec.dir, true)?.fold)
+        {
             // Its CLI can't end a turn and stay: its processes stop instead.
             owner::call(data, id, json!({"op": "stop", "by": "rebirth"}))?;
         }
@@ -98,6 +107,14 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         false => Message::plain(""),
     };
     Ok(core::send(
-        &spec, &f, child, &call, &cid, "system", &msg, None, None,
+        &crate::routing::told(data, &spec),
+        &f,
+        child,
+        &call,
+        &cid,
+        "system",
+        &msg,
+        None,
+        None,
     ))
 }

@@ -6,7 +6,9 @@ use super::{COUNTING, In, Out, all, note, path, refuse, send};
 use crate::workers;
 use brigadier_core::{self as core};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -106,9 +108,34 @@ pub(crate) fn answer(data: &Path, parent: &str, wid: &str, mid: &str, text: &str
     json!({"ok": true, "text": format!("Sent to {wid}.")})
 }
 
-/// `--wait`: until the receiver's turn that took the message ends, then its last message, or for
-/// one's own worker that turn's result, taken so it isn't sent again [D3006, D3034]. Proposed:
-/// the turn's last message is the reply. Always times out [D2034].
+/// Waits running now, by their message's id: who waits, on whom, and the answer sent to it once
+/// it came [D333]. Only a live wait takes one, so they live in this daemon alone.
+type Waits = BTreeMap<String, (String, String, Option<String>)>;
+static WAITING: Mutex<Waits> = Mutex::new(BTreeMap::new());
+
+fn waiting() -> std::sync::MutexGuard<'static, Waits> {
+    WAITING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// `from`'s message, taken as the answer its receiver's wait on `from` is waiting for: that wait
+/// gets it, never also as a message. None when none waits, and it goes as a message [D333].
+pub(super) fn answered(data: &Path, from: &str, out: &mut Out) -> Option<Value> {
+    let mut waits = waiting();
+    let open = (waits.values_mut())
+        .find(|(who, on, got)| *who == out.to && on == from && got.is_none())?;
+    open.2 = Some(out.text.clone());
+    drop(waits);
+    super::settle_out(data, from, out, "delivered", None);
+    let text = format!(
+        "Sent to {}, which was waiting for your answer: it has it now.",
+        out.to
+    );
+    Some(json!({"ok": true, "mid": out.mid, "how": "answered", "text": text}))
+}
+
+/// `--wait`: until the receiver sends its answer, or the turn that took the message ends, then its
+/// last message, or for one's own worker that turn's result, taken so it isn't sent again
+/// [D3006, D3034, D333]. Always times out [D2034].
 pub(super) fn waited(
     data: &Path,
     me: &str,
@@ -119,27 +146,37 @@ pub(super) fn waited(
     let started = Instant::now();
     let to = out.to.as_str();
     let dir = core::session_dir(data, to);
+    waiting().insert(out.mid.clone(), (me.into(), to.into(), None));
+    // Ends the wait under its lock: an answer after this goes as a message.
+    let end = || waiting().remove(&out.mid).and_then(|w| w.2);
     loop {
         let rec: Option<In> = workers::read_json(&path(data, to, "in", &out.mid));
         let Some(rec) = rec.filter(|_| dir.exists()) else {
+            end();
             return refuse(&format!("{to} is gone."));
         };
         if rec.state == "dropped" {
+            end();
             return refuse(&format!("{to}'s user took your message out of its queue."));
         }
         let turn = rec.turn.clone().unwrap_or_else(|| out.mid.clone());
-        let ended = core::fold(&dir, true).is_ok_and(|f| {
-            f.fold.cids.contains_key(&out.mid) && !f.fold.turns.iter().any(|t| t.id == turn)
-        });
-        if ended {
-            let mine = workers::take(data, me, to, Some(&turn));
-            let reply = mine.or_else(|| workers::last_of_turn(data, to, &turn));
+        let answered = waiting().get(&out.mid).is_some_and(|w| w.2.is_some());
+        let ended = answered
+            || core::fold(&dir, true).is_ok_and(|f| {
+                f.fold.cids.contains_key(&out.mid) && !f.fold.turns.iter().any(|t| t.id == turn)
+            });
+        let late = started.elapsed() >= Duration::from_secs(secs) || !here();
+        let sent = if ended || late { end() } else { None };
+        if ended || sent.is_some() {
+            let mine = || workers::take(data, me, to, Some(&turn));
+            let reply = sent.or_else(mine);
+            let reply = reply.or_else(|| workers::last_of_turn(data, to, &turn));
             let reply = reply.unwrap_or_default();
             note(data, me, json!({"phase": "replied", "mid": out.mid}));
             let text = format!("{to} answered:\n{}", reply.trim_end());
             return json!({"ok": true, "mid": out.mid, "done": true, "reply": reply, "text": text});
         }
-        if started.elapsed() >= Duration::from_secs(secs) || !here() {
+        if late {
             note(data, me, json!({"phase": "waited", "mid": out.mid}));
             let text = format!(
                 "No reply from {to} after {secs}s. Your message is with it. `brigadier wait {to}` to wait more, or end your turn."

@@ -1,0 +1,32 @@
+//! A review's words: the counts its messages say, and the line its worker's result carries.
+
+use serde_json::Value;
+
+pub(super) use brigadier_core::fold::plan::count;
+
+pub(super) fn cut(mut s: String, most: usize) -> String {
+    if s.len() > most {
+        let mut at = most;
+        while !s.is_char_boundary(at) {
+            at -= 1;
+        }
+        s.truncate(at);
+        s += "\n[cut]";
+    }
+    s
+}
+
+/// How a turn ended, in the reviewer's or fix turn's words.
+pub(super) fn word(how: &str) -> &'static str {
+    match how {
+        "stopped" => "was stopped",
+        "limit" => "stopped at a usage limit",
+        "context" => "ran out of context",
+        _ => "failed",
+    }
+}
+
+/// "Reviewed by ‹model›: 4 findings, 3 fixed, 1 rejected", each count only where it was said.
+pub(super) fn reviewed(r: &Value, fixed: Option<u64>, rejected: Option<u64>) -> String {
+    brigadier_core::fold::plan::reviewed("Reviewed by", r, fixed, rejected)
+}

@@ -11,15 +11,18 @@ mod family;
 mod make;
 mod pause;
 mod result;
+mod review;
 pub(crate) mod row;
-pub(crate) use asks::question;
 pub use asks::{answer, asks_parent, for_user};
+pub(crate) use asks::{question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub use make::start;
+pub(crate) use make::{begin, full};
 pub use pause::held;
-pub use result::{deliver, take, take_ask};
-pub(crate) use result::{hop as result_hop, last_of_turn, settled};
+pub use result::{deliver, take, take_ask, went_with, with_next};
+pub(crate) use result::{hop as result_hop, settled, unrun};
+pub(crate) use review::{last_of_turn, moves};
 pub use row::row;
 
 use crate::{arg, owner, queue, settings};
@@ -63,6 +66,19 @@ pub(crate) struct Record {
     /// A Brigade's sub-session, not a worker [D189].
     #[serde(default)]
     pub session: bool,
+    /// What its `ran` keeps beside agent, model, effort and account: its routing row, the
+    /// account's name and quota at the start, the same-row note [D2037, D2041, D3018].
+    #[serde(default)]
+    pub pick: Value,
+    /// Its row out of quota: the user's call it waits for before it starts [D2028, D342].
+    #[serde(default)]
+    pub hold: Value,
+    /// A retry's `retry_of`, `chain`, `step` and `note`, for its start outcome [D2037].
+    #[serde(default)]
+    pub retry: Value,
+    /// A reviewer's mark, as its link's (`review.rs`) [D3026].
+    #[serde(default)]
+    pub review: Value,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.
@@ -77,6 +93,9 @@ pub(crate) struct Link {
     /// The turns whose end goes back to the parent, by their stable id: today its brief's [D3006].
     pub report: Vec<String>,
     pub ran: Value,
+    /// What its parent's agent asked for: row, agent, model, effort, as given [D2037].
+    #[serde(default)]
+    pub asked: Value,
     /// Its last task's end, as its result said: how, when, its commits, whether it landed.
     #[serde(default)]
     pub last: Value,
@@ -86,6 +105,9 @@ pub(crate) struct Link {
     /// A Brigade's sub-session: a full lead, its own workers a family of their own [D189].
     #[serde(default)]
     pub session: bool,
+    /// A reviewer's mark, or a reviewed worker's review (`review.rs`) [D3026].
+    #[serde(default)]
+    pub review: Value,
 }
 
 fn records_dir(data: &Path, pid: &str) -> PathBuf {
@@ -206,7 +228,22 @@ pub fn busy(data: &Path, id: &str) -> bool {
     };
     !made
         || (l.session && brigade::leading(data, id))
-        || (l.report.iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
+        || l.review["state"] == "running"
+        || result::going(&l, &f)
+}
+
+/// Whether parent `pid`'s worker `wid` ended with nothing left to tell it: not being made, not
+/// paused, each task it reports ended with its result written, and none still on its way.
+pub fn over(data: &Path, pid: &str, wid: &str) -> bool {
+    let Some(l) = link(data, wid) else {
+        return record(data, pid, wid).is_none_or(|r| r.state != "starting");
+    };
+    let due =
+        |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent" | "held");
+    !l.paused
+        && !busy(data, wid)
+        && result::told(data, pid, wid, &l)
+        && !result::all(data, pid).iter().any(|(_, r)| due(r))
 }
 
 /// What session `me`'s `wait` is on: the session it names, else its own workers still working or
@@ -248,17 +285,17 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     json!({"ok": true, "text": format!("Stopped {} ({id}).{kept}", r.title)})
 }
 
-/// Stops worker `wid` below `top`. One still being made is marked so its brief never goes, and
-/// stopped once its making ends, if it got that far. `by`: "user", or "pause".
+/// Stops worker `wid` below `top`. One being made, or held on its card (by Stop, not Pause), is
+/// marked so its brief never goes, then stopped once made; its card goes. `by`: "user"/"pause".
 fn halt(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
     if let Some(pid) = parent_of(data, top, wid) {
-        let (root, _) = place(data, &pid);
-        let _family = family_lock(data, &root)?;
-        if let Some(mut r) = record(data, &pid, wid).filter(|r| r.state == "starting") {
+        let _family = family_lock(data, &place(data, &pid).0)?;
+        if let Some(mut r) = record(data, &pid, wid).filter(|r| crate::routing::stops(r, by)) {
             r.state = "stopped".into();
             save(data, &pid, &r)?;
         }
     }
+    crate::routing::stopped(data, wid, by);
     let started = Instant::now();
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));
@@ -281,10 +318,12 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
         .filter(|l| l.paused || l.last.is_null() || crate::sessions::working(data, wid, &all))
     {
         l.paused = false;
-        l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms()});
+        // Who ended it, for its result: one the user ended goes quietly [D330].
+        l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms(), "by": by});
         write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;
     }
     halt(data, top, wid, "user")?;
+    review::stop(data, top, wid);
     let mine: Vec<String> = (records(data, wid).into_iter())
         .filter(|r| {
             r.state == "starting"
@@ -346,7 +385,7 @@ pub fn still(data: &Path, id: &str) {
 }
 
 /// The start and end outcomes in a worker's log, folded [D2038].
-fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
+pub(crate) fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
     let mut all = vec![];
     let _ = core::read(&core::session_dir(data, wid), |i| {
         if i["kind"] == "note" && i["event"] == "outcome" {
@@ -422,11 +461,15 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         if !row["worker"].is_null() {
             result::written(data, id, row);
         }
-        if row["state"] == "asking" {
-            let _ = asks::asked(data, id);
-        }
+        asks::pass(data, id, row);
         if row["worker"]["kind"] == "doneNotMerged" {
             merged(data, id);
+        }
+        // A hold the user said to wait out goes on once its reset has passed [D2028].
+        if !row["worker"].is_null()
+            && matches!(row["state"].as_str(), Some("new" | "idle" | "limited"))
+        {
+            crate::routing::due(data, id);
         }
     }
     deliver(data, rows);

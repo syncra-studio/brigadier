@@ -18,6 +18,7 @@ import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
+import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
@@ -79,7 +80,14 @@ export function HomeDraft() {
     };
     const models = id ? ["models", "--project", id] : ["models"];
     run(models).then((reply) => land(reply, false), () => {});
-    run([...models, "--fresh"]).then((reply) => land(reply, true), (cause) => mine === asked.current && setListError(errorText(cause)));
+    run([...models, "--fresh"]).then(
+      (reply) => {
+        land(reply, true);
+        // A new model list can make an offer; Rust works them out on a read [D386].
+        readRouting().catch(() => {});
+      },
+      (cause) => mine === asked.current && setListError(errorText(cause)),
+    );
   };
   useEffect(() => {
     if (daemon) load();
@@ -122,6 +130,7 @@ export function HomeDraft() {
           openAddProject(path);
         }}
         workIn={draft.workIn}
+        localHolder={draft.workIn === "local" && id ? rows?.find((row) => row.project === id && row.local) : undefined}
         onWorkIn={(workIn) => setHomeDraft({ workIn })}
         repo={repo}
         base={base}

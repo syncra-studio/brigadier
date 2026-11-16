@@ -16,13 +16,13 @@ import { type PeerRef, sentByCaption, UNKNOWN_SESSION } from "./words";
  * ("Sent by API work from another session"), opening the sender at its row; the time and Copy on hover. A deleted
  * sender reads "a session" and opens nothing.
  */
-export const PeerMessageBlock: FC<{ from: PeerRef | null; text: string; at: number }> = ({ from, text, at }) => {
+export const PeerMessageBlock: FC<{ from: PeerRef | null; text: string; at: number; worker?: boolean }> = ({ from, text, at, worker }) => {
   const open = useContext(PeerOpen);
   const title = from && !from.gone ? from.title : UNKNOWN_SESSION;
   const words = (
     <>
       <Chat aria-hidden className="size-3.5 shrink-0" />
-      <span className="min-w-0 truncate">{sentByCaption(title)}</span>
+      <span className="min-w-0 truncate">{sentByCaption(title, worker)}</span>
     </>
   );
   const caption =

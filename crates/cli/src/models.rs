@@ -94,7 +94,8 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
             json!({"id": m["id"], "name": m.get("name").unwrap_or(&m["id"]), "local": m["local"],
                 "efforts": m.get("efforts").cloned().unwrap_or_else(|| json!([])),
                 "default_effort": m["default_effort"], "retiring": m["retiring"], "images": m["images"],
-                "fast": m["fast"], "legacy": m["legacy"] == true})
+                "fast": m["fast"], "legacy": m["legacy"] == true,
+                "top": m["top"] == true, "default": m["default"] == true})
         })
         .collect();
     let (levels, level) = levels(&check["name"], held, chosen);
@@ -103,10 +104,10 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
         "levels": levels, "level": level, "held": held})
 }
 
-/// `models [--session ID | --project P | --cwd D] [--fresh]`: the groups from each agent's last
+/// `models [--session ID | --project P | --cwd D] [--fresh] [--all]`: the groups from each agent's last
 /// check in that folder, at once; `--fresh` checks again first, for the page to ask after the first
 /// answer. Each carries its levels and the one a new session there starts on. Agents turned off
-/// and models hidden are left out.
+/// and models hidden are left out, and those a rule bars unless `--all`.
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "set" {
         return set(data, args);
@@ -144,13 +145,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         .cloned()
         .unwrap_or_default();
     hidden.retain(|h| !on.iter().any(|m| h == m));
-    let groups: Vec<Value> = reply["agents"]
+    let mut groups: Vec<Value> = reply["agents"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|check| check["enabled"] == true || own.iter().any(|b| check["name"] == *b))
-        .map(|check| group(check, held, &chosen, &hidden))
+        .map(|check| {
+            let mut g = group(check, held, &chosen, &hidden);
+            g["usage"] = crate::usage::of_agent(data, check["name"].as_str().unwrap_or(""));
+            g
+        })
         .collect();
+    // The pickers never offer what a rule bars; `--all` is Settings › Routing's own list [D376].
+    if !args.iter().any(|a| a == "--all") {
+        crate::routing::picks(data, &mut groups);
+    }
     Ok(json!({"ok": true, "groups": groups}))
 }
 

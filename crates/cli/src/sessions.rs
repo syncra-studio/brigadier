@@ -22,9 +22,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
         "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
-        "archive" => crate::rewind::settled(data, &spec)
-            .and_then(|()| core::git::recover::settled(data, id))
-            .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?,
+        // Every id given, each loaded first so an unknown one refuses before any is archived.
+        "archive" => {
+            let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
+            let specs: Vec<_> = ids
+                .map(|id| core::load(data, id).map(|s| (id, s)))
+                .collect::<io::Result<_>>()?;
+            for (id, spec) in specs {
+                crate::rewind::settled(data, &spec)
+                    .and_then(|()| core::git::recover::settled(data, id))
+                    .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?;
+            }
+        }
         "restore" => session::restore(data, &spec)?,
         // `jobs <id> history`: everything that ran in the background, newest first [D200].
         "jobs" if arg(args, 2)? == "history" => {

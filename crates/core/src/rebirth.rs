@@ -91,7 +91,8 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     // Continue carries a stalled one on.
     let last = f.last.as_ref()?;
     let refused = last["outcome"] == "failed" && last["why"] == "context" && again_last(f, last);
-    let stopped = f.cut.as_deref() == last["id"].as_str();
+    // A cut its turn beat by ending on its own is none: it rebirths at the next message [D108].
+    let stopped = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";
     if stopped && f.switched {
         return Some("switch");
     }
@@ -114,7 +115,8 @@ fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
 }
 
 /// The fresh conversations in a row, this turn's the last, that a cut began and that did nothing
-/// new: no edit, command or reply [D144]. The user's Continue starts it over.
+/// new: no edit, nor a command that does more than look and wasn't run since the last message
+/// [D144]. The user's Continue starts it over.
 fn empty(f: &Fold, id: &str, switch: &Value, moved: bool) -> u64 {
     let n = switch["empty"].as_u64().unwrap_or(0);
     let going = f.go_on.as_deref() == Some(id);

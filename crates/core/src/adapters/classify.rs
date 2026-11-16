@@ -1,7 +1,13 @@
 use super::Event;
 
+/// Whether a failed turn's cause passes by itself: busy servers, a dropped connection, a request
+/// that timed out. Every other failure is final at once; no retry of ours either way [D340, D496].
+pub fn temporary(why: &str) -> bool {
+    matches!(why, "capacity" | "connection" | "timeout")
+}
+
 /// Classifies an error message the way every backend needs: a full context, no credits, a limit,
-/// a sign-in, or neither.
+/// a sign-in, busy servers, a timeout, a dropped connection, or none of them.
 pub fn classify(message: &str) -> Option<Event> {
     let m = message.to_lowercase();
     // With its own compaction off, a CLI's turn fails once the window is full [D98].
@@ -51,6 +57,28 @@ pub fn classify(message: &str) -> Option<Event> {
     } else if auth.iter().any(|k| m.contains(k)) {
         Some(Event::SignIn(message.to_string()))
     } else {
-        None
+        let busy = ["overloaded", "529", "503", "at capacity", "high demand"];
+        let late = ["timed out", "timeout", "deadline exceeded"];
+        let dropped = [
+            "connection error",
+            "connection reset",
+            "connection refused",
+            "connection closed",
+            "connection failed",
+            "network error",
+            "econnreset",
+            "econnrefused",
+            "socket hang up",
+            "stream disconnected",
+        ];
+        let why = [
+            ("capacity", &busy[..]),
+            ("timeout", &late),
+            ("connection", &dropped),
+        ]
+        .into_iter()
+        .find(|(_, words)| words.iter().any(|k| m.contains(k)))?
+        .0;
+        Some(Event::Failed(why, message.to_string()))
     }
 }

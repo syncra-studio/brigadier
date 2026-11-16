@@ -45,6 +45,23 @@ pub fn resumable(fold: &Fold, state: &str) -> bool {
             .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
 }
 
+/// A turn its CLI started on its own (a background task's end) after the user's Stop or a Pause,
+/// with no message since: who stopped it, so it's stopped again at once [D90, D95].
+pub fn woke(fold: &Fold) -> Option<&str> {
+    fold.turns
+        .first()
+        .filter(|t| t.origin == "agent" && !t.stopping)?;
+    let last = fold.last.as_ref().filter(|l| l["outcome"] == "stopped")?;
+    last["reason"]
+        .as_str()
+        .filter(|by| matches!(*by, "user" | "pause"))
+}
+
+/// Whether a worker waits on the user's call on its row's hold [D2028, D342].
+pub fn held(fold: &Fold) -> bool {
+    fold.hold.as_ref().is_some_and(|h| h["phase"] == "asked")
+}
+
 /// What a switch can act on [D51]: the limit (or refused resume) the last turn ended on. Only
 /// while no turn is open.
 pub fn switchable(fold: &Fold) -> Option<&'static str> {
@@ -137,6 +154,10 @@ pub fn quiet(fold: &Fold, state: &str) -> bool {
 pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
     let turn = fold.turns.first();
     let (kind, id, text) = match state {
+        "waiting_answer" if turn.is_none() => {
+            let id = fold.hold.as_ref()?["id"].as_str()?;
+            ("question", format!("ask:{id}"), None)
+        }
         "waiting_answer" => {
             let turn = turn?;
             match turn.asks.iter().find(|(_, r)| r["to"] != "parent") {
@@ -192,6 +213,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             .unwrap_or("");
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
+            _ if held(fold) => (
+                "waiting_answer",
+                fold.hold.clone().unwrap_or_default()["why"].clone(),
+            ),
             _ if fold.sign_in.is_some() => ("sign_in", fold.sign_in.clone().into()),
             _ if fold.limit.is_some() => (
                 if fold.credits {
@@ -253,6 +278,14 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     };
     if child.stopped {
         return ("stalled", json!({"stopped": child.pid}));
+    }
+    // Brigadier answers an exact repeat of a command allowed for the session: it works on [D389].
+    if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"] == "brigadier") {
+        return ("working", serde_json::json!({"repeat": id}));
+    }
+    // A plan its review holds: it works on, nobody's to answer yet [§6].
+    if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"] == "review") {
+        return ("working", serde_json::json!({"review": id}));
     }
     // Only its parent agent is asked: the user sees it at work [D119].
     if let Some((id, _)) = turn

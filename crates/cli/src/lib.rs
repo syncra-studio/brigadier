@@ -9,7 +9,7 @@ mod chips;
 mod command;
 mod commands;
 mod commit;
-mod control;
+pub mod control;
 mod feedback;
 mod fork;
 mod git;
@@ -19,6 +19,7 @@ mod last;
 mod mcp;
 pub mod mention;
 mod models;
+mod outcomes;
 pub mod owner;
 mod panel;
 pub mod peers;
@@ -26,12 +27,14 @@ pub mod queue;
 mod relay;
 mod rename;
 pub mod rewind;
+mod routing;
 mod sessions;
 mod settings;
 mod setup;
 mod side;
 mod switching;
 mod tabs;
+pub mod usage;
 pub mod workers;
 pub use brigadier_core::title;
 
@@ -124,7 +127,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" => &[][..],
+        | "panel" | "routing" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
@@ -196,6 +199,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let fresh = !core::session_dir(data, id).join("session.json").exists();
             let spec = if fresh {
+                core::share::one_local(data, project.as_ref(), &spec)?;
                 core::create(data, &accounts::starting(data, spec))?
             } else {
                 core::load(data, id)?
@@ -226,7 +230,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             drop(projects_lock);
             owner::ensure(data, &spec)?;
             match flag(args, "--text") {
-                Some(text) => send(data, &spec, text, parts, flag(args, "--cid"), None, None),
+                Some(text) => {
+                    control::send(data, &spec, text, parts, flag(args, "--cid"), None, None)
+                }
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
@@ -246,16 +252,27 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
-            send(
+            let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+            let reply = control::send(
                 data,
                 &spec,
                 text,
                 parts,
-                flag(args, "--cid"),
+                Some(&cid),
                 flag(args, "--backend"),
                 // A failed turn's message again, after its rewind: it replaces that attempt [D492].
                 flag(args, "--retry-of"),
-            )
+            )?;
+            // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
+            // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
+            if reply["error"] != "busy: a turn is running" {
+                return Ok(reply);
+            }
+            let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];
+            queued.extend(["--qid".into(), cid.clone()]);
+            queued.extend(args.iter().skip_while(|a| *a != "--parts").take(2).cloned());
+            queue::run(data, &queued)?;
+            Ok(json!({"ok": true, "result": "queued", "cid": cid}))
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
         "seen" => {
@@ -358,6 +375,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "host" => host::run(data, args),
         "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
         "settings" => settings::run(data, args),
+        "routing" => routing::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" | "rebirth" => accounts::run(data, args),
         "awake" => settings::awake(data, args.get(1)),
@@ -392,49 +410,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => Err(io::Error::other(USAGE)),
     }
-}
-
-fn send(
-    data: &Path,
-    spec: &Spec,
-    text: &str,
-    parts: Value,
-    cid: Option<&str>,
-    backend: Option<&str>,
-    retry_of: Option<&str>,
-) -> io::Result<Value> {
-    rewind::settled(data, spec)?;
-    let _fence = core::session::fence(data, spec)?;
-    let cid = cid.map_or_else(control::new_cid, String::from);
-    let call = call_fn(data, &spec.id);
-    let msg = core::message::compose(spec, text, parts)?;
-    let go = || -> io::Result<Value> {
-        let f = core::fold(&spec.dir, true)?;
-        let running = child(data, &spec.id);
-        Ok(core::send(
-            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
-        ))
-    };
-    let mut reply = go()?;
-    let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
-    // Retry a busy race or moving host only when the log proves the command never got in;
-    // an uncertain delivery is never sent again by itself [D54].
-    if reply["result"].is_null() && !logged() {
-        thread::sleep(Duration::from_millis(200));
-        // If no host answers, the resend fails too and the log decides the result below.
-        let _ = owner::ensure(data, spec);
-        reply = go()?;
-    }
-    // A dropped connection says nothing about the log: the log itself does.
-    if reply["result"].is_null() {
-        reply["result"] = match (reply["ok"] == true, logged()) {
-            (true, _) => "delivered",
-            (false, true) => "logged",
-            (false, false) => "not_logged",
-        }
-        .into();
-    }
-    Ok(reply)
 }
 
 fn read(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {

@@ -15,7 +15,17 @@ pub fn events(v: &Value) -> Vec<Event> {
             level: None,
         }],
         "" if s(v, &["type"]) == "brigadier.skills" => vec![Event::Commands(commands(d))],
-        "thread/started" => vec![Event::Resume(s(p, &["thread", "id"]).into())],
+        "" if s(v, &["type"]) == "brigadier.limits" => {
+            vec![Event::Limits(super::super::models::usage(d))]
+        }
+        "thread/started" => [Event::Resume(s(p, &["thread", "id"]).into())]
+            .into_iter()
+            .chain(
+                p["thread"]["model"]
+                    .as_str()
+                    .map(|m| Event::Model(m.into())),
+            )
+            .collect(),
         "turn/started" => vec![Event::TurnStart],
         "turn/completed" => completed(p),
         // The reply as it's written; its whole text follows when its item completes [D147].
@@ -140,8 +150,17 @@ fn completed(p: &Value) -> Vec<Event> {
 
 /// What its error info says a failed turn hit, as Brigadier's causes [D487].
 fn cause(turn: &Value) -> &'static str {
-    match s(turn, &["error", "codexErrorInfo"]) {
+    let info = &turn["error"]["codexErrorInfo"];
+    // A kind with details comes as an object of one key.
+    let kind = info
+        .as_str()
+        .or_else(|| info.as_object()?.keys().next().map(String::as_str));
+    match kind.unwrap_or("") {
         "serverOverloaded" => "capacity",
+        "httpConnectionFailed"
+        | "responseStreamConnectionFailed"
+        | "responseStreamDisconnected"
+        | "responseTooManyFailedAttempts" => "connection",
         "modelNotFound" => "model",
         "cyberPolicy" => "blocked",
         "misalignmentPolicyViolation" => "ended",

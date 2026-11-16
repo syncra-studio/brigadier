@@ -105,6 +105,20 @@ pub(super) fn project_dir(spec: &Spec) -> PathBuf {
     home_path(".claude/projects").join(project_slug(Path::new(&spec.cwd)))
 }
 
+/// Its transcript: the CLI keeps writing to the one in the folder it started in, also after a
+/// note's side chat moves into its session [D287], so it's looked for in each folder it ran in.
+pub(super) fn transcript(spec: &Spec, resume: &str) -> PathBuf {
+    let name = format!("{resume}.jsonl");
+    (temp_roots(spec).into_iter())
+        .map(|(_, cwd)| {
+            home_path(".claude/projects")
+                .join(project_slug(&cwd))
+                .join(&name)
+        })
+        .find(|path| path.exists())
+        .unwrap_or_else(|| project_dir(spec).join(name))
+}
+
 /// Resolved through its nearest existing parent: delete removes a worktree before its files.
 fn project_slug(cwd: &Path) -> String {
     crate::git::watch::resolved(cwd)
@@ -159,4 +173,24 @@ impl Fork for Claude {
     ) -> Result<(), String> {
         Ok(())
     }
+}
+
+/// Its record's assistant texts and tool calls, as counted for a transcript's check.
+pub(super) fn counts(spec: &Spec, resume: &str) -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string(transcript(spec, resume)).ok()?;
+    let (mut texts, mut tools) = (0, 0);
+    for v in text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter(|v| v["type"] == "assistant")
+    {
+        for b in v["message"]["content"].as_array().into_iter().flatten() {
+            match s(b, &["type"]) {
+                "text" => texts += 1,
+                "tool_use" => tools += 1,
+                _ => {}
+            }
+        }
+    }
+    Some((texts, tools))
 }

@@ -71,9 +71,11 @@ export function PeerRow({ item }: { item: PeerItem }) {
 
 /** Another session's message in this thread: the user's bubble, captioned with who sent it; never the user [D2034]. */
 export function PeerBubble({ from, text, at }: { from: string; text: string; at: number }) {
+  const session = useThread()?.id;
+  const worker = useDaemon().rows?.some((row) => row.id === from && row.worker?.parent === session) ?? false;
   return (
     <Opens>
-      <PeerMessageBlock from={usePeer(from)} text={text} at={at} />
+      <PeerMessageBlock from={usePeer(from)} text={text} at={at} worker={worker} />
     </Opens>
   );
 }

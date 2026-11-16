@@ -288,7 +288,11 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 true => a.latest(),
                 false => kept(),
             });
-            let checked = a.check(&accounts::check_as(data, a, cwd), &exe, cwd);
+            let (account, spec) = accounts::check_as(data, a, cwd);
+            let checked = a.check(&spec, &exe, cwd);
+            if let Ok(c) = &checked {
+                crate::usage::checked(data, a.name(), &account, c);
+            }
             (checked, latest.join().ok().flatten())
         });
         match checked {
@@ -311,7 +315,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["models"] = c
                     .models
                     .into_iter()
-                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "fast": m.fast, "legacy": m.legacy, "window": m.window}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "fast": m.fast, "legacy": m.legacy, "window": m.window, "top": m.top, "default": m.default}))
                     .collect();
             }
             Err(e) => out["error"] = e.trim().into(),

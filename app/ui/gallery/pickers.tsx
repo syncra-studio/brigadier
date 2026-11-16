@@ -13,7 +13,8 @@ import { showToast } from "../src/components/toast";
 import { useBranchPicker } from "../src/panel/branch-picker";
 import { BRANCHES, CLEAN } from "../src/panel/fake";
 import { asGroups } from "../src/session/model";
-import { Section } from "./parts";
+import { Section, State } from "./parts";
+import { FAKE_GROUPS } from "./routing";
 
 // Stand-in marks for the states this Mac's agents may not be in: no agent's real logo in gallery code.
 const RING = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5.5"/></svg>';
@@ -52,6 +53,27 @@ export function useLiveModel() {
 /** The popover model picker on Rust's list, from a settings select. */
 function LiveModelPicker() {
   return <ModelPicker {...useLiveModel()} asksSwitch={false} trigger={({ children, ...props }) => <SelectTrigger {...props} label="Model">{children}</SelectTrigger>} />;
+}
+
+const HOUR = 3_600_000;
+// The quota lines' three cases [D337, D379]: known, never reported, and a reset that has passed.
+const QUOTA: ModelGroup[] = FAKE_GROUPS.map((group, index) =>
+  index > 0
+    ? group
+    : {
+        ...group,
+        usage: [
+          { account: "", name: "Personal", limits: [{ name: "5-hour", used: 40, resets: Date.now() + 2.25 * HOUR }, { name: "Weekly", used: 12, resets: Date.now() + 80 * HOUR }] },
+          { account: "work", name: "Work", limits: [{ name: "5-hour", used: null, resets: null }] },
+          { account: "team", name: "Team", limits: [{ name: "5-hour", used: 100, resets: Date.now() - 0.2 * HOUR }] },
+        ],
+      },
+);
+
+/** The picker with each account's quota under the browsed agent's models, on fake data. */
+function QuotaPicker() {
+  const [value, setValue] = useState<ModelChoice>({ provider: "cloud", model: "medium", effort: "medium" });
+  return <ModelPicker groups={QUOTA} value={value} onChange={setValue} />;
 }
 
 const PROJECTS: DraftProject[] = [
@@ -136,8 +158,13 @@ export function PickersGallery() {
         </div>
       </Section>
       <Section title="Model picker">
-        <div className="self-start">
-          <LiveModelPicker />
+        <div className="flex gap-8 self-start">
+          <State label="This Mac's agents">
+            <LiveModelPicker />
+          </State>
+          <State label="Quota per account (fake)">
+            <QuotaPicker />
+          </State>
         </div>
       </Section>
       <Section title="Permission picker">

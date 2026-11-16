@@ -22,7 +22,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let at = flag(args, "--at").ok_or_else(|| io::Error::other(USAGE))?;
     check_id(new)?;
     check_id(at)?;
-    let s = fork::source(data, &spec, at)?;
+    let mut s = fork::source(data, &spec, at)?;
+    // The fork's start is checked against the rules, as every launch is [D376].
+    s.src.rules = Some(crate::routing::launch);
     // A fork cut short, this one's earlier try too, finishes or rolls back first [D54].
     rewind::settled(data, &s.src)?;
     if fork::record(&core::session_dir(data, new)).is_some() {

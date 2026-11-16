@@ -1,15 +1,20 @@
 //! A worker's row facts [D3010, D3012, D3018].
 
 use super::{Link, read_json};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, fold::Fold};
 use serde_json::{Value, json};
 use std::path::Path;
 
 /// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
 /// a word as the old `workerState`, and its receipt. Null for a session that isn't a worker.
-pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) -> Value {
+pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
     let Some(l) = read_json::<Link>(&dir.join("worker.json")) else {
         return Value::Null;
+    };
+    // Held, waiting for its row's reset: its limit, though no turn hit one yet [D2028, D3029].
+    let (state, resets) = match f.hold.as_ref().filter(|h| h["phase"] == "waiting") {
+        Some(h) => ("limited", h["resets"].as_u64()),
+        None => (state, f.resets),
     };
     let last = &l.last;
     let (kind, word) = match state {
@@ -22,8 +27,9 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
             },
         ),
         _ if l.paused => ("paused", "Paused".into()),
-        "logged" | "starting" | "working" | "silent" | "idle_jobs" | "retrying" | "checking"
-        | "uncertain" | "stalled" | "asking" => ("working", "Working".into()),
+        // A turn that ended with background jobs left has ended: its result says how [D324].
+        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "uncertain"
+        | "stalled" | "asking" => ("working", "Working".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),
@@ -41,17 +47,34 @@ pub fn row(dir: &Path, state: &str, resets: Option<u64>, now: Option<&Value>) ->
         },
     };
     let ran = &l.ran;
-    let model = [&ran["agent"], &ran["model"], &ran["effort"]];
-    let model: Vec<&str> = model.iter().filter_map(|v| v.as_str()).collect();
+    // A retry's step is on its record in its parent's folder [D2037].
+    let wid = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let retry = (dir.parent().and_then(Path::parent))
+        .and_then(|data| super::record(data, &l.parent, wid))
+        .map(|r| r.retry)
+        .unwrap_or_default();
+    // As the receipt draws it: "GPT-6.1-Sol · High" [D3018].
+    let shown = ran["name"].as_str().or(ran["model"].as_str());
+    let effort = ran["effort"].as_str().map(crate::routing::capital);
+    let model: Vec<&str> = [shown, effort.as_deref()].into_iter().flatten().collect();
     json!({"parent": l.parent, "root": l.root, "depth": l.depth, "brief": l.brief, "started": l.at,
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
-        "receipt": format!("Ran on {}", model.join(" · ")), "added": last["added"], "removed": last["removed"],
-        "now": if kind == "working" { now } else { None }})
+        "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))),
+        "asked": crate::routing::asked(&l.asked, ran), "why": crate::routing::why(&l.asked, ran, &retry), "added": last["added"], "removed": last["removed"],
+        "now": if kind == "working" { f.calls.last() } else { None }})
 }
 
+/// "15:10", or a day or more away "Mon 09:00", as the model picker says when a limit resets.
 pub(crate) fn clock(ms: u64) -> String {
     let secs = (ms / 1000) as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&secs, &mut tm) };
-    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    let day = ["Sun ", "Mon ", "Tue ", "Wed ", "Thu ", "Fri ", "Sat "][tm.tm_wday as usize % 7];
+    let far = ms >= brigadier_frames::log::now_ms() + 86_400_000;
+    format!(
+        "{}{:02}:{:02}",
+        if far { day } else { "" },
+        tm.tm_hour,
+        tm.tm_min
+    )
 }

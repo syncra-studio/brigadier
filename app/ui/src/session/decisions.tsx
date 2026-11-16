@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
 import { forgetQuestions, type PendingQuestion, QuestionCard } from "../components/composer/question";
@@ -142,12 +142,14 @@ function useWorkerApprovals(owner: string): WorkerApproval[] {
 /** What waits on the user in this session: Rust's lists without the answers on their way, plus refused stale ones, and its workers' approvals. */
 function useWaiting(id: string, source: Source) {
   const shown = useSyncExternalStore(source.subscribe, source.get);
-  const mine = useSyncExternalStore(subscribe, () => answering.get(id));
+  // All sessions' answers: a worker's, on this card, is under the worker's id.
+  const all = useSyncExternalStore(subscribe, () => answering);
+  const mine = all.get(id);
   const session = shown?.id === id ? shown : null;
   // Rust's own rows (the overlaid ones always show the answer): an entry goes once its row has moved on.
   const raw = threadSource.get();
   const workers = useWorkerApprovals(id).filter((each) => {
-    const answer = answering.get(each.session)?.get(each.id);
+    const answer = all.get(each.session)?.get(each.id);
     return !answer || answer.error !== undefined;
   });
   useEffect(() => {
@@ -169,7 +171,10 @@ function useWaiting(id: string, source: Source) {
   const listed = (list: { id: string }[] | undefined, each: Answer) => list?.some((one) => one.id === each.request.id) === true;
   // Refused, and nothing waits on it any more (the turn ended, it was answered elsewhere): stale.
   const stale = [...(mine?.values() ?? [])].filter((each) => each.error !== undefined && !listed("items" in each.request ? session?.questions : session?.approvals, each));
-  const approvals: (PendingApproval | WorkerApproval)[] = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request])), ...workers];
+  // A plan its review holds, or its agent revises, has nothing to answer: what can be answered (its reviewer's own ask) shows first [D395, D401].
+  const approvals: (PendingApproval | WorkerApproval)[] = [...(session?.approvals ?? []), ...stale.flatMap((each) => ("items" in each.request ? [] : [each.request])), ...workers].sort(
+    (a, b) => Number(Boolean(a.review || a.revising)) - Number(Boolean(b.review || b.revising)),
+  );
   const questions = [...(session?.questions ?? []), ...stale.flatMap((each) => ("items" in each.request ? [each.request] : []))];
   return {
     approvals,
@@ -181,11 +186,11 @@ function useWaiting(id: string, source: Source) {
 }
 
 /**
- * The approvals waiting [D199, D203, D317]: in the composer's place, the field kept hidden under it, until Reply… steps
- * past them to the rail above it. Deny with what to do instead [D192], Allow … for this session from Rust's grant
- * structure [D65, D193], Allow once. A refusal's error is Rust's, kept with the answer, so it finds its card in either place.
+ * The approvals waiting [D199, D203, D317]: in the composer's place, the field kept hidden under it. Deny with what
+ * to do instead [D192], Allow … for this session from Rust's grant structure [D65, D193], Allow once; nothing else
+ * while one waits [D327]. A refusal's error is Rust's, kept with the answer.
  */
-export function SessionApprovals({ id, run, source, onReply }: { id: string; run: Runner; source: Source; onReply?: () => void }) {
+export function SessionApprovals({ id, run, source }: { id: string; run: Runner; source: Source }) {
   const { approvals, dismiss, error } = useWaiting(id, source);
   return (
     <ApprovalSlot
@@ -193,7 +198,6 @@ export function SessionApprovals({ id, run, source, onReply }: { id: string; run
       approvals={approvals}
       dismiss={dismiss}
       error={error}
-      onReply={onReply}
       onAnswer={(request, decision, reason) => {
         const found = approvals.find((each) => each.id === request);
         return found ? send(run, "session" in found ? found.session : id, { request: found, decision, reason, state: "sending" }) : Promise.resolve();
@@ -202,16 +206,8 @@ export function SessionApprovals({ id, run, source, onReply }: { id: string; run
   );
 }
 
-/**
- * Whether an approval waits, so the composer gives it its place, and Reply…, which steps past it to the composer and
- * its Stop as the old app's (D163): the approvals then wait on the rail above it until none is left.
- */
-export function useApprovalPlace(id: string, source: Source, field: RefObject<{ focus: () => void } | null>) {
-  const approval = useWaiting(id, source).approvals.length > 0;
-  const [replying, setReplying] = useState(false);
-  if (replying && !approval) setReplying(false);
-  return { approval, replying, reply: () => (setReplying(true), requestAnimationFrame(() => field.current?.focus())) };
-}
+/** Whether an approval waits, so the composer gives it its place. */
+export const useApprovalWaiting = (id: string, source: Source) => useWaiting(id, source).approvals.length > 0;
 
 /** The questions waiting, on the rail above the composer, one at a time; Esc puts them aside [D199, D207]. */
 export function SessionQuestions({ id, run, source }: { id: string; run: Runner; source: Source }) {

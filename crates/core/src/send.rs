@@ -162,6 +162,13 @@ pub fn send(
     } else {
         (None, text.to_string())
     };
+    // Settings › Routing's rules hold at every launch: a model one bars is refused, an effort above
+    // a cap runs at the cap; a turn already running goes on [D376, D388 Q9 Q10, D392 P9].
+    let run = match run.ruled(&b) {
+        Ok(run) => run,
+        Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
+    };
+    let ruled = run.ruled.clone();
     let setup = adapters::setup(&run);
     let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup});
     if !msg.parts.is_null() {
@@ -169,6 +176,9 @@ pub fn send(
     }
     if spec.brigade && origin == "user" {
         base["brigade"] = true.into();
+    }
+    if spec.review {
+        base["review"] = true.into();
     }
     if held {
         base["setup"]["held"] = true.into();
@@ -200,6 +210,10 @@ pub fn send(
                 effort: text("effort"),
                 level: text("level"),
                 fast: g["fast"] == true,
+                ruled: crate::Ruled {
+                    models: serde_json::from_value(g["allowed"].clone()).unwrap_or_default(),
+                    ..run.ruled.clone()
+                },
                 ..run.clone()
             };
             match a.retune(&last, &run) {
@@ -259,7 +273,7 @@ pub fn send(
     } else {
         f.resume.get(&b).map(String::as_str)
     };
-    let run = Spec {
+    let mut run = Spec {
         cid: Some(cid.into()),
         ..if picking {
             run
@@ -267,6 +281,7 @@ pub fn send(
             as_run(spec, f, &b, None)
         }
     };
+    (run.effort, run.ruled) = (ruled.effort.clone().or(run.effort), ruled);
     let launch = a.launch(&run, resume, Some(&sent));
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();

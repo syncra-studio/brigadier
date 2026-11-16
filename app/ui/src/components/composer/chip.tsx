@@ -3,6 +3,7 @@ import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type Seri
 import { createContext, type ReactNode, useContext } from "react";
 
 import { cx } from "../cx";
+import { MentionedWorker } from "../../workers/live";
 import { InlineAttachment } from "./attachments";
 import type { Chip } from "./draft";
 import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon } from "./kind-icons";
@@ -35,6 +36,8 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
       />
     );
   }
+  // A worker is the pill a worker has everywhere in the conversation [D3010].
+  if (chip.kind === "mention" && chip.type === "worker") return <MentionedWorker id={chip.id} onOpen={onOpen} />;
   const open = onOpen && (() => onOpen(chip.type, chip.id));
   const command = chip.kind === "command";
   const content = command ? (
@@ -45,7 +48,7 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
   ) : (
     <>
       <MentionKindIcon type={chip.type} id={chip.id} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
-      {chip.type === "chat" || chip.type === "worker" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
+      {chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
     </>
   );
   const tone = command ? COMMAND_TONES[chip.type] : ((chip.type === "file" && fileTone(chip.label)) || "text-link");

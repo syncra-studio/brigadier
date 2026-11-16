@@ -47,12 +47,36 @@ impl Thread {
         }
     }
 
+    /// Workers holding an ended turn that the daemon finds `over`, though no note of their end is in
+    /// the log (a build before results were noted, or a note a dead host missed): they hold it no
+    /// more, its time still its own end's [D328, D336].
+    pub fn workers_over(&mut self, over: impl Fn(&str) -> bool) {
+        let held = &self.held;
+        let gone: Vec<String> = (self.workers.iter())
+            .filter(|(w, t)| held.contains_key(*t) && over(w))
+            .map(|(w, _)| w.clone())
+            .collect();
+        if !gone.is_empty() {
+            gone.iter().for_each(|w| _ = self.workers.remove(w));
+            self.settle_held(false);
+        }
+    }
+
     /// A subagent at row `row` ended: the turn that waits on it counts one fewer. With none left it
     /// stays open for the turn its agent wakes for next, which carries it on; one that can't come
     /// now, as another turn runs, folds it at once.
     pub(super) fn helper_ended(&mut self, row: usize, ts: u64) {
         let turn = self.items[row]["turnId"].as_str().unwrap_or("").to_string();
+        self.count_helpers(&turn);
         self.held_left(&turn, ts);
+    }
+
+    /// While its turn still runs, its header counts the subagents it waits on too [D114, D118].
+    pub(super) fn count_helpers(&mut self, turn: &str) {
+        if let Some(at) = self.open.as_ref().filter(|o| o.id == turn).map(|o| o.at) {
+            self.turns[at]["helpers"] = self.helpers(turn).into();
+            self.changed_turns.insert(at);
+        }
     }
 
     fn held_left(&mut self, turn: &str, ts: u64) {
@@ -79,9 +103,15 @@ impl Thread {
             .map(|(id, _)| id.clone())
             .collect();
         for id in done {
-            let (o, work) = self.held.remove(&id).unwrap();
+            let (mut o, work) = self.held.remove(&id).unwrap();
             let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(o.started);
             self.turns[o.at]["held"] = Value::Null;
+            // Its subagent's ask still waited: the wait ends with it.
+            if let Some(since) = o.wait.take() {
+                o.waited += ended.saturating_sub(since);
+                self.turns[o.at]["waitingSince"] = Value::Null;
+                self.turns[o.at]["waitedMs"] = o.waited.into();
+            }
             // A cut whose carry-on never came ended where it was stopped.
             if o.cut() {
                 self.turns[o.at]["status"] = "cancelled".into();
@@ -135,7 +165,8 @@ impl Thread {
                 || row["hidden"] == true
                 || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
         };
-        let cut = o.cut() || o.stop.0.as_deref() == Some("user");
+        // Not a model picked mid-turn: its carry-on starts under the divider, where it was picked [D124, D362].
+        let cut = (o.cut() && !self.fold.switched) || o.stop.0.as_deref() == Some("user");
         o.joins = (o.answer)
             .filter(|&a| cut && (a + 1..=self.items.len() as u64).all(mid))
             .map(|a| {

@@ -125,6 +125,8 @@ pub struct Thread {
     pending: Vec<usize>,
     #[serde(skip)]
     pending_changed: bool,
+    /// A plan sent back, its card kept while its agent revises; its next plan takes its row [D401].
+    revising: Option<usize>,
     /// Answers logged, not yet delivered: command id → (row, the answer).
     claims: HashMap<String, (usize, Value)>,
     /// The level the last input set up, to tell when trust taken back holds the next to Ask.
@@ -184,7 +186,7 @@ impl Thread {
                 .fold
                 .turns
                 .first()
-                .is_some_and(|t| t.question.is_some());
+                .is_some_and(|t| t.question.is_some() && !t.held);
         // Another model or agent picked: its line the moment it's picked [D76].
         let pick = (kind == "note" && item["event"] == "setup").then(|| self.before_pick(item));
         // A rebirth's divider: done once the fresh conversation names itself, failed if its turn ends first [D88, D112].
@@ -252,9 +254,7 @@ impl Thread {
                     row = Self::peer_item(from, text, ts, &item["cid"]);
                 }
                 row["steer"] = true.into();
-                // It folds with the work it steered: only the last reply stays under "Worked for" [D118].
-                let at = self.add(row);
-                self.below_steer(at);
+                self.steered(row, peer.is_some());
             }
         } else {
             self.content(item, kind, ts);
@@ -267,6 +267,12 @@ impl Thread {
             .map_or("failed", |l| l["outcome"].as_str().unwrap_or("failed"))
             .to_string();
         for t in before.iter().filter(|t| !after.contains(&t.id)) {
+            // A turn opened only for a held turn's ask ends only what it asked: the block runs on.
+            if t.held {
+                self.withdraw_all();
+                self.end_wait(ts);
+                continue;
+            }
             // A queued input closed before it ran (a stop) still shows, as a turn of its own.
             if !self.shown.contains(&t.id) {
                 self.open_turn(t, ts);
@@ -278,7 +284,8 @@ impl Thread {
             .fold
             .turns
             .first()
-            .filter(|t| !self.shown.contains(&t.id))
+            // One opened only for a held turn's ask is that held turn's, never one of its own.
+            .filter(|t| !t.held && !self.shown.contains(&t.id))
             .cloned()
         {
             self.close_turn(&outcome, ts);
@@ -291,6 +298,10 @@ impl Thread {
         self.said(&Value::Null, "", ts);
         // What still waited ends with its turn: undecided, it reads as withdrawn.
         self.withdraw_all();
+        // Its card goes with it, so the list is re-sent even when nothing else waited.
+        if self.revising.take().is_some() {
+            self.pending_changed = true;
+        }
         self.end_wait(ts);
         self.break_group();
         let Some(o) = self.open.take() else {
@@ -418,23 +429,6 @@ impl Thread {
         self.items.push(row);
         self.changed_items.insert(at);
         at
-    }
-
-    /// The turn's wait on the user ends once nothing waits on them any more [D128].
-    fn end_wait(&mut self, ts: u64) {
-        if (self.pending.iter()).any(|&at| self.items[at]["to"] != "parent") {
-            return;
-        }
-        let Some(o) = self.open.as_mut() else {
-            return;
-        };
-        if let Some(since) = o.wait.take() {
-            o.waited += ts.saturating_sub(since);
-            let turn = &mut self.turns[o.at];
-            turn["waitingSince"] = Value::Null;
-            turn["waitedMs"] = o.waited.into();
-            self.changed_turns.insert(o.at);
-        }
     }
 
     /// Only unfinished script or CLI startup needs the host's live state.

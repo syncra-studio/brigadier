@@ -6,7 +6,7 @@ use super::{
     Link, Record, below, closing, family_lock, git, place, record, refuse, result, save, setting,
     write_json,
 };
-use crate::{accounts, control, models, owner, settings, title};
+use crate::{control, models, owner, routing, settings, title};
 use brigadier_core::{self as core, Spec, adapters, projects};
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -23,8 +23,16 @@ static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
-fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, session: bool) -> String {
+/// A reviewer's commits nothing: its count takes the merge sentence's place [D3026].
+fn fixed_line(
+    parent: &str,
+    pid: &str,
+    merge: Option<(&str, &str, &str)>,
+    session: bool,
+    review: bool,
+) -> String {
     let land = match merge {
+        _ if review => super::review::FINDINGS.into(),
         Some((to, branch, base)) => format!(
             "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
         ),
@@ -38,58 +46,10 @@ fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, sessio
     )
 }
 
-/// The agent, model and effort a worker runs: the parent's own where none is named, else what
-/// the user allows in Rust's catalog [D2040, D3030]. Never the app path's `fake` default.
-fn pick(
-    data: &Path,
-    me: &str,
-    parent: &Spec,
-    f: &core::fold::Fold,
-    flags: &dyn Fn(&str) -> Option<String>,
-) -> Result<(String, Option<String>, Option<String>), Value> {
-    let now = models::next_agent(parent, f).to_string();
-    let run = core::as_run(parent, f, &now, None);
-    let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
-    let agent = agent.unwrap_or_else(|| now.clone());
-    if agent == now && model.is_none() {
-        return Ok((agent, run.model, effort.or(run.effort)));
-    }
-    let args = ["models", "--session", me].map(String::from);
-    let groups = models::run(data, &args).map_err(|e| refuse(&e.to_string()))?;
-    let group = (groups["groups"].as_array().into_iter().flatten())
-        .find(|g| g["provider"] == agent.as_str() && g["unavailable"].is_null());
-    let Some(group) = group else {
-        return Err(refuse(&format!(
-            "{agent:?} isn't an agent you may use. `brigadier models` lists them."
-        )));
-    };
-    let Some(model) = model else {
-        return match effort {
-            Some(_) => Err(refuse("--effort needs --model for another agent.")),
-            None => Ok((agent, None, None)),
-        };
-    };
-    let found =
-        (group["models"].as_array().into_iter().flatten()).find(|m| m["id"] == model.as_str());
-    let Some(found) = found else {
-        return Err(refuse(&format!(
-            "{model:?} isn't a model of {agent} you may use. `brigadier models` lists them."
-        )));
-    };
-    if let Some(e) = &effort
-        && !(found["efforts"].as_array().into_iter().flatten()).any(|x| x == e.as_str())
-    {
-        return Err(refuse(&format!(
-            "{model} has no effort {e:?}. `brigadier models` lists its efforts."
-        )));
-    }
-    Ok((agent, Some(model), effort))
-}
-
 /// How deep workers may start workers of their own; a worker at this depth can't [D2026, D3038].
 const DEEPEST: u64 = 4;
 
-/// `brigadier start "<brief>" [--agent A] [--model M] [--effort E] [--title T]`, for session `me`'s
+/// `brigadier start --job J "<brief>" [--agent A] [--model M] [--effort E] [--title T]`, for session `me`'s
 /// agent: reserves the worker under its family's lock and answers at once [D3000]; the worker is
 /// made and launched off this call. `running`: whether a session's turn runs now.
 pub fn start(
@@ -106,6 +66,25 @@ pub fn start(
             "You're a worker at depth {depth}, the deepest allowed, so you can't start workers. Do it yourself, or use your own subagents."
         ));
     }
+    // A review's brief is Rust's: the reviewed task, its commits, then the fixed one [D3026].
+    let review = match flags("--reviewing") {
+        Some(of) => match super::review::plan(data, me, &of, brief, flags) {
+            Ok(r) => Some(r),
+            Err(e) => return e,
+        },
+        None => None,
+    };
+    let brief = review.as_ref().map_or(brief, |r| r.brief.as_str());
+    // A retry's brief is its chain's first and a note; `brief` says what failed [D2037, D342].
+    let retry = match flags("--retry") {
+        Some(id) => match routing::retry(data, me, &id, brief, flags) {
+            Ok(r) => Some(r),
+            Err(e) => return e,
+        },
+        None => None,
+    };
+    let brief = retry.as_ref().map_or(brief, |r| r.brief.as_str());
+    let picked = |k: &str| retry.as_ref().map_or_else(|| flags(k), |r| r.flag(k));
     if brief.trim().is_empty() {
         return refuse("`brigadier start` needs a brief: what to do, in quotes.");
     }
@@ -119,48 +98,28 @@ pub fn start(
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
     };
-    let (backend, model, effort) = match pick(data, me, &parent, &f, flags) {
-        Ok(p) => p,
-        Err(e) => return e,
-    };
-    let Some(a) = adapters::get(&backend) else {
-        return refuse(&format!("{backend:?} isn't an agent."));
-    };
-    // The parent's account on its own agent; another agent's in use [D2040].
-    let account = if backend == models::next_agent(&parent, &f) {
-        f.accounts
-            .get(&backend)
-            .cloned()
-            .or(parent.starts_on.clone())
-    } else {
-        let spec = Spec {
-            backend: backend.clone(),
-            ..Default::default()
-        };
-        accounts::starting(data, spec).starts_on
-    }
-    .filter(|a| !a.is_empty());
-    // Ask and Auto carry over; Full access doesn't, as a session made from another [D205, O3000].
     let held = models::held(data, parent.project.as_deref());
-    let level = (parent.level.as_deref())
-        .filter(|l| *l != "full" && a.can().levels.contains(l))
-        .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
-        .map(String::from);
     let project = parent
         .project
         .clone()
         .filter(|p| projects::get(data, p).is_ok());
+    // A review of a worker starts at that worker's head.
+    let at = review.as_ref().and_then(|r| r.base.clone());
     let base = project.as_ref().and_then(|_| {
-        git(&parent.cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        (at.clone())
+            .or_else(|| git(&parent.cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"]))
             .or_else(|| git(&parent.cwd, &["rev-parse", "--verify", "HEAD"]))
     });
     let dirty = base.is_some()
+        && at.is_none()
         && git(&parent.cwd, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
     // Proposed: `--title` names it; else its brief does [D3029].
     let named = flags("--title").filter(|t| !t.trim().is_empty());
-    let title = named.unwrap_or_else(|| title::from(brief));
-    let asked =
-        json!({"agent": flags("--agent"), "model": flags("--model"), "effort": flags("--effort")});
+    let title = (named.or(retry.as_ref().map(|r| r.title.clone())))
+        .or(review.as_ref().map(|r| r.title.clone()))
+        .unwrap_or_else(|| title::from(brief));
+    let asked = json!({"job": flags("--job"), "agent": flags("--agent"), "model": flags("--model"),
+        "effort": flags("--effort")});
     let reserved = (|| -> Result<Record, Value> {
         let _family = family_lock(data, &root).map_err(|e| refuse(&e.to_string()))?;
         if closing(data, me) || !parent.dir.join("session.json").exists() {
@@ -168,25 +127,11 @@ pub fn start(
                 "This session is being deleted, so it starts no workers.",
             ));
         }
-        let limit = setting(data, "workers", 6);
-        let busy = (below(data, &root).iter())
-            // A Brigade's sub-sessions head families of their own [D189].
-            .filter(|r| r.root == root)
-            // Its own log, not only the row, which lags just after a launch.
-            .filter(|r| {
-                r.state == "starting"
-                    || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
-            })
-            .count() as u64;
-        if busy >= limit {
-            return Err(refuse(&format!(
-                "{} running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one.",
-                if busy == 1 {
-                    "1 worker is".into()
-                } else {
-                    format!("{busy} workers are")
-                }
-            )));
+        if let Some(no) = full(data, &root, running) {
+            return Err(no);
+        }
+        if let Some(no) = retry.as_ref().and_then(|r| r.taken(data, me)) {
+            return Err(no);
         }
         let wid = loop {
             let id = format!("w{}", &adapters::uuid()[..8]);
@@ -194,6 +139,22 @@ pub fn start(
                 break id;
             }
         };
+        let shown = retry.as_ref().is_some_and(|r| r.ask.is_some());
+        let wid_ = if shown { "" } else { wid.as_str() };
+        let authors = review.as_ref().map(|r| r.authors.as_slice());
+        let mut p = routing::resolve(data, me, &parent, &f, &picked, wid_, authors)?;
+        if let Some(rt) = &retry {
+            rt.apply(&mut p);
+        }
+        let Some(a) = adapters::get(&p.agent) else {
+            return Err(refuse(&format!("{:?} isn't an agent.", p.agent)));
+        };
+        // The parent's level carries over, Full access too, as the old app's; a held project's is
+        // Ask [D187, D313, D316]. A Brigade sub-session's the same, as D196 sets nothing else.
+        let level = (parent.level.as_deref())
+            .filter(|l| (!held || *l == "ask") && a.can().levels.contains(l))
+            .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
+            .map(String::from);
         let r = Record {
             wid,
             cid: control::new_cid(),
@@ -205,14 +166,18 @@ pub fn start(
             state: "starting".into(),
             error: None,
             asked,
-            backend: backend.clone(),
-            model: model.clone(),
-            effort: effort.clone(),
+            backend: p.agent,
+            model: p.model,
+            effort: p.effort,
             level,
-            account,
+            account: p.account,
             project,
             base: base.clone(),
             session,
+            pick: p.ran,
+            hold: p.hold,
+            retry: retry.as_ref().map_or(Value::Null, |r| r.note.clone()),
+            review: review.as_ref().map_or(Value::Null, |r| r.mark.clone()),
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)
@@ -221,33 +186,73 @@ pub fn start(
         Ok(r) => r,
         Err(e) => return e,
     };
+    if let Some(rv) = &review {
+        super::review::marked(data, rv, &r.wid);
+    }
     let note = json!({"event": "worker", "phase": "started", "id": r.wid, "title": r.title});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     begin(data, me, &r.wid);
-    let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
-    let ran: Vec<&str> = ran.into_iter().flatten().collect();
+    let (backend, model, effort) = (&r.backend, &r.model, &r.effort);
+    let mut ran = r.pick.clone();
+    (ran["agent"], ran["model"]) = (json!(backend), json!(model));
+    ran["account"] = json!(r.account);
+    let why = routing::why(&r.asked, &ran, &r.retry);
+    let receipt = routing::receipt(&ran).unwrap_or_else(|| {
+        let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
+        ran.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+    });
     let place = match &base {
         Some(b) => format!("in its own worktree off {b}"),
         None => "in a folder of its own".into(),
     };
     let what = if session { "session" } else { "worker" };
-    let mut text = format!(
-        "Started {what} {} ({}) on {}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
-        r.title,
-        r.wid,
-        ran.join(" · "),
-        r.wid
-    );
+    let mut text = match r.hold["why"].as_str() {
+        Some(why) if r.hold["retry"] == true => format!(
+            "Held {what} {} ({}): {why}, so the user decides on its card whether it retries on {} · {} or stops here. Go on with your work; its result comes to you if it runs.",
+            r.title,
+            r.wid,
+            backend,
+            model.as_deref().unwrap_or("")
+        ),
+        Some(why) => format!(
+            "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a model from another job or waits. Go on with your work; its result comes to you when it runs.",
+            r.title, r.wid
+        ),
+        None => format!(
+            "Started {what} {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
+            r.title, r.wid, r.wid
+        ),
+    };
     if dirty {
         text +=
             " Your uncommitted edits aren't in its worktree; commit them first if it needs them.";
     }
     json!({"ok": true, "id": r.wid, "title": r.title, "agent": backend, "model": model, "effort": effort,
-        "base": base, "uncommitted": dirty, "text": text})
+        "account": r.account, "receipt": receipt, "asked": r.asked, "ran": ran, "why": why, "retry": r.retry,
+        "held": r.hold["why"], "base": base, "uncommitted": dirty, "text": text})
+}
+
+/// Start's refusal when `root`'s family runs its most workers at once, under its lock [D3001];
+/// a held one let go counts the same way.
+pub(crate) fn full(data: &Path, root: &str, running: &dyn Fn(&str) -> bool) -> Option<Value> {
+    let limit = setting(data, "workers", 6);
+    let busy = (below(data, root).iter())
+        // A Brigade's sub-sessions head families of their own [D189].
+        .filter(|r| r.root == root)
+        // Its own log, not only the row, which lags just after a launch.
+        .filter(|r| {
+            r.state == "starting"
+                || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
+        })
+        .count() as u64;
+    (busy >= limit).then(|| refuse(&format!(
+        "{} running in this family, the most allowed. Wait for one to finish (its result comes to you), then start this one.",
+        if busy == 1 { "1 worker is".into() } else { format!("{busy} workers are") }
+    )))
 }
 
 /// Makes a reserved worker off the caller's thread, once at a time in this daemon.
-pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
+pub(crate) fn begin(data: &Path, pid: &str, wid: &str) {
     {
         let mut making = MAKING.lock().unwrap();
         if !making
@@ -261,10 +266,11 @@ pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
     thread::spawn(move || {
         if let Some(mut r) = record(&data, &pid, &wid).filter(|r| r.state == "starting") {
             let made = make(&data, &pid, &r);
-            let _family = family_lock(&data, &r.root);
+            let family = family_lock(&data, &r.root);
             // A stop while it was being made keeps its word: no result, never started.
             if record(&data, &pid, &wid).is_none_or(|now| now.state != "stopped") {
                 match made {
+                    Ok(()) if !r.hold.is_null() => r.state = "held".into(),
                     Ok(()) => r.state = "started".into(),
                     Err(e) => {
                         r.state = "failed".into();
@@ -272,6 +278,9 @@ pub(super) fn begin(data: &Path, pid: &str, wid: &str) {
                     }
                 }
                 let _ = save(&data, &pid, &r);
+                // Its result, past the family lock: a reviewer's takes `review.lock`, which is
+                // never taken under it.
+                drop(family);
                 if r.state == "failed" {
                     result::failed(&data, &pid, &r);
                 }
@@ -313,12 +322,26 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 starts_on: r.account.clone(),
                 naked: !r.session,
                 boss: r.session.then(|| pid.to_string()),
+                opts: (r.review["plan"]
+                    .is_string()
+                    .then(|| ("plan_review".into(), "1".into())))
+                .into_iter()
+                .collect(),
                 ..Default::default()
             },
         )?,
     };
-    let ran =
-        json!({"agent": r.backend, "model": r.model, "effort": r.effort, "account": r.account});
+    let mut ran = r.pick.clone();
+    for (k, v) in [
+        ("agent", json!(r.backend)),
+        ("model", json!(r.model)),
+        ("account", json!(r.account)),
+    ] {
+        ran[k] = v;
+    }
+    if ran["effort"].is_null() {
+        ran["effort"] = json!(r.effort);
+    }
     if !dir.join("worker.json").exists() {
         let l = Link {
             parent: pid.into(),
@@ -329,9 +352,11 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             at: r.at,
             report: vec![r.cid.clone()],
             ran: ran.clone(),
+            asked: r.asked.clone(),
             last: Value::Null,
             paused: false,
             session: r.session,
+            review: r.review.clone(),
         };
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
@@ -350,19 +375,30 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         None => fs::create_dir_all(&cwd)?,
     }
     owner::ensure(data, &spec)?;
+    // Its row out of quota: it waits on the user's call, its brief unsent [D2028].
+    if !r.hold.is_null() {
+        return crate::routing::ask(data, &r.wid, &r.hold);
+    }
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.cid) {
         return Ok(());
     }
-    let outcome = json!({"event": "outcome", "phase": "start", "asked": r.asked, "ran": ran,
-        "parent": pid, "depth": r.depth});
+    // A retry's chain and step go in its start note, so the next retry counts from the log [D2037].
+    let mut outcome = json!({"event": "outcome", "phase": "start", "asked": r.asked, "ran": ran,
+        "why": crate::routing::why(&r.asked, &ran, &r.retry), "parent": pid, "depth": r.depth});
+    for (k, v) in r.retry.as_object().into_iter().flatten() {
+        outcome[k] = v.clone();
+    }
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
     let merge =
         (branch.as_deref().zip(r.base.as_deref())).map(|(b, base)| (parent.cwd.as_str(), b, base));
-    let text = format!(
-        "{}\n\n{}",
-        r.brief.trim_end(),
-        fixed_line(&core::share::title(&parent), pid, merge, r.session)
+    let line = fixed_line(
+        &core::share::title(&parent),
+        pid,
+        merge,
+        r.session,
+        !r.review.is_null(),
     );
+    let text = format!("{}\n\n{line}", r.brief.trim_end());
     if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
         return Err(io::Error::other("It was stopped before it started."));
     }
@@ -397,6 +433,7 @@ pub(super) fn say_result(
     text: &str,
 ) -> Value {
     let msg = core::message::Message::plain(text);
+    let spec = &crate::routing::told(&core::data_of(spec), spec);
     core::send(spec, f, child, call, id, origin, &msg, None, None)
 }
 

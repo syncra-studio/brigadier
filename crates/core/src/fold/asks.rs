@@ -29,11 +29,40 @@ impl Fold {
     pub(super) fn ask(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("");
         let mut request = item["request"].clone();
-        if self.for_parent(item) {
-            request["to"] = "parent".into();
+        if let Some(to) = self.to(item) {
+            request["to"] = to.into();
         }
+        self.plan_asked(&mut request);
         if let Some(t) = self.turns.first_mut().filter(|_| !id.is_empty()) {
             t.asks.insert(id.into(), request);
+        }
+    }
+
+    /// A subagent asks after its parent's turn ended, held for it: the ask gets a turn of its own,
+    /// so it waits on the user and can be answered [D128, D131].
+    pub(super) fn held_ask(&mut self, ts: u64) {
+        if self.turns.is_empty() && !self.agents.is_empty() {
+            self.turns.push(super::Turn {
+                id: format!("a{}", self.items),
+                origin: "agent".into(),
+                backend: self.backend.clone(),
+                ts,
+                delivered: Some(ts),
+                began: true,
+                held: true,
+                ..Default::default()
+            });
+        }
+    }
+
+    /// That turn goes once nothing it was opened for waits.
+    pub(super) fn unhold(&mut self) {
+        if self
+            .turns
+            .first()
+            .is_some_and(|t| t.held && t.asks.is_empty())
+        {
+            self.turns.remove(0);
         }
     }
 
@@ -58,6 +87,22 @@ impl Fold {
         }
     }
 
+    /// Who answers a request instead of the user: Brigadier, an exact repeat of a command allowed
+    /// for the session, as Codex's and OpenCode's helpers do [D389]; or a worker's parent agent.
+    pub fn to(&self, item: &Value) -> Option<&'static str> {
+        let r = &item["request"];
+        let cwd = &r["cli"]["cwd"];
+        if r["grant"]["scope"] == "command"
+            && (self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+        {
+            return Some("brigadier");
+        }
+        if self.held_for_review(item) {
+            return Some("review");
+        }
+        self.for_parent(item).then_some("parent")
+    }
+
     /// Whether a request goes to the parent agent rather than the user: a worker's question, and
     /// its approval on Auto or Full access; on Ask its approvals stay the user's [D126, D131].
     pub fn for_parent(&self, item: &Value) -> bool {
@@ -69,14 +114,18 @@ impl Fold {
 
     /// A pending request leaves, saying why: answered, withdrawn, or how its turn ended.
     pub(super) fn end_ask(&mut self, id: &str, why: &str) {
+        let mut left = vec![];
         for t in &mut self.turns {
-            if t.asks.remove(id).is_some() {
+            if let Some(r) = t.asks.remove(id) {
+                left.push(r);
                 self.closed.insert(id.into(), why.into());
                 if !t.asks.values().any(|r| r["items"].is_array()) {
                     t.question = None;
                 }
             }
         }
+        left.iter()
+            .for_each(|r| self.plan_left(r, &Value::Null, &Value::Null));
     }
 
     /// Every pending request of the first turn leaves: the turn ended [D77].
@@ -107,12 +156,14 @@ impl Fold {
                     if !t.asks.values().any(|r| r["items"].is_array()) {
                         t.question = None;
                     }
+                    self.plan_left(&request, &c["decision"], &c["by"]);
                     if c["decision"] == "allowSession" {
                         self.granting.insert(cid.into(), request);
                     }
                     self.claims.insert(cid.into(), id.into());
                     self.closed.insert(id.into(), "uncertain".into());
                 }
+                self.unhold();
                 true
             }
             Some("interrupt") => {

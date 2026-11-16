@@ -24,8 +24,9 @@ pub(super) type Shown = Arc<Mutex<Option<(String, Arc<Mutex<Saved>>)>>>;
 /// Sends a session's thread, from the store's copy folded to the log's end [D503], then follows
 /// the log and sends what changed, numbered on from the snapshot and tagged with this watch's
 /// request, until `watching` moves past `mine`. A host that died mid-turn writes no frame, so the
-/// live state ends such a turn [D60]; that end stays in this copy, never saved. The thread is
-/// locked while a change is taken and sent, so an older page never passes it.
+/// live state ends such a turn [D60]; a worker that ended with no note of it lets go of the turn it
+/// held [D336]. Those ends stay in this copy, never saved. The thread is locked while a change is
+/// taken and sent, so an older page never passes it.
 /// With no `mine` it's a peek: the snapshot only, nothing shown or followed.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn watch(
@@ -66,9 +67,13 @@ pub(super) fn watch(
         Ok(())
     };
     let interrupted = |thread: &mut Thread| {
+        thread.workers_over(|w| brigadier::workers::over(data, id, w));
+        if !thread.running() {
+            return;
+        }
         let owner = brigadier::owner::state(data, id);
         let live = fold::live(thread.status_fold(), owner, data, &procs::all());
-        if thread.running() && fold::status(thread.status_fold(), &live)["state"] == "interrupted" {
+        if fold::status(thread.status_fold(), &live)["state"] == "interrupted" {
             thread.interrupt(now_ms());
         }
     };
@@ -146,7 +151,7 @@ pub(super) fn watch(
             return;
         }
         let thread = &mut saved.thread;
-        if tick % 10 == 0 && thread.running() {
+        if tick % 10 == 0 {
             interrupted(thread);
         }
         if let Some(mut update) = thread.take() {

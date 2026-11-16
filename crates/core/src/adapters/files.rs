@@ -198,6 +198,16 @@ pub fn denied(msg: &Value) -> String {
     }
 }
 
+/// A job the user stopped from the card, said plainly, for an agent whose CLI has no channel of its
+/// own to hear it: else it reads an unexplained kill and may start it again [D117].
+pub fn stopped(msg: &Value) -> String {
+    let what =
+        (msg["command"].as_str()).map_or("a background process".into(), |c| format!("`{c}`"));
+    format!(
+        "The user stopped {what} themselves, from Brigadier. Leave it stopped: don't start it again."
+    )
+}
+
 /// A subagent's own events as steps under its call `parent`, for its side panel: only its steps,
 /// never its words or its to-dos [D115].
 pub fn under(events: &mut Vec<Event>, parent: &str) {

@@ -18,8 +18,15 @@ impl Thread {
     }
 
     /// A steer's bubble goes where the turn is now: its steps still running move below it, the
-    /// same tool's row under a new id [D78].
-    pub(super) fn below_steer(&mut self, steer: usize) {
+    /// same tool's row under a new id [D78]. The user's folds with the work it steered, only the
+    /// last reply left under "Worked for" [D118]; another session's (`kept`) stays where it
+    /// arrived, never folded [D332].
+    pub(super) fn steered(&mut self, row: Value, kept: bool) {
+        let steer = if kept {
+            self.kept_row(row)
+        } else {
+            self.add(row)
+        };
         let from = self.open.as_ref().map_or(steer, |o| o.from);
         let running: Vec<usize> = (from..steer)
             .filter(|&at| {
@@ -279,7 +286,10 @@ impl Thread {
             }
         }
         // A model of this agent picked mid-turn: live till the turn carrying it on draws a row [D241].
-        if let Some(at) = self.pick_row.take_if(|at| self.items[*at]["kind"] == "line") {
+        if let Some(at) = self
+            .pick_row
+            .take_if(|at| self.items[*at]["kind"] == "line")
+        {
             self.switching = Some(at);
         }
         // A rebirth shows as one divider, the message that carries it under it; a cut another turn beat fails [D88, D112, D203].
@@ -319,7 +329,7 @@ impl Thread {
             let state = if live { "switching" } else { "switched" };
             let switched = json!({"state": state, "text": note, "from": sw["from_label"],
                 "to": sw["to_label"], "model": named, "handoff": sw["fresh"],
-                "automatic": sw["auto"], "error": null});
+                "automatic": sw["auto"], "moved": sw["moved"], "error": null});
             let at = match picked.or_else(|| self.limit_row.take()) {
                 Some(at) => at,
                 None => self.add(json!({"kind": "switch", "reason": reason(sw["why"].as_str())})),

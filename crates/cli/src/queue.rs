@@ -269,6 +269,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let reply = recover(data, id, true)?;
                     let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
                     if reply["ok"] != true && !went {
+                        // Its first message can't go either: it waits saying why, as a refused send's does [D392 P9].
+                        if let Some(first) = q.items.first_mut() {
+                            let why = reply["message"].as_str().or(reply["error"].as_str());
+                            first.error = Some(why.unwrap_or("refused").into());
+                        }
                         return Ok(Some(reply));
                     }
                 }
@@ -432,18 +437,22 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             }
             owner::call(data, id, req)
         };
+        let mut msg = core::message::compose(&spec, &item.text, item.parts.clone())?;
+        // What's held for the parent's next message goes with it [D329].
+        let held = crate::workers::with_next(data, id, &mut msg.agent);
         let reply = core::send(
-            &spec,
+            &crate::routing::told(data, &spec),
             &f.fold,
             child,
             &call,
             &item.id,
             item.origin.as_deref().unwrap_or("user"),
-            &core::message::compose(&spec, &item.text, item.parts.clone())?,
+            &msg,
             None,
             None,
         );
         if went(&dir, &reply, &item.id) {
+            crate::workers::went_with(data, id, held);
             q.items.remove(at);
         } else if reply["error"] != "changed" {
             let why = reply["message"]
@@ -470,11 +479,16 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     let f = core::fold(&spec.dir, true)?;
     let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
     let call = crate::call_fn(data, id);
-    Ok(core::recover(
-        &spec,
-        &f.fold,
-        &live,
-        crate::child(data, id),
-        &call,
-    ))
+    // The user's Resume takes what's held for the session, as their next message would [D329].
+    let mut more = String::new();
+    let held = match queued {
+        true => crate::workers::with_next(data, id, &mut more),
+        false => vec![],
+    };
+    let spec = crate::routing::told(data, &spec);
+    let reply = core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more);
+    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+        crate::workers::went_with(data, id, held);
+    }
+    Ok(reply)
 }

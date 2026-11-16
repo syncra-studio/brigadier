@@ -3,11 +3,13 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
 import { ErrorLine } from "../components/error-line";
 import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
 import { ModelPill, ModelStrip, useModelStrip } from "../components/composer/model-strip";
+import type { Quota } from "../components/composer/quota-lines";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
 import { type Row, threadSource } from "../daemon";
 import { useStart } from "../home/start";
 import { errorText, run, store } from "../onboarding/api";
+import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "./set-up";
 import { newId } from "./store";
 
@@ -29,6 +31,7 @@ type Rust = {
   mark: string | null;
   unavailable: "install" | "sign-in" | null;
   models: { id: string; name: string; efforts: string[]; default_effort: string | null; fast: string | null; legacy: boolean }[];
+  usage?: Quota[] | null;
 };
 
 /** Rust's groups in the kit picker's shape. */
@@ -134,7 +137,11 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     const fail = (cause: unknown) => mine === asked.current && setListError(errorText(cause));
     // Cache fills an empty picker only; it never replaces a list already shown.
     run(["models", "--session", id]).then((reply) => land(reply, false), () => {});
-    run(["models", "--session", id, "--fresh"]).then((reply) => land(reply, true), fail);
+    run(["models", "--session", id, "--fresh"]).then((reply) => {
+      land(reply, true);
+      // A new model list can make an offer; Rust works them out on a read [D386].
+      readRouting().catch(() => {});
+    }, fail);
   };
   useEffect(() => {
     // Home opens this view before Rust has made the session and its worktree: until then the last list names its model.

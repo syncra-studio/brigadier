@@ -18,7 +18,7 @@ import { AgentChipTile } from "../landing/agent-chip";
 import { CommentChip } from "../review/comments";
 import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
-import { answeringSource, SessionApprovals, SessionQuestions, useApprovalPlace } from "./decisions";
+import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
 import { takesImages, useSessionModel } from "./model";
 import { SessionNotices } from "./notices";
@@ -146,7 +146,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const field = useRef<ComposerFieldHandle>(null);
   const model = useSessionModel(id, row, offline);
   // An approval takes the composer's place [D199, D317].
-  const { approval, replying, reply } = useApprovalPlace(id, source, field);
+  const approval = useApprovalWaiting(id, source);
   const [initial] = useState(() => draftOf(id));
   const [empty, setEmpty] = useState(() => isEmpty({ parts: initial?.parts ?? [], attachmentIds: [] }));
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
@@ -379,7 +379,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     editing.current = null;
     act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
   };
-  const firstError = row?.queue?.items.find((each) => each.error)?.error;
+  const stuck = row?.queue?.items.find((each) => each.error);
   const stop = () => {
     setStopError(null);
     void run(["stop", id]).then((reply) => !reply.ok && setStopError(failure(reply)));
@@ -400,21 +400,21 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             resuming={resuming || offline}
             steer={canSteer && running}
             canEdit={empty}
-            error={error ?? (firstError ? `Not sent: ${firstError}. Edit or delete it to go on.` : null)}
+            error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
             onResume={resume}
             onSteer={steerQueued}
             onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}
             onEdit={edit}
+            onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
           <SessionQuestions id={id} run={run} source={source} />
-          {replying && <SessionApprovals id={id} run={run} source={source} />}
           {model.strip}
         </>
       }
-      above={!replying && <SessionApprovals id={id} run={run} source={source} onReply={reply} />}
+      above={<SessionApprovals id={id} run={run} source={source} />}
       // Kept while an approval has its place, so the draft and its caret stay.
-      hidden={approval && !replying}
+      hidden={approval}
       onDragOver={files.onDragOver}
       onDrop={files.onDrop}
       tiles={

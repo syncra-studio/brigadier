@@ -115,8 +115,8 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
 const MAIN: &str = "codex";
 
 /// Its rate limits, the old app's reading: each bucket's primary and secondary window, the main
-/// bucket's by name alone, another's with what it meters.
-fn usage(read: &Value) -> Vec<Limit> {
+/// bucket's by name alone, another's with what it meters and the model id it names.
+pub(super) fn usage(read: &Value) -> Vec<Limit> {
     let main = &read["rateLimits"];
     let buckets: Vec<(&str, &Value)> = match read["rateLimitsByLimitId"].as_object() {
         Some(by_id) if !by_id.is_empty() => by_id.iter().map(|(id, b)| (id.as_str(), b)).collect(),
@@ -144,7 +144,17 @@ fn usage(read: &Value) -> Vec<Limit> {
                 false => format!("{label} · {}", what.unwrap_or(id)),
             };
             let resets = w["resetsAt"].as_u64().map(|s| s * 1000);
-            found.push(Limit::new(name, used, resets, minutes, id != MAIN));
+            let models = (id != MAIN)
+                .then(|| {
+                    bucket["normalModelSlug"]
+                        .as_str()
+                        .map(|m| vec![m.to_string()])
+                })
+                .flatten();
+            found.push(Limit {
+                models,
+                ..Limit::new(name, used, resets, minutes, id != MAIN)
+            });
         }
     }
     Limit::ordered(found)
@@ -261,6 +271,9 @@ fn info(m: &Value) -> ModelInfo {
             .map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
+        // Its list marks the default only: no top model [D2075].
+        default: m["isDefault"] == true,
+        top: false,
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);

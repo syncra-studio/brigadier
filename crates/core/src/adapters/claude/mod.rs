@@ -3,25 +3,24 @@
 //! its public CLI docs and observed output.
 
 mod cleanup;
+mod commands;
 mod control;
 mod mcp;
 mod models;
 mod tools;
+mod trust;
+mod updates;
 
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Launch, ModelInfo,
-    Retune, Rewound, Timing, Who, base_env, classify, home_path, probe_as, s, version,
+    Retune, Rewound, Seed, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
+use cleanup::project_dir;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
-
-mod trust;
-mod updates;
-
-use cleanup::project_dir;
 
 pub struct Claude;
 
@@ -36,6 +35,22 @@ impl Adapter for Claude {
 
     fn short_label(&self) -> &'static str {
         "Claude"
+    }
+
+    fn seeds(&self) -> &'static [Seed] {
+        models::SEEDS
+    }
+
+    fn plans(&self) -> bool {
+        true
+    }
+
+    fn subagents(&self) -> super::Subagents {
+        super::Subagents::Barred
+    }
+
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        Some(control::model(spec))
     }
 
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
@@ -135,6 +150,12 @@ impl Adapter for Claude {
         false
     }
 
+    /// A message written to it mid-turn joins the turn that runs (its steer is that same message),
+    /// so only a steer goes then; taken as the next turn's too, it ran twice [D324].
+    fn queues(&self) -> bool {
+        false
+    }
+
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
         let model = control::model(spec);
@@ -173,8 +194,10 @@ impl Adapter for Claude {
             argv.push("--allowedTools".into());
             argv.extend(rules);
         }
-        // The standing text [D181], and its own messages between sessions off.
-        argv.extend(control::standing(spec));
+        // The standing text [D181], and its own messages between sessions off. Its hook echoes each
+        // Bash call's input, whose folder its ask lacks, into the stream [D391].
+        argv.extend(models::bar(spec, control::standing(spec)));
+        argv.push("--include-hook-events".into());
         // A note chat reads the session's checkout beside its own folder [D282].
         if let Some(dir) = spec.opts.get("reads") {
             argv.extend(["--add-dir".into(), dir.clone()]);
@@ -233,13 +256,13 @@ impl Adapter for Claude {
     }
 
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
-        control::fixed(cwd, run)
+        commands::fixed(cwd, run)
     }
     fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
         mcp::mcp_servers(folder)
     }
     fn locate(&self, run: &Spec, list: &mut [Value]) {
-        control::locate(run, list)
+        commands::locate(run, list)
     }
     fn parse(&self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
@@ -268,9 +291,10 @@ impl Adapter for Claude {
         let mut events: Vec<Event> = match (kind, s(&v, &["subtype"])) {
             ("system", "init") => [
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
+                v["model"].as_str().map(|m| Event::Model(m.into())),
                 Some(Event::TurnStart),
                 control::level(&v),
-                control::commands(&v),
+                commands::commands(&v),
             ]
             .into_iter()
             .flatten()
@@ -329,6 +353,7 @@ impl Adapter for Claude {
             {
                 vec![Event::TextDelta(s(&v, &["event", "delta", "text"]).into())]
             }
+            ("system", "hook_response") => tools::cwd(&v).into_iter().collect(),
             // A running subagent's heartbeat says nothing to show.
             ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
             // An API error the CLI answers for, as its SDK types it [D74].
@@ -364,7 +389,7 @@ impl Adapter for Claude {
                     tool_end(b, result, parent.clone())
                 })
                 .collect(),
-            ("rate_limit_event", _) => control::rate_limit(&v["rate_limit_info"]),
+            ("rate_limit_event", _) => models::rate_limit(&v["rate_limit_info"]),
             ("result", _) => {
                 // With its cost so far, as the CLI reports it [D221].
                 let mut usage = v["usage"].clone();
@@ -430,8 +455,7 @@ impl Adapter for Claude {
                 ..Rewound::default()
             });
         };
-        let path = project_dir(spec).join(format!("{resume}.jsonl"));
-        match std::fs::read_to_string(path) {
+        match std::fs::read_to_string(cleanup::transcript(spec, resume)) {
             Ok(text) if text.contains(entry) => Ok(Rewound {
                 pin: Some(entry.into()),
                 ..Rewound::default()
@@ -470,22 +494,6 @@ impl Adapter for Claude {
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
-        let text =
-            std::fs::read_to_string(project_dir(spec).join(format!("{resume}.jsonl"))).ok()?;
-        let (mut texts, mut tools) = (0, 0);
-        for v in text
-            .lines()
-            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .filter(|v| v["type"] == "assistant")
-        {
-            for b in v["message"]["content"].as_array().into_iter().flatten() {
-                match s(b, &["type"]) {
-                    "text" => texts += 1,
-                    "tool_use" => tools += 1,
-                    _ => {}
-                }
-            }
-        }
-        Some((texts, tools))
+        cleanup::counts(spec, resume)
     }
 }

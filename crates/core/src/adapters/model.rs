@@ -16,11 +16,17 @@ pub struct Check {
 
 /// One usage limit: its name ("5-hour", "Weekly · Opus"), the whole percent used and when it
 /// resets (Unix ms), where said.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
 pub struct Limit {
     pub name: String,
     pub used: u32,
     pub resets: Option<u64>,
+    /// The window's length, where its CLI says.
+    #[serde(default)]
+    pub minutes: Option<u64>,
+    /// The ids of the models it meters, from its CLI's own list; None for every model [D43].
+    #[serde(default)]
+    pub models: Option<Vec<String>>,
     /// Its place: the shortest window first, one that meters a single model after the one for all.
     #[serde(skip)]
     pub order: (u64, bool),
@@ -40,6 +46,8 @@ impl Limit {
             name,
             used,
             resets,
+            minutes,
+            models: None,
             order,
         }
     }
@@ -121,6 +129,10 @@ pub struct ModelInfo {
     pub legacy: bool,
     /// Its context window in tokens, where its CLI's list says [D113].
     pub window: Option<u64>,
+    /// Its CLI's top model and the one it runs unpicked, each only where its own list says so
+    /// [D2075, D388 Q12].
+    pub top: bool,
+    pub default: bool,
 }
 
 impl ModelInfo {
@@ -185,4 +197,15 @@ pub fn versioned(name: &str) -> Option<(String, Vec<u32>)> {
         start += token.len() + 1;
     }
     None
+}
+
+/// What an agent's own subagents keep of the rules, by what its CLI lets Brigadier set [D376].
+#[derive(Clone, Copy, PartialEq)]
+pub enum Subagents {
+    /// Nothing reaches them.
+    Untold,
+    /// They can't run a model a rule bars.
+    Barred,
+    /// They start on the session's model and effort, but its agent can pick another.
+    Defaults,
 }

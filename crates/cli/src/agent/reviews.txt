@@ -1,0 +1,7 @@
+brigadier help reviews: adversarial reviews, in proportion. A small change with its result shown lands without a review.
+
+- Plan review, before a big job goes to workers: `brigadier start --reviewing session "<the plan>"`.
+- End check, once, on the merged tree, never mid-run: `brigadier start --reviewing session "<the job and its done-when>"`, or `--reviewing <id>` for one worker's commits. The reviewer tries to break it, runs every "done when" and reports pass or fail with its output.
+- It runs on the first model of the user's Review job on another agent than the author's that has room; with none, it doesn't run and says why. It gets the task, its done-when and the commits, never the author's summary, and commits nothing. Its findings come to you as its result.
+- You triage: fix the valid findings through workers, and note each rejected one with its reason. One review, one fix pass, then report what is left; never loop.
+- With Settings › Routing's Adversarial review on, each worker that ends with commits is reviewed and gets one turn to fix before its result comes to you, with a line saying how the review went.

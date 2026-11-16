@@ -86,6 +86,50 @@ pub fn tests_or_builds(line: &str) -> bool {
     })
 }
 
+/// Commands that only look: a line of nothing else is no progress to the rebirth guard, as a read
+/// isn't [D144].
+const LOOKS: &[&str] = &[
+    "git status",
+    "git log",
+    "git diff",
+    "git show",
+    "git branch",
+    "git rev-parse",
+    "ls",
+    "find",
+    "wc",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "rg",
+    "echo",
+    "pwd",
+    "sort",
+    "cd",
+    "tree",
+    "file",
+    "stat",
+];
+
+/// Whether every command in a line only looks; one that writes a file with `>` doesn't. Taking a
+/// write for a look only stalls sooner, with Continue.
+pub(super) fn looks(line: &str) -> bool {
+    let line = line
+        .replace("2>&1", "")
+        .replace("2>/dev/null", "")
+        .replace(">/dev/null", "");
+    line.split(['&', ';', '|', '\n']).all(|part| {
+        let part = part.trim();
+        part.is_empty()
+            || !part.contains('>')
+                && LOOKS.iter().any(|c| {
+                    part.strip_prefix(c)
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+                })
+    })
+}
+
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Runs {
     /// Test and build steps still running, by id: their command.
@@ -97,6 +141,9 @@ pub struct Runs {
     /// them: your own folder's "From the agent" [D1192, D1213].
     #[serde(default)]
     pub agent: BTreeSet<String>,
+    /// The commands run since the last message: one run again is nothing new to the guard [D144].
+    #[serde(default)]
+    pub ran: BTreeSet<String>,
 }
 
 impl Fold {

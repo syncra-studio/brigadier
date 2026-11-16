@@ -15,7 +15,7 @@ import { Markdown } from "../thread/markdown";
 import { GroupLine } from "../components/thread/body";
 import { px } from "../shell/right-panel";
 import { duration, useSecond } from "../thread/words";
-import { finished, type Worker } from "./chip";
+import { finished, waiting, type Worker } from "./chip";
 import { WORKERS_LABEL } from "./list";
 
 /*
@@ -77,6 +77,8 @@ function WorkerDetails({ worker }: { worker: Worker }) {
           <Section title="Why this model">
             <p>{worker.model}</p>
             {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
+            {worker.why && <p className="text-xs text-muted-foreground first-letter:uppercase">{worker.why}</p>}
+            {worker.asked && <p className="text-xs text-muted-foreground">{worker.asked}</p>}
           </Section>
           {worker.brief && (
             <Section title="Instructions">
@@ -126,6 +128,8 @@ function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] 
   // Its turns' time, so the waits between its messages don't count; from its start while it has none.
   const ms = turns.length === 0 ? (done ? (worker.lastAt ?? now) : now) - worker.startedAt : turns.reduce((sum, turn) => sum + Math.max(0, (turn.endedAt ?? now) - turn.startedAt), 0);
   const took = duration(ms);
+  // Held before its first turn, it hasn't worked yet: Needs you or Limit until says why.
+  if (turns.length === 0 && waiting(worker)) return null;
   return (
     <div data-slot="worker-work-header" className="border-b border-border pb-2 text-sm text-faint-foreground tabular-nums">
       {worker.kind === "stopped" ? `Ended after ${took}` : done ? `Worked for ${took}` : `Working for ${took}`}
@@ -157,11 +161,18 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
 
 type Shown = Extract<Line, { type: "item" | "group" }>;
 
-/** What it does right now as the thread's last line, when no row of its says it: a running or waiting step, or a reply begun, does. */
-function thinking(items: readonly Item[]): boolean {
-  const last = items.findLast((item) => !item.hidden);
-  if ((last?.kind === "tool" || last?.kind === "fileChange" || last?.kind === "childAgent") && (last.progress === "running" || last.progress === "pending")) return false;
-  return !((last?.kind === "message" || last?.kind === "reasoning") && last.streaming && last.text.trim());
+/**
+ * What it does right now as the thread's last line, when its last row doesn't say it: the turn's latest run (its live
+ * step or its own Thinking line), a running or waiting step, thinking, or a reply begun, does.
+ */
+function thinking(rows: readonly Shown[]): boolean {
+  // A reply not yet begun draws nothing: the row above it says what it does.
+  const last = rows.findLast((line) => !(line.type === "item" && line.item.kind === "message" && line.item.streaming && !line.item.text.trim()));
+  if (last?.type === "group") return !last.item.run;
+  const item = last?.item;
+  if ((item?.kind === "tool" || item?.kind === "fileChange" || item?.kind === "childAgent") && (item.progress === "running" || item.progress === "pending")) return false;
+  if (item?.kind === "reasoning" && item.streaming) return false;
+  return !(item?.kind === "message" && item.streaming);
 }
 
 /**
@@ -223,7 +234,7 @@ export function WorkerThread({ worker, items, turns, setup }: { worker: Worker; 
           </Collapsible>
         )}
         {rows.slice(previous.length).map((line) => <Row key={line.id} line={line} onToggle={toggle} />)}
-        {working && thinking(items) && <div className="shimmer truncate text-sm motion-reduce:animate-none">Thinking</div>}
+        {working && thinking(rows) && <div className="shimmer truncate text-sm motion-reduce:animate-none">Thinking</div>}
         {/* What it waits for: the user, or a limit's reset. */}
         {(worker.kind === "needsYou" || worker.kind === "limit") && <p data-slot="worker-waits" className="text-sm text-quiet-foreground">{worker.word}</p>}
       </div>

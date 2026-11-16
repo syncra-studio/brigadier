@@ -169,7 +169,10 @@ fn main() -> io::Result<()> {
         switch::rebirth(&data, &index.rows);
         brigadier::rewind::ends(&data, &index.rows, &mut finished);
         brigadier::queue::drain(&data, &index.rows);
+        brigadier::control::repeats(&data, &index.rows);
+        brigadier::control::hush(&data, &index.rows);
         brigadier::workers::pass(&data, &index.rows);
+        brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);
         // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
         let on = match awake_mode(&data) {

@@ -174,8 +174,8 @@ export type Item = Base &
         description?: string;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
-    | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" }
-    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent" }
+    | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" | "brigadier" | "review"; by?: "parent" | "review" }
+    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent"; /** A worker's routing hold: it waits with no turn running [D2028]. */ held?: true }
     | {
         kind: "childAgent";
         sessionId: string;
@@ -219,6 +219,8 @@ export type Item = Base &
         model?: string | null;
         handoff: boolean;
         automatic: boolean;
+        /** A worker's move to its job's next model, as Rust wrote it [D375]. */
+        moved?: string | null;
         error?: string;
         /** The whole note as Rust wrote it, for a switch logged before the shape. */
         text: string;
@@ -257,7 +259,7 @@ export type Item = Base &
     /** `op`: the app's pick it came from, to take its pending line's place [D76]; `live` till the new model draws a row [D241]. */
     | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string; op?: string; live?: boolean }
     | { kind: "line"; reason: "stopped"; ms: number | null }
-    | { kind: "line"; reason: "paused"; ms: number }
+    | { kind: "line"; reason: "paused"; ms: number | null }
     | { kind: "line"; reason: "interrupted" }
     | { kind: "line"; reason: "review-ended" }
     | { kind: "line"; reason: "retried" }

@@ -3,10 +3,10 @@
 //! logs it, writes it and marks it delivered as it does a message; one never proven delivered
 //! stays uncertain and is never sent again by itself [D60, D82].
 
-use crate::{flag, owner};
+use crate::{call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::Fold;
-use brigadier_core::{self as core, as_run};
+use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -109,6 +109,14 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     if let Some(mid) = request.strip_prefix("peer-") {
         return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
     }
+    // A worker's routing hold: Rust's own question, the user's call [D2028].
+    if request.starts_with("hold-") {
+        let choice = (answers.iter().flatten())
+            .find_map(Value::as_str)
+            .unwrap_or("");
+        let args = ["routing", "answer", id, request, choice].map(String::from);
+        return crate::routing::run(data, &args);
+    }
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
     answered(data, id, request, control)
 }
@@ -124,6 +132,38 @@ pub fn answer_as(
 ) -> io::Result<Option<Value>> {
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "by": by});
     answered(data, id, request, control).map(Some)
+}
+
+/// Brigadier's own answer to an exact repeat of a command allowed for the session, which its
+/// agent's CLI asks again [D389].
+pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+    for (id, row) in rows {
+        if let Some(request) = row["reason"]["repeat"].as_str() {
+            let _ = answer_as(data, id, request, "allow", None, "brigadier");
+        }
+    }
+}
+
+/// A session the user stopped or paused that its CLI woke on its own (a background task ended):
+/// stopped again at once, as the user left it, by the same hand [D90, D95].
+pub fn hush(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+    static HUSHING: std::sync::Mutex<std::collections::BTreeSet<String>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    for (id, row) in rows {
+        let Some(by) = row["woke"].as_str() else {
+            continue;
+        };
+        if !HUSHING.lock().unwrap().insert(id.clone()) {
+            continue;
+        }
+        let (data, id, by) = (data.to_path_buf(), id.clone(), by.to_string());
+        thread::spawn(move || {
+            if let Err(e) = crate::queue::stop(&data, &id, &by) {
+                eprintln!("brigadierd: hush {id}: {e}");
+            }
+            HUSHING.lock().unwrap().remove(&id);
+        });
+    }
 }
 
 fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
@@ -150,8 +190,8 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
             None => match decision.as_deref() {
                 Some("allow") => {}
                 Some("allowSession") if asked["grant"].is_object() => {}
-                // A plan has no deny: the user replies instead [D177].
-                Some("deny") if asked["action"] != "plan" => {}
+                // A plan has no bare deny: only one with words, its reply [D177, D400].
+                Some("deny") if asked["action"] != "plan" || control["reason"].is_string() => {}
                 _ => return wrong("decision"),
             },
         }
@@ -163,7 +203,9 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
 
 /// A plain message while the agent waits on a question: that question's answer, through its
 /// control channel, so the agent and the log agree on what's pending. None when no question waits
-/// or the agent can't take it there: the message goes as any other [D159, D222].
+/// or the agent can't take it there: the message goes as any other [D159, D222]. Also a plan's
+/// reply, which keeps its agent planning: its answerer's words, or its reviewer's findings (`by`
+/// review) while the review holds it [D177, §6].
 pub fn reply(
     data: &Path,
     id: &str,
@@ -172,8 +214,12 @@ pub fn reply(
     by: Option<&str>,
 ) -> io::Result<Option<Value>> {
     let f = core::fold(&core::session_dir(data, id), true)?;
+    let review = by == Some("review");
     let asked = f.fold.turns.first().and_then(|t| {
-        let mut questions = t.asks.iter().filter(|(_, r)| r["items"].is_array());
+        let mut questions = t.asks.iter().filter(|(_, r)| {
+            let plan = r["action"] == "plan" && (r["to"] == "review") == review;
+            r["items"].is_array() && !review || plan
+        });
         questions.next().map(|(k, _)| k.clone())
     });
     let Some(request) = asked else {
@@ -347,4 +393,57 @@ pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
         core::create(data, &spec)?;
     }
     Ok(json!({"ok": true, "level": spec.level, "op": op}))
+}
+
+/// The user's message, or a start's first [D54].
+pub(crate) fn send(
+    data: &Path,
+    spec: &Spec,
+    text: &str,
+    parts: Value,
+    cid: Option<&str>,
+    backend: Option<&str>,
+    retry_of: Option<&str>,
+) -> io::Result<Value> {
+    crate::rewind::settled(data, spec)?;
+    // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
+    // Taken before the fence, the order every rewind and delivery takes them in [JR-FX2].
+    let (_lock, _) = crate::queue::hold(&spec.dir)?;
+    let _fence = core::session::fence(data, spec)?;
+    let cid = cid.map_or_else(new_cid, String::from);
+    let call = call_fn(data, &spec.id);
+    let mut msg = core::message::compose(spec, text, parts)?;
+    let held = crate::workers::with_next(data, &spec.id, &mut msg.agent);
+    let go = || -> io::Result<Value> {
+        let f = core::fold(&spec.dir, true)?;
+        let running = child(data, &spec.id);
+        // A launch tells a session's agent the user's jobs as they are now [D387].
+        let spec = &crate::routing::told(data, spec);
+        Ok(core::send(
+            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
+        ))
+    };
+    let mut reply = go()?;
+    let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
+    // Retry a busy race or moving host only when the log proves the command never got in;
+    // an uncertain delivery is never sent again by itself [D54].
+    if reply["result"].is_null() && !logged() {
+        thread::sleep(Duration::from_millis(200));
+        // If no host answers, the resend fails too and the log decides the result below.
+        let _ = owner::ensure(data, spec);
+        reply = go()?;
+    }
+    // A dropped connection says nothing about the log: the log itself does.
+    if reply["result"].is_null() {
+        reply["result"] = match (reply["ok"] == true, logged()) {
+            (true, _) => "delivered",
+            (false, true) => "logged",
+            (false, false) => "not_logged",
+        }
+        .into();
+    }
+    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+        crate::workers::went_with(data, &spec.id, held);
+    }
+    Ok(reply)
 }

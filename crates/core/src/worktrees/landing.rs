@@ -110,10 +110,25 @@ pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
         .map(Path::new)
         .filter(|p| p.exists())
         .is_some_and(|p| git(p, &["status", "--porcelain"]).map_or(true, |s| !s.is_empty()));
-    let landed = git(repo, &["merge-base", "--is-ancestor", &branch, &owned.base]).is_ok()
-        || (owned.landing.as_ref()).is_some_and(|l| {
+    Ok((dirty || !in_base(repo, &owned.base, &branch, owned.landing.as_ref())).then_some(branch))
+}
+
+/// Whether the session's commits are all in its base, its uncommitted files aside: "Merged into
+/// ‹base›" [D97]. True without a branch; a check git can't answer counts as not merged.
+pub fn merged(dir: &Path) -> io::Result<bool> {
+    let Some(owned) = read(dir)? else {
+        return Ok(true);
+    };
+    let repo = Path::new(&owned.repo);
+    let branch = owned.branch.filter(|b| has_branch(repo, b));
+    Ok(branch.is_none_or(|b| in_base(repo, &owned.base, &b, owned.landing.as_ref())))
+}
+
+/// The branch is in `base`, by ancestry or a landing that still holds.
+fn in_base(repo: &Path, base: &str, branch: &str, landing: Option<&Landing>) -> bool {
+    git(repo, &["merge-base", "--is-ancestor", branch, base]).is_ok()
+        || landing.is_some_and(|l| {
             git(repo, &["rev-parse", &format!("refs/heads/{branch}")])
-                .is_ok_and(|tip| landed(repo, &owned.base, &tip, l))
-        });
-    Ok((dirty || !landed).then_some(branch))
+                .is_ok_and(|tip| landed(repo, base, &tip, l))
+        })
 }

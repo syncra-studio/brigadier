@@ -259,9 +259,7 @@ impl Index {
                 e.orphaned_since = None;
             }
             let works = e.error.is_none() && fold::works(&f.fold, &live);
-            if e.spec.is_none() {
-                e.spec = core::load(&self.data, id).ok();
-            }
+            e.spec = e.spec.take().or_else(|| core::load(&self.data, id).ok());
             let project = e
                 .spec
                 .as_ref()
@@ -300,20 +298,22 @@ impl Index {
                              // A turn whose host is gone has nothing left to stop or queue behind [D60].
                              "running": !f.fold.turns.is_empty() && !matches!(state.as_str(), Some("interrupted" | "undelivered")),
                              "levels": levels, "level": level.as_ref().ok(), "level_refused": level.as_ref().err(), "held": held,
-                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()),
-                             "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref()),
+                             "level_op": e.spec.as_ref().and_then(|s| s.level_op.as_ref()), "forkOf": e.spec.as_ref().and_then(|s| s.fork_of.as_ref()),
                              // Its last turn was the user's Stop: Send and the queue offer Resume [D373, D2004].
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
-                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), f.fold.resets, f.fold.calls.last()),
+                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              // The turn the loop guard stopped: its line offers Continue [D144].
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
+            row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
+            // It holds its project's own folder: Local checkout can't start there again [D306].
+            row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));
             row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
-            // How full its context is, and a rebirth due now [D88, D108].
-            row["context"] = json!(f.fold.context);
+            row["limits"] = json!(f.fold.limits); // its CLI's newest usage report, for the store [D2039]
+            row["context"] = json!(f.fold.context); // how full its context is; a rebirth due now below [D88, D108]
             let lost = state == "undelivered"
                 && f.fold
                     .turns

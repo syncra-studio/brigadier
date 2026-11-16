@@ -32,7 +32,8 @@ fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
 }
 
 /// One write of `prompt` (built from the session's own asks) on `chosen`, else its agent at its
-/// cheapest model; offline, on a local model any agent listed [D1029]. The reason why not, else.
+/// cheapest model; offline, on a local model any agent listed [D1029]; none a rule bars [D376].
+/// The reason why not, else.
 pub(crate) fn written_for(
     data: &Path,
     spec: &Spec,
@@ -42,6 +43,10 @@ pub(crate) fn written_for(
     prompt: impl Fn(&[String]) -> String,
 ) -> Result<String, String> {
     let prompt = prompt(&writer::asks(&spec.dir));
+    // Each candidate a rule bars is skipped for the next: the chosen, the cheap, the session's own,
+    // the offline one [D376].
+    let ok = |b: &str, m: Option<&str>| crate::routing::launch(data, &spec.cwd, b, m, None);
+    let chosen = chosen.filter(|c| ok(&c.backend, Some(&c.model)).is_ok());
     let backend = match chosen {
         Some(choice) => choice.backend.clone(),
         None => match f.backend.as_str() {
@@ -52,15 +57,31 @@ pub(crate) fn written_for(
     let a = adapters::get(&backend).ok_or_else(|| format!("no agent {backend}"))?;
     let account = f.accounts.get(&backend).cloned().unwrap_or_default();
     let mut run = core::as_run(spec, f, &backend, None);
-    let listed = models(data, &backend);
-    if let Some(model) = chosen
+    let mut listed = models(data, &backend);
+    let cheap = |listed: &mut Vec<ModelInfo>| loop {
+        let m = a.cheap(run.model.as_deref(), listed)?;
+        if ok(&backend, Some(&m)).is_ok() {
+            break Some(m);
+        }
+        listed.retain(|x| x.id != m);
+    };
+    let model = chosen
         .map(|c| c.model.clone())
-        .or_else(|| a.cheap(run.model.as_deref(), &listed))
-    {
+        .or_else(|| cheap(&mut listed));
+    if let Some(model) = model {
         run.effort =
             (listed.iter().find(|m| m.id == model)).and_then(|m| m.efforts.first().cloned());
         run.model = Some(model);
     }
+    // Its effort too: above a cap, it runs at the cap [D376].
+    let check = |run: Spec, agent: &str| {
+        Spec {
+            rules: Some(crate::routing::launch),
+            ..run
+        }
+        .ruled(agent)
+    };
+    let mut run = check(run, &backend)?;
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);
@@ -76,11 +97,14 @@ pub(crate) fn written_for(
         return Err(failure.why);
     }
     for local in adapters::all() {
-        let Some(model) = models(data, local.name()).into_iter().find(|m| m.local) else {
+        let mut local_models = models(data, local.name()).into_iter();
+        let Some(model) = local_models.find(|m| m.local && ok(local.name(), Some(&m.id)).is_ok())
+        else {
             continue;
         };
         let mut run = core::as_run(spec, f, local.name(), None);
         (run.account, run.model, run.effort) = (None, Some(model.id), None);
+        let mut run = check(run, local.name())?;
         ready(&mut run, local);
         return writer::write(local, &run, "", &prompt, active).map_err(|e| e.why);
     }

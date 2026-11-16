@@ -40,6 +40,15 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     open["config"]["model_auto_compact_token_limit"] = 1_000_000_000u64.into();
     // Its plan tool, off unless asked for (codex-rs config `tools.update_plan`) [D104, D116].
     open["config"]["tools.update_plan.enabled"] = crate::rebirth::todo().into();
+    // Where a rule names Codex, its subagents start on the session's model and capped effort; its
+    // `spawn_agent` can still name others [D376].
+    if spec.ruled.touched {
+        for (key, v) in [("model", &spec.model), ("reasoning_effort", &spec.effort)] {
+            if let Some(v) = v {
+                open["config"][format!("agents.default_subagent_{key}")] = v.as_str().into();
+            }
+        }
+    }
     open
 }
 
@@ -116,6 +125,13 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         Some("answer") => answer(spec, msg)?,
         Some("steer") => json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"]))}),
         Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
+        // Codex has no channel for it: the note steers the turn that runs, else starts the wake
+        // that joins the block [D117].
+        Some("stop_task") => {
+            let mut line = turn(spec, &super::super::stopped(msg));
+            line["steer"] = line["turn"]["input"].clone();
+            line
+        }
         _ => return Err("Codex takes no such control message.".into()),
     };
     Ok(Delivery::Stdin(format!("{line}\n")))

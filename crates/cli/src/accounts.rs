@@ -5,7 +5,7 @@
 //! no work at all: no probes, no switch. Nothing here names a provider: each adapter says how it
 //! keeps accounts apart [D43].
 
-use crate::{setup, switching};
+use crate::{setup, switching, usage};
 use brigadier_core::adapters::{self, Adapter, probe_as};
 use brigadier_core::{self as core, SETUP, Spec, account_home};
 use serde_json::{Value, json};
@@ -33,7 +33,7 @@ pub(crate) fn load(data: &Path) -> Value {
     let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
     let map = |k: &str| v[k].as_object().cloned().unwrap_or_default();
     json!({"accounts": list("accounts"), "auto": list("auto"), "agents": v["agents"] == true,
-        "limited": map("limited"), "use": map("use"), "names": map("names")})
+        "limited": map("limited"), "limited_at": map("limited_at"), "use": map("use"), "names": map("names")})
 }
 
 pub(crate) fn save(data: &Path, v: &Value) -> io::Result<()> {
@@ -82,7 +82,7 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
 }
 
 /// Signed in with a kind its home keeps apart: an account work can run on.
-fn usable(c: &Value) -> bool {
+pub(crate) fn usable(c: &Value) -> bool {
     c["signed_in"] == true && c["kept_apart"] == true
 }
 
@@ -100,15 +100,18 @@ pub(crate) fn starting(data: &Path, spec: Spec) -> Spec {
 }
 
 /// What Home's agent check runs as: the account new sessions start on [D2082], so the models offered
-/// are the ones a session there gets; the computer's login otherwise.
-pub(crate) fn check_as(data: &Path, a: &dyn Adapter, cwd: &Path) -> Spec {
+/// are the ones a session there gets; the computer's login ("") otherwise.
+pub(crate) fn check_as(data: &Path, a: &dyn Adapter, cwd: &Path) -> (String, Spec) {
     let spec = Spec {
         backend: a.name().into(),
         ..Default::default()
     };
     match starting(data, spec).starts_on {
-        Some(id) => on_account(a, data, &id, &cwd.display().to_string()),
-        None => Spec::default(),
+        Some(id) => (
+            id.clone(),
+            on_account(a, data, &id, &cwd.display().to_string()),
+        ),
+        None => (String::new(), Spec::default()),
     }
 }
 
@@ -126,7 +129,7 @@ fn on_account(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Spec {
 }
 
 /// The agent's own check on one account, in `cwd`: signed in, how, whether that sign-in kind is
-/// kept apart, and the models usable there.
+/// kept apart, the models usable there, and the limits known of it, kept for every reader [D2039].
 pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value {
     let Some(exe) = a.exe() else {
         return json!({"installed": false});
@@ -134,14 +137,23 @@ pub(crate) fn check(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Value 
     let spec = on_account(a, data, id, cwd);
     match a.check(&spec, &exe, Path::new(cwd)) {
         Ok(c) => {
-            let kinds = a.accounts().map_or(&[][..], |x| x.kinds);
+            usage::checked(data, a.name(), id, &c);
+            // Only the windows known now: an unknown one draws as not read yet.
+            let known: Vec<_> = (usage::of(data, a.name(), id).into_iter())
+                .filter(|w| w.used.is_some())
+                .collect();
             json!({"installed": true, "signed_in": c.signed_in, "how": c.how,
-                "email": c.who.email, "plan": c.who.plan, "org": c.who.org, "usage": c.usage,
-                "kept_apart": id.is_empty() || kinds.contains(&c.how.as_str()),
+                "email": c.who.email, "plan": c.who.plan, "org": c.who.org, "usage": usage::limits(&known),
+                "kept_apart": kept_apart(a, id, &c.how),
                 "models": c.models.iter().map(|m| m.id.clone()).collect::<Vec<_>>()})
         }
         Err(e) => json!({"installed": true, "error": e.trim()}),
     }
+}
+
+/// Whether an account's login kind is one its own home keeps apart; the computer's login always is.
+pub(crate) fn kept_apart(a: &dyn Adapter, id: &str, how: &str) -> bool {
+    id.is_empty() || a.accounts().is_some_and(|x| x.kinds.contains(&how))
 }
 
 pub(crate) fn sign_in_id(agent: &str, id: &str) -> String {
@@ -201,7 +213,7 @@ fn list(data: &Path) -> Value {
                         let mut rows: Vec<Value> = checks
                             .into_iter()
                             .map(|(id, name, c)| {
-                                json!({"id": id, "name": name, "check": c,
+                                json!({"id": id, "name": name, "check": c, "usage": usage::limits(&usage::of(data, a.name(), &id)),
                                     "limited_until": v["limited"][format!("{}/{id}", a.name())],
                                     "sign_in": (!id.is_empty()).then(|| setup::run_state(data, &sign_in_id(a.name(), &id), Some(a)))})
                             })

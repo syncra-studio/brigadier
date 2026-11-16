@@ -4,12 +4,23 @@
 //! as it answers `get_usage` in the same run, the old app's way [D28].
 
 use super::super::setup::run_fed;
-use super::super::{Check, Limit, ModelInfo, base_env, home_path, iso_ms, mark_superseded};
+use super::super::{
+    Check, Event, Limit, ModelInfo, base_env, home_path, iso_ms, mark_superseded, s,
+};
 use crate::Spec;
 use serde_json::Value;
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
+
+/// The jobs Claude's models seed, in the spec's order (D392 P1).
+pub const SEEDS: &[super::super::Seed] = &[
+    ("Write code", "opus", Some("high")),
+    ("Look into the codebase", "sonnet", Some("low")),
+    ("Plan and orchestrate", "fable", Some("high")),
+    ("Quick actions", "haiku", Some("low")),
+    ("Review", "opus", Some("high")),
+];
 
 /// Its models and usage; where its list can't be read, its aliases by id.
 pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
@@ -22,6 +33,19 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
         usage,
         ..Check::default()
     }
+}
+
+/// Its own subagents can't run a model a rule bars: the allowlist, merged into the one `--settings`
+/// object of `standing` (`deniedModels` is read from managed settings only); their effort can't
+/// be set [D376].
+pub fn bar(spec: &Spec, mut standing: [String; 6]) -> [String; 6] {
+    let at = standing.iter().position(|a| a == "--settings");
+    if let (Some(models), Some(at)) = (&spec.ruled.models, at) {
+        let mut settings: Value = serde_json::from_str(&standing[at + 1]).unwrap_or_default();
+        settings["availableModels"] = models.clone().into();
+        standing[at + 1] = settings.to_string();
+    }
+    standing
 }
 
 type Listed = (Vec<ModelInfo>, Option<Vec<Limit>>);
@@ -65,7 +89,7 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
         .filter(|v| v["type"] == "control_response" && v["response"]["subtype"] == "success")
         .collect();
     let answer = |id: &str| answers.iter().find(|v| v["response"]["request_id"] == id);
-    let usage = answer("usage").map(|v| usage(&v["response"]["response"]));
+    let said_usage = answer("usage");
     let answer = answer("models").ok_or("Claude didn't list its models")?;
     let listed = answer["response"]["response"]["models"].as_array().cloned();
     let settings: Value = std::fs::read(home_path(".claude/settings.json"))
@@ -75,12 +99,21 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
     let mut models: Vec<(ModelInfo, String)> = (listed.iter().flatten())
         .filter_map(|m| info(m, &settings))
         .collect();
-    // The `default` alias is a second row for a model already listed: the model's own row stays.
-    if let Some(at) = models.iter().position(|(m, _)| m.id == "default")
-        && (models.iter()).any(|(m, r)| m.id != "default" && *r == models[at].1)
-    {
-        models.remove(at);
+    // The `default` alias names the model run unpicked: a second row for a model already listed,
+    // whose own row stays and takes the mark.
+    if let Some(at) = models.iter().position(|(m, _)| m.id == "default") {
+        let own = (models.iter()).position(|(m, r)| m.id != "default" && *r == models[at].1);
+        models[own.unwrap_or(at)].0.default = true;
+        if own.is_some() {
+            models.remove(at);
+        }
     }
+    // Its `opus` alias, where its list names it: its top model.
+    if let Some((m, _)) = (models.iter_mut()).find(|(m, _)| m.id.split('[').next() == Some("opus"))
+    {
+        m.top = true;
+    }
+    let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));
     // Two rows under one name: the long-context one says so.
     let names: Vec<String> = models.iter().map(|(m, _)| m.name.clone()).collect();
     for (m, _) in &mut models {
@@ -96,50 +129,87 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
 /// Its `get_usage` answer's limits, the old app's reading: its `limits` list where it gives one (the
 /// session, the week and a week scoped to one model), else the named windows `five_hour`,
 /// `seven_day` and `seven_day_<family>`; nothing where it says limits aren't available.
-fn usage(answer: &Value) -> Vec<Limit> {
+fn usage(answer: &Value, list: &[(ModelInfo, String)]) -> Vec<Limit> {
     let rates = &answer["rate_limits"];
     if answer["rate_limits_available"] == false || rates.is_null() {
         return vec![];
     }
+    let at = |r: &Value| r.as_str().and_then(iso_ms);
     let found = match rates["limits"].as_array() {
-        Some(list) => (list.iter()).filter_map(listed_limit).collect(),
+        Some(limits) => (limits.iter())
+            .filter_map(|l| listed_limit(l, list))
+            .collect(),
         None => (rates.as_object().into_iter().flatten())
-            .filter_map(|(id, w)| window(id, w["utilization"].as_f64()?, &w["resets_at"]))
+            .filter_map(|(id, w)| {
+                window(
+                    id,
+                    w["utilization"].as_f64()?,
+                    at(&w["resets_at"]),
+                    Some(list),
+                )
+            })
             .collect(),
     };
     Limit::ordered(found)
 }
 
+/// The windows a `rate_limit_event` names, its `unifiedWindows` (a share of 1, resets in seconds)
+/// else its one `rateLimitType`. A window that meters one family is left to the next check, which
+/// has the model list to say which ids it meters (shortcut: until a run's event carries that list).
+fn reported(info: &Value) -> Vec<Limit> {
+    let one = |w: &Value| Some((w["utilization"].as_f64()? * 100.0, w["resetsAt"].as_u64()?));
+    let mut found: Vec<(String, f64, u64)> = (info["unifiedWindows"].as_object().into_iter())
+        .flatten()
+        .filter_map(|(id, w)| one(w).map(|(u, r)| (id.clone(), u, r)))
+        .collect();
+    if found.is_empty()
+        && let (Some(id), Some((u, r))) = (info["rateLimitType"].as_str(), one(info))
+    {
+        found.push((id.into(), u, r));
+    }
+    let found = (found.into_iter())
+        .filter_map(|(id, used, resets)| window(&id, used, Some(resets * 1000), None))
+        .collect();
+    Limit::ordered(found)
+}
+
+/// The family word of a model's name or id: "opus" in "Opus 5.5", "Claude Fable 5.1" or
+/// "claude-opus-5-5[1m]".
+fn family(name: &str) -> Option<String> {
+    (name.split(|c: char| !c.is_ascii_alphanumeric()))
+        .find(|w| w.chars().any(|c| c.is_ascii_alphabetic()) && !w.eq_ignore_ascii_case("claude"))
+        .map(str::to_ascii_lowercase)
+}
+
 /// One entry of the `limits` list, if it's a window work waits on.
-fn listed_limit(limit: &Value) -> Option<Limit> {
+fn listed_limit(limit: &Value, list: &[(ModelInfo, String)]) -> Option<Limit> {
     let (used, resets, scope) = (
         limit["percent"].as_f64()?,
-        &limit["resets_at"],
+        limit["resets_at"].as_str().and_then(iso_ms),
         &limit["scope"],
     );
+    let list = Some(list);
     match limit["kind"].as_str()? {
-        "session" if scope.is_null() => window("five_hour", used, resets),
-        "weekly_all" if scope.is_null() => window("seven_day", used, resets),
+        "session" if scope.is_null() => window("five_hour", used, resets, list),
+        "weekly_all" if scope.is_null() => window("seven_day", used, resets, list),
         "weekly_scoped" => {
             let model = &scope["model"];
-            let name = model["display_name"].as_str().or(model["id"].as_str())?;
-            // The family word: "Fable" in "Fable", "Claude Fable 5.1" or "claude-fable-5-1".
-            let family = (name.split(|c: char| !c.is_ascii_alphanumeric())).find(|w| {
-                w.chars().any(|c| c.is_ascii_alphabetic()) && !w.eq_ignore_ascii_case("claude")
-            })?;
-            window(
-                &format!("seven_day_{}", family.to_ascii_lowercase()),
-                used,
-                resets,
-            )
+            let family = family(model["display_name"].as_str().or(model["id"].as_str())?)?;
+            window(&format!("seven_day_{family}"), used, resets, list)
         }
         _ => None,
     }
 }
 
 /// A named window: the 5-hour session, the week, or a week that meters one model family
-/// (`seven_day_opus`); other entries (overage, extra usage) aren't windows work waits on.
-fn window(id: &str, used: f64, resets: &Value) -> Option<Limit> {
+/// (`seven_day_opus`), with the ids of `list` it meters; other entries (overage, extra usage)
+/// aren't windows work waits on. With no list, a family's week is left out.
+fn window(
+    id: &str,
+    used: f64,
+    resets: Option<u64>,
+    list: Option<&[(ModelInfo, String)]>,
+) -> Option<Limit> {
     let family = id.strip_prefix("seven_day_").filter(|f| {
         !f.is_empty()
             && f.chars().all(|c| c.is_ascii_lowercase())
@@ -156,14 +226,19 @@ fn window(id: &str, used: f64, resets: &Value) -> Option<Limit> {
     } else {
         7 * 24 * 60
     };
-    let resets = resets.as_str().and_then(iso_ms);
-    Some(Limit::new(
-        name,
-        used,
-        resets,
-        Some(minutes),
-        family.is_some(),
-    ))
+    let models = match family {
+        None => None,
+        Some(f) => Some(
+            (list?.iter())
+                .filter(|(_, resolved)| self::family(resolved).as_deref() == Some(f))
+                .map(|(m, _)| m.id.clone())
+                .collect(),
+        ),
+    };
+    Some(Limit {
+        models,
+        ..Limit::new(name, used, resets, Some(minutes), family.is_some())
+    })
 }
 
 /// A model and the one its alias resolves to.
@@ -209,4 +284,28 @@ fn settings_effort(settings: &Value, resolved: &str, efforts: &[String]) -> Opti
         .or(Some("high").filter(taken))
         .or(efforts.last().map(String::as_str))
         .map(String::from)
+}
+
+/// A limit hit, from its rate_limit_event: its reset time is in seconds [D74, D220]. Rejected while
+/// extra usage still pays, the turn carries on.
+pub fn rate_limit(info: &Value) -> Vec<Event> {
+    let reported = reported(info);
+    let mut events = match reported.is_empty() {
+        true => vec![],
+        false => vec![Event::Limits(reported)],
+    };
+    let overage = matches!(s(info, &["overageStatus"]), "allowed" | "allowed_warning");
+    if info["status"] != "rejected" || overage {
+        return events;
+    }
+    let words = match s(info, &["rateLimitType"]) {
+        "five_hour" => "5-hour limit reached",
+        t if t.starts_with("seven_day") => "Weekly limit reached",
+        _ => "Usage limit reached",
+    };
+    events.push(Event::Limited(
+        words.into(),
+        info["resetsAt"].as_u64().map(|t| t * 1000),
+    ));
+    events
 }

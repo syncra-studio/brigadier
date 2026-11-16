@@ -28,6 +28,21 @@ pub(super) fn waiting(data: &Path, wid: &str, id: Option<&str>) -> Option<(Strin
 pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
     waiting(data, wid, Some(id)).is_some()
         || crate::peers::question(data, wid).is_some_and(|mid| mid == id)
+        || (core::fold(&core::session_dir(data, wid), true).ok())
+            .and_then(|f| f.fold.hold)
+            .is_some_and(|h| h["id"] == id)
+}
+
+/// The daemon's pass for a session whose turn waits on Brigadier's side: a worker's ask written
+/// for its parent, or a held plan's review started [§6].
+pub(super) fn pass(data: &Path, id: &str, row: &Value) {
+    if row["state"] == "asking" {
+        let _ = asked(data, id);
+    }
+    if let Some(request) = row["reason"]["review"].as_str() {
+        super::review::plan_held(data, id, request);
+    }
+    super::review::plan_gone(data, id);
 }
 
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.
@@ -58,6 +73,19 @@ pub(crate) fn question(data: &Path, wid: &str, mid: &str, text: &str) -> io::Res
     write(data, &l, wid, mid, said(&l.title, wid, &r), &turn)
 }
 
+/// Tells worker `wid`'s parent once that its row is out and the user decides (`why`: "Quick's
+/// models are at their limit, resets 15:10"); the parent keeps working [D2028, D342].
+pub(crate) fn told_held(data: &Path, wid: &str, id: &str, why: &str) -> io::Result<()> {
+    let Some(l) = link(data, wid) else {
+        return Ok(());
+    };
+    let text = format!(
+        "Worker {} ({wid}) is held: {why}. Only the user settles it, on its card; go on with your work, its result comes to you when it runs.",
+        l.title
+    );
+    write(data, &l, wid, id, text, "")
+}
+
 /// One ask's record in the parent's results, once.
 fn write(
     data: &Path,
@@ -79,6 +107,7 @@ fn write(
         text,
         at: log::now_ms(),
         state: "written".into(),
+        ended: false,
         hop: crate::peers::hop_of(data, wid, turn),
         merge: String::new(),
     };
@@ -115,6 +144,18 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
                 "\nAnswer it from its brief, the user's words and the code: `brigadier send {wid} \"<your answer>\"`. Only if just the user can answer, ask them with your tool for asking the user (no reply of yours here is shown), then send their answer the same way."
             )
         }
+        None if r["action"] == "plan" => {
+            let mut t = format!(
+                "Worker {title} ({wid}) asks to build this plan:\n{}\n",
+                field("body")
+            );
+            if !field("reviewed").is_empty() {
+                t += &format!("{}.\n", field("reviewed"));
+            }
+            t + &format!(
+                "\nJudge it against its brief and the user's words: `brigadier send {wid} --allow` builds it; `brigadier send {wid} \"<what to change>\"` keeps it planning, and its agent reads your words."
+            )
+        }
         None => {
             let mut t = format!(
                 "Worker {title} ({wid}) asks for permission ({}):\n  {}\n",
@@ -149,7 +190,13 @@ fn subject(r: &Value) -> String {
 /// What session `id` waits on its user for, as a `wait` on it says: only the user answers it [D126].
 pub fn for_user(data: &Path, id: &str) -> Option<String> {
     let f = core::fold(&core::session_dir(data, id), true).ok()?.fold;
-    let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"] != "parent")?;
+    if let Some(h) = &f.hold {
+        return Some(format!(
+            "{id} is held: {}. Only the user can choose, on its card. End your turn: its result comes to you when it runs.",
+            h["why"].as_str().unwrap_or("")
+        ));
+    }
+    let (_, r) = (f.turns.first()?.asks.iter()).find(|(_, r)| r["to"].is_null())?;
     let what = match r["items"].is_array() {
         true => "to answer its question".to_string(),
         false => format!(
@@ -193,10 +240,16 @@ pub fn answer(
             None => refuse(&for_user(data, wid).unwrap_or(format!("{wid} isn't waiting on you."))),
         };
     };
-    let question = r["items"].is_array();
-    let reply = match (question, allow, deny) {
+    let (question, plan) = (r["items"].is_array(), r["action"] == "plan");
+    let reply = match (question || plan, allow, deny) {
         (true, false, None) if !text.trim().is_empty() => {
             control::reply(data, wid, text, None, Some("parent"))
+        }
+        (true, true, None) if plan => control::answer_as(data, wid, &id, "allow", None, "parent"),
+        (true, ..) if plan => {
+            return refuse(&format!(
+                "{wid} asks to build its plan: `brigadier send {wid} --allow`, or reply with what to change, `brigadier send {wid} \"<what to change>\"`."
+            ));
         }
         (true, ..) => {
             return refuse(&format!(

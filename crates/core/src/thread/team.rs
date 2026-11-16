@@ -15,12 +15,13 @@ impl Thread {
     }
 
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
-    pub(super) fn kept_row(&mut self, row: Value) {
+    pub(super) fn kept_row(&mut self, row: Value) -> usize {
         self.break_group();
         let at = self.add(row);
         if let Some(o) = self.open.as_mut() {
             o.kept.push(at as u64 + 1);
         }
+        at
     }
 
     /// The agent's to-do list: one row a turn, where it was first written, each update in its
@@ -66,6 +67,8 @@ impl Thread {
             }
             Some("ended") => {
                 self.workers_ended(ids.as_array().map_or(&[], Vec::as_slice), ts);
+                // An ended worker's result wakes no one, so a block it alone held folds now [D314, D330].
+                self.settle_held(false);
                 self.team_row(json!({"kind": "team_step", "type": "stopped", "byUser": item["by"] == "user", "workers": ids}));
             }
             // The user's Stop ended the block: the workers that run on hold it no longer.

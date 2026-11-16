@@ -4,6 +4,13 @@ use super::{Fold, Picked, Turn};
 use serde_json::Value;
 
 impl Fold {
+    /// What the running child takes, as its agent confirmed it: its level, or its `real` model.
+    pub(super) fn took(&mut self, k: &str, v: &Value) {
+        if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
+            g[k] = v.clone();
+        }
+    }
+
     /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
     /// turn, which drops a pick; another agent is picked, for the next message [D90].
     pub(super) fn setup(&mut self, item: &Value) {
@@ -42,18 +49,39 @@ impl Fold {
             self.acking.insert(cid.clone());
         }
         if item["setup"].is_object() {
+            // A reused child said its real model once, at its start: kept while it runs that model [D383].
+            let real = (self.given.as_ref())
+                .filter(|g| item["starts_child"] != true && g["model"] == item["setup"]["model"])
+                .map(|g| g["real"].clone())
+                .filter(|r| !r.is_null());
             self.given = Some(item["setup"].clone());
+            real.inspect(|r| self.took("real", r));
+            self.plans.on = item["review"] == true;
         }
         if self.control(item, &cid) {
             return;
         }
+        if item["origin"] != "system" {
+            self.runs.ran.clear();
+        }
+        // A message ends what a held turn's subagent asked, as any new turn ends what waits.
+        if self.turns.first().is_some_and(|t| t.held) {
+            self.close("withdrawn", Value::Null, ts);
+        }
         (self.limit, self.resets) = (None, None);
         self.sign_in = None;
         self.refused = None;
+        self.hold = None;
         // A switch takes effect with the input that continues it, in the same frame [D51].
         let switch = &item["switch"];
         if let Some(to) = switch["to"]["backend"].as_str() {
             self.generation += 1;
+            // The turn it carries on, by that turn's stable id where it's the one just ended.
+            if let Some(of) = item["retry_of"].as_str() {
+                let last = self.last.as_ref().filter(|l| l["cid"] == of);
+                let of = last.and_then(|l| l["id"].as_str()).unwrap_or(of);
+                self.carried.insert(of.into(), cid.clone());
+            }
             let account = switch["to"]["account"].as_str().unwrap_or("");
             match account {
                 "" => self.accounts.remove(to),

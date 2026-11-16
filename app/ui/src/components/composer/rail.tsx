@@ -116,9 +116,12 @@ export function NoticeRow({
   action,
   pager,
   onDismiss,
+  subject,
   children,
 }: {
   level: keyof typeof NOTICE_ICONS;
+  /** What the words are about, before them: a session's chip. */
+  subject?: ReactNode;
   action?: ReactNode;
   /** ‹ 2 of 3 ›, between the action and ✕. */
   pager?: ReactNode;
@@ -148,7 +151,14 @@ export function NoticeRow({
     <li data-level={level} className="flex items-start gap-2.5 py-2 ps-3.5 pe-2.5 text-label text-foreground">
       {NOTICE_ICONS[level]}
       <div ref={fold} data-open={open || undefined} className={cx("group/notice min-w-0 flex-1 notice-fold", level === "error" && "text-xs")}>
-        {level === "error" ? <ErrorLine error={children} className={clamp} /> : <p className={cx(clamp, "whitespace-pre-wrap")}>{children}</p>}
+        {level === "error" ? (
+          <ErrorLine error={children} className={clamp} />
+        ) : (
+          <p className={cx(clamp, "whitespace-pre-wrap")}>
+            {subject && <>{subject} </>}
+            {children}
+          </p>
+        )}
       </div>
       {(long || open) && (
         <TooltipIconButton

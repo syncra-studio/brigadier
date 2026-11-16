@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 24;
+pub const VERSION: u32 = 28;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -27,6 +27,9 @@ pub struct Norm {
     /// Background subagents waiting on their own work, as their agent last listed them.
     #[serde(default)]
     awaiting: Vec<String>,
+    /// The last tool call's folder as its CLI said it beside its ask: (call id, folder) [D391].
+    #[serde(default)]
+    cwd: Option<(String, String)>,
 }
 
 impl Norm {
@@ -63,7 +66,7 @@ impl Norm {
                 emit(
                     self,
                     json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "parts": v["parts"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
-                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "brigade": v["brigade"], "starts_child": v["starts_child"]}),
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "brigade": v["brigade"], "review": v["review"], "starts_child": v["starts_child"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),
@@ -221,6 +224,7 @@ impl Norm {
                 // The old app's words for it: nothing to wait for, so no time [D411].
                 Event::OutOfCredits => json!({"kind": "limited", "credits": true,
                     "message": "Out of credits. Continue after credits are available."}),
+                Event::Limits(l) => json!({"kind": "limits", "limits": l}),
                 Event::SignIn(m) => json!({"kind": "sign_in", "message": m}),
                 Event::Unresumable(m) => json!({"kind": "unresumable", "message": m}),
                 // A question row shows its first item; the request goes with it whole [D177, D209].
@@ -234,7 +238,18 @@ impl Norm {
                         .collect();
                     json!({"kind": "question", "id": q["id"], "text": first["text"], "options": options, "request": q})
                 }
-                Event::Approval(a) => json!({"kind": "approval", "id": a["id"], "request": a}),
+                // shortcut: one folder kept, so asks of parallel calls carry none and ask; keep one per call if that shows.
+                Event::Cwd(tool, cwd) => {
+                    self.cwd = Some((tool, cwd));
+                    continue;
+                }
+                Event::Approval(mut a) => {
+                    if let Some((_, cwd)) = self.cwd.take().filter(|(t, _)| a["tool"] == t.as_str())
+                    {
+                        a["cli"]["cwd"] = cwd.into();
+                    }
+                    json!({"kind": "approval", "id": a["id"], "request": a})
+                }
                 Event::Resolved(id) => json!({"kind": "resolved", "id": id}),
                 Event::External(path) => json!({"kind": "external", "path": path}),
                 Event::Decided(id, allowed) => {
@@ -260,6 +275,7 @@ impl Norm {
                     json!({"kind": "retrying", "attempt": attempt, "max": max, "at": at})
                 }
                 Event::Rerouted(from, to) => json!({"kind": "rerouted", "from": from, "to": to}),
+                Event::Model(id) => json!({"kind": "model", "backend": self.backend, "id": id}),
                 Event::Failed(why, m) => json!({"kind": "failed", "why": why, "message": m}),
                 Event::Checking(on) => json!({"kind": "checking", "on": on}),
                 Event::Denied => json!({"kind": "denied"}),

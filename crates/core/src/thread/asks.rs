@@ -10,12 +10,19 @@ impl Thread {
     /// the parent agent answers is a quiet step in the fold instead, with no card and no wait for
     /// the user [D119, D122].
     pub(super) fn wait_on(&mut self, at: usize, ts: u64, item: &Value) {
-        self.approval_tool(at, None);
-        self.agent_waits(at, true);
+        let to = self.fold.to(item);
         self.pending.push(at);
         self.pending_changed = true;
-        if self.fold.for_parent(item) {
-            self.items[at]["to"] = "parent".into();
+        // A repeat Brigadier answers itself never shows: its step runs on as if never asked [D391].
+        if to == Some("brigadier") {
+            self.items[at]["to"] = "brigadier".into();
+            self.items[at]["hidden"] = true.into();
+            return self.resume_group();
+        }
+        self.approval_tool(at, None);
+        self.agent_waits(at, true);
+        if let Some(to) = to {
+            self.items[at]["to"] = to.into();
             return;
         }
         self.user_waits(at, ts);
@@ -29,13 +36,79 @@ impl Thread {
         }
         self.changed_items.insert(at);
         let question = self.items[at]["kind"] == "question";
-        if let Some(o) = self.open.as_mut() {
+        let turn = self.items[at]["turnId"].as_str().unwrap_or("").to_string();
+        // Or the turn held for the subagent that asks: it waits on the user as a running one [D128].
+        let held = self.held.get_mut(&turn).map(|(o, _)| o);
+        if let Some(o) = self.open.as_mut().or(held) {
             if question {
                 o.kept.push(at as u64 + 1);
             }
             if o.wait.is_none() {
                 o.wait = Some(ts);
                 self.turns[o.at]["waitingSince"] = ts.into();
+                self.changed_turns.insert(o.at);
+            }
+        }
+    }
+
+    /// A plan's review moved on (fold `plan.rs`): its card names its reviewer, or the plan goes to
+    /// its answerer with the review's line [§6].
+    pub(super) fn plan_review(&mut self, item: &Value, ts: u64) {
+        let id = item["id"].as_str().unwrap_or("");
+        let r = self
+            .fold
+            .turns
+            .first()
+            .and_then(|t| t.asks.get(id))
+            .cloned();
+        let at = (self.pending.iter()).find(|&&at| self.items[at]["request"]["id"] == id);
+        let (Some(r), Some(&at)) = (r, at) else {
+            return;
+        };
+        for k in ["review", "reviewed"] {
+            self.items[at]["request"][k] = r[k].clone();
+        }
+        self.pending_changed = true;
+        self.changed_items.insert(at);
+        match r["to"].as_str() {
+            Some("review") => {}
+            Some(to) => self.items[at]["to"] = to.into(),
+            None => self.user_waits(at, ts),
+        }
+    }
+
+    /// A worker's routing hold [D2028, D342]: Rust's question card for the user, as a sub-session's
+    /// passed ask is, closed by the user's answer.
+    pub(super) fn hold(&mut self, item: &Value, ts: u64) {
+        let r = &item["request"];
+        if item["phase"] == "asked" {
+            let q = &r["items"][0];
+            let at = self.add(json!({"kind": "question", "question": q["text"],
+                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true}));
+            self.pending.push(at);
+            self.pending_changed = true;
+            return self.user_waits(at, ts);
+        }
+        if let Some(at) = self.unwait(item["id"].as_str().unwrap_or("")) {
+            self.items[at]["answer"] = item["choice"].clone();
+            self.changed_items.insert(at);
+            self.end_wait(ts);
+        }
+    }
+
+    /// The turn's wait on the user ends once nothing waits on them any more [D128]; so does a held
+    /// turn's, whose subagent asked.
+    pub(super) fn end_wait(&mut self, ts: u64) {
+        if (self.pending.iter()).any(|&at| self.items[at]["to"].is_null()) {
+            return;
+        }
+        let held = self.held.values_mut().map(|(o, _)| o);
+        for o in self.open.iter_mut().chain(held) {
+            if let Some(since) = o.wait.take() {
+                o.waited += ts.saturating_sub(since);
+                let turn = &mut self.turns[o.at];
+                turn["waitingSince"] = Value::Null;
+                turn["waitedMs"] = o.waited.into();
                 self.changed_turns.insert(o.at);
             }
         }
@@ -137,7 +210,8 @@ impl Thread {
         };
         let row = &mut self.items[at];
         if row["kind"] == "approval" {
-            row["decision"] = if c["decision"] == "deny" {
+            // A reply to a plan is its deny with words: the agent plans on [D177].
+            row["decision"] = if c["decision"] == "deny" || c["reply"].is_string() {
                 "denied"
             } else {
                 "approved"
@@ -157,12 +231,45 @@ impl Thread {
                 o.asked = None;
             }
         }
-        if c["by"] == "parent" {
-            row["by"] = "parent".into();
+        // A plan sent back keeps its card while its agent revises it [D401].
+        if row["kind"] == "approval"
+            && row["request"]["action"] == "plan"
+            && row["decision"] == "denied"
+        {
+            self.revising = Some(at);
+            self.pending_changed = true;
+        }
+        let row = &mut self.items[at];
+        // Who answered, when not the user: a plan the review sent back says so [D394].
+        if matches!(c["by"].as_str(), Some("parent" | "review")) {
+            row["by"] = c["by"].clone();
         }
         self.changed_items.insert(at);
         if row["decision"] == "approved" {
             self.approval_tool(at, Some(c["at"].as_u64().unwrap_or_default()));
+        }
+        // Its words show: the reviewer's as its peer row [D3014], the user's as their message, a
+        // reply or a plan's deny with words [D400].
+        let plan = self.items[at]["request"]["action"] == "plan";
+        let reply = (c["reply"].as_str())
+            .or(c["reason"].as_str().filter(|_| plan))
+            .filter(|_| self.items[at]["kind"] == "approval");
+        if let Some(text) = reply.filter(|_| c["by"] != "parent") {
+            let (ts, cid) = (c["at"].as_u64().unwrap_or_default(), Value::from(cid));
+            let row = match c["by"] == "review" {
+                true => Self::peer_item(
+                    self.fold.plans.now["by"].as_str().unwrap_or(""),
+                    text,
+                    ts,
+                    &cid,
+                ),
+                false => {
+                    json!({"kind": "message", "role": "user", "text": text, "streaming": false,
+                    "origin": "user", "sentAt": ts, "cid": cid})
+                }
+            };
+            self.break_group();
+            self.add(row);
         }
     }
 
@@ -287,7 +394,9 @@ impl Thread {
     pub(super) fn requests(&self) -> Value {
         let of = |kind: &str| -> Vec<Value> {
             (self.pending.iter())
-                .filter(|&&at| self.items[at]["kind"] == kind && self.items[at]["to"] != "parent")
+                // A plan its review holds shows, saying so, though it's nobody's to answer [§6].
+                .filter(|&&at| self.items[at]["kind"] == kind)
+                .filter(|&&at| matches!(self.items[at]["to"].as_str(), None | Some("review")))
                 .map(|&at| {
                     let mut r = self.items[at]["request"].clone();
                     // The card names the subagent that asks [w43 #16].
@@ -298,6 +407,15 @@ impl Thread {
                 })
                 .collect()
         };
-        json!({"approvals": of("approval"), "questions": of("question")})
+        let mut approvals = of("approval");
+        // The plan its agent revises, nobody's to answer, till its next plan takes the card [D401].
+        let revising = (self.revising.iter())
+            .filter(|&&at| matches!(self.items[at]["to"].as_str(), None | Some("review")));
+        approvals.extend(revising.map(|&at| {
+            let mut r = self.items[at]["request"].clone();
+            r["revising"] = true.into();
+            r
+        }));
+        json!({"approvals": approvals, "questions": of("question")})
     }
 }

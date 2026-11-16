@@ -1,5 +1,6 @@
 //! The scripted test agent from crates/fake. Costs no usage.
 
+use super::Seed;
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Landing, Launch, ModelInfo,
     Retune, Rewound, Timing, Tool, Who, base_env, change, s, shell_step,
@@ -13,6 +14,20 @@ pub struct Fake;
 impl Adapter for Fake {
     fn name(&self) -> &'static str {
         "fake"
+    }
+
+    // Two models per job where it has them, so a drill shows the next entry and the ladder.
+    fn seeds(&self) -> &'static [Seed] {
+        &[
+            ("Write code", "fake-large", Some("high")),
+            ("Write code", "fake", Some("high")),
+            ("Look into the codebase", "fake", Some("low")),
+            ("Research the web", "fake", None),
+            ("Plan and orchestrate", "fake-large", Some("high")),
+            ("Quick actions", "fake", Some("low")),
+            ("Review", "fake-large", Some("high")),
+            ("Review", "fake", Some("high")),
+        ]
     }
 
     fn exe(&self) -> Option<PathBuf> {
@@ -66,8 +81,12 @@ impl Adapter for Fake {
                     default_effort: Some(default.into()),
                     ..ModelInfo::plain("fake", true)
                 };
+                // Its default and its top model [D2075].
                 vec![
-                    level(&["low", "medium", "high"], "medium"),
+                    ModelInfo {
+                        default: true,
+                        ..level(&["low", "medium", "high"], "medium")
+                    },
                     ModelInfo {
                         id: "fake-large".into(),
                         name: "fake-large".into(),
@@ -75,12 +94,14 @@ impl Adapter for Fake {
                         retiring: Some(json!({"at": null, "to": "fake"})),
                         // Takes no images, for the held Send's demo [D2022 #14].
                         images: Some(false),
+                        top: true,
                         ..level(&["low", "medium", "high", "xhigh"], "high")
                     },
                 ]
             } else {
                 vec![]
             },
+            usage: signed_in.then(|| limits(spec)).flatten(),
             ..Default::default()
         })
     }
@@ -104,6 +125,7 @@ impl Adapter for Fake {
         for (k, v) in &spec.opts {
             env.push((k.clone(), v.clone()));
         }
+        env.push(("FAKE_USAGE".into(), usage_file(spec).display().to_string()));
         Launch {
             argv,
             env,
@@ -233,6 +255,10 @@ impl Adapter for Fake {
             "check" => vec![Event::Checking(v["on"] == true)],
             "context" => vec![Event::Context(v["used"].as_u64().unwrap_or(0), None)],
             "deny" => vec![Event::Denied],
+            "limits" => serde_json::from_value(v["windows"].clone()).map_or_else(
+                |_| vec![Event::Unknown(line.into())],
+                |l| vec![Event::Limits(l)],
+            ),
             "fail" => vec![Event::Failed(
                 match s(&v, &["why"]) {
                     "capacity" => "capacity",
@@ -240,6 +266,8 @@ impl Adapter for Fake {
                     "blocked" => "blocked",
                     "ended" => "ended",
                     "review" => "review",
+                    "timeout" => "timeout",
+                    "connection" => "connection",
                     _ => "",
                 },
                 s(&v, &["message"]).into(),
@@ -292,6 +320,19 @@ impl Adapter for Fake {
             Err(e) => Landing::Unknown(e.to_string()),
         }
     }
+}
+
+/// The usage a drill gives an account: `usage.json` in its home beside its `login` mark, or in
+/// the accounts folder for the computer's login; a list of `Limit`s. None without the file.
+fn usage_file(spec: &Spec) -> PathBuf {
+    match &spec.account {
+        Some((_, home)) => home.join("usage.json"),
+        None => crate::data_of(spec).join("accounts/usage.json"),
+    }
+}
+
+fn limits(spec: &Spec) -> Option<Vec<super::Limit>> {
+    serde_json::from_slice(&std::fs::read(usage_file(spec)).ok()?).ok()
 }
 
 fn conv(spec: &Spec, resume: &str) -> PathBuf {

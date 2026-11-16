@@ -3,7 +3,7 @@
 //! requests (a stop, a new level or model) get a reply by theirs. Shapes per the Agent SDK's
 //! public docs and types (code.claude.com/docs/en/agent-sdk/user-input).
 
-use super::super::{Delivery, Event, Retune, cli_home, home_path, s, uuid};
+use super::super::{Delivery, Event, Retune, s, uuid};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -58,9 +58,10 @@ fn request(body: Value) -> (String, String) {
 }
 
 /// A level or model change goes to the idle child as its own requests, confirmed before the
-/// message [D222]; an effort has no such request, so the child starts again with it.
+/// message [D222]; an effort, or its subagents' allowlist, has no such request, so the child starts
+/// again with it [D376].
 pub fn retune(last: &Spec, next: &Spec) -> Retune {
-    if last.effort != next.effort {
+    if last.effort != next.effort || last.ruled.models != next.ruled.models {
         return Retune::Restart;
     }
     let mut changes = vec![];
@@ -79,9 +80,8 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 
 /// The commit style the message writer follows, so the agent's own commits match [D1029], and
 /// the `brigadier` line [D2025]. Its own messages between sessions off, so every one goes through
-/// Brigadier and shows in the thread [D2035]: none come in, and it can't list the others.
-/// Proposed: `SendMessage` stays, as its subagents need it (D3016), so it could still reach a
-/// session outside Brigadier by name [O3001].
+/// Brigadier and shows in the thread [D2035]: none come in, and it can't list or message the
+/// others. A subagent's final result comes back without `SendMessage` [D311].
 /// A worker's launch: no MCP servers, skills or user settings, only the project's, and its own
 /// memory off (code.claude.com/docs/en/env-vars) [D89].
 pub fn naked(argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
@@ -120,16 +120,16 @@ pub fn standing(spec: &Spec) -> [String; 6] {
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
         "--settings".into(),
-        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse"}"#.into(),
+        r#"{"attribution":{"commit":"","pr":""},"crossSessionInbound":"refuse","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"cat"}]}]}}"#.into(),
         "--disallowedTools".into(),
-        "ListAgents".into(),
+        "ListAgents,SendMessage".into(),
     ]
 }
 
 /// What a session grant allowed, as launch-time rules for a child started anew [D193].
 pub fn rules(grants: &[Value]) -> Vec<String> {
     (grants.iter())
-        .flat_map(|g| widen(&g["cli"]["rule"]))
+        .flat_map(|g| (g["cli"]["rules"].as_array().into_iter().flatten()).flat_map(widen))
         .filter_map(|r| {
             let (tool, content) = (s(&r, &["toolName"]), s(&r, &["ruleContent"]));
             (!tool.is_empty() && !content.is_empty()).then(|| format!("{tool}({content})"))
@@ -203,8 +203,9 @@ fn question(id: &str, r: &Value) -> Event {
     Event::Question(json!({"id": id, "title": null, "items": items, "cli": {"questions": asked}}))
 }
 
-/// A permission prompt as D177's PendingApproval. Its grant is the rule Claude suggests, kept for
-/// this session only; the rule rides along for the answer.
+/// A permission prompt as D177's PendingApproval. Its grant is the rule Claude suggests, else the
+/// narrowest that allows this request again, kept for this session only [D167]; the rule rides
+/// along for the answer.
 fn approval(id: &str, r: &Value) -> Event {
     let (tool, input) = (s(r, &["tool_name"]), &r["input"]);
     let field = |k: &str| s(input, &[k]).to_string();
@@ -212,33 +213,34 @@ fn approval(id: &str, r: &Value) -> Event {
         "" if tool == "Bash" => field("description"),
         why => why.to_string(),
     };
-    let suggested = (r["permission_suggestions"].as_array().into_iter().flatten())
+    let suggested: Vec<Value> = (r["permission_suggestions"].as_array().into_iter().flatten())
         .filter(|u| u["type"] == "addRules")
         .flat_map(|u| u["rules"].as_array().cloned().unwrap_or_default())
-        .find(|rule| rule["toolName"] == tool);
-    let content = suggested
-        .as_ref()
-        .map(|rule| s(rule, &["ruleContent"]).to_string());
+        .filter(|rule| rule["toolName"] == tool && !s(rule, &["ruleContent"]).is_empty())
+        .collect();
+    let content = (suggested.first()).map(|rule| s(rule, &["ruleContent"]).to_string());
     // The ask names its step, for the thread to find it: allowed, the step reads after its ask.
     let mut a = json!({"id": id, "action": "other", "reason": (!reason.is_empty()).then_some(reason), "tool": r["tool_use_id"]});
-    let mut grant = |scope: &str, pattern: &str, rule: Value| {
+    let mut grant = |scope: &str, pattern: &str, rules: Vec<Value>| {
         a["grant"] = json!({"scope": scope, "pattern": pattern});
-        a["cli"] = json!({"rule": rule});
+        a["cli"] = json!({"rules": rules});
     };
     match tool {
         "Bash" => {
-            if let Some(c) = content.filter(|c| !c.is_empty()) {
-                let prefix = c.trim_end_matches(" *").trim_end_matches(":*");
-                let prefix = if crate::agent::call(&c) {
-                    "brigadier"
-                } else {
-                    prefix
-                };
-                grant(
-                    "command",
-                    prefix,
-                    json!({"toolName": tool, "ruleContent": c}),
-                );
+            let (command, agent) = (field("command"), crate::agent::call(&field("command")));
+            // Claude matches no rule to a nested command or a variable: Brigadier answers repeats [D389].
+            let rules = match agent {
+                true => vec![json!({"toolName": tool, "ruleContent": command})],
+                false if command.contains(['$', '`']) => vec![],
+                false => suggested,
+            };
+            let first = (rules.first()).map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
+            let first = first.map(|p| p.trim_end_matches(":*").to_string());
+            let pattern = (agent.then(|| "brigadier".into()))
+                .or(first)
+                .unwrap_or(command.clone());
+            if !command.is_empty() {
+                grant("command", &pattern, rules);
             }
             a["action"] = "command".into();
             a["command"] = field("command").into();
@@ -252,23 +254,39 @@ fn approval(id: &str, r: &Value) -> Event {
             let dir = Path::new(&path).parent().map(|d| d.display().to_string());
             if let Some(dir) = dir.filter(|d| d.starts_with('/')) {
                 let rule = json!({"toolName": "Edit", "ruleContent": format!("/{dir}/**")});
-                grant("edits", &dir, rule);
+                grant("edits", &dir, vec![rule]);
             }
             a["action"] = "edit".into();
             a["paths"] = json!([path]);
         }
         "WebFetch" => {
-            if let Some(host) = content.as_deref().and_then(|c| c.strip_prefix("domain:")) {
+            let url = field("url");
+            let host = content.as_deref().and_then(|c| c.strip_prefix("domain:"));
+            if let Some(host) = host.or(Some(self::host(&url))).filter(|h| !h.is_empty()) {
                 grant(
                     "network",
                     host,
-                    json!({"toolName": tool, "ruleContent": format!("domain:{host}")}),
+                    vec![json!({"toolName": tool, "ruleContent": format!("domain:{host}")})],
                 );
             }
             a["action"] = "network".into();
-            a["host"] = host(&field("url")).into();
+            a["host"] = self::host(&url).into();
         }
-        _ => a["input"] = format!("{tool} {input}").into(),
+        // Its plan mode's end: build the plan, or reply to change it; nothing to grant [D177, §6].
+        "ExitPlanMode" => {
+            a["action"] = "plan".into();
+            a["body"] = field("plan").into();
+        }
+        _ => {
+            let pattern = content.as_deref().filter(|c| !c.is_empty());
+            let pattern = pattern.map_or(tool.to_string(), |c| format!("{tool}({c})"));
+            grant(
+                "tool",
+                &pattern,
+                vec![(suggested.first().cloned()).unwrap_or(json!({"toolName": tool}))],
+            );
+            a["input"] = format!("{tool} {input}").into();
+        }
     }
     Event::Approval(a)
 }
@@ -328,145 +346,28 @@ fn answers(r: &Value, msg: &Value) -> Value {
 
 /// An approval's decision. A session grant is held in the agent's memory only, never saved.
 fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
+    // A reply to a plan keeps Claude planning: its deny with what to change [D177]. A reviewer's
+    // findings come framed already.
+    if let Some(reply) = msg["reply"].as_str().filter(|_| r["action"] == "plan") {
+        let message = match msg["by"] == "review" {
+            true => reply.to_string(),
+            false => super::super::denied(&json!({"by": msg["by"], "reason": reply})),
+        };
+        return Ok(json!({"behavior": "deny", "message": message}));
+    }
     Ok(match s(msg, &["decision"]) {
         "allow" => json!({"behavior": "allow"}),
-        "allowSession" if r["cli"]["rule"].is_object() => json!({"behavior": "allow",
-            "updatedPermissions": [{"type": "addRules", "rules": widen(&r["cli"]["rule"]), "behavior": "allow", "destination": "session"}]}),
+        "allowSession" if r["grant"].is_object() => {
+            let rules: Vec<Value> = (r["cli"]["rules"].as_array().into_iter().flatten())
+                .flat_map(widen)
+                .collect();
+            let add = json!({"type": "addRules", "rules": rules, "behavior": "allow", "destination": "session"});
+            // No rule: an exact command Brigadier remembers, and answers its repeats itself [D389].
+            json!({"behavior": "allow", "updatedPermissions": if rules.is_empty() { vec![] } else { vec![add] }})
+        }
         "deny" => json!({"behavior": "deny", "message": super::super::denied(msg)}),
         other => return Err(format!("no such decision here: {other:?}")),
     })
-}
-
-/// Its own commands, from its init line: skills and MCP prompts by name, the rest as commands, less
-/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. The line
-/// names no files: `locate` finds them, knowing the account [D2098].
-pub fn commands(v: &Value) -> Option<Event> {
-    let names = |key: &str| -> Vec<&str> {
-        (v[key].as_array().into_iter().flatten())
-            .filter_map(Value::as_str)
-            .collect()
-    };
-    let (skills, terminal) = (names("skills"), names("terminal_slash_commands"));
-    let listed = names("slash_commands");
-    let unlisted = skills
-        .iter()
-        .filter(|name| !listed.contains(name))
-        .copied()
-        .collect::<Vec<_>>();
-    let list = (listed.iter().chain(&unlisted))
-        .copied()
-        .filter(|name| !terminal.contains(name));
-    let list = list.map(|name| {
-        let kind = if skills.contains(&name) {
-            "skill"
-        } else if name.starts_with("mcp__") {
-            "mcp"
-        } else {
-            "command"
-        };
-        json!({"name": name, "description": "", "kind": kind, "path": null, "instant": false})
-    });
-    v["slash_commands"]
-        .is_array()
-        .then(|| Event::Commands(list.collect()))
-}
-
-/// Where it keeps skills and commands, in the old app's order: the project's `.claude`, then the
-/// account's home (its CLAUDE_CONFIG_DIR), else ~/.claude (registry skills.rs, plugins/resolve.rs) [D2098].
-fn roots(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<PathBuf> {
-    let home = run.map_or_else(
-        || home_path(".claude"),
-        |spec| cli_home(spec, ".claude", ""),
-    );
-    cwd.map(|cwd| cwd.join(".claude"))
-        .into_iter()
-        .chain([home])
-        .collect()
-}
-
-/// A skill's or command's file under the first root holding it.
-fn file_of(roots: &[PathBuf], kind: &str, name: &str) -> Option<PathBuf> {
-    let rest = match kind {
-        "skill" => format!("skills/{name}/SKILL.md"),
-        "command" => format!("commands/{name}.md"),
-        _ => return None,
-    };
-    roots
-        .iter()
-        .map(|root| root.join(&rest))
-        .find(|path| path.is_file())
-}
-
-/// Each listed skill's or command's file, the project's before the account's.
-pub fn locate(run: &Spec, list: &mut [Value]) {
-    let roots = roots(Some(Path::new(&run.cwd)), Some(run));
-    for each in list {
-        if let Some(path) = file_of(&roots, s(each, &["kind"]), s(each, &["name"])) {
-            each["path"] = json!(path);
-        }
-    }
-}
-
-/// Before its first init line: the old app's builtin commands, then the commands and skills its
-/// folders hold, each by name once, as the old app scanned them [D2098].
-pub fn fixed(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
-    let builtin = [
-        ("compact", "Compact this conversation"),
-        ("context", "Show context usage"),
-        ("cost", "Show session usage"),
-        ("help", "Show Claude Code help"),
-    ];
-    let mut list: Vec<Value> = (builtin.iter())
-        .map(|(name, description)| json!({"name": name, "description": description, "kind": "command", "path": null, "instant": false}))
-        .collect();
-    let roots = roots(cwd, run);
-    for (kind, folder) in [("command", "commands"), ("skill", "skills")] {
-        let mut names: Vec<String> = (roots.iter())
-            .flat_map(|root| {
-                std::fs::read_dir(root.join(folder))
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-            })
-            .filter_map(|entry| {
-                let name = entry.file_name().to_string_lossy().to_string();
-                match kind {
-                    "skill" => entry.path().join("SKILL.md").is_file().then_some(name),
-                    _ => name.strip_suffix(".md").map(String::from),
-                }
-            })
-            .collect();
-        names.sort();
-        names.dedup();
-        for name in names {
-            if list.iter().any(|l| l["name"] == *name) {
-                continue;
-            }
-            let path = file_of(&roots, kind, &name);
-            list.push(json!({"name": name, "description": "", "kind": kind, "path": path, "instant": false}));
-        }
-    }
-    // shortcut: only user-scope plugins, as `plugin:skill`; a project-scope one's enabling isn't read.
-    let home = run.map_or_else(|| home_path(".claude"), |s| cli_home(s, ".claude", ""));
-    let installed = std::fs::read(home.join("plugins/installed_plugins.json")).unwrap_or_default();
-    let installed: Value = serde_json::from_slice(&installed).unwrap_or_default();
-    let plugins =
-        (installed["plugins"].as_object().into_iter().flatten()).flat_map(|(key, all)| {
-            let at = (all.as_array().into_iter().flatten()).find(|i| i["scope"] == "user");
-            let name = key.split('@').next().unwrap_or(key);
-            at.map(|i| {
-                (
-                    PathBuf::from(s(i, &["installPath"])).join("skills"),
-                    format!("{name}:"),
-                )
-            })
-        });
-    for more in super::super::files::skills_in(plugins.collect::<Vec<_>>()) {
-        if !list.iter().any(|l| l["name"] == more["name"]) {
-            list.push(more);
-        }
-    }
-    list
 }
 
 /// An assistant message the CLI wrote for an API error, by the error its SDK types: a limit's own
@@ -479,22 +380,4 @@ pub fn api_error(v: &Value, text: String) -> Option<Event> {
         "model_not_found" => Event::Failed("model", text),
         _ => return None,
     })
-}
-
-/// A limit hit, from its rate_limit_event: its reset time is in seconds [D74, D220]. Rejected while
-/// extra usage still pays, the turn carries on.
-pub fn rate_limit(info: &Value) -> Vec<Event> {
-    let overage = matches!(s(info, &["overageStatus"]), "allowed" | "allowed_warning");
-    if info["status"] != "rejected" || overage {
-        return vec![];
-    }
-    let words = match s(info, &["rateLimitType"]) {
-        "five_hour" => "5-hour limit reached",
-        t if t.starts_with("seven_day") => "Weekly limit reached",
-        _ => "Usage limit reached",
-    };
-    vec![Event::Limited(
-        words.into(),
-        info["resetsAt"].as_u64().map(|t| t * 1000),
-    )]
 }

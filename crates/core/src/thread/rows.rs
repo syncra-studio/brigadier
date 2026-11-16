@@ -39,6 +39,10 @@ impl Thread {
     }
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
+        // A worker held before its first turn has no turn yet, and still shows its card [D2028].
+        if kind == "note" && item["event"] == "hold" {
+            return self.hold(item, ts);
+        }
         let Some(turn) = self.turn_id() else {
             return;
         };
@@ -102,6 +106,7 @@ impl Thread {
                 self.keys.insert(key(str_of("id")), at);
                 if step == "agent" {
                     self.children.insert(str_of("id"), at);
+                    self.count_helpers(&turn);
                 }
             }
             // The backend's own record of a turn's edits, with their diffs [D95].
@@ -171,8 +176,32 @@ impl Thread {
             }
             "approval" => {
                 self.break_group();
-                let at = self
-                    .add(json!({"kind": "approval", "request": item["request"], "decision": null}));
+                let mut request = item["request"].clone();
+                // A plan after its review carries the review's line, from the fold [§6].
+                let asked = self
+                    .fold
+                    .turns
+                    .first()
+                    .and_then(|t| t.asks.get(&str_of("id")));
+                if let Some(line) = asked.map(|r| &r["reviewed"]).filter(|l| l.is_string()) {
+                    request["reviewed"] = line.clone();
+                }
+                // A revised plan takes the row of the one sent back: one plan card, updated [D401].
+                let revised = (request["action"] == "plan")
+                    .then(|| self.revising.take())
+                    .flatten();
+                let at = match revised {
+                    Some(at) => {
+                        let row = &mut self.items[at];
+                        (row["request"], row["decision"]) = (request, Value::Null);
+                        row.as_object_mut().map(|r| r.remove("by"));
+                        self.changed_items.insert(at);
+                        at
+                    }
+                    None => {
+                        self.add(json!({"kind": "approval", "request": request, "decision": null}))
+                    }
+                };
                 self.wait_on(at, ts, item);
             }
             "resolved" => {
@@ -205,8 +234,13 @@ impl Thread {
                 // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
                 self.settle_held(item["by"] != "handoff");
                 if let Some(by @ ("user" | "pause" | "rebirth" | "stall")) = item["by"].as_str() {
-                    if let Some(o) = self.open.as_mut() {
-                        o.stop.0.get_or_insert(by.into());
+                    match self.open.as_mut() {
+                        Some(o) => _ = o.stop.0.get_or_insert(by.into()),
+                        // A worker paused between turns stops only its background jobs: its line, untimed.
+                        None if by == "pause" => {
+                            self.kept_row(json!({"kind": "line", "reason": "paused", "ms": null}));
+                        }
+                        None => {}
                     }
                     self.user_stopped(ts);
                 }
@@ -352,6 +386,7 @@ impl Thread {
             }
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
+            "note" if item["event"] == "plan_review" => self.plan_review(item, ts),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {
                 let forked = self.items.iter().rposition(|r| r["kind"] == "forked");

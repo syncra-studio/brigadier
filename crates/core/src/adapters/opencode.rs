@@ -91,6 +91,13 @@ impl Adapter for OpenCode {
         "OpenCode"
     }
 
+    fn subagents(&self) -> super::Subagents {
+        super::Subagents::Defaults
+    }
+    fn runs(&self, spec: &Spec) -> Option<String> {
+        Some(control::model(spec))
+    }
+
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
         ("opencode", &[".opencode/bin"])
     }
@@ -431,13 +438,9 @@ impl Adapter for OpenCode {
             // Named by the SHA-1 of the worktree's real path, under each project's folder.
             let name = sha1(worktree.to_string_lossy().as_bytes());
             let projects = std::fs::read_dir(home_path(".local/share/opencode/snapshot"));
-            files.extend(
-                projects
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|p| p.path().join(&name)),
-            );
+            let snapshots =
+                (projects.into_iter().flatten().flatten()).map(|p| p.path().join(&name));
+            files.extend(snapshots);
         }
         files
     }

@@ -6,7 +6,6 @@ import type { ComposerRow } from "../session/composer";
 import { HOME } from "../shell/tab-store";
 import type { FileRead } from "../files/types";
 import type { FileStatus } from "./status";
-import type { FileFlag, LastRun } from "../review/types";
 import type { SourceFile, SourceState } from "./types";
 
 /*
@@ -27,9 +26,6 @@ type Head = {
   remote: string | null;
 };
 type Counts = Map<string, { insertions: number; deletions: number }>;
-/** The uncommitted review's brief, Review's own (2.38) [D1188, D1199]: the last run, risky files' flags, and in your own folder the agent's files. */
-export type Brief = { run?: LastRun | null; flags: Record<string, FileFlag>; agent: string[] | null };
-
 /** The base against its own upstream, from Rust [D1187, D1193]: `behind` null where it can't count; `fetchedAtMs` null when unknown. */
 export type Freshness = { name: string; upstream: string | null; behind: number | null; fetchedAtMs: number | null };
 
@@ -48,7 +44,6 @@ type Git = {
   head: Head | null;
   files: Map<string, Entry>;
   counts: Counts;
-  brief: Brief | null;
   error: string | null;
   /** Bumped by every read that changed something: Review reads again on it. */
   version: number;
@@ -60,7 +55,7 @@ type Git = {
   restoreError: string | null;
 };
 
-let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), brief: null, error: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
+let git: Git = { key: null, target: null, head: null, files: new Map(), counts: new Map(), error: null, version: 0, readAtMs: null, truth: null, restoring: false, restoreError: null };
 let re = 0;
 let n = 0;
 let counting = false;
@@ -90,11 +85,10 @@ const subscribe = (listener: () => void) => {
 /** Rust's command line for `target`. */
 export const sourceArgs = (target: Target, ...rest: string[]) => ["source", ...("session" in target ? [target.session] : ["--project", target.project]), ...rest];
 
-/** Rust's uncommitted review as the card keeps it: each file's lines, and the brief. */
-function countsOf(review: Record<string, any>): Pick<Git, "counts" | "brief"> {
+/** Rust's uncommitted review as the card keeps it: each file's lines. */
+function countsOf(review: Record<string, any>): Pick<Git, "counts"> {
   const files: any[] = review.files;
-  const flags = Object.fromEntries(files.filter((file) => file.flag).map((file) => [file.path, file.flag]));
-  return { counts: new Map(files.map((file) => [file.path, { insertions: file.insertions, deletions: file.deletions }])), brief: { run: review.run, flags, agent: review.agent ?? null } };
+  return { counts: new Map(files.map((file) => [file.path, { insertions: file.insertions, deletions: file.deletions }])) };
 }
 
 /** Each file's lines added and removed, read after the status: a file's row shows them. */
@@ -194,7 +188,7 @@ export function useGitWatch(owner: string | null): void {
       // A Local start works in its project's folder: that folder's last read draws until its own, so its card is whole from the first frame [D85].
       const local = start?.project && start.args.includes("--local") ? kept.get(JSON.stringify({ project: start.project })) : undefined;
       const last = key ? (kept.get(key) ?? local) : undefined;
-      set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), brief: last?.brief ?? null, error: null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
+      set({ key, target, head: last?.head ?? null, files: last?.files ?? new Map(), counts: last?.counts ?? new Map(), error: null, readAtMs: last?.readAtMs ?? null, truth: last?.truth ?? null, restoring: false, restoreError: null });
     }
     // New sessions open before Rust has made their checkout.
     if (daemon && target && !starting) watch(git.target!);
@@ -246,7 +240,7 @@ function warm(ids: string[]): void {
     if (replies.some((reply) => reply.error === "disconnected")) return;
     if (!read.ok) tried.add(id);
     else if (!kept.has(key) && git.key !== key && kept.size < 8) {
-      const entry: Git = { key, target, head: read.git.head, files: new Map(read.git.files.map((each: Entry) => [each.path, each])), counts: new Map(), brief: null, ...(review.ok && countsOf(review.review)), error: null, version: 0, readAtMs: Date.now(), truth: truth.ok ? truth.truth : null, restoring: false, restoreError: null };
+      const entry: Git = { key, target, head: read.git.head, files: new Map(read.git.files.map((each: Entry) => [each.path, each])), counts: new Map(), ...(review.ok && countsOf(review.review)), error: null, version: 0, readAtMs: Date.now(), truth: truth.ok ? truth.truth : null, restoring: false, restoreError: null };
       const seen = [...kept];
       kept.clear();
       kept.set(key, entry);
@@ -290,10 +284,10 @@ function sourceOf(now: Git): SourceState | null {
 let shown: { from: Git; source: SourceState | null } | null = null;
 
 /** The on-screen checkout: its state. */
-export function useGit(): { source: SourceState | null; error: string | null; version: number; brief: Brief | null; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
+export function useGit(): { source: SourceState | null; error: string | null; version: number; target: Target | null; readAtMs: number | null; truth: Truth | null; restoring: boolean; restoreError: string | null } {
   const now = useSyncExternalStore(subscribe, () => git);
   if (shown?.from !== now) shown = { from: now, source: sourceOf(now) };
-  return { source: shown.source, error: now.error, version: now.version, brief: now.brief, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
+  return { source: shown.source, error: now.error, version: now.version, target: now.target, readAtMs: now.readAtMs, truth: now.truth, restoring: now.restoring, restoreError: now.restoreError };
 }
 
 // The last files read, by checkout and path (the last 8, as `kept`): one opened again shows at once, then is read

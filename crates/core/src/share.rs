@@ -2,13 +2,11 @@
 //! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], and who lands its work
 //! [D1082].
 
-use crate::rewind::turn_paths;
-use crate::{Spec, fork, git, ids, load, worktrees};
-use serde_json::{Value, json};
+use crate::projects::Project;
+use crate::{Spec, fork, ids, load, worktrees};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
 
 /// A folder as the same place: canonical while it exists, as recorded while it's freed.
 pub fn key(folder: &Path) -> PathBuf {
@@ -25,6 +23,36 @@ pub fn in_folder(data: &Path, folder: &Path, except: Option<&str>) -> Vec<Spec> 
         .collect();
     all.sort_by(|a, b| (a.created, &a.id).cmp(&(b.created, &b.id)));
     all
+}
+
+/// Refuses new session `spec` in its project's own folder while another unarchived session works
+/// there: one Local checkout session at a time [D306].
+pub fn one_local(data: &Path, project: Option<&Project>, spec: &Spec) -> io::Result<()> {
+    let Some(folder) = project.map(|p| Path::new(&p.folder)) else {
+        return Ok(());
+    };
+    if key(folder) != key(Path::new(&spec.cwd)) {
+        return Ok(());
+    }
+    let mut others = in_folder(data, folder, Some(&spec.id)).into_iter();
+    match others.find(|o| crate::session::lifecycle(&o.dir).0.is_none()) {
+        Some(o) => Err(io::Error::other(format!(
+            "\"{}\" ({}) works in this project's local checkout. Start in a new worktree, or archive it first.",
+            title(&o),
+            o.id
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// Whether `spec` holds its project's own folder, unarchived, so no other session may start there
+/// [D306].
+pub fn holds_local(spec: Option<&Spec>, projects: &[Project]) -> bool {
+    spec.is_some_and(|s| {
+        (projects.iter())
+            .any(|p| s.project.as_ref() == Some(&p.id) && Path::new(&p.folder) == Path::new(&s.cwd))
+            && crate::session::lifecycle(&s.dir).0.is_none()
+    })
 }
 
 pub fn others(data: &Path, spec: &Spec) -> Vec<Spec> {
@@ -71,11 +99,16 @@ pub fn owner<'a>(spec: &'a Spec, others: &'a [Spec]) -> &'a Spec {
         .unwrap_or(spec)
 }
 
-/// The session's name in a sentence.
+/// The session's name in a sentence: as its row's, the name given, else its first message's.
 pub fn title(spec: &Spec) -> String {
     fs::read_to_string(spec.dir.join("title"))
         .ok()
         .filter(|t| !t.trim().is_empty())
+        .or_else(|| {
+            let all = crate::archive::read(&spec.dir).ok()?;
+            let first = all.into_iter().find(|e| e.from == "user")?;
+            Some(crate::title::from(&first.text)).filter(|t| !t.is_empty())
+        })
         .unwrap_or_else(|| "Another session".into())
 }
 
@@ -86,34 +119,4 @@ pub fn lands(data: &Path, id: &str) -> Option<String> {
     let others = others(data, &spec);
     let owner = owner(&spec, &others);
     (owner.id != spec.id).then(|| title(owner))
-}
-
-/// What Source shows of the sharing, by session id; the UI writes the words [D65, D1082]:
-/// `with`, the owner where it's another; `busy`, another session working there now; `lands`;
-/// `includes`, another session whose turns since the last commit changed files still uncommitted
-/// (proposed: its turns that ended on today's HEAD).
-pub fn state(data: &Path, spec: &Spec, busy: &dyn Fn(&Spec) -> bool) -> io::Result<Value> {
-    let others = others(data, spec);
-    let owner = owner(spec, &others);
-    let working = others.iter().find(|o| busy(o)).map(|o| o.id.clone());
-    let mut includes = None;
-    if !others.is_empty()
-        && let Ok(checkout) = git::checkout(data, &git::Target::Session(&spec.id))
-    {
-        let status = git::status(&checkout, &AtomicBool::new(false))?.json();
-        let head = status["head"]["head"].as_str().map(String::from);
-        let dirty: Vec<&str> = (status["files"].as_array().into_iter().flatten())
-            .filter_map(|f| f["path"].as_str())
-            .collect();
-        includes = (others.iter())
-            .find(|o| {
-                turn_paths(o, head.as_deref())
-                    .iter()
-                    .any(|p| dirty.contains(&p.as_str()))
-            })
-            .map(|o| o.id.clone());
-    }
-    Ok(json!({"ok": true, "shared": !others.is_empty(),
-        "with": (owner.id != spec.id).then(|| owner.id.clone()),
-        "busy": working, "lands": owner.id == spec.id, "includes": includes}))
 }

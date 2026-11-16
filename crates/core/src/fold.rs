@@ -7,6 +7,7 @@ use crate::adapters;
 mod asks;
 mod input;
 mod live;
+pub mod plan;
 mod rewind;
 pub mod runs;
 mod status;
@@ -17,7 +18,7 @@ pub use live::{
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, mark, notice, quiet, resumable, status, switchable, works};
+pub use status::{Owner, held, mark, notice, quiet, resumable, status, switchable, woke, works};
 use std::collections::{BTreeMap, BTreeSet};
 pub use turns::Turn;
 
@@ -62,8 +63,8 @@ pub struct Fold {
     /// sent to the background, so its Background row reads `python3 …`, not the process's name.
     #[serde(default)]
     pub typed: BTreeMap<String, String>,
-    /// The agent's own calls at work, oldest first, as `{id, step, name, input}`: a worker's
-    /// newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
+    /// The agent's own calls at work, oldest first, as `{id, step, name, input, description}`: a
+    /// worker's newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
     #[serde(default)]
     pub calls: Vec<Value>,
     /// The live child's subagents still running, by step id: a turn that answered stays held open
@@ -87,6 +88,10 @@ pub struct Fold {
     /// The CLI refused to resume the conversation on this account (D90 Q4).
     #[serde(default)]
     pub refused: Option<String>,
+    /// A worker held for the user's call, its routing row out of quota: Rust's `hold` note while
+    /// asked, then while it waits for the reset (`until`) [D2028, D342].
+    #[serde(default)]
+    pub hold: Option<Value>,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
@@ -97,6 +102,10 @@ pub struct Fold {
     /// The model each backend a switch moved to runs [D51].
     #[serde(default)]
     pub models: BTreeMap<String, String>,
+    /// Each turn a switch carried on, by its id: the switch's own input, which goes on in its
+    /// place [D51, D2041].
+    #[serde(default)]
+    pub carried: BTreeMap<String, String>,
     /// The newest setup (model, effort, level) given to the running child, from its inputs: what a
     /// turn start compares to. None for a child no input set up.
     #[serde(default)]
@@ -176,16 +185,15 @@ pub struct Fold {
     /// The stalled turn the user's Continue carries on: the rebirth guard starts over [D144].
     #[serde(default)]
     pub go_on: Option<String>,
+    /// Its CLI's newest usage report in a run, `{backend, account, limits, at}`, for the store [D2039].
+    #[serde(default)]
+    pub limits: Option<Value>,
+    /// Its plans' adversarial reviews [§6].
+    #[serde(default)]
+    pub plans: plan::Reviews,
 }
 
 impl Fold {
-    /// The level the running child takes from here, as its agent confirmed it.
-    fn took_level(&mut self, item: &Value) {
-        if let Some(g) = self.given.as_mut().filter(|g| g.is_object()) {
-            g["level"] = item["level"].clone();
-        }
-    }
-
     pub fn push(&mut self, item: &Value) {
         self.items += 1;
         let ts = item["ts"].as_u64().unwrap_or(0);
@@ -205,6 +213,7 @@ impl Fold {
                 | "stderr"
                 | "unknown"
                 | "usage"
+                | "limits"
                 | "context"
                 | "plan"
                 | "question"
@@ -222,6 +231,10 @@ impl Fold {
             self.last_out = ts;
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
+                t.said |= matches!(
+                    kind,
+                    "text" | "text_delta" | "tool" | "reasoning" | "question" | "approval" | "plan"
+                );
                 if kind != "retrying" {
                     t.retry = Value::Null;
                 }
@@ -241,7 +254,6 @@ impl Fold {
             "checking" | "text" | "text_delta" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.checking = item["on"] == true;
-                    t.moved |= kind == "text" && !str_of("text").trim().is_empty();
                 }
             }
             "input" => self.input(item, ts),
@@ -295,6 +307,10 @@ impl Fold {
                 }
             }
             "turn_start" => {
+                // The agent woke: what a held turn's subagent asked ends, as at any new turn.
+                if self.turns.first().is_some_and(|t| t.held) {
+                    self.close("withdrawn", Value::Null, ts);
+                }
                 if self.turns.is_empty() {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
@@ -337,11 +353,13 @@ impl Fold {
                 }
                 if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
                 {
-                    self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"]}));
+                    self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"], "description": item["description"]}));
                 }
                 self.run_started(item, ts);
+                let again = item["step"] == "run"
+                    && (runs::looks(&str_of("input")) || !self.runs.ran.insert(str_of("input")));
                 if let Some(t) = self.turns.first_mut() {
-                    t.tool_started(item, ts);
+                    t.tool_started(item, ts, again);
                 }
             }
             "tool_done" => {
@@ -370,27 +388,34 @@ impl Fold {
                 }
             }
             "question" => {
+                self.held_ask(ts);
                 if let Some(t) = self.turns.first_mut() {
                     t.question = Some(str_of("text"));
                 }
                 self.ask(item);
             }
-            "approval" => self.ask(item),
+            "approval" => {
+                self.held_ask(ts);
+                self.ask(item);
+            }
             "resolved" => {
                 let id = str_of("id");
                 self.end_ask(&id, item["decision"].as_str().unwrap_or("withdrawn"));
+                self.unhold();
             }
             "reply" => {
                 self.replies.insert(str_of("id"), item.clone());
                 self.acked(item, ts);
             }
             // The level the agent says it runs at is the one recorded, never the one asked [D175].
-            "level" => self.took_level(item),
+            "level" => self.took("level", &item["level"]),
+            "model" => self.took("real", &item["id"]),
             "answer" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.question = None;
                 }
                 self.end_ask(&str_of("id"), "answered");
+                self.unhold();
             }
             "commands" => {
                 self.commands
@@ -408,6 +433,15 @@ impl Fold {
             }
             "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
             "plan" => self.plan = Some(item["steps"].clone()),
+            "limits" => {
+                let account = self
+                    .accounts
+                    .get(&self.backend)
+                    .cloned()
+                    .unwrap_or_default();
+                self.limits = Some(json!({"backend": self.backend, "account": account,
+                    "limits": item["limits"], "at": ts}));
+            }
             "limited" => {
                 self.limit = Some(str_of("message"));
                 self.credits = item["credits"] == true;
@@ -440,11 +474,13 @@ impl Fold {
                 }
                 Some("go_on") => self.go_on = Some(str_of("turn")),
                 // A new level the running child confirmed mid-turn [D166].
-                Some("level") => self.took_level(item),
+                Some("level") => self.took("level", &item["level"]),
                 Some("setup") => self.setup(item),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("peer") => self.passed_to_user(item),
+                Some("plan_review") => self.plan_review(item),
+                Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
                 Some("owner_started") => {
                     self.interrupt(json!({"owner_restarted": true}), ts);
                     self.turns
