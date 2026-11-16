@@ -1850,3 +1850,67 @@
   --edge-size-top: var(--spacing-rail-fade);
   --edge-size-bottom: var(--spacing-rail-fade);
 }
+
+/* ── Browser ────────────────────────────────────────────────────────────────────────────────
+   The tabs' pages: one fixed layer of <webview> under #root (browser/layer.ts), each placed where the
+   layer's data attributes say and seen only where the app cuts a hole in itself (browser/hole.ts). */
+:root {
+  /* A page with no background of its own shows a web browser's white (the old tabLayer's). */
+  --color-web-page: #fff;
+}
+#brigadier-tab-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  contain: strict;
+  & webview {
+    position: absolute;
+    display: inline-flex;
+    left: attr(data-left px, 0px);
+    top: attr(data-top px, 0px);
+    width: attr(data-width px, 0px);
+    height: attr(data-height px, 0px);
+    border: 0;
+    background: var(--color-web-page);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  & webview[data-shown] {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  /* A drag or an open menu of the app: no click falls into a page. */
+  &[data-locked] webview {
+    pointer-events: none;
+  }
+}
+#brigadier-tab-layer ~ #root {
+  position: relative;
+  z-index: 1;
+}
+:root[data-page-beneath] #root {
+  clip-path: url(#brigadier-hole);
+}
+#brigadier-hole-svg {
+  position: fixed;
+  width: 0;
+  height: 0;
+}
+/* The keyboard's way back from a page to the app (layer.ts's takeKeyboard): there, never seen. */
+#brigadier-keyboard-anchor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  outline: none;
+  & iframe {
+    display: block;
+    width: 1px;
+    height: 1px;
+    border: 0;
+  }
+}

@@ -47,6 +47,8 @@ declare global {
       onIntroEnded(listener: () => void): () => void;
       /** The platform the window is drawn for: process.platform, or the dev flag's stand-in (BRIGADIER_FAKE_PLATFORM). */
       platform: string;
+      /** Whether the in-app browser is on (BRIGADIER_BROWSER=1 when the app starts): its door is `brigadierShell`. */
+      browser: boolean;
       /** Moves macOS's traffic lights to x (their y stays on the tab bar's centre line), as the sidebar opens, strips or closes. */
       trafficLights(x: number): void;
     };
