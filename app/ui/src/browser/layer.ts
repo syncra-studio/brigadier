@@ -10,6 +10,7 @@
 
 import { readFavicon } from "./favicon";
 import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
+import { devToolsChanged, userUsed } from "./pause";
 
 declare global {
   interface Window {
@@ -25,6 +26,9 @@ declare global {
       onGuestShortcut(listener: (key: string) => void): void;
       answerPermission(request: number, answer: "once" | "visiting" | "never" | "dismiss"): Promise<void>;
       openPermissionSettings(device: "camera" | "microphone" | "location"): Promise<void>;
+      /** DevTools' panes and the element picker (main's browser/browserDevtools.ts), by the guest's id. */
+      devtools(op: string, args: { guest: number } & Record<string, unknown>): Promise<unknown>;
+      onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
     };
   }
 }
@@ -163,8 +167,18 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused }));
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
-  // shortcut: no passkey, sign-in or agent events until those sections land (guestPasskey, browserSignIn, browserAgent).
+  // shortcut: no passkey or sign-in events until those sections land (guestPasskey, browserSignIn).
+  window.brigadierShell.onAgentEvent(({ from, event }) => {
+    const page = pageOf(from);
+    if (!page) return;
+    // Nothing resumes by itself: DevTools closing, or a debugger ended from outside, leaves the tab with the user.
+    if (event === "detached") userUsed(page.id);
+    else devToolsChanged(page.id, event === "devtools-opened");
+  });
 }
+
+/** The tab's page's guest, for main's calls on it. */
+export const guestOf = (id: string): number => need(id).element.getWebContentsId();
 
 function need(id: string): Page {
   const page = pages.get(id);

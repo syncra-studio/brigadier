@@ -3,6 +3,8 @@
 import { app, session } from "electron";
 
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
+import { watchGuest } from "./browserAgent";
+import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
 import { installGuestKeys } from "./guestKeys";
@@ -21,7 +23,8 @@ export function installBrowserHost(origin: string): void {
   installDurableStorage();
   installPermissionAnswers();
   installGuestFavicon();
-  // shortcut: no agent, import, devtools, bookmarks, logins or clear data until their sections land; their installs go here.
+  installBrowserDevtools();
+  // shortcut: no agent, import, bookmarks, logins or clear data until their sections land; their installs go here.
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });
@@ -43,6 +46,8 @@ export function installBrowserHost(origin: string): void {
     if (contents.getType() === "webview") {
       installGuestKeys(contents);
       installGuest(contents);
+      watchGuest(contents);
+      watchDevToolsLinks(contents);
     }
     contents.on("will-attach-webview", (attach, preferences, params) => {
       if (!profileSessions.has(params.partition ?? "") || !webOrBlank(params.src ?? "")) {

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner, X } from "../icons";
@@ -99,6 +99,24 @@ export function FindBar({ id, input, onClose }: { id: string; input: RefObject<H
           <X />
         </TooltipIconButton>
       </div>
+    </div>
+  );
+}
+
+/** A strip across the top of the tab's page: what happened, and what to do about it (the old shared Banner). */
+export function Banner({ text, children, onDismiss, slot }: { text: ReactNode; children?: ReactNode; onDismiss?: () => void; slot?: string }) {
+  return (
+    <div role="status" data-slot={slot ?? "banner"} className="flex shrink-0 items-center gap-2 border-b border-border bg-fill-subtle px-4 py-2 text-sm">
+      {/* Words and buttons wrap as one; the × keeps to the first line's end. */}
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 basis-48 wrap-break-word">{text}</span>
+        {children}
+      </div>
+      {onDismiss && (
+        <TooltipIconButton tooltip="Dismiss" size="icon-xs" onClick={onDismiss}>
+          <X />
+        </TooltipIconButton>
+      )}
     </div>
   );
 }

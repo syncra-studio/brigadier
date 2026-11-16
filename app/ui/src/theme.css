@@ -1072,6 +1072,19 @@
   flex: 0 0 calc(attr(data-share type(<number>), 1) * 100%);
 }
 
+/* A Browser tab's page laid out as a device, at the size it shows (browser/devtools.tsx); and DevTools' share beside
+   or below it, along its frame's direction. */
+@utility browser-device {
+  &[data-width] {
+    flex: none;
+    width: attr(data-width px, auto);
+    height: attr(data-height px, auto);
+  }
+}
+@utility browser-devtools-share {
+  flex: 0 0 calc(attr(data-share type(<number>), 0.42) * 100%);
+}
+
 @utility dialog-top {
   top: attr(data-top px, 0px);
 }

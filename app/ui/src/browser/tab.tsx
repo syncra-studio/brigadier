@@ -4,7 +4,7 @@ import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
-import { ArrowUpRight, Globe, X } from "../icons";
+import { ArrowUpRight, Globe } from "../icons";
 import { setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
@@ -17,7 +17,9 @@ import { pageShows, userUsed } from "./pause";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
 import { BrowserOptions } from "./options";
-import { FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
+import { Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
+import { BrowserDevButton, BrowserDevFrame, BrowserPickerBar } from "./devtools";
+import { BrowserDeviceBar } from "./device-sizes";
 
 /**
  * A Browser tab: one page, such as the app a worker is running on localhost. The page is a <webview> in the layer
@@ -295,37 +297,34 @@ export function BrowserTab({ owner, tab, active }: { owner: string; tab: Tab; ac
           <PermissionPrompt id={id} asking={active ? page?.asking : null} anchor={address} />
           <OsRefusedNotice id={id} refused={active && page?.osRefused?.origin === originOf(url) ? page?.osRefused : null} anchor={address} />
         </form>
-        {/* shortcut: no profile button (S7), downloads, screenshot or DevTools (S3) until their sections land; they go here, in that order. */}
+        {/* shortcut: no profile button (S7), downloads or screenshot until their sections land; they go here, in that order. */}
+        <BrowserDevButton id={id} ready={ready} />
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
         {/* shortcut: no agent pause or sign-in banners until agents drive the browser (S11). */}
       </div>
       {finding && ready && <FindBar id={id} input={findInput} onClose={hideFind} />}
+      <BrowserPickerBar id={id} />
+      <BrowserDeviceBar id={id} />
       {page?.blocked && (
-        <div role="status" data-slot="banner" className="flex shrink-0 items-center gap-2 border-b border-border bg-fill-subtle px-4 py-2 text-sm">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="min-w-0 flex-1 basis-48 wrap-break-word">
-              This can't open here: <span className="text-muted-foreground">{page.blocked}</span>
-            </span>
-            {webAddress(page.blocked) && (
-              <Button size="sm" variant="ghost" onClick={() => page.blocked && openOutside(page.blocked)}>
-                Open in browser
-              </Button>
-            )}
-          </div>
-          <TooltipIconButton tooltip="Dismiss" size="icon-xs" onClick={() => dismissBlocked(id)}>
-            <X />
-          </TooltipIconButton>
-        </div>
+        <Banner text={<>This can't open here: <span className="text-muted-foreground">{page.blocked}</span></>} onDismiss={() => dismissBlocked(id)}>
+          {webAddress(page.blocked) && (
+            <Button size="sm" variant="ghost" onClick={() => page.blocked && openOutside(page.blocked)}>
+              Open in browser
+            </Button>
+          )}
+        </Banner>
       )}
-      <div ref={area} data-slot="browser-page" className="flex min-h-0 w-full flex-1">
-        {!made && (
-          <div className="m-auto p-6 text-center text-sm text-muted-foreground">
-            <Globe aria-hidden className="mx-auto mb-3 size-6" />
-            <p className="font-medium text-foreground">Start browsing</p>
-            <p className="mt-1">Enter a URL to open a page</p>
-          </div>
-        )}
-      </div>
+      <BrowserDevFrame id={id} active={active}>
+        <div ref={area} data-slot="browser-page" className="browser-device flex min-h-0 w-full flex-1">
+          {!made && (
+            <div className="m-auto p-6 text-center text-sm text-muted-foreground">
+              <Globe aria-hidden className="mx-auto mb-3 size-6" />
+              <p className="font-medium text-foreground">Start browsing</p>
+              <p className="mt-1">Enter a URL to open a page</p>
+            </div>
+          )}
+        </div>
+      </BrowserDevFrame>
     </div>
   );
 }
