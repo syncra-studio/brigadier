@@ -113,7 +113,7 @@ function settle(raw: string) {
   const bold = odd(/`/g) ? `${text}\`` : odd(/\*\*/g) ? `${text}**` : text;
   // A lone `*` opening italics on the last line; one before a space is a bullet or a times sign.
   const line = bold.slice(bold.lastIndexOf("\n") + 1).replace(/\*\*/g, "");
-  const closed = /(^|[\s(])\*[^\s*][^*]*$/.test(line) && (line.match(/\*/g)?.length ?? 0) % 2 === 1 ? `${bold}*` : bold;
+  const closed = /(^|[\s(])\*(?=\S)[^*]*$/.test(line) && (line.match(/\*/g)?.length ?? 0) % 2 === 1 ? `${bold}*` : bold;
   return /\[[^\]]*\]\([^)]*$/.test(closed) ? `${closed})` : closed;
 }
 
