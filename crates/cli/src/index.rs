@@ -381,11 +381,12 @@ impl Index {
                 "UPDATE sessions SET folded=?2 WHERE id=?1",
                 params![id, blob],
             )?;
+            // Parsed once, not per row: a cold rebuild inserts millions [D52].
+            let mut insert = tx.prepare_cached(
+                "INSERT INTO text(id, at, src, ts, body, files) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+            )?;
             for (at, src, ts, body, files) in texts {
-                tx.execute(
-                    "INSERT INTO text(id, at, src, ts, body, files) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![id, at, src, *ts as i64, body, files],
-                )?;
+                insert.execute(params![id, at, src, *ts as i64, body, files])?;
             }
         }
         for id in gone {

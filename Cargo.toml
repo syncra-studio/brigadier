@@ -8,3 +8,8 @@ serde_json = { version = "=1.0.154", features = ["preserve_order"] }
 
 [profile.release]
 debug = false
+
+# Dependencies (serde_json, SQLite) optimized in debug builds too: unoptimized, they made a
+# debug build's cold index of the scale drill's 20 GB take 47 minutes [D52].
+[profile.dev.package."*"]
+opt-level = 3
