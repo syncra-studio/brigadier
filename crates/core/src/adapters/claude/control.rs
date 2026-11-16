@@ -159,6 +159,10 @@ pub fn standing(spec: &Spec) -> Vec<String> {
         if let Some(hooks) = settings["hooks"]["PreToolUse"].as_array_mut() {
             hooks.push(guard);
         }
+        // A claim only makes the chat's own copy: Auto's classifier refused it once in the drill.
+        if let Some(allow) = settings["permissions"]["allow"].as_array_mut() {
+            allow.push("Bash(brigadier repo:*)".into());
+        }
     }
     let mut args = vec![
         "--append-system-prompt".into(),
