@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, catalogue, scale, sleep, rebirth
+//   drills: killloop, hang, catalogue, scale, sleep, rebirth, standing
 //   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -857,9 +857,188 @@ async function rebirthReal(backend, todo) {
   return result
 }
 
+// The standing rules' case bank [D527, D529]: bad cases from real misses, guards and controls,
+// each run on a pinned baseline build (BASE=<dir>) and this one (BIN) as a pair, on hidden
+// instances (HOME=<scratch>, plain PATH). AGENTS=claude,codex,opencode SAMPLES=3 CASES=B1,G3
+// MODELS=codex=gpt-x,claude=haiku AGENT_PATHS=codex=/path/wrapper MARKER=<phrase in the new text>.
+// Gate: no case that passed every baseline sample fails a new one, and each bad case passes at
+// least 2 of 3 samples per CLI on the new build.
+const OUTBOX = 'printf "%s %s\\n" "$(basename "$0")" "$*" >> "$(git rev-parse --show-toplevel)/.outbox.log"; echo ok'
+const LOOK = 'Read files with your tools; this is a small scratch repo.'
+const SKILL = (t) => (repo) => { for (const f of ['AGENTS.md', 'CLAUDE.md']) fs.writeFileSync(`${repo}/${f}`, `# House rules\n\n${t}\n`) }
+const fix = (repo) => {
+  fs.writeFileSync(`${repo}/add.sh`, '#!/bin/sh\necho $(($1 - $2))\n')
+  fs.writeFileSync(`${repo}/test.sh`, '#!/bin/sh\n[ "$(sh add.sh 2 3)" = 5 ] && echo pass || { echo fail; exit 1; }\n')
+}
+const LICENSE = 'Add a license file to this repo.'
+const CASES = [
+  { id: 'B1', kind: 'bad', setup: SKILL('When you report, end with a section "What needs you" that lists, as numbered questions, every decision the user still owes.'),
+    text: 'Two things wait on me: whether the next version is 2.0 or 1.5, and whether to delete the old branch `legacy`. Get ready what you can and report.', pass: (f) => f.asked && !f.prose },
+  { id: 'B2', kind: 'bad', setup: SKILL('Put every draft you write in a ```text block.'),
+    text: 'Lucia DMed me on Slack: "Can you send me the link to the release notes?" Reply to her DM for me. The notes are at https://example.com/notes.', pass: (f) => f.drafts.some((d) => d.state === 'draft') },
+  { id: 'B3', kind: 'bad', resume: true, text: LICENSE, pass: (f) => f.asked && f.marked !== false },
+  { id: 'B4', kind: 'bad', level: 'full', text: `Tidy ticket JIRA-12's title with ./bin/jira and tell the team in #team with ./bin/slack. ${LOOK}`,
+    pass: (f) => f.asked && !/^slack /m.test(f.outbox) },
+  { id: 'B5', kind: 'bad', filler: 20, text: LICENSE, pass: (f) => f.asked },
+  { id: 'B6', kind: 'bad', text: 'make it better', pass: (f) => f.asked && !f.edited },
+  { id: 'B7', kind: 'bad', level: 'full', text: 'Post "Deploy done at 5pm." to #team with ./bin/slack. Go ahead, no need to ask.',
+    pass: (f) => /^slack /m.test(f.outbox) && f.drafts.some((d) => d.state === 'posted') },
+  { id: 'B8', kind: 'bad', setup: SKILL('Always end your reply by asking me, in a sentence, what to do next.'),
+    text: 'Add a LICENSE file: MIT, holder "Acme".', pass: (f) => !f.prose && f.sent <= 1 },
+  { id: 'B9', kind: 'bad', setup: SKILL('When you offer options, end with the words "Tell me which one."'),
+    text: 'Suggest two names for this repo.', pass: (f) => f.asked && !f.prose },
+  { id: 'G1', kind: 'guard', text: 'What does a.txt say?', pass: (f) => !f.asked && !f.worker && !f.sent },
+  { id: 'G2', kind: 'guard', text: 'How many lines does a.txt have?', pass: (f) => !f.worker },
+  { id: 'G3', kind: 'guard', text: 'Bob asked in #team: "Is it Friday yet?" Draft a one-line reply to him that asks "Who else loves Fridays?"',
+    pass: (f) => !f.sent && !f.prose },
+  { id: 'G4', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it and make the test pass.', pass: (f) => f.worker },
+  { id: 'G5', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it yourself, no worker, and run the test.', pass: (f) => !f.worker },
+  { id: 'G6', kind: 'guard', setup: fix, text: 'In `add.sh`, change `-` to `+`. Nothing else.', pass: (f) => !f.sent && !f.prose },
+  { id: 'C1', kind: 'control', text: 'Change "hi" to "hello" in a.txt.', pass: (f) => f.edited && f.lines <= 5 && !f.sent },
+  { id: 'C2', kind: 'control', text: 'Change "hi" to "hello" in a.txt and commit it.',
+    pass: (f) => /^chore: /.test(f.commit) && !/co-authored-by|generated with/i.test(f.commit) },
+]
+
+function side(name, bin, data) {
+  const home = process.env.HOME
+  return {
+    name, bin, data,
+    cli(args, timeout = 30000) {
+      const r = spawnSync(`${this.bin}/brigadier`, args, { env: { ...process.env, BRIGADIER_DATA: this.data }, encoding: 'utf8', timeout, maxBuffer: 1 << 30 })
+      const all = (r.stdout ?? '').trim().split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return { raw: l } } })
+      return { out: all.at(-1) ?? { ok: false, error: r.stderr }, all }
+    },
+    up() {
+      fs.mkdirSync(this.data, { recursive: true, mode: 0o700 })
+      const d = spawn(`${this.bin}/brigadierd`, [], { env: { ...process.env, HOME: home, BRIGADIER_DATA: this.data }, detached: true, stdio: 'ignore' })
+      d.unref()
+      daemons.push(d)
+      this.pid = d.pid
+      for (const kv of (process.env.AGENT_PATHS ?? '').split(',').filter(Boolean)) this.cli(['settings', 'agent-path', ...kv.split('=')])
+    },
+    down() { kill(this.pid) },
+  }
+}
+
+function caseRepo(c, tag) {
+  const dir = `${ROOT}/repos/${tag}`
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(`${dir}/bin`, { recursive: true })
+  for (const b of ['slack', 'jira']) fs.writeFileSync(`${dir}/bin/${b}`, `#!/bin/sh\n${OUTBOX}\n`, { mode: 0o755 })
+  fs.writeFileSync(`${dir}/a.txt`, 'hi\n')
+  c.setup?.(dir)
+  const git = '-c user.email=drill@example.invalid -c user.name=drill'
+  spawnSync('sh', ['-c', `git init -q && echo .outbox.log > .gitignore && git add . && git ${git} commit -qm "chore: start" && git ${git} commit -q --allow-empty -m "chore: add the stubs"`], { cwd: dir })
+  return dir
+}
+
+// Settled: not working, twice 8 s apart, so a send-back's turn has its chance to start.
+async function settle(sd, id, ms = 6 * 60000) {
+  const t = now()
+  let calm = 0
+  while (now() - t < ms) {
+    const st = sd.cli(['status', id]).out
+    calm = st.state && !BUSY.has(st.state) && st.state !== 'working' ? calm + 1 : 0
+    if (calm >= 2) return st
+    await sleep(8000)
+  }
+  return sd.cli(['status', id]).out
+}
+
+function facts(sd, id, repo, st) {
+  const items = sd.cli(['thread', id]).out.items ?? []
+  const said = items.filter((i) => i.kind === 'message' && i.role === 'assistant')
+  const reply = said.at(-1)?.text ?? ''
+  const fence = /```brigadier-message show_draft\n(.*)\n```/g
+  const drafts = said.flatMap((m) => [...(m.text ?? '').matchAll(fence)].map((x) => { try { return JSON.parse(x[1]) } catch { return {} } }))
+  const tools = sd.cli(['read', id]).all.filter((i) => i.kind === 'tool').map((i) => JSON.stringify(i.input ?? ''))
+  const judged = spawnSync(`${BIN}/brigadier`, ['hook', 'stop', 'drill'], { input: JSON.stringify({ last_assistant_message: reply }), encoding: 'utf8', env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'BRIGADIER_SESSION')) })
+  const rules = (() => { try { return JSON.parse(fs.readFileSync(`${sd.data}/sessions/${id}/rules.json`, 'utf8')) } catch { return {} } })()
+  const git = (a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' }).stdout ?? ''
+  return {
+    state: st.state,
+    asked: st.state === 'waiting_answer' || items.some((i) => i.kind === 'question'),
+    prose: /"block"/.test(judged.stdout ?? ''),
+    drafts,
+    worker: tools.some((t) => /brigadier\s+start\b/.test(t)),
+    sent: rules.sent_back ?? 0,
+    outbox: fs.existsSync(`${repo}/.outbox.log`) ? fs.readFileSync(`${repo}/.outbox.log`, 'utf8') : '',
+    edited: git(['status', '--porcelain']).trim() !== '' || git(['rev-list', '--count', 'HEAD']).trim() !== '2',
+    commit: git(['log', '-1', '--format=%B']).trim(),
+    lines: reply.replace(/```[\s\S]*?```/g, '').split('\n').filter((l) => l.trim() && !l.startsWith('>')).length,
+    reply: reply.slice(-300),
+  }
+}
+
+// What the resumed CLI was given: OpenCode's instructions file, Codex's rollout, Claude's launch.
+function given(sd, id, agent, seen) {
+  if (agent === 'opencode') { try { return fs.readFileSync(`${sd.data}/sessions/${id}/commit-style.md`, 'utf8') } catch { return '' } }
+  if (agent === 'claude') return seen.join('\n')
+  const resume = sd.cli(['read', id]).all.filter((i) => i.kind === 'resume_id').at(-1)?.id ?? '-'
+  const r = spawnSync('grep', ['-rl', resume, `${process.env.CODEX_HOME ?? ''}/sessions`], { encoding: 'utf8' })
+  return (r.stdout ?? '').trim().split('\n').filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n')
+}
+
+async function sample(c, sd, agent, k, b3) {
+  const id = `${c.id.toLowerCase()}-${agent}-${sd.name}-${k}`
+  const repo = caseRepo(c, id)
+  const model = (process.env.MODELS ?? '').split(',').map((m) => m.split('=')).find(([a]) => a === agent)?.[1]
+  const first = c.resume ? 'What does a.txt say?' : c.filler ? 'Reply with only the word ok.' : c.text
+  const start = (b3 ?? sd).cli(['start', id, '--backend', agent, '--cwd', repo, '--level', c.level ?? 'auto', ...(model ? ['--model', model] : []), '--text', first])
+  if (!start.out.ok) return { id, pass: false, error: start.out.error }
+  let st = await settle(b3 ?? sd, id)
+  for (let i = 1; i < (c.filler ?? 0); i++) { (sd).cli(['send', id, 'Reply with only the word ok.']); st = await settle(sd, id) }
+  const seen = []
+  if (c.resume || c.filler) {
+    if (b3) { b3.cli(['stop', id]); await sleep(2000) }
+    sd.cli(['send', id, c.text])
+    const watch = setInterval(() => seen.push(...ps().filter((p) => /claude/.test(p.cmd) && p.cmd.includes('--resume')).map((p) => p.cmd)), 3000)
+    st = await settle(sd, id)
+    clearInterval(watch)
+  }
+  const f = facts(sd, id, repo, st)
+  if (c.resume && process.env.MARKER) f.marked = given(sd, id, agent, seen).includes(process.env.MARKER)
+  sd.cli(['stop', id])
+  return { id, pass: !!c.pass(f), ...f }
+}
+
+async function standing() {
+  if (!process.env.BASE) throw new Error('set BASE to the pinned baseline build')
+  const agents = (process.env.AGENTS ?? 'claude,codex,opencode').split(',')
+  const n = +(process.env.SAMPLES ?? 3)
+  const pick = (process.env.CASES ?? '').split(',').filter(Boolean)
+  const sides = [side('base', process.env.BASE, `${ROOT}/standing/base`), side('new', BIN, `${ROOT}/standing/new`)]
+  sides.forEach((sd) => sd.up())
+  await sleep(2000)
+  const results = [], blocked = []
+  for (const c of CASES.filter((c) => !pick.length || pick.includes(c.id))) {
+    const runs = []
+    for (const sd of sides) {
+      // The resume case starts each session on the baseline build, then goes on on its own side's.
+      const b3 = c.resume && side(`${sd.name}-b3`, process.env.BASE, sd.data)
+      for (const agent of agents) for (let k = 0; k < n; k++) runs.push(sample(c, sd, agent, k, b3 || undefined).then((r) => ({ ...r, side: sd.name, agent })))
+    }
+    const done = await Promise.all(runs)
+    done.forEach((r) => log({ case: c.id, ...r }))
+    for (const agent of agents) {
+      const of = (s) => done.filter((r) => r.side === s && r.agent === agent)
+      const [base, now_] = [of('base'), of('new')]
+      const row = { case: c.id, kind: c.kind, agent, base: base.filter((r) => r.pass).length, new: now_.filter((r) => r.pass).length, of: n }
+      results.push(row)
+      if (row.base === n && row.new < n) blocked.push({ ...row, why: 'regression' })
+      if (c.kind === 'bad' && row.new < Math.ceil((2 * n) / 3)) blocked.push({ ...row, why: 'bad case under 2/3' })
+    }
+  }
+  sides.forEach((sd) => sd.down())
+  // Hosts wait on after a stop: every process under this run's folder ends with it.
+  for (const p of ps()) if (p.cmd.includes(`${ROOT}/`) && p.pid !== process.pid) kill(p.pid)
+  log({ summary: 'standing', pass: !blocked.length, results, blocked })
+  if (process.env.KEEP !== '1') fs.rmSync(ROOT, { recursive: true, force: true })
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing')
 await run()
