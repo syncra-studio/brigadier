@@ -228,7 +228,9 @@ pub fn inspect(data: &Path, path: &str) -> io::Result<Value> {
         return Ok(match plain.and_then(|()| projects::plain(data, &dir)) {
             Ok(()) if !repos.is_empty() => {
                 let folder = fs::canonicalize(&dir)?.display().to_string();
-                let added = projects::list(data)?.into_iter().find(|p| p.folder == folder);
+                let added = projects::list(data)?
+                    .into_iter()
+                    .find(|p| p.folder == folder);
                 json!({"kind": "folder", "path": dir, "name": added.as_ref().map_or(name, |p| Some(p.name.clone())),
                     "repos": repos, "project_id": added.map(|p| p.id)})
             }

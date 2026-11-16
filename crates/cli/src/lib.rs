@@ -64,7 +64,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
-       brigadier source <id> files | folder <path> | find <query> | since
+       brigadier source <id> files | folder <path> | find <query> | since | repos
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier browser <session|-> profiles|history|visit|downloads|sites|imports|bookmarks|vault <op> ... [--profile ID] [--json]
        brigadier panel [open on|off | width <px>]

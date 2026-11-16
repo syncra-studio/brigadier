@@ -2,12 +2,14 @@
 //! line per repository, and claims a repository with `brigadier repo <name>` before its first
 //! change there, which makes that repository's branch and worktree for this session only.
 
+use crate::git::{self, diff};
 use crate::{Spec, data_of, projects, worktrees};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
 
 pub const KIND: &str = "folder";
 /// Above this many repositories the map goes to `REPOS.md`, out of every turn [D494].
@@ -141,6 +143,20 @@ fn record(dir: &Path, name: &str) -> PathBuf {
     dir.join("repos").join(name)
 }
 
+/// The record folder of a repository session `id` claimed, refused for one it never claimed.
+pub fn record_of(data: &Path, id: &str, name: &str) -> io::Result<PathBuf> {
+    crate::check_id(id)?;
+    let dir = crate::session_dir(data, id);
+    (claims(&dir).into_iter())
+        .find_map(|(n, rec)| (n == name).then_some(rec))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("This chat never claimed {name:?}."),
+            )
+        })
+}
+
 /// The worker's parent session folder, from its link.
 fn parent(spec: &Spec) -> Option<PathBuf> {
     let link: Value = serde_json::from_slice(&fs::read(spec.dir.join("worker.json")).ok()?).ok()?;
@@ -259,6 +275,38 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Vec<String>> {
         kept.extend(worktrees::delete(&rec, drop)?.map(|b| format!("{name} {b}")));
     }
     Ok(kept)
+}
+
+/// The repos session `id` claimed and changed, for its card [D544]: each one's target
+/// (`<id>@<repo>`), branch, line counts since it started, and its kept PRs (`prs.json`). One whose
+/// copy can't be read is left out.
+pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
+    crate::check_id(id)?;
+    let stop = AtomicBool::new(false);
+    let mut out = vec![];
+    for (name, rec) in claims(&crate::session_dir(data, id)) {
+        let Ok(checkout) = git::checkout(data, &git::Target::Repo(id, &name)) else {
+            continue;
+        };
+        let Some(since) =
+            worktrees::base(&rec).and_then(|b| diff::since(&checkout, &b, &stop).ok())
+        else {
+            continue;
+        };
+        let Ok(review) = diff::list(&checkout, diff::Scope::Branch(&since), &stop) else {
+            continue;
+        };
+        if review["files"].as_array().is_none_or(Vec::is_empty) {
+            continue;
+        }
+        let kept: Value = (fs::read(rec.join("prs.json")).ok())
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        out.push(json!({"name": name, "target": format!("{id}@{name}"),
+            "branch": worktrees::branch(&rec).ok().flatten(), "added": review["insertions"],
+            "removed": review["deletions"], "kept": kept}));
+    }
+    Ok(out)
 }
 
 /// Whether the session is a folder chat: fork, rewind and archive are off for it for now [D494].

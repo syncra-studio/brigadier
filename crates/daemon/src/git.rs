@@ -133,7 +133,7 @@ pub(super) fn subscribe(
 ) {
     let re = req["id"].clone();
     let (target, name) = match (req["session"].as_str(), req["project"].as_str()) {
-        (Some(id), _) => (Target::Session(id), id),
+        (Some(id), _) => (Target::session(id), id),
         (None, Some(id)) => (Target::Project(id), id),
         _ => {
             let error = json!({"re": re, "ok": false, "error": "git needs a session or project"});
@@ -142,8 +142,8 @@ pub(super) fn subscribe(
         }
     };
     // Its card is opening: the PRs it keeps show now, read again after [D200].
-    if let Target::Session(id) = target {
-        super::prs::shown(&[id]);
+    if !matches!(target, Target::Project(_)) {
+        super::prs::shown(&[name]);
     }
     let checkout = git::checkout(data, &target);
     let mut all = WATCHED.lock().unwrap();

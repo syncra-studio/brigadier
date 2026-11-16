@@ -15,13 +15,14 @@ pub fn state(data: &Path, target: &Target, stop: &AtomicBool) -> io::Result<Valu
             crate::check_id(id)?;
             let spec = load(data, id)?;
             active = crate::session::closed(&spec.dir).is_none();
-            share::holder(data, &spec)
+            share::holder(data, &spec).map(|s| s.dir)
         }
+        Target::Repo(id, repo) => Some(crate::folder::record_of(data, id, repo)?),
         Target::Project(_) => None,
     };
     let lands = holder
         .as_ref()
-        .map(|s| worktrees::lands(&s.dir))
+        .map(|dir| worktrees::lands(dir))
         .transpose()?
         .flatten();
     let path = folder(data, target)?;

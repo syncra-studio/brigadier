@@ -38,6 +38,18 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
 pub enum Target<'a> {
     Session(&'a str),
     Project(&'a str),
+    /// A folder chat's claimed repository, `<session>@<repo>` to a client [D494].
+    Repo(&'a str, &'a str),
+}
+
+impl<'a> Target<'a> {
+    /// A session's target as a client names it: `<session>@<repo>` is one of its claims.
+    pub fn session(id: &'a str) -> Self {
+        match id.split_once('@') {
+            Some((id, repo)) => Target::Repo(id, repo),
+            None => Target::Session(id),
+        }
+    }
 }
 
 /// One checkout: its top folder and its own git folder, both canonical.
@@ -53,6 +65,9 @@ pub struct Checkout {
 /// holder's, D1082); none for a project's folder.
 // shortcut: a watch keeps the base it started with; Change what it lands into reads the step again itself.
 pub fn base_of(data: &Path, target: &Target) -> Option<String> {
+    if let Target::Repo(id, repo) = target {
+        return worktrees::base(&crate::folder::record_of(data, id, repo).ok()?);
+    }
     let Target::Session(id) = target else {
         return None;
     };
@@ -84,8 +99,8 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
             let root = fs::canonicalize(root)?;
             let sessions = fs::canonicalize(data.join("sessions")).ok();
             Ok(Checkout {
-                worktree: root.ends_with("worktree")
-                    && root.parent().and_then(Path::parent) == sessions.as_deref(),
+                // A session's own, or a folder chat's claimed copy in it [D494].
+                worktree: sessions.is_some_and(|s| root.starts_with(s)),
                 root,
                 git_dir: fs::canonicalize(git_dir)?,
             })
@@ -103,10 +118,18 @@ pub fn folder(data: &Path, target: &Target) -> io::Result<PathBuf> {
                 // Its own, or one handed on with its record [D1080].
                 worktrees::folder(&session_dir(data, id)).unwrap_or(worktrees::path(data, id))
             } else {
-                PathBuf::from(load(data, id)?.cwd)
+                let spec = load(data, id)?;
+                if crate::folder::chat(&spec) {
+                    return err(
+                        "This chat works in several repos: its card shows each one it changed.",
+                    );
+                }
+                PathBuf::from(spec.cwd)
             }
         }
         Target::Project(id) => PathBuf::from(projects::get(data, id)?.folder),
+        Target::Repo(id, repo) => worktrees::folder(&crate::folder::record_of(data, id, repo)?)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "This repo's copy is gone."))?,
     })
 }
 

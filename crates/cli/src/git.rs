@@ -16,7 +16,7 @@ use std::sync::mpsc;
 pub(super) fn target(args: &[String]) -> io::Result<(Target<'_>, usize)> {
     Ok(match arg(args, 1)? {
         "--project" => (Target::Project(arg(args, 2)?), 3),
-        session => (Target::Session(session), 2),
+        session => (Target::session(session), 2),
     })
 }
 
@@ -68,6 +68,7 @@ fn since(
 ) -> io::Result<(String, String)> {
     let base = match target {
         Target::Session(id) => brigadier_core::share::base(data, &brigadier_core::load(data, id)?),
+        Target::Repo(..) => git::base_of(data, target),
         Target::Project(_) => None,
     };
     let base =
@@ -94,6 +95,10 @@ pub(super) fn source(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
     let (target, at) = target(args)?;
+    // A folder chat's card: the repos it changed [D494].
+    if let ("repos", Target::Session(id)) = (arg(args, at)?, &target) {
+        return Ok(json!({"ok": true, "repos": brigadier_core::folder::touched(data, id)?}));
+    }
     if arg(args, at)? == "truth" {
         return Ok(
             json!({"ok": true, "truth": git::truth::state(data, &target, &AtomicBool::new(false))?}),

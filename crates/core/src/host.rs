@@ -350,6 +350,11 @@ pub struct Pr {
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
 /// before a session there starts and which goes with the project [D279].
 pub fn dir(data: &Path, id: &str) -> std::path::PathBuf {
+    if let Target::Repo(sid, repo) = Target::session(id) {
+        // A claimed repo's are kept beside its record [D494]; one never claimed has none.
+        return crate::folder::record_of(data, sid, repo)
+            .unwrap_or_else(|_| crate::session_dir(data, sid).join("repos"));
+    }
     match crate::projects::get(data, id) {
         Ok(_) => crate::projects::dir(data, id),
         Err(_) => crate::session_dir(data, id),
@@ -362,14 +367,17 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     let project = crate::projects::get(data, id).is_ok();
     let target = match project {
         true => Target::Project(id),
-        false => Target::Session(id),
+        false => Target::session(id),
     };
     let checkout = git::checkout(data, &target)?;
     // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
     // A Local session has none: its PRs are still read, and none of them lands it.
-    let base = match project {
-        true => String::new(),
-        false => crate::share::base(data, &crate::load(data, id)?).unwrap_or_default(),
+    let base = match target {
+        Target::Project(_) => String::new(),
+        Target::Repo(..) => git::base_of(data, &target).unwrap_or_default(),
+        Target::Session(id) => {
+            crate::share::base(data, &crate::load(data, id)?).unwrap_or_default()
+        }
     };
     let never = AtomicBool::new(false);
     let out = git::read(
@@ -398,9 +406,10 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         base_ref: base,
         base: host_base,
         repo,
-        record: match project {
-            true => None,
-            false => crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
+        record: match target {
+            Target::Project(_) => None,
+            Target::Repo(sid, repo) => Some(crate::folder::record_of(data, sid, repo)?),
+            Target::Session(id) => crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
         },
         dir: dir(data, id),
     })

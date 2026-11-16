@@ -21,6 +21,10 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
                           "deletions": 0, "none": why});
         Ok(Some(json!({"ok": true, "review": none})))
     };
+    // A claimed repo's turns aren't captured: Branch and Uncommitted show its work [D494].
+    if let Target::Repo(..) = target {
+        return none("noSnapshot");
+    }
     let Target::Session(id) = target else {
         return none("noProject");
     };
@@ -99,7 +103,7 @@ pub(super) fn briefed(data: &Path, args: &[String], mut reply: Value) -> Value {
     };
     let session = match target {
         Target::Session(id) => brigadier_core::load(data, id).ok(),
-        Target::Project(_) => None,
+        Target::Project(_) | Target::Repo(..) => None,
     };
     let f = session
         .as_ref()

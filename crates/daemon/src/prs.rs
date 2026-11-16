@@ -63,7 +63,14 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
         let next: Arc<Mutex<HashMap<String, Next>>> = Arc::default();
         let busy: Arc<Mutex<HashSet<String>>> = Arc::default();
         loop {
-            let mut ids = ids(&data);
+            // A folder chat's claimed repos are read each as its own, `<id>@<repo>` [D494].
+            let mut ids: Vec<String> = (ids(&data).into_iter())
+                .flat_map(|id| {
+                    let claims = brigadier_core::folder::claims(&session_dir(&data, &id));
+                    let repos = claims.into_iter().map(|(name, _)| format!("{id}@{name}"));
+                    std::iter::once(id.clone()).chain(repos.collect::<Vec<_>>())
+                })
+                .collect();
             next.lock().unwrap().retain(|id, _| ids.contains(id));
             // One being read now may have started before the turn: it stays due for after.
             let mut due = DUE.lock().unwrap();
@@ -138,7 +145,7 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
 type Next = (Instant, Option<SystemTime>);
 
 fn kept_at(data: &Path, id: &str) -> Option<SystemTime> {
-    std::fs::metadata(session_dir(data, id).join("prs.json"))
+    std::fs::metadata(host::dir(data, id).join("prs.json"))
         .and_then(|m| m.modified())
         .ok()
 }
