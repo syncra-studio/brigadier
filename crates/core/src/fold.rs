@@ -299,9 +299,9 @@ impl Fold {
                 let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
                 if per_turn && clean && delivered {
                     self.close("done", Value::Null, ts);
-                } else if delivered {
+                } else {
                     self.close_all(
-                        "interrupted",
+                        if delivered { "interrupted" } else { "failed" },
                         json!({"child_exited": {"code": item["code"], "signal": item["signal"]}}),
                         ts,
                     );

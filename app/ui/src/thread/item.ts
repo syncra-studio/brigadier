@@ -201,7 +201,7 @@ export type Item = Base &
      * A failed turn, one row at its end with the CLI's own words [D54]: it didn't finish (`cause: "capacity"` when the
      * model's servers were busy), its model isn't available, or a safety check ended the conversation.
      */
-    | { kind: "notice"; reason: "failed"; why: "turn-failed" | "model-unavailable" | "ended-for-safety" | "context-full"; cause: "capacity" | null; text: string | null }
+    | { kind: "notice"; reason: "failed"; why: "turn-failed" | "start-failed" | "model-unavailable" | "ended-for-safety" | "context-full"; cause: "capacity" | null; text: string | null }
     /** A sign-in error, its line linking to where sign-in lives [D381]: the agent's own, or a library server's (`plugin`, its key) [wave4 D2043]. */
     | { kind: "notice"; reason: "sign-in"; text: string; plugin?: string | null }
     /**

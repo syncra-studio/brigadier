@@ -52,9 +52,6 @@ impl Runner {
             }
         }
         let req = req.as_ref();
-        if let Some(reply) = self.intent(req) {
-            return reply;
-        }
         let cid = req["cid"].as_str();
         let pty = req["pty"].as_bool().unwrap_or(false);
         let argv: Vec<&str> = req["argv"]
@@ -102,14 +99,19 @@ impl Runner {
                 spawn_pipes(&mut command, req["keep_stdin"].as_bool().unwrap_or(false))
             }
         });
+        // Started, gated, before its input is logged: a start that fails is refused with nothing
+        // logged, so no turn opens to wait on it [D476].
         let (mut child, input, outputs) = match spawned {
             Ok(s) => s,
             Err(e) => {
-                let _ = self
-                    .note(&json!({"event": "spawn_failed", "cid": cid, "error": e.to_string()}));
-                return json!({"ok": false, "cid": cid, "result": "logged", "error": format!("spawn failed: {e}")});
+                return json!({"ok": false, "cid": cid, "result": "refused", "error": format!("The agent couldn't start: {e}")});
             }
         };
+        if let Some(reply) = self.intent(req) {
+            unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+            let _ = child.wait();
+            return reply;
+        }
         // Drill hook: die between starting the child and logging its group.
         crash_at("after_fork:", cid.unwrap_or(""));
         let pid = child.id() as i32;

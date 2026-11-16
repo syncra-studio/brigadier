@@ -73,6 +73,13 @@ impl Startup {
         }
     }
 
+    /// The CLI's own words for the last launch, when it ended before doing anything.
+    pub fn failed(&self) -> Value {
+        (self.launches.last())
+            .filter(|l| l["state"] == "failed")
+            .map_or(Value::Null, |l| l["error"].clone())
+    }
+
     fn launch(&self, setup: &Value) -> Option<&Value> {
         let since = setup["since"].as_u64()?;
         self.launches

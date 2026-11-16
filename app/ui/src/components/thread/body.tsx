@@ -87,6 +87,7 @@ function Said({ backend }: { backend: string | undefined }) {
 
 const FAILED = {
   "turn-failed": "This turn didn’t finish",
+  "start-failed": "The agent couldn’t start",
   "model-unavailable": "This model isn’t available",
   "ended-for-safety": "A safety check ended this conversation, so it can’t go on",
   "context-full": "Context full",

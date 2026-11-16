@@ -332,6 +332,12 @@ pub fn applied(dir: &std::path::Path, cid: &str, mut reply: Value) -> Value {
                 Some(e) => ("refused", "agent".into(), e.into()),
             };
         }
+        if let Some(l) = f.as_ref().and_then(|f| f.fold.last.as_ref())
+            && l["cid"] == cid
+            && l["outcome"] == "failed"
+        {
+            break ("logged", "the agent couldn't start".into(), Value::Null);
+        }
         if started.elapsed() > CONFIRM_WAIT {
             break ("logged", "the agent didn't confirm it".into(), Value::Null);
         }

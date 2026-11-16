@@ -29,6 +29,9 @@ export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, 
   if (why === "ended-for-safety") return <ErrorAction onClick={() => (window.location.hash = "#")}>Start a new one</ErrorAction>;
   const choose = why === "model-unavailable" && <ErrorAction onClick={() => askModel.dispatchEvent(new Event("ask"))}>Choose another model</ErrorAction>;
   const message = session?.items.findLast((item) => item.kind === "message" && item.role === "user");
+  // An agent that never started left nothing to rewind: its message just goes again [D476].
+  const fresh = why === "start-failed" && at && !at.offline && message?.kind === "message" && message.turnId === turn;
+  if (fresh) return <ErrorAction onClick={() => void retryMessage(daemonRun, at.id, message.text, turn, message.draft)}>Retry</ErrorAction>;
   if (!at || at.offline || session?.id !== at.id || message?.kind !== "message" || message.turnId !== turn || !session.rewind?.includes(turn) || (retrying && retrying.turn !== turn)) return choose;
   if (retrying && !retrying.error) return <>{choose}<span className="shimmer">Retrying…</span></>;
   const entry = retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false };

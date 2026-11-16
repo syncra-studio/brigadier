@@ -14,6 +14,9 @@ impl Thread {
             self.user_stopped(ts);
         } else if outcome == "interrupted" && t.delivered.is_some() {
             self.interrupted_line();
+        } else if item["kind"] == "exited" && t.delivered.is_none() {
+            // Its agent couldn't start: one line, the CLI's own words under it [D476].
+            self.add(json!({"kind": "notice", "reason": "failed", "why": "start-failed", "cause": null, "text": self.startup.failed()}));
         }
     }
 
