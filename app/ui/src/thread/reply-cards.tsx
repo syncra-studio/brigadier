@@ -28,13 +28,27 @@ export function replyCard(language: string, json: string): ReactNode {
   return isMessage(spec) ? <MessageCard {...spec} /> : null;
 }
 
-const FRAME = "my-3 rounded-thread border border-border bg-code-surface first:mt-0 last:mb-0";
+/** The frame a reply's words for a person sit in: quiet, large corners, the reply's own font [D520]. */
+const FRAME = "my-3 rounded-alert border border-border bg-code-surface first:mt-0 last:mb-0";
+
+/** Words for a person to paste (a `text` fence): its title grey, copy beside it, the words as written [D520]. */
+export function WritingCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className={FRAME}>
+      <div className="flex h-control-md items-center gap-1.5 ps-4 pe-2 text-sm text-muted-foreground">
+        <span className="truncate font-medium">{title}</span>
+        <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />
+      </div>
+      <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
+    </div>
+  );
+}
 
 /** A message for someone else: where it goes, whether it went, their words it answers, and copy for the message alone. */
 function MessageCard({ to, state = "draft", text, quote }: Message) {
   return (
     <div className={FRAME}>
-      <div className="flex h-control-md items-center gap-1.5 ps-3 pe-1.5 text-xs text-muted-foreground">
+      <div className="flex h-control-md items-center gap-1.5 ps-4 pe-2 text-xs text-muted-foreground">
         <Chat className="size-icon-sm" />
         <span className="font-medium text-foreground">{to}</span>
         <Badge variant={state === "posted" ? "success" : "secondary"} className="ms-1">
@@ -43,12 +57,12 @@ function MessageCard({ to, state = "draft", text, quote }: Message) {
         <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />
       </div>
       {quote && (
-        <div className="mx-3 mb-2 border-s-2 border-quote-edge ps-3 text-sm text-muted-foreground">
+        <div className="mx-4 mb-2 border-s-2 border-quote-edge ps-3 text-sm text-muted-foreground">
           <div className="text-xs font-medium">{quote.from} wrote</div>
           <div className="whitespace-pre-wrap">{quote.text}</div>
         </div>
       )}
-      <div className="px-3 pb-3 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
+      <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
     </div>
   );
 }

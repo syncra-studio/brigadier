@@ -4,9 +4,9 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
-import { Chat, Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
+import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
-import { replyCard } from "./reply-cards";
+import { replyCard, WritingCard } from "./reply-cards";
 import { RefWord, remarkRefs } from "./refs";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
@@ -222,7 +222,7 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
     if (card) return card;
     // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
     // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
-    const named = language === "text" && !code.data?.meta ? /^([^\n]{1,100} · [^\n]*)\n/.exec(text) : null;
+    const named = WRITING.test(language) && !code.data?.meta ? /^([^\n]{1,100} · [^\n]*)\n/.exec(text) : null;
     const meta = code.data?.meta || named?.[1];
     const said = (named ? text.slice(named[0].length) : text).replace(/\n$/, "");
     const Icon = KIND_ICONS[language] ?? Code;
@@ -232,9 +232,9 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
         <span className="font-medium text-foreground">{meta}</span>
       </>
     ) : undefined;
-    // A titled `text` block is a message for a person: drawn in the reply's own font, copied as written.
-    const message = meta && language === "text" ? <div className="px-3 pb-3 leading-relaxed break-words whitespace-pre-wrap">{said}</div> : undefined;
-    return <CodeBlock code={said} language={language} keep={at} title={title} body={message} />;
+    // Words for a person to paste, titled or not, are a writing card in the reply's own font [D520].
+    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} />;
+    return <CodeBlock code={said} language={language} keep={at} title={title} />;
   },
   // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].
   blockquote: ({ node, children }) => {
@@ -254,4 +254,6 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
   },
 });
 
-const KIND_ICONS: Record<string, typeof Code> = { text: Chat, sh: Terminal, bash: Terminal, zsh: Terminal, shell: Terminal, diff: Compare };
+const WRITING = /^(text|txt|plain|plaintext)$/i;
+
+const KIND_ICONS: Record<string, typeof Code> = { sh: Terminal, bash: Terminal, zsh: Terminal, shell: Terminal, diff: Compare };
