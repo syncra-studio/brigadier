@@ -272,11 +272,12 @@ impl Thread {
                 self.kept_row(json!({"kind": "line", "reason": "model", "why": "rerouted",
                     "from": item["from"], "to": item["to"]}));
             }
-            "denied" => {
-                if let Some(o) = self.open.as_mut() {
-                    o.denied += 1;
-                }
-            }
+            "denied" => match self.open.as_mut() {
+                // None judged it: its agent's own check gave no verdict, and its turn says so [D455].
+                Some(o) if item["unchecked"] == true => self.turns[o.at]["unchecked"] = true.into(),
+                Some(o) => o.denied += 1,
+                None => {}
+            },
             // A failed turn: one row at its end, Rust's reason and the CLI's own words; the UI writes the rest and offers Retry [D487, D54].
             "failed" => {
                 // A turn its limit ended fails with it: the limit's row says so.

@@ -17,6 +17,21 @@ pub fn mode(level: &str) -> &'static str {
     }
 }
 
+/// An action its rule or reviewer turned down [D487]; or one its auto mode's check gave no verdict
+/// on (unavailable, an outage, no check this session), never judged: the turn asks instead [D455].
+// shortcut: a single outage denial has no code, only its words; match a code if the CLI gives one.
+pub fn denied(v: &Value) -> Event {
+    let unchecked = v["decision_reason_type"] == "classifier"
+        && (s(v, &["decision_reason_code"]).starts_with("auto_mode_")
+            || s(v, &["decision_reason"]) == "Classifier unavailable"
+            || s(v, &["message"]).contains("cannot determine the safety"));
+    if unchecked {
+        Event::Unchecked
+    } else {
+        Event::Denied
+    }
+}
+
 /// The level a permission mode Claude reports runs at; None for a mode no level names.
 fn level_of(mode: &str) -> Option<&'static str> {
     match mode {

@@ -9,6 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Turn {
+    /// Its agent's own safety check gave no verdict: it asks the user till it ends [D455].
+    #[serde(default)]
+    pub unchecked: bool,
     /// Stable for the turn's life: its first input's cid, or `a<n>` for one the agent started.
     #[serde(default)]
     pub id: String,
@@ -180,7 +183,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
-                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved, "said": turn.said,
+                       "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved, "said": turn.said, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );

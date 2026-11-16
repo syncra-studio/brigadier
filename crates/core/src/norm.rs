@@ -30,6 +30,9 @@ pub struct Norm {
     /// The last tool call's folder as its CLI said it beside its ask: (call id, folder) [D391].
     #[serde(default)]
     cwd: Option<(String, String)>,
+    /// This turn's agent's own safety check gave no verdict: its asks say so [D455].
+    #[serde(default)]
+    unchecked: bool,
 }
 
 impl Norm {
@@ -183,6 +186,7 @@ impl Norm {
                     json!({"kind": "turn_start"})
                 }
                 Event::TurnEnd(ok) => {
+                    self.unchecked = false;
                     items.extend(self.counted(adapter));
                     json!({"kind": "turn_end", "ok": ok})
                 }
@@ -248,6 +252,10 @@ impl Norm {
                     {
                         a["cli"]["cwd"] = cwd.into();
                     }
+                    if self.unchecked {
+                        a["reason"] =
+                            format!("{}'s safety check was unavailable", adapter.label()).into();
+                    }
                     json!({"kind": "approval", "id": a["id"], "request": a})
                 }
                 Event::Resolved(id) => json!({"kind": "resolved", "id": id}),
@@ -279,6 +287,10 @@ impl Norm {
                 Event::Failed(why, m) => json!({"kind": "failed", "why": why, "message": m}),
                 Event::Checking(on) => json!({"kind": "checking", "on": on}),
                 Event::Denied => json!({"kind": "denied"}),
+                Event::Unchecked => {
+                    self.unchecked = true;
+                    json!({"kind": "denied", "unchecked": true})
+                }
                 Event::Unknown(raw) => json!({"kind": "unknown", "raw": raw}),
             };
             items.push(item);

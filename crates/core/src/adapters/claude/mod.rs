@@ -347,7 +347,7 @@ impl Adapter for Claude {
             ("system", "model_refusal_no_fallback") => {
                 vec![Event::Failed("blocked", s(&v, &["content"]).into())]
             }
-            ("system", "permission_denied") => vec![Event::Denied],
+            ("system", "permission_denied") => vec![control::denied(&v)],
             // The reply as it's written; its whole text follows in its message [D147].
             ("stream_event", _)
                 if parent.is_none() && v["event"]["delta"]["type"] == "text_delta" =>

@@ -171,6 +171,7 @@ fn main() -> io::Result<()> {
         brigadier::queue::drain(&data, &index.rows);
         brigadier::control::repeats(&data, &index.rows);
         brigadier::control::hush(&data, &index.rows);
+        brigadier::control::unchecked(&data, &index.rows);
         brigadier::workers::pass(&data, &index.rows);
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);

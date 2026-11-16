@@ -53,7 +53,7 @@ export function workWords(turn: Turn, work: Work | undefined, now: number): stri
   if (turn.status === "running" && ms < 1000) return "Working";
   // The actions turned down in it, beside the time (D487).
   const denied = turn.denied ?? work?.denied;
-  return `${ENDED[turn.status]} ${duration(ms)}${denied ? ` · ${denied} denied` : ""}`;
+  return `${ENDED[turn.status]} ${duration(ms)}${denied ? ` · ${denied} denied` : ""}${turn.unchecked ? " · safety check unavailable" : ""}`;
 }
 
 /** A clock time, "09:39". */

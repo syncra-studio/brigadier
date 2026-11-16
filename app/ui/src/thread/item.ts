@@ -47,6 +47,8 @@ export type SetupStep = {
 export type Turn = {
   /** Actions turned down, even when none ran and there is no work fold. */
   denied?: number;
+  /** Its agent's own safety check gave no verdict on an action, so the rest of the turn asks you instead (D455). */
+  unchecked?: boolean;
   id: string;
   status: "running" | "done" | "failed" | "cancelled";
   startedAt: number;

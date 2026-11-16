@@ -110,7 +110,8 @@ fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
     f.picked.is_some()
         || (f.given.as_ref()).is_some_and(|g| {
             g["model"].as_str() != model.as_deref()
-                || level().is_some_and(|l| g["level"].as_str() != l)
+                // Asking where its check gave no verdict is no switch: it goes back as the turn ends [D455].
+                || (!f.turns.first().is_some_and(|t| t.unchecked) && level().is_some_and(|l| g["level"].as_str() != l))
         })
 }
 

@@ -144,6 +144,43 @@ pub fn repeats(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
     }
 }
 
+/// A turn whose agent's own safety check gave no verdict asks the user instead: its child runs at
+/// Ask for the rest of that turn, and at the session's own level again once it ends, however it
+/// ends [D453, D455]. Each once a turn; a new child starts at the session's level anyway.
+pub fn unchecked(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+    static DONE: std::sync::Mutex<std::collections::BTreeSet<String>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    for (id, row) in rows {
+        let (Some(to), Some(turn)) = (row["unchecked"][0].as_str(), row["unchecked"][1].as_str())
+        else {
+            continue;
+        };
+        if !DONE.lock().unwrap().insert(format!("{id} {turn} {to}")) {
+            continue;
+        }
+        let (data, id, ask) = (data.to_path_buf(), id.clone(), to == "ask");
+        thread::spawn(move || {
+            let relevel = || -> io::Result<()> {
+                let mut spec = core::load(&data, &id)?;
+                if ask {
+                    spec.level = Some("ask".into());
+                }
+                let ping = owner::call(&data, &id, json!({"op": "ping"}))?;
+                let Some(spawn) = ping["child"].is_number().then(|| ping["spawn"].as_u64()) else {
+                    return Ok(());
+                };
+                let f = core::fold(&spec.dir, true)?;
+                let call = |req| owner::call(&data, &id, req);
+                core::relevel(&spec, &f.fold, Some(spawn.unwrap_or(0)), &call, &new_cid())
+                    .map_err(|e| io::Error::other(e.to_string()))
+            };
+            if let Err(e) = relevel() {
+                eprintln!("brigadierd: unchecked {id}: {e}");
+            }
+        });
+    }
+}
+
 /// A session the user stopped or paused that its CLI woke on its own (a background task ended):
 /// stopped again at once, as the user left it, by the same hand [D90, D95].
 pub fn hush(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {

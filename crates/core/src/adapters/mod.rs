@@ -108,6 +108,8 @@ pub enum Event {
     Checking(bool),
     /// An action the CLI's own rule or reviewer turned down, with nobody asked [D487].
     Denied,
+    /// An action its CLI's own safety check gave no verdict on: not run, nobody asked [D455].
+    Unchecked,
     Usage(Value),
     /// Tokens in the conversation's window now, and the window's size where the CLI says [D88].
     Context(u64, Option<u64>),

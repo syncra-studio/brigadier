@@ -109,7 +109,10 @@ impl Fold {
         let Some(g) = self.given.as_ref().filter(|g| g["worker"] == true) else {
             return false;
         };
-        item["kind"] == "question" || matches!(g["level"].as_str(), Some("auto" | "full"))
+        // On Auto while its check gave no verdict, it asks as it would on Auto [D455].
+        item["kind"] == "question"
+            || self.turns.first().is_some_and(|t| t.unchecked)
+            || matches!(g["level"].as_str(), Some("auto" | "full"))
     }
 
     /// A pending request leaves, saying why: answered, withdrawn, or how its turn ended.

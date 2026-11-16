@@ -442,14 +442,15 @@ pub fn level(
     }
 }
 
-/// A new level reaches a running turn at once [D166]: as its agent's own request where it takes
-/// one mid-turn, confirmed and recorded as the level the child runs at. An agent that takes it only
-/// with a turn start is left as it was given, so `rebirth::due` cuts the turn and carries it on.
+/// A new level reaches a running child at once [D166, D455]: as its agent's own request where it
+/// takes one mid-turn, confirmed and recorded as the level the child runs at. An agent that takes it
+/// only with a turn start is left as it was given, so `rebirth::due` cuts the turn and carries it on.
 pub fn relevel(spec: &Spec, f: &Fold, child: Running, call: Call, cid: &str) -> Result<(), Value> {
-    let (Some(t), Some(g)) = (f.turns.first(), f.given.as_ref()) else {
+    let Some(g) = f.given.as_ref() else {
         return Ok(());
     };
-    let Some(a) = adapters::get(&t.backend) else {
+    let backend = f.turns.first().map_or(&f.backend, |t| &t.backend);
+    let Some(a) = adapters::get(backend) else {
         return Ok(());
     };
     let held = crate::projects::held(&crate::data_of(spec), spec);
@@ -459,7 +460,7 @@ pub fn relevel(spec: &Spec, f: &Fold, child: Running, call: Call, cid: &str) -> 
     }
     let next = Spec {
         level: want.map(String::from),
-        ..as_run(spec, f, &t.backend, None)
+        ..as_run(spec, f, backend, None)
     };
     let last = Spec {
         level: g["level"].as_str().map(String::from),
@@ -468,7 +469,7 @@ pub fn relevel(spec: &Spec, f: &Fold, child: Running, call: Call, cid: &str) -> 
     let Retune::Confirm(Delivery::Stdin(bytes), ids) = a.retune(&last, &next) else {
         return Ok(());
     };
-    let base = json!({"cid": cid, "origin": "user", "backend": t.backend});
+    let base = json!({"cid": cid, "origin": "user", "backend": backend});
     let took = confirm(spec, call, &base, child, bytes, &ids)?;
     let note = json!({"op": "note", "data": {"event": "level", "level": took.as_deref().or(want)}});
     call(note).map_err(|e| json!({"ok": false, "error": e.to_string()}))?;

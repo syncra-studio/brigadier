@@ -231,6 +231,7 @@ impl Fold {
             self.last_out = ts;
             if let Some(t) = self.turns.first_mut() {
                 t.began = true;
+                t.unchecked |= item["unchecked"] == true; // its own check gave no verdict [D455]
                 t.said |= matches!(
                     kind,
                     "text" | "text_delta" | "tool" | "reasoning" | "question" | "approval" | "plan"

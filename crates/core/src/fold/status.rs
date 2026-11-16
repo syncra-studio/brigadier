@@ -45,6 +45,20 @@ pub fn resumable(fold: &Fold, state: &str) -> bool {
             .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
 }
 
+impl Fold {
+    /// Where a turn's agent's own safety check gave no verdict [D455]: "ask" while that turn runs
+    /// on Auto, so its next try asks the user; "back" once it ended, however it ended, to the
+    /// session's own level. With the turn's id, so each is done once.
+    pub fn unchecked(&self) -> Option<(&'static str, &str)> {
+        if let Some(t) = self.turns.first() {
+            let auto = self.given.as_ref()?["level"] == "auto";
+            return (t.unchecked && auto).then_some(("ask", &t.id));
+        }
+        let last = self.last.as_ref().filter(|l| l["unchecked"] == true)?;
+        Some(("back", last["id"].as_str()?))
+    }
+}
+
 /// A turn its CLI started on its own (a background task's end) after the user's Stop or a Pause,
 /// with no message since: who stopped it, so it's stopped again at once [D90, D95].
 pub fn woke(fold: &Fold) -> Option<&str> {

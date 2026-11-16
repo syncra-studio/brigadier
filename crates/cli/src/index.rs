@@ -304,9 +304,9 @@ impl Index {
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
-                             // The turn the loop guard stopped: its line offers Continue [D144].
-                             "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])});
+                             "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
+            row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
             fold::background_row(&mut row, &dir, &live.left);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
             // It holds its project's own folder: Local checkout can't start there again [D306].
