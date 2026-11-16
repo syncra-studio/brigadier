@@ -224,6 +224,9 @@ pub fn run(
         return crate::relay::mcp(data, me, args);
     }
     if args.first().is_some_and(|a| a == "browser") {
+        if args.iter().any(|a| a == "--help") {
+            return json!({"ok": true, "text": crate::browser::HELP});
+        }
         return crate::browser::agent(data, me, args, here);
     }
     let call = match parse(args) {
