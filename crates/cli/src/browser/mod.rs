@@ -19,7 +19,7 @@ use store::{Device, Store};
 use types::{DownloadState, HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
 
 pub(crate) use hub::{HELP, answered};
-pub use hub::{agent, leave, page};
+pub use hub::{agent, leave, page, turn_ended};
 
 const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
 

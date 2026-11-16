@@ -203,10 +203,39 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
     let token = grant(spec)?;
     let me = std::env::current_exe().ok()?;
     let data = crate::data_of(spec).display().to_string();
-    let vars = vec![
+    let mut vars = vec![
         (SESSION.into(), spec.dir.display().to_string()),
         (GRANT.into(), token),
         ("BRIGADIER_DATA".into(), data),
     ];
+    vars.extend(browser_shim().map(|shim| ("BROWSER".into(), shim)));
     Some((me.parent()?.display().to_string(), vars))
+}
+
+/// `BROWSER` in an agent's shell, for `vite --open`, `"$BROWSER" <url>` and the like, the same for
+/// every adapter: a local page opens in a tab of Brigadier's browser with the session's grant;
+/// the daemon refuses when the user's local links open elsewhere, and any refusal or failure
+/// goes to the default browser. Ported from the old app's AGENT_BROWSER_SHIM [D507, D516].
+const BROWSER_SHIM: &str = r#"#!/bin/sh
+case "$1" in
+  http://localhost*|https://localhost*|http://127.*|https://127.*|http://0.0.0.0*|http://\[::1\]*|http://*.localhost*)
+    if brigadier browser open "$1" --keep --dev-url >/dev/null 2>&1; then exit 0; fi ;;
+esac
+if command -v open >/dev/null 2>&1; then exec open "$1"; fi
+exec xdg-open "$1"
+"#;
+
+/// The shim's path, the same for every launch and written only when it differs; in the temp
+/// folder, since a path with a space breaks some openers. A shell without it still works, so a
+/// failure isn't reported.
+fn browser_shim() -> Option<String> {
+    let folder = std::env::temp_dir().join("brigadier-open");
+    let shim = folder.join("agent-browser");
+    if std::fs::read_to_string(&shim).ok().as_deref() != Some(BROWSER_SHIM) {
+        std::fs::create_dir_all(&folder).ok()?;
+        std::fs::write(&shim, BROWSER_SHIM).ok()?;
+        let mode = std::os::unix::fs::PermissionsExt::from_mode(0o700);
+        std::fs::set_permissions(&shim, mode).ok()?;
+    }
+    Some(shim.display().to_string())
 }

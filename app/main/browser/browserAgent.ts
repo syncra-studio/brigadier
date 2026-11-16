@@ -9,6 +9,7 @@ import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { forgetSecrets, pictureForAgent, runScript, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
+import { stopOf } from "./browserSignIn";
 
 export { watchNetwork };
 
@@ -135,7 +136,8 @@ type Call =
   | { call: "enter"; guest: number }
   | { call: "wheel"; guest: number; x: number; y: number; deltaX: number; deltaY: number }
   | { call: "events"; guest: number; since: number; kinds: string[] }
-  | { call: "capture"; guest: number };
+  | { call: "capture"; guest: number }
+  | { call: "signInStop"; guest: number };
 
 export function installBrowserAgent(): void {
   handleFromApp("brigadier:agent", async (event, call: Call) => {
@@ -172,6 +174,8 @@ export function installBrowserAgent(): void {
         return sweptAndScrubbed(guest, () => activityOf(guest.id, call.since, call.kinds));
       case "capture":
         return pictureForAgent(guest);
+      case "signInStop":
+        return stopOf(guest);
       default:
         throw new Error("Unknown agent call");
     }

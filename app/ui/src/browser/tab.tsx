@@ -16,7 +16,8 @@ import { showPage } from "./hole";
 import { type BrowserKey, browserKey, stepZoom } from "./keys";
 import { type BrowserBounds, focusPage, go, placePage, printPage } from "./layer";
 import { closeBrowserPage, dismissBlocked, openPage, originOf, syncZoom, useBrowserPage, zoomPage } from "./pages";
-import { handBack, pageShows, useAgentPause, userUsed } from "./pause";
+import { handBack, pageShows, type SignInStop, useAgentPause, userUsed } from "./pause";
+import { dismissSignInRejected, useSignInRejected } from "./sign-in";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
 import { BrowserOptions } from "./options";
@@ -47,6 +48,15 @@ function failed(cause: unknown) {
 
 const openOutside = (url: string) => window.brigadier?.openLink(url);
 
+/** Why a tab's agent stopped for the user at a page only they can go through. */
+function SignInStopWords({ stop, driver }: { stop: SignInStop; driver: string }) {
+  const who = <span className="font-medium">{driver}</span>;
+  if (stop.kind === "rejected") return <>Google refused this sign-in, so {who} stopped. Press Continue to hand the page back.</>;
+  if (stop.kind === "captcha") return <>This page shows a captcha, so {who} stopped. Solve it, then press Continue.</>;
+  if (stop.window) return <>A sign-in window opened, so {who} stopped. Finish in that window, then press Continue.</>;
+  return <>This page asks you to sign in, so {who} stopped. Agents don't sign in: do it here, then press Continue.</>;
+}
+
 /** `children` show until a page is made; `onNavigate` takes the first address instead (the New tab, which becomes a page). */
 export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner: string; tab: Tab; active: boolean; children?: ReactNode; onNavigate?: (url: string) => void }) {
   const id = tab.id;
@@ -66,6 +76,8 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   const pause = useAgentPause();
   const paused = id in pause.paused;
   const devtoolsOpen = id in pause.devtools;
+  const signInStop = pause.asked[id];
+  const signInRejected = useSignInRejected(id);
   // The agent working the tab, as the user knows it.
   const { rows } = useDaemon();
   const driver = tab.driver ? (rows?.find((row) => row.id === tab.driver)?.title ?? "The agent") : null;
@@ -379,16 +391,28 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
       </div>
       {finding && ready && <FindBar id={id} input={findInput} onClose={hideFind} />}
-      {/* shortcut: no sign-in or captcha stop words in this banner until S12 ports browserSignIn. */}
       {paused && driver !== null && (
         <Banner
           slot="browser-paused"
           text={devtoolsOpen
             ? <>DevTools is open on this page, so <span className="font-medium">{driver}</span> is waiting. Close it to hand the page back.</>
-            : <>You're using this page, so <span className="font-medium">{driver}</span> is waiting.</>}
+            : signInStop
+              ? <SignInStopWords stop={signInStop} driver={driver} />
+              : <>You're using this page, so <span className="font-medium">{driver}</span> is waiting.</>}
         >
           <Button size="sm" disabled={devtoolsOpen} onClick={() => handBack(id)}>
             Continue
+          </Button>
+        </Banner>
+      )}
+      {signInRejected && (
+        <Banner
+          slot="browser-signin-rejected"
+          text={<><span className="font-medium">Google refused this sign-in.</span> It decides which browsers it allows and has decided against this one. Your account and password are fine, but trying again here will probably get the same answer. Use your usual browser for this site if you need it now.</>}
+          onDismiss={() => dismissSignInRejected(id)}
+        >
+          <Button size="sm" variant="ghost" onClick={() => openOutside("https://accounts.google.com/")}>
+            Open in browser
           </Button>
         </Banner>
       )}

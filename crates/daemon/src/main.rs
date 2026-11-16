@@ -156,6 +156,7 @@ fn main() -> io::Result<()> {
                         != Some(&row["finished"])
                     {
                         let _ = ended.send(id.into());
+                        brigadier::browser::turn_ended(id);
                     }
                 }
                 for id in &gone {

@@ -109,8 +109,13 @@ pub(super) fn reply(data: &Path, me: &str, w: &Words, op: &Value, result: Value)
     let text = match result["result"].as_str().unwrap_or("") {
         "page" => {
             // A snapshot, a new page or a step back reads whole; a click or typing, what it changed.
-            let whole = !matches!(op["op"].as_str(), Some("click" | "type"));
+            // A sign-in stop's words aren't the page: whole, and the next read starts afresh.
+            let stopped = result["stopped"] == true;
+            let whole = stopped || !matches!(op["op"].as_str(), Some("click" | "type"));
             let mut text = page_text(&tab, &result["page"], whole);
+            if stopped {
+                forget(&tab);
+            }
             if result["user"] == true {
                 text.push_str(USERS_TAB);
             }
@@ -124,6 +129,7 @@ pub(super) fn reply(data: &Path, me: &str, w: &Words, op: &Value, result: Value)
         "closed" => {
             forget(&tab);
             lock(&HUB.tabs).retain(|_, t| *t != tab);
+            lock(&HUB.opened).remove(&tab);
             format!("Closed {tab}.")
         }
         "paused" => {

@@ -8,8 +8,10 @@ import { tabAnywhere } from "../shell/tab-store";
  * tab, its page or its toolbar, pauses the agent working it; Continue hands it back. Kept here, apart from the page,
  * so the page loading again can't undo it. The daemon holds the agent's calls on a paused tab.
  */
-type Pause = { paused: Record<string, string>; devtools: Record<string, true> };
-let state: Pause = { paused: {}, devtools: {} };
+/** A page only the user goes through: a sign-in, a captcha or Google's refusal (main's browser/browserSignInRules.ts). */
+export type SignInStop = { kind: "signIn" | "captcha" | "rejected"; site: string; key: string; window?: boolean };
+type Pause = { paused: Record<string, string>; devtools: Record<string, true>; asked: Record<string, SignInStop> };
+let state: Pause = { paused: {}, devtools: {}, asked: {} };
 const listeners = new Set<() => void>();
 const set = (change: (now: Pause) => Partial<Pause>) => {
   state = { ...state, ...change(state) };
@@ -55,6 +57,18 @@ export function userUsed(id: string): void {
   tell(owner.session, id, true);
 }
 
+/** The page only the user goes through that tab `id`'s agent stopped at, until Continue. */
+export const askedOf = (id: string): SignInStop | undefined => state.asked[id];
+
+/** The agent working tab `id` stopped at a page only the user goes through (sign-in.ts). */
+export function pausedFor(id: string, stop: SignInStop): void {
+  if (isPaused(id)) return;
+  const owner = driverOf(id);
+  if (!owner) return;
+  set(({ paused, asked }) => ({ paused: { ...paused, [id]: owner.session }, asked: { ...asked, [id]: stop } }));
+  tell(owner.session, id, true);
+}
+
 /**
  * DevTools opened or closed on tab `id`. Opening it on an agent's tab counts as taking it over. Closing it resumes
  * nothing: the agent waits for Continue again. The daemon holds a paused tab's calls, so it hears of the pause only
@@ -97,10 +111,11 @@ export function pageUsed(id: string): void {
 export function handBack(id: string): void {
   const session = state.paused[id];
   if (session === undefined) return;
-  set(({ paused, devtools }) => {
+  set(({ paused, devtools, asked }) => {
     const { [id]: _gone, ...rest } = paused;
     const { [id]: _open, ...shut } = devtools;
-    return { paused: rest, devtools: shut };
+    const { [id]: _stop, ...others } = asked;
+    return { paused: rest, devtools: shut, asked: others };
   });
   tell(session, id, false);
 }

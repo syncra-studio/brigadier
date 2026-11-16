@@ -42,6 +42,8 @@ struct Hub {
     reads: Mutex<HashMap<String, (u64, String)>>,
     /// The tab each agent works in now.
     tabs: Mutex<HashMap<String, String>>,
+    /// The tabs agents opened, by tab: the agent, its session's tabs and whether `--keep` kept it.
+    opened: Mutex<HashMap<String, (String, String, bool)>>,
 }
 
 static HUB: LazyLock<Hub> = LazyLock::new(Hub::default);
@@ -214,6 +216,16 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
         Ok(op) => op,
         Err(e) => return e,
     };
+    // `$BROWSER`'s open (core::agent's shim): a local page, and only while local links open here.
+    if w.action == "open" && w.flags.contains("--dev-url") {
+        let url = w.rest.first().copied().unwrap_or_default();
+        if !core::agent::local_address(url) {
+            return refuse(&format!("{url} isn't a local address."));
+        }
+        if crate::settings::get(data, "local_links_in") != "brigadier" {
+            return refuse("Local links open in the default browser (Settings › Browser).");
+        }
+    }
     let label = core::share::title(&spec);
     let tab = op["tab"].as_str().unwrap_or("").to_string();
     let key = asks::fingerprint(&op).map(|f| (me.to_string(), tab.clone(), f));
@@ -268,6 +280,12 @@ fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool)
             .filter(|_| result["result"] != "closed")
         {
             lock(&HUB.tabs).insert(me.to_string(), t.to_string());
+            if op["op"] == "open" {
+                let keep = op["keep"] == true;
+                let mut opened = lock(&HUB.opened);
+                let kept = opened.get(t).is_some_and(|o| o.2);
+                opened.insert(t.into(), (me.into(), owner.into(), keep || kept));
+            }
         }
         return result;
     }
@@ -280,6 +298,31 @@ fn tab_of(w: &Words, me: &str) -> Result<String, Value> {
         None => lock(&HUB.tabs).get(me).cloned().ok_or_else(|| {
             refuse("You have no tab yet: open one with `brigadier browser open <url>`.")
         }),
+    }
+}
+
+/// Session `me`'s turn ended: the tabs its agent opened without `--keep` close in the app, except
+/// the one in front and those the user took over, and it lets go of the rest (agent.ts).
+pub fn turn_ended(me: &str) {
+    let mut gone: HashMap<String, Vec<String>> = HashMap::new();
+    lock(&HUB.opened).retain(|tab, (driver, owner, keep)| {
+        if driver != me {
+            return true;
+        }
+        let close = gone.entry(owner.clone()).or_default();
+        if !*keep {
+            close.push(tab.clone());
+        }
+        *keep
+    });
+    let Some((_, out)) = lock(&HUB.pages).last().cloned() else {
+        return;
+    };
+    for (owner, tabs) in gone {
+        let op = json!({"op": "end", "tabs": tabs});
+        let push =
+            json!({"browser": {"id": "", "owner": owner, "driver": me, "label": "", "op": op}});
+        let _ = out.send(push.to_string());
     }
 }
 

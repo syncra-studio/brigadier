@@ -13,6 +13,7 @@ import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 import { watchUserComposition } from "./focus-guard";
 import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
+import { type SignInSeen, signInSeen } from "./sign-in";
 import { recordDates } from "./profiles";
 
 declare global {
@@ -42,6 +43,8 @@ declare global {
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
       agent(call: Record<string, unknown>): Promise<unknown>;
+      /** What a tab's page, or a window it opened, shows that only the user goes through (main's browser/browserSignIn.ts). */
+      onGuestSignIn(listener: (details: { from: number } & SignInSeen) => void): void;
     };
   }
 }
@@ -186,7 +189,11 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
   window.brigadierShell.onBrowserDates(recordDates);
-  // shortcut: no passkey or sign-in events until those sections land (guestPasskey, browserSignIn).
+  // shortcut: no passkey events until that section lands (guestPasskey).
+  window.brigadierShell.onGuestSignIn(({ from, ...seen }) => {
+    const page = pageOf(from);
+    if (page) signInSeen(page.id, seen);
+  });
   window.brigadierShell.onAgentEvent(({ from, event }) => {
     const page = pageOf(from);
     if (!page) return;

@@ -5,8 +5,9 @@ import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } 
 import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun } from "./hands";
 import { agentPage, go } from "./layer";
 import { browserPage, loadStarts, openPage } from "./pages";
-import { devToolsOpen, driverOf, isPaused, onPauseChanged } from "./pause";
+import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged } from "./pause";
 import { onProfileChanged } from "./profiles";
+import { signInCleared, signInStopOf, stopAgent, stoppedWords } from "./sign-in";
 
 /**
  * Agents' browser calls (crates/cli/src/browser.rs), as the app runs them, ported from the old app's agentBrowser: a
@@ -25,6 +26,7 @@ const holdChangeFailed = (error: unknown) => console.error("changing an agent's 
 export function installBrowserAgent(): void {
   setBrowserHandler((frame) => {
     const call = frame as Call;
+    if (call.op.op === "end") return void endTurn(call).catch(holdChangeFailed);
     void runCall(call).then((result) => run(["browser", "answer", call.id, JSON.stringify(result)])).catch(holdChangeFailed);
   });
   // The user took a tab over: the agent's hold of its page goes at once, so what they do is their own. Continue gives
@@ -38,6 +40,20 @@ export function installBrowserAgent(): void {
     }
   });
   onProfileChanged(({ tabId }) => profileChanged(tabId));
+}
+
+/**
+ * The agent's turn ended (crates/cli/src/browser/hub.rs): the tabs it opened for it close, except those kept for the
+ * user, the one in front and those the user took over; it lets go of what stays open, which is the user's to use.
+ */
+async function endTurn({ owner, driver, op }: Call): Promise<void> {
+  await tabsRead(owner);
+  const current = tabsOf(owner);
+  const gone = (op.tabs as string[]).filter((tab) => tab !== current.active && !isPaused(tab) && current.tabs.some((each) => each.id === tab));
+  for (const tab of gone) closeTab(owner, tab);
+  for (const tab of browserTabs(owner)) {
+    if (tab.driver === driver && !gone.includes(tab.id)) agentDrive(tab.id, false).catch(holdChangeFailed);
+  }
 }
 
 const PROFILE_CHANGED = "profile_changed: this tab's profile was deleted, so it moved to the user's default profile. Your refs are void and what it's signed in to may differ. Nothing was done: read it again before going on, and don't assume you are still the same user on the site.";
@@ -284,7 +300,8 @@ async function settled(tab: string): Promise<void> {
 
 /** The tab's page, read for the agent. */
 async function page(tab: string, owner: string): Promise<Result> {
-  // shortcut: no sign-in or captcha stop before the read until S12 ports browserSignIn.
+  const stopped = await stoppedAt(tab);
+  if (stopped) return stopped;
   const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
   if (devToolsOpen(tab)) return failed(PAUSED_DEVTOOLS);
   const error = errorOf(answer);
@@ -294,6 +311,24 @@ async function page(tab: string, owner: string): Promise<Result> {
   if (/^https?:/i.test(read.url) && read.url.length <= 8192 && browserTabs(owner).some((each) => each.id === tab && each.target !== read.url)) setTabUrl(owner, tab, read.url);
   const shown = browserPage(tab);
   return { result: "page", tab, page: { url: read.url, title: read.title, generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: read.text }, user: false };
+}
+
+/**
+ * What the agent hears on a page that stops it: the action it asked for is done, so this is its answer and not `paused`,
+ * which the daemon would run again after Continue. Its next call on the tab waits.
+ */
+async function stoppedAt(tab: string): Promise<Result | null> {
+  if (!driverOf(tab)) return null;
+  let stop = askedOf(tab);
+  if (!stop && !isPaused(tab)) {
+    const found = await signInStopOf(tab);
+    if (!found) signInCleared(tab);
+    else if (stopAgent(tab, found)) stop = found;
+  }
+  if (!stop) return null;
+  const shown = browserPage(tab);
+  const read = { url: shown?.url ?? "", title: shown?.title ?? "", generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
+  return { result: "page", tab, page: read, user: false, stopped: true };
 }
 
 /** `bytes` as base64. */

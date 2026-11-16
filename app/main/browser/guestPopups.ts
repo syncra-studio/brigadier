@@ -4,6 +4,7 @@
 import { BrowserWindow, type HandlerDetails, type WebContents } from "electron";
 
 import { watchSiteActivity } from "./browserClearData";
+import { watchSignIn } from "./browserSignIn";
 import { installFailedLoad } from "./guestFailedLoad";
 import { installGuestLinks, takeOsLink } from "./guestLinks";
 import { installGuestMenu } from "./guestMenu";
@@ -32,8 +33,9 @@ export function openAsTab(from: WebContents, url: string): void {
 export function installGuest(contents: WebContents): void {
   installGuestMenu(contents, openAsTab);
   watchSiteActivity(contents);
-  // shortcut: no history, sign-in or passkey watch until those sections land (browserHistory, browserSignIn).
+  // shortcut: no history or passkey watch until those sections land (browserHistory, guestPasskey).
   installFailedLoad(contents);
+  watchSignIn(contents, tabGuest.get(contents) ?? contents);
   installGuestLinks(contents);
   contents.setWindowOpenHandler((details) => {
     if (takeOsLink(contents, details.url)) return { action: "deny" };
