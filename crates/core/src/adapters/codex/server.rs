@@ -109,7 +109,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     });
     let client =
         json!({"name": "brigadier", "title": "Brigadier", "version": env!("CARGO_PKG_VERSION")});
-    call(&state, "initialize", json!({"clientInfo": client}))?;
+    // Experimental for its `thread/memoryMode/set` [D469].
+    let init = json!({"clientInfo": client, "capabilities": {"experimentalApi": true}});
+    call(&state, "initialize", init)?;
     write(&mut state.lock().unwrap(), json!({"method": "initialized"}));
     for line in io::stdin().lock().lines() {
         let line = line.map_err(|e| e.to_string())?;
@@ -177,10 +179,20 @@ fn open(state: &Shared, c: &Value) -> Result<(), String> {
     } else {
         "thread/start"
     };
+    let memory = o["config"]["memories.generate_memories"] == true;
     match call(state, method, o) {
         Ok(r) => {
             let thread = r["thread"]["id"].clone();
             state.lock().unwrap().thread = thread.as_str().unwrap_or("").into();
+            // A resume keeps the thread's stored memory mode whatever its config says (codex-rs
+            // `ThreadMetadataSync::for_resume`), so the switch is set on it too [D469].
+            if method == "thread/resume" {
+                let mode = if memory { "enabled" } else { "disabled" };
+                let set = json!({"threadId": thread, "mode": mode});
+                if let Err(e) = call(state, "thread/memoryMode/set", set) {
+                    eprintln!("Codex kept this thread's memory mode: {e}");
+                }
+            }
             // Its result names the model it runs (`ran.real`).
             say(
                 json!({"method": "thread/started", "params": {"thread": {"id": thread, "model": r["model"]}}}),
