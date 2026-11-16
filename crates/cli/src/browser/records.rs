@@ -23,12 +23,7 @@ impl Store {
         Ok(self.db.last_insert_rowid())
     }
 
-    pub fn download_finished(&self, id: i64, done: bool) -> rusqlite::Result<()> {
-        let state = if done {
-            DownloadState::Done
-        } else {
-            DownloadState::Failed
-        };
+    pub fn download_finished(&self, id: i64, state: DownloadState) -> rusqlite::Result<()> {
         self.db.execute(
             "UPDATE downloads SET state = ?2 WHERE id = ?1",
             params![id, state_text(state)],

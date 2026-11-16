@@ -64,7 +64,7 @@ export const intro = {
 
 export const errorText = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
-type Store<T> = { get: () => T; set: (next: T) => void; use: () => T };
+type Store<T> = { get: () => T; set: (next: T) => void; use: () => T; subscribe: (listener: () => void) => () => void };
 export function store<T>(initial: T): Store<T> {
   let value = initial;
   const listeners = new Set<() => void>();
@@ -79,6 +79,7 @@ export function store<T>(initial: T): Store<T> {
       for (const listener of listeners) listener();
     },
     use: () => useSyncExternalStore(subscribe, () => value),
+    subscribe,
   };
 }
 

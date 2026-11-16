@@ -44,6 +44,9 @@ const NONE: Tabs = { tabs: [], active: CHAT };
 const slots = new Map<string, Slot>();
 const listeners = new Set<() => void>();
 const opened = new Set<string>();
+const restored = new Set<string>();
+/** Whether tab `id` came back from an earlier run and its page hasn't loaded since; asking ends that. */
+export const takeRestored = (id: string): boolean => restored.delete(id);
 
 function slotOf(owner: string): Slot {
   let slot = slots.get(owner);
@@ -58,6 +61,8 @@ function draw(slot: Slot): void {
 
 // Only a newer word counts: an answer overtaken by a later one never takes the view back.
 function land(slot: Slot, reply: Record<string, any>): void {
+  // The tabs first read came back from an earlier run: their pages' first loads are no new visits (browser/history.ts).
+  if (slot.rev === null) for (const tab of reply.tabs as Tab[]) restored.add(tab.id);
   if (slot.rev === null || reply.rev > slot.rev) {
     slot.rev = reply.rev;
     slot.rust = { tabs: reply.tabs, active: reply.active };

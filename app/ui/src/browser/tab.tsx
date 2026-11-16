@@ -8,6 +8,8 @@ import { ArrowUpRight, Globe } from "../icons";
 import { useDaemon } from "../daemon";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
+import { BookmarkStar } from "./bookmark-star";
+import { DownloadsButton } from "./downloads-button";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
 import { followLayout } from "./follow";
 import { showPage } from "./hole";
@@ -341,7 +343,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
                 focused ? "text-start" : "text-center",
               )}
             />
-            {/* shortcut: no bookmark star until bookmarks land (S8); it goes here, while not editing. */}
+            {!focused && typed === null && <BookmarkStar owner={owner} tab={tab} url={url} title={page?.title ?? ""} />}
             {outside && (url || typed !== null) && (
               <TooltipIconButton
                 tooltip="Open in external browser"
@@ -371,7 +373,8 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
           <OsRefusedNotice id={id} refused={active && page?.osRefused?.origin === originOf(url) ? page?.osRefused : null} anchor={address} />
         </form>
         <ProfileButton owner={owner} tab={tab} />
-        {/* shortcut: no downloads or screenshot until their sections land; they go here, in that order. */}
+        <DownloadsButton owner={owner} tab={tab} />
+        {/* shortcut: no screenshot until its section lands; it goes here. */}
         <BrowserDevButton id={id} ready={ready} />
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
       </div>

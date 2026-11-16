@@ -15,7 +15,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
 use store::{Device, Store};
-use types::{HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
+use types::{DownloadState, HistoryFilter, ImportRecord, ImportedVisit, SitePermission};
 
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page};
@@ -176,9 +176,10 @@ fn stored(store: &mut Store, area: &str, args: &[String]) -> io::Result<Value> {
         }
         ("downloads", "finish") => {
             let finished = match get(2)? {
-                "done" => true,
-                "failed" => false,
-                _ => return Err(io::Error::other("Expected done or failed")),
+                "done" => DownloadState::Done,
+                "failed" => DownloadState::Failed,
+                "cancelled" => DownloadState::Cancelled,
+                _ => return Err(io::Error::other("Expected done, failed or cancelled")),
             };
             store.download_finished(number(1)?, finished).map_err(sql)?;
             done()

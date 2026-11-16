@@ -65,7 +65,7 @@ function live(profiles: BrowserProfile[]): BrowserProfile[] {
 }
 
 export const allProfiles = (): BrowserProfile[] => live(places.profiles);
-const defaultOf = (): BrowserProfile => allProfiles().find((profile) => profile.id === places.defaultId) ?? allProfiles()[0]!;
+export const defaultOf = (): BrowserProfile => allProfiles().find((profile) => profile.id === places.defaultId) ?? allProfiles()[0]!;
 export const known = (id: string | undefined): string | null => (id && allProfiles().some((profile) => profile.id === id) ? id : null);
 export const nameOf = (id: string): string => allProfiles().find((profile) => profile.id === id)?.name ?? id;
 

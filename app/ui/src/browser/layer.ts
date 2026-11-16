@@ -33,6 +33,11 @@ declare global {
       devtools(op: string, args: { guest: number } & Record<string, unknown>): Promise<unknown>;
       /** A profile's Chromium data (main's browser/profileStore.ts): remove, counts, clear. */
       profiles(op: string, args: { profile: string } & Record<string, unknown>): Promise<unknown>;
+      /** Downloads (main's browser/browserDownloads.ts): configure, cancel, open, reveal; and each one's steps. */
+      downloads(op: string, args: Record<string, unknown>): Promise<unknown>;
+      onDownload(listener: (details: unknown) => void): void;
+      /** A profile's saved site choices, for main's permission checks (main's browser/permissions.ts). */
+      sites(profile: string, sites: unknown[]): Promise<void>;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
@@ -49,6 +54,7 @@ export type BrowserEvent =
   | { type: "load"; url: string; loading: boolean }
   | { type: "history"; canGoBack: boolean; canGoForward: boolean }
   | { type: "title"; title: string }
+  | { type: "visit"; url: string }
   | { type: "favicon"; url: string; dataUrl: string }
   | { type: "blocked"; url: string }
   | { type: "escape" }
@@ -244,12 +250,13 @@ function listen(page: Page): void {
   // A load drops a find in flight, with no answer from the old document: the bar looks again when it stops.
   on("did-start-loading", () => { answerFind(page, NOT_FOUND); page.loading = true; loadChanged(); });
   on("did-stop-loading", () => { page.loading = false; loadChanged(); });
-  on<{ url: string }>("did-navigate", ({ url }) => { page.url = url; page.generation += 1; loadChanged(); });
+  on<{ url: string }>("did-navigate", ({ url }) => { page.url = url; page.generation += 1; loadChanged(); emit({ type: "visit", url }); });
   on<{ url: string; isMainFrame: boolean }>("did-navigate-in-page", ({ url, isMainFrame }) => {
     // A frame's own navigation adds to the tab's history too.
     if (!isMainFrame) { history(); return; }
     page.url = url;
     loadChanged();
+    emit({ type: "visit", url });
   });
   on<{ title: string }>("page-title-updated", ({ title }) => emit({ type: "title", title }));
   const favicon = () => {

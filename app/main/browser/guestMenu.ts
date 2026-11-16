@@ -3,6 +3,8 @@
 // with section 9.
 import { BrowserWindow, clipboard, Menu, type ContextMenuParams, type MenuItemConstructorOptions, type WebContents } from "electron";
 
+import { askWhereToSave } from "./browserDownloads";
+
 type Item = { id: string; label: string; enabled?: boolean; run: () => void };
 
 type OpenAsTab = (from: WebContents, url: string) => void;
@@ -18,8 +20,7 @@ function sections(contents: WebContents, params: ContextMenuParams, openAsTab: O
   }
   if (mediaType === "image" && srcURL) {
     found.push([
-      // shortcut: Electron's own save dialog until the downloads section (browserDownloads' askWhereToSave) lands.
-      { id: "save-image", label: "Save Image As…", run: () => contents.downloadURL(srcURL) },
+      { id: "save-image", label: "Save Image As…", run: () => (askWhereToSave(srcURL), contents.downloadURL(srcURL)) },
       { id: "copy-image", label: "Copy Image", run: () => contents.copyImageAt(x, y) },
     ]);
   }

@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-import { closeTab, openTab } from "../shell/tab-store";
+import { closeTab, openTab, tabsOf } from "../shell/tab-store";
 import { stepZoom } from "./keys";
 import { closeFind, findState, forgetFind } from "./find";
 import { type BrowserBounds, closePage as closeInLayer, focusPage, navigatePage, openPage as openInLayer, zoom } from "./layer";
-import { pinTab } from "./profiles";
+import { saveCardAnswer, siteAsked } from "./data";
+import { forgetVisits, titled, visited } from "./history";
+import { defaultOf, known, pinTab } from "./profiles";
 
 /**
  * The Browser tabs' pages as the app knows them, one per tab: what each shows, heard from its
@@ -130,7 +132,10 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
           ...(shown?.asking && originOf(event.url) !== shown.asking.origin ? { asking: null } : {}),
         });
       } else if (event.type === "history") update(id, { canGoBack: event.canGoBack, canGoForward: event.canGoForward });
-      else if (event.type === "title") update(id, { title: event.title });
+      else if (event.type === "title") {
+        update(id, { title: event.title });
+        titled(id, event.title);
+      } else if (event.type === "visit") visited(owner, id, event.url);
       else if (event.type === "favicon") {
         if (faviconFits(pages.get(id), event.url)) update(id, { favicon: event.dataUrl });
       } else if (event.type === "escape") {
@@ -145,6 +150,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
       } else if (event.type === "permission") {
         const { request, origin, camera, microphone, location } = event;
         update(id, { asking: { request, origin, camera, microphone, ...(location ? { location } : {}) } });
+        void siteAsked(profileOf(owner, id), origin, camera ? "camera" : microphone ? "microphone" : "location");
       } else if (event.type === "permissionRefused") update(id, { osRefused: { origin: event.origin, refused: event.refused as OsRefused[] } });
       else if (event.type === "blocked") update(id, { blocked: event.url, loading: false });
     });
@@ -162,11 +168,16 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
   }
 }
 
+/** The profile tab `id`'s page is on, which pinTab gave it when the page was made. */
+const profileOf = (owner: string, id: string) => known(tabsOf(owner).tabs.find((tab) => tab.id === id)?.profile) ?? defaultOf().id;
+
 /** The tab answers its page's question, which goes. */
 export function answerPermission(id: string, answer: PermissionAnswer): void {
   const asking = pages.get(id)?.asking;
   if (!asking) return;
   update(id, { asking: null });
+  const owner = owners.get(id);
+  if (owner) void saveCardAnswer(profileOf(owner, id), asking.origin, asking, answer);
   window.brigadierShell.answerPermission(asking.request, answer).catch((error: unknown) => console.error("answering the page failed", error));
 }
 
@@ -206,6 +217,7 @@ export function reopenPage(id: string, focus: boolean): void {
 /** The tab closed: the page goes. */
 export function closeBrowserPage(id: string): void {
   forgetFind(id);
+  forgetVisits(id);
   owners.delete(id);
   if (!pages.get(id)) return;
   made.delete(id);

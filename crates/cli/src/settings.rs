@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 10] = [
+const KEYS: [(&str, &[&str]); 11] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -43,6 +43,8 @@ const KEYS: [(&str, &[&str]); 10] = [
     // Where a web link and a local dev URL open: Brigadier's browser or the default one [D507].
     ("web_links_in", &["system", "brigadier"]),
     ("local_links_in", &["brigadier", "system"]),
+    // Whether each browser download asks where to save it (Settings › Browser › Downloads).
+    ("browser_ask_downloads", SWITCH_OFF),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.
@@ -75,6 +77,9 @@ pub fn read(data: &Path) -> Value {
         .cloned()
         .unwrap_or_default();
     all.insert("agent_paths".into(), paths.into());
+    // Where browser downloads go; none is the system's Downloads folder.
+    let downloads = saved["browser_downloads_dir"].as_str().unwrap_or_default();
+    all.insert("browser_downloads_dir".into(), downloads.into());
     Value::Object(all)
 }
 
@@ -180,6 +185,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 return Err(io::Error::other(format!("awake can't be {value:?}")));
             }
             core::write_atomic(&data.join("awake"), value.as_bytes())?;
+        }
+        [_, key, value] if key == "browser_downloads_dir" => {
+            if !value.is_empty() && !Path::new(value).is_absolute() {
+                return Err(io::Error::other("The downloads folder must be a full path"));
+            }
+            saved[key.as_str()] = value.as_str().into();
+            save(data, saved)?;
         }
         [_, key, value] => {
             let Some((_, choices)) = KEYS.iter().find(|(k, _)| k == key) else {

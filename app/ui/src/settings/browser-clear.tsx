@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 
+import { sitesCleared } from "../browser/data";
+import { historyGone } from "../browser/history";
 import { profileCounts, reloadProfileTabs, useDefaultProfile, useProfiles } from "../browser/profiles";
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
@@ -47,9 +49,15 @@ const PICKED: Record<Kind, boolean> = { history: true, cookies: true, cache: tru
 async function clearBrowsingData(profile: string, clear: ClearRequest): Promise<void> {
   const data = (args: string[]) => run(["browser", "-", ...args, "--profile", profile]);
   const range = clear.sinceMs === null ? [] : ["--since-ms", String(clear.sinceMs)];
-  if (clear.history) await data(["history", "clear", ...range]);
+  if (clear.history) {
+    await data(["history", "clear", ...range]);
+    historyGone(profile, null, clear.sinceMs);
+  }
   if (clear.downloads) await data(["downloads", "clear", ...range]);
-  if (clear.sites) await data(["sites", "clear", ...range]);
+  if (clear.sites) {
+    await data(["sites", "clear", ...range]);
+    sitesCleared(profile);
+  }
   if (!clear.cookies && !clear.cache) return;
   const dated = clear.cookies && clear.sinceMs !== null ? await data(["dates", "since", String(clear.sinceMs)]) : null;
   await window.brigadierShell.profiles("clear", { profile, clear: { sinceMs: clear.sinceMs, cookies: clear.cookies, cache: clear.cache, dated } });

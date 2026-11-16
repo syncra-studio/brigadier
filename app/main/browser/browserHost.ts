@@ -5,6 +5,7 @@ import { app, session } from "electron";
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
 import { watchProfileCookies } from "./browserClearData";
 import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
+import { installDownloads, watchDownloads } from "./browserDownloads";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
@@ -12,7 +13,7 @@ import { installGuestKeys } from "./guestKeys";
 import { installGuest, webOrBlank } from "./guestPopups";
 import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers } from "./permissions";
 import { isDeleting, installProfileStore } from "./profileStore";
-import { isProfilePartition, profilePartition } from "./profiles";
+import { isProfilePartition, profileOfStorage, profilePartition } from "./profiles";
 import { keepSessionCookies } from "./sessionCookies";
 
 /** The partitions main has named for a profile: the only sessions a guest may have. */
@@ -28,7 +29,8 @@ export function installBrowserHost(origin: string): void {
   installBrowserDevtools();
   installProfileStore();
   installBrowserAgent();
-  // shortcut: no import, bookmarks or logins until their sections land; their installs go here.
+  installDownloads();
+  // shortcut: no import or logins until their sections land; their installs go here.
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });
@@ -45,6 +47,8 @@ export function installBrowserHost(origin: string): void {
     keepSessionCookies(created);
     watchProfileCookies(created);
     watchNetwork(created);
+    const profileId = profileOfStorage(created.storagePath ?? null);
+    if (profileId) watchDownloads(created, profileId);
   });
 
   app.on("web-contents-created", (_event, contents) => {

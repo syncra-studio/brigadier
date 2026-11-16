@@ -9,6 +9,7 @@ import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
 import { plural } from "../panel/words";
 import { ClearBrowsingDataDialog } from "./browser-clear";
+import { openBrowserSettings } from "./browser-parts";
 import { ProfileDeleteDialog, useSessionIds } from "./browser-profile-dialogs";
 import { SettingsPage, SettingsSection } from "./parts";
 
@@ -83,7 +84,23 @@ export function ProfileDetailPage({ id }: { id: string }) {
       <SettingsSection title="Data in this profile">
         <SettingsCard>
           <SettingsRow label="Sign-ins" description={counts ? `${plural(counts.signIns, "site")} with cookies, not a count of accounts.` : undefined} />
-          {/* shortcut: no Browsing history, Download history, Bookmarks, Saved passwords or Site settings rows until their pages land (S8, S9); they go here, in that order. */}
+          <SettingsRow label="Browsing history" description="The pages this profile visited.">
+            <Button variant="soft" size="sm" aria-label="Manage browsing history" onClick={() => openBrowserSettings("history", id)}>
+              Manage
+            </Button>
+          </SettingsRow>
+          <SettingsRow label="Download history" description="The files this profile downloaded.">
+            <Button variant="soft" size="sm" aria-label="Manage download history" onClick={() => openBrowserSettings("downloads", id)}>
+              Manage
+            </Button>
+          </SettingsRow>
+          <SettingsRow label="Bookmarks" />
+          {/* shortcut: no Saved passwords row until passwords land (S9); it goes here. */}
+          <SettingsRow label="Site settings" description="Which sites may use your camera, microphone and location in this profile.">
+            <Button variant="soft" size="sm" aria-label="Manage site settings" onClick={() => openBrowserSettings("sites", id)}>
+              Manage
+            </Button>
+          </SettingsRow>
           <SettingsRow
             label="Browsing data"
             description="Clear this profile's history, sign-ins, site data, cache and download history, by time range. Saved passwords are kept, and other profiles aren't touched."

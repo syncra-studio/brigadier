@@ -96,6 +96,7 @@ pub(super) fn state_text(state: DownloadState) -> &'static str {
         DownloadState::Running => "running",
         DownloadState::Done => "done",
         DownloadState::Failed => "failed",
+        DownloadState::Cancelled => "cancelled",
     }
 }
 
@@ -103,6 +104,7 @@ pub(super) fn state(text: &str) -> DownloadState {
     match text {
         "done" => DownloadState::Done,
         "running" => DownloadState::Running,
+        "cancelled" => DownloadState::Cancelled,
         _ => DownloadState::Failed,
     }
 }

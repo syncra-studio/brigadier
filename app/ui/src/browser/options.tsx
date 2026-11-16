@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { DotsHorizontal, Minus, Plus, Reload } from "../icons";
+import { openBrowserSettings } from "../settings/browser-parts";
 import { stepZoom, ZOOM_LEAST, ZOOM_MOST, zoomLabel } from "./keys";
 
 /** The zoom stepper's buttons: faint while they can't act. */
@@ -74,8 +75,21 @@ export function BrowserOptions({
             <Reload className="size-icon-sm" />
           </button>
         </div>
-        {/* shortcut: no Import Browser Data…, Downloads, History, Clear browsing data or Browser settings rows until
-            Settings › Browser lands; they go here, after a rule, as the old menu had them. */}
+        <DropdownMenuSeparator className="mx-2" />
+        {/* shortcut: no Import Browser Data… until import lands (S10); it goes first here. */}
+        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("downloads")}>
+          Downloads
+        </DropdownMenuItem>
+        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("history")}>
+          History
+        </DropdownMenuItem>
+        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("clear")}>
+          Clear browsing data
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="mx-2" />
+        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings()}>
+          Browser settings
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

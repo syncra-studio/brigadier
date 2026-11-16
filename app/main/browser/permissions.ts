@@ -16,8 +16,9 @@ let nextQuestion = 1;
 const questions = new Map<number, Question>();
 const watched = new WeakSet<WebContents>();
 
-// shortcut: no profile store yet, so no site has a saved choice (every request asks) and the card's answer isn't kept; read and save the old profileStore's site choices when it lands.
-const siteChoice = (_profileId: string, _origin: string): SiteChoice | undefined => undefined;
+/** Each profile's saved site choices, Rust's, as the app's page last sent them; the page saves the card's answer (browser/data.ts). */
+const savedSites = new Map<string, Map<string, SiteChoice>>();
+const siteChoice = (profileId: string, origin: string): SiteChoice | undefined => savedSites.get(profileId)?.get(origin);
 
 function originOf(url: string): string | null {
   try {
@@ -95,6 +96,9 @@ export function installPermissionAnswers(): void {
     const { guest, origin, asked, answer } = question;
     if (cardAllows(choice)) grant(guest, origin, asked, answer);
     else answer(false);
+  });
+  handleFromApp("brigadier:sites", (_event, profileId: string, sites: ({ origin: string } & SiteChoice)[]) => {
+    savedSites.set(profileId, new Map(sites.map((site) => [site.origin, site])));
   });
   handleFromApp("brigadier:permission-open-settings", (_event, device: OsDevice) => openOsSettings(device));
 }
