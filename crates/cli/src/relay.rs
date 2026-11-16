@@ -54,6 +54,19 @@ A worker's tab opens behind; the user sees it in your session's tabs.",
             &[],
             &[],
         ),
+        "repo" => (
+            "brigadier repo <name> [--json]
+
+This chat's project is a folder of git repos, each named on your map by its path in that folder.
+Read and search repos where they are, but never change them there: before your first edit in a
+repo, run `brigadier repo <name>`. It gives you your own copy of that repo on a branch of its own
+and prints its folder; make every edit, command and commit in that folder. Run it again and you get
+the same folder. Claim only a repo you are about to change, never one you are only looking at. A
+worker's copy starts from its parent's branch in that repo, when the parent has one. A repo cloned
+into the folder since this chat started is on the map from its next start.",
+            &[],
+            &[],
+        ),
         _ => return None,
     })
 }
@@ -91,6 +104,14 @@ pub fn run(
         "skill" => Some(skill(data, me, arg)),
         "search" => Some(search(data, arg.unwrap_or(""), value, rows)),
         "show" => Some(show::show(data, me, arg.unwrap_or(""))),
+        "repo" => Some(
+            core::load(data, me)
+                .and_then(|spec| core::folder::claim(&spec, arg.unwrap_or("")))
+                .map_or_else(
+                    |e| json!({"ok": false, "error": e.to_string()}),
+                    |text| json!({"ok": true, "text": text}),
+                ),
+        ),
         _ => None,
     }
 }

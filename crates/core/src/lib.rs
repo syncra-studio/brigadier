@@ -7,6 +7,7 @@ pub mod agent;
 pub mod archive;
 pub mod feedback;
 pub mod fold;
+pub mod folder;
 pub mod fork;
 pub mod git;
 pub mod handoff;

@@ -13,9 +13,9 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 13] = [
+pub const COMMANDS: [&str; 14] = [
     "sessions", "read", "send", "wait", "start", "stop", "models", "help", "skill", "search",
-    "mcp", "browser", "show",
+    "mcp", "browser", "show", "repo",
 ];
 
 /// How a message from another session opens, for its receiving agent; its bubble shows the rest [D2034].
@@ -33,14 +33,20 @@ const ASK: &str = include_str!("standing/ask.txt");
 const VOICE: &str = include_str!("standing/voice.txt");
 
 /// The standing text an adapter passes at launch: the commit style, the line, a session's lead
-/// rule and the user's jobs [D387], then the ask rule [D484] and the voice.
+/// rule and the user's jobs [D387], a folder chat's repos [D494], then the ask rule [D484] and
+/// the voice.
 pub fn standing(spec: &Spec) -> String {
+    let repos = crate::folder::standing(spec).map_or(String::new(), |r| format!("{r}\n\n"));
     let lead = match (spec.naked, &spec.jobs) {
         (true, _) => String::new(),
         (false, Some(jobs)) => format!("{LEAD}\n\n{jobs}\n\n"),
         (false, None) => format!("{LEAD}\n\n"),
     };
-    format!("{} {}\n\n{lead}{ASK}\n\n{VOICE}", COMMITS, LINE.trim())
+    format!(
+        "{} {}\n\n{lead}{repos}{ASK}\n\n{VOICE}",
+        COMMITS,
+        LINE.trim()
+    )
 }
 
 /// The grant for this launch (proposed lifecycle): one token per owner generation, the host that

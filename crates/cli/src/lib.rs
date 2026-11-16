@@ -223,7 +223,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
-                core::worktrees::ensure(
+                core::folder::ensure(
                     &spec,
                     &project,
                     fresh,

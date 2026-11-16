@@ -37,6 +37,10 @@ pub struct Project {
     pub removing: bool,
     /// Prefix for new session branches; absent uses brigadier/ [D1214].
     pub branch_prefix: Option<String>,
+    /// "folder": a folder of repositories, added as is, no repository itself [D494]; empty: one
+    /// repository.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub kind: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -153,6 +157,7 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         added,
         removing: false,
         branch_prefix: None,
+        kind: String::new(),
     }
 }
 
@@ -231,7 +236,13 @@ fn repo(data: &Path, path: &str) -> io::Result<PathBuf> {
     }
     let Some(folder) = root(Path::new(path)) else {
         plain(data, Path::new(path))?;
-        return err(format!("{path} is not in a git repository"));
+        // A folder holding repositories is added as it is, one project [D494].
+        let folder = fs::canonicalize(path)?;
+        if crate::folder::repos(&folder).is_empty() {
+            return err(format!("{path} is not in a git repository"));
+        }
+        own(data, &folder)?;
+        return Ok(folder);
     };
     own(data, &folder)?;
     Ok(folder)
@@ -250,6 +261,7 @@ fn taken(list: &[Project], folder: &Path) -> io::Result<()> {
 /// Adds the repository `path` is in, under `id` when the app made one to show it at once [D30].
 pub fn add(data: &Path, path: &str, id: Option<&str>, name: Option<&str>) -> io::Result<Project> {
     let folder = check(data, path)?;
+    let kind = crate::folder::kind(&folder);
     let name = name.map(clean).transpose()?;
     let added = now_ms();
     let id = id.map_or_else(|| format!("p-{added:x}"), String::from);
@@ -261,7 +273,10 @@ pub fn add(data: &Path, path: &str, id: Option<&str>, name: Option<&str>) -> io:
             return err(format!("project id {id} is taken"));
         }
         let folder = folder.display().to_string();
-        list.push(record(id, &folder, name.as_deref(), added));
+        list.push(Project {
+            kind,
+            ..record(id, &folder, name.as_deref(), added)
+        });
         Ok(list.last().unwrap().clone())
     })?;
     Ok(project)
@@ -336,6 +351,7 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
                 ));
             }
             p.folder = folder.display().to_string();
+            p.kind = crate::folder::kind(&folder);
             p.trusted = None;
         }
         let p = find(list, id)?;

@@ -135,6 +135,36 @@ pub(in crate::workers) fn write(
             merge = format!("unmerged={base}");
         }
     }
+    // A folder chat's worker: each repo it claimed, its branch and commits there [D494, D3006].
+    for (name, rec) in core::folder::claims(&dir) {
+        let (Some(branch), Some(base), Some(at)) = (
+            core::worktrees::branch(&rec).ok().flatten(),
+            core::worktrees::base(&rec),
+            core::worktrees::folder(&rec).map(|f| f.display().to_string()),
+        ) else {
+            continue;
+        };
+        let own = fork(&at, &base);
+        let made = git(&at, &["rev-list", "--count", &format!("{own}..HEAD")]);
+        let made: usize = made.map_or(0, |n| n.parse().unwrap_or(0));
+        text += &format!("In {name}, its branch {branch}, from {base}: {made} commits\n");
+        for line in git_lines(&at, &["log", "--oneline", &format!("{own}..HEAD")], 20) {
+            text += &format!("  {line}\n");
+        }
+        let dirty = git_lines(&at, &["status", "--porcelain"], 20);
+        if !dirty.is_empty() {
+            text += &format!("Uncommitted in {name}:\n  {}\n", dirty.join("\n  "));
+        }
+        let num = git(&at, &["diff", "--numstat", &format!("{own}...HEAD")]).unwrap_or_default();
+        for mut n in num
+            .lines()
+            .map(|l| l.split_whitespace().map(|x| x.parse::<u64>().unwrap_or(0)))
+        {
+            added += n.next().unwrap_or(0);
+            removed += n.next().unwrap_or(0);
+        }
+        commits += made;
+    }
     let ran = &l.ran;
     let ran: Vec<&str> = [&ran["agent"], &ran["model"], &ran["effort"]]
         .iter()

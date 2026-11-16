@@ -101,6 +101,17 @@ pub fn losses(data: &Path, ids: &[String]) -> Vec<Value> {
     let (mut seen, mut out) = (BTreeSet::new(), vec![]);
     for id in ids {
         let Ok(spec) = load(data, id) else { continue };
+        // A folder chat's claims, each its own worktree, named by repo [D494].
+        for (name, rec) in crate::folder::claims(&spec.dir) {
+            match lost_in(&rec, &[]) {
+                Ok(files) if files.is_empty() => {}
+                Ok(files) => {
+                    let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
+                    out.push(json!({"ids": [id], "files": files}));
+                }
+                Err(e) => out.push(json!({"ids": [id], "error": e.to_string()})),
+            }
+        }
         let Some(holder) = share::holder(data, &spec) else {
             continue;
         };

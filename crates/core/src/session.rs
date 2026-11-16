@@ -82,6 +82,7 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
 pub fn archive(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+    crate::folder::off(spec, "Archive")?;
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
         return Ok(());
@@ -261,8 +262,12 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
     }
     let swept = kill_left(f, dir);
     // Preserve transcripts too when a checkpoint fails: delete must remain retryable [D35].
-    let kept_branches = match worktrees::delete(dir, drop_branch) {
-        Ok(branch) => branch.into_iter().collect::<Vec<_>>(),
+    let deleted = worktrees::delete(dir, drop_branch).and_then(|branch| {
+        let claims = crate::folder::delete(dir, drop_branch)?;
+        Ok(branch.into_iter().chain(claims).collect::<Vec<_>>())
+    });
+    let kept_branches = match deleted {
+        Ok(kept) => kept,
         Err(e) => {
             return fail(
                 vec![

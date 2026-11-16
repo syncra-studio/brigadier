@@ -31,6 +31,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
+  brigadier repo <name>       in a chat on a folder of repos: your own copy of a repo, before your first edit there
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.

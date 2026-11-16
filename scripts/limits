@@ -80,6 +80,8 @@ for budget in "base $base 2000" "worker $((base - $(size "$S"/lead.txt) - 2)) 15
   "Codex $((base + 3 + $(size "$S"/codex-ask.txt "$S"/codex-escalate.txt))) 2352" "OpenCode $base 2000"; do
   set -- $budget
   [ "$2" -gt "$3" ] && fail "the standing text for $1 is $2 bytes, the limit is $3"
+  # A folder chat's adds its repos rule, up to 300 B more; its map isn't counted [D494, D544].
+  [ $(($2 + 2 + $(size "$S"/repos.txt))) -gt $(($3 + 300)) ] && fail "a folder chat's standing text for $1 is over its limit of $(($3 + 300)) bytes"
 done
 
 found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)')" && {

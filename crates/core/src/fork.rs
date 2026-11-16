@@ -118,6 +118,9 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     if session::lifecycle(&spec.dir).0.is_some() {
         return refused("archived", "Restore this session to fork from it.");
     }
+    if let Err(e) = crate::folder::off(spec, "Fork") {
+        return refused("folder", &e.to_string());
+    }
     // The agent whose conversation the answer is in: picking it forks natively [D1081].
     let agent = if s.gone {
         inherits(&s.src.dir, at).then_some(None)
@@ -379,6 +382,7 @@ fn build(
             base.as_deref(),
             shot.head.as_deref(),
             ask.title,
+            None,
         )?;
         write_shot(src, &shot, &cwd)?
     } else if here {

@@ -155,7 +155,7 @@ pub fn ensure(
             None => {}
         }
     }
-    if let Err(e) = create(spec, project, base, None, title) {
+    if let Err(e) = create(spec, project, base, None, title, None) {
         if fresh && !spec.dir.join(RECORD).exists() {
             fs::remove_dir_all(&spec.dir)?;
         }
@@ -194,14 +194,16 @@ pub fn branches(data: &Path, repo: &Path) -> io::Result<serde_json::Value> {
 
 /// Makes the session's worktree from `base`, else the project's current branch, with its files to copy. A failure undoes what
 /// it made; one it can't undo stays recorded for the daemon to retry.
-/// `at`: a fork's start, the commit its answer's files were taken on, on `base` [D1068].
+/// `at`: a fork's start, the commit its answer's files were taken on, on `base` [D1068]. `path`: where it goes (None: `worktree` in `spec.dir`, its record's folder).
 pub fn create(
     spec: &Spec,
     project: &projects::Project,
     base: Option<&str>,
     at: Option<&str>,
     title: &str,
+    path: Option<&Path>,
 ) -> io::Result<()> {
+    let path = &path.map_or_else(|| spec.dir.join("worktree"), Path::to_path_buf);
     let (repo, picks) = (Path::new(&project.folder), &project.include);
     if let Some(why) = brigadier_frames::procs::gone(&project.folder) {
         return err(why);
@@ -265,7 +267,7 @@ pub fn create(
         ..Default::default()
     };
     write(&spec.dir, &owned)?;
-    let made = make(spec, repo, &branch, picks, &mut owned).and_then(|()| {
+    let made = make(spec, path, repo, &branch, picks, &mut owned).and_then(|()| {
         owned.failed = false;
         write(&spec.dir, &owned)
     });
@@ -288,12 +290,12 @@ pub fn create(
 
 fn make(
     spec: &Spec,
+    path: &Path,
     repo: &Path,
     branch: &str,
     picks: &[String],
     owned: &mut Owned,
 ) -> io::Result<()> {
-    let path = spec.dir.join("worktree");
     // A failed branch create must never claim a branch another session made.
     git(repo, &["branch", branch, &owned.base_commit])?;
     owned.branch = Some(branch.into());
@@ -305,8 +307,8 @@ fn make(
     write(&spec.dir, owned)?;
     let to = path.display().to_string();
     let added = git(repo, &["worktree", "add", "--quiet", &to, branch]);
-    owned.admin = git(&path, &["rev-parse", "--path-format=absolute", "--git-dir"]).ok();
-    if let Ok(path) = fs::canonicalize(&path) {
+    owned.admin = git(path, &["rev-parse", "--path-format=absolute", "--git-dir"]).ok();
+    if let Ok(path) = fs::canonicalize(path) {
         owned.path = Some(path.display().to_string());
     }
     write(&spec.dir, owned)?;
@@ -314,7 +316,7 @@ fn make(
     if owned.admin.is_none() {
         return err("Git did not report the worktree's registration.".into());
     }
-    include(repo, &path, picks)
+    include(repo, path, picks)
 }
 
 /// Removes the worktree and its registration, by their recorded paths only.
@@ -477,13 +479,13 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
 /// At the daemon's start: undoes each create that failed and couldn't undo itself, and removes
 /// its session once it has; then each archive, restore or delete cut short.
 pub fn sweep(data: &Path) {
+    let undone = |dir: &Path| matches!(read(dir), Ok(Some(o)) if o.failed && undo(&o).is_ok());
     for id in ids(data) {
         let dir = session_dir(data, &id);
         let Ok(_one) = lock(&dir) else { continue };
-        if let Ok(Some(owned)) = read(&dir)
-            && owned.failed
-            && undo(&owned).is_ok()
-        {
+        // A folder chat's claims first, the same way [D494].
+        let claims = crate::folder::claims(&dir).into_iter().map(|(_, rec)| rec);
+        for dir in claims.chain([dir.clone()]).filter(|d| undone(d)) {
             let _ = fs::remove_dir_all(&dir);
         }
     }

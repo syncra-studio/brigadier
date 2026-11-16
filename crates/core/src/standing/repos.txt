@@ -1,0 +1,1 @@
+Your project is a folder of git repos, mapped below. Pick a repo by its map line: likely ones first, a whole-folder search last. Read repos in place, and a repo's AGENTS.md as you enter it. Just before your first edit in one, run `brigadier repo <name>`; then work only in the folder it prints.
