@@ -25,6 +25,11 @@ export function useSource(owner: string): { data: SourceData; ops: SourceOps } {
   const op = useBranchOp(git.target);
   // The new name shows until the watch reads it.
   const branch = git.source?.branch ?? null;
+  // The folder's quick pick opens on a list read as the card shows, once connected: offline it would only say so [D462].
+  const folder = git.source?.checkout === "folder";
+  useEffect(() => {
+    if (git.target && folder && !offline) readBranches(git.target, () => {});
+  }, [git.target, folder, offline]);
   useEffect(() => {
     if (git.target && op.naming && op.naming === branch) named(git.target);
   }, [git.target, op.naming, branch]);

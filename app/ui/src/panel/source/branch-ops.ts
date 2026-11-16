@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { showToast } from "../../components/toast";
 import { ask } from "../../daemon";
-import { sourceArgs, type Target } from "../git";
+import { keep, sourceArgs, type Target } from "../git";
 import { gitDone, gitFailed } from "../notice";
 import type { Branch } from "../types";
 
@@ -67,10 +67,17 @@ export function name(target: Target, args: string[], name: string): void {
 /** The watch read the branch `name` showed: it's settled. */
 export const named = (target: Target) => put(target, { naming: null });
 
-/** The quick pick's list, read as it opens; null when Rust couldn't read it, after saying why. */
+// Each checkout's last list (the last 8): the quick pick opens on it at once, the new read replacing it quietly [D462].
+const kept = new Map<string, BranchRead>();
+
+/** The quick pick's list: the kept one at once, then Rust's new read; null when Rust couldn't read it and none is kept. */
 export function readBranches(target: Target, done: (read: BranchRead | null) => void): void {
+  const key = keyOf(target);
+  const last = kept.get(key);
+  if (last) done(last);
   run(target, ["branches"], (reply) => {
-    if (!reply.ok) failed(target, reply);
-    done(reply.ok ? reply.branches : null);
+    if (reply.ok) keep(kept, key, reply.branches);
+    else failed(target, reply);
+    if (reply.ok || !last) done(reply.ok ? reply.branches : null);
   });
 }

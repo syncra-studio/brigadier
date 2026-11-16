@@ -122,7 +122,8 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
   const prs = data.prs ?? kept?.prs ?? [];
   const branchRow = useRef<HTMLDivElement>(null);
-  const { picker, folder, open, pickers } = useBranchPicker({ data, ops, nowMs, anchor: branchRow });
+  const pillRef = useRef<HTMLButtonElement>(null);
+  const { picker, folder, open, pickers } = useBranchPicker({ data, ops, nowMs, anchor: branchRow, trigger: pillRef });
 
   if (data.truth?.missing) {
     return (
@@ -168,7 +169,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
         <div ref={branchRow} className="flex min-w-0 items-center gap-2">
           {/* The composer's pickers' pill [D72]; a worktree's branch has no menu, its copies in the tab's ⋯ [D242]. */}
           {folder ? (
-            <ComposerPill {...pill} aria-expanded={picker === "branch"} onClick={() => open("branch")}>
+            <ComposerPill ref={pillRef} {...pill} aria-expanded={picker === "branch"} onClick={() => open(picker ? null : "branch")}>
               {label}
             </ComposerPill>
           ) : (

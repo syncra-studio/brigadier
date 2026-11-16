@@ -10,13 +10,16 @@ import { ago } from "../words";
 /** One row of a quick pick: its icon and title, a grey hint after it and a note at its end, a second line, a rule above it. */
 export type PickItem = { id: string; icon: ReactNode; title: string; hint?: string; note?: string; detail?: string; rule?: boolean };
 
-/** Where a quick pick or the name box opens: over the branch item it came from. */
-export type Place = { anchor: RefObject<Element | null> };
+/** Where a quick pick or the name box opens: over the branch item it came from; `trigger`, what opens it there. */
+export type Place = { anchor: RefObject<Element | null>; trigger?: RefObject<Element | null> };
 
-/** The popover a quick pick or the name box sits on, below the card's branch row [D1205]; a click outside or Escape closes it. */
+/**
+ * The popover a quick pick or the name box sits on, below the card's branch row [D1205]; a click outside or Escape closes
+ * it. A press on its trigger is left to the trigger, which toggles it: closing here first would let that click open it again [D462].
+ */
 function Surface({ place, onClose, children }: { place: Place; onClose: () => void; children: ReactNode }) {
   return (
-    <Popover open onOpenChange={(open) => !open && onClose()}>
+    <Popover open onOpenChange={(open, { event }) => !open && !(event.target instanceof Node && place.trigger?.current?.contains(event.target)) && onClose()}>
       <PopoverContent
         anchor={place.anchor}
         side="bottom"

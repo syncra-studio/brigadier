@@ -12,7 +12,7 @@ export type Picker = "branch" | "create" | "from" | null;
  * search, off while the agent works [D1265], its list read again each time it opens; a worktree's branch has none
  * [D242]. Without `ops` (the gallery) a pick only closes.
  */
-export function useBranchPicker({ data, ops, nowMs, anchor }: { data: SourceData; ops?: SourceOps; nowMs: number; anchor: RefObject<Element | null> }) {
+export function useBranchPicker({ data, ops, nowMs, anchor, trigger }: { data: SourceData; ops?: SourceOps; nowMs: number; anchor: RefObject<Element | null>; trigger?: RefObject<Element | null> }) {
   const [picker, setPickerNow] = useState<Picker>(null);
   // What the quick pick lists; undefined while it's read.
   const [read, setRead] = useState<BranchRead | null | undefined>(undefined);
@@ -37,7 +37,7 @@ export function useBranchPicker({ data, ops, nowMs, anchor }: { data: SourceData
     <>
       {picker === "branch" && (
         <QuickPick
-          place={{ anchor }}
+          place={{ anchor, trigger }}
           placeholder="Select a branch to switch to"
           search
           items={folderItems(read === undefined && branchOps ? null : (read?.branches ?? data.branches ?? null), state.branch, nowMs)}
@@ -55,7 +55,7 @@ export function useBranchPicker({ data, ops, nowMs, anchor }: { data: SourceData
       )}
       {picker === "from" && (
         <QuickPick
-          place={{ anchor }}
+          place={{ anchor, trigger }}
           placeholder="Select a ref to create the branch from"
           // The branches but the checked-out one, as the folder's list has them.
           items={read === undefined && branchOps ? null : (folderItems(read?.branches ?? data.branches ?? [], state.branch, nowMs)?.slice(2) ?? null)}
@@ -69,7 +69,7 @@ export function useBranchPicker({ data, ops, nowMs, anchor }: { data: SourceData
       )}
       {picker === "create" && (
         <BranchNameBox
-          place={{ anchor }}
+          place={{ anchor, trigger }}
           placeholder="New branch name"
           hint={`Enter creates it from ${from ?? state.branch ?? "what is checked out"} and switches to it`}
           onName={(name) => {
