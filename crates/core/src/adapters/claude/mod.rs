@@ -197,6 +197,8 @@ impl Adapter for Claude {
         // The standing text [D181], and its own messages between sessions off. Its hook echoes each
         // Bash call's input, whose folder its ask lacks, into the stream [D391].
         argv.extend(models::bar(spec, control::standing(spec)));
+        // On by default it pins a conversation's first standing text; off, a resume gets today's [D526].
+        argv.extend(["--system-prompt-snapshot".into(), "off".into()]);
         argv.push("--include-hook-events".into());
         // A note chat reads the session's checkout beside its own folder [D282].
         if let Some(dir) = spec.opts.get("reads") {
