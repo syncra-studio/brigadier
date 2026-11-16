@@ -18,7 +18,7 @@ mod hand;
 pub(crate) mod landing;
 pub mod lost;
 mod missing;
-use missing::registration;
+use missing::{live, registration};
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
@@ -318,8 +318,11 @@ fn make(
 fn unregister(owned: &Owned) -> io::Result<()> {
     let repo = Path::new(&owned.repo);
     let ours = registration(owned)?;
-    if let Some(path) = owned.path.as_deref().filter(|p| Path::new(p).exists()) {
-        git(repo, &["worktree", "remove", "--force", path])?;
+    if let Some(path) = live(owned) {
+        git(
+            repo,
+            &["worktree", "remove", "--force", &path.to_string_lossy()],
+        )?;
     }
     if let Some(admin) = owned
         .admin
@@ -374,7 +377,7 @@ pub fn free(dir: &Path) -> io::Result<()> {
     let Some(owned) = read(dir)? else {
         return Ok(());
     };
-    if let Some(path) = owned.path.as_deref().map(Path::new).filter(|p| p.exists()) {
+    if let Some(path) = live(&owned) {
         let branch = git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
         if Some(&branch) != owned.branch.as_ref() {
             return err("The worktree is on another branch; switch back first.".into());
@@ -398,7 +401,7 @@ pub fn free(dir: &Path) -> io::Result<()> {
 
 /// Whether the session's worktree is in place.
 pub fn present(dir: &Path) -> bool {
-    matches!(read(dir), Ok(Some(o)) if o.path.as_deref().is_some_and(|p| Path::new(p).exists()))
+    matches!(read(dir), Ok(Some(o)) if live(&o).is_some())
 }
 
 /// The session's branch while it exists: Remove project's preview counts the merged ones.

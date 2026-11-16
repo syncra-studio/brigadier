@@ -1,7 +1,7 @@
 //! What freeing a session's worktree deletes for good [D180, D1197]: `worktree remove --force`
 //! takes its ignored files, and restore copies back only what the include rules select.
 
-use super::{copy, git, read};
+use super::{copy, git, live, read};
 use crate::{Spec, load, projects, session, share};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -54,7 +54,7 @@ fn lost_in(dir: &Path, picks: &[String]) -> io::Result<Vec<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(vec![]);
     };
-    let Some(path) = (owned.path.as_deref().map(Path::new)).filter(|p| p.exists()) else {
+    let Some(path) = live(&owned) else {
         return Ok(vec![]);
     };
     let repo = Path::new(&owned.repo);

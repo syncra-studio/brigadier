@@ -1,7 +1,7 @@
 //! Land's part of a session's record [D1028, D1049]: its last landing into the base, which goes
 //! wherever the record goes [D1082], and whether the branch still holds work that never landed.
 
-use super::{git, has_branch, read, write};
+use super::{git, has_branch, live, read, write};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -101,14 +101,10 @@ pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
         return Ok(None);
     };
     let repo = Path::new(&owned.repo);
-    let Some(branch) = owned.branch.filter(|b| has_branch(repo, b)) else {
+    let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
-    let dirty = owned
-        .path
-        .as_deref()
-        .map(Path::new)
-        .filter(|p| p.exists())
+    let dirty = live(&owned)
         .is_some_and(|p| git(p, &["status", "--porcelain"]).map_or(true, |s| !s.is_empty()));
     Ok((dirty || !in_base(repo, &owned.base, &branch, owned.landing.as_ref())).then_some(branch))
 }

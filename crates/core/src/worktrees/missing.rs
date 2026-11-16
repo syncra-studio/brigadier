@@ -79,3 +79,11 @@ pub(super) fn registration(owned: &Owned) -> io::Result<bool> {
     }
     Ok(true)
 }
+
+/// The worktree's folder while git can still use it. One whose `.git` points at a git folder
+/// that's gone (its repository deleted) is a plain folder, with nothing git can save [D468].
+pub(super) fn live(owned: &Owned) -> Option<&Path> {
+    let path = Path::new(owned.path.as_deref()?);
+    let link = fs::read_to_string(path.join(".git")).ok()?;
+    (path.join(link.strip_prefix("gitdir:")?.trim()).exists()).then_some(path)
+}
