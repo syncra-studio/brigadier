@@ -175,6 +175,13 @@ pub fn footprint(pid: i32) -> Option<u64> {
     (r == 0).then(|| unsafe { info.assume_init() }.ri_phys_footprint)
 }
 
+/// Why nothing can run in `dir`: it is gone (deleted, moved, its drive out), so the user is told
+/// at once, never left waiting on a child that can't start.
+pub fn gone(dir: &str) -> Option<String> {
+    (!Path::new(dir).is_dir())
+        .then(|| format!("This folder is gone. Remove the project, or put it back. ({dir})"))
+}
+
 /// Fails as exec would for a program that isn't there or can't run. The spawn gate's own exec
 /// can't report that, so it's checked first: a path against `cwd`, a bare name along `path`.
 pub fn runnable(program: &str, path: Option<&str>, cwd: &str) -> io::Result<()> {

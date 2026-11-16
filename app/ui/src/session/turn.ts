@@ -4,7 +4,7 @@ import { threadSource } from "../daemon";
 import type { Mark, SessionRow } from "../sidebar/words";
 import type { Source } from "../thread/thread";
 import type { ComposerRow } from "./composer";
-import { useSending } from "./composer";
+import { useOnItsWay } from "./composer";
 
 /** The thread's newest turn when the thread is session `id`'s and holds its newest turns. */
 const newest = (id: string, source: Source) => {
@@ -37,7 +37,7 @@ export function useMark(row: SessionRow, active: boolean): Mark {
     const turn = newest(row.id, threadSource);
     return turn && !turn.quiet ? (turn.status === "running" || turn.held ? "running" : "ended") : undefined;
   });
-  const sending = useSending(row.id);
+  const sending = useOnItsWay(row.id);
   if (!active) return row.mark;
   if (sending || turn === "running" || (row.mark === "needs" && row.state === "waiting_answer")) return "working";
   if (row.mark === "needs" || row.mark === "unread") return null;

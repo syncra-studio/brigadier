@@ -203,6 +203,9 @@ pub fn create(
     title: &str,
 ) -> io::Result<()> {
     let (repo, picks) = (Path::new(&project.folder), &project.include);
+    if let Some(why) = brigadier_frames::procs::gone(&project.folder) {
+        return err(why);
+    }
     let _one = lock(&spec.dir)?;
     if read(&spec.dir)?.is_some() {
         return err("This session already has a worktree record.".into());

@@ -84,8 +84,9 @@ export function retryMessage(run: Runner, id: string, text: string, retryOf: str
   return deliver(run, id, entry);
 }
 
-/** Whether the session has messages on their way (so the thread's footer shows them). */
+/** Whether the session has messages on their way (so the thread's footer shows them); `useOnItsWay` counts none refused, which wait on Try again, so nothing spins for them. */
 export const useSending = (id: string) => useSyncExternalStore(subscribeSent, () => (sent.get(id)?.length ?? 0) > 0);
+export const useOnItsWay = (id: string) => useSyncExternalStore(subscribeSent, () => sent.get(id)?.some((each) => !each.error) ?? false);
 
 /** The messages on their way, under the thread's last row. */
 export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id: string; source?: Source; run?: Runner }) {
@@ -197,7 +198,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setEmpty(false);
     });
   }, []);
-  const { running, busy, held: holding, resumable } = useTurn(id, row, source, useSending(id));
+  const { running, busy, held: holding, resumable } = useTurn(id, row, source, useOnItsWay(id));
   const canSteer = row?.steer === true;
   // Queue or Steer, Rust's setting [D188].
   const followUp = useSettings().value?.follow_up ?? "queue";

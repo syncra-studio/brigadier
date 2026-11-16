@@ -19,6 +19,11 @@ use std::time::{Duration, Instant};
 impl Runner {
     pub(super) fn spawn(self: &Arc<Self>, req: &Value) -> Value {
         let _op = self.op.lock().unwrap();
+        // Refused before anything is logged: no turn opens to wait on a child that can't start.
+        let cwd = req["cwd"].as_str().unwrap_or("/");
+        if let Some(why) = procs::gone(cwd) {
+            return json!({"ok": false, "result": "refused", "error": why});
+        }
         // A switch [D51] or a restart: only if nothing reached the log since the caller judged it
         // idle. The idle child goes first, its exit and output logged.
         if let Some(len) = req["if_len"].as_u64()
@@ -73,7 +78,7 @@ impl Runner {
             .args(["-c", GATE, *program])
             .args(args)
             .env_clear()
-            .current_dir(req["cwd"].as_str().unwrap_or("/"));
+            .current_dir(cwd);
         unsafe {
             command.pre_exec(move || {
                 // dup2 is a no-op for a pipe already at 3, so close-on-exec is cleared either way.
@@ -86,7 +91,6 @@ impl Runner {
         for (k, v) in req["env"].as_object().into_iter().flatten() {
             command.env(k, v.as_str().unwrap_or(""));
         }
-        let cwd = req["cwd"].as_str().unwrap_or("/");
         let spawned = procs::runnable(program, req["env"]["PATH"].as_str(), cwd).and_then(|()| {
             if pty {
                 spawn_pty(
