@@ -60,6 +60,7 @@ const LOOKS = {
  * A fenced code block: its language and copy over the code, coloured once it settles, folded when long.
  * `title` stands in for the language's icon and name; `look` "diff" draws it as a file change's diff card;
  * `body`, drawn in place of the code, shows it another way (a preview drawn as it will post) and never folds.
+ * `live`: still being written, so it offers no copy of half its text.
  */
 export function CodeBlock({
   code,
@@ -68,6 +69,7 @@ export function CodeBlock({
   title,
   look = "code",
   body,
+  live = false,
 }: {
   code: string;
   language: string;
@@ -75,6 +77,7 @@ export function CodeBlock({
   title?: ReactNode;
   look?: keyof typeof LOOKS;
   body?: ReactNode;
+  live?: boolean;
 }) {
   const frame = LOOKS[look];
   const [open, setOpen] = useKept(keep);
@@ -98,7 +101,7 @@ export function CodeBlock({
           </>
         )}
         {long && <span>· {count.toLocaleString()} lines</span>}
-        <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />
+        {!live && <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className="ms-auto" />}
       </div>
       {body ?? (
         <div className="relative">

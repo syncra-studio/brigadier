@@ -16,6 +16,18 @@ const maybe = (value: unknown) => value === undefined || typeof value === "strin
 const isMessage = (m: Record<string, any> | undefined): m is Message =>
   !!m && said(m.to) && said(m.text) && maybe(m.state) && (m.quote === undefined || (said(m.quote?.from) && said(m.quote?.text)));
 
+/** A card's frame while its JSON still arrives, so the JSON never shows raw; null when the fence isn't a card's [D520]. */
+export function replyCardFrame(language: string): ReactNode {
+  if (language !== "brigadier-message") return null;
+  return (
+    <div className={FRAME}>
+      <div className="flex h-control-md items-center ps-4 text-xs text-muted-foreground">
+        <Chat className="size-icon-sm" />
+      </div>
+    </div>
+  );
+}
+
 /** The card a fence draws, or null when it isn't one. */
 export function replyCard(language: string, json: string): ReactNode {
   if (language !== "brigadier-message") return null;
@@ -32,12 +44,12 @@ export function replyCard(language: string, json: string): ReactNode {
 const FRAME = "my-3 rounded-alert border border-border bg-code-surface first:mt-0 last:mb-0";
 
 /** Words for a person to paste (a `text` fence): its title grey, copy beside it, the words as written [D520]. */
-export function WritingCard({ title, text }: { title: string; text: string }) {
+export function WritingCard({ title, text, live = false }: { title: string; text: string; live?: boolean }) {
   return (
     <div className={FRAME}>
       <div className="flex h-control-md items-center gap-1.5 ps-4 pe-2 text-sm text-muted-foreground">
         <span className="truncate font-medium">{title}</span>
-        <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />
+        {!live && <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />}
       </div>
       <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
     </div>

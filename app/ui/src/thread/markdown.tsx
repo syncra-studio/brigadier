@@ -6,7 +6,7 @@ import { marked } from "marked";
 
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
-import { replyCard, WritingCard } from "./reply-cards";
+import { replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { RefWord, remarkRefs } from "./refs";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
@@ -42,8 +42,10 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
         start += token.raw.length;
         if (token.type === "space" || token.type === "def") return null;
         const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
-        const raw = n === tail ? settle(token.raw) : token.raw;
-        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(raw)} keep={`${keep}:${n}`} chip={chip} chunks={mine.length ? mine : NONE} />;
+        // A fence still being written is left as it is: closing marks inside it would show as its text.
+        const open = n === tail && openFence(token.raw);
+        const raw = n === tail && !open ? settle(token.raw) : token.raw;
+        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(raw)} keep={`${keep}:${n}`} chip={chip} open={open} chunks={mine.length ? mine : NONE} />;
       })}
     </div>
   );
@@ -101,12 +103,30 @@ function nestUnderItems(text: string): string {
   return lines.join("\n");
 }
 
-/** A reply's last block while it's still written: a mark it opened and hasn't closed yet (code, bold, a link's address) is closed, so it never shows raw. */
+/**
+ * A reply's last block while it's still written: a mark it opened and hasn't closed yet (code, bold, italics, a
+ * link's address) is closed, and a half-written image is held back, so neither ever shows raw [D520].
+ */
 function settle(raw: string) {
-  const text = raw.replace(/(\*\*|`)\s*$/, "").trimEnd();
+  const text = raw.replace(/(\*\*|`)\s*$/, "").replace(/!\[[^\]\n]*(\]\([^)\n]*)?$/, "").trimEnd();
   const odd = (mark: RegExp) => (text.match(mark)?.length ?? 0) % 2 === 1;
-  const closed = odd(/`/g) ? `${text}\`` : odd(/\*\*/g) ? `${text}**` : text;
+  const bold = odd(/`/g) ? `${text}\`` : odd(/\*\*/g) ? `${text}**` : text;
+  // A lone `*` opening italics on the last line; one before a space is a bullet or a times sign.
+  const line = bold.slice(bold.lastIndexOf("\n") + 1).replace(/\*\*/g, "");
+  const closed = /(^|[\s(])\*[^\s*][^*]*$/.test(line) && (line.match(/\*/g)?.length ?? 0) % 2 === 1 ? `${bold}*` : bold;
   return /\[[^\]]*\]\([^)]*$/.test(closed) ? `${closed})` : closed;
+}
+
+/** Whether a block ends inside a fence it opened: its code is still arriving. */
+function openFence(raw: string): boolean {
+  let mark = "";
+  for (const line of raw.split("\n")) {
+    const fence = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!fence) continue;
+    if (!mark) mark = fence[1]!;
+    else if (fence[1]![0] === mark[0] && fence[1]!.length >= mark.length && !fence[2]!.trim()) mark = "";
+  }
+  return mark !== "";
 }
 
 const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
@@ -188,8 +208,10 @@ function Fade({ at, children }: { at: number; children: ReactNode }) {
   );
 }
 
-const Block = memo(function Block({ text, keep, chip, chunks }: { text: string; keep: string; chip?: (n: number) => ReactNode; chunks: Chunk[] }) {
-  const components = useMemo(() => fences(keep, chip), [keep, chip]);
+const Block = memo(function Block({ text, keep, chip, open, chunks }: { text: string; keep: string; chip?: (n: number) => ReactNode; open: boolean; chunks: Chunk[] }) {
+  // Where a fence still being written ends: the block's end, as it never closed.
+  const end = open ? text.trimEnd().length : -1;
+  const components = useMemo(() => fences(keep, chip, end), [keep, chip, end]);
   return (
     <ReactMarkdown
       remarkPlugins={plugins}
@@ -218,7 +240,7 @@ type Node = {
  * Fenced code becomes a code block; inline code stays react-markdown's. A chip's link becomes its chip. A word or
  * inline code an answer's refs know becomes the composer's chip (refs.tsx); a web link opens in the browser [D251, D252].
  */
-const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
+const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Components => ({
   span: ({ node, ...span }) => {
     const { dataAt: at, dataRef: word } = (node as Node | undefined)?.properties ?? {};
     if (word !== undefined) return <RefWord word={word} plain={span.children} />;
@@ -250,6 +272,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
     const text = (code.children ?? []).map((child) => child.value ?? "").join("");
     // Keyed by where the code starts, so two code blocks in one list keep their own fold.
     const at = `${keep}:${code.position?.start.offset ?? 0}`;
+    // Still being written: no copy of half its text, and a card's JSON isn't shown raw while it arrives [D520].
+    const live = openEnd >= 0 && (node?.position?.end.offset ?? 0) >= openEnd;
     // Something to post, as it will look: its markdown drawn in the block, copied as written [D446].
     if (language === "preview")
       return (
@@ -257,6 +281,7 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
           code={text.replace(/\n$/, "")}
           language=""
           keep={at}
+          live={live}
           title={
             <>
               <Eye className="size-icon-sm" />
@@ -271,7 +296,7 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
         />
       );
     // A reply's card, drawn once its JSON is whole and fits; until then, or if it never does, a code block [D477].
-    const card = replyCard(language, text);
+    const card = live ? replyCardFrame(language) : replyCard(language, text);
     if (card) return card;
     // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
     // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
@@ -286,8 +311,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode): Components => ({
       </>
     ) : undefined;
     // Words for a person to paste, titled or not, are a writing card in the reply's own font [D520].
-    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} />;
-    return <CodeBlock code={said} language={language} keep={at} title={title} />;
+    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} live={live} />;
+    return <CodeBlock code={said} language={language} keep={at} title={title} live={live} />;
   },
   // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].
   blockquote: ({ node, children }) => {
