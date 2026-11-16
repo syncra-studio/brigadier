@@ -949,7 +949,7 @@ async function settle(sd, id, ms = 6 * 60000) {
 
 function facts(sd, id, repo, st) {
   const items = sd.cli(['thread', id]).out.items ?? []
-  const said = items.filter((i) => i.kind === 'message' && i.role === 'assistant')
+  const said = items.filter((i) => i.kind === 'message' && i.role === 'assistant' && i.text?.trim())
   const reply = said.at(-1)?.text ?? ''
   const fence = /```brigadier-message show_draft\n(.*)\n```/g
   const drafts = said.flatMap((m) => [...(m.text ?? '').matchAll(fence)].map((x) => { try { return JSON.parse(x[1]) } catch { return {} } }))
