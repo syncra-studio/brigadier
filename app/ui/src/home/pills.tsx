@@ -4,6 +4,7 @@ import { ComposerPill } from "../components/composer/composer";
 import { cx } from "../components/cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, itemClasses, MenuRow } from "../components/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
+import { run } from "../onboarding/api";
 import { BranchAlt, Check, Desktop, Folder, MagnifyingGlassSmSearch, Plus, X } from "../icons";
 
 /*
@@ -11,7 +12,7 @@ import { BranchAlt, Check, Desktop, Folder, MagnifyingGlassSmSearch, Plus, X } f
  * the project (a search, the projects by name with ✓, Add project, no project) and where the session works.
  */
 
-export type DraftProject = { id: string; name: string; trusted?: boolean | null };
+export type DraftProject = { id: string; name: string; trusted?: boolean | null; kind?: "folder"; folder?: string };
 /** Where a new session works: its own worktree (the default), the project's own folder, or another worktree of it [D160, D388]. */
 export type WorkIn = "worktree" | "local" | "existing";
 
@@ -37,6 +38,19 @@ export function UtilityBar({ className, children }: { className?: string; childr
       <div className="flex w-max items-center gap-2">{children}</div>
     </div>
   );
+}
+
+/** A folder of repos' count, in place of where a session works and on what branch: each chat claims its own [D494]. */
+export function RepoCount({ folder }: { folder: string }) {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    run(["projects", "inspect", folder]).then((reply) => live && setCount(reply.check?.repos?.length ?? null), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [folder]);
+  return count !== null && <span className="shrink-0 text-sm text-muted-foreground">{count} repos</span>;
 }
 
 /** A picker's search field. */

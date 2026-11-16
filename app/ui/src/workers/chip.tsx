@@ -34,6 +34,8 @@ export type Worker = {
   asked?: string;
   /** Why it runs on that, in a line [D2037]. */
   why?: string;
+  /** A folder chat's worker: the repos it claimed [D494]. */
+  repos?: string[];
 };
 
 const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["paused", "failed", "stopped", "merged", "doneNotMerged", "done"]);

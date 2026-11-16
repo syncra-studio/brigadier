@@ -4,7 +4,7 @@ import { SessionOfThread } from "../accounts/limit";
 import type { ModelGroup } from "../components/composer/model-picker";
 import { ForkMenu, type ForkOffer } from "../components/thread/fork-menu";
 import { ForkedFrom } from "../components/thread/forked-from";
-import { ask, useDaemon } from "../daemon";
+import { ask, useDaemon, useFolderChat } from "../daemon";
 import { startFork } from "../home/start";
 import { errorText, run } from "../onboarding/api";
 import type { Item } from "../thread/item";
@@ -20,6 +20,10 @@ import { SetUpAgentDialog } from "./set-up";
 
 /** The fork icon under answer `at` (its turn's message id) in the open session. */
 export function ForkAction({ at }: { at: string }) {
+  return useFolderChat(useContext(SessionOfThread)?.id) ? null : <Fork at={at} />;
+}
+
+function Fork({ at }: { at: string }) {
   const session = useContext(SessionOfThread);
   const { rows } = useDaemon();
   const row = rows?.find((each) => each.id === session?.id);

@@ -17,7 +17,7 @@ import { HOME_DRAFT } from "../session/draft";
 import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
 import { BranchPicker, type RepoState } from "./branch";
-import { type DraftProject, ProjectPicker, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
+import { type DraftProject, ProjectPicker, RepoCount, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
 
 /** "Good morning" from five until noon, "Good afternoon" until six, else "Good evening" (the old app's). */
 function greeting(now: number): string {
@@ -201,7 +201,8 @@ export function HomeView(props: HomeProps) {
                 {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
                 <UtilityBar className={projects ? undefined : "invisible"}>
                   <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
-                  {project && (
+                  {project?.kind === "folder" && project.folder && <RepoCount folder={project.folder} />}
+                  {project && project.kind !== "folder" && (
                     <>
                       <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} />
                       <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} />

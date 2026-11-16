@@ -8,6 +8,7 @@ import { RowAction } from "../components/row-action";
 import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { useFolderChat } from "../daemon";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
@@ -238,6 +239,7 @@ function useArchiveTarget(row: SessionRow) {
 
 export function ArchiveMenuItem({ row }: { row: SessionRow }) {
   const target = useArchiveTarget(row);
+  if (useFolderChat(row.id)) return null;
   return (
     <DropdownMenuItem onClick={() => archiveRows(target.rows)}>
       <Archive />
@@ -250,6 +252,7 @@ export function ArchiveMenuItem({ row }: { row: SessionRow }) {
 /** The same Archive on the row itself, beside its ⋯ and shown as it is. */
 export function ArchiveRowAction({ row }: { row: SessionRow }) {
   const target = useArchiveTarget(row);
+  if (useFolderChat(row.id)) return null;
   return (
     <Tooltip>
       <TooltipTrigger render={<RowAction aria-label={target.label} onClick={() => archiveRows(target.rows)} />}>

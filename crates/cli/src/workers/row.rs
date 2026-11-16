@@ -61,6 +61,8 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         "kind": kind, "word": word, "ended": last["at"], "model": model.join(" · "),
         "receipt": crate::routing::receipt(ran).unwrap_or_else(|| format!("Ran on {}", model.join(" · "))),
         "asked": crate::routing::asked(&l.asked, ran), "why": crate::routing::why(&l.asked, ran, &retry), "added": last["added"], "removed": last["removed"],
+        // A folder chat's worker: the repos it claimed, for its row [D494].
+        "repos": core::folder::claims(dir).into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "now": if kind == "working" { f.calls.last() } else { None }})
 }
 

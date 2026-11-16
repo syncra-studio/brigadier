@@ -144,6 +144,12 @@ export const StripRow: FC<{ worker: Worker; lone?: boolean; act: Act }> = ({ wor
           <span className="flex min-h-8 min-w-0 items-center gap-1.5">
             <WorkerGlyph id={worker.id} className="size-4 shrink-0" />
             <span className={cx("max-w-1/3 shrink-0 truncate text-tool-box-text", lone && BRIGHTENS)}>{worker.name}</span>
+            {worker.repos?.length ? (
+              <>
+                <span aria-hidden className="text-row-object">·</span>
+                <span className="max-w-1/4 shrink-0 truncate text-row-foreground">{worker.repos.join(", ")}</span>
+              </>
+            ) : null}
             <span aria-hidden className="text-row-object">·</span>
             <span className={cx("min-w-0 flex-1 truncate", working ? "shimmer" : cx("text-row-foreground", lone && BRIGHTENS))}>
               {working ? (worker.now ?? worker.word) : worker.word}

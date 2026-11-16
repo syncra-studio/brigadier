@@ -41,6 +41,7 @@ export type WorkerRow = {
   why?: string | null;
   added?: number | null;
   removed?: number | null;
+  repos?: string[];
   /** Its newest call at work, while it works [D143]. */
   now?: { step: StepKind; name: string; input: string; description?: string | null } | null;
 };
@@ -71,6 +72,7 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   why: row.worker.why ?? undefined,
   added: row.worker.added ?? undefined,
   removed: row.worker.removed ?? undefined,
+  repos: row.worker.repos,
   now: row.worker.now ? nowOf(row.worker.now) : undefined,
 });
 
@@ -301,6 +303,7 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
         end={changed && <span className={cx("text-2xs", controls && "group-hover/row:invisible group-has-focus-visible/row:invisible")}><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
       >
         {worker.name}
+        {worker.repos?.length ? <span className="text-muted-foreground"> · {worker.repos.join(", ")}</span> : null}
         <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
       </Line>
       {controls && (

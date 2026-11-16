@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 import { Dialog, DialogContent } from "../components/dialog";
 import { files, named, RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
 import { showToast, toastManager } from "../components/toast";
-import { threadSource, useDaemon } from "../daemon";
+import { threadSource, useDaemon, useFolderChat } from "../daemon";
 import type { Source } from "../thread/thread";
 import { type ComposerRow, daemonRun, type Runner } from "./composer";
 import { putBack } from "./side";
@@ -54,6 +54,7 @@ function undoRestore(run: Runner, id: string, cid: string, op: string) {
 export function RewindProvider({ id, row, offline, children, run = daemonRun, source = threadSource }: { id: string; row: ComposerRow | undefined; offline: boolean; children: ReactNode; run?: Runner; source?: Source }) {
   const session = useSyncExternalStore(source.subscribe, source.get);
   const { rows } = useDaemon();
+  const folder = useFolderChat(id);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [running, setRunning] = useState<Running | null>(null);
   // Answers stand until a turn starts or ends, or the messages that can be rewound to change.
@@ -85,7 +86,7 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
     const first = running && session?.items.find((item) => "cid" in item && item.cid === running.cid);
     const turnsGone = new Set(running ? session?.turns.slice(session.turns.findIndex((turn) => turn.id === running.cid)).map((turn) => turn.id) : []);
     return {
-      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) ? { blocked, open: () => open(cid, text), look: () => look(cid) } : undefined),
+      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) && !folder ? { blocked, open: () => open(cid, text), look: () => look(cid) } : undefined),
       gone: (n: number | undefined, turn: string | undefined) => !!running && ((first && n !== undefined && first.n !== undefined && n >= first.n) || (turn !== undefined && turnsGone.has(turn))),
     };
   }, [session, running, offline, row?.running, row?.queue, id, run, looked]);
