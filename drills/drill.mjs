@@ -861,6 +861,7 @@ async function rebirthReal(backend, todo) {
 // each run on a pinned baseline build (BASE=<dir>) and this one (BIN) as a pair, on hidden
 // instances (HOME=<scratch>, plain PATH). AGENTS=claude,codex,opencode SAMPLES=3 CASES=B1,G3
 // MODELS=codex=gpt-x,claude=haiku AGENT_PATHS=codex=/path/wrapper MARKER=<phrase in the new text>.
+// FOLDER=1 runs the new side's cases in a folder project (BASE=BIN compares with ordinary chats).
 // Gate: no case that passed every baseline sample fails a new one, and each bad case passes at
 // least 2 of 3 samples per CLI on the new build.
 const OUTBOX = 'printf "%s %s\\n" "$(basename "$0")" "$*" >> "$(git rev-parse --show-toplevel)/.outbox.log"; echo ok'
@@ -985,10 +986,24 @@ function given(sd, id, agent, seen) {
 
 async function sample(c, sd, agent, k, b3) {
   const id = `${c.id.toLowerCase()}-${agent}-${sd.name}-${k}`
-  const repo = caseRepo(c, id)
+  let repo = caseRepo(c, id)
+  let where = ['--cwd', repo]
+  // FOLDER=1: the new side's repo sits in a folder of repos added as one project, so its chat
+  // claims it before an edit and is judged on its own copy [D494].
+  const folder = process.env.FOLDER === '1' && sd.name === 'new'
+  if (folder) {
+    const home = `${ROOT}/folders/${id}`
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.mkdirSync(home, { recursive: true })
+    fs.renameSync(repo, `${home}/app`)
+    repo = `${home}/app`
+    const p = sd.cli(['projects', 'add', home]).out.project
+    sd.cli(['projects', 'set', p.id, '--trusted', 'true'])
+    where = ['--project', p.id]
+  }
   const model = (process.env.MODELS ?? '').split(',').map((m) => m.split('=')).find(([a]) => a === agent)?.[1]
   const first = c.resume ? 'What does a.txt say?' : c.filler ? 'Reply with only the word ok.' : c.text
-  const start = (b3 ?? sd).cli(['start', id, '--backend', agent, '--cwd', repo, '--level', c.level ?? 'auto', ...(model ? ['--model', model] : []), '--text', first])
+  const start = (b3 ?? sd).cli(['start', id, '--backend', agent, ...where, '--level', c.level ?? 'auto', ...(model ? ['--model', model] : []), '--text', first])
   if (!start.out.ok) return { id, pass: false, error: start.out.error }
   let st = await settle(b3 ?? sd, id)
   for (let i = 1; i < (c.filler ?? 0); i++) { (sd).cli(['send', id, 'Reply with only the word ok.']); st = await settle(sd, id) }
@@ -1000,7 +1015,8 @@ async function sample(c, sd, agent, k, b3) {
     st = await settle(sd, id)
     clearInterval(watch)
   }
-  const f = facts(sd, id, repo, st)
+  const copy = `${sd.data}/sessions/${id}/worktree/app`
+  const f = facts(sd, id, folder && fs.existsSync(copy) ? copy : repo, st)
   // A turn that ends on the card isn't left asking in prose, the check's send-back answered included.
   f.fixed = !f.prose || f.cardLast
   if (c.resume && process.env.MARKER) f.marked = given(sd, id, agent, seen).includes(process.env.MARKER)
