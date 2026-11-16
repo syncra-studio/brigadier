@@ -1,15 +1,14 @@
-import { DragDropProvider } from "@dnd-kit/react";
-import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { type ComponentType, type ReactNode, useState } from "react";
 
 import { Button } from "../components/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import type { ModelGroup } from "../components/composer/model-picker";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Input } from "../components/input";
 import { RowText, SettingsCard } from "../components/settings-card";
-import { Bolt, Code, Globe, type IconProps, MagnifyingGlassSearch, Nodes, Pencil, Plus, ShieldExclamation, Sparkle, X } from "../icons";
+import { Bolt, ChevronRight, Code, Globe, type IconProps, MagnifyingGlassSearch, Nodes, Pencil, Plus, ShieldExclamation, Sparkle, X } from "../icons";
 import { SettingsSection } from "./parts";
 import { type Entry, type Job, type Offer, ROUTING_ROWS } from "./routing";
 import { OrderList } from "./routing-order";
@@ -33,8 +32,8 @@ const ICONS: Readonly<Record<string, ComponentType<IconProps>>> = {
 const BLANK: Job = { name: "", for: "", entries: [] };
 
 /**
- * Jobs: one card, each job a block, its header (dragged to reorder), its editor when open, its offer, then its order,
- * always open [D383, D388 Q22]. New job adds a block with its editor; Rust's refusals show in the editor [D388 Q14].
+ * Jobs: one card, each job a block: its header, its offer, then its editor when open and its order, which the header
+ * folds; the first starts unfolded [D383, D425]. New job adds a block with its editor; Rust's refusals show in the editor [D388 Q14].
  * A job-less offer is a quiet line under the card [D386]. A taken offer reads its `done` with Undo until the page
  * closes; Undo saves the job's order from before.
  */
@@ -66,11 +65,6 @@ export function Jobs({
   const [refused, setRefused] = useState<{ from: string; typed: Job } | null>(null);
   const forget = (offer: Offer) => setUsed((now) => now.filter((each) => each.offer !== offer));
   const put = (name: string, next: Job) => onSave(jobs.map((job) => (job.name === name ? next : job)));
-  const move = (from: number, to: number) => {
-    const rest = jobs.filter((_, index) => index !== from);
-    rest.splice(to, 0, jobs[from]!);
-    void onSave(rest);
-  };
   const add = (job: Job) => {
     onDraft(null);
     void onSave([...jobs, job]).then((ok) => ok || onDraft(job));
@@ -96,61 +90,22 @@ export function Jobs({
       }
     >
       <SettingsCard inset data-slot="jobs">
-        <DragDropProvider
-          // Blocks differ in height, and dnd-kit keeps their places from before a move it didn't make (↑ ↓, Undo): start afresh.
-          key={jobs.map((job) => job.name).join("\n")}
-          onDragEnd={({ operation, canceled }) => {
-            const { source } = operation;
-            if (!canceled && isSortable(source) && source.index !== source.initialIndex) move(source.initialIndex, source.index);
-          }}
-        >
-          {jobs.map((job, index) => {
-            const open = editing === job.name;
-            const offer = offers.find((each) => each.job === job.name);
-            const taken = used.find((each) => each.offer.job === job.name);
-            return (
-              <SortableJob
-                key={job.name}
-                job={job}
-                index={index}
-                count={jobs.length}
-                open={open}
-                onMove={(to) => move(index, to)}
-                onEdit={() => {
-                  onDraft(null);
-                  onEditing(open ? null : job.name);
-                }}
-              >
-                {open && (
-                  <JobEditor
-                    job={job}
-                    typed={failed && refused?.from === job.name ? refused.typed : job}
-                    error={failed}
-                    onCommit={(next) => {
-                      if (next.name !== job.name) onEditing(next.name);
-                      void put(job.name, next).then((ok) => {
-                        if (ok) return;
-                        setRefused({ from: job.name, typed: next });
-                        onEditing(job.name);
-                      });
-                    }}
-                    actions={
-                      job.name !== REVIEW_JOB && (
-                        <Button
-                          variant="soft-destructive"
-                          size="sm"
-                          onClick={() => {
-                            onEditing(null);
-                            void onSave(jobs.filter((other) => other !== job));
-                          }}
-                        >
-                          Delete job
-                        </Button>
-                      )
-                    }
-                  />
-                )}
-                {taken ? (
+        {jobs.map((job, index) => {
+          const open = editing === job.name;
+          const offer = offers.find((each) => each.job === job.name);
+          const taken = used.find((each) => each.offer.job === job.name);
+          return (
+            <JobBlock
+              key={job.name}
+              job={job}
+              first={index === 0}
+              editing={open}
+              onEdit={() => {
+                onDraft(null);
+                onEditing(open ? null : job.name);
+              }}
+              offer={
+                taken ? (
                   <Strip title={taken.offer.done} done>
                     <Button
                       variant="link-blue"
@@ -173,12 +128,42 @@ export function Jobs({
                       }}
                     />
                   )
-                )}
-                <OrderList title={job.name} order={job.entries} groups={groups} onSave={(entries) => void put(job.name, { ...job, entries })} />
-              </SortableJob>
-            );
-          })}
-        </DragDropProvider>
+                )
+              }
+            >
+              {open && (
+                <JobEditor
+                  job={job}
+                  typed={failed && refused?.from === job.name ? refused.typed : job}
+                  error={failed}
+                  onCommit={(next) => {
+                    if (next.name !== job.name) onEditing(next.name);
+                    void put(job.name, next).then((ok) => {
+                      if (ok) return;
+                      setRefused({ from: job.name, typed: next });
+                      onEditing(job.name);
+                    });
+                  }}
+                  actions={
+                    job.name !== REVIEW_JOB && (
+                      <Button
+                        variant="soft-destructive"
+                        size="sm"
+                        onClick={() => {
+                          onEditing(null);
+                          void onSave(jobs.filter((other) => other !== job));
+                        }}
+                      >
+                        Delete job
+                      </Button>
+                    )
+                  }
+                />
+              )}
+              <OrderList title={job.name} order={job.entries} groups={groups} onSave={(entries) => void put(job.name, { ...job, entries })} />
+            </JobBlock>
+          );
+        })}
         {draft && (
           <div data-slot="job" className="flex flex-col">
             <JobHead job={draft} />
@@ -216,8 +201,8 @@ export function Jobs({
   );
 }
 
-/** A job's header: its icon, name and line; `handle` drags it, and the pencil opens its editor. */
-function JobHead({ job, handle, children }: { job: Job; handle?: { ref: (element: Element | null) => void; onMove: (by: number) => void }; children?: ReactNode }) {
+/** A job's header: its icon, name and line; with `open`, it folds the block's body and its chevron shows which way. */
+function JobHead({ job, open, children }: { job: Job; open?: boolean; children?: ReactNode }) {
   const Icon = ICONS[job.name] ?? Sparkle;
   const words = (
     <>
@@ -227,68 +212,47 @@ function JobHead({ job, handle, children }: { job: Job; handle?: { ref: (element
   );
   return (
     <div data-slot="job-head" className="flex items-center gap-3.5 py-3.5">
-      {handle ? (
-        <button
-          ref={handle.ref}
-          type="button"
-          data-job={job.name}
-          title="Drag to reorder, or focus and press ↑ ↓"
-          onKeyDown={(event) => {
-            const by = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-            if (!by) return;
-            event.preventDefault();
-            handle.onMove(by);
-            // Moving the block draws it afresh; give its header focus back so ↑ ↓ keep going.
-            const card = event.currentTarget.closest("[data-slot=jobs]");
-            requestAnimationFrame(() => card?.querySelector<HTMLElement>(`[data-job="${CSS.escape(job.name)}"]`)?.focus());
-          }}
-          className="flex min-w-0 flex-1 cursor-grab touch-none items-center gap-3.5 text-start active:cursor-grabbing"
-        >
-          {words}
-        </button>
-      ) : (
+      {open === undefined ? (
         <span className="flex min-w-0 flex-1 items-center gap-3.5">{words}</span>
+      ) : (
+        <CollapsibleTrigger className="flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 rounded-control text-start focus-visible:focus-ring">
+          {words}
+          <ChevronRight aria-hidden className={cx("size-icon-sm shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+        </CollapsibleTrigger>
       )}
       {children}
     </div>
   );
 }
 
-/** A job in the card, dragged by its header. */
-function SortableJob({
-  job,
-  index,
-  count,
-  open,
-  onMove,
-  onEdit,
-  children,
-}: {
-  job: Job;
-  index: number;
-  count: number;
-  open: boolean;
-  onMove: (to: number) => void;
-  onEdit: () => void;
-  children: ReactNode;
-}) {
-  const { ref, handleRef, isDragging } = useSortable({ id: job.name, index, disabled: count < 2 });
-  const handle = {
-    ref: handleRef,
-    onMove: (by: number) => {
-      const to = index + by;
-      if (!isDragging && to >= 0 && to < count) onMove(to);
-    },
+/** A job in the card: its header folds its editor and order; its offer stays in sight. An open editor keeps it unfolded; folding closes it [D425]. */
+function JobBlock({ job, first, editing, onEdit, offer, children }: { job: Job; first: boolean; editing: boolean; onEdit: () => void; offer: ReactNode; children: ReactNode }) {
+  // A rename draws it afresh under its new name, still editing: it stays unfolded.
+  const [shown, setShown] = useState(first || editing);
+  const open = shown || editing;
+  const fold = (next: boolean) => {
+    setShown(next);
+    if (!next && editing) onEdit();
   };
   return (
-    <div ref={ref} data-slot="job" className={cx("flex flex-col", isDragging && "bg-fill-hover")}>
-      <JobHead job={job} handle={handle}>
-        <TooltipIconButton tooltip="Edit job" aria-label={`Edit ${job.name}`} aria-expanded={open} onClick={onEdit} className="shrink-0 text-muted-foreground">
+    <Collapsible open={open} onOpenChange={fold} data-slot="job" className="flex flex-col">
+      <JobHead job={job} open={open}>
+        <TooltipIconButton
+          tooltip="Edit job"
+          aria-label={`Edit ${job.name}`}
+          aria-expanded={editing}
+          onClick={() => {
+            setShown(true);
+            onEdit();
+          }}
+          className="shrink-0 text-muted-foreground"
+        >
           <Pencil />
         </TooltipIconButton>
       </JobHead>
-      {children}
-    </div>
+      {offer}
+      <CollapsibleContent className="flex flex-col">{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 
