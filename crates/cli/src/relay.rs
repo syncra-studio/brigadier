@@ -264,8 +264,9 @@ pub(crate) fn read(
     let dir = core::session_dir(data, id);
     if let Some((at, (tool, out))) = at.and_then(|at| Some((at, core::archive::output(&dir, at)?)))
     {
+        // The text is cut once, from its start, as any reply's; the JSON's copy here.
+        let text = format!("[{id}#{at} output of {tool}]\n{}\n", out.trim_end());
         let out = crate::agent::cap(out.trim_end());
-        let text = format!("[{id}#{at} output of {tool}]\n{out}\n");
         let list = vec![
             json!({"ref": format!("{id}#{at}"), "from": format!("output of {tool}"), "text": out, "files": []}),
         ];
