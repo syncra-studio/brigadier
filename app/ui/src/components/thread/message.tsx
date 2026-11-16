@@ -6,6 +6,7 @@ import { ArrowDown, ChevronRightAlt, Trash, Undo } from "../../icons";
 import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
+import { copiedReply } from "../../thread/reply-cards";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "../composer/attachments";
 import { ChipContext, ComposerChip, type OpenKind } from "../composer/chip";
 import type { Chip, Draft } from "../composer/draft";
@@ -258,7 +259,7 @@ export function AnswerMarks({ text, time, fork, older = false }: { text: string;
   return (
     // Only the latest answer keeps them in view; an older one's show on hover or focus [D82].
     <div className={cx("group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground", older && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
-      <CopyButton text={text} tooltip="Copy response" size="icon-answer" />
+      <CopyButton text={copiedReply(text)} tooltip="Copy response" size="icon-answer" />
       {fork}
       {time !== undefined && (
         <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>

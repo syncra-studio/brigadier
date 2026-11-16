@@ -16,6 +16,23 @@ const maybe = (value: unknown) => value === undefined || typeof value === "strin
 const isMessage = (m: Record<string, any> | undefined): m is Message =>
   !!m && said(m.to) && said(m.text) && maybe(m.state) && (m.quote === undefined || (said(m.quote?.from) && said(m.quote?.text)));
 
+/**
+ * A reply as Copy response gives it: each message card's JSON turned back into its words, a `text` fence titled
+ * where it goes [D520]. JSON that isn't a card stays as written.
+ */
+export function copiedReply(text: string): string {
+  return text.replace(/^([ \t]*)```brigadier-message[^\n]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gm, (fence, pad: string, json: string) => {
+    let spec: Record<string, any> | undefined;
+    try {
+      spec = JSON.parse(json);
+    } catch {
+      return fence;
+    }
+    if (!isMessage(spec)) return fence;
+    return [`\`\`\`text ${spec.to}`, ...spec.text.split("\n"), "```"].map((line) => pad + line).join("\n");
+  });
+}
+
 /** A card's frame while its JSON still arrives, so the JSON never shows raw; null when the fence isn't a card's [D520]. */
 export function replyCardFrame(language: string): ReactNode {
   if (language !== "brigadier-message") return null;
