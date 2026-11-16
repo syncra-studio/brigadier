@@ -18,11 +18,6 @@ pub const COMMANDS: [&str; 13] = [
     "mcp", "browser", "show",
 ];
 
-/// The `brigadier browser` actions that only read, or open a local page: the grant covers them.
-/// Every other acts in the user's signed-in pages, so like `mcp call` it follows the session's
-/// level [D503, D3023].
-pub const BROWSER_READS: [&str; 6] = ["snapshot", "events", "screenshot", "show", "help", "--help"];
-
 /// How a message from another session opens, for its receiving agent; its bubble shows the rest [D2034].
 pub const PEER_HEAD: &str = "[From session ";
 
@@ -117,15 +112,9 @@ pub fn call(command: &str) -> bool {
     let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
     let mcp_call = words.get(1).is_some_and(|w| w == "mcp")
         && !action.is_some_and(|a| a == "list" || a == "tools");
-    let browser_act = words.get(1).is_some_and(|w| w == "browser")
-        && !match words.get(2).map(String::as_str) {
-            Some("open") => words.get(3).is_some_and(|u| local_address(u)),
-            a => a.is_some_and(|a| BROWSER_READS.contains(&a)),
-        };
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
         && !mcp_call
-        && !browser_act
 }
 
 /// Whether `url`'s host is one a local development server answers on: localhost, *.localhost,

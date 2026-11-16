@@ -8,7 +8,7 @@
 //      { kind: "type", target, text, submit, declared, approved } -> the same
 // A password field, seen by its type, its autocomplete, its computed text security or its names, shows only as a line
 // with no ref and nothing goes into it, yes or no: only the user fills those in. An action that pays, sends or signs in
-// (declared by the agent), or that enters or submits a card or a one-time code or submits a password (seen here),
+// (declared by the agent), or that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
 // returns `ask` and does nothing unless the user said yes to it on this page (`approved`: the address the yes was given at, which the app
 // passes only while the tab is still on the page it was given on).
 //
@@ -331,7 +331,7 @@
     if (element.disabled) return { error: `${op.target} is disabled.` };
     const role = roleOf(element);
     const kind = role === "button" ? filledKind(scopeOf(element)) : null;
-    const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element));
+    const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (op.always && ask("action", element));
     if (asked) return asked;
     if (op.trusted) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
@@ -375,7 +375,7 @@
     // shows the secret typed into it.
     const own = fieldKind(element);
     const kind = own || (op.submit ? filledKind(scopeOf(element), element) : null);
-    const asked = (own && ask(own, element)) || (op.declared && ask(op.declared, element)) || (kind && ask(kind, element));
+    const asked = (own && ask(own, element)) || (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (op.always && ask("action", element));
     if (asked) return asked;
     element.scrollIntoView({ block: "center", inline: "center" });
     element.focus({ preventScroll: true });

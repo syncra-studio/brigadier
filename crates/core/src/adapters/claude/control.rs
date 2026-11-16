@@ -179,14 +179,10 @@ fn widen(rule: &Value) -> Vec<Value> {
     if rule["toolName"] != "Bash" || !crate::agent::call(content) {
         return vec![rule.clone()];
     }
-    // `mcp call` and the browser's actions follow the session's level, so their grant covers only
-    // what reads, and opening a local page [D3023, D503].
+    // `mcp call` follows the session's level, so its grant covers only what reads [D3023]; the
+    // browser asks on its own card [D533].
     let prefixes = (crate::agent::COMMANDS.iter()).flat_map(|c| match *c {
         "mcp" => vec!["mcp list".to_string(), "mcp tools".into()],
-        "browser" => (crate::agent::BROWSER_READS.iter())
-            .map(|a| format!("browser {a}"))
-            .chain(["http://localhost", "http://127.0.0.1"].map(|u| format!("browser open {u}")))
-            .collect(),
         c => vec![c.to_string()],
     });
     prefixes

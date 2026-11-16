@@ -1,8 +1,8 @@
-//! What an agent's browser call asks of the page, and the user's yes first where it needs one
-//! [D503, D518]: Ask and Auto ask before an action that pays, sends, signs in or fills a card, a
-//! code or beside a password; Auto also before a script; Full runs them all. Every click and typing
-//! at Ask already asked, as `mcp call` does, through the agent's own approval of the command
-//! [D3023]. Password fields stay closed at every level (the page's script).
+//! What an agent's browser call asks of the page, and the user's yes first where it needs one, on
+//! one "Go ahead in the browser?" card [D503, D518, D533]: Ask asks before every click and typing;
+//! Ask and Auto before an action that pays, sends, signs in or fills a card, a code or beside a
+//! password; Auto also before a script; Full runs them all. Password fields stay closed at every
+//! level (the page's script).
 
 use super::{HUB, Words, lock, tab_of};
 use crate::agent::refuse;
@@ -56,8 +56,9 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         Some("sign-in") => "signIn".into(),
         Some(_) => return Err(refuse("--asks takes pay, send or sign-in.")),
     };
-    // Full runs every action; Ask and Auto ask before a sensitive one, and Auto before a script.
-    let asks = level != "full";
+    // Full runs every action; Ask and Auto ask before a sensitive one, Ask before any, and Auto
+    // before a script.
+    let (asks, always) = (level != "full", level == "ask");
     Ok(match w.action {
         "open" => {
             json!({"op": "open", "url": web_address(&one("a web address")?)?, "keep": w.flags.contains("--keep")})
@@ -75,11 +76,11 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         },
         "snapshot" => none().and_then(|()| Ok(json!({"op": "read", "tab": tab()?})))?,
         "click" => {
-            json!({"op": "click", "tab": tab()?, "target": one("a ref, as a snapshot gave it")?, "declared": declared, "asks": asks})
+            json!({"op": "click", "tab": tab()?, "target": one("a ref, as a snapshot gave it")?, "declared": declared, "asks": asks, "always": always})
         }
         "type" => match w.rest.as_slice() {
             [target, text] => json!({"op": "type", "tab": tab()?, "target": target, "text": text,
-                "submit": w.flags.contains("--submit"), "declared": declared, "asks": asks}),
+                "submit": w.flags.contains("--submit"), "declared": declared, "asks": asks, "always": always}),
             _ => {
                 return Err(refuse(
                     "`brigadier browser type` takes a ref and the text, in quotes.",
@@ -209,6 +210,10 @@ fn question(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
         "credentials" => format!("Use your password on {site}?"),
         "card" => format!("Enter a payment card on {site}?"),
         "oneTimeCode" => format!("Enter a one-time code on {site}?"),
+        "action" if click && named => format!("Click {name} on {site}?"),
+        "action" if click => format!("Click this on {site}?"),
+        "action" if named => format!("Type in {name} on {site}?"),
+        "action" => format!("Type on {site}?"),
         _ => format!("Run this script on {site}?"),
     }
 }

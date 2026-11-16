@@ -209,6 +209,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         target: op.target,
         ...(op.op === "type" ? { text: op.text, submit: op.submit } : {}),
         declared: op.declared,
+        always: op.always,
         approved,
       });
       let answer = await ask(approvedHere(tab, op.approved));
