@@ -8,6 +8,7 @@ pub(crate) mod profiles;
 mod records;
 mod store;
 mod types;
+mod vault;
 
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -20,7 +21,7 @@ use types::{DownloadState, HistoryFilter, ImportRecord, ImportedVisit, SitePermi
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear ... [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports list|save|denied|visits | bookmarks list|add|update|remove|import | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
@@ -63,6 +64,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "imports",
         "bookmarks",
         "dates",
+        "vault",
     ]
     .contains(&area)
     {
@@ -88,6 +90,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let args = &args[3..];
     if area == "bookmarks" {
         return bookmarks::run(&folder, args);
+    }
+    if area == "vault" {
+        return vault::run(data, &folder, args);
     }
     let mut store = Store::open(&folder.join("browser.sqlite"))?;
     if area == "dates" {
