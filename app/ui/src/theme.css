@@ -346,8 +346,8 @@
   --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
   /* The room the pinned summary card takes from the reading column where it moves it aside (the old app's
-     --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-70 card and its 4px inset. */
-  --spacing-summary-room: calc(var(--spacing) * 71);
+     --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-75 card and its 4px inset. */
+  --spacing-summary-room: calc(var(--spacing) * 76);
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's

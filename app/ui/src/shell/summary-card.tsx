@@ -29,9 +29,9 @@ import { CHAT, HOME, openAttachment, openTab, useTabs } from "./tab-store";
 type Layout = "beside" | "shift" | "float";
 
 // In rem. Below GUTTER_FROM the card floats over the thread rather than push it [D51]: the column it pushes keeps
-// 37.5rem (600px) beside the card's room (--spacing-summary-room's 71 spacings: the w-70 card and its 4px inset) and
+// 37.5rem (600px) beside the card's room (--spacing-summary-room's 76 spacings: the w-75 card and its 4px inset) and
 // the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's --spacing-summary-beside-from.
-const GUTTER_FROM = 17.75 + 1.25 + 37.5;
+const GUTTER_FROM = 19 + 1.25 + 37.5;
 const BESIDE_FROM = 25;
 
 function layoutOf(width: number): Layout {
@@ -88,8 +88,8 @@ export function useCardToggle(owner: string) {
 }
 
 // The card itself, pinned or floating.
-// The new design's floating card: the card colour, the panel's corners, the glass edge.
-const SURFACE = "pointer-events-auto flex w-70 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
+// The new design's floating card: the card colour, the panel's corners, the glass edge; the old card's 18.75rem (300px) wide [D592].
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
 
 /** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
@@ -100,7 +100,7 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-label="Context"
         aria-hidden={!shown || undefined}
         className={cx(
-          "pointer-events-none flex max-h-full min-h-0 w-71 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
+          "pointer-events-none flex max-h-full min-h-0 w-76 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
           // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). Shown or
           // hidden, it shrinks and fades toward its top corner, never out past the pane's end, where a right panel cut it [D63, D67].
           shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" : "invisible scale-80 opacity-0",
@@ -139,7 +139,7 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
               // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel [D59]; below, room for its shadow.
-              className="pointer-events-none flex max-h-available w-71 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
+              className="pointer-events-none flex max-h-available w-76 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
