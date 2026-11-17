@@ -17,6 +17,7 @@ pub(super) fn wait(
     here: &dyn Fn() -> bool,
 ) -> Value {
     let started = Instant::now();
+    let mine = ids.iter().all(|w| workers::record(data, me, w).is_some());
     let mut state = String::new();
     loop {
         let rows = rows();
@@ -50,17 +51,20 @@ pub(super) fn wait(
                 return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "text": text});
             }
         }
+        // One's own workers' results and asks reach it by themselves, so a wait on them looks
+        // once and returns: a wait in the background can't wake it with nothing new [D529, D599].
+        if mine {
+            let text = format!(
+                "Still working: {}. Its result and questions come to you by themselves, so end your turn.",
+                ids.join(", ")
+            );
+            return json!({"ok": true, "done": false, "state": state, "text": text});
+        }
         if started.elapsed() >= Duration::from_secs(secs) || !here() {
-            // A wait run in the background wakes its agent with nothing new [D599]: its own
-            // workers' results and asks reach it anyway, so it's told not to wait again.
-            let mine = ids.iter().all(|w| workers::record(data, me, w).is_some());
-            let then = match mine {
-                true => {
-                    "Its result and questions come to you by themselves, so end your turn without waiting again."
-                }
-                false => "Wait again, or end your turn and check later.",
-            };
-            let text = format!("Still working after {secs}s: {}. {then}", ids.join(", "));
+            let text = format!(
+                "Still working after {secs}s: {}. Wait again, or end your turn and check later.",
+                ids.join(", ")
+            );
             return json!({"ok": true, "done": false, "state": state, "text": text});
         }
         thread::sleep(Duration::from_millis(500));

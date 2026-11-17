@@ -9,8 +9,9 @@ use std::path::Path;
 pub const SEND_BACK: &str = "[Brigadier: your reply ends by asking the user in prose. Brigadier shows questions only through your question tool, so ask there.]";
 
 /// Words that ask the user for a choice, a fact or a go-ahead the next step waits on. A sign-off
-/// about later events ("let me know if anything breaks") is none of them.
-const ASKS: [&str; 18] = [
+/// about later events ("let me know if anything breaks") is none of them, nor is saying who
+/// decides ("marking it ready is your call"): "your call" asks only as a sentence's opening.
+const ASKS: [&str; 17] = [
     "please provide",
     "please confirm",
     "please choose",
@@ -22,7 +23,6 @@ const ASKS: [&str; 18] = [
     "let me know if i should",
     "let me know if you want me",
     "let me know if you'd like me",
-    "your call",
     "say go",
     "say yes",
     "say the word",
@@ -75,6 +75,7 @@ pub fn asks_in_prose(reply: &str) -> bool {
                 words.split_whitespace().collect::<Vec<_>>().join(" ")
             );
             ASKS.iter().any(|a| s.contains(&format!(" {a} ")))
+                || s.starts_with(" your call ")
                 || (["approve", "confirm", "pick", "choose"]
                     .iter()
                     .any(|v| s.starts_with(&format!(" {v} ")))

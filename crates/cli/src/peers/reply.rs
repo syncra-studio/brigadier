@@ -178,9 +178,12 @@ pub(super) fn waited(
         }
         if late {
             note(data, me, json!({"phase": "waited", "mid": out.mid}));
-            let text = format!(
-                "No reply from {to} after {secs}s. Your message is with it. `brigadier wait {to}` to wait more, or end your turn."
-            );
+            // One's own worker's reply comes by itself, and a wait on it looks only once [D599].
+            let then = match workers::record(data, me, to).is_some() {
+                true => "Its reply comes to you by itself, so end your turn.".to_string(),
+                false => format!("`brigadier wait {to}` to wait more, or end your turn."),
+            };
+            let text = format!("No reply from {to} after {secs}s. Your message is with it. {then}");
             return json!({"ok": true, "mid": out.mid, "done": false, "text": text});
         }
         thread::sleep(Duration::from_millis(500));
