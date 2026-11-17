@@ -325,7 +325,18 @@ pub fn clone(
         }
         return Err(e);
     }
-    projects::add(data, &dir.display().to_string(), Some(id), None)
+    let project = projects::add(data, &dir.display().to_string(), Some(id), None)?;
+    // The account it was cloned as is its pick, so its PRs and sessions act as it too [D631].
+    match account {
+        Some(login) => {
+            let change = projects::Change {
+                github_account: Some(Some(login.into())),
+                ..Default::default()
+            };
+            projects::set(data, &project.id, change)
+        }
+        None => Ok(project),
+    }
 }
 
 /// Makes a new repository at `dest` and adds it under `id`: the folder, `git init` and an empty
