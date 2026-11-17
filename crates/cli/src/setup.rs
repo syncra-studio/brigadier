@@ -4,23 +4,23 @@
 
 use crate::{accounts, flag, owner};
 use brigadier_core::adapters::{self, Adapter, setup};
-use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir, writer};
+use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
 
+mod forges;
 mod kept;
+mod profile;
 mod state;
+mod test_prompt;
 use kept::{keep_check, last_check};
 pub use state::run_state;
-
-static PROFILE: Mutex<()> = Mutex::new(());
 
 fn agent(name: &str) -> io::Result<&'static dyn Adapter> {
     adapters::get(name)
@@ -32,6 +32,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = adapters::home_path("");
     match args.first().map(String::as_str).unwrap_or("") {
         // `--cached` never probes: a saved check, or the adapter's static card [D30, D272].
+        "agents" if args.get(1).is_some_and(|a| a == "test") => {
+            test_prompt::test(data, agent(args.get(2).map_or("", String::as_str))?)
+        }
         "agents" => {
             let cwd = flag(args, "--cwd").map_or(home, PathBuf::from);
             let names = match args.get(1).filter(|a| !a.starts_with("--")) {
@@ -69,7 +72,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 )),
             }
         }
-        "profile" => profile(data, args),
+        "profile" => profile::profile(data, args),
+        "forges" => forges::run(data, args),
         "projects" => {
             // A folder picked with Add folder…: what adding it would add, after every guard;
             // nothing is written [D165].
@@ -193,14 +197,15 @@ pub(crate) fn available() -> Vec<&'static dyn Adapter> {
         .collect()
 }
 
-/// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers.
+/// `update`: the command its Update runs, as typed; `models_off`: its models hidden from pickers;
+/// `brand`: its onboarding card's surface once installed, where it has a mark (owner's call, D620).
 fn card(data: &Path, a: &dyn Adapter) -> Value {
     let update = a
         .update(None)
         .map(|w| format!("{} {}", a.bin().0, w.join(" ")));
     json!({"name": a.name(), "label": a.label(), "short": a.short_label(), "install": a.install().is_some(),
         "sign_in": a.sign_in().map(|(label, _)| label), "setup": setup_state(data, a),
-        "mark": a.mark(), "enabled": crate::settings::enabled(data, a.name()),
+        "mark": a.mark(), "brand": a.mark().map(|_| a.name()), "docs": setup::docs(a.name()), "enabled": crate::settings::enabled(data, a.name()),
         "update": update.or(a.install().map(String::from)),
         "models_off": crate::settings::models_off(data, a.name())})
 }
@@ -456,41 +461,4 @@ pub fn close(data: &Path, id: &str) -> io::Result<()> {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
     }
-}
-
-fn read_profile(data: &Path) -> Value {
-    let p: Value = fs::read(data.join("profile.json"))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
-    json!({"name": p["name"].as_str().unwrap_or(""), "git_writer": p["git_writer"], "intro_seen": p["intro_seen"] == true,
-        "onboarded": p["onboarded"] == true})
-}
-
-/// `profile [--name N] [--intro] [--done]`: what onboarding keeps, in `profile.json`. Projects
-/// are records of their own (`projects`); a write here drops the plain paths they moved from.
-fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
-    let _one = PROFILE.lock().unwrap();
-    // The plain paths move to the records before a write here drops them.
-    projects::list(data)?;
-    let mut p = read_profile(data);
-    if let Some(name) = flag(args, "--name") {
-        p["name"] = name.trim().chars().take(80).collect::<String>().into();
-    }
-    let has = |f: &str| args.iter().any(|a| a == f);
-    if has("--git-writer") {
-        let value = flag(args, "--git-writer").ok_or_else(|| io::Error::other(super::USAGE))?;
-        p["git_writer"] = json!(writer::parse_choice(serde_json::from_str(value)?)?);
-    }
-    p["intro_seen"] = (p["intro_seen"] == true || has("--intro")).into();
-    p["onboarded"] = (p["onboarded"] == true || has("--done")).into();
-    if args.len() > 1 {
-        fs::create_dir_all(data)?;
-        core::write_atomic(&data.join("profile.json"), p.to_string().as_bytes())?;
-    }
-    p["ok"] = true.into();
-    if args.len() == 1 {
-        p["agents"] = agents(data, &adapters::home_path(""), available(), true)?.into();
-    }
-    Ok(p)
 }

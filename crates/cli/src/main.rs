@@ -69,8 +69,9 @@ fn main() {
 
 fn host_child() -> bool {
     let parent = unsafe { libc::getppid() };
+    // Under no host at all it is no agent's: the daemon's message writer and test prompt [D617].
     procs::hosts_above(process::id() as i32)
-        .is_some_and(|h| h.first().is_some_and(|h| h.0 == parent))
+        .is_some_and(|h| h.first().is_none_or(|h| h.0 == parent))
 }
 
 /// None for the app's and drills' own run here; else the daemon's answer for an agent, or a refusal.

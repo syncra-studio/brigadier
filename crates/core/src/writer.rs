@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// Proposed: the user's own messages the writer reads, newest first, and each one's length.
 const ASKS: usize = 10;
 const ASK_CHARS: usize = 500;
-/// Proposed: a write gives up after this.
+/// A write gives up after this; a test prompt sooner [D617].
 pub const WRITE_SECS: u64 = 60;
 /// Words a failure says when the computer is offline: only then does a local model write [D1029].
 const OFFLINE: [&str; 9] = [
@@ -207,6 +207,7 @@ pub fn write(
     account: &str,
     prompt: &str,
     _active: &fs::File,
+    secs: u64,
 ) -> Result<String, Failure> {
     fs::create_dir_all(&run.dir).map_err(|e| fail(e.to_string()))?;
     let launch = a.launch(run, None, Some(prompt));
@@ -254,7 +255,7 @@ pub fn write(
         });
     }
     drop(tx);
-    let deadline = Instant::now() + Duration::from_secs(WRITE_SECS);
+    let deadline = Instant::now() + Duration::from_secs(secs);
     let (mut id, mut named, mut said, mut text) = (None::<String>, vec![], vec![], String::new());
     let mut ended = 0;
     let outcome: Result<(), String> = loop {
@@ -274,7 +275,7 @@ pub fn write(
                 ));
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                let late = format!("{} didn't answer in {WRITE_SECS} s", a.label());
+                let late = format!("{} didn't answer in {secs} s", a.label());
                 break Err(format!("{late}\n{}", said.join("\n")));
             }
         };

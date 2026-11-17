@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 /// Each model an agent's last check listed, in any folder, the first folder's list that has any.
-fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
+pub(crate) fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
     let path = data.join("agents").join(format!("{name}.json"));
     let all: Value = (fs::read(path).ok())
         .and_then(|b| serde_json::from_slice(&b).ok())
@@ -89,7 +89,7 @@ pub(crate) fn written_for(
         run.grants = vec![];
     };
     ready(&mut run, a);
-    let failure = match writer::write(a, &run, &account, &prompt, active) {
+    let failure = match writer::write(a, &run, &account, &prompt, active, writer::WRITE_SECS) {
         Ok(text) => return Ok(text),
         Err(failure) => failure,
     };
@@ -106,7 +106,8 @@ pub(crate) fn written_for(
         (run.account, run.model, run.effort) = (None, Some(model.id), None);
         let mut run = check(run, local.name())?;
         ready(&mut run, local);
-        return writer::write(local, &run, "", &prompt, active).map_err(|e| e.why);
+        return writer::write(local, &run, "", &prompt, active, writer::WRITE_SECS)
+            .map_err(|e| e.why);
     }
     Err(failure.why)
 }

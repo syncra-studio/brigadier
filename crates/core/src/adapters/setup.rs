@@ -376,3 +376,13 @@ pub fn probe_as(
         .current_dir(cwd);
     run(&mut command, secs)
 }
+
+/// An agent's docs page, linked from its onboarding card [D616]; its adapter files are full.
+pub fn docs(agent: &str) -> Option<&'static str> {
+    match agent {
+        "claude" => Some("https://code.claude.com/docs/en/quickstart"),
+        "codex" => Some("https://developers.openai.com/codex/cli"),
+        "opencode" => Some("https://opencode.ai/docs"),
+        _ => None,
+    }
+}

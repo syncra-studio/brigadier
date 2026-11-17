@@ -71,7 +71,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head> | host <id> comment <n|owner/name#n> <body> | host <id> sides <n|owner/name#n> <path> | host <id> review <n|owner/name#n> <json>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
-       brigadier agents [<agent>] [--cwd D] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
+       brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
        brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
@@ -129,7 +129,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // Every session id this command names, checked before any path is built from it.
     let ids = match cmd {
         "status" | "up" => &args[1..],
-        "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects"
+        "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
         | "panel" | "routing" | "plugins" | "browser" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
@@ -396,7 +396,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "source" => git::source(data, args),
         "panel" => panel::run(data, args),
         "host" => host::run(data, args),
-        "agents" | "setup" | "profile" | "projects" => setup::run(data, args),
+        "agents" | "setup" | "profile" | "projects" | "forges" => setup::run(data, args),
         "settings" => settings::run(data, args),
         "routing" => routing::run(data, args),
         "plugins" => plugins::run(data, args),
