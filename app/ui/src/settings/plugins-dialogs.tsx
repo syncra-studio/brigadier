@@ -377,25 +377,31 @@ export function InstallDialog({
   // Opened on the sign-in: it starts at once, unless the gallery opens it mid-way.
   useEffect(() => {
     if (!install && signing === undefined) signIn();
+    return () => {
+      generation.current++;
+    };
   }, []);
   const close = () => {
+    generation.current++;
     // Closing while it waits cancels it; its own promise settles as cancelled, not as an error.
     if (step === "waiting") {
-      generation.current++;
       void actions.cancel(key.current!).catch(() => {});
     }
     onClose();
   };
   const go = () => {
+    const current = ++generation.current;
     setStep("installing");
     setError(null);
     install!(some ? { projects: some } : { all: true }).then(
       (next) => {
+        if (generation.current !== current) return;
         key.current = next;
         if (next) signIn();
         else onClose();
       },
       (cause: unknown) => {
+        if (generation.current !== current) return;
         setStep("choose");
         setError(errorText(cause));
       },
@@ -465,7 +471,7 @@ export function InstallDialog({
           )}
           {step === "failed" && (
             <>
-              <Button variant="soft" className="flex-1" onClick={onClose}>
+              <Button variant="soft" className="flex-1" onClick={close}>
                 Close
               </Button>
               <Button className="flex-1" onClick={signIn}>

@@ -16,10 +16,31 @@ fn entries() -> impl Iterator<Item = &'static Value> {
     CATALOG["entries"].as_array().into_iter().flatten()
 }
 
+fn address(v: &Value) -> Option<String> {
+    let (scheme, rest) = v.as_str()?.split_once("://")?;
+    let scheme = scheme.to_ascii_lowercase();
+    let port = match scheme.as_str() {
+        "http" => ":80",
+        "https" => ":443",
+        _ => return None,
+    };
+    let (host, path) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+    let host = host.to_ascii_lowercase();
+    let host = host.strip_suffix(port).unwrap_or(&host);
+    let (path, tail) = path.split_at(path.find(['?', '#']).unwrap_or(path.len()));
+    Some(format!(
+        "{scheme}://{host}{}{tail}",
+        path.trim_end_matches('/')
+    ))
+}
+
 /// Whether a library item is this entry: a server at its address, a skill of its name.
 fn is(item: &Value, e: &Value) -> bool {
     match e["kind"] == "server" {
-        true => item["kind"] == "server" && item["url"] == e["url"],
+        true => {
+            item["kind"] == "server"
+                && address(&item["url"]).is_some_and(|url| Some(url) == address(&e["url"]))
+        }
         false => item["kind"] == "skill" && item["name"] == e["skill"],
     }
 }
@@ -46,10 +67,12 @@ pub(super) fn page(items: &[Value]) -> Value {
 
 /// Adds entry `id`, on in `scope`: a skill fetched from its repo; a service's server, then its
 /// skills (all fetched first, so one that can't be leaves nothing added), each `with` it; skills
-/// the library already holds by name are kept as they are. Answers the server's or skill's key.
+/// the library already holds by name and an existing matching server are kept as they are, so a
+/// partial install can be retried. Answers the server's or skill's key.
 pub(super) fn install(data: &Path, id: &str, scope: Value) -> io::Result<String> {
     let e = (entries().find(|e| e["id"] == id))
         .ok_or_else(|| refuse("Brigadier doesn't offer that one."))?;
+    let scope = super::scope_of(&scope)?;
     let pick = |mut v: Value| {
         (v["on"], v["scope"]) = (true.into(), scope.clone());
         v
@@ -71,10 +94,13 @@ pub(super) fn install(data: &Path, id: &str, scope: Value) -> io::Result<String>
         true => vec![],
         false => browse::fetch(data, source, &skills)?,
     };
-    let key = add(
-        data,
-        pick(json!({"kind": "server", "name": id, "url": e["url"]})),
-    )?;
+    let key = match held.iter().find(|i| is(i, e)) {
+        Some(server) => str(&server["key"]).to_string(),
+        None => add(
+            data,
+            pick(json!({"kind": "server", "name": id, "url": e["url"]})),
+        )?,
+    };
     for folder in folders {
         add(
             data,
