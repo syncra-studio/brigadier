@@ -87,14 +87,16 @@ function makeShape(): SVGPathElement {
 
 function sync() {
   const shown = holes.size > 0;
-  const clip = shown ? clipPath(window.innerWidth, window.innerHeight, holes.values(), surfaceEdges()) : "";
+  // The sidebar's peek lies over a page as a menu does: drawn back over the cut, and taking clicks there.
+  const peek = document.querySelector("[data-sidebar-peek-panel]")?.getBoundingClientRect();
+  const clip = shown ? clipPath(window.innerWidth, window.innerHeight, holes.values(), surfaceEdges()) + (peek ? `M${peek.left} ${peek.top}H${peek.right}V${peek.bottom}H${peek.left}Z` : "") : "";
   if (clip !== cut) {
     cut = clip;
     shape ??= makeShape();
     shape.setAttribute("d", clip);
     document.documentElement.toggleAttribute("data-page-beneath", shown);
   }
-  const modal = shown && modalOpen(document.querySelectorAll(MODAL));
+  const modal = shown && (peek !== undefined || modalOpen(document.querySelectorAll(MODAL)));
   if (modal !== sent) {
     sent = modal;
     setModal(modal);

@@ -1378,6 +1378,12 @@
   --opacity-disabled: var(--opacity-titlebar-nowhere);
 }
 
+/* Windows: the caption buttons' room at a top bar's end, where main's titleBarOverlay draws them (8.625rem till the
+   window reports its titlebar area). */
+:root[data-platform="win32"] [data-slot="session-tabs"] {
+  padding-inline-end: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)));
+}
+
 /* A top bar's start: its own 12px, or more where Back, Forward and the toggle reach past the sidebar's edge,
    so its first control starts 8px after them. It moves with the sidebar. */
 @utility titlebar-clear {

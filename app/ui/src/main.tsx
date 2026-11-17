@@ -290,6 +290,8 @@ const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../galle
 const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
 const Screen = Gallery ?? ThreadDemo;
 
+// The platform the window is drawn for, which the theme reads for Windows' caption buttons.
+if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
 // The browser's pages, under the app, and the agents' calls on them.
 if (window.brigadier) {
   installTabLayer();

@@ -227,7 +227,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           </div>
         ))}
       </div>
-      <WorkersPanelSlot owner={owner} onShown={setWorkersShown} />
+      {/* Keyed, so one session's folded choice never carries to another. */}
+      <WorkersPanelSlot key={owner} owner={owner} onShown={setWorkersShown} />
       <RightPanelSlot owner={owner} beside={workersShown} />
     </main>
   );

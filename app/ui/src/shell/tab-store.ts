@@ -66,7 +66,9 @@ function land(slot: Slot, reply: Record<string, any>): void {
   if (slot.rev === null) for (const tab of reply.tabs as Tab[]) restored.add(tab.id);
   if (slot.rev === null || reply.rev > slot.rev) {
     slot.rev = reply.rev;
-    slot.rust = { tabs: reply.tabs, active: reply.active };
+    // Only kinds this build draws: a daemon from another build may still keep a kind this one dropped (worker tabs).
+    const tabs = (reply.tabs as Tab[]).filter((tab) => tab.kind in TAB_KINDS);
+    slot.rust = { tabs, active: tabs.some((tab) => tab.id === reply.active) ? reply.active : CHAT };
   }
   draw(slot);
 }
