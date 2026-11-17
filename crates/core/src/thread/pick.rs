@@ -96,6 +96,21 @@ impl Thread {
     /// next message goes to it [D125, D241].
     pub(super) fn switch_ended(&mut self, cut: bool) {
         let picked = self.pick_row.filter(|_| !cut);
+        // Another agent picked mid-turn took over only at its end: its row moves below the turn's
+        // last reply, which its old agent wrote [D557].
+        let moved =
+            picked.filter(|&at| self.items[at]["kind"] == "switch" && at + 1 < self.items.len());
+        if let Some(at) = moved {
+            let mut row = self.items[at].clone();
+            self.items[at]["hidden"] = true.into();
+            self.changed_items.insert(at);
+            for key in ["id", "n", "turnId", "hidden"] {
+                row.as_object_mut().map(|o| o.remove(key));
+            }
+            self.pick_row = None;
+            self.pick_row = Some(self.pick_line(row));
+        }
+        let picked = self.pick_row.filter(|_| !cut);
         for at in self.switching.take().into_iter().chain(picked) {
             self.switched(at);
         }
