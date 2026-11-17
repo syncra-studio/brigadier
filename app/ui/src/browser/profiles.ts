@@ -106,10 +106,12 @@ export function useSessionProfile(session: string): string {
 /** The profile tab `id`'s page opens on, from now on its own, and its session's if it had none. */
 export async function pinTab(owner: string, id: string): Promise<string> {
   await loadProfiles();
-  const pinned = known(tabsOf(owner).tabs.find((tab) => tab.id === id)?.profile);
+  const tab = tabsOf(owner).tabs.find((each) => each.id === id);
+  const pinned = known(tab?.profile);
   if (pinned) return pinned;
   const profile = String((await run(["browser", owner, "profiles", "resolve", id])).profile);
-  setTabProfile(owner, id, profile);
+  // A page that isn't a tab's own, as a mockup's frame, keeps no profile of its own.
+  if (tab) setTabProfile(owner, id, profile);
   if (!places.sessions[owner]) await pickSession(owner, profile);
   return profile;
 }
