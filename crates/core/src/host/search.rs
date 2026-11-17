@@ -66,6 +66,9 @@ impl Pr {
         );
         let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let read = graphql(&gh, repo, &ask, &pairs);
+        if let Ok((data, _)) = &read {
+            super::avatars::keep(&self.avatars, data);
+        }
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let found: Vec<Value> = (queries.iter().enumerate())

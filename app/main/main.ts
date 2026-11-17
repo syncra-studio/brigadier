@@ -2,7 +2,7 @@
 // exceptions are what only a main process can do: the native folder picker, staging the window for the
 // first launch's intro (intro.ts), macOS notices and the Dock badge (notices.ts) and the menu bar's item (tray.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { copyFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -144,6 +144,12 @@ function serveUi(): void {
     if (url.host === APP_ID && url.pathname.startsWith("/attachment/")) {
       const file = attachmentFile(url.pathname);
       return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+    }
+    // A person's picture as Rust keeps it from a PR read, `/avatar/<login>` [D615].
+    if (url.host === APP_ID && url.pathname.startsWith("/avatar/")) {
+      const login = url.pathname.split("/")[2] ?? "";
+      const file = path.join(dataDir, "avatars", `${login}.png`);
+      return PLAIN.test(login) && existsSync(file) ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
     if (url.host === APP_ID && url.pathname.startsWith("/project-icon/")) {
       const file = await projectIcon(url.pathname);

@@ -64,8 +64,8 @@ function Menu({ label, value, choices, onPick }: { label: string; value: string;
 }
 
 /** A row: state, title, number, who opened it; its size and when it last changed at its end; under it, the session it's linked to. */
-function Row({ pr, now, linked, onOpen }: { pr: FoundPr; now: number; linked?: SessionRow; onOpen: () => void }) {
-  const at = pr.updatedAtMs ?? pr.createdAtMs;
+function Row({ pr, now, at, linked, onOpen }: { pr: FoundPr; now: number; at: number | null; linked?: SessionRow; onOpen: () => void }) {
+  const changed = pr.updatedAtMs ?? pr.createdAtMs;
   const toSession = () => linked && (window.location.hash = `#thread/${encodeURIComponent(linked.id)}`);
   return (
     <li className="border-b border-divider">
@@ -86,7 +86,7 @@ function Row({ pr, now, linked, onOpen }: { pr: FoundPr; now: number; linked?: S
             <span className="flex h-5 max-w-1/2 min-w-0 items-center gap-2 text-xs text-muted-foreground">
               <span className="shrink-0">#{pr.number}</span>
               {pr.repo && <span className="truncate">{pr.repo.slice(pr.repo.indexOf("/") + 1)}</span>}
-              {pr.author && <Avatar login={pr.author} />}
+              {pr.author && <Avatar login={pr.author} at={at} />}
             </span>
           </span>
           {linked && (
@@ -108,7 +108,7 @@ function Row({ pr, now, linked, onOpen }: { pr: FoundPr; now: number; linked?: S
         </span>
         <span className="flex h-5 shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
           {pr.additions != null && <Counts insertions={pr.additions} deletions={pr.deletions ?? 0} />}
-          {at && <span>{ago(at, now).replace(" ago", "")}</span>}
+          {changed && <span>{ago(changed, now).replace(" ago", "")}</span>}
         </span>
       </div>
     </li>
@@ -227,7 +227,7 @@ export function PrListView({
           <>
             <ul aria-label="Pull requests" className="px-5">
               {prs.map((pr) => (
-                <Row key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} now={now} linked={linkOf(pr)} onOpen={() => onOpen(pr)} />
+                <Row key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} now={now} at={found.okAt} linked={linkOf(pr)} onOpen={() => onOpen(pr)} />
               ))}
               {more && busy && LOADING(2)}
             </ul>

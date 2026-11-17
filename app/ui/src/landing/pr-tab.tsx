@@ -119,7 +119,7 @@ export function PrTab({
           <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="flex items-center gap-1.5 text-foreground">
-                <Avatar login={pr.openedBy} />
+                <Avatar login={pr.openedBy} at={pr.checkedAtMs} />
                 {pr.openedBy}
               </span>
               {repo && (

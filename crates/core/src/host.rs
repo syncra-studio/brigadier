@@ -8,6 +8,7 @@ use crate::load;
 use crate::repos::{failed, tool};
 
 mod actions;
+mod avatars;
 mod chip;
 mod prs;
 mod review;
@@ -345,6 +346,8 @@ pub struct Pr {
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
     dir: std::path::PathBuf,
+    /// Where the pictures of the people its reads name are kept [D615].
+    avatars: std::path::PathBuf,
 }
 
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
@@ -412,6 +415,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
             Target::Session(id) => crate::share::holder(data, &load(data, id)?).map(|s| s.dir),
         },
         dir: dir(data, id),
+        avatars: data.join("avatars"),
     })
 }
 

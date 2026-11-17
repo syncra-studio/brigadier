@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -31,12 +33,38 @@ export const StateIcon = ({ state, className }: { state: PrState; className?: st
   </span>
 );
 
-/** Who, as their initial in a circle. */
-export const Avatar = ({ login, size = "size-5" }: { login: string; size?: string }) => (
-  <span title={login} className={cx("flex shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-medium text-foreground uppercase", size)}>
-    {login[0]}
-  </span>
-);
+// The logins whose picture Rust has kept: shown at once from then on.
+const pictured = new Set<string>();
+
+/**
+ * Who, as their picture once Rust keeps it, else their initial in the same circle [D614, D615]. `at`: the read that
+ * named them; a new one looks again for a picture not kept yet, which takes the initial's place with no loader.
+ */
+export function Avatar({ login, at = 0, size = "size-5" }: { login: string; at?: number | null; size?: string }) {
+  const [, shown] = useState(false);
+  const src = `/avatar/${encodeURIComponent(login)}`;
+  return (
+    <span title={login} className={cx("flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-2xs font-medium text-foreground uppercase", size)}>
+      {pictured.has(login) ? (
+        <img alt="" src={src} className="size-full object-cover" />
+      ) : (
+        <>
+          {login[0]}
+          <img
+            key={at}
+            hidden
+            alt=""
+            src={`${src}?at=${at}`}
+            onLoad={() => {
+              pictured.add(login);
+              shown(true);
+            }}
+          />
+        </>
+      )}
+    </span>
+  );
+}
 
 /** A Send to agent button: it leaves a chip above the composer and sends nothing [D1019, D1027]; once it has, it reads Added. */
 export function SendButton({ send, label = "Send to agent", sends }: { send: PrSend; label?: string; sends: Sends }) {

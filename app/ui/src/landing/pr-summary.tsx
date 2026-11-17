@@ -243,7 +243,7 @@ export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; pos
   const waiting = posted.filter((post) => post.id === null || !comments.has(post.id));
   const said = (comment: PrComment, box: ReactNode) => (
     <div key={comment.id} className="flex gap-3">
-      <Avatar login={comment.author} size="size-6" />
+      <Avatar login={comment.author} at={pr.checkedAtMs} size="size-6" />
       {comment.minimized ? <Hidden reason={comment.minimized}>{box}</Hidden> : box}
     </div>
   );
@@ -263,7 +263,7 @@ export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; pos
         {pr.reviewers.length ? (
           pr.reviewers.map((r) => (
             <div key={r.login} className="flex items-center gap-2 text-xs">
-              <Avatar login={r.login} />
+              <Avatar login={r.login} at={pr.checkedAtMs} />
               <span className="min-w-0 flex-1 truncate text-foreground">{r.login}</span>
               <span className={VERDICT[r.state].tint}>{VERDICT[r.state].words}</span>
             </div>
@@ -306,7 +306,7 @@ export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; pos
           return said(mine, <CommentBox comment={mine} at={post.id ? "just now" : "· Posting…"} author={pr.openedBy} />);
         })}
         {!talk.length && !waiting.length && <p className={QUIET}>No comments yet.</p>}
-        <AddComment viewer={pr.viewer} offline={sends.offline} onPost={onComment} />
+        <AddComment viewer={pr.viewer} at={pr.checkedAtMs} offline={sends.offline} onPost={onComment} />
       </section>
     </div>
   );
@@ -319,7 +319,7 @@ const WRITE_TAB = cx("cursor-pointer rounded-control px-2.5 py-1 text-xs text-mu
  * [D260]. The box empties at once, the comment showing in the timeline; if the host refuses it, the words come back
  * with why.
  */
-export function AddComment({ viewer, offline, onPost }: { viewer: string | null | undefined; offline: boolean; onPost: (body: string) => Promise<string | null> }) {
+export function AddComment({ viewer, at, offline, onPost }: { viewer: string | null | undefined; at: number | null; offline: boolean; onPost: (body: string) => Promise<string | null> }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const post = async () => {
@@ -335,7 +335,7 @@ export function AddComment({ viewer, offline, onPost }: { viewer: string | null 
   };
   return (
     <div className="flex gap-3">
-      <Avatar login={viewer ?? "?"} size="size-6" />
+      <Avatar login={viewer ?? "?"} at={at} size="size-6" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="text-sm font-medium text-foreground">Add a comment</span>
         <Tabs.Root defaultValue="write" className="flex flex-col overflow-clip rounded-surface border border-border">
