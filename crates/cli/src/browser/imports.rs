@@ -35,7 +35,6 @@ struct Record {
     passwords_skipped: usize,
     /// Importing over this profile found no usable password, so the ones it had were left alone.
     passwords_kept: bool,
-    google_left_out: usize,
 }
 
 /// What's kept of imports: each browser's last per source profile, each source profile's place here, the notice seen.
@@ -117,7 +116,6 @@ fn merged(records: &[&Record]) -> Option<Record> {
         passwords: sum(|r| r.passwords),
         passwords_skipped: sum(|r| r.passwords_skipped),
         passwords_kept: records.iter().any(|r| r.passwords_kept),
-        google_left_out: sum(|r| r.google_left_out),
     })
 }
 
@@ -191,12 +189,6 @@ fn listed(source: Source, saved: &Saved) -> Value {
     })
 }
 
-/// A cookie of google.com or a subdomain: Google binds these to the browser that made them. Orca (MIT) leaves them out too.
-fn google(domain: &str) -> bool {
-    let host = domain.trim_start_matches('.').to_lowercase();
-    host == "google.com" || host.ends_with(".google.com")
-}
-
 /// The sign-ins half, before main sets the cookies: site storage goes into the profile's partition now, or when
 /// the app next starts if its session is `open` (Chromium holds the folders), and the cookies go back to the page.
 fn write(data: &Path, token: u64, profile: &str, open: bool) -> io::Result<Value> {
@@ -205,15 +197,14 @@ fn write(data: &Path, token: u64, profile: &str, open: bool) -> io::Result<Value
             .get_mut(&token)
             .filter(|r| r.written.is_none())
             .ok_or_else(|| io::Error::other("That read has expired. Import again."))?;
-        let all = std::mem::take(&mut read.cookies);
-        let google_left_out = all.iter().filter(|c| google(&c.domain)).count();
-        let cookies: Vec<Cookie> = all.into_iter().filter(|c| !google(&c.domain)).collect();
-        read.cookies = cookies.clone();
+        // Google's come too: a source's Google session is bound to it only with Device Bound Session Credentials, and
+        // then its copy just fails here, as one left out would.
+        let cookies: Vec<Cookie> = read.cookies.clone();
         let storage = read
             .site_storage_from
             .clone()
             .filter(|_| read.sign_ins_read);
-        read.written = Some((profile.into(), google_left_out, None));
+        read.written = Some((profile.into(), None));
         io::Result::Ok((cookies, storage))
     })?;
     let site_storage = match storage {
@@ -238,7 +229,7 @@ fn write(data: &Path, token: u64, profile: &str, open: bool) -> io::Result<Value
     let sign_ins = reads(|held| {
         held.get_mut(&token).map(|r| {
             if let Some(w) = r.written.as_mut() {
-                w.2 = site_storage;
+                w.1 = site_storage;
             }
             r.sign_ins_read
         })
@@ -261,7 +252,7 @@ fn finish(
     let read = reads(|held| held.remove(&token))
         .filter(|r| r.written.as_ref().is_some_and(|w| w.0 == profile));
     let read = read.ok_or_else(|| io::Error::other("That read has expired. Import again."))?;
-    let (_, google_left_out, site_storage) = read.written.clone().unwrap_or_default();
+    let (_, site_storage) = read.written.clone().unwrap_or_default();
     let mut history_error = read.history_error.clone();
     let mut history = 0;
     if !read.history.is_empty() {
@@ -331,7 +322,6 @@ fn finish(
         passwords,
         passwords_skipped,
         passwords_kept,
-        google_left_out,
     };
     change_saved(data, |saved| {
         saved.noticed = true;

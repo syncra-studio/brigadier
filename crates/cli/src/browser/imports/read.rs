@@ -50,8 +50,8 @@ pub(super) struct Read {
     pub(super) logins: Vec<Login>,
     pub(super) logins_left_out: usize,
     pub(super) passwords_error: Option<String>,
-    /// Set by `write`: the profile it goes into, cookies left out as Google's, and where site storage went.
-    pub(super) written: Option<(String, usize, Option<&'static str>)>,
+    /// Set by `write`: the profile it goes into, and where site storage went.
+    pub(super) written: Option<(String, Option<&'static str>)>,
     pub(super) at: Option<Instant>,
 }
 

@@ -103,11 +103,6 @@ function ProfileResult({ result, source, session, onRetry }: { result: ProfileIm
             />
           ))}
           {more > 0 && <p className="ps-6 text-xs text-quiet-foreground">and {counted(more, "more site", "more sites")}</p>}
-          {record.googleLeftOut > 0 && (
-            <p data-slot="import-google" className="ps-6 text-xs text-quiet-foreground">
-              Google sign-ins aren't imported: sign in once here
-            </p>
-          )}
           {outcome.siteStorage === "nextStart" && (
             <p data-slot="import-next-start" className="ps-6 text-xs text-quiet-foreground">
               Sites that keep their sign-in in page storage catch up when Brigadier next starts.

@@ -27,7 +27,6 @@ export type ImportedRecord = {
   passwords: number;
   passwordsSkipped: number;
   passwordsKept: boolean;
-  googleLeftOut: number;
 };
 
 /** A browser as Rust lists it. */
