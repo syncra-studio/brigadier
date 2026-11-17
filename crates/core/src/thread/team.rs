@@ -99,7 +99,9 @@ impl Thread {
                         .filter_map(Value::as_str)
                         .map(String::from),
                 );
-                self.worker_waits(ts);
+                if self.asking.iter().any(|w| self.fold.workers.contains(w)) {
+                    self.worker_waits(ts);
+                }
             }
             Some("waited") => {
                 (ids.as_array()

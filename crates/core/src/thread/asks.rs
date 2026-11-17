@@ -115,7 +115,8 @@ impl Thread {
     /// The turn's wait on the user ends once nothing waits on them any more [D128]; so does a held
     /// turn's, whose subagent asked.
     pub(super) fn end_wait(&mut self, ts: u64) {
-        if !self.asking.is_empty()
+        // Only a worker that still holds the block: a Stop or a failure lets go of them all [D3011].
+        if self.asking.iter().any(|w| self.fold.workers.contains(w))
             || (self.pending.iter()).any(|&at| self.items[at]["to"].is_null())
         {
             return;
