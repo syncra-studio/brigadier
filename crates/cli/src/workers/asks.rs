@@ -6,7 +6,7 @@
 
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;
-use super::{link, record, save};
+use super::{family_lock, link, place, record, save};
 use crate::agent::refuse;
 use crate::{control, owner};
 use brigadier_core::{self as core};
@@ -54,12 +54,19 @@ fn user_waits(data: &Path, wid: &str, waits: bool) {
     let Some(l) = link(data, wid) else {
         return;
     };
-    let Some(mut r) = record(data, &l.parent, wid).filter(|r| r.waits != waits) else {
+    if record(data, &l.parent, wid).is_none_or(|r| r.waits == waits) {
         return;
-    };
+    }
     let phase = if waits { "waits" } else { "waited" };
     let note = json!({"op": "note", "data": {"event": "worker", "phase": phase, "ids": [wid]}});
-    if owner::call(data, &l.parent, note).is_ok() {
+    if owner::call(data, &l.parent, note).is_err() {
+        return;
+    }
+    // Read again under the family's lock, so a hold answered meanwhile isn't written back.
+    let Ok(_family) = family_lock(data, &place(data, wid).0) else {
+        return;
+    };
+    if let Some(mut r) = record(data, &l.parent, wid) {
         r.waits = waits;
         let _ = save(data, &l.parent, &r);
     }
