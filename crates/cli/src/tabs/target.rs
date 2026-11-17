@@ -27,7 +27,7 @@ pub(crate) fn relative(data: &Path, id: &str, target: String) -> io::Result<Stri
     }
 }
 
-/// A file, PR, attachment, note, browser, mockup and worker tab need their target, a Review tab may have one (its file), every other kind refuses one. A
+/// A file, PR and attachment tab need their target, a Review tab may have one (its file), every other kind refuses one. A
 /// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
 /// PR is one tab [D1032].
 pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
@@ -45,7 +45,7 @@ pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
         ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
             core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
         }),
-        ("note" | "mockup" | "worker", Some(id)) => core::check_id(id).is_ok(),
+        ("note" | "mockup", Some(id)) => core::check_id(id).is_ok(),
         // A web page only: no file: or other scheme opens in the browser [D506].
         ("browser", Some(url)) => {
             url.len() <= URL_MAX
@@ -55,7 +55,7 @@ pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                         .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
                 })
         }
-        ("file" | "pr" | "attachment" | "note" | "browser" | "mockup" | "worker", None) => false,
+        ("file" | "pr" | "attachment" | "note" | "browser" | "mockup", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

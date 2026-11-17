@@ -26,8 +26,6 @@ import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { LiveMockupTabIcon } from "../mockup/live";
-import { WorkerGlyph } from "../icons/worker-glyphs";
-import { useWorkerName } from "../workers/live";
 import { useNoteTitle } from "./note-tab";
 import { useTabKeys } from "./tab-keys";
 import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
@@ -155,7 +153,6 @@ const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/"
 function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {
   if (tab.kind === "browser") return <span className="relative flex shrink-0"><BrowserTabIcon tabId={tab.id} /><TabProfileDot owner={owner} tab={tab} /></span>;
   if ((tab.kind === "file" || tab.kind === "attachment") && tab.target !== undefined) return <FileIcon name={nameOf(tab)} size="sm" />;
-  if (tab.kind === "worker") return <WorkerGlyph id={tab.target ?? ""} className="size-4 shrink-0" />;
   if (tab.kind === "mockup") return <LiveMockupTabIcon worker={tab.target ?? ""} />;
   const Icon = TAB_KINDS[tab.kind].icon;
   return <Icon className="size-icon-sm shrink-0" />;
@@ -169,8 +166,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
   const note = useNoteTitle(owner, tab.kind === "note" ? (tab.target ?? "") : "");
   // A page is named by its title, else its site, as a browser's tab.
   const page = useBrowserPage(tab.kind === "browser" ? tab.id : "");
-  const worker = useWorkerName(owner, tab.kind === "worker" ? (tab.target ?? "") : "");
-  const name = tab.kind === "worker" ? worker : tab.kind === "note" ? note : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);
+  const name = tab.kind === "note" ? note : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);
   return (
     <ContextMenu>
       <ContextMenuTrigger

@@ -3,8 +3,9 @@ import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "reac
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { Section } from "../components/section";
+import { TooltipIconButton } from "../components/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ChevronRight, Info } from "../icons";
+import { ArrowLeft, ChevronRight, Info } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Body } from "../components/thread/body";
 import { SetupRow } from "../components/thread/setup";
@@ -15,22 +16,29 @@ import { GroupLine } from "../components/thread/body";
 import { px } from "../shell/right-panel";
 import { duration, useSecond } from "../thread/words";
 import { finished, waiting, type Worker } from "./chip";
+import { WORKERS_LABEL } from "./list";
 
 /*
- * One worker in the Workers tab [D593], as the old app's WorkerDetail, WorkerHeader, WorkerThread and WorkerBrief [D3013]:
- * its glyph and name, "‹model› · ‹state›"; below, its brief as the thread's first bubble, what routing picked
+ * One worker in the right panel, as the old app's WorkerDetail, WorkerHeader, WorkerThread and WorkerBrief [D3013]:
+ * back, its glyph and name, "‹model› · ‹state›"; below, its brief as the thread's first bubble, what routing picked
  * for it [D3018], how long it worked, and its thread, read only. The user talks to it from the parent's composer.
  */
 
-/** Its header: its glyph and name, an ⓘ whose tip holds its details, its model and state, and its own actions; no End here. */
-export function WorkerHeader({ worker, details = false, actions }: {
+/** Its header: back, its glyph and name, an ⓘ whose tip holds its details, its model and state, and the panel's own actions; no End here. */
+export function WorkerHeader({ worker, details = false, onBack, actions, list = WORKERS_LABEL }: {
   worker: Worker;
+  /** The list Back goes to. */
+  list?: string;
   /** It has details to show; a CLI's own subagent has none, and its state stands as words. */
   details?: boolean;
+  onBack: () => void;
   actions?: ReactNode;
 }) {
   return (
     <header data-slot="worker-header" className="flex h-11.5 min-w-0 shrink-0 items-center gap-2 border-b border-border px-2">
+      <TooltipIconButton tooltip={`Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
+        <ArrowLeft />
+      </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />
       <h2 className="min-w-8 truncate text-label font-medium" title={worker.name}>
         {worker.name}

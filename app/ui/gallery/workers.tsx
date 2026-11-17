@@ -4,13 +4,15 @@ import { type ReactNode, useState } from "react";
 
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import type { Item, Turn } from "../src/thread/item";
-import { type Worker, WorkerChip, WorkerName } from "../src/workers/chip";
+import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
+import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
 import { WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const noop = () => {};
+const act = () => Promise.resolve();
 
 const BRIEF =
   "Target src/upload/retry.rs\n\nChange: retry failed uploads 5 times with doubling waits from 1 s; stop at once on a 4xx. Keep the public API as it is, and commit on your branch when the tests pass.";
@@ -81,13 +83,38 @@ const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2"
 const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
 const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
-/** A worker in its tab: its header, its details in its ⓘ's tip, and its thread. */
+/** A worker opened in the panel: its header, its details in its ⓘ's tip, and its thread. */
 function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
   return (
     <Panel>
-      <WorkerHeader worker={shown} details />
+      <WorkerHeader worker={shown} details onBack={noop} />
       <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />
     </Panel>
+  );
+}
+
+/** The panel live: the list, a row opening its worker, back to the list. */
+function LivePanel() {
+  const [open, setOpen] = useState<string | null>(null);
+  const [ended, setEnded] = useState<string[]>([]);
+  const all = [RETRY, PROGRESS, HELD, ...STATES.slice(6), ...DONE_MANY].map((each) => (ended.includes(each.id) ? { ...each, kind: "stopped" as const, word: "Ended", lastAt: Date.now() } : each));
+  const shown = all.find((each) => each.id === open);
+  return (
+    <WorkersPanel.Provider value={{ open: setOpen }}>
+      <Panel>
+        {shown ? (
+          <>
+            <WorkerHeader worker={shown} details onBack={() => setOpen(null)} />
+            <WorkerThread worker={shown} items={RECENT} turns={[DONE_TURN]} />
+          </>
+        ) : (
+          <>
+            <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+            <WorkerList workers={all} act={async (_, ids) => setEnded((now) => [...now, ...ids])} />
+          </>
+        )}
+      </Panel>
+    </WorkersPanel.Provider>
   );
 }
 
@@ -180,7 +207,24 @@ export function WorkersGallery() {
         </Row>
       </Section>
 
-      <Section title="A worker's tab [D603]">
+      <Section title="Right panel: Workers">
+        <Row name="The list (the tab row shows only here until 4.3 wires it)">
+          <State label="Active and Done">
+            <Panel>
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+              <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} act={act} />
+            </Panel>
+          </State>
+          <State label="None active">
+            <Panel>
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+              <WorkerList workers={DONE_MANY.slice(0, 3)} act={act} />
+            </Panel>
+          </State>
+          <State label="Live: open a worker, End one">
+            <LivePanel />
+          </State>
+        </Row>
         <Row name="A worker opened">
           <State label="Working">
             <View shown={RETRY} items={RECENT} />

@@ -1,4 +1,4 @@
-import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { Body } from "../components/thread/body";
@@ -11,14 +11,13 @@ import { Counts, Line } from "../panel/source/rows";
 import { cx } from "../components/cx";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
+import { openPanel } from "../panel/memory";
 import type { Item, Setup, StepKind, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
+import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
-import { openTab } from "../shell/tab-store";
-import { EmptyState } from "../components/empty-state";
-import { Agent } from "../icons";
 import { WorkerHeader, WorkerThread } from "./view";
 
 /*
@@ -104,26 +103,29 @@ const stop = (parent: string, ids: readonly string[]) =>
     return false;
   });
 
-/** Opens a worker or subagent of `owner` in its own tab, or brings that tab to the front [D603]. */
-export const openWorker = (owner: string, worker: string) => openTab(owner, "worker", worker);
+/** Which worker or subagent each session's Workers view shows (null: the list), and which list. */
+type Shown = { worker: string | null; tab?: string };
+let shown: Record<string, Shown> = {};
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
+function show(owner: string, next: Shown) {
+  shown = { ...shown, [owner]: next };
+  for (const listener of listeners) listener();
+}
+const LIST: Shown = { worker: null };
+const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? LIST;
+/** Shows `next` in the right panel's Workers view, opening the panel there [D56]. */
+const reveal = (owner: string, next: Shown) => (show(owner, next), openPanel(owner, "workers"));
 
-/**
- * A worker named anywhere opens its tab in its parent; null (a count, "+N more") opens the first still at work, else
- * the first, of `tab`'s list: Workers, or the CLI's subagents [D603].
- */
+/** Opens a worker of `owner` in its Workers view: its chip in a message, or a message just sent to it. */
+export const openWorker = (owner: string, worker: string) => reveal(owner, { worker });
+
+/** A worker named anywhere opens it in its parent's Workers view; null opens the list, `tab`'s. */
 export function Opens({ owner, tab, children }: { owner: string; tab?: string; children: ReactNode }) {
   const rows = useDaemon().rows;
-  const workers = useWorkers(owner);
-  const agents = useAgents(owner);
-  const list = tab === SUBAGENTS_LABEL ? agents.map(asSubagent) : workers;
   // A Brigade's session opens as the session it is [D189].
-  const session = (id: string) => rows?.some((row) => row.id === id && row.boss);
-  const open = (worker: string | null) => {
-    const id = worker ?? (list.find(onHand) ?? list[0])?.id;
-    if (!id) return;
-    if (session(id)) window.location.hash = `#thread/${encodeURIComponent(id)}`;
-    else openWorker(owner, id);
-  };
+  const session = (id: string | null) => rows?.some((row) => row.id === id && row.boss);
+  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : reveal(owner, { worker, tab }));
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
@@ -197,24 +199,48 @@ export function SessionWorkersStrip({ id }: { id: string }) {
   );
 }
 
-/** A worker's or subagent's tab [D603]: its own view, as the old app's RightSidebar's [D3012, D3013]; one gone, says so. */
-export function WorkerTab({ owner, id }: { owner: string; id: string }) {
-  const worker = useWorkers(owner).find((each) => each.id === id);
-  const agent = useAgents(owner).find((each) => each.id === id);
-  if (worker) return <WorkerView worker={worker} owner={owner} />;
-  if (agent) return <SubagentView item={agent} />;
-  return <EmptyState variant="centered" icon={Agent} title="Worker" detail="This worker is gone" className="m-auto" />;
+/** "1 done · 1 paused · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
+export function finishedWords(workers: readonly Worker[]): string {
+  const counts = { done: 0, paused: 0, stopped: 0, failed: 0 };
+  for (const { kind } of workers) {
+    if (kind === "done" || kind === "merged" || kind === "doneNotMerged") counts.done += 1;
+    else if (kind === "paused" || kind === "stopped" || kind === "failed") counts[kind] += 1;
+  }
+  return Object.entries(counts).filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`).join(" · ");
 }
 
-/** A worker or subagent tab's name, as the tab bar shows it. */
-export function useWorkerName(owner: string, id: string): string {
-  const row = useDaemon().rows?.find((each) => each.id === id);
-  const agent = useAgents(owner).find((each) => each.id === id);
-  return row?.title || agent?.title || "Worker";
+/**
+ * The right panel's Workers view [D56], as the old app's RightSidebar's [D3012, D3013]: the list, or a worker's or
+ * subagent's own view with its header; Workers and the CLI's own subagents each a list, switched in a row at its top
+ * once both are there. The panel's icon row and toggle open and close it.
+ */
+export function WorkersPane({ owner }: { owner: string }) {
+  const workers = useWorkers(owner);
+  const agents = useAgents(owner);
+  const shown = useShown(owner);
+  const { worker } = shown;
+  const opened = workers.find((each) => each.id === worker);
+  const agent = opened ? undefined : agents.find((each) => each.id === worker);
+  const tabs = [...(workers.length > 0 || agents.length === 0 ? [WORKERS_LABEL] : []), ...(agents.length > 0 ? [SUBAGENTS_LABEL] : [])];
+  const tab = shown.tab && tabs.includes(shown.tab) ? shown.tab : tabs[0]!;
+  return (
+    <Opens owner={owner}>
+      {!opened && !agent && tabs.length > 1 && <PanelTabs active={tab} tabs={tabs} onSelect={(next) => show(owner, { ...shown, tab: next })} />}
+      {opened ? (
+        <WorkerView key={opened.id} worker={opened} owner={owner} onBack={() => show(owner, { worker: null })} />
+      ) : agent ? (
+        <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { worker: null, tab: SUBAGENTS_LABEL })} />
+      ) : tab === SUBAGENTS_LABEL ? (
+        <WorkerList workers={agents.map(asSubagent).toReversed()} label={SUBAGENTS_LABEL} />
+      ) : (
+        <WorkerList workers={workers.toReversed()} act={act(owner)} />
+      )}
+    </Opens>
+  );
 }
 
 /** A worker opened: its header, its details in the tip of its ⓘ, and its thread, Rust's snapshot of it, asked again as its row changes [D3013]. */
-function WorkerView({ worker, owner }: { worker: Worker; owner: string }) {
+function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; onBack: () => void }) {
   const rows = useDaemon().rows;
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
@@ -233,7 +259,7 @@ function WorkerView({ worker, owner }: { worker: Worker; owner: string }) {
   const hold = questions?.find((question) => question.held);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkerHeader worker={worker} details />
+      <WorkerHeader worker={worker} details onBack={onBack} />
       <ParentName value={parent}><WorkerThread worker={worker} items={rest} turns={turns} setup={setup} /></ParentName>
       {/* Its hold is the user's call, answered here where "Needs you" leads [D2028, D342]; its other asks are its parent's [D119, D131]. */}
       {hold && (
@@ -303,10 +329,10 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
 /**
  * The session's workers in the summary card, as the old card's WorkersSummary [D3045]: while a few work, a line each
  * (then what finished, muted); else one row of glyphs with "N working" or "1 done · 2 ended". A row opens the
- * Workers tab, or the worker's own [D593].
+ * Workers panel, or the worker's own.
  */
 export function WorkersCard({ owner }: { owner: string }) {
-  return <TeamCard owner={owner} title="Workers" workers={useWorkers(owner)} act={act(owner)} />;
+  return <TeamCard owner={owner} title={WORKERS_LABEL} workers={useWorkers(owner)} act={act(owner)} />;
 }
 
 /** The card's section for a session's workers or its CLI's own subagents, oldest first; with no `act`, no controls. */
@@ -334,7 +360,7 @@ function WorkersRows({ workers, active, lined, ended, act }: { workers: Worker[]
       <>
         {lined.map((worker) => <WorkerLine key={worker.id} worker={worker} act={act} />)}
         {ended && lined === active && first && (
-          <Line onClick={() => open(first.id)} icon={<WorkerGlyph id={first.id} className="size-4" />}>
+          <Line onClick={() => open(null)} icon={<WorkerGlyph id={first.id} className="size-4" />}>
             <span className="text-muted-foreground">{ended}</span>
           </Line>
         )}
@@ -344,7 +370,7 @@ function WorkersRows({ workers, active, lined, ended, act }: { workers: Worker[]
   const glyphs = (active.length > 0 ? active : workers).slice(0, 4);
   return (
     <Line
-      onClick={() => open(glyphs[0]!.id)}
+      onClick={() => open(null)}
       icon={<span className="flex items-center gap-1.5">{glyphs.map((worker) => <WorkerGlyph key={worker.id} id={worker.id} className="size-4" />)}</span>}
       end={active.length > 0 && ended ? ended : undefined}
     >
