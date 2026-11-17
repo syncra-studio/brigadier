@@ -1,9 +1,11 @@
 // One variant beside the others: its name, reason and Use, over its live frame [D2066], with the old tab's image
 // states per frame: waiting, drawing, loading, and a page that won't load with Retry and its screenshot [D2055].
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
+import { followLayout } from "../browser/follow";
 import { ImageSquare } from "../icons";
 import { drawn, type Load, type Variant } from "./model";
 import type { MockupNote } from "./notes";
@@ -59,6 +61,7 @@ export function VariantColumn({
 }) {
   const [shot, setShot] = useState(false);
   const letter = variant.letter;
+  const live = Boolean(variant.url && !shot && load !== "failed");
   let content: ReactNode;
   if (!drawn(variant)) {
     content = drawing ? <div className={MIDDLE}><span className="shimmer">Drawing {letter}…</span></div> : <div className={MIDDLE}>Waiting</div>;
@@ -94,6 +97,7 @@ export function VariantColumn({
       </div>
     );
   }
+  const pins = drawn(variant) && <PinLayer variant={letter} notes={notes} pointing={pointing} hovered={hovered} onNotes={onNotes} />;
   return (
     <div data-slot="mockup-variant" className="flex min-w-0 flex-1 flex-col gap-1.5">
       <div className="flex h-control-sm min-w-0 items-center gap-1.5 text-sm">
@@ -113,8 +117,47 @@ export function VariantColumn({
       </div>
       <div className={cx("relative min-h-0 flex-1 overflow-hidden rounded-control border border-border bg-background", picked && "outline-2 outline-primary", dim && "opacity-40")}>
         {content}
-        {drawn(variant) && <PinLayer variant={letter} notes={notes} pointing={pointing} hovered={hovered} onNotes={onNotes} />}
+        {pins && (live ? <OverPage>{pins}</OverPage> : pins)}
       </div>
     </div>
+  );
+}
+
+/**
+ * Draws `children` over a live page in the frame: the page lies beneath the app, which shows it through a hole
+ * (browser/hole.ts), so they go above it at the end of the body, on the frame's box while the frame shows.
+ */
+function OverPage({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    let placed = "";
+    const stop = followLayout(
+      () => [element],
+      () => {
+        const r = element.getBoundingClientRect();
+        const next = !element.closest("[inert]") && element.checkVisibility({ visibilityProperty: true }) && r.width > 0 && r.height > 0 ? r : null;
+        const key = JSON.stringify(next);
+        if (key !== placed) {
+          placed = key;
+          setRect(next);
+        }
+      },
+    );
+    return stop;
+  }, []);
+  return (
+    <>
+      <div ref={box} className="pointer-events-none absolute inset-0" />
+      {rect &&
+        createPortal(
+          <div data-slot="mockup-over-page" className="mockup-over pointer-events-none fixed overflow-hidden rounded-control" data-left={rect.left} data-top={rect.top} data-width={rect.width} data-height={rect.height}>
+            {children}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

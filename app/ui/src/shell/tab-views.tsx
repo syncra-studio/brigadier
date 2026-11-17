@@ -212,7 +212,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               ) : tab.kind === "browser" ? (
                 <BrowserTab owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "mockup" ? (
-                <MockupTab owner={owner} tab={tab} active={tab.id === active} />
+                <MockupTab key={tab.target} owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "new" ? (
                 // The New tab is the browser: Enter or a site turns it into the page, drawn anew [D508].
                 <BrowserTab key="new" owner={owner} tab={tab} active={tab.id === active} onNavigate={(url) => replaceTab(owner, tab.id, "browser", url)}>

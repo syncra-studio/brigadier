@@ -55,7 +55,7 @@ export function PinLayer({
   return (
     <div
       data-slot="mockup-pins"
-      className={cx("absolute inset-0", active ? "cursor-none" : "pointer-events-none")}
+      className={cx("absolute inset-0", active ? "pointer-events-auto cursor-none" : "pointer-events-none")}
       onPointerMove={active ? (event) => { const point = local(event); setHover(pointIn(point, point)); } : undefined}
       onPointerLeave={() => setHover(null)}
       onPointerDown={active ? (event) => { down.current = local(event); } : undefined}

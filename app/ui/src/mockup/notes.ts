@@ -7,8 +7,8 @@ export type Pointed = { name: string; file?: string | null };
 /** A note at a point of one variant, as fractions of its frame's width and height. */
 export type MockupNote = { id: string; variant: string; x: number; y: number; text: string; element?: Pointed | null };
 
-/** The notes not sent yet: the pinned ones and the one for all variants (proposed, w13). */
-export type Notes = { pins: MockupNote[]; all: string };
+/** The notes not sent yet: the pinned ones and the one for all variants (proposed, w13), and the round they're on, 1-based. */
+export type Notes = { pins: MockupNote[]; all: string; round?: number };
 export const NO_NOTES: Notes = { pins: [], all: "" };
 
 /** How many notes go with a send: each pin, and the one for all variants. */

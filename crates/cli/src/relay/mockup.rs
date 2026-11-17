@@ -15,6 +15,9 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+mod tab;
+pub(crate) use tab::run as app;
+
 /// How long the offer waits for the pick; a later one still counts, told to the agent as a message.
 const ANSWER_WAIT: Duration = Duration::from_secs(300);
 pub(crate) const LETTERS: [&str; 3] = ["A", "B", "C"];
@@ -335,21 +338,4 @@ fn keep_shot(data: &Path, me: &str, from: &str, round: usize, letter: &str) -> i
     fs::create_dir_all(&to)?;
     core::write_atomic(&to.join(format!("{letter}.png")), &png)?;
     Ok(format!("/attachment/{me}/{id}"))
-}
-
-/// `mockup <wid>`: the mockup as the tab draws it (`app/ui/src/mockup/model.ts`): the last round
-/// draws while its worker works, the pick builds while it does, and a worker the user stopped.
-pub(crate) fn app(data: &Path, wid: &str) -> io::Result<Value> {
-    let mut m = state(data, wid).ok_or_else(|| io::Error::other("No mockup here."))?;
-    // A turn runs, or its brief hasn't gone yet; a dev server it left running isn't drawing.
-    let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    let working = !f.turns.is_empty() || f.cids.is_empty();
-    let stopped = workers::link(data, wid).is_some_and(|l| l.last["how"] == "stopped");
-    let picked = m["picked"].is_string();
-    if let Some(last) = m["rounds"].as_array_mut().and_then(|r| r.last_mut()) {
-        last["drawing"] = (working && !picked).into();
-    }
-    m["building"] = (working && picked && m["real"].is_null()).into();
-    m["stopped"] = stopped.into();
-    Ok(m)
 }

@@ -20,6 +20,18 @@ use std::thread;
 /// Starts in this daemon now, so its pass never makes one twice at once.
 static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
+/// How a worker lands its work: reviewed first [D385], merged into `base` in `to` with plain git
+/// [D97], or kept on its branch.
+pub(crate) fn land_line(merge: Option<(&str, &str, &str)>, review: bool) -> String {
+    match merge {
+        _ if review => super::review::FINDINGS.into(),
+        Some((to, branch, base)) => format!(
+            "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
+        ),
+        None => "Commit your work on your branch and don't merge it.".into(),
+    }
+}
+
 /// Proposed: the line every worker gets after its brief [D3000, D3023].
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
@@ -31,13 +43,7 @@ fn fixed_line(
     session: bool,
     review: bool,
 ) -> String {
-    let land = match merge {
-        _ if review => super::review::FINDINGS.into(),
-        Some((to, branch, base)) => format!(
-            "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
-        ),
-        None => "Commit your work on your branch and don't merge it.".into(),
-    };
+    let land = land_line(merge, review);
     if session {
         return super::brigade::line(parent, pid, &land);
     }

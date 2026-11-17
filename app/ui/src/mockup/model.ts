@@ -1,6 +1,6 @@
 // A session's mockup as Rust folds it from its mockup worker [D2055, D2056]: the rounds, each with the named variants
 // drawn so far, the pick, and the real screen it was built into.
-import type { MockupNote } from "./notes";
+import type { MockupNote, Notes } from "./notes";
 
 /** One named variant of a round: a live fixture page and its screenshot, the fallback [D2059]. */
 export type Variant = { letter: string; name: string; why?: string | null; url?: string | null; shot?: string | null };
@@ -15,12 +15,16 @@ export type Mockup = {
   rounds: Round[];
   /** The variant the user picked with Use, once they did. */
   picked: string | null;
+  /** The round it was picked from, 1-based: Compare shows that round's fixture. */
+  pickedRound?: number | null;
   /** The picked variant being wired into the app [D2068]. */
   building: boolean;
   /** The real screen it was wired into, once it is [D2069]. */
   real: string | null;
   /** The user stopped the mockup worker; notes can't reach it [D560]. */
   stopped: boolean;
+  /** The notes not sent yet, kept by Rust so they survive closing the tab [D2055]. */
+  draft?: Notes | null;
 };
 
 /** A live frame's page: loading, or it didn't load. Shown otherwise. */

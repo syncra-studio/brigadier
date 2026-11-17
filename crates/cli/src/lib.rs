@@ -370,7 +370,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "up" => (args[1..].iter())
             .try_for_each(|id| owner::ensure(data, &core::load(data, id)?))
             .map(|()| json!({"ok": true})),
-        "mockup" => relay::mockup::app(data, arg(args, 1)?),
+        "mockup" => relay::mockup::app(data, args),
         "owner" => Ok(
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),

@@ -46,7 +46,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
       ) : props.item.kind === "team" || props.item.kind === "team_step" || props.item.kind === "team_still" ? (
         <TeamRow item={props.item} />
       ) : props.item.kind === "mockup" ? (
-        <LiveMockupRow worker={props.item.worker} count={props.item.count} />
+        <LiveMockupRow {...props.item} />
       ) : props.item.kind === "peer" ? (
         <PeerRow item={props.item} />
       ) : props.item.kind === "started" ? (

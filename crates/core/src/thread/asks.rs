@@ -90,10 +90,14 @@ impl Thread {
     /// A worker's routing hold [D2028, D342]: Rust's question card for the user, as a sub-session's
     /// passed ask is, closed by the user's answer.
     pub(super) fn hold(&mut self, item: &Value, ts: u64) {
-        // A mockup's one row in its lead's chat; the app reads its moment from the mockup [D560].
-        if item["phase"] == "started" {
-            self.break_group();
-            self.add(json!({"kind": "mockup", "worker": item["id"], "count": item["count"]}));
+        // A mockup's one row in its lead's chat, out of the turn's fold; the app reads its moment
+        // from the mockup [D560]. And each send of the user's notes: "You → mockup · 3 notes on A
+        // and B · round 2 drawing".
+        if matches!(item["phase"].as_str(), Some("started" | "notes")) {
+            self.kept_row(
+                json!({"kind": "mockup", "worker": item["id"], "count": item["count"],
+                "on": item["on"], "round": item["round"]}),
+            );
             return;
         }
         let r = &item["request"];

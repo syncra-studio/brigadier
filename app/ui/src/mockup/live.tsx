@@ -8,16 +8,19 @@ import { followLayout } from "../browser/follow";
 import { showPage } from "../browser/hole";
 import { type BrowserBounds, placePage } from "../browser/layer";
 import { closeBrowserPage, openPage, useBrowserPage, zoomPage } from "../browser/pages";
-import { daemonRun } from "../session/composer";
+import { daemonRun, failure } from "../session/composer";
 import { CHAT, openTab, selectTab, type Tab } from "../shell/tab-store";
 import type { Zoom } from "./frame";
 import { type MockupActions, MockupView } from "./mockup";
 import { busy, type Load, type Mockup } from "./model";
 import { NO_NOTES, type Notes } from "./notes";
 import { type MockupMoment, MockupRow, MockupTabIcon } from "./row";
+import type { Send } from "./tray";
 
 // shortcut: polled every 1.5 s while shown, as Rust pushes no mockup change; push it with the rows if the poll shows.
 const POLL_MS = 1500;
+/** Typing in the note for all variants saves once it pauses. */
+const DRAFT_MS = 400;
 const mockups = new Map<string, Mockup | null>();
 const watchers = new Map<string, { n: number; timer: number }>();
 const listeners = new Set<() => void>();
@@ -65,15 +68,29 @@ function momentOf(mockup: Mockup | null, count: number): MockupMoment {
   return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "waiting" };
 }
 
-/** "Mockup · drawing 3 variants · Open" in the lead's chat; Open brings its tab to the front. */
-export function LiveMockupRow({ worker, count }: { worker: string; count: number }) {
+/**
+ * "Mockup · drawing 3 variants · Open" in the lead's chat, or a send of the user's notes, "You → mockup · 3 notes on A
+ * and B · round 2 drawing"; Open brings its tab to the front.
+ */
+export function LiveMockupRow({ worker, count, on, round }: { worker: string; count: number; on?: string[] | null; round?: number | null }) {
   const owner = useThread()?.id ?? "";
   const mockup = useMockup(worker);
-  return <MockupRow moment={momentOf(mockup, count)} live={busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
+  const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count);
+  return <MockupRow moment={moment} live={!round && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
 }
 
 export function LiveMockupTabIcon({ worker }: { worker: string }) {
   return <MockupTabIcon busy={busy(useMockup(worker))} />;
+}
+
+/** Saves the notes still unsaved as the mockup's draft, once. */
+function saveDraft(worker: string, unsaved: { current: Notes | null }) {
+  const notes = unsaved.current;
+  // Kept till saved: one that fails saves again with the next change or as the tab closes.
+  if (notes)
+    void daemonRun(["mockup", worker, "draft", JSON.stringify(notes)]).then((reply) => {
+      if (reply.ok === true && unsaved.current === notes) unsaved.current = null;
+    });
 }
 
 const boundsOf = (element: HTMLElement): BrowserBounds => {
@@ -82,7 +99,9 @@ const boundsOf = (element: HTMLElement): BrowserBounds => {
 };
 
 /** One frame's live page, opened while its tab is in front and placed over its box as a Browser tab's is. */
-function LivePage({ owner, id, url, zoom, active, onLoad }: { owner: string; id: string; url: string; zoom: Zoom; active: boolean; onLoad: (load: Load | null) => void }) {
+function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; tab: string; url: string; zoom: Zoom; active: boolean; onLoad: (load: Load | null) => void }) {
+  // Its own page each time it mounts: a frame coming in can't take the one going out's as already made.
+  const [id] = useState(() => `${tab}-${crypto.randomUUID()}`);
   const box = useRef<HTMLDivElement>(null);
   const page = useBrowserPage(id);
   const [failed, setFailed] = useState(false);
@@ -122,19 +141,66 @@ function LivePage({ owner, id, url, zoom, active, onLoad }: { owner: string; id:
 export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; active: boolean }) {
   const worker = tab.target ?? "";
   const mockup = useMockup(worker);
-  const [notes, setNotes] = useState<Notes>(NO_NOTES);
+  // The notes as Rust keeps them till changed here; each change goes back, so they survive closing the tab [D2055].
+  const [changed, setChanged] = useState<Notes | null>(null);
+  const notes = changed ?? mockup?.draft ?? NO_NOTES;
+  const [send, setSend] = useState<Send>("idle");
+  const unsaved = useRef<Notes | null>(null);
+  // A send's id, the same on its retries till one goes through.
+  const sendCid = useRef<string | null>(null);
+  useEffect(() => {
+    if (!changed) return;
+    unsaved.current = changed;
+    const timer = window.setTimeout(() => saveDraft(worker, unsaved), DRAFT_MS);
+    return () => window.clearTimeout(timer);
+  }, [worker, changed]);
+  // A change still waiting to save when the tab closes saves then.
+  useEffect(() => () => saveDraft(worker, unsaved), [worker]);
   const [loads, setLoads] = useState<Record<string, Load>>({});
-  // A frame's page by round, letter and address, so a new round or address loads anew; Retry bumps its try.
+  // A frame's page by letter and address, so a new address loads anew; Retry bumps its try. A round shown remounts its frames.
   const [tries, setTries] = useState<Record<string, number>>({});
-  const round = mockup?.rounds.length ?? 0;
   const loaded = (key: string) => (load: Load | null) =>
     setLoads((now) => {
       const { [key]: _, ...rest } = now;
       return load ? { ...rest, [key]: load } : rest;
     });
   const actions: MockupActions = {
-    send: () => showToast("Sending notes comes next", { tone: "error" }),
-    use: () => showToast("Use comes next", { tone: "error" }),
+    // One message to the worker, steered into its turn [D300]; a failure keeps the notes for Retry.
+    send: (shown) => {
+      setSend("sending");
+      const sent = notes;
+      // The notes go with the send, not as a draft a closing tab would write back; a failed one keeps them.
+      unsaved.current = null;
+      sendCid.current ??= crypto.randomUUID();
+      void daemonRun(["mockup", worker, "send", JSON.stringify({ ...sent, round: shown, cid: sendCid.current })]).then((reply) => {
+        if (reply.ok !== true) {
+          unsaved.current ??= sent;
+          // A refused send never went: its retry is a new one.
+          if (reply.error === "refused") sendCid.current = null;
+          setSend("failed");
+          showToast(failure(reply), { tone: "error" });
+          return;
+        }
+        sendCid.current = null;
+        setChanged(NO_NOTES);
+        setSend("idle");
+        poll(worker);
+      });
+    },
+    // The pick goes to the worker to wire in, the unsent notes with it [D2068]; to the lead if the worker was stopped.
+    use: (letter, shown) => {
+      const sent = notes;
+      unsaved.current = null;
+      void daemonRun(["mockup", worker, "use", letter, JSON.stringify({ ...sent, round: shown })]).then((reply) => {
+        if (reply.ok !== true) {
+          unsaved.current ??= sent;
+          return showToast(failure(reply), { tone: "error" });
+        }
+        setChanged(NO_NOTES);
+        if (reply.message) showToast(String(reply.message));
+        poll(worker);
+      });
+    },
     retry: (key) => {
       loaded(key)(null);
       setTries((now) => ({ ...now, [key]: (now[key] ?? 0) + 1 }));
@@ -147,13 +213,13 @@ export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; act
     <MockupView
       mockup={mockup}
       notes={notes}
-      onNotes={setNotes}
-      send="idle"
+      onNotes={setChanged}
+      send={send}
       active={active}
       loads={loads}
       actions={actions}
       page={(key, url, zoom) => (
-        <LivePage key={`${round}-${key}-${url}-${tries[key] ?? 0}`} owner={owner} id={`${tab.id}-${round}-${key}-${tries[key] ?? 0}`} url={url} zoom={zoom} active={active} onLoad={loaded(key)} />
+        <LivePage key={`${key}-${url}-${tries[key] ?? 0}`} owner={owner} tab={tab.id} url={url} zoom={zoom} active={active} onLoad={loaded(key)} />
       )}
     />
   );

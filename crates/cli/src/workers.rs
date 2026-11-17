@@ -18,7 +18,7 @@ pub(crate) use asks::{question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub use make::start;
-pub(crate) use make::{begin, full};
+pub(crate) use make::{begin, full, land_line};
 pub use pause::held;
 pub use result::{deliver, take, take_ask, went_with, with_next};
 pub(crate) use result::{hop as result_hop, settled, unrun};
