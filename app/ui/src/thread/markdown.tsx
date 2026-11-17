@@ -6,7 +6,7 @@ import { marked } from "marked";
 
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
-import { replyCard, replyCardFrame, WritingCard } from "./reply-cards";
+import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { RefWord, remarkRefs } from "./refs";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
@@ -274,29 +274,19 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     const at = `${keep}:${code.position?.start.offset ?? 0}`;
     // Still being written: no copy of half its text, and a card's JSON isn't shown raw while it arrives [D520].
     const live = openEnd >= 0 && (node?.position?.end.offset ?? 0) >= openEnd;
-    // Something to post, as it will look: its markdown drawn in the block, copied as written [D446].
-    if (language === "preview")
+    // Something to post, as it will look: its markdown drawn in the draft, copied as written [D446].
+    if (language === "preview") {
+      const said = text.replace(/\n$/, "");
       return (
-        <CodeBlock
-          code={text.replace(/\n$/, "")}
-          language=""
-          keep={at}
-          live={live}
-          title={
-            <>
-              <Eye className="size-icon-sm" />
-              <span className="font-medium">{code.data?.meta || "Preview"}</span>
-            </>
-          }
-          body={
-            <div className="px-3 pt-1 pb-3">
-              <Markdown text={text} keep={at} />
-            </div>
-          }
-        />
+        <Draft keep={at} icon={<Eye className="size-icon-sm shrink-0" />} title={code.data?.meta || "Preview"} text={said} live={live}>
+          <div className="px-4 pt-1 pb-3">
+            <Markdown text={said} keep={at} />
+          </div>
+        </Draft>
       );
+    }
     // A reply's card, drawn once its JSON is whole and fits; until then, or if it never does, a code block [D477].
-    const card = live ? replyCardFrame(language) : replyCard(language, text);
+    const card = live ? replyCardFrame(language) : replyCard(language, text, at);
     if (card) return card;
     // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
     // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
@@ -311,7 +301,7 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
       </>
     ) : undefined;
     // Words for a person to paste, titled or not, are a writing card in the reply's own font [D520].
-    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} live={live} />;
+    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} keep={at} live={live} />;
     return <CodeBlock code={said} language={language} keep={at} title={title} live={live} />;
   },
   // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].

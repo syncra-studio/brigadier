@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 
 import { Badge } from "../components/badge";
 import { CopyButton } from "../components/copy-button";
-import { Chat } from "../icons";
+import { cx } from "../components/cx";
+import { Chat, ChevronDown, ChevronUp } from "../icons";
+import { useFindSearching } from "./find-text";
+import { useKept } from "./kept";
 
 /**
  * A reply's card [D477]: a fenced `brigadier-message` block holds JSON that Brigadier draws as its own card. JSON that
@@ -45,8 +48,8 @@ export function replyCardFrame(language: string): ReactNode {
   );
 }
 
-/** The card a fence draws, or null when it isn't one. */
-export function replyCard(language: string, json: string): ReactNode {
+/** The card a fence draws, or null when it isn't one; `keep` keeps it open. */
+export function replyCard(language: string, json: string, keep: string): ReactNode {
   if (language !== "brigadier-message") return null;
   let spec: Record<string, any> | undefined;
   try {
@@ -54,37 +57,82 @@ export function replyCard(language: string, json: string): ReactNode {
   } catch {
     return null;
   }
-  return isMessage(spec) ? <MessageCard {...spec} /> : null;
+  return isMessage(spec) ? <MessageCard {...spec} keep={keep} /> : null;
 }
 
 /** The frame a reply's words for a person sit in: quiet, large corners, the reply's own font [D520]. */
 const FRAME = "my-3 rounded-alert border border-border bg-code-surface first:mt-0 last:mb-0";
 
-/** Words for a person to paste (a `text` fence): its title grey, copy beside it, the words as written [D520]. */
-export function WritingCard({ title, text, live = false }: { title: string; text: string; live?: boolean }) {
+/** A draft's first lines as one line, its markdown marks dropped, for its folded row. */
+const peek = (text: string) =>
+  text
+    .split("\n", 8)
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d{1,9}[.)]|#{1,6}|>)\s+/, "").replace(/\*\*|__|~~|`|\[([^\]]*)\]\([^)]*\)/g, "$1").trim())
+    .filter(Boolean)
+    .join(" · ");
+
+/**
+ * A draft folded to one row, so long ones don't flood the thread [D563, D564]: its kind and title, its first line,
+ * Copy, a chevron; a click opens it in place. While find searches, its words are drawn cut to nothing, so find finds
+ * them and opens it (find-hits.ts reads the row's `data-kept` button).
+ */
+export function Draft({ keep, icon, title, badge, text, live = false, children }: { keep: string; icon?: ReactNode; title: ReactNode; badge?: ReactNode; text: string; live?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useKept(keep);
+  const searched = useFindSearching();
   return (
-    <div className={FRAME}>
-      <div className="flex h-control-md items-center gap-1.5 ps-4 pe-2 text-sm text-muted-foreground">
-        <span className="truncate font-medium">{title}</span>
-        {!live && <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />}
-      </div>
-      <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
+    <div data-look="draft" className={cx("relative", FRAME)}>
+      <button
+        type="button"
+        aria-expanded={open}
+        data-kept={keep}
+        onClick={() => setOpen(!open)}
+        className="flex h-control-md w-full cursor-pointer items-center gap-1.5 rounded-alert ps-4 pe-2 text-start text-xs text-muted-foreground focus-visible:focus-ring"
+      >
+        {icon}
+        <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{title}</span>
+        {badge}
+        {!open && <span className="ms-1 min-w-0 truncate">{peek(text)}</span>}
+        {/* Copy's place, which sits over the row: a button can't hold one. */}
+        <span className="ms-auto w-6 shrink-0" />
+        {open ? <ChevronUp className="size-icon-sm shrink-0" /> : <ChevronDown className="size-icon-sm shrink-0" />}
+      </button>
+      {!live && (
+        <div className="absolute end-7 top-0 flex h-control-md items-center">
+          <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" />
+        </div>
+      )}
+      {(open || searched) && (
+        <div data-find-clip={!open || undefined} className={cx(!open && "h-0 overflow-hidden")}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
 
-/** A message for someone else: where it goes, whether it went, their words it answers, and copy for the message alone. */
-function MessageCard({ to, state = "draft", text, quote }: Message) {
+/** Words for a person to paste (a `text` fence): its title, copy beside it, the words as written [D520]. */
+export function WritingCard({ title, text, keep, live = false }: { title: string; text: string; keep: string; live?: boolean }) {
   return (
-    <div className={FRAME}>
-      <div className="flex h-control-md items-center gap-1.5 ps-4 pe-2 text-xs text-muted-foreground">
-        <Chat className="size-icon-sm" />
-        <span className="font-medium text-foreground">{to}</span>
-        <Badge variant={state === "posted" ? "success" : "secondary"} className="ms-1">
+    <Draft keep={keep} title={title} text={text} live={live}>
+      <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
+    </Draft>
+  );
+}
+
+/** A message for someone else: where it goes, whether it went, their words it answers, and copy for the message alone. */
+function MessageCard({ to, state = "draft", text, quote, keep }: Message & { keep: string }) {
+  return (
+    <Draft
+      keep={keep}
+      icon={<Chat className="size-icon-sm shrink-0" />}
+      title={to}
+      badge={
+        <Badge variant={state === "posted" ? "success" : "secondary"} className="ms-1 shrink-0">
           {state}
         </Badge>
-        <CopyButton text={text} tooltip="Copy" copiedTooltip="Copied" size="icon-xs" className="ms-auto" />
-      </div>
+      }
+      text={text}
+    >
       {quote && (
         <div className="mx-4 mb-2 border-s-2 border-quote-edge ps-3 text-sm text-muted-foreground">
           <div className="text-xs font-medium">{quote.from} wrote</div>
@@ -92,6 +140,6 @@ function MessageCard({ to, state = "draft", text, quote }: Message) {
         </div>
       )}
       <div className="px-4 pb-4 leading-relaxed break-words whitespace-pre-wrap">{text}</div>
-    </div>
+    </Draft>
   );
 }
