@@ -173,12 +173,13 @@ pub fn signed_in(data: &Path, key: &str) -> bool {
 }
 
 /// Whether the server at `url` takes Brigadier's sign-in: "brigadier", "cli" when it signs in
-/// only each agent [wave4 D2045], None when it needs none. Asked once, when it is added.
-pub fn kind(url: &str) -> Result<Option<&'static str>, String> {
+/// only each agent [wave4 D2045], None when it needs none. Asked once, when it is added; `client`
+/// when it comes with a pre-registered client id [D578].
+pub fn kind(url: &str, client: bool) -> Result<Option<&'static str>, String> {
     let Some(found) = oauth::discover(url)? else {
         return Ok(None);
     };
-    Ok(Some(if oauth::registers(&found) {
+    Ok(Some(if client || oauth::registers(&found) {
         "brigadier"
     } else {
         "cli"

@@ -213,8 +213,8 @@ fn plain(name: &str) -> io::Result<()> {
 
 /// `{own: <key>}` copies one of an agent's own, its definition and never a token; `{kind: "skill",
 /// folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
-/// `{kind: "server", name, url}`; `{kind: "server", name, command, args, env}`, its command shown
-/// and confirmed in the Add dialog first. New items start off [D2046].
+/// `{kind: "server", name, url, client_id?}`; `{kind: "server", name, command, args, env}`, its
+/// command shown and confirmed in the Add dialog first. New items start off [D2046].
 fn add(data: &Path, mut v: Value) -> io::Result<()> {
     if let Some(source) = v["source"].as_str() {
         v = json!({"kind": "skill", "folder": browse::fetch(data, source, str(&v["skill"]))?});
@@ -270,8 +270,15 @@ fn add(data: &Path, mut v: Value) -> io::Result<()> {
         // An API key's header: its value to the Keychain item, only its name here. A server given
         // one isn't asked how it signs in.
         let headers: Map<String, Value> = v["headers"].as_object().cloned().unwrap_or_default();
+        // A public client id, for a server that won't let Brigadier register itself [D578].
+        let client = v["client_id"].as_str().filter(|c| !c.trim().is_empty());
+        if let Some(id) = client {
+            item["client_id"] = id.trim().into();
+        }
         if headers.is_empty() {
-            item["sign_in"] = crate::signin::kind(url).map_err(|e| refuse(&e))?.into();
+            item["sign_in"] = crate::signin::kind(url, client.is_some())
+                .map_err(|e| refuse(&e))?
+                .into();
         }
         item["headers"] = headers.keys().cloned().collect::<Vec<_>>().into();
         if !headers.is_empty() {

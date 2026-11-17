@@ -59,8 +59,27 @@ fn kept<T>(data: &Path, f: impl FnOnce(&mut HashMap<String, Client>) -> T) -> T 
     out
 }
 
+/// The one redirect port a pre-registered client is registered with: its server matches it
+/// exactly, port included [D578].
+const PRESET_PORT: u16 = 47181;
+
 /// The client to sign in as, and the loopback listener its redirect comes back to.
 fn client(data: &Path, key: &str, found: &Found) -> Result<(Client, Option<TcpListener>), String> {
+    // The library entry's own public client id, PKCE with no secret, first [D578].
+    let preset = super::item(data, key).and_then(|i| i["client_id"].as_str().map(String::from));
+    if let Some(id) = preset {
+        let listener = TcpListener::bind(("127.0.0.1", PRESET_PORT)).map_err(|_| {
+            format!("Brigadier can't listen for the sign-in on port {PRESET_PORT}.")
+        })?;
+        let redirect = format!("http://localhost:{PRESET_PORT}/callback");
+        let c = Client {
+            id,
+            secret: None,
+            redirect,
+            device: false,
+        };
+        return Ok((c, Some(listener)));
+    }
     // Kept per issuer, but a redirect names its port, so a kept one goes only while that port is free.
     if let Some(c) = kept(data, |k| k.get(&found.issuer).cloned()) {
         let port = c
