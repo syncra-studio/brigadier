@@ -10,6 +10,7 @@ import { Contents } from "./contents";
 import { FindGallery } from "./find";
 import { ForkGallery } from "./fork";
 import { Kit } from "./kit";
+import { MockupGallery } from "./mockup";
 import { Notices } from "./notices";
 import { Panes } from "./panes";
 import { Area } from "./parts";
@@ -109,6 +110,9 @@ function GalleryPage() {
               <ChangesGallery />
               <WorkersGallery />
               <PeersGallery />
+            </Area>
+            <Area name="Mockup">
+              <MockupGallery />
             </Area>
             <Area name="Pickers">
               <PickersGallery />

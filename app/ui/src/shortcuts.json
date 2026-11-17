@@ -46,5 +46,6 @@
   { "id": "find-next", "keys": ["CmdOrCtrl+G"], "name": "Find next", "line": "Go to the next match in the chat" },
   { "id": "find-previous", "keys": ["CmdOrCtrl+Shift+G"], "name": "Find previous", "line": "Go to the previous match in the chat" },
   { "id": "go-to-line", "keys": ["Ctrl+G"], "name": "Go to line", "line": "Jump to a line of the file in front" },
-  { "id": "comment", "keys": ["CmdOrCtrl+Enter"], "name": "Comment", "line": "Add the comment on the picked lines", "where": "In a comment on a file" }
+  { "id": "comment", "keys": ["CmdOrCtrl+Enter"], "name": "Comment", "line": "Add the comment on the picked lines", "where": "In a comment on a file" },
+  { "id": "mockup-send", "keys": ["CmdOrCtrl+Enter"], "name": "Send notes", "line": "Send the notes on the mockup, or build the variant you picked", "where": "In the Mockup tab" }
 ]
