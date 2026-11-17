@@ -281,13 +281,14 @@ fn destination(data: &Path, id: &str, dest: &str, empty_ok: bool) -> io::Result<
 }
 
 /// Clones `from` into `dest` and adds it under `id`: a URL with git itself, or with `github` an
-/// `owner/name` through gh, which uses gh's own sign-in and protocol [D168, D202]. Neither ever
-/// asks for a password; git's reason comes back instead.
+/// `owner/name` through gh, which uses gh's own sign-in and protocol, or `account`'s [D168, D202,
+/// D631]. Neither ever asks for a password; git's reason comes back instead.
 pub fn clone(
     data: &Path,
     from: &str,
     dest: &str,
     github: bool,
+    account: Option<&str>,
     id: &str,
 ) -> io::Result<projects::Project> {
     let from = from.trim();
@@ -302,7 +303,7 @@ pub fn clone(
         fs::create_dir_all(parent)?;
     }
     let cloned = if github {
-        crate::host::clone_github(from, &dir, CLONE_SECS)
+        crate::host::clone_github(from, &dir, CLONE_SECS, account)
     } else {
         ran(
             tool("git").args(["clone", "--quiet", "--", from]).arg(&dir),

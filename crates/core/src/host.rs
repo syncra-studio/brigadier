@@ -11,6 +11,7 @@ pub mod accounts;
 mod actions;
 mod avatars;
 mod chip;
+mod github;
 mod prs;
 mod review;
 mod search;
@@ -19,9 +20,10 @@ mod touched;
 mod view;
 pub use actions::{kept_run, kept_runs};
 pub use chip::{chip, moved_on, opened};
+pub use github::{clone_github, github_repos};
 pub use prs::kept;
 pub use search::kept_search;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
@@ -43,8 +45,6 @@ pub fn marked(mark: Option<&'static str>, chip: &Value) -> Option<&'static str> 
 const GH_SECS: u64 = 20;
 /// Why a host read couldn't start.
 const NO_GH: &str = "gh isn't installed, or signed in to an account that can read this repository.";
-/// Proposed: the GitHub list's length.
-const GH_LIMIT: &str = "200";
 
 fn err<T>(message: impl Into<String>) -> io::Result<T> {
     Err(io::Error::other(message.into()))
@@ -412,47 +412,4 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         dir: dir(data, id),
         avatars: data.join("avatars"),
     })
-}
-
-/// Clones GitHub's `owner/name` into `dir` through gh, with gh's own sign-in and protocol [D168,
-/// D202]. It never asks for a password.
-pub fn clone_github(from: &str, dir: &Path, secs: u64) -> io::Result<()> {
-    let gh = setup::find("gh", &[])
-        .ok_or_else(|| io::Error::other("The GitHub CLI (gh) isn't installed."))?;
-    let mut command = tool(gh.to_str().unwrap_or("gh"));
-    command
-        .args(["repo", "clone", from])
-        .arg(dir)
-        .args(["--", "--quiet"]);
-    let out = setup::run(&mut command, secs).map_err(io::Error::other)?;
-    match out.status.success() {
-        true => Ok(()),
-        false => err(failed(&out)),
-    }
-}
-
-/// Your GitHub repositories through the gh CLI [D202], or `gh: "missing"` / `"signed-out"`.
-pub fn github_repos() -> io::Result<Value> {
-    let Some(gh) = setup::find("gh", &[]) else {
-        return Ok(json!({"gh": "missing"}));
-    };
-    let fields = "nameWithOwner,description,isPrivate";
-    let mut command = tool(gh.to_str().unwrap_or("gh"));
-    command.args(["repo", "list", "--json", fields, "--limit", GH_LIMIT]);
-    let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-    // gh exits 4 when it needs a sign-in (its `gh help exit-codes`); a token GitHub refuses fails
-    // with its own hint to sign in again.
-    let refused = String::from_utf8_lossy(&out.stderr).contains("gh auth login");
-    if out.status.code() == Some(4) || (!out.status.success() && refused) {
-        return Ok(json!({"gh": "signed-out"}));
-    }
-    if !out.status.success() {
-        return err(failed(&out));
-    }
-    let list: Vec<Value> = serde_json::from_slice(&out.stdout)?;
-    let repos: Vec<Value> = list
-        .iter()
-        .map(|r| json!({"name": r["nameWithOwner"], "description": r["description"].as_str().filter(|d| !d.is_empty()), "private": r["isPrivate"]}))
-        .collect();
-    Ok(json!({"repos": repos}))
 }

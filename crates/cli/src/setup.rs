@@ -7,7 +7,6 @@ use brigadier_core::adapters::{self, Adapter, setup};
 use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log;
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -73,7 +72,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
         "profile" => profile::profile(data, args),
-        "forges" => forges::run(data, args),
+        "forges" => {
+            // An account signed in or added on the Git step: its repositories read now [D627].
+            if args.len() == 1 {
+                kept::warm(data);
+            }
+            forges::run(data, args)
+        }
         "projects" => {
             // A folder picked with Add folder…: what adding it would add, after every guard;
             // nothing is written [D165].
@@ -134,7 +139,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }
                 "remove" => return crate::sessions::remove_project(data, args),
                 // Add project's (1f, 1g): `find`, `inspect <path>`, `clone <url|owner/name> --to
-                // <dest> [--github] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
+                // <dest> [--github [--account <login>]] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
                 "find" => return Ok(json!({"ok": true, "repos": repos::find(data)?})),
                 "inspect" => {
                     return Ok(json!({"ok": true, "check": repos::inspect(data, arg(2))?}));
@@ -145,7 +150,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         flag(args, "--id").unwrap_or(""),
                     );
                     let github = args.iter().any(|a| a == "--github");
-                    let project = repos::clone(data, arg(2), to, github, id)?;
+                    let account = flag(args, "--account");
+                    let project = repos::clone(data, arg(2), to, github, account, id)?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
                 "init" => {
@@ -154,37 +160,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         repos::init(data, arg(2), here, flag(args, "--id").unwrap_or(""))?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
-                "github" => {
-                    return Ok(
-                        json!({"ok": true, "github": brigadier_core::host::github_repos()?}),
-                    );
+                "github" => return Ok(json!({"ok": true, "github": kept::github(data)?})),
+                // Onboarding opening: both lists read now, so its Projects step has them [D627].
+                "warm" => {
+                    kept::warm(data);
+                    return Ok(json!({"ok": true}));
                 }
                 _ => {}
             }
-            let taken: Vec<String> = projects::list(data)?
-                .into_iter()
-                .map(|p| p.folder)
-                .collect();
-            let found = thread::scope(|s| {
-                let all = adapters::all().map(|a| s.spawn(move || a.projects()));
-                all.into_iter()
-                    .flat_map(|t| t.join().unwrap_or_default())
-                    .collect::<Vec<_>>()
-            });
-            // Each folder checked once (the history repeats them), and none macOS asks about.
-            let home = adapters::home_path("");
-            let home = fs::canonicalize(&home).unwrap_or(home);
-            let (mut checked, mut seen) = (BTreeSet::new(), BTreeSet::new());
-            let found: Vec<String> = found
-                .iter()
-                .filter(|p| !repos::protected(&home, p) && checked.insert(p.as_path()))
-                .filter_map(|p| projects::root(p))
-                .map(|p| p.display().to_string())
-                .filter(|p| !taken.contains(p))
-                .filter(|p| seen.insert(p.clone()))
-                .take(30)
-                .collect();
-            Ok(json!({"ok": true, "found": found}))
+            let mut reply = kept::history(data)?;
+            reply["ok"] = true.into();
+            Ok(reply)
         }
         _ => Err(io::Error::other(crate::USAGE)),
     }
