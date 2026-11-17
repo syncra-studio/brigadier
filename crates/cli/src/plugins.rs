@@ -38,7 +38,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "add" => {
             let added = add(data, json(2)?);
             let _ = std::fs::remove_dir_all(browse::incoming(data));
-            added?
+            let mut page = list(data);
+            page["added"] = added?.into();
+            return Ok(page);
         }
         "set" => set(data, arg(2), json(3)?)?,
         "remove" => remove(data, arg(2))?,
@@ -130,6 +132,34 @@ fn same(own: &Value, item: &Value) -> bool {
     }
 }
 
+/// A plugin's server by its own name: `plugin:slack:slack` → `slack` [D565].
+fn shown(name: &str) -> &str {
+    name.rsplit(':').next().unwrap_or(name)
+}
+
+/// Where the agents have it: "From Claude Code's slack plugin", else "In Codex's settings".
+fn from(own: &Value) -> String {
+    let sources = own["sources"].as_object().cloned().unwrap_or_default();
+    // A plugin's is `plugin <plugin>@<marketplace>` [D565]; a file's is its path.
+    let plugin = (sources.iter()).find_map(|(agent, s)| {
+        let key = str(s).strip_prefix("plugin ")?;
+        Some(format!(
+            "From {agent}'s {} plugin",
+            key.split('@').next().unwrap_or(key)
+        ))
+    });
+    plugin.unwrap_or_else(|| {
+        let agents: Vec<&str> = (own["agents"].as_array().into_iter().flatten())
+            .map(str)
+            .collect();
+        let all = match agents.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+            _ => agents.join(""),
+        };
+        format!("In {all}'s settings")
+    })
+}
+
 fn str(v: &Value) -> &str {
     v.as_str().unwrap_or("")
 }
@@ -142,8 +172,8 @@ fn list(data: &Path) -> Value {
     let own: Vec<Value> = (own(&items, &all).into_iter())
         .filter(|o| o["in_library"] != true)
         .map(|o| {
-            json!({"key": o["key"], "kind": o["kind"], "name": o["name"], "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"], "sources": o["sources"]})
+            json!({"key": o["key"], "kind": o["kind"], "name": shown(str(&o["name"])), "detail": o["detail"],
+            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o)})
         })
         .collect();
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
@@ -214,8 +244,10 @@ fn plain(name: &str) -> io::Result<()> {
 /// `{own: <key>}` copies one of an agent's own, its definition and never a token; `{kind: "skill",
 /// folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
 /// `{kind: "server", name, url, client_id?}`; `{kind: "server", name, command, args, env}`, its
-/// command shown and confirmed in the Add dialog first. New items start off [D2046].
-fn add(data: &Path, mut v: Value) -> io::Result<()> {
+/// command shown and confirmed in the Add dialog first. New items start off [D2046], unless the
+/// draft carries the user's pick, `on` and `scope` [D571]. Answers the new item's key.
+fn add(data: &Path, mut v: Value) -> io::Result<String> {
+    let (on, scope) = (v["on"] == true, v["scope"].clone());
     if let Some(source) = v["source"].as_str() {
         v = json!({"kind": "skill", "folder": browse::fetch(data, source, str(&v["skill"]))?});
     }
@@ -226,7 +258,7 @@ fn add(data: &Path, mut v: Value) -> io::Result<()> {
         v = match o["kind"] == "skill" {
             true => json!({"kind": "skill", "folder": o["detail"]}),
             // Its env and headers stay behind: they may hold its token.
-            false => json!({"kind": "server", "name": o["name"], "url": o["url"],
+            false => json!({"kind": "server", "name": shown(str(&o["name"])), "url": o["url"],
                 "command": o["command"], "args": o["args"]}),
         };
     }
@@ -245,7 +277,10 @@ fn add(data: &Path, mut v: Value) -> io::Result<()> {
         return Err(refuse(&format!("The library already has {name}.")));
     }
     let mut item = json!({"key": key, "kind": if skill { "skill" } else { "server" }, "name": name,
-        "on": false, "scope": {"all": true}});
+        "on": on, "scope": {"all": true}});
+    if !scope.is_null() {
+        item["scope"] = scope_of(&scope)?;
+    }
     if skill {
         // A linked skill's own folder, so the copy outlives the link.
         let from = std::fs::canonicalize(str(&v["folder"]))
@@ -306,7 +341,23 @@ fn add(data: &Path, mut v: Value) -> io::Result<()> {
     if saved.is_err() {
         let _ = forget(data, &key, &name);
     }
-    saved
+    saved.map(|()| key)
+}
+
+/// `{all: true}` or `{projects: [<id>]}`.
+fn scope_of(s: &Value) -> io::Result<Value> {
+    match s {
+        s if s["all"] == true => Ok(json!({"all": true})),
+        s if s["projects"]
+            .as_array()
+            .is_some_and(|p| p.iter().all(Value::is_string)) =>
+        {
+            Ok(json!({"projects": s["projects"]}))
+        }
+        _ => Err(refuse(
+            "A scope is {\"all\": true} or {\"projects\": [ids]}.",
+        )),
+    }
 }
 
 /// `{on?, scope?: {all: true} | {projects: [<id>]}}`.
@@ -317,20 +368,8 @@ fn set(data: &Path, key: &str, v: Value) -> io::Result<()> {
     if let Some(on) = v["on"].as_bool() {
         item["on"] = on.into();
     }
-    match &v["scope"] {
-        Value::Null => {}
-        s if s["all"] == true => item["scope"] = json!({"all": true}),
-        s if s["projects"]
-            .as_array()
-            .is_some_and(|p| p.iter().all(Value::is_string)) =>
-        {
-            item["scope"] = json!({"projects": s["projects"]})
-        }
-        _ => {
-            return Err(refuse(
-                "A scope is {\"all\": true} or {\"projects\": [ids]}.",
-            ));
-        }
+    if !v["scope"].is_null() {
+        item["scope"] = scope_of(&v["scope"])?;
     }
     library::save(data, &items)
 }

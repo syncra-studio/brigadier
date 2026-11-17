@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
+import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
-import { Segmented } from "../components/segmented";
 import { RowText, SettingsCard } from "../components/settings-card";
+import { ChevronRight, Plus } from "../icons";
 import { errorText } from "../onboarding/api";
-import { SearchField } from "./archived-toolbar";
-import { SettingsPage } from "./parts";
-import type { Kind } from "./plugins";
+import { SettingsSection } from "./parts";
+import { type Kind, matches, type Own, type Plugins } from "./plugins";
+import { importable } from "./plugins-mine";
 import type { AddFirst } from "./plugins-dialogs";
 import { PluginMark } from "./plugins-marks";
 
@@ -25,7 +26,7 @@ export type Found = {
   why: string | null;
 };
 
-const SOURCE: Record<Kind, string> = { server: "the Official MCP Registry", skill: "skills.sh" };
+const SOURCE: Record<Kind, string> = { server: "From the MCP Registry", skill: "From skills.sh" };
 
 /** Add filled in from a result: a server's form, its declared secrets' names with their values left to the user; a skill added at once [D418, D436]. */
 function firstOf(form: NonNullable<Found["form"]>): AddFirst {
@@ -34,25 +35,102 @@ function firstOf(form: NonNullable<Found["form"]>): AddFirst {
   return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values } };
 }
 
+/** A row of Browse's 2 columns: its mark, name and line, then + (or what it's doing). */
+export function Pick({ mark, name, line, end }: { mark: ReactNode; name: string; line: string; end: ReactNode }) {
+  return (
+    <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.5 hover:bg-fill-subtle">
+      {mark}
+      <RowText title={name} line={line} truncate />
+      {end}
+    </div>
+  );
+}
+
+export const PickGrid = ({ children }: { children: ReactNode }) => <div className="grid grid-cols-1 gap-x-6 @reading:grid-cols-2">{children}</div>;
+
+/** A category's title, a link to its own page where it has one, over its rows. */
+export function Category({ title, onOpen, children }: { title: string; onOpen?: () => void; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-2">
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className="flex w-fit cursor-pointer items-center gap-1 text-sm font-medium focus-visible:focus-ring">
+          {title}
+          <ChevronRight aria-hidden className="size-3.5 text-quiet-foreground" />
+        </button>
+      ) : (
+        <h2 className="text-sm font-medium">{title}</h2>
+      )}
+      {children}
+    </section>
+  );
+}
+
+const ownRow = (own: Own, onInstall: (own: Own) => void) => (
+  <Pick
+    key={own.key}
+    mark={<PluginMark item={own} />}
+    name={own.name}
+    line={own.from}
+    end={
+      <Button variant="ghost" size="icon-md" aria-label={`Install ${own.name}`} onClick={() => onInstall(own)}>
+        <Plus aria-hidden />
+      </Button>
+    }
+  />
+);
+
 /**
- * Settings › Plugins › Browse [D434]: search the Official MCP Registry or skills.sh (Rust asks them), each result with
- * who published it, how it runs, and Add or "In your library". Add is the page's own Add dialog, filled in.
+ * Plugins › Browse [D566, D569]: what installs, by category, "Found on this machine" first (your agents' own, not yet in
+ * Brigadier); a search looks through them, then the Official MCP Registry and skills.sh (Rust asks them [D434]).
  */
-export function BrowsePage({ tab: firstTab, browse, onAdd }: { tab: Kind; browse: (kind: Kind, query: string) => Promise<Found[]>; onAdd: (first: AddFirst, added: () => void) => void }) {
-  const [tab, setTab] = useState(firstTab);
-  const [query, setQuery] = useState("");
+export function BrowseTab({
+  value,
+  query,
+  remote,
+  browse,
+  onInstall,
+  onAdd,
+}: {
+  value: Plugins;
+  query: string;
+  remote: boolean;
+  browse: (kind: Kind, query: string) => Promise<Found[]>;
+  onInstall: (own: Own) => void;
+  onAdd: (first: AddFirst, added: () => void) => void;
+}) {
+  const asked = query.trim();
+  const own = value.own.filter((each) => importable(each, remote));
+  if (asked) return <Search asked={asked} own={own.filter((each) => matches(asked, each.name, each.detail, each.from))} browse={browse} onInstall={onInstall} onAdd={onAdd} />;
+  if (own.length === 0) return <p className="py-6 text-center text-label text-quiet-foreground">Search above for MCP servers and skills to install.</p>;
+  return (
+    <Category title="Found on this machine">
+      <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>
+    </Category>
+  );
+}
+
+function Search({ asked, own, browse, onInstall, onAdd }: { asked: string; own: Own[]; browse: (kind: Kind, query: string) => Promise<Found[]>; onInstall: (own: Own) => void; onAdd: (first: AddFirst, added: () => void) => void }) {
+  return (
+    <>
+      {own.length > 0 && <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>}
+      {(["server", "skill"] as const).map((kind) => (
+        <Results key={kind} kind={kind} asked={asked} browse={browse} onAdd={onAdd} />
+      ))}
+    </>
+  );
+}
+
+/** One source's results, asked once typing pauses; an older answer never replaces a newer one. */
+function Results({ kind, asked, browse, onAdd }: { kind: Kind; asked: string; browse: (kind: Kind, query: string) => Promise<Found[]>; onAdd: (first: AddFirst, added: () => void) => void }) {
   const [found, setFound] = useState<Found[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const asked = query.trim();
   useEffect(() => {
     setFound(null);
     setError(null);
-    if (!asked) return;
     let live = true;
-    // Asked once typing pauses; an older answer never replaces a newer one.
     const timer = setTimeout(
       () =>
-        browse(tab, asked).then(
+        browse(kind, asked).then(
           (next) => live && setFound(next),
           (cause: unknown) => live && setError(errorText(cause)),
         ),
@@ -62,66 +140,47 @@ export function BrowsePage({ tab: firstTab, browse, onAdd }: { tab: Kind; browse
       live = false;
       clearTimeout(timer);
     };
-  }, [tab, asked]);
+  }, [kind, asked]);
   const held = (key: string) => setFound((now) => now && now.map((each) => (each.key === key ? { ...each, in_library: true } : each)));
-
   return (
-    <SettingsPage title="Browse" description="Skills and MCP servers you don't have yet." back={{ label: "Plugins", href: "#settings/plugins" }}>
-      <div className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <Segmented
-            label="Browse"
-            value={tab}
-            options={[
-              { value: "server", label: "MCP servers" },
-              { value: "skill", label: "Skills" },
-            ]}
-            onChange={setTab}
-          />
-          <span className="flex-1" />
-          <div className="flex max-w-80 min-w-28 flex-1">
-            <SearchField label={tab === "server" ? "Search MCP servers" : "Search skills"} value={query} onChange={setQuery} />
-          </div>
-        </div>
-        {!asked ? null : error ? (
-          <ErrorLine error={error} className="py-6 text-center" />
-        ) : !found ? (
-          <p role="status" className="py-6 text-center text-label text-quiet-foreground">
-            Searching…
-          </p>
-        ) : found.length === 0 ? (
-          <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{asked}”.</p>
-        ) : (
-          <SettingsCard>
-            {found.map((each) => (
-              <div key={each.key} data-slot="found-row" className="flex items-center gap-3 px-4 py-3">
-                {/* Its maker's mark only from its own address or package: anyone can name a server "Linear" [D437]. */}
-                <PluginMark item={{ kind: each.kind, name: "", detail: each.mark }} exact />
-                <RowText
-                  title={each.name}
-                  line={
-                    <span className="flex flex-col gap-1">
-                      {each.description && <span>{each.description}</span>}
-                      <span>{[each.publisher, each.how].join(" · ")}</span>
-                      {each.why && <span className="text-faint-foreground">{each.why}</span>}
-                    </span>
-                  }
-                />
-                {each.in_library ? (
-                  <span className="w-28 shrink-0 text-end text-xs text-quiet-foreground">In your library</span>
-                ) : (
-                  each.form && (
-                    <Button variant="soft" size="sm" className="w-28" aria-label={`Add ${each.name}`} onClick={() => onAdd(firstOf(each.form!), () => held(each.key))}>
-                      Add
-                    </Button>
-                  )
-                )}
-              </div>
-            ))}
-          </SettingsCard>
-        )}
-        <p className="text-xs text-quiet-foreground">From {SOURCE[tab]}. Brigadier doesn't review these: add only what you trust.</p>
-      </div>
-    </SettingsPage>
+    <SettingsSection title={SOURCE[kind]} description="Brigadier doesn't review these: install only what you trust." setting={SOURCE[kind]}>
+      {error ? (
+        <ErrorLine error={error} className="py-4 text-center" />
+      ) : !found ? (
+        <p role="status" className="py-4 text-center text-label text-quiet-foreground">
+          Searching…
+        </p>
+      ) : found.length === 0 ? (
+        <p className="py-4 text-center text-label text-quiet-foreground">Nothing matches “{asked}”.</p>
+      ) : (
+        <SettingsCard>
+          {found.map((each) => (
+            <div key={each.key} data-slot="found-row" className="flex items-center gap-3 px-4 py-3">
+              {/* Its maker's mark only from its own address or package: anyone can name a server "Linear" [D437]. */}
+              <PluginMark item={{ kind: each.kind, name: "", detail: each.mark }} exact />
+              <RowText
+                title={each.name}
+                line={
+                  <span className="flex flex-col gap-0.5">
+                    {each.description && <span>{each.description}</span>}
+                    <span className="text-faint-foreground">{[each.publisher, each.how].join(" · ")}</span>
+                    {each.why && <span className="text-faint-foreground">{each.why}</span>}
+                  </span>
+                }
+              />
+              {each.in_library ? (
+                <Badge variant="secondary">Installed</Badge>
+              ) : (
+                each.form && (
+                  <Button variant="ghost" size="icon-md" aria-label={`Install ${each.name}`} onClick={() => onAdd(firstOf(each.form!), () => held(each.key))}>
+                    <Plus aria-hidden />
+                  </Button>
+                )
+              )}
+            </div>
+          ))}
+        </SettingsCard>
+      )}
+    </SettingsSection>
   );
 }

@@ -32,16 +32,16 @@ const VALUE: Plugins = {
     { key: "release", kind: "skill", name: "release", description: "Cuts a release: changelog, tag and notes.", detail: "~/Library/Application Support/Brigadier/library/skills/release", on: true, scope: { projects: ["p1"] }, status: null, sign_in: null, signed_in: null, agents: ["Cloud agent", "Local agent"], note: "Other agent uses your own release skill: it can't turn just that one off for a session." },
   ],
   own: [
-    { key: "own-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agents: ["Cloud agent", "Other agent"], project: null },
-    { key: "own-tidy", kind: "skill", name: "tidy", detail: "~/.cloud/skills/tidy", agents: ["Cloud agent", "Other agent", "Local agent"], project: null },
-    { key: "own-p2-postgres", kind: "server", name: "postgres", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", agents: ["Cloud agent", "Other agent"], project: "freelogo" },
-    { key: "own-p2-logo-kit", kind: "skill", name: "logo-kit", detail: "~/Development/freelogo/.cloud/skills/logo-kit", agents: ["Cloud agent"], project: "freelogo" },
-    { key: "own-p3-deploy", kind: "skill", name: "deploy", detail: "~/Development/website/.agents/skills/deploy", agents: ["Other agent"], project: "website" },
+    { key: "own-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agents: ["Cloud agent", "Other agent"], project: null, from: "From Cloud agent's github plugin" },
+    { key: "own-tidy", kind: "skill", name: "tidy", detail: "~/.cloud/skills/tidy", agents: ["Cloud agent", "Other agent", "Local agent"], project: null, from: "In Cloud agent, Other agent and Local agent's settings" },
+    { key: "own-p2-postgres", kind: "server", name: "postgres", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", agents: ["Cloud agent", "Other agent"], project: "freelogo", from: "In Cloud agent and Other agent's settings" },
+    { key: "own-p2-logo-kit", kind: "skill", name: "logo-kit", detail: "~/Development/freelogo/.cloud/skills/logo-kit", agents: ["Cloud agent"], project: "freelogo", from: "In Cloud agent's settings" },
+    { key: "own-p3-deploy", kind: "skill", name: "deploy", detail: "~/Development/website/.agents/skills/deploy", agents: ["Other agent"], project: "website", from: "In Other agent's settings" },
   ],
 };
 const FOUND = [
-  { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null },
-  { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier" },
+  { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null, from: "In Other agent's settings" },
+  { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier", from: "In Local agent and Cloud agent's settings" },
 ];
 
 /** A page in a box of its own, scrolled inside it as Settings scrolls it. */
@@ -67,7 +67,7 @@ function useFake() {
     add: (draft) =>
       later((now) =>
         "own" in draft
-          ? { ...now, own: now.own.filter((own) => own.key !== draft.own) }
+          ? { ...now, own: now.own.filter((own) => own.key !== draft.own), items: [...now.items, ...now.own.filter((own) => own.key === draft.own).map((own) => ({ key: own.key, kind: own.kind, name: own.name, description: "", detail: own.detail, on: Boolean(draft.on), scope: draft.scope ?? { all: true }, status: null, sign_in: null, signed_in: null, agents: own.agents, note: null }))], added: draft.own }
           : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
@@ -109,7 +109,12 @@ function Still({ label, value = VALUE, detail = null, open, signing, error, offl
 
 const FILES = { name: "files", command: "uvx mcp-files --root .", values: [{ id: 0, name: "FILES_TOKEN", value: "secret" }] };
 const SKILL = { kind: "skill" as const, folder: "~/skills/changelog" };
-const DIALOGS: [string, Open][] = [
+// An item's page opens its sign-in over itself: those open with `detail` and `signing`.
+const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][] = [
+  ["Install, found on this machine", { type: "install", own: VALUE.own[0]! }],
+  ["Sign in: waiting for browser", null, { detail: "notion", signing: "waiting" }],
+  ["Sign in: a device code", null, { detail: "notion", signing: { code: "WDJB-MJHT", page: "https://github.com/login/device" } }],
+  ["Sign in failed", null, { detail: "notion", signing: { error: "Notion said: access_denied. Try again, or check the account you picked." } }],
   ["Add a server at an address", { type: "add", remote: true, first: { form: { remote: true, name: "linear", url: "https://mcp.linear.app/mcp" } } }],
   ["A server at an address, with an API key", { type: "add", remote: true, first: { form: { remote: true, name: "context7", url: "https://mcp.context7.com/mcp", values: [{ id: 0, name: "CONTEXT7_API_KEY", value: "ctx7sk-demo" }] } } }],
   ["Add a local command", { type: "add", remote: true, first: { form: FILES } }],
@@ -136,7 +141,7 @@ function Dialogs() {
       ))}
       {shown && (
         <Frame>
-          <PluginsPage key={open.presses} value={VALUE} marks={MARKS} actions={still} detail={null} onDetail={() => {}} remote={shown[1].type !== "add" || shown[1].remote} open={shown[1]} />
+          <PluginsPage key={open.presses} value={VALUE} marks={MARKS} actions={still} detail={shown[2]?.detail ?? null} signing={shown[2]?.signing} onDetail={() => {}} remote={shown[1]?.type !== "add" || shown[1].remote} open={shown[1]} />
         </Frame>
       )}
     </div>
@@ -170,9 +175,6 @@ export function PluginsGallery() {
         <Still label="Only some projects, signed in elsewhere" detail="sentry" />
         <Still label="All projects, signed in" detail="linear" />
         <Still label="Sign in" detail="notion" />
-        <Still label="Waiting for browser" detail="notion" signing="waiting" />
-        <Still label="Waiting for browser, a device code" detail="notion" signing={{ code: "WDJB-MJHT", page: "https://github.com/login/device" }} />
-        <Still label="Sign-in failed" detail="notion" signing={{ error: "Notion said: access_denied. Try again, or check the account you picked." }} />
         <Still label="Signed in by each agent" detail="figma" />
         <Still label="A skill an agent keeps its own of" detail="release" />
       </Row>

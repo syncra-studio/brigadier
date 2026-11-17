@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
@@ -6,10 +6,15 @@ import { ConfirmDialog } from "../components/confirm-dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
+import { Radio, RadioGroup } from "../components/radio";
 import { Segmented } from "../components/segmented";
-import { Plus, Spinner, X } from "../icons";
+import { RowText, SettingsCard } from "../components/settings-card";
+import { DotsHorizontal, Folder, Plus, Spinner, X } from "../icons";
+import { DeviceCode } from "../onboarding/agents";
 import { errorText } from "../onboarding/api";
-import type { Item, Own } from "./plugins";
+import { BrigadierMark } from "../onboarding/mark";
+import type { Item, Own, PluginActions, Scope } from "./plugins";
+import type { Device, SignInStart } from "./plugins-details";
 import { PluginMark } from "./plugins-marks";
 
 /** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]. */
@@ -317,5 +322,159 @@ export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove
       destructive
       onConfirm={onRemove}
     />
+  );
+}
+
+/**
+ * Install, a dialog [D571]: Brigadier's mark and its, where it's on (all projects or the ones picked: nothing
+ * is on without a pick), Install; then, for a server Brigadier signs in to, the browser's sign-in with Cancel, and
+ * Try again if it didn't finish. `install` null opens on the sign-in, an installed one's Sign in; `signing` the gallery's.
+ */
+export function InstallDialog({
+  name,
+  mark,
+  line,
+  projects,
+  install,
+  signKey,
+  signing,
+  actions,
+  onClose,
+}: {
+  name: string;
+  mark: ReactNode;
+  line: string;
+  projects: { id: string; name: string }[];
+  /** Installs it where picked; answers the key to sign in to, or null when it needs none. */
+  install: ((scope: Scope) => Promise<string | null>) | null;
+  signKey?: string;
+  signing?: SignInStart;
+  actions: Pick<PluginActions, "signIn" | "cancel">;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<"choose" | "installing" | "waiting" | "failed">(
+    install ? "choose" : typeof signing === "object" && "error" in signing ? "failed" : "waiting",
+  );
+  const [some, setSome] = useState<string[] | null>(null);
+  const [device, setDevice] = useState<Device | null>(typeof signing === "object" && "code" in signing ? signing : null);
+  const [error, setError] = useState<string | null>(typeof signing === "object" && "error" in signing ? signing.error : null);
+  const key = useRef(signKey ?? null);
+  const generation = useRef(0);
+  const signIn = () => {
+    const current = ++generation.current;
+    setStep("waiting");
+    setDevice(null);
+    setError(null);
+    actions.signIn(key.current!, (shown) => generation.current === current && setDevice(shown)).then(
+      () => generation.current === current && onClose(),
+      (cause: unknown) => {
+        if (generation.current !== current) return;
+        setStep("failed");
+        setError(errorText(cause));
+      },
+    );
+  };
+  // Opened on the sign-in: it starts at once, unless the gallery opens it mid-way.
+  useEffect(() => {
+    if (!install && signing === undefined) signIn();
+  }, []);
+  const close = () => {
+    // Closing while it waits cancels it; its own promise settles as cancelled, not as an error.
+    if (step === "waiting") {
+      generation.current++;
+      void actions.cancel(key.current!).catch(() => {});
+    }
+    onClose();
+  };
+  const go = () => {
+    setStep("installing");
+    setError(null);
+    install!(some ? { projects: some } : { all: true }).then(
+      (next) => {
+        key.current = next;
+        if (next) signIn();
+        else onClose();
+      },
+      (cause: unknown) => {
+        setStep("choose");
+        setError(errorText(cause));
+      },
+    );
+  };
+  const choosing = step === "choose" || step === "installing";
+  return (
+    <Dialog open onOpenChange={(open) => !open && close()}>
+      <DialogContent data-dialog="install" showCloseButton={false} frame="project-dialog max-w-project-dialog gap-5 overflow-y-auto p-6">
+        <DialogClose render={<Button variant="ghost" size="icon-sm" className="absolute top-4 right-4 text-muted-foreground" aria-label="Close" />}>
+          <X aria-hidden />
+        </DialogClose>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <span className="flex size-14 items-center justify-center rounded-surface bg-fill">
+            <BrigadierMark className="size-8" />
+          </span>
+          <DotsHorizontal aria-hidden className="size-5 text-faint-foreground" />
+          {mark}
+        </div>
+        <div className="flex flex-col items-center gap-1 text-center">
+          <DialogTitle>{choosing ? `Install ${name}` : `Sign in to ${name}`}</DialogTitle>
+          <DialogDescription>{choosing ? line : step === "waiting" ? `Finish signing in to ${name} in your browser.` : "The sign-in didn't finish."}</DialogDescription>
+        </div>
+        {choosing && (
+          <RadioGroup aria-label="Where it's on" value={some ? "some" : "all"} onValueChange={(next) => setSome(next === "some" ? projects.map((project) => project.id) : null)}>
+            <SettingsCard>
+              <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+                <Radio value="all" className="mt-0.5" />
+                <RowText title="All projects" line="On in every project, and in new ones you add." />
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 px-4 py-3">
+                <Radio value="some" disabled={projects.length === 0} className="mt-0.5" />
+                <RowText title="Only some projects" line="On only in the projects you pick." />
+              </label>
+              {some &&
+                projects.map((project) => (
+                  <label key={project.id} className="flex cursor-pointer items-center gap-3 py-2.5 ps-11 pe-4">
+                    <Checkbox checked={some.includes(project.id)} onCheckedChange={(on) => setSome(on ? [...some, project.id] : some.filter((id) => id !== project.id))} />
+                    <Folder aria-hidden className="size-icon-md text-quiet-foreground" />
+                    <span className="text-label">{project.name}</span>
+                  </label>
+                ))}
+            </SettingsCard>
+          </RadioGroup>
+        )}
+        {step === "waiting" && (
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center justify-center gap-2 text-label text-quiet-foreground">
+              <Spinner aria-hidden className="size-icon-sm animate-spin motion-reduce:animate-none" />
+              Waiting for browser…
+            </div>
+            {device && <DeviceCode page={device.page} code={device.code} />}
+          </div>
+        )}
+        <ErrorLine error={error} className="text-center" />
+        <div className="flex justify-end gap-2">
+          {choosing && (
+            <Button className="w-full" disabled={step === "installing" || some?.length === 0} onClick={go}>
+              {step === "installing" && <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />}
+              Install
+            </Button>
+          )}
+          {step === "waiting" && (
+            <Button variant="soft" className="w-full" onClick={close}>
+              Cancel
+            </Button>
+          )}
+          {step === "failed" && (
+            <>
+              <Button variant="soft" className="flex-1" onClick={onClose}>
+                Close
+              </Button>
+              <Button className="flex-1" onClick={signIn}>
+                Try again
+              </Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
