@@ -51,10 +51,16 @@ pub(super) fn wait(
             }
         }
         if started.elapsed() >= Duration::from_secs(secs) || !here() {
-            let text = format!(
-                "Still working after {secs}s: {}. Wait again, or end your turn and check later.",
-                ids.join(", ")
-            );
+            // A wait run in the background wakes its agent with nothing new [D599]: its own
+            // workers' results and asks reach it anyway, so it's told not to wait again.
+            let mine = ids.iter().all(|w| workers::record(data, me, w).is_some());
+            let then = match mine {
+                true => {
+                    "Its result and questions come to you by themselves, so end your turn without waiting again."
+                }
+                false => "Wait again, or end your turn and check later.",
+            };
+            let text = format!("Still working after {secs}s: {}. {then}", ids.join(", "));
             return json!({"ok": true, "done": false, "state": state, "text": text});
         }
         thread::sleep(Duration::from_millis(500));

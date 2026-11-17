@@ -81,7 +81,7 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
             &["--wait", "--allow", "--to-user"],
         ),
         "wait" => (
-            "brigadier wait [<id>] [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message; with no id, the first of your workers to. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit.",
+            "brigadier wait [<id>] [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message; with no id, the first of your workers to. Gives up after S seconds (60 by default, at most 600) and says it is still working. Keep S under your own shell tool's time limit, and don't run it in the background: your workers' results and questions come to you by themselves.",
             &["--timeout"],
             &[],
         ),
@@ -93,7 +93,7 @@ brigadier start --reviewing <id>|session [\"<brief>\"] [--title T] [--json]
 
 Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
 It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
-last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now.
+last message, its branch and commits. So end your turn; `brigadier wait <id>` only if you need it now, never in the background.
 Its permission prompts and questions come to you the same way, never to the user: judge each and
 answer with `brigadier send <id> --allow`, `--deny \"<reason>\"` or your answer as the message.
 Every start names a job, or a model. A job runs on the user's list for it (Settings › Routing): the

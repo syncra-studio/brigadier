@@ -230,7 +230,7 @@ pub fn start(
             r.title, r.wid
         ),
         None => format!(
-            "Started {what} {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now.",
+            "Started {what} {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn; `brigadier wait {}` only if you need it now, never in the background.",
             r.title, r.wid, r.wid
         ),
     };
