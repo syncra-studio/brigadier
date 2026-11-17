@@ -212,7 +212,7 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     pill: (
       <div className="flex min-w-0 items-center justify-end gap-2">
         <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
-        {picked && row?.running ? <SwitchAfter id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} /> : null}
+        {picked && row?.running ? <SwitchAfter key={row.setup_op ?? ""} id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} /> : null}
         <ModelPill strip={strip} groups={groups ?? []} value={value} disabled={disabled} />
         <SetUpAgentDialog
           name={setUp}
@@ -229,7 +229,8 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
 
 /**
  * Another agent picked while a turn runs: "Codex after this turn", it takes over as the turn ends; Switch now stops the
- * turn and it carries on from the conversation, "Switching to Codex…" till Rust's row has it there [D557].
+ * turn and it carries on from the conversation, "Switching to Codex…" till Rust's row has it there [D557]. Keyed by its
+ * pick's op, so a newer pick starts afresh.
  */
 function SwitchAfter({ id, name, now }: { id: string; name: string; now: boolean }) {
   const [asked, setAsked] = useState(false);
