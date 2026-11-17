@@ -103,13 +103,14 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     (refused || stopped || lost || going).then_some("cut")
 }
 
-/// Whether the user picked another agent, or another model of `backend`, than the running turn
-/// was given [D124], or a level its agent couldn't take mid-turn (`send::relevel`) [D166].
+/// Whether the user picked another agent and said Switch now [D557], or another model of `backend`
+/// than the running turn was given [D124], or a level its agent couldn't take mid-turn
+/// (`send::relevel`) [D166]. Another agent picked otherwise waits for the turn's end.
 fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
     let model = as_run(spec, f, backend, None).model;
     let held = || crate::projects::held(&crate::data_of(spec), spec);
     let level = || crate::adapters::get(backend).and_then(|a| crate::level(spec, a, held()).ok());
-    f.picked.is_some()
+    f.picked.as_ref().is_some_and(|p| p.now)
         || (f.given.as_ref()).is_some_and(|g| {
             g["model"].as_str() != model.as_deref()
                 // Asking where its check gave no verdict is no switch: it goes back as the turn ends [D455].

@@ -1,11 +1,13 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
 import { ModelPill, ModelStrip, useModelStrip } from "../components/composer/model-strip";
 import type { Quota } from "../components/composer/quota-lines";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
+import { showToast } from "../components/toast";
 import { type Row, threadSource } from "../daemon";
 import { useStart } from "../home/start";
 import { errorText, run, store } from "../onboarding/api";
@@ -19,7 +21,9 @@ type ModelRow = Row & {
   effort?: string | null;
   /** On its model's fast tier. */
   fast?: boolean;
-  picked?: { backend: string; model: string; effort: string | null; fast?: boolean } | null;
+  /** `now`: the user said Switch now, so the turn stops for it [D557]. */
+  picked?: { backend: string; model: string; effort: string | null; fast?: boolean; now?: boolean } | null;
+  running?: boolean;
   /** The last `set` Rust took, by the app's op id [D30]. */
   setup_op?: string | null;
 };
@@ -208,6 +212,7 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     pill: (
       <div className="flex min-w-0 items-center justify-end gap-2">
         <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
+        {picked && row?.running ? <SwitchAfter id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} /> : null}
         <ModelPill strip={strip} groups={groups ?? []} value={value} disabled={disabled} />
         <SetUpAgentDialog
           name={setUp}
@@ -220,4 +225,30 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     ),
     strip: <ModelStrip strip={strip} groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} />,
   };
+}
+
+/**
+ * Another agent picked while a turn runs: "Codex after this turn", it takes over as the turn ends; Switch now stops the
+ * turn and it carries on from the conversation, "Switching to Codex…" till Rust's row has it there [D557].
+ */
+function SwitchAfter({ id, name, now }: { id: string; name: string; now: boolean }) {
+  const [asked, setAsked] = useState(false);
+  const going = now || asked;
+  const go = () => {
+    setAsked(true);
+    run(["set", id, "--now", "--op", newId()]).catch((cause) => {
+      setAsked(false);
+      showToast(`Couldn't switch now: ${errorText(cause)}`, { tone: "error" });
+    });
+  };
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
+      <span className="truncate">{going ? `Switching to ${name}…` : `${name} after this turn`}</span>
+      {!going && (
+        <Button size="xs" variant="ghost" onClick={go}>
+          Switch now
+        </Button>
+      )}
+    </span>
+  );
 }

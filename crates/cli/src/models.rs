@@ -170,7 +170,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "groups": groups}))
 }
 
-/// `set <session> --agent B --model M [--effort E] [--fast] --op OP` [D129, D218]: the
+/// `set <session> --agent B --model M [--effort E] [--fast] --op OP` [D129, D557]: the
 /// conversation's own agent takes M, E and the fast tier (where M has one) from its next turn;
 /// another agent is picked, and the next message goes to it in a new conversation with the
 /// hand-off [D90]. Checked against B's last check in the
@@ -181,6 +181,17 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     let refuse = |error: &str, message: &str| {
         Ok(json!({"ok": false, "op": op, "error": error, "message": message}))
     };
+    // Switch now: the agent picked mid-turn stops the turn and carries on from there [D557].
+    if args.iter().any(|a| a == "--now") {
+        let spec = core::load(data, id)?;
+        if core::fold(&spec.dir, true)?.fold.picked.is_none() {
+            return refuse("no_pick", "No other agent is picked.");
+        }
+        let note = json!({"event": "switch_now", "op": op});
+        owner::ensure(data, &spec)?;
+        owner::call(data, id, json!({"op": "note", "data": note}))?;
+        return Ok(json!({"ok": true, "op": op}));
+    }
     let (Some(b), Some(m)) = (flag(args, "--agent"), flag(args, "--model")) else {
         return Err(io::Error::other(
             "usage: brigadier set <session> --agent B --model M [--effort E] [--fast] --op OP",

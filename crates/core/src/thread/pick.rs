@@ -55,7 +55,7 @@ impl Thread {
     /// place; every pick its own row [D76, D90].
     fn agent_picked(&mut self, note: &Value) {
         let (to, model) = (s(note, &["to_label"]), s(note, &["name"]));
-        // Live while a turn runs: it carries on on the new model at a safe point [D124, D241].
+        // Live while a turn runs: the new agent takes over at its end, or at Switch now [D241, D557].
         let state = if self.open.is_some() {
             "switching"
         } else {

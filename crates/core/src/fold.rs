@@ -12,6 +12,7 @@ mod rewind;
 pub mod runs;
 mod status;
 mod turns;
+pub use input::Picked;
 pub use live::{
     Job, Live, background_row, history, live, live_groups, note_stop, stop_job, task_of,
 };
@@ -28,19 +29,6 @@ pub struct Child {
     pub start_us: u64,
     pub backend: String,
     pub exited: bool,
-}
-
-/// Another agent's model and effort, picked for the next message.
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Picked {
-    pub backend: String,
-    pub model: String,
-    pub effort: Option<String>,
-    #[serde(default)]
-    pub fast: bool,
-    /// Its name as the picker shows it; the id where none was given.
-    #[serde(default)]
-    pub name: String,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -476,6 +464,7 @@ impl Fold {
                 Some("go_on") => self.go_on = Some(str_of("turn")),
                 Some("level") => self.took("level", &item["level"]), // the running child confirmed it mid-turn [D166]
                 Some("setup") => self.setup(item),
+                Some("switch_now") => self.picked.iter_mut().for_each(|p| p.now = true),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
                 Some("peer") => self.passed_to_user(item),

@@ -1,7 +1,25 @@
 //! An input written to the agent, and the app's `set`: what each sets up for the turn it starts.
 
-use super::{Fold, Picked, Turn};
+use super::{Fold, Turn};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Another agent's model and effort, picked for the next message.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Picked {
+    pub backend: String,
+    pub model: String,
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub fast: bool,
+    /// Its name as the picker shows it; the id where none was given.
+    #[serde(default)]
+    pub name: String,
+    /// Picked mid-turn, it waits for that turn's end, unless the user said Switch now: the turn
+    /// stops, and it carries on from the conversation [D557].
+    #[serde(default)]
+    pub now: bool,
+}
 
 impl Fold {
     /// What the running child takes, as its agent confirmed it: its level, or its `real` model.
@@ -26,6 +44,7 @@ impl Fold {
                 model,
                 effort,
                 fast,
+                now: false,
             });
             return;
         }
