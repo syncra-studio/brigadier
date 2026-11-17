@@ -12,6 +12,7 @@ import { ForkGallery } from "./fork";
 import { Kit } from "./kit";
 import { MockupGallery } from "./mockup";
 import { Notices } from "./notices";
+import { NotificationsGallery } from "./notifications";
 import { Panes } from "./panes";
 import { Area } from "./parts";
 import { PeersGallery } from "./peers";
@@ -118,6 +119,7 @@ function GalleryPage() {
               <PickersGallery />
             </Area>
             <Area name="Settings">
+              <NotificationsGallery />
               <RoutingGallery />
               <PluginsGallery />
             </Area>

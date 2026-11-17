@@ -49,21 +49,22 @@ protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: t
 
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
 // older one, which may answer but refuse this app.
-// The first open panel of a run loads its frameworks, about half a second. Paid once, off the
-// user's click, so Choose folder and Change open at once (the old app's warm_folder_picker) [D389].
-let panelWarmed = false;
-function warmFolderPanel(): void {
-  if (panelWarmed || process.platform !== "darwin") return;
-  panelWarmed = true;
+// The app's addon (crates/panel), loaded once. Loading it readies the folder picker: the first open panel of a run
+// loads its frameworks, about half a second, paid off the user's click so Choose folder and Change open at once (the
+// old app's warm_folder_picker) [D389]. It also tells Settings what macOS lets notices do [D611].
+let addon: { notifications?: () => string | null } | undefined;
+function panel(): typeof addon {
+  if (addon || process.platform !== "darwin") return addon;
+  addon = {};
   const file = app.isPackaged ? path.join(process.resourcesPath, "bin/libbrigadier_panel.dylib") : path.join(__dirname, "../../../target/debug/libbrigadier_panel.dylib");
-  setTimeout(() => {
-    try {
-      process.dlopen({ exports: {} } as NodeJS.Module, file);
-    } catch (error) {
-      console.error("Could not ready the folder picker:", error);
-    }
-  }, 1500);
+  try {
+    process.dlopen({ exports: addon } as NodeJS.Module, file);
+  } catch (error) {
+    console.error("Could not load the app's addon:", error);
+  }
+  return addon;
 }
+const warmFolderPanel = () => void setTimeout(panel, 1500);
 
 function startDaemon(): void {
   const daemon = spawn(daemonPath, daemonArgs, { detached: true, stdio: "ignore" });
@@ -398,7 +399,7 @@ app.on("open-file", (event, file) => {
 
 void app.whenReady().then(() => {
   setMenu();
-  serveNotices();
+  serveNotices(panel);
   serveTray();
   startDaemon();
   serveUi();

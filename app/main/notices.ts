@@ -6,7 +6,7 @@ import { app, BrowserWindow, ipcMain, Notification, shell } from "electron";
 // Kept until they close, or a click on one that was collected goes nowhere.
 const shown = new Set<Notification>();
 
-export function serveNotices(): void {
+export function serveNotices(panel: () => { notifications?: () => string | null } | undefined): void {
   ipcMain.handle("notify", (event, { title, body, silent, session }: { title: string; body: string; silent: boolean; session?: string }) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const notice = new Notification({ title, body, silent });
@@ -31,5 +31,7 @@ export function serveNotices(): void {
     });
   });
   ipcMain.on("badge", (_event, count: number) => app.dock?.setBadge(count > 0 ? String(count) : ""));
+  // What macOS lets notices do now, asked of it each time [D611].
+  ipcMain.handle("notification-state", () => panel()?.notifications?.() ?? null);
   ipcMain.on("open-notification-settings", () => void shell.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension"));
 }

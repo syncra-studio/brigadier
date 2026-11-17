@@ -39,6 +39,8 @@ declare global {
       running(sessions: { id: string; title: string }[]): void;
       /** A click on a notice, with its session. */
       onNoticeClick(listener: (session: string) => void): () => void;
+      /** What macOS lets notices do now: not asked yet, off, allowed but on neither the desktop nor in Notification Center, or on; null where it can't be asked. */
+      notificationState(): Promise<"unasked" | "blocked" | "hidden" | "sent" | null>;
       openNotificationSettings(): void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;

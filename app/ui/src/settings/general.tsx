@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
@@ -55,9 +55,22 @@ export function useSave() {
   return { error, run };
 }
 
+/** What macOS lets notices do, asked again each time the window comes back, as from System Settings [D611]; null where it can't be asked. */
+function useNoticeState() {
+  const [state, setState] = useState<Notices | null>(null);
+  const load = () => window.brigadier?.notificationState().then(setState, (cause: unknown) => console.error(cause));
+  useEffect(() => {
+    void load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, []);
+  return { state, load };
+}
+
 export function GeneralPage() {
   const { value: settings, error } = useSettings();
   const { daemon } = useDaemon();
+  const live = useNoticeState();
   return (
     <SettingsPage title="General">
       {!settings ? (
@@ -67,7 +80,7 @@ export function GeneralPage() {
       ) : (
         <div className={cx("flex flex-col gap-10", !daemon && "pointer-events-none opacity-disabled")}>
           <ComposerSection settings={settings} />
-          <NotificationsSection settings={settings} />
+          <NotificationsSection settings={settings} notices={live.state ?? settings.notices} reload={live.load} />
           <PowerSection settings={settings} />
         </div>
       )}
@@ -100,38 +113,49 @@ function ComposerSection({ settings }: { settings: Settings }) {
   );
 }
 
-/** Notifications, the old app's rows [D2022], plus the sound [D2012]. The status line is worked out from what macOS did with the last notice [D2024]. */
-function NotificationsSection({ settings }: { settings: Settings }) {
+/** macOS's word on notices, or, where it can't be asked, what it did with the last one [D2024]. */
+export type Notices = Settings["notices"] | "hidden";
+
+/**
+ * Notifications, the old app's rows [D2022], plus the sound [D2012]. The status line says what macOS allows [D611].
+ * The rows stay usable, and look it, whatever it allows: they apply once notices show.
+ */
+export function NotificationsSection({ settings, notices, reload }: { settings: Settings; notices: Notices; reload: () => unknown }) {
   const status = useSave();
   const finished = useSave();
   const needs = useSave();
   const sound = useSave();
-  // The rows stay usable while notifications are off, dimmed: they apply once they're on.
-  const off = settings.notices !== "sent";
   return (
     <SettingsSection title="Notifications">
       <SettingsCard>
-        {settings.notices === "blocked" && (
+        {notices === "blocked" && (
           <SettingsRow label="Notifications are off" description="Turn them on in System Settings to use the options below" error={status.error}>
             <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
               Open System Settings
             </Button>
           </SettingsRow>
         )}
-        {settings.notices === "unasked" && (
+        {notices === "hidden" && (
+          <SettingsRow label="Notifications are allowed but don't show" description="Turn on Desktop or Notification Center for Brigadier in System Settings" error={status.error}>
+            <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
+              Open System Settings
+            </Button>
+          </SettingsRow>
+        )}
+        {notices === "unasked" && (
           <SettingsRow label="Notifications aren't on yet" description="Allow them to hear when work is done or needs you" error={status.error}>
-            <Button variant="soft" size="sm" onClick={() => status.run(() => sendNotice({ title: "Notifications are on", body: "Brigadier will tell you when work is done or needs you." }))}>
+            <Button variant="soft" size="sm" onClick={() => status.run(() => sendNotice({ title: "Notifications are on", body: "Brigadier will tell you when work is done or needs you." }).then(reload))}>
               Allow
             </Button>
           </SettingsRow>
         )}
-        <SettingsRow className={cx(off && "opacity-disabled")} label={GENERAL_ROWS.notifyFinished.label} description={GENERAL_ROWS.notifyFinished.description} error={finished.error}>
+        <SettingsRow label={GENERAL_ROWS.notifyFinished.label} description={GENERAL_ROWS.notifyFinished.description} error={finished.error}>
           <Select label={GENERAL_ROWS.notifyFinished.label} value={settings.notify_finished} options={NOTIFY_FINISHED} onChange={(value) => finished.run(() => setSetting("notify_finished", value))} />
         </SettingsRow>
-        <SwitchRow dimmed={off} row={GENERAL_ROWS.needsYou} checked={settings.notify_needs_you} save={needs} onChange={(on) => setSetting("notify_needs_you", on)} />
-        <SwitchRow dimmed={off} row={GENERAL_ROWS.sound} checked={settings.sound} save={sound} onChange={(on) => setSetting("sound", on)} />
-        {/* Always there but when the off line already holds the button: macOS doesn't tell an app it was turned off later [D2086]. */}
-        {settings.notices !== "blocked" && (
+        <SwitchRow row={GENERAL_ROWS.needsYou} checked={settings.notify_needs_you} save={needs} onChange={(on) => setSetting("notify_needs_you", on)} />
+        <SwitchRow row={GENERAL_ROWS.sound} checked={settings.sound} save={sound} onChange={(on) => setSetting("sound", on)} />
+        {/* Always there but when the status line already holds the button [D2086]. */}
+        {notices !== "blocked" && notices !== "hidden" && (
           <SettingsRow label={GENERAL_ROWS.systemSettings.label} description={GENERAL_ROWS.systemSettings.description} error={status.error}>
             <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
               Notification settings…
@@ -146,20 +170,18 @@ function NotificationsSection({ settings }: { settings: Settings }) {
 export function SwitchRow({
   row,
   checked,
-  dimmed = false,
   disabled,
   save,
   onChange,
 }: {
   row: { label: string; description: string };
   checked: boolean;
-  dimmed?: boolean;
   disabled?: boolean;
   save: ReturnType<typeof useSave>;
   onChange: (on: boolean) => Promise<unknown>;
 }) {
   return (
-    <SettingsRow className={cx(dimmed && "opacity-disabled")} label={row.label} description={row.description} error={save.error}>
+    <SettingsRow label={row.label} description={row.description} error={save.error}>
       <Switch aria-label={row.label} checked={checked} disabled={disabled} onCheckedChange={(on) => save.run(() => onChange(on))} />
     </SettingsRow>
   );

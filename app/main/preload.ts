@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld("brigadier", {
     ipcRenderer.on("notice-click", heard);
     return () => void ipcRenderer.off("notice-click", heard);
   },
+  notificationState: () => ipcRenderer.invoke("notification-state"),
   openNotificationSettings: () => ipcRenderer.send("open-notification-settings"),
   introBegin: () => ipcRenderer.invoke("intro-begin"),
   introShaped: () => ipcRenderer.invoke("intro-shaped"),
