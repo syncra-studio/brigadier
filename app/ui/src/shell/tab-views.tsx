@@ -24,6 +24,7 @@ import { keysOf } from "../shortcuts";
 import { LocalServers, SuggestedSites } from "../browser/new-tab";
 import { BrowserTab } from "../browser/tab";
 import { AttachmentTab } from "./attachment-tab";
+import { MockupTab } from "../mockup/live";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
@@ -210,6 +211,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
                 <NoteTab key={tab.target} owner={owner} note={tab.target ?? ""} tabId={tab.id} active={tab.id === active} />
               ) : tab.kind === "browser" ? (
                 <BrowserTab owner={owner} tab={tab} active={tab.id === active} />
+              ) : tab.kind === "mockup" ? (
+                <MockupTab owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "new" ? (
                 // The New tab is the browser: Enter or a site turns it into the page, drawn anew [D508].
                 <BrowserTab key="new" owner={owner} tab={tab} active={tab.id === active} onNavigate={(url) => replaceTab(owner, tab.id, "browser", url)}>

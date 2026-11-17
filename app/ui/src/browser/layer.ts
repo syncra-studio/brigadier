@@ -68,6 +68,7 @@ export type BrowserEvent =
   | { type: "visit"; url: string }
   | { type: "favicon"; url: string; dataUrl: string }
   | { type: "blocked"; url: string }
+  | { type: "failed"; url: string }
   | { type: "escape" }
   | { type: "popup"; id: string; url: string }
   | { type: "closed" }
@@ -287,7 +288,7 @@ function listen(page: Page): void {
   // A web page that can't load gets its own page (main's browser/guestFailedLoad.ts); any other scheme can't open here.
   on<{ errorCode: number; validatedURL: string; isMainFrame: boolean }>("did-fail-load", ({ errorCode, validatedURL, isMainFrame }) => {
     // -3 is an aborted load, which a newer navigation or the Stop button causes.
-    if (isMainFrame && errorCode !== -3 && !/^https?:/.test(validatedURL)) emit({ type: "blocked", url: validatedURL });
+    if (isMainFrame && errorCode !== -3) emit({ type: /^https?:/.test(validatedURL) ? "failed" : "blocked", url: validatedURL });
   });
   on("close", () => emit({ type: "closed" }));
   on<{ result: { activeMatchOrdinal: number; matches: number; finalUpdate: boolean } }>("found-in-page", ({ result }) => {

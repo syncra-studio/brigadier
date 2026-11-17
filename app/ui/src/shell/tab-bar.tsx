@@ -25,6 +25,7 @@ import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
+import { LiveMockupTabIcon } from "../mockup/live";
 import { useNoteTitle } from "./note-tab";
 import { useTabKeys } from "./tab-keys";
 import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
@@ -152,6 +153,7 @@ const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/"
 function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {
   if (tab.kind === "browser") return <span className="relative flex shrink-0"><BrowserTabIcon tabId={tab.id} /><TabProfileDot owner={owner} tab={tab} /></span>;
   if ((tab.kind === "file" || tab.kind === "attachment") && tab.target !== undefined) return <FileIcon name={nameOf(tab)} size="sm" />;
+  if (tab.kind === "mockup") return <LiveMockupTabIcon worker={tab.target ?? ""} />;
   const Icon = TAB_KINDS[tab.kind].icon;
   return <Icon className="size-icon-sm shrink-0" />;
 }

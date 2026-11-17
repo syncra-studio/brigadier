@@ -273,6 +273,8 @@ export type Item = Base &
     | { kind: "team_step"; type: "paused" | "resumed"; workers: string[] }
     | { kind: "team_step"; type: "messaged"; byUser: boolean; workers: string[]; text?: string }
     | { kind: "team_still"; workers: string[] }
+    /** The lead's one row for its mockup worker's mockup, its moment read live (`mockup <wid>`) [D2055, D560]. */
+    | { kind: "mockup"; worker: string; count: number }
     /** A message this session's agent sent another, from Rust's notes [D2034, D3014]; `waited` once a `--wait` ended. */
     | {
         kind: "peer";

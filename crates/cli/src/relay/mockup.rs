@@ -186,7 +186,10 @@ pub(crate) fn answered(data: &Path, id: &str, request: &str, choice: &str) -> io
         (SKIP, _) => "The user skipped the mockup: build the change now.".into(),
         (_, Some((s, w))) => {
             let title = state(data, &w).map_or(Value::Null, |m| m["title"].clone());
-            open(data, id, &w);
+            let count = state(data, &w)
+                .and_then(|m| m["count"].as_u64())
+                .unwrap_or(3);
+            open(data, id, &w, count as usize);
             format!(
                 "The user reuses the mockup session {s} already drew of this ({}): it opened in the Mockup tab. Its variants' code is on that mockup worker's branch ({w}); the variant the user picks there with Use is wired into {s}'s branch by that worker. Don't build the change yourself.",
                 title.as_str().unwrap_or("its mockup")
@@ -230,7 +233,7 @@ fn start(data: &Path, me: &str, what: &str, count: usize) -> String {
             "The user wants a mockup first, but its worker couldn't start: {why} Tell the user."
         );
     };
-    open(data, me, wid);
+    open(data, me, wid, count);
     let n = if count == 1 {
         "1 variant"
     } else {
@@ -241,11 +244,14 @@ fn start(data: &Path, me: &str, what: &str, count: usize) -> String {
     )
 }
 
-/// The Mockup tab on worker `wid`'s mockup, behind the one in front [D2066]; one per session.
-fn open(data: &Path, me: &str, wid: &str) {
+/// The Mockup tab on worker `wid`'s mockup, behind the one in front [D2066], one per session, and
+/// its row in the chat, "Mockup · drawing 3 variants · Open" [D2055, D560].
+fn open(data: &Path, me: &str, wid: &str, count: usize) {
     let tab = format!("t-{}", crate::control::new_cid());
     let args = ["tabs", me, "open", &tab, "mockup", wid, "--behind"];
     let _ = crate::tabs::run(data, &args.map(String::from));
+    let note = json!({"event": "mockup", "phase": "started", "id": wid, "count": count});
+    let _ = owner::call(data, me, json!({"op": "note", "data": note}));
 }
 
 /// A mockup worker's report: a variant of the round it draws, by letter, or the real screen once
@@ -310,7 +316,8 @@ fn web(url: &str) -> bool {
     u.starts_with("http://") || u.starts_with("https://")
 }
 
-/// A variant's screenshot, copied into the worker's folder so its round keeps it [D2059].
+/// A variant's screenshot, kept as one of the worker's attachments so its round keeps it and the
+/// tab loads it as any attachment [D2059]; its address back.
 fn keep_shot(data: &Path, me: &str, from: &str, round: usize, letter: &str) -> io::Result<String> {
     let spec = core::load(data, me)?;
     let from = Path::new(&spec.cwd).join(from);
@@ -323,13 +330,11 @@ fn keep_shot(data: &Path, me: &str, from: &str, round: usize, letter: &str) -> i
                 from.display()
             ))
         })?;
-    let to = spec
-        .dir
-        .join("mockup")
-        .join(format!("{round}-{letter}.png"));
-    fs::create_dir_all(to.parent().unwrap_or(&spec.dir))?;
-    core::write_atomic(&to, &png)?;
-    Ok(to.to_string_lossy().into())
+    let id = format!("mockup-{round}-{letter}");
+    let to = spec.dir.join("attachments").join(&id);
+    fs::create_dir_all(&to)?;
+    core::write_atomic(&to.join(format!("{letter}.png")), &png)?;
+    Ok(format!("/attachment/{me}/{id}"))
 }
 
 /// `mockup <wid>`: the mockup as the tab draws it (`app/ui/src/mockup/model.ts`): the last round

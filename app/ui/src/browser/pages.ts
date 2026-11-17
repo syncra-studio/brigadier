@@ -22,6 +22,8 @@ export type BrowserPage = {
   favicon?: string | null;
   /** The last navigation the tab refused, offered to the system browser. */
   blocked: string | null;
+  /** A web page that didn't load, till the next load starts: the Mockup tab's frames show their own failed state. */
+  failed?: string | null;
   /** What the page's history allows, once the page has said. */
   canGoBack?: boolean;
   canGoForward?: boolean;
@@ -126,6 +128,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
         update(id, {
           url: event.url,
           loading: event.loading,
+          ...(event.loading ? { failed: null } : {}),
           // Another site's. A pushState looks like any other load here and nothing sends its icon again;
           // a new page of this site keeps the old icon until its own arrives, as in a browser.
           ...(originOf(event.url) !== originOf(shown?.url ?? "") ? { favicon: null } : {}),
@@ -159,6 +162,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
         void siteAsked(profileOf(owner, id), origin, camera ? "camera" : microphone ? "microphone" : "location");
       } else if (event.type === "permissionRefused") update(id, { osRefused: { origin: event.origin, refused: event.refused as OsRefused[] } });
       else if (event.type === "blocked") update(id, { blocked: event.url, loading: false });
+      else if (event.type === "failed") update(id, { failed: event.url });
     });
     // Closed while it was coming.
     if (!pages.get(id)) {
