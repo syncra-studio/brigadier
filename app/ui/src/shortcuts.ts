@@ -10,7 +10,7 @@ export type Shortcut = { id: string; keys: readonly string[]; name: string; line
 
 export const SHORTCUTS: readonly Shortcut[] = catalog;
 
-const MAC = window.brigadier ? window.brigadier.platform === "darwin" : /Mac/.test(navigator.platform);
+const MAC = /Mac/.test(navigator.platform);
 
 // A key's glyph, where it isn't written by its name.
 const ARROWS: Record<string, string> = { Up: "↑", Down: "↓", Left: "←", Right: "→" };

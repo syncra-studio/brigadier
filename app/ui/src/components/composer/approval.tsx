@@ -445,7 +445,7 @@ export function ApprovalSlot({
       .finally(() => setSending((ids) => new Set([...ids].filter((key) => key !== id))));
   };
   return (
-    <div data-slot="approval-slot" className={cx("relative w-full rounded-composer bg-composer shadow-composer", opens && "motion-safe:animate-rail-open")}>
+    <div data-slot="approval-slot" className={cx("relative w-full rounded-composer bg-composer shadow-hairline", opens && "motion-safe:animate-rail-open")}>
       <ApprovalCard
         key={id}
         approval={approval}

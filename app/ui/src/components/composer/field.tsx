@@ -455,8 +455,7 @@ function Keys({
       const paste = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v";
       const char = event.key.length === 1 && event.key !== " " && !event.metaKey && !event.ctrlKey && !event.altKey;
       if (!(char || paste) || event.defaultPrevented || event.isComposing || !root?.checkVisibility() || root.closest("[inert]")) return;
-      // A model shelf with a search takes the letters typed in it [D92].
-      if (document.activeElement?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false]), [data-slot=model-picker]:has(input)") || document.querySelector(OVERLAYS)) return;
+      if (document.activeElement?.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])") || document.querySelector(OVERLAYS)) return;
       // At the draft's end, wherever the caret was left; focus() alone keeps the old selection.
       editor.update(() => $getRoot().selectEnd());
       editor.focus();

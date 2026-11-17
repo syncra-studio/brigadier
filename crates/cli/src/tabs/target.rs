@@ -27,7 +27,7 @@ pub(crate) fn relative(data: &Path, id: &str, target: String) -> io::Result<Stri
     }
 }
 
-/// A file, PR and attachment tab need their target, a Review tab may have one (its file), every other kind refuses one. A
+/// A file, PR, attachment, note, browser and mockup tab need their target, a Review tab may have one (its file), every other kind refuses one. A
 /// file's is its file, relative and staying in the session's checkout; a PR's is its number, written plainly so one
 /// PR is one tab [D1032].
 pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {

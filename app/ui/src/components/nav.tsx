@@ -18,8 +18,8 @@ export function NavRow({ className, ...props }: ComponentProps<"button">) {
     <button
       type="button"
       className={cx(
-        "relative flex min-h-nav-row w-full min-w-0 cursor-pointer items-center gap-2 rounded-nav ps-2 pe-1.5 text-start text-sm text-strip-foreground",
-        "hover:bg-fill group-hover/row:bg-fill group-has-data-popup-open/row:bg-fill focus-visible:focus-ring page-current:bg-selection data-active:bg-selection svg:shrink-0 svg:size-icon-md",
+        "relative flex min-h-nav-row w-full min-w-0 cursor-pointer items-center gap-2 rounded-nav px-2 text-start text-sm text-strip-foreground",
+        "hover:bg-fill group-hover/row:bg-fill group-has-data-popup-open/row:bg-fill focus-visible:focus-ring page-current:bg-fill data-active:bg-fill svg:shrink-0 svg:size-icon-md",
         className,
       )}
       {...props}

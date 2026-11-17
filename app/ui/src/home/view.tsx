@@ -4,8 +4,7 @@ import { Button } from "../components/button";
 import { SharedComposer } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText } from "../components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
-import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
-import { ModelPill, ModelStrip, useModelStrip } from "../components/composer/model-strip";
+import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
 import { ChipContext, ComposerChip } from "../components/composer/chip";
 import { NoticeRow, RailItem } from "../components/composer/rail";
 import { SendButton } from "../components/composer/send-button";
@@ -95,8 +94,6 @@ export function HomeView(props: HomeProps) {
   const holder = project ? props.localHolder : undefined;
   const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : holder ? "Start in a new worktree" : undefined;
   const field = useRef<ComposerFieldHandle>(null);
-  const modelDisabled = offline || props.groups === null;
-  const strip = useModelStrip({ disabled: modelDisabled });
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
   const typed = useRef(props.initial?.parts ?? []);
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
@@ -196,8 +193,7 @@ export function HomeView(props: HomeProps) {
                   </ul>
                 </RailItem>
               )}
-              {/* The model strip takes its slot while open; it comes back once the strip has folded [D83]. */}
-              <RailItem variant="controls" label="Composer utility bar" shown={!(strip.present && props.model)}>
+              <RailItem variant="controls" label="Composer utility bar">
                 {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
                 <UtilityBar className={projects ? undefined : "invisible"}>
                   <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
@@ -210,7 +206,6 @@ export function HomeView(props: HomeProps) {
                   )}
                 </UtilityBar>
               </RailItem>
-              {props.model && <ModelStrip strip={strip} groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} asksSwitch={false} />}
             </>
           }
           onDragOver={files.onDragOver}
@@ -218,7 +213,7 @@ export function HomeView(props: HomeProps) {
           tiles={files.tilesRow}
           plus={extras.plus}
           level={props.level}
-          model={props.model && <ModelPill strip={strip} groups={props.groups ?? []} value={props.model} disabled={modelDisabled} />}
+          model={props.model && <ModelPicker groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} disabled={offline || props.groups === null} asksSwitch={false} />}
           send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(typed.current)} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
         >
           <ComposerField

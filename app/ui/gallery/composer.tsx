@@ -12,7 +12,6 @@ import { ContextRing, EditComposer, SharedComposer } from "../src/components/com
 import { type Draft, isEmpty, plainText, sendMode } from "../src/components/composer/draft";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { fuzzyMatch, type Mention, type MentionGroup, type Mentions, PlusMenu, type SlashCommand } from "../src/components/composer/menus";
-import { ModelPill, ModelStrip, useModelStrip } from "../src/components/composer/model-strip";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
 import { type PendingQuestion, QuestionCard } from "../src/components/composer/question";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
@@ -24,7 +23,7 @@ import { duration, useSecond } from "../src/thread/words";
 import type { Worker } from "../src/workers/chip";
 import { WorkersStrip } from "../src/workers/strip";
 import { Section } from "./parts";
-import { BranchToggles, ProjectBar, useLiveModel } from "./pickers";
+import { BranchToggles, LiveModelPicker, ProjectBar } from "./pickers";
 import picture from "./sample.svg?no-inline";
 
 const draft = (...parts: Draft["parts"]): Draft => ({ parts, attachmentIds: [] });
@@ -151,8 +150,6 @@ function Live() {
   const field = useRef<ComposerFieldHandle>(null);
   const next = useRef(1);
   const [empty, setEmpty] = useState(true);
-  const live = useLiveModel();
-  const strip = useModelStrip({});
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [stopped, setStopped] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -328,11 +325,10 @@ function Live() {
                 </RailItem>
               )}
               {home && (
-                <RailItem variant="controls" label="Composer utility bar" shown={!strip.present}>
+                <RailItem variant="controls" label="Composer utility bar">
                   <ProjectBar loading={branchesLoading} failed={branchesFailed} />
                 </RailItem>
               )}
-              <ModelStrip strip={strip} {...live} />
             </>
           }
           above={approvals.length > 0 && <ApprovalSlot approvals={approvals} onAnswer={answerApproval} />}
@@ -342,7 +338,7 @@ function Live() {
           plus={<PlusMenu field={field} commands={commands} chats={CHATS} onFiles={(files) => files.forEach((file) => attach(crypto.randomUUID(), file, false))} />}
           level={<PermissionPicker value={level} onChange={setLevel} />}
           ring={<ContextRing usedTokens={45_000} windowTokens={258_000} />}
-          model={<ModelPill strip={strip} groups={live.groups} value={live.value} />}
+          model={<LiveModelPicker />}
           send={
             <SendButton
               empty={empty && tiles.length === 0}

@@ -1,24 +1,28 @@
-import { type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { TooltipIconButton } from "../components/icon-button";
 import { type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { Body } from "../components/thread/body";
 import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
+import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
+import { X } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { CardSection } from "../panel/card";
 import { Counts, Line } from "../panel/source/rows";
 import { cx } from "../components/cx";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
-import { openPanel } from "../panel/memory";
+import { setPanelOpen, usePanelMemory } from "../panel/memory";
+import { px, ResizeHandle, useHasPanel } from "../shell/right-panel";
 import type { Item, Setup, StepKind, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
-import { WorkerHeader, WorkerThread } from "./view";
+import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
  * 4.2's drawn parts on Rust's rows [D3010, D3012, D3013, D3018]: a worker's row carries `worker`, which Rust folds
@@ -103,8 +107,8 @@ const stop = (parent: string, ids: readonly string[]) =>
     return false;
   });
 
-/** Which worker or subagent each session's Workers view shows (null: the list), and which list. */
-type Shown = { worker: string | null; tab?: string };
+/** Whether each session's Workers panel is open, which worker or subagent it shows (null: the list), and which list. */
+type Shown = { open: boolean; worker: string | null; tab?: string };
 let shown: Record<string, Shown> = {};
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
@@ -112,20 +116,20 @@ function show(owner: string, next: Shown) {
   shown = { ...shown, [owner]: next };
   for (const listener of listeners) listener();
 }
-const LIST: Shown = { worker: null };
-const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? LIST;
-/** Shows `next` in the right panel's Workers view, opening the panel there [D56]. */
-const reveal = (owner: string, next: Shown) => (show(owner, next), openPanel(owner, "workers"));
+const CLOSED: Shown = { open: false, worker: null };
+const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? CLOSED;
+// shortcut: the panel's dragged width lasts until the app quits; keep it in Rust's panel memory if the owner wants it kept.
+let width: number | null = null;
 
-/** Opens a worker of `owner` in its Workers view: its chip in a message, or a message just sent to it. */
-export const openWorker = (owner: string, worker: string) => reveal(owner, { worker });
+/** Opens a worker of `owner` in its Workers panel: its chip in a message, or a message just sent to it. */
+export const openWorker = (owner: string, worker: string) => show(owner, { open: true, worker });
 
-/** A worker named anywhere opens it in its parent's Workers view; null opens the list, `tab`'s. */
+/** A worker named anywhere opens it in its parent's Workers panel; null opens the list, `tab`'s. */
 export function Opens({ owner, tab, children }: { owner: string; tab?: string; children: ReactNode }) {
   const rows = useDaemon().rows;
   // A Brigade's session opens as the session it is [D189].
   const session = (id: string | null) => rows?.some((row) => row.id === id && row.boss);
-  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : reveal(owner, { worker, tab }));
+  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : show(owner, { open: true, worker, tab }));
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
@@ -200,7 +204,7 @@ export function SessionWorkersStrip({ id }: { id: string }) {
 }
 
 /** "1 done · 1 paused · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
-export function finishedWords(workers: readonly Worker[]): string {
+function finishedWords(workers: readonly Worker[]): string {
   const counts = { done: 0, paused: 0, stopped: 0, failed: 0 };
   for (const { kind } of workers) {
     if (kind === "done" || kind === "merged" || kind === "doneNotMerged") counts.done += 1;
@@ -209,43 +213,140 @@ export function finishedWords(workers: readonly Worker[]): string {
   return Object.entries(counts).filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`).join(" · ");
 }
 
+/** A right column's chosen width, not its rendered one; one never resized counts at its default. */
+const chosen = (dragged: number | null) => dragged ?? px("--spacing-sidebar");
+
+/** Whether the Workers column folds, as the old app's rightSidebarFolds: below the narrow window plus the open left column. */
+const folds = () => {
+  const left = document.querySelector('[data-slot="sidebar-panel"]');
+  return innerWidth < px("--spacing-narrow-window") + (left?.getAttribute("data-state") === "expanded" ? left.getBoundingClientRect().width : 0);
+};
+function subscribeFold(onChange: () => void) {
+  const left = document.querySelector('[data-slot="sidebar-panel"]');
+  const observer = new ResizeObserver(onChange);
+  if (left) observer.observe(left);
+  addEventListener("resize", onChange);
+  return () => {
+    observer.disconnect();
+    removeEventListener("resize", onChange);
+  };
+}
+
 /**
- * The right panel's Workers view [D56], as the old app's RightSidebar's [D3012, D3013]: the list, or a worker's or
- * subagent's own view with its header; Workers and the CLI's own subagents each a list, switched in a row at its top
- * once both are there. The panel's icon row and toggle open and close it.
+ * The Workers panel, as the old app's RightSidebar [D3012, D3013]: its own column between the chat and Files, opened
+ * from a worker named anywhere, its tab and close in a row at its top, or a worker's header in their place. It slides
+ * as Files does; where the window can't hold the chat beside both, the one opened last stays and the other closes.
  */
-export function WorkersPane({ owner }: { owner: string }) {
+export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (width: number) => void }) {
   const workers = useWorkers(owner);
   const agents = useAgents(owner);
   const shown = useShown(owner);
+  // Folded, it shows only once opened there, and each fold change closes it; the wide choice stays, as the old useSidebarChoice's.
+  const fold = useSyncExternalStore(subscribeFold, folds);
+  const [hidden, setHidden] = useState(fold);
+  const [wide, setWide] = useState(fold ? shown.open : null);
+  const [seen, setSeen] = useState({ fold, shown });
+  if (seen.fold !== fold || seen.shown !== shown) {
+    setSeen({ fold, shown });
+    setHidden(seen.fold !== fold && fold);
+    if (seen.fold !== fold && fold) setWide(shown.open);
+  }
+  // Unfolded, the choice made while wide comes back.
+  useLayoutEffect(() => {
+    if (fold || wide === null) return;
+    setWide(null);
+    if (shown.open !== wide) show(owner, { open: wide, worker: shown.worker });
+  }, [fold, wide, shown, owner]);
+  const open = shown.open && !hidden;
   const { worker } = shown;
+  const files = usePanelMemory();
+  const filesOpen = useHasPanel(owner) && files.open;
+  const [resizing, setResizing] = useState(false);
+  const content = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
+  const close = () => (fold ? setHidden(true) : show(owner, { open: false, worker }));
+
+  // Files leaves room for this column's full width while it's open, as this one leaves Files its least width.
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!open || !element) return;
+    const measure = () => onShown(Math.round(element.getBoundingClientRect().width));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onShown(0);
+    };
+  }, [open, onShown]);
+
+  const was = useRef({ files: filesOpen, workers: open });
+  useLayoutEffect(() => {
+    const opened = { files: filesOpen && !was.current.files, workers: open && !was.current.workers };
+    was.current = { files: filesOpen, workers: open };
+    const left = document.querySelector('[data-slot="sidebar-panel"]')?.getBoundingClientRect().width ?? 0;
+    if (!filesOpen || !open || innerWidth >= left + px("--spacing-sidebar-thread-min") + chosen(width) + chosen(files.width)) return;
+    if (opened.files) close();
+    else if (opened.workers) setPanelOpen(false);
+  }, [filesOpen, open, files.width, owner, worker, fold]);
+
   const opened = workers.find((each) => each.id === worker);
   const agent = opened ? undefined : agents.find((each) => each.id === worker);
+  // Workers, and the CLI's own subagents once it has any, each a list of its own.
   const tabs = [...(workers.length > 0 || agents.length === 0 ? [WORKERS_LABEL] : []), ...(agents.length > 0 ? [SUBAGENTS_LABEL] : [])];
   const tab = shown.tab && tabs.includes(shown.tab) ? shown.tab : tabs[0]!;
   return (
-    <Opens owner={owner}>
-      {!opened && !agent && tabs.length > 1 && <PanelTabs active={tab} tabs={tabs} onSelect={(next) => show(owner, { ...shown, tab: next })} />}
-      {opened ? (
-        <WorkerView key={opened.id} worker={opened} owner={owner} onBack={() => show(owner, { worker: null })} />
-      ) : agent ? (
-        <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { worker: null, tab: SUBAGENTS_LABEL })} />
-      ) : tab === SUBAGENTS_LABEL ? (
-        <WorkerList workers={agents.map(asSubagent).toReversed()} label={SUBAGENTS_LABEL} />
-      ) : (
-        <WorkerList workers={workers.toReversed()} act={act(owner)} />
+    <div
+      data-slot="workers-panel"
+      data-state={open ? "expanded" : "collapsed"}
+      data-width={width ?? undefined}
+      data-beside={filesOpen ? px("--spacing-sidebar-min") : undefined}
+      className={cx("right-panel-width-source start-hairline relative flex h-full shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
+    >
+      <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
+        <div ref={content} className="right-panel-width flex h-full flex-col">
+          <Opens owner={owner}>
+            {!opened && !agent && <PanelTabs active={tab} tabs={tabs} finishedWords={finishedWords(workers)} onSelect={(next) => show(owner, { ...shown, tab: next })} onClose={close} />}
+            <div
+              id="workers-panel-content"
+              className={cx("flex min-h-0 flex-1 flex-col overflow-clip bg-background transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
+            >
+              {mounted &&
+                (opened ? (
+                  <WorkerView key={opened.id} worker={opened} owner={owner} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
+                ) : agent ? (
+                  <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { open: true, worker: null, tab: SUBAGENTS_LABEL })} onClose={close} />
+                ) : tab === SUBAGENTS_LABEL ? (
+                  <WorkerList workers={agents.map(asSubagent).toReversed()} label={SUBAGENTS_LABEL} />
+                ) : (
+                  <WorkerList workers={workers.toReversed()} act={act(owner)} />
+                ))}
+            </div>
+          </Opens>
+        </div>
+      </div>
+      {open && (
+        <ResizeHandle
+          label="Resize Workers"
+          resizing={resizing}
+          setResizing={setResizing}
+          onWidth={(next) => (width = next)}
+          onClose={close}
+        />
       )}
-    </Opens>
+    </div>
   );
 }
 
-/** A worker opened: its header, its details in the tip of its ⓘ, and its thread, Rust's snapshot of it, asked again as its row changes [D3013]. */
-function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; onBack: () => void }) {
+/** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
+function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner: string; onBack: () => void; onClose: () => void }) {
   const rows = useDaemon().rows;
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
   const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
   const [{ items, turns, setup, questions }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null; questions?: PendingQuestion[] }>({ items: [], turns: [] });
+  const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
     ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup, questions: reply.session.questions }));
@@ -259,10 +360,22 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   const hold = questions?.find((question) => question.held);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkerHeader worker={worker} details onBack={onBack} />
-      <ParentName value={parent}><WorkerThread worker={worker} items={rest} turns={turns} setup={setup} /></ParentName>
+      <WorkerHeader
+        worker={worker}
+        details={details}
+        onBack={() => (details ? setDetails(false) : onBack())}
+        onToggleDetails={() => setDetails(!details)}
+        actions={
+          <TitlebarTips>
+            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
+              <X />
+            </TooltipIconButton>
+          </TitlebarTips>
+        }
+      />
+      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
       {/* Its hold is the user's call, answered here where "Needs you" leads [D2028, D342]; its other asks are its parent's [D119, D131]. */}
-      {hold && (
+      {!details && hold && (
         <div className="mx-2 mb-2 shrink-0 rounded-overlay border border-border bg-rail-glass">
           <QuestionCard key={hold.id} session={worker.id} question={hold} onDismiss={() => {}} onAnswer={(answers) => run(["answer", worker.id, hold.id, "--answers", JSON.stringify(answers)]).then(() => {})} />
         </div>

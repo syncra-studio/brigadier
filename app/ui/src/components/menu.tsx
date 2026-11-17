@@ -7,7 +7,7 @@ import { spacingPx } from "./tooltip";
 
 /** A menu's surface; the context menu and the select share it. */
 export const menuSurface = cx(
-  "z-popup min-w-menu rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-popover-edge backdrop-blur-popover outline-none menu-motion",
+  "z-popup min-w-menu rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-border outline-none menu-motion",
 );
 
 // A menu row (a two-line one grows: give it `py-2`); the context menu shares it. Padding is set per side
@@ -88,23 +88,21 @@ export function DropdownMenuItem({
   );
 }
 
-// The mark at a checkbox or radio row's end; an inset row's, in its inset at the start.
-const MARK = "pointer-events-none absolute end-2 flex items-center justify-center in-data-inset:start-2 in-data-inset:end-auto";
+// The mark at a checkbox or radio row's end.
+const MARK = "pointer-events-none absolute end-2 flex items-center justify-center";
 
 // Picking a checkbox or radio row closes its menu, as the old app's menus did.
 export function DropdownMenuCheckboxItem({
   className,
   children,
-  inset,
   closeOnClick = true,
   ...props
-}: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string; inset?: boolean }) {
+}: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string }) {
   return (
     <Menu.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
-      data-inset={inset || undefined}
       closeOnClick={closeOnClick}
-      className={cx(itemBase, "pe-8 data-inset:pe-2", className)}
+      className={cx(itemBase, "pe-8", className)}
       {...props}
     >
       <Menu.CheckboxItemIndicator className={MARK}>
@@ -119,21 +117,18 @@ export function DropdownMenuRadioItem({
   className,
   children,
   indicator,
-  inset,
   closeOnClick = true,
   ...props
 }: Omit<Menu.RadioItem.Props, "className"> & {
   className?: string;
-  inset?: boolean;
   /** What marks the chosen item (a dot by default). */
   indicator?: ReactNode;
 }) {
   return (
     <Menu.RadioItem
       data-slot="dropdown-menu-radio-item"
-      data-inset={inset || undefined}
       closeOnClick={closeOnClick}
-      className={cx(itemBase, "pe-8 data-inset:pe-2", className)}
+      className={cx(itemBase, "pe-8", className)}
       {...props}
     >
       <Menu.RadioItemIndicator className={MARK}>{indicator ?? <Dot className="size-icon-md" />}</Menu.RadioItemIndicator>

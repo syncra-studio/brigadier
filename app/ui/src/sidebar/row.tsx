@@ -1,5 +1,5 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import { type MouseEvent, type ReactNode, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
@@ -57,48 +57,11 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-// Finder's tags in their order, each project the next as it is added, so neighbours differ [new-design].
-const TAGS = [
-  "bg-tag-red-wash text-tag-red",
-  "bg-tag-orange-wash text-tag-orange",
-  "bg-tag-yellow-wash text-tag-yellow",
-  "bg-tag-green-wash text-tag-green",
-  "bg-tag-blue-wash text-tag-blue",
-  "bg-tag-purple-wash text-tag-purple",
-  "bg-tag-grey-wash text-tag-grey",
-];
-
-// Every badge's one square and corners, initials or logo, so none is wider than another [D62].
-const BADGE = "size-icon-md shrink-0 overflow-hidden rounded-badge";
-
-// Which projects have a logo, asked once a page load (main looks once a run).
-const logos = new Map<string, boolean>();
-
-/**
- * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
- * project's colour. `tone` is the project's place in the order projects were added, so it keeps its colour as
- * others are added. Initials show while the logo is looked for.
- */
-export function ProjectBadge({ id, name, tone = 0 }: { id?: string; name: string | null; tone: number | undefined }) {
-  const [, found] = useState(false);
-  const logo = id === undefined || name === null ? false : logos.get(id);
-  const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
-  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, "object-cover")} />;
+/** A row's badge: its project's initials, in that project's colour. `tone` is the project's place in Rust's list. */
+export function ProjectBadge({ name, tone }: { name: string | null; tone: number | undefined }) {
   return (
-    <span aria-hidden className={cx(BADGE, "flex items-center justify-center text-badge font-bold", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
+    <span aria-hidden data-tone={tone} className={cx("flex size-icon-md shrink-0 items-center justify-center rounded-xs text-badge font-semibold", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
-      {logo === undefined && (
-        <img
-          hidden
-          alt=""
-          src={src}
-          onLoad={() => {
-            logos.set(id!, true);
-            found(true);
-          }}
-          onError={() => logos.set(id!, false)}
-        />
-      )}
     </span>
   );
 }
@@ -111,8 +74,8 @@ export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
 
 /**
- * A session on one line: with `badged` (the one list) its project's badge first, or without one the chat
- * badge View's menu shows, then its title and one mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
+ * A session on one line: with `badged` (the one list) its project's badge first, then its title and one
+ * mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
  * words and the project. The row you are looking at (`active`) draws its thread's mark (`useMark`).
  * Its actions are in a ⋯ menu over its end on hover, with Archive beside it, and on a right-click [D185].
  */
@@ -175,7 +138,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (sub ? "ps-15" : forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", !nested && sub && "ps-15")}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (sub ? "ps-15" : forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", !nested && sub && "ps-15", badged && "h-9")}
                 onKeyDown={(event) => {
                   if (fold && (event.key === "ArrowRight") !== fold.open && ["ArrowRight", "ArrowLeft"].includes(event.key)) fold.toggle();
                 }}
@@ -187,7 +150,7 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && !sub && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />)}
+            {badged && project && !sub && <ProjectBadge name={project.name} tone={tone} />}
             {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
             {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
             {fold && (
@@ -210,8 +173,8 @@ export function SessionRowItem({
               sideOffset={() => spacingPx() * 4}
               className="z-popup"
             >
-              <BaseTooltip.Popup className="pointer-events-none flex w-65 flex-col gap-2.5 rounded-surface border border-popover-edge bg-popover px-3.5 py-3 text-start text-sm text-foreground shadow-overlay backdrop-blur-popover popup-motion">
-                <p className="line-clamp-3 font-semibold wrap-anywhere">{title}</p>
+              <BaseTooltip.Popup className="pointer-events-none flex w-66 flex-col rounded-surface border border-border bg-popover px-3 py-2.5 text-start text-sm text-foreground shadow-tooltip popup-motion">
+                <p className="mb-1 line-clamp-3 font-medium wrap-anywhere">{title}</p>
                 {words && (
                   <div className={cx(CARD_LINE, row.mark && "-ms-0.5")}>
                     <RowMark mark={row.mark} label={label} />
@@ -221,9 +184,9 @@ export function SessionRowItem({
                 {row.pr && <div className={CARD_LINE}>{prList(row.pr)}</div>}
                 {project && (
                   <>
-                    <div className="border-t border-border" />
-                    <div className={cx(CARD_LINE, "text-sm")}>
-                      <ProjectBadge id={project.id} name={project.name} tone={tone} />
+                    <div className="my-1.5 border-t border-divider" />
+                    <div className={CARD_LINE}>
+                      <ProjectBadge name={project.name} tone={tone} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>
                   </>

@@ -96,8 +96,8 @@ function commandMatches(commands: readonly SlashCommand[], query: string): Slash
     .map(({ command }) => command);
 }
 
-/** A row's name in white, the letters the query matched in bold (`hit`: their class, a model chip's also bright). */
-export function MatchedText({ text, query, hit: hitClass = "font-semibold" }: { text: string; query: string; hit?: string }) {
+/** A row's name in white, the letters the query matched in bold. */
+export function MatchedText({ text, query }: { text: string; query: string }) {
   const match = query ? fuzzyMatch(text, query) : null;
   if (!match) return text;
   const hit = new Set(match.at);
@@ -108,7 +108,7 @@ export function MatchedText({ text, query, hit: hitClass = "font-semibold" }: { 
     else runs.push({ from: index, text: letter, hit: hit.has(index) });
   });
   return runs.map((each) => (
-    <span key={each.from} className={cx(each.hit && hitClass)}>
+    <span key={each.from} className={cx(each.hit && "font-semibold")}>
       {each.text}
     </span>
   ));

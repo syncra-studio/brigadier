@@ -2,12 +2,15 @@
 // the parent's thread, the right panel's Workers tab and a worker's view. The strip above the composer is in the composer.
 import { type ReactNode, useState } from "react";
 
+import { TooltipIconButton } from "../src/components/icon-button";
+import { TitlebarTips } from "../src/components/tooltip";
+import { X } from "../src/icons";
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import type { Item, Turn } from "../src/thread/item";
 import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
-import { WorkerHeader, WorkerThread } from "../src/workers/view";
+import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
@@ -83,12 +86,25 @@ const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2"
 const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
 const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
-/** A worker opened in the panel: its header, its details in its ⓘ's tip, and its thread. */
+/** A worker opened in the panel: its header and thread, or its details. */
 function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
+  const [details, setDetails] = useState(false);
   return (
     <Panel>
-      <WorkerHeader worker={shown} details onBack={noop} />
-      <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />
+      <WorkerHeader
+        worker={shown}
+        details={details}
+        onBack={() => setDetails(false)}
+        onToggleDetails={() => setDetails(!details)}
+        actions={
+          <TitlebarTips>
+            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={noop}>
+              <X />
+            </TooltipIconButton>
+          </TitlebarTips>
+        }
+      />
+      {details ? <WorkerDetails worker={shown} /> : <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />}
     </Panel>
   );
 }
@@ -104,12 +120,12 @@ function LivePanel() {
       <Panel>
         {shown ? (
           <>
-            <WorkerHeader worker={shown} details onBack={() => setOpen(null)} />
+            <WorkerHeader worker={shown} details={false} onBack={() => setOpen(null)} onToggleDetails={noop} />
             <WorkerThread worker={shown} items={RECENT} turns={[DONE_TURN]} />
           </>
         ) : (
           <>
-            <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+            <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords="11 done · 4 stopped" onSelect={noop} onClose={noop} />
             <WorkerList workers={all} act={async (_, ids) => setEnded((now) => [...now, ...ids])} />
           </>
         )}
@@ -211,13 +227,13 @@ export function WorkersGallery() {
         <Row name="The list (the tab row shows only here until 4.3 wires it)">
           <State label="Active and Done">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
               <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} act={act} />
             </Panel>
           </State>
           <State label="None active">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} />
+              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
               <WorkerList workers={DONE_MANY.slice(0, 3)} act={act} />
             </Panel>
           </State>

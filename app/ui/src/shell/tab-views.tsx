@@ -23,6 +23,7 @@ import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
 import { LocalServers, SuggestedSites } from "../browser/new-tab";
 import { BrowserTab } from "../browser/tab";
+import { WorkersPanelSlot } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
 import { MockupTab } from "../mockup/live";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
@@ -170,6 +171,7 @@ function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
  */
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);
+  const [workersShown, setWorkersShown] = useState(0);
   // Home's tabs read the picked project's repository until the first message makes its session [D279].
   const home = useHomeProject();
   const host = owner === HOME ? (home?.id ?? null) : null;
@@ -225,7 +227,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
           </div>
         ))}
       </div>
-      <RightPanelSlot owner={owner} />
+      <WorkersPanelSlot owner={owner} onShown={setWorkersShown} />
+      <RightPanelSlot owner={owner} beside={workersShown} />
     </main>
   );
 }

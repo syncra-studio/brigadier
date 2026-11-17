@@ -7,7 +7,7 @@ import { DropdownMenuLabel } from "../components/menu";
 import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
-import { Archive, ArrowUpRight, Chats, Folder, Folders, Pin } from "../icons";
+import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
 import { newSessionIn } from "../projects/menu";
 import { openAddProject } from "../projects/store";
 import { useMark } from "../session/turn";
@@ -116,27 +116,24 @@ export function ProjectsFlyout({ projects, sessions, ...rows }: Rows & { project
   );
 }
 
-/** The pinned sessions, the rail's own button above Projects [new-design]. */
-export function PinnedFlyout({ pinned, ...rows }: Rows & { pinned: SessionRow[] }) {
+/** The pinned sessions, then the chats. This branch has no chats, so those are the sessions in no project, as View's filter counts them. */
+export function ChatsFlyout({ pinned, chats, ...rows }: Rows & { pinned: SessionRow[]; chats: SessionRow[] }) {
   return (
-    <Flyout label="Pinned" icon={<Pin />} lit={pinned.some((row) => markOf(row, rows.active))}>
-      {(pick) => (
-        <NavList>
-          {pinned.map((row) => (
-            <Line key={row.id} row={row} pick={pick} {...rows} />
-          ))}
-        </NavList>
-      )}
-    </Flyout>
-  );
-}
-
-/** The chats: this branch has no chats, so those are the sessions in no project, as View's filter counts them. */
-export function ChatsFlyout({ chats, ...rows }: Rows & { chats: SessionRow[] }) {
-  return (
-    <Flyout label="Chats" icon={<Chats />} lit={chats.some((row) => markOf(row, rows.active))}>
+    <Flyout label="Chats" icon={<Chats />} lit={[...pinned, ...chats].some((row) => markOf(row, rows.active))}>
       {(pick) => (
         <div className="flex flex-col gap-3">
+          {pinned.length > 0 && (
+            <section>
+              <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
+                Pinned
+              </DropdownMenuLabel>
+              <NavList>
+                {pinned.map((row) => (
+                  <Line key={row.id} row={row} pick={pick} {...rows} />
+                ))}
+              </NavList>
+            </section>
+          )}
           <section>
             <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
               Chats

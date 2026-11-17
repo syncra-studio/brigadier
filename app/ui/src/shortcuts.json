@@ -1,7 +1,7 @@
 [
   { "id": "settings", "keys": ["CmdOrCtrl+,"], "name": "Settings", "line": "Open Settings" },
   { "id": "shortcuts", "keys": ["CmdOrCtrl+/"], "name": "Keyboard shortcuts", "line": "Show every shortcut" },
-  { "id": "search", "keys": ["CmdOrCtrl+K"], "name": "Search", "line": "Search projects and sessions in the sidebar" },
+  { "id": "search", "keys": ["CmdOrCtrl+K"], "name": "Search", "line": "Search projects and sessions" },
   { "id": "new-session", "keys": ["CmdOrCtrl+N"], "name": "New session", "line": "Start a new session" },
   { "id": "open-folder", "keys": ["CmdOrCtrl+O"], "name": "Open folder", "line": "Add a folder as a project" },
   { "id": "sidebar", "keys": ["CmdOrCtrl+B"], "name": "Toggle sidebar", "line": "Show or hide the sidebar" },
@@ -26,15 +26,14 @@
   { "id": "show-tab", "keys": ["CmdOrCtrl+1–9"], "name": "Show tab", "line": "1 shows the chat, 2 to 8 the tabs after it, 9 the last" },
   { "id": "switch-profile", "keys": ["CmdOrCtrl+Alt+1–9"], "name": "Switch browser profile", "line": "Put the tab in front and new tabs on profile 1 to 9" },
   { "id": "terminal", "keys": ["CmdOrCtrl+J", "Ctrl+`"], "name": "Terminal", "line": "Open a terminal tab" },
-  { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the right panel, Files and Workers, on its last view" },
-  { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show the session's files in the right panel, or hide it where they show" },
+  { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the session's files" },
+  { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show or hide the session's files in the right panel" },
 
   { "id": "send", "keys": ["Enter"], "name": "Send", "line": "Send the message", "where": "In the composer" },
   { "id": "new-line", "keys": ["Shift+Enter"], "name": "New line", "line": "Start a new line in the message" },
   { "id": "follow-up-other", "keys": ["CmdOrCtrl+Enter", "Alt+Enter"], "name": "Steer", "line": "While an answer works, send the message into it now", "where": "In the composer" },
   { "id": "start-new", "keys": ["CmdOrCtrl+Alt+Enter"], "name": "Start as a new session", "line": "Send the message as a new session in the background, and stay here" },
   { "id": "history", "keys": ["Up", "Down"], "name": "Earlier prompts", "line": "Walk back through your prompts, and forward again; in an empty field ↑ takes back a queued message first" },
-  { "id": "model", "keys": ["CmdOrCtrl+."], "name": "Model", "line": "Open or fold the model picker over the composer", "where": "In the composer" },
   { "id": "commands", "keys": ["/"], "name": "Commands", "line": "Open the commands menu" },
   { "id": "stop", "keys": ["Esc Esc"], "name": "Stop", "line": "Stop the reply that is running" },
 

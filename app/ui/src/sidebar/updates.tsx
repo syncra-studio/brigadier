@@ -186,7 +186,7 @@ export function UpdatesRow() {
       setSkipped(next);
     }
   };
-  const { drawn: expanded } = useSidebar();
+  const { open: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
   // Kept while the chip leaves, so it doesn't empty as it shrinks.
   const [last, setLast] = useState(items);

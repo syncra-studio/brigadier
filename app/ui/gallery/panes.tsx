@@ -68,7 +68,7 @@ function SidebarContents() {
 function Strip() {
   return (
     <div className="flex flex-col items-center gap-1 pt-3">
-      <TooltipIconButton tooltip="Mark" look="strip" side="right">
+      <TooltipIconButton tooltip="Peek (rest the pointer here)" look="strip" data-sidebar-peek-trigger side="right">
         <Dot />
       </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right">
@@ -104,7 +104,7 @@ function SidebarDemo() {
           <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
             Collapses to: {collapse}
           </Button>
-          <span>Drag the panel's edge to resize; below half its least width it collapses.</span>
+          <span>Drag the panel's edge to resize; below half its least width it collapses. Collapsed, rest on the dot or the start edge to peek.</span>
           <span>The frame only: its rows are samples.</span>
           {width !== null && <span>Width {width}px</span>}
         </div>

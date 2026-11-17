@@ -1,6 +1,9 @@
 import { useMemo, useSyncExternalStore } from "react";
 
+import { TooltipIconButton } from "../components/icon-button";
+import { TitlebarTips } from "../components/tooltip";
 import { threadSource, useThread } from "../daemon";
+import { X } from "../icons";
 import type { Item, Progress, Turn } from "../thread/item";
 import type { Worker, WorkerStateKind } from "./chip";
 import { Opens, TeamCard } from "./live";
@@ -63,7 +66,7 @@ export function SubagentsCard({ owner }: { owner: string }) {
 const NO_TURNS: readonly Turn[] = [];
 
 /** One subagent in the side panel: its header, its steps as they come, and its answer once it's in. */
-export function SubagentView({ item, onBack }: { item: Agent; onBack: () => void }) {
+export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: () => void; onClose: () => void }) {
   const worker = asSubagent(item);
   const items = useMemo<Item[]>(
     () => [...(item.log ?? []), ...(item.answer ? [{ id: `${item.id}:answer`, turnId: item.turnId, kind: "message" as const, role: "assistant" as const, text: item.answer, streaming: false }] : [])],
@@ -75,6 +78,13 @@ export function SubagentView({ item, onBack }: { item: Agent; onBack: () => void
         worker={worker}
         list={SUBAGENTS_LABEL}
         onBack={onBack}
+        actions={
+          <TitlebarTips>
+            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
+              <X />
+            </TooltipIconButton>
+          </TitlebarTips>
+        }
       />
       <WorkerThread worker={worker} items={items} turns={NO_TURNS} />
     </section>
