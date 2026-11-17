@@ -58,7 +58,7 @@ impl Pr {
             &AtomicBool::new(false),
         )
         .ok()?;
-        Some(match gh(repo) {
+        Some(match gh(repo, self.account.as_deref()) {
             Some(gh) => self.keep(self.read(&gh)),
             None => self.keep(Err(super::NO_GH.into())),
         })
@@ -270,7 +270,12 @@ impl Pr {
     }
 
     pub fn list(&self) -> Option<Value> {
-        self.prs(&self.repo.as_ref().and_then(gh)?)
+        self.prs(
+            &self
+                .repo
+                .as_ref()
+                .and_then(|r| gh(r, self.account.as_deref()))?,
+        )
     }
 
     fn record_merge(&self, pr: &Value) {

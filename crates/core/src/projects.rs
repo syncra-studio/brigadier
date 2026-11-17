@@ -37,6 +37,8 @@ pub struct Project {
     pub removing: bool,
     /// Prefix for new session branches; absent uses brigadier/ [D1214].
     pub branch_prefix: Option<String>,
+    /// The GitHub login its PRs and sessions use; None: the one that can see it [D631].
+    pub github_account: Option<String>,
     /// "folder": a folder of repositories, added as is, no repository itself [D494]; empty: one
     /// repository.
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -151,13 +153,8 @@ fn record(id: String, folder: &str, name: Option<&str>, added: u64) -> Project {
         id,
         name,
         folder: folder.into(),
-        trusted: None,
-        setup: String::new(),
-        include: vec![],
         added,
-        removing: false,
-        branch_prefix: None,
-        kind: String::new(),
+        ..Default::default()
     }
 }
 
@@ -294,16 +291,6 @@ pub fn get(data: &Path, id: &str) -> io::Result<Project> {
     find(&mut list, id).cloned()
 }
 
-pub fn rename(data: &Path, id: &str, name: &str) -> io::Result<Project> {
-    let name = clean(name)?;
-    let (_, project) = change(data, |list| {
-        let p = find(list, id)?;
-        p.name = name;
-        Ok(p.clone())
-    })?;
-    Ok(project)
-}
-
 /// What `set` changes; None leaves a field as it is.
 #[derive(Default)]
 pub struct Change {
@@ -313,6 +300,7 @@ pub struct Change {
     pub trusted: Option<Option<bool>>,
     pub setup: Option<String>,
     pub include: Option<Vec<String>>,
+    pub github_account: Option<Option<String>>,
 }
 
 /// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
@@ -322,6 +310,14 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
     let name = new.name.as_deref().map(clean).transpose()?;
     if let Some(prefix) = &new.branch_prefix {
         crate::worktrees::names::check_prefix(prefix)?;
+    }
+    if let Some(Some(login)) = &new.github_account
+        && (login.starts_with('-')
+            || !login
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    {
+        return err(format!("\"{login}\" isn't a GitHub login."));
     }
     let folder = new.folder.map(|f| repo(data, &f)).transpose()?;
     let include = new
@@ -369,6 +365,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
         }
         if let Some(include) = include {
             p.include = include;
+        }
+        if let Some(account) = new.github_account {
+            p.github_account = account;
         }
         Ok(p.clone())
     })?;

@@ -1,15 +1,17 @@
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
 
 import { Button } from "../components/button";
 import { CodeEditor } from "../components/code-editor";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
+import { Select } from "../components/select";
+import { Avatar } from "../landing/pr-parts";
 import { Switch } from "../components/switch";
 import { Plus, Trash } from "../icons";
 import { useDaemon } from "../daemon";
 import { showToast } from "../components/toast";
-import { errorText, store } from "../onboarding/api";
+import { errorText, run, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, setProject, useProjects } from "./projects";
 import { plural, RemoveProjectHost } from "./remove";
@@ -28,12 +30,15 @@ export type SettingsSource = {
   check(path: string): Promise<FolderCheck>;
   /** `projects set <id> …args`, with `change` shown meanwhile; throws Rust's reason. */
   save(project: Project, change: Partial<Project>, args: string[]): Promise<void>;
+  /** `projects accounts <id>`: `local` reads no network, so its `sees` and `auto` are null [D631]. */
+  accounts(id: string, local: boolean): Promise<GithubAccounts>;
 };
 
 export const daemonSettings: SettingsSource = {
   pick: daemonSource.pick,
   check: daemonSource.check,
   save: setProject,
+  accounts: (id, local) => run(["projects", "accounts", id, ...(local ? ["--local"] : [])]) as Promise<GithubAccounts>,
 };
 
 /** A save Rust refused: what was typed, and why. */
@@ -76,6 +81,49 @@ export function ProjectSettingsHost() {
     {/* Remove project… mounts here too, so main.tsx is untouched (PROPOSED). */}
     <RemoveProjectHost />
     </>
+  );
+}
+
+/**
+ * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
+ * the repository, and the one Automatic uses (the first that can). Not on GitHub: no row.
+ */
+export type GithubAccounts = { github: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+
+const Login = ({ login, before = "" }: { login: string; before?: string }) => (
+  <span className="flex min-w-0 items-center gap-2">
+    <Avatar login={login} size="size-4" />
+    <span className="truncate">
+      {before}@{login}
+    </span>
+  </span>
+);
+
+/** The account its pull requests and sessions use: Automatic, or one picked, which holds; gh's active one never changes. */
+function AccountRow({ github, checking, value, onChange }: { github: GithubAccounts; checking: boolean; value: string; onChange: (login: string) => void }) {
+  const { auto, repo } = github;
+  const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : known ? "Can see this repository" : "Can't see this repository");
+  return (
+    <Field label="GitHub account" aside="Its pull requests and sessions use it">
+      <Select
+        label="GitHub account"
+        value={value}
+        align="start"
+        className="w-full"
+        onChange={onChange}
+        options={[
+          {
+            value: "",
+            label: "Automatic",
+            shown: auto ? <Login login={auto} before="Automatic · " /> : "Automatic",
+            hint: auto ? `@${auto}, the account that can see ${repo}` : checking ? "Checking…" : `None of your accounts can see ${repo}`,
+          },
+          ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
+          // A pick gh has since signed out of stays shown, so it can be seen and changed.
+          ...(value && !github.logins.some((each) => each.login === value) ? [{ value, label: <Login login={value} />, hint: "Not signed in to gh" }] : []),
+        ]}
+      />
+    </Field>
   );
 }
 
@@ -122,6 +170,21 @@ export function ProjectSettings({
   const [prefix, setPrefix] = useState(typed.branch_prefix ?? project.branch_prefix ?? "brigadier/");
   const [error, setError] = useState<string | null>(refused && !prefixRefused ? refused.error : null);
   const [prefixError, setPrefixError] = useState<string | null>(prefixRefused);
+  const [account, setAccount] = useState((typed.github_account !== undefined ? typed.github_account : project.github_account) ?? "");
+  const [github, setGithub] = useState<GithubAccounts | null>(null);
+  const [checking, setChecking] = useState(true);
+  // The row draws from the local read at once; the probed one fills in which accounts can see the repository.
+  useEffect(() => {
+    let live = true;
+    void source.accounts(project.id, true).then((reply) => live && setGithub((now) => now ?? reply), () => {});
+    void source
+      .accounts(project.id, false)
+      .then((reply) => live && setGithub(reply), () => {})
+      .finally(() => live && setChecking(false));
+    return () => {
+      live = false;
+    };
+  }, [project.id]);
 
   const change = async () => {
     setFolderError(null);
@@ -147,12 +210,14 @@ export function ProjectSettings({
     if (include.join("\n") !== project.include.join("\n")) changed.include = include;
     if (setup !== project.setup) changed.setup = setup;
     if (prefix !== (project.branch_prefix ?? "brigadier/")) changed.branch_prefix = prefix;
+    if (account !== (project.github_account ?? "")) changed.github_account = account || null;
     const args = [
       ...(changed.name === undefined ? [] : ["--name", changed.name]),
       ...(changed.folder === undefined ? [] : ["--folder", changed.folder]),
       ...(changed.include === undefined ? [] : ["--include", changed.include.join("\n")]),
       ...(changed.setup === undefined ? [] : ["--setup", changed.setup]),
       ...(changed.branch_prefix === undefined ? [] : ["--branch-prefix", changed.branch_prefix ?? ""]),
+      ...(changed.github_account === undefined ? [] : ["--github-account", changed.github_account ?? ""]),
     ];
     onClose();
     if (args.length) source.save(project, changed, args).catch((cause) => onRefused?.({ change: changed, error: errorText(cause) }));
@@ -179,6 +244,7 @@ export function ProjectSettings({
           <ErrorLine error={folderError} />
         </Field>
         {folder === project.folder && <TrustRow project={project} source={source} />}
+        {github?.github && <AccountRow github={github} checking={checking} value={account} onChange={setAccount} />}
         <Field label="Branch prefix" aside="Starts new session branch names; leave empty for no prefix" htmlFor={`${id}-prefix`}>
           <Input
             id={`${id}-prefix`}

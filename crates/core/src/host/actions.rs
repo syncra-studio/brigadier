@@ -220,7 +220,7 @@ impl Pr {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's Actions can be read here.");
         };
-        match gh(repo) {
+        match gh(repo, self.account.as_deref()) {
             Some(gh) => Ok((repo, gh)),
             None => err(NO_GH),
         }

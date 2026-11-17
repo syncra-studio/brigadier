@@ -42,7 +42,7 @@ impl Pr {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be searched.");
         };
-        let Some(gh) = gh(repo) else {
+        let Some(gh) = gh(repo, self.account.as_deref()) else {
             return err(NO_GH);
         };
         let scope = format!("repo:{} is:pr", repo.path);

@@ -96,7 +96,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     return Ok(json!({"ok": true, "project": project}));
                 }
                 "rename" => {
-                    let project = projects::rename(data, arg(2), arg(3))?;
+                    let name = Some(arg(3).to_string());
+                    let change = projects::Change {
+                        name,
+                        ..Default::default()
+                    };
+                    let project = projects::set(data, arg(2), change)?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
                 "set" => {
@@ -118,11 +123,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         trusted,
                         setup: flag(args, "--setup").map(String::from),
                         include,
+                        // Empty: Automatic [D631].
+                        github_account: flag(args, "--github-account")
+                            .map(|v| Some(v.to_string()).filter(|v| !v.is_empty())),
                     };
                     let project = projects::set(data, arg(2), change)?;
                     // The answer stays saved when a CLI's own entry can't be written [D166].
                     let failed = core::trust::sync(data, &project.id, None);
                     return Ok(json!({"ok": true, "project": project, "trust_errors": failed}));
+                }
+                "accounts" => {
+                    let probe = !args.iter().any(|a| a == "--local");
+                    return core::host::accounts::seen(data, arg(2), probe);
                 }
                 "branches" => {
                     let folder = projects::get(data, arg(2))?.folder;

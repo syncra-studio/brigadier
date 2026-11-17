@@ -1,4 +1,5 @@
 // Dev-only: every component, live (D2). Screens are built from them in the app. Opened by `pnpm gallery`.
+import { AccountGallery } from "./account";
 import { type RefObject, useEffect, useRef } from "react";
 
 import { connected } from "../src/daemon";
@@ -127,6 +128,7 @@ function GalleryPage() {
               <OnboardingGallery />
             </Area>
             <Area name="Settings">
+              <AccountGallery />
               <NotificationsGallery />
               <RoutingGallery />
               <PluginsGallery />

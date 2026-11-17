@@ -208,22 +208,22 @@ impl Gh {
 /// Which account last read each repository (`host/path`; None is the active one), tried first.
 static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
 
-/// gh as an account that can read `repo`: the one that last did (unprobed, a gh call saved on
+/// gh as an account that can read `repo`: the project's pick, held unprobed [D631], the one that last did (unprobed, a gh call saved on
 /// every read [D200]; a read it fails forgets it), the active one, else each other account signed
 /// in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
 /// later slice [D1030].
-fn gh(repo: &Repo) -> Option<Gh> {
+fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
     if repo.kind != Kind::GitHub {
         return None;
     }
     let path = setup::find("gh", &[])?.to_str()?.to_string();
     let key = format!("{}/{}", repo.host, repo.path);
     let last = READER.lock().unwrap().get(&key).cloned();
+    let pick = pick.map(|login| Some(login.to_string()));
     let others = std::iter::once_with(|| others(&repo.host)).flatten();
     let mut tried = Vec::new();
-    for user in last
-        .clone()
-        .into_iter()
+    for user in (pick.clone().into_iter())
+        .chain(last.clone())
         .chain([None])
         .chain(others.map(Some))
     {
@@ -232,8 +232,10 @@ fn gh(repo: &Repo) -> Option<Gh> {
         }
         tried.push(user.clone());
         let token = match &user {
-            Some(user) => match token(&path, &repo.host, user) {
+            Some(login) => match token(&path, &repo.host, login) {
                 Some(token) => Some(token),
+                // A picked account gh can't give a token for fails, never read as another [D631].
+                None if pick.as_ref() == Some(&user) => return None,
                 None => continue,
             },
             None => None,
@@ -242,18 +244,10 @@ fn gh(repo: &Repo) -> Option<Gh> {
             path: path.clone(),
             token,
         };
-        if last.as_ref() == Some(&user) {
+        if last.as_ref() == Some(&user) || pick.as_ref() == Some(&user) {
             return Some(gh);
         }
-        let mut probe = gh.command();
-        probe.args([
-            "api",
-            "--hostname",
-            &repo.host,
-            "--silent",
-            &format!("repos/{}", repo.path),
-        ]);
-        if setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success()) {
+        if reads(&gh, repo) {
             READER.lock().unwrap().insert(key, user);
             return Some(gh);
         }
@@ -301,6 +295,14 @@ fn graphql(
     })
 }
 
+/// Whether `gh` can read `repo`.
+fn reads(gh: &Gh, repo: &Repo) -> bool {
+    let mut probe = gh.command();
+    let path = format!("repos/{}", repo.path);
+    probe.args(["api", "--hostname", &repo.host, "--silent", &path]);
+    setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success())
+}
+
 /// `repo`'s reader failed a read: the next one probes again.
 fn forget(repo: &Repo) {
     READER
@@ -343,6 +345,8 @@ pub struct Pr {
     dir: std::path::PathBuf,
     /// Where the pictures of the people its reads name are kept [D615].
     avatars: std::path::PathBuf,
+    /// Its project's GitHub account, read as [D631]; None: whichever can see the repository.
+    account: Option<String>,
 }
 
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
@@ -411,5 +415,12 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         },
         dir: dir(data, id),
         avatars: data.join("avatars"),
+        account: match target {
+            Target::Project(id) => Some(id.to_string()),
+            Target::Session(id) | Target::Repo(id, _) => {
+                load(data, id).ok().and_then(|s| s.project)
+            }
+        }
+        .and_then(|p| crate::projects::get(data, &p).ok()?.github_account),
     })
 }
