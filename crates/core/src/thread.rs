@@ -251,16 +251,14 @@ impl Thread {
                     .zip(self.fold.turns.first())
                     .is_some_and(|(before, after)| before.id == after.id)
             {
-                self.break_group();
                 let mut row = json!({"kind": "message", "role": "user", "text": item["text"],
                     "streaming": false, "origin": "user", "sentAt": ts, "cid": item["cid"],
                     "files": item["parts"]["files"], "draft": item["parts"]});
                 if let Some(from) = peer {
-                    let text = item["text"].as_str().unwrap_or("");
-                    row = Self::peer_item(from, text, ts, &item["cid"]);
+                    row = Self::peer_item(from, adapters::s(item, &["text"]), ts, &item["cid"]);
                 }
                 row["steer"] = true.into();
-                self.steered(row, peer.is_some());
+                self.steered(row);
             }
         } else {
             self.content(item, kind, ts);

@@ -21,15 +21,10 @@ impl Thread {
     }
 
     /// A steer's bubble goes where the turn is now: its steps still running move below it, the
-    /// same tool's row under a new id [D78]. The user's folds with the work it steered, only the
-    /// last reply left under "Worked for" [D118]; another session's (`kept`) stays where it
-    /// arrived, never folded [D332].
-    pub(super) fn steered(&mut self, row: Value, kept: bool) {
-        let steer = if kept {
-            self.kept_row(row)
-        } else {
-            self.add(row)
-        };
+    /// same tool's row under a new id [D78]. It stays where it arrived, never folded, the user's
+    /// as another session's [D332, D548].
+    pub(super) fn steered(&mut self, row: Value) {
+        let steer = self.kept_row(row);
         let from = self.open.as_ref().map_or(steer, |o| o.from);
         let running: Vec<usize> = (from..steer)
             .filter(|&at| {
@@ -398,7 +393,7 @@ impl Thread {
             };
             if steers {
                 row["steer"] = true.into();
-                self.steered(row, peer.is_some());
+                self.steered(row);
             } else {
                 self.add(row);
             }
