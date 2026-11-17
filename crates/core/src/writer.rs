@@ -180,7 +180,7 @@ fn note(dir: &Path, line: &Value) -> Result<(), String> {
 }
 
 /// Removes one writer conversation: the adapter's own forget, then every path it named [D35].
-fn remove(a: &dyn Adapter, run: &Spec, id: &str, named: &[String]) -> Result<(), String> {
+pub fn remove(a: &dyn Adapter, run: &Spec, id: &str, named: &[String]) -> Result<(), String> {
     crate::check_id(id).map_err(|_| format!("unusual conversation id {id:?}, nothing removed"))?;
     a.forget(run, id)?;
     let paths = (a.external(run, id).into_iter()).chain(named.iter().map(PathBuf::from));
@@ -332,7 +332,7 @@ pub fn write(
 }
 
 /// The writer conversations of the session at `dir` not yet removed: (backend, account, id, paths).
-fn left(dir: &Path) -> Vec<(String, String, String, Vec<String>)> {
+pub fn left(dir: &Path) -> Vec<(String, String, String, Vec<String>)> {
     let Ok(text) = fs::read_to_string(records(dir)) else {
         return vec![];
     };

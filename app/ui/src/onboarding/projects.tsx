@@ -36,7 +36,13 @@ export function ProjectsStep({ source, offline, onBack, start = "local" }: { sou
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [parent, setParent] = useState(DEFAULT_PARENT);
-  const added = (useProjects() ?? []).map((project) => project.folder);
+  const projects = useProjects() ?? [];
+  const added = projects.map((project) => project.folder);
+  // A clone or new repository keeps its id until onboarding ends, so one whose reply was lost (or whose finish
+  // failed) isn't made twice: once its project is there, pressing again only finishes [D168].
+  const [made, setMade] = useState<string | null>(null);
+  // Still cloning counts too: Home shows it until it settles.
+  const madeDone = made !== null && projects.some((project) => project.id === made);
   const [found, setFound] = useState<string[] | null>(null);
   // Folders picked with Add folder…, which the history count leaves out.
   const [byHand, setByHand] = useState<readonly string[]>([]);
@@ -96,15 +102,21 @@ export function ProjectsStep({ source, offline, onBack, start = "local" }: { sou
     setError(null);
     const failed: string[] = [];
     const add = (what: string, work: Promise<unknown>) => work.catch((cause) => failed.push(`${what}: ${errorText(cause)}`));
+    const id = made ?? newProjectId();
     if (tab === "local") for (const path of chosen) await add(baseName(path), addProject(path));
-    // A clone or a new repository is added under an id made here, as Add project's are [D168].
-    else if (tab === "clone") {
+    else if (madeDone) {
+      // Made already: only the finish is left.
+    } else if (tab === "clone") {
       const github = /^[\w.-]+\/[\w.-]+$/.test(url.trim());
-      await add(folder, source.clone(newProjectId(), github ? url.trim() : cloneUrl(url), `${parent}${folder}`, github));
+      setMade(id);
+      await add(folder, source.clone(id, github ? url.trim() : cloneUrl(url), `${parent}${folder}`, github));
     } else {
       const problem = folderProblem(folder);
       if (problem) failed.push(problem);
-      else await add(folder, source.add(newProjectId(), `${parent}${folder}`, "new"));
+      else {
+        setMade(id);
+        await add(folder, source.add(id, `${parent}${folder}`, "new"));
+      }
     }
     if (failed.length) setError(tab === "local" ? `Some projects could not be added.\n${failed.join("\n")}` : failed.join("\n"));
     // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.

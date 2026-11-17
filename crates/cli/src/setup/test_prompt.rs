@@ -22,10 +22,14 @@ pub(super) fn test(data: &Path, a: &dyn Adapter) -> io::Result<Value> {
     }
     let dir = data.join("setup").join(format!("test-{}", a.name()));
     fs::create_dir_all(&dir)?;
-    let model = a.cheap(None, &models);
+    // Its cheapest, else the first it lists: some pick only beside a current model.
+    let model = (a.cheap(None, &models)).or_else(|| models.first().map(|m| m.id.clone()));
     let effort = (models.iter().find(|m| Some(&m.id) == model.as_ref()))
         .and_then(|m| m.efforts.first().cloned());
+    // On the account new sessions start on, as its check is [D2082].
+    let (account, on) = crate::accounts::check_as(data, a, &dir);
     let run = Spec {
+        account: on.account,
         id: format!("agent-test-{}", a.name()),
         backend: a.name().into(),
         cwd: dir.display().to_string(),
@@ -37,9 +41,17 @@ pub(super) fn test(data: &Path, a: &dyn Adapter) -> io::Result<Value> {
         dir: dir.clone(),
         ..Default::default()
     };
+    // A conversation a test couldn't remove stays recorded and is tried again; the folder goes once none is left.
+    let clean = || {
+        (writer::left(&dir).into_iter())
+            .all(|(_, _, id, paths)| writer::remove(a, &run, &id, &paths).is_ok())
+    };
+    clean();
     let active = File::create(dir.join("writer.lock"))?;
-    let outcome = writer::write(a, &run, "", "Reply with OK.", &active, SECS);
-    let _ = fs::remove_dir_all(&dir);
+    let outcome = writer::write(a, &run, &account, "Reply with OK.", &active, SECS);
+    if clean() {
+        let _ = fs::remove_dir_all(&dir);
+    }
     Ok(match outcome {
         Ok(_) => json!({"ok": true, "passed": true}),
         Err(failure) => {
