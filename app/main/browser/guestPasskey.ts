@@ -1,11 +1,12 @@
 // Every frame of every guest and popup on macOS (browserHost.ts lets it into subframes), until Apple grants the browser passkey entitlement (section 7). Stock Electron
-// serves no passkey request and never answers one, so a page waits forever. A request the user would see fails at
-// once and the tab says why. Passkey autofill (`conditional`) shows nothing and may wait, so it stays with Chromium.
-// Availability checks stay Chromium's too: a page is told the truth, that no platform authenticator is there.
+// serves no passkey request and never answers one, so a page waits forever. So pages see a browser without passkeys
+// and offer their other ways first: Google, told it has none, asks for the password instead of failing its passkey
+// step. A request made anyway fails at once; passkey autofill (`conditional`) shows nothing.
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.executeInMainWorld({
   func: (refused: () => void) => {
+    delete (window as { PublicKeyCredential?: unknown }).PublicKeyCredential;
     const credentials = navigator.credentials;
     if (!credentials) return;
     for (const name of ["get", "create"] as const) {
