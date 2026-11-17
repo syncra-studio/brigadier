@@ -5,8 +5,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 
 /*
- * A worker named anywhere in the conversation, as the old app's WorkerChip and Glyphs: its chip (glyph and name in a
- * pill, which opens it in the Workers panel), the one way the thread names a worker [D588], and a sentence's glyphs.
+ * A worker named anywhere in the conversation, as the old app's WorkerChip, WorkerName and Glyphs: its chip (glyph
+ * and name in a pill, which opens it in the Workers panel), its name as a button, and a sentence's glyphs [D3010].
  * Drawn only: Rust will hand each worker's state word, its live line and its times [D3029].
  */
 
@@ -75,21 +75,16 @@ export function WorkerChip({ worker, label, className }: {
           <button
             type="button"
             data-slot="worker-chip"
-            onClick={(event) => {
-              // Inside a row that opens, the chip opens its worker only.
-              event.stopPropagation();
-              open(worker.id);
-            }}
+            onClick={() => open(worker.id)}
             className={cx(
-              "inline-flex h-control-xs max-w-56 min-w-0 shrink cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-worker-chip ps-2 pe-2.5 align-baseline text-sm leading-5.5 text-foreground transition-colors hover:bg-muted focus-visible:focus-ring",
+              "inline-flex h-control-xs max-w-56 min-w-0 shrink cursor-pointer items-center gap-1.5 rounded-capsule border border-border bg-worker-chip ps-2 pe-2.5 align-middle text-sm leading-normal text-foreground transition-colors hover:bg-muted focus-visible:focus-ring",
               className,
             )}
           />
         }
       >
         <WorkerGlyph id={worker.id} className="size-icon-sm animate-glyph-in motion-reduce:animate-none" />
-        {/* The name is the chip's baseline, so it sits on its line's text [D590]. */}
-        <span className="min-w-0 self-baseline truncate">{label ?? worker.name}</span>
+        <span className="min-w-0 truncate">{label ?? worker.name}</span>
       </TooltipTrigger>
       <WorkerTip worker={worker} />
     </Tooltip>
@@ -107,6 +102,30 @@ function WorkerTip({ worker }: { worker: Worker }) {
     </TooltipContent>
   );
 }
+
+/**
+ * A worker's name as a button that opens its thread, with its glyph unless the sentence shows the glyphs up front.
+ * The one way a worker is named in the thread, the live line and the strip.
+ */
+export const WorkerName: FC<{ worker: Worker | null; glyph?: boolean }> = ({ worker, glyph = true }) => {
+  const { open } = useContext(WorkersPanel);
+  if (!worker) return <span className="shrink-0">a worker</span>;
+  return (
+    <button
+      type="button"
+      data-slot="worker-name"
+      onClick={(event) => {
+        event.stopPropagation();
+        open(worker.id);
+      }}
+      title={`Open ${worker.name}`}
+      className="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-control align-bottom text-strip-foreground hover:text-foreground focus-visible:focus-ring"
+    >
+      {glyph && <WorkerGlyph id={worker.id} className="size-icon-xs shrink-0" />}
+      <span className="min-w-0 truncate">{worker.name}</span>
+    </button>
+  );
+};
 
 /** The glyphs of a sentence's workers, up front: one each, the first four. */
 export const Glyphs: FC<{ workers: readonly Worker[] }> = ({ workers }) => (

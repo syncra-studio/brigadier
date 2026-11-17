@@ -4,7 +4,7 @@ import { type ReactNode, useState } from "react";
 
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import type { Item, Turn } from "../src/thread/item";
-import { type Worker, WorkerChip, WorkersPanel } from "../src/workers/chip";
+import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
 import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
 import { WorkerHeader, WorkerThread } from "../src/workers/view";
@@ -135,7 +135,7 @@ export function WorkersGallery() {
         </Row>
       </Section>
 
-      <Section title="Worker chip">
+      <Section title="Worker chip and name">
         <Row name="Each state word, in the chip's tip on hover (the old chip shows its state on hover only)">
           {STATES.map((each) => (
             <State key={each.id} label={each.kind}>
@@ -143,9 +143,15 @@ export function WorkersGallery() {
             </State>
           ))}
         </Row>
-        <Row name="Unknown">
+        <Row name="Unknown, and the name button">
           <State label="A worker the app doesn't have">
             <WorkerChip worker={null} />
+          </State>
+          <State label="Name with its glyph">
+            <WorkerName worker={RETRY} />
+          </State>
+          <State label="Name alone (the sentence shows glyphs up front)">
+            <WorkerName worker={RETRY} glyph={false} />
           </State>
         </Row>
       </Section>

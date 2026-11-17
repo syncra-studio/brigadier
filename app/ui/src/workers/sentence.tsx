@@ -7,12 +7,12 @@ import { useKept } from "../thread/kept";
 import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
 import type { Merge } from "../thread/item";
 import { duration } from "../thread/words";
-import { Glyphs, lowerFirst, type Worker, WorkerChip, WorkersPanel } from "./chip";
+import { Glyphs, lowerFirst, type Worker, WorkerName, WorkersPanel } from "./chip";
 
 /*
  * How workers show in the thread, as the old app's TeamSentence and Briefs: sentences in the row recipe of the work,
  * never cards [D3010]. What happened to them ("Retry backoff and Progress bar started working") and what the lead
- * did to them ("Messaged Retry backoff", "You ended Retry backoff"); every name is its chip, as in an answer [D588, D589].
+ * did to them ("Messaged Retry backoff", "You ended Retry backoff"); every name opens its worker.
  */
 
 /**
@@ -47,11 +47,11 @@ export const QuietBrief: FC<{ children: ReactNode }> = ({ children }) => (
  * "A", "A and B", "A, B and C"; past three, "A, B and 4 more", the more opening the Workers list. Names are task
  * titles, so a sentence never makes them possessive.
  */
-export const Names: FC<{ workers: readonly Worker[] }> = ({ workers }) => {
+export const Names: FC<{ workers: readonly Worker[]; glyph?: boolean }> = ({ workers, glyph = false }) => {
   const { open } = useContext(WorkersPanel);
   const named = workers.length > 3 ? workers.slice(0, 2) : workers;
   const more = workers.length - named.length;
-  const parts: ReactNode[] = named.map((worker) => <WorkerChip key={worker.id} worker={worker} />);
+  const parts: ReactNode[] = named.map((worker) => <WorkerName key={worker.id} worker={worker} glyph={glyph} />);
   if (more > 0) {
     parts.push(
       <button key="more" type="button" className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring" onClick={() => open(null)}>
@@ -76,7 +76,7 @@ export const Briefs: FC<{ workers: readonly Worker[] }> = ({ workers }) => (
   <div className="flex flex-col gap-2">
     {workers.map((worker) => (
       <div key={worker.id} className="flex flex-col gap-1">
-        {workers.length > 1 && <WorkerChip worker={worker} className="self-start" />}
+        {workers.length > 1 && <WorkerName worker={worker} />}
         <QuietBrief>{worker.brief}</QuietBrief>
         {worker.receipt && <span>{worker.receipt}</span>}
       </div>
@@ -110,6 +110,7 @@ function verb(word: Lifecycle, workers: readonly Worker[], why: string | undefin
 export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly Worker[]; why?: string; merge?: Merge | null }> = ({ keep, word, workers, why, merge }) => {
   const line = (
     <>
+      <Glyphs workers={workers} />
       {/* One line: a sentence too long for it truncates; its detail names every worker. */}
       <span className="min-w-0 truncate">
         <Names workers={workers} /> {verb(word, workers, why)}
@@ -144,7 +145,7 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
   switch (step.type) {
     case "messaged":
       icon = <Chat aria-hidden className="size-4 shrink-0" />;
-      line = <>{step.byUser ? "You messaged" : "Messaged"} <WorkerChip worker={step.worker} /></>;
+      line = <>{step.byUser ? "You messaged" : "Messaged"} <WorkerName worker={step.worker} /></>;
       detail = step.text ? <QuietBrief>{step.text}</QuietBrief> : undefined;
       break;
     case "stopped":
@@ -152,7 +153,7 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
       icon = <StopCircle aria-hidden className="size-4 shrink-0" />;
       line = (
         <>
-          {step.byUser ? "You ended" : "Ended"} <Names workers={step.workers} />
+          {step.byUser ? "You ended" : "Ended"} <Names workers={step.workers} glyph />
           {step.afterMs !== undefined && step.afterMs >= 1000 && ` after ${duration(step.afterMs)}`}
         </>
       );
@@ -161,14 +162,14 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
     // The user's Pause and Resume [D3041].
     case "paused":
       icon = <PauseCircle aria-hidden className="size-4 shrink-0" />;
-      line = <>Paused <Names workers={step.workers} /></>;
+      line = <>Paused <Names workers={step.workers} glyph /></>;
       break;
     case "resumed":
       icon = <PlayCircle aria-hidden className="size-4 shrink-0" />;
-      line = <>Resumed <Names workers={step.workers} /></>;
+      line = <>Resumed <Names workers={step.workers} glyph /></>;
       break;
   }
-  const words = <span className="flex min-w-0 items-baseline gap-1 truncate">{line}</span>;
+  const words = <span className="flex min-w-0 items-center gap-1 truncate">{line}</span>;
   if (!detail) {
     return (
       <div data-slot="orchestrator-step" data-kind={step.type} className={ROW}>
