@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { Badge } from "../components/badge";
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { Chat, ChevronDown, ChevronUp } from "../icons";
@@ -76,7 +75,7 @@ const peek = (text: string) =>
  * Copy, a chevron; a click opens it in place. While find searches, its words are drawn cut to nothing, so find finds
  * them and opens it (find-hits.ts reads the row's `data-kept` button).
  */
-export function Draft({ keep, icon, title, badge, text, live = false, children }: { keep: string; icon?: ReactNode; title: ReactNode; badge?: ReactNode; text: string; live?: boolean; children: ReactNode }) {
+export function Draft({ keep, icon, title, text, live = false, children }: { keep: string; icon?: ReactNode; title: ReactNode; text: string; live?: boolean; children: ReactNode }) {
   const [open, setOpen] = useKept(keep);
   const searched = useFindSearching();
   return (
@@ -90,7 +89,6 @@ export function Draft({ keep, icon, title, badge, text, live = false, children }
       >
         {icon}
         <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{title}</span>
-        {badge}
         {!open && <span className="ms-1 min-w-0 truncate">{peek(text)}</span>}
         {/* Copy's place, which sits over the row: a button can't hold one. */}
         <span className="ms-auto w-6 shrink-0" />
@@ -119,20 +117,10 @@ export function WritingCard({ title, text, keep, live = false }: { title: string
   );
 }
 
-/** A message for someone else: where it goes, whether it went, their words it answers, and copy for the message alone. */
-function MessageCard({ to, state = "draft", text, quote, keep }: Message & { keep: string }) {
+/** A message for someone else: where it goes, their words it answers, and copy for the message alone. */
+function MessageCard({ to, text, quote, keep }: Message & { keep: string }) {
   return (
-    <Draft
-      keep={keep}
-      icon={<Chat className="size-icon-sm shrink-0" />}
-      title={to}
-      badge={
-        <Badge variant={state === "posted" ? "success" : "secondary"} className="ms-1 shrink-0">
-          {state}
-        </Badge>
-      }
-      text={text}
-    >
+    <Draft keep={keep} icon={<Chat className="size-icon-sm shrink-0" />} title={to} text={text}>
       {quote && (
         <div className="mx-4 mb-2 border-s-2 border-quote-edge ps-3 text-sm text-muted-foreground">
           <div className="text-xs font-medium">{quote.from} wrote</div>
