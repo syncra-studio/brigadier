@@ -250,20 +250,24 @@ pub(super) fn incoming(data: &Path) -> PathBuf {
     library::dir(data).join(".incoming")
 }
 
-/// The skill `id`'s folder from `source`'s default branch, into `incoming`: the folder named after
-/// it holding a SKILL.md, else the repo's only SKILL.md. Every path is checked, links and
-/// submodules refused, its size capped: this is the trust boundary [D436].
-pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> {
-    plain(id)?;
+/// Each skill of `ids`, its folder from `source`'s default branch, into `incoming`: the folder named
+/// after it holding a SKILL.md, else the repo's only SKILL.md. Every path is checked, links and
+/// submodules refused, its size capped: this is the trust boundary [D436]. One commit and tree for
+/// them all, so a catalog entry's skills cost two API requests.
+pub(super) fn fetch(data: &Path, source: &str, ids: &[&str]) -> io::Result<Vec<PathBuf>> {
+    for id in ids {
+        plain(id)?;
+    }
     if !repo(source) {
         return Err(refuse("Brigadier copies skills only from a GitHub repo."));
     }
     let gone = || {
         refuse(&format!(
-            "Couldn't reach GitHub for {id}. Check your connection and try again."
+            "Couldn't reach GitHub for {}. Check your connection and try again.",
+            ids.join(", ")
         ))
     };
-    // shortcut: GitHub's API without a token allows 60 requests an hour; two per skill added.
+    // shortcut: GitHub's API without a token allows 60 requests an hour; two per fetch.
     let api = |path: &str| -> io::Result<Value> {
         let bytes = get(
             &format!("https://api.github.com/repos/{source}/{path}"),
@@ -293,6 +297,23 @@ pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> 
         .filter_map(|e| str(&e["path"]).strip_suffix("SKILL.md"))
         .filter(|d| d.is_empty() || d.ends_with('/'))
         .collect();
+    let _ = fs::remove_dir_all(incoming(data));
+    let mut fetched = vec![];
+    for id in ids {
+        fetched.push(copy(data, id, source, &all, &dirs, &raw)?);
+    }
+    Ok(fetched)
+}
+
+/// One skill's folder of the fetched tree, into `incoming`.
+fn copy(
+    data: &Path,
+    id: &str,
+    source: &str,
+    all: &[Value],
+    dirs: &[&str],
+    raw: &dyn Fn(&str, u64) -> io::Result<Vec<u8>>,
+) -> io::Result<PathBuf> {
     // The folder named after it, the repo's only skill, else the one whose SKILL.md declares its name.
     let named = (dirs.iter()).find(|d| d.trim_end_matches('/').rsplit('/').next() == Some(id));
     let only = (dirs.len() == 1).then(|| &dirs[0]);
@@ -317,7 +338,6 @@ pub(super) fn fetch(data: &Path, source: &str, id: &str) -> io::Result<PathBuf> 
         return Err(big());
     }
     let to = incoming(data).join(id);
-    let _ = fs::remove_dir_all(incoming(data));
     fs::create_dir_all(&to)?;
     let mut left = MAX_BYTES;
     for e in files {

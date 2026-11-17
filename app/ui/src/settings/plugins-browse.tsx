@@ -4,10 +4,10 @@ import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { RowText, SettingsCard } from "../components/settings-card";
-import { ChevronRight, Plus } from "../icons";
+import { ChevronRight, DotsHorizontal, Plus } from "../icons";
 import { errorText } from "../onboarding/api";
 import { SettingsSection } from "./parts";
-import { type Kind, matches, type Own, type Plugins } from "./plugins";
+import { type Entry, inCategory, type Kind, markOf, matches, type Own, type Plugins } from "./plugins";
 import { importable } from "./plugins-mine";
 import type { AddFirst } from "./plugins-dialogs";
 import { PluginMark } from "./plugins-marks";
@@ -35,16 +35,50 @@ function firstOf(form: NonNullable<Found["form"]>): AddFirst {
   return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values } };
 }
 
-/** A row of Browse's 2 columns: its mark, name and line, then + (or what it's doing). */
-export function Pick({ mark, name, line, end }: { mark: ReactNode; name: string; line: string; end: ReactNode }) {
-  return (
-    <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.5 hover:bg-fill-subtle">
+/** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …). */
+export function Pick({ mark, name, line, end, onOpen }: { mark: ReactNode; name: string; line: string; end: ReactNode; onOpen?: () => void }) {
+  const text = (
+    <>
       {mark}
       <RowText title={name} line={line} truncate />
+    </>
+  );
+  return (
+    <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.5 hover:bg-fill-subtle">
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-start focus-visible:focus-ring">
+          {text}
+        </button>
+      ) : (
+        text
+      )}
       {end}
     </div>
   );
 }
+
+/** A catalog entry's row: + installs it; once installed, … opens its page. */
+export const entryRow = (entry: Entry, { onOpen, onInstall }: EntryActions) => (
+  <Pick
+    key={entry.id}
+    mark={<PluginMark item={markOf(entry)} />}
+    name={entry.name}
+    line={entry.line}
+    onOpen={() => onOpen(entry)}
+    end={
+      entry.installed ? (
+        <Button variant="ghost" size="icon-md" aria-label={`${entry.name}, installed`} onClick={() => onOpen(entry)}>
+          <DotsHorizontal aria-hidden />
+        </Button>
+      ) : (
+        <Button variant="ghost" size="icon-md" aria-label={`Install ${entry.name}`} onClick={() => onInstall(entry)}>
+          <Plus aria-hidden />
+        </Button>
+      )
+    }
+  />
+);
+export type EntryActions = { onOpen: (entry: Entry) => void; onInstall: (entry: Entry) => void };
 
 export const PickGrid = ({ children }: { children: ReactNode }) => <div className="grid grid-cols-1 gap-x-6 @reading:grid-cols-2">{children}</div>;
 
@@ -81,13 +115,16 @@ const ownRow = (own: Own, onInstall: (own: Own) => void) => (
 
 /**
  * Plugins › Browse [D566, D569]: what installs, by category, "Found on this machine" first (your agents' own, not yet in
- * Brigadier); a search looks through them, then the Official MCP Registry and skills.sh (Rust asks them [D434]).
+ * Brigadier), then the catalog's, 6 of each, empty ones hidden; a search looks through them, then the Official MCP
+ * Registry and skills.sh (Rust asks them [D434]).
  */
 export function BrowseTab({
   value,
   query,
   remote,
   browse,
+  onEntry,
+  onCategory,
   onInstall,
   onAdd,
 }: {
@@ -95,24 +132,48 @@ export function BrowseTab({
   query: string;
   remote: boolean;
   browse: (kind: Kind, query: string) => Promise<Found[]>;
+  onEntry: EntryActions;
+  onCategory: (name: string) => void;
   onInstall: (own: Own) => void;
   onAdd: (first: AddFirst, added: () => void) => void;
 }) {
   const asked = query.trim();
   const own = value.own.filter((each) => importable(each, remote));
-  if (asked) return <Search asked={asked} own={own.filter((each) => matches(asked, each.name, each.detail, each.from))} browse={browse} onInstall={onInstall} onAdd={onAdd} />;
-  if (own.length === 0) return <p className="py-6 text-center text-label text-quiet-foreground">Search above for MCP servers and skills to install.</p>;
+  const catalog = value.catalog ?? { categories: [], entries: [] };
+  if (asked) {
+    const entries = catalog.entries.filter((each) => matches(asked, each.name, each.line, each.maker, each.category));
+    return <Search asked={asked} own={own.filter((each) => matches(asked, each.name, each.detail, each.from))} entries={entries} onEntry={onEntry} browse={browse} onInstall={onInstall} onAdd={onAdd} />;
+  }
   return (
-    <Category title="Found on this machine">
-      <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>
-    </Category>
+    <>
+      {own.length > 0 && (
+        <Category title="Found on this machine">
+          <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>
+        </Category>
+      )}
+      {catalog.categories.map((name) => {
+        const entries = catalog.entries.filter((each) => inCategory(each, name));
+        return (
+          entries.length > 0 && (
+            <Category key={name} title={name} onOpen={() => onCategory(name)}>
+              <PickGrid>{entries.slice(0, 6).map((each) => entryRow(each, onEntry))}</PickGrid>
+            </Category>
+          )
+        );
+      })}
+    </>
   );
 }
 
-function Search({ asked, own, browse, onInstall, onAdd }: { asked: string; own: Own[]; browse: (kind: Kind, query: string) => Promise<Found[]>; onInstall: (own: Own) => void; onAdd: (first: AddFirst, added: () => void) => void }) {
+function Search({ asked, own, entries, onEntry, browse, onInstall, onAdd }: { asked: string; own: Own[]; entries: Entry[]; onEntry: EntryActions; browse: (kind: Kind, query: string) => Promise<Found[]>; onInstall: (own: Own) => void; onAdd: (first: AddFirst, added: () => void) => void }) {
   return (
     <>
-      {own.length > 0 && <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>}
+      {(own.length > 0 || entries.length > 0) && (
+        <PickGrid>
+          {entries.map((each) => entryRow(each, onEntry))}
+          {own.map((each) => ownRow(each, onInstall))}
+        </PickGrid>
+      )}
       {(["server", "skill"] as const).map((kind) => (
         <Results key={kind} kind={kind} asked={asked} browse={browse} onAdd={onAdd} />
       ))}

@@ -1,8 +1,9 @@
-//! `plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> |
-//! browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
+//! `plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> |
+//! signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
 //! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
 
 mod browse;
+mod catalog;
 
 use brigadier_core::library::{self, secrets};
 use brigadier_core::{adapters, projects};
@@ -35,8 +36,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match arg(1) {
         "" => {}
-        "add" => {
-            let added = add(data, json(2)?);
+        verb @ ("add" | "install") => {
+            let added = match verb {
+                "add" => add(data, json(2)?),
+                _ => catalog::install(data, arg(2), json(3)?),
+            };
             let _ = std::fs::remove_dir_all(browse::incoming(data));
             let mut page = list(data);
             page["added"] = added?.into();
@@ -46,7 +50,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
+                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }
@@ -220,10 +224,10 @@ fn list(data: &Path) -> Value {
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
                 "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
                 "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
-                "note": note})
+                "note": note, "catalog": catalog::id(i), "with": i.get("with")})
         })
         .collect();
-    json!({"ok": true, "items": shown, "own": own, "projects": projects})
+    json!({"ok": true, "items": shown, "own": own, "projects": projects, "catalog": catalog::page(&items)})
 }
 
 fn refuse(why: &str) -> io::Error {
@@ -249,7 +253,8 @@ fn plain(name: &str) -> io::Result<()> {
 fn add(data: &Path, mut v: Value) -> io::Result<String> {
     let (on, scope) = (v["on"] == true, v["scope"].clone());
     if let Some(source) = v["source"].as_str() {
-        v = json!({"kind": "skill", "folder": browse::fetch(data, source, str(&v["skill"]))?});
+        let folder = browse::fetch(data, source, &[str(&v["skill"])])?.remove(0);
+        v = json!({"kind": "skill", "folder": folder});
     }
     if let Some(key) = v["own"].as_str() {
         let all = projects::list(data).unwrap_or_default();
@@ -278,6 +283,10 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     }
     let mut item = json!({"key": key, "kind": if skill { "skill" } else { "server" }, "name": name,
         "on": on, "scope": {"all": true}});
+    // The catalog's service a skill came with [D572].
+    if let Some(with) = v["with"].as_str() {
+        item["with"] = with.into();
+    }
     if !scope.is_null() {
         item["scope"] = scope_of(&scope)?;
     }
@@ -360,16 +369,28 @@ fn scope_of(s: &Value) -> io::Result<Value> {
     }
 }
 
-/// `{on?, scope?: {all: true} | {projects: [<id>]}}`.
+/// `{on?, scope?: {all: true} | {projects: [<id>]}}`; `skillset:<id>` is every skill that came
+/// with the catalog's `id` [D580].
 fn set(data: &Path, key: &str, v: Value) -> io::Result<()> {
     let mut items = library::items(data);
-    let item = (items.iter_mut()).find(|i| i["key"] == key);
-    let item = item.ok_or_else(|| refuse("That item is no longer in the library."))?;
-    if let Some(on) = v["on"].as_bool() {
-        item["on"] = on.into();
+    let set = key.strip_prefix("skillset:");
+    let these: Vec<&mut Value> = (items.iter_mut())
+        .filter(|i| i["key"] == key || set.is_some_and(|w| i["kind"] == "skill" && i["with"] == w))
+        .collect();
+    if these.is_empty() {
+        return Err(refuse("That item is no longer in the library."));
     }
-    if !v["scope"].is_null() {
-        item["scope"] = scope_of(&v["scope"])?;
+    let scope = match v["scope"].is_null() {
+        true => None,
+        false => Some(scope_of(&v["scope"])?),
+    };
+    for item in these {
+        if let Some(on) = v["on"].as_bool() {
+            item["on"] = on.into();
+        }
+        if let Some(scope) = &scope {
+            item["scope"] = scope.clone();
+        }
     }
     library::save(data, &items)
 }
@@ -383,9 +404,15 @@ fn remove(data: &Path, key: &str) -> io::Result<()> {
     if items[at]["url"].is_string() {
         crate::signin::run(data, &["signout", key]);
     }
-    // Its folder and secrets first, so a failed cleanup stays listed to retry.
-    forget(data, key, str(&items[at]["name"]))?;
-    items.remove(at);
+    // A service's skills go with it [D572].
+    let with = catalog::id(&items[at]);
+    let server = items[at]["kind"] == "server" && !with.is_null();
+    let gone = |i: &Value| i["key"] == key || (server && i["kind"] == "skill" && i["with"] == with);
+    // Their folders and secrets first, so a failed cleanup stays listed to retry.
+    for i in items.iter().filter(|i| gone(i)) {
+        forget(data, str(&i["key"]), str(&i["name"]))?;
+    }
+    items.retain(|i| !gone(i));
     library::save(data, &items)
 }
 

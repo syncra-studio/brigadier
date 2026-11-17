@@ -70,6 +70,7 @@ function useFake() {
           ? { ...now, own: now.own.filter((own) => own.key !== draft.own), items: [...now.items, ...now.own.filter((own) => own.key === draft.own).map((own) => ({ key: own.key, kind: own.kind, name: own.name, description: "", detail: own.detail, on: Boolean(draft.on), scope: draft.scope ?? { all: true }, status: null, sign_in: null, signed_in: null, agents: own.agents, note: null }))], added: draft.own }
           : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
+    install: () => later((now) => now),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
     remove: (key) => later((now) => ({ ...now, items: now.items.filter((item) => item.key !== key) })),
     refresh: () => later((now) => ({ ...now, own: [...now.own.filter((own) => !FOUND.some((found) => found.key === own.key)), ...FOUND] })),
@@ -84,6 +85,7 @@ function useFake() {
 
 const still: PluginActions = {
   add: () => new Promise(() => {}),
+  install: () => new Promise(() => {}),
   set: () => Promise.resolve(VALUE),
   remove: () => Promise.resolve(VALUE),
   refresh: () => Promise.resolve(VALUE),

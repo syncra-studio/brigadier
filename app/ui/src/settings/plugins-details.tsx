@@ -8,12 +8,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Radio, RadioGroup } from "../components/radio";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
-import { ChevronRight, Copy, DotsHorizontal, Folder, Spinner, Trash } from "../icons";
+import { ChevronRight, Copy, DotsHorizontal, Folder, Globe, Spinner, Trash } from "../icons";
 import { errorText } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "./parts";
 import { InstallDialog } from "./plugins-dialogs";
 import { AgentTile, PluginMark } from "./plugins-marks";
-import { type Item, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
+import { type Entry, type Item, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
 
 /** A device sign-in's one-time code and the page it's entered on (GitHub's). */
 export type Device = { code: string; page: string };
@@ -73,64 +73,93 @@ export function WorksWith({ agents, marks }: { agents: string[]; marks: Record<s
 }
 
 /**
- * One item's page, the same for every state [D574, D579]: its header with … (copy, Remove), its switch, and Sign in
- * (spinning while the browser's open) or Sign out for a server Brigadier signs in to; where it's on; what it
- * includes; its information.
+ * One item's page, the same for every state [D574, D579]: a catalog entry not yet installed has Install; an installed
+ * one its … (copy, Remove), its switch, and Sign in (spinning while the browser's open) or Sign out for a server
+ * Brigadier signs in to, and where it's on. Then what it includes, and its information.
  */
 export function DetailsPage({
   value,
   item,
+  entry,
   marks,
   actions,
   signing,
   trail,
+  onInstall,
   onScope,
   onSwitch,
   onRemove,
 }: {
   value: Plugins;
-  item: Item;
+  /** The library's; none for a catalog entry not installed. */
+  item?: Item;
+  entry?: Entry;
   marks: Record<string, string | null>;
   actions: PluginActions;
   signing: SignInStart;
   trail: { label: string; go?: () => void }[];
+  onInstall: () => void;
   onScope: (scope: Scope) => void;
   onSwitch: (on: boolean) => void;
   onRemove: () => void;
 }) {
-  const some = "projects" in item.scope ? item.scope.projects : null;
+  const kind = item?.kind ?? entry!.kind;
+  const name = entry?.name ?? item!.name;
+  const detail = item?.detail ?? entry?.url ?? "";
+  const mark = { kind, name, detail, logo: entry?.id ?? item?.catalog };
+  const some = item && "projects" in item.scope ? item.scope.projects : null;
   const toggle = (id: string, on: boolean) => onScope({ projects: on ? [...some!, id] : some!.filter((each) => each !== id) });
-  const first = item.kind === "skill" ? "Folder" : /^[a-z]+:\/\//.test(item.detail) ? "Address" : "Command";
+  const first = kind === "skill" ? "Folder" : /^[a-z]+:\/\//.test(detail) ? "Address" : "Command";
   const [signIn, setSignIn] = useState<boolean>(signing !== undefined);
   const [error, setError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
-  const signedIn = item.signed_in === true;
+  const signedIn = item?.signed_in === true;
   const signOut = () => {
     setLeaving(true);
     setError(null);
     actions
-      .signOut(item.key)
+      .signOut(item!.key)
       .catch((cause: unknown) => setError(errorText(cause)))
       .finally(() => setLeaving(false));
   };
+  const link = (label: string, url: string) => (
+    <Button variant="ghost" size="icon-xs" aria-label={label} title={url} onClick={() => window.brigadier?.openLink(url)}>
+      <Globe aria-hidden />
+    </Button>
+  );
   const info: [string, ReactNode][] = [];
-  if (item.sign_in) info.push(["Sign-in", item.sign_in === "brigadier" ? "Once in Brigadier, for every agent" : "Signed in by each agent"]);
-  if (item.agents.length) info.push(["Works with", <WorksWith agents={item.agents} marks={marks} />]);
-  info.push([
-    first,
-    <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
-      <span className="break-all">{item.detail}</span>
-      <CopyButton text={item.detail} size="icon-xs" className="text-muted-foreground" />
-    </span>,
-  ]);
+  if (entry) info.push(["Category", entry.category], ["Developer", entry.maker]);
+  if (item?.sign_in) info.push(["Sign-in", item.sign_in === "brigadier" ? "Once in Brigadier, for every agent" : "Signed in by each agent"]);
+  if (entry?.website) info.push(["Website", link("Open website", entry.website)]);
+  if (entry?.privacy) info.push(["Privacy Policy", link("Open privacy policy", entry.privacy)]);
+  const agents = item ? item.agents : Object.keys(marks);
+  if (agents.length) info.push(["Works with", <WorksWith agents={agents} marks={marks} />]);
+  if (detail)
+    info.push([
+      first,
+      <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
+        <span className="break-all">{detail}</span>
+        <CopyButton text={detail} size="icon-xs" className="text-muted-foreground" />
+      </span>,
+    ]);
+  // What it brings: itself, and a service's skills [D572].
+  const includes = [
+    { name, line: [KIND_LABEL[kind], item?.description || entry?.line].filter(Boolean).join(" · "), mark },
+    ...(kind === "server" ? (entry?.skills ?? []) : []).map((skill) => ({ name: skill.name, line: `Skill · ${skill.line}`, mark: { kind: "skill", name: skill.name, detail: "" } })),
+  ];
   return (
     <>
       <Trail parts={trail} />
       <SettingsPage
-        title={item.name}
-        description={`${KIND_LABEL[item.kind]} · ${item.description || item.detail.replace(/^https:\/\//, "")}`}
-        mark={<PluginMark item={item} large />}
+        title={name}
+        description={entry ? `By ${entry.maker} · ${entry.line}` : `${KIND_LABEL[kind]} · ${item!.description || detail.replace(/^https:\/\//, "")}`}
+        mark={<PluginMark item={mark} large />}
         actions={
+          !item ? (
+            <Button size="sm" onClick={onInstall}>
+              Install
+            </Button>
+          ) : (
           <span className="flex items-center gap-3">
             {item.status === "cant_reach" && <Badge variant={STATUS.cant_reach.variant}>{STATUS.cant_reach.label}</Badge>}
             <DropdownMenu>
@@ -138,6 +167,12 @@ export function DetailsPage({
                 <DotsHorizontal aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {entry?.website && (
+                  <DropdownMenuItem onClick={() => window.brigadier?.openLink(entry.website!)}>
+                    <Globe aria-hidden />
+                    Open website
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => copyWithToast(item.detail, first.toLowerCase())}>
                   <Copy aria-hidden />
                   Copy {item.kind === "skill" ? "folder path" : first.toLowerCase()}
@@ -162,14 +197,17 @@ export function DetailsPage({
                 </Button>
               ))}
           </span>
+          )
         }
       >
-        {(item.note || error) && (
+        {entry && <p className="text-label">{entry.about}</p>}
+        {(item?.note || error) && (
           <div className="-mt-5 flex flex-col gap-2">
-            {item.note && <p className="text-xs text-quiet-foreground">{item.note}</p>}
+            {item?.note && <p className="text-xs text-quiet-foreground">{item.note}</p>}
             <ErrorLine error={error} />
           </div>
         )}
+        {item && (
         <SettingsSection title="Projects" description="Where it's on. New sessions pick up changes." setting="Projects">
           <RadioGroup
             aria-label="Where it's on"
@@ -204,20 +242,23 @@ export function DetailsPage({
             </SettingsCard>
           )}
         </SettingsSection>
-        <SettingsSection title="Includes 1" setting="Includes">
+        )}
+        <SettingsSection title={`Includes ${includes.length}`} setting="Includes">
           <SettingsCard>
-            <div className="flex items-center gap-3 px-4 py-3">
-              <PluginMark item={item} />
-              <RowText title={item.name} line={`${KIND_LABEL[item.kind]}${item.description ? ` · ${item.description}` : ""}`} truncate />
-            </div>
+            {includes.map((each) => (
+              <div key={each.name} className="flex items-center gap-3 px-4 py-3">
+                <PluginMark item={each.mark} />
+                <RowText title={each.name} line={each.line} truncate />
+              </div>
+            ))}
           </SettingsCard>
         </SettingsSection>
         <Information rows={info} />
       </SettingsPage>
-      {signIn && (
+      {signIn && item && (
         <InstallDialog
           name={item.name}
-          mark={<PluginMark item={item} large />}
+          mark={<PluginMark item={mark} large />}
           line=""
           projects={value.projects}
           install={null}

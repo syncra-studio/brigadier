@@ -1,0 +1,908 @@
+{
+  "categories": [
+    "Popular",
+    "Productivity",
+    "Creativity",
+    "Developer Tools",
+    "Finance",
+    "Education",
+    "Business & Operations",
+    "Data & Analytics",
+    "Skills"
+  ],
+  "entries": [
+    {
+      "kind": "server",
+      "id": "notion",
+      "name": "Notion",
+      "line": "Create docs, tasks, databases",
+      "about": "Search, read and edit pages and databases in your Notion workspace. Agents can draft specs, file tasks and keep notes where your team already looks.",
+      "maker": "Notion",
+      "category": "Productivity",
+      "popular": true,
+      "url": "https://mcp.notion.com/mcp",
+      "website": "https://www.notion.com",
+      "privacy": "https://www.notion.com/help/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "notion-spec-to-implementation",
+          "name": "notion-spec-to-implementation",
+          "line": "Turn a Notion spec into a plan and tracked tasks"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "notion-research-documentation",
+          "name": "notion-research-documentation",
+          "line": "Gather Notion pages into one structured brief"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "notion-meeting-intelligence",
+          "name": "notion-meeting-intelligence",
+          "line": "Prepare agendas and pre-reads from Notion context"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "notion-knowledge-capture",
+          "name": "notion-knowledge-capture",
+          "line": "Save decisions and how-tos as Notion pages"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "linear",
+      "name": "Linear",
+      "line": "Plan and track issues and projects",
+      "about": "Find, create and update Linear issues, projects and cycles. Agents can file what they find and move work along as they finish it.",
+      "maker": "Linear",
+      "category": "Productivity",
+      "popular": true,
+      "url": "https://mcp.linear.app/mcp",
+      "website": "https://linear.app",
+      "privacy": "https://linear.app/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "atlassian",
+      "name": "Atlassian",
+      "line": "Jira, Confluence and Compass",
+      "about": "Search and edit Jira issues and Confluence pages through Atlassian's Rovo server. Agents can triage tickets, write up pages and link the two.",
+      "maker": "Atlassian",
+      "category": "Productivity",
+      "popular": true,
+      "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+      "website": "https://www.atlassian.com",
+      "privacy": "https://www.atlassian.com/legal/privacy-policy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "airtable",
+      "name": "Airtable",
+      "line": "Query and update your bases",
+      "about": "List, filter, create and update records across your Airtable bases. Useful when an agent needs structured data as input or a place to write results.",
+      "maker": "Airtable",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.airtable.com/mcp",
+      "website": "https://airtable.com",
+      "privacy": "https://www.airtable.com/company/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "airtable-filters",
+          "name": "airtable-filters",
+          "line": "Filter Airtable records by field values"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "airtable-overview",
+          "name": "airtable-overview",
+          "line": "How Airtable bases, tables and fields fit together"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "clickup",
+      "name": "ClickUp",
+      "line": "Search and update your workspace",
+      "about": "Search tasks, docs and chat across ClickUp and create or update tasks. Agents can report progress where the team tracks work.",
+      "maker": "ClickUp",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.clickup.com/mcp",
+      "website": "https://clickup.com",
+      "privacy": "https://clickup.com/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "monday",
+      "name": "monday.com",
+      "line": "Manage boards, items and updates",
+      "about": "Search boards, create and update items and columns, assign owners and post updates. Covers projects, tasks and CRM boards alike.",
+      "maker": "monday.com",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.monday.com/mcp",
+      "website": "https://monday.com",
+      "privacy": "https://monday.com/l/privacy/privacy-policy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "dropbox",
+      "name": "Dropbox",
+      "line": "Find, save and share files",
+      "about": "Search, read, move and share files in your Dropbox with your existing permissions. Agents can pull documents in or save what they produce.",
+      "maker": "Dropbox",
+      "category": "Productivity",
+      "popular": true,
+      "url": "https://mcp.dropbox.com/mcp",
+      "website": "https://www.dropbox.com",
+      "privacy": "https://www.dropbox.com/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "find-dropbox-content",
+          "name": "find-dropbox-content",
+          "line": "Find Dropbox files and folders for a request"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "inspect-dropbox-file",
+          "name": "inspect-dropbox-file",
+          "line": "Check a file's metadata, links and contents"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "organize-dropbox-folder",
+          "name": "organize-dropbox-folder",
+          "line": "Restructure a Dropbox folder into a cleaner layout"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "clean-up-dropbox-content",
+          "name": "clean-up-dropbox-content",
+          "line": "Find stale or duplicate files, delete after review"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "share-dropbox-content",
+          "name": "share-dropbox-content",
+          "line": "Create and review shared links"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "collect-files-with-request",
+          "name": "collect-files-with-request",
+          "line": "Collect uploads from others with file requests"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "granola",
+      "name": "Granola",
+      "line": "Add your meeting context",
+      "about": "Reads your Granola meeting notes and transcripts. Agents can ground specs, follow-ups and summaries in what was actually said.",
+      "maker": "Granola",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.granola.ai/mcp",
+      "website": "https://www.granola.ai",
+      "privacy": "https://help.granola.ai/article/privacy-policy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "todoist",
+      "name": "Todoist",
+      "line": "Tasks, projects and reminders",
+      "about": "Read and manage Todoist tasks, projects, sections and comments. Agents can add follow-ups to your list or check what is due.",
+      "maker": "Doist",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://ai.todoist.net/mcp",
+      "website": "https://www.todoist.com",
+      "privacy": "https://doist.com/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "plaud",
+      "name": "Plaud",
+      "line": "Use your Plaud recordings",
+      "about": "Reads transcripts and summaries from your Plaud recorder. Agents can draw on conversations and calls you recorded.",
+      "maker": "Plaud",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.plaud.ai/mcp",
+      "website": "https://www.plaud.ai",
+      "privacy": "https://www.plaud.ai/pages/privacy-policy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "miro",
+      "name": "Miro",
+      "line": "Read and build Miro boards",
+      "about": "Reads board content and creates diagrams, stickies and docs on Miro boards. Handy for turning a plan into a board or a board into code.",
+      "maker": "Miro",
+      "category": "Productivity",
+      "popular": false,
+      "url": "https://mcp.miro.com/",
+      "website": "https://miro.com",
+      "privacy": "https://miro.com/legal/privacy-policy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "figma",
+      "name": "Figma",
+      "line": "Create designs, ship to code",
+      "about": "Reads Figma frames, variables and components, and can write to files. Agents use it to build UI from a design or put a screen back into Figma.",
+      "maker": "Figma",
+      "category": "Creativity",
+      "popular": true,
+      "url": "https://mcp.figma.com/mcp",
+      "website": "https://www.figma.com",
+      "privacy": "https://www.figma.com/legal/privacy/",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "figma-design-to-code",
+          "name": "figma-design-to-code",
+          "line": "Implement a Figma design in your codebase"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-use",
+          "name": "figma-use",
+          "line": "Required groundwork before writing to Figma"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-generate-design",
+          "name": "figma-generate-design",
+          "line": "Rebuild an app screen as a Figma design"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-generate-library",
+          "name": "figma-generate-library",
+          "line": "Build a Figma design system from your code"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-code-connect",
+          "name": "figma-code-connect",
+          "line": "Map Figma components to code with Code Connect"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-create-new-file",
+          "name": "figma-create-new-file",
+          "line": "Create a new Figma or FigJam file"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-generate-diagram",
+          "name": "figma-generate-diagram",
+          "line": "Draw flowcharts and diagrams in FigJam"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-use-figjam",
+          "name": "figma-use-figjam",
+          "line": "Work on FigJam boards"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-use-slides",
+          "name": "figma-use-slides",
+          "line": "Work on Figma Slides decks"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-use-motion",
+          "name": "figma-use-motion",
+          "line": "Animate Figma nodes with keyframes"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-implement-motion",
+          "name": "figma-implement-motion",
+          "line": "Turn Figma motion into app animation code"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "figma-swiftui",
+          "name": "figma-swiftui",
+          "line": "Translate between Figma and SwiftUI"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "canva",
+      "name": "Canva",
+      "line": "Create, review, edit designs",
+      "about": "Creates, edits, resizes and exports Canva designs, using your brand kits and templates. Agents can make decks and social posts from a brief.",
+      "maker": "Canva",
+      "category": "Creativity",
+      "popular": true,
+      "url": "https://mcp.canva.com/mcp",
+      "website": "https://www.canva.com",
+      "privacy": "https://www.canva.com/policies/privacy-policy/",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "canva-branded-presentation",
+          "name": "canva-branded-presentation",
+          "line": "Make an on-brand deck from an outline"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-edit-design",
+          "name": "canva-edit-design",
+          "line": "Edit text, images and layout in a design"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-resize-for-social-media",
+          "name": "canva-resize-for-social-media",
+          "line": "Resize a design for social formats"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-bulk-create",
+          "name": "canva-bulk-create",
+          "line": "Make one design per row of a table"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-brand-check",
+          "name": "canva-brand-check",
+          "line": "Check a design against your brand kit"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-design-feedback",
+          "name": "canva-design-feedback",
+          "line": "Give structured feedback on a design"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-implement-feedback",
+          "name": "canva-implement-feedback",
+          "line": "Apply reviewers' comments to a design"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "canva-translate-design",
+          "name": "canva-translate-design",
+          "line": "Translate a design into another language"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "higgsfield",
+      "name": "Higgsfield",
+      "line": "Every image and video model",
+      "about": "Generates images, video and voice with many models from one account. Agents can make product shots, short clips or narrated explainers.",
+      "maker": "Higgsfield AI",
+      "category": "Creativity",
+      "popular": false,
+      "url": "https://mcp.higgsfield.ai/mcp",
+      "website": "https://higgsfield.ai",
+      "privacy": "https://higgsfield.ai/privacy-policy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "narrator",
+          "name": "narrator",
+          "line": "Generate narration takes in a fixed voice"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "cloudinary",
+      "name": "Cloudinary",
+      "line": "Manage and transform media assets",
+      "about": "Uploads, searches, tags and transforms images and video in your Cloudinary account. Agents can prepare media and get delivery URLs.",
+      "maker": "Cloudinary",
+      "category": "Creativity",
+      "popular": false,
+      "url": "https://asset-management.mcp.cloudinary.com/mcp",
+      "website": "https://cloudinary.com",
+      "privacy": "https://cloudinary.com/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "github",
+      "name": "GitHub",
+      "line": "Triage PRs, issues and CI runs",
+      "about": "Reads and acts on repositories, pull requests, issues and Actions runs. Signs in through Brigadier's GitHub app.",
+      "maker": "GitHub",
+      "category": "Developer Tools",
+      "popular": true,
+      "url": "https://api.githubcopilot.com/mcp/",
+      "website": "https://github.com",
+      "privacy": "https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "vercel",
+      "name": "Vercel",
+      "line": "Build and deploy apps",
+      "about": "Lists projects and deployments, reads build and runtime logs, and searches Vercel docs. Agents can check why a deploy failed and what shipped.",
+      "maker": "Vercel",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.vercel.com",
+      "website": "https://vercel.com",
+      "privacy": "https://vercel.com/legal/privacy-policy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "vercel-cli",
+          "name": "vercel-cli",
+          "line": "Deploy, link projects and read logs with the CLI"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "deployments-cicd",
+          "name": "deployments-cicd",
+          "line": "Deploy, promote, roll back and inspect builds"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "env-vars",
+          "name": "env-vars",
+          "line": "Manage environment variables and .env files"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "vercel-functions",
+          "name": "vercel-functions",
+          "line": "Serverless and Edge Functions, Fluid Compute"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "vercel-storage",
+          "name": "vercel-storage",
+          "line": "Blob, Edge Config and Marketplace storage"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "cdn-caching",
+          "name": "cdn-caching",
+          "line": "Debug CDN caching, ISR and revalidation"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "observability",
+          "name": "observability",
+          "line": "Logs, drains, analytics and speed insights"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "cron-jobs",
+          "name": "cron-jobs",
+          "line": "Add and debug Vercel Cron Jobs"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "nextjs",
+          "name": "nextjs",
+          "line": "Next.js App Router guidance"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "ai-sdk",
+          "name": "ai-sdk",
+          "line": "Build AI features with the Vercel AI SDK"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "supabase",
+      "name": "Supabase",
+      "line": "Manage and query databases",
+      "about": "Runs SQL, applies migrations, manages branches and reads logs for your Supabase projects. Agents can shape the schema while they build.",
+      "maker": "Supabase",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.supabase.com/mcp",
+      "website": "https://supabase.com",
+      "privacy": "https://supabase.com/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "supabase",
+          "name": "supabase",
+          "line": "Work across Supabase database, auth and functions"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "supabase-postgres-best-practices",
+          "name": "supabase-postgres-best-practices",
+          "line": "Postgres performance and schema best practices"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "sentry",
+      "name": "Sentry",
+      "line": "Inspect errors and issues",
+      "about": "Searches Sentry issues, events and traces, and can run Seer analysis. Agents can find the error behind a bug report and its stack trace.",
+      "maker": "Sentry",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.sentry.dev/mcp",
+      "website": "https://sentry.io",
+      "privacy": "https://sentry.io/privacy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "line": "Work with your Cloudflare account",
+      "about": "Calls the Cloudflare API across Workers, storage, DNS and more from one server. Agents can inspect and change account resources directly.",
+      "maker": "Cloudflare",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.cloudflare.com/mcp",
+      "website": "https://www.cloudflare.com",
+      "privacy": "https://www.cloudflare.com/privacypolicy/",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "cloudflare",
+          "name": "cloudflare",
+          "line": "Overview of the Cloudflare developer platform"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "wrangler",
+          "name": "wrangler",
+          "line": "Deploy and manage Workers with Wrangler"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "workers-best-practices",
+          "name": "workers-best-practices",
+          "line": "Review Workers code against best practices"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "durable-objects",
+          "name": "durable-objects",
+          "line": "Build and review Durable Objects"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "agents-sdk",
+          "name": "agents-sdk",
+          "line": "Build stateful agents with the Agents SDK"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "building-ai-agent-on-cloudflare",
+          "name": "building-ai-agent-on-cloudflare",
+          "line": "Scaffold and deploy an AI agent on Workers"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "building-mcp-server-on-cloudflare",
+          "name": "building-mcp-server-on-cloudflare",
+          "line": "Build a remote MCP server on Workers"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "sandbox-sdk",
+          "name": "sandbox-sdk",
+          "line": "Run untrusted code in Cloudflare Sandboxes"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "netlify",
+      "name": "Netlify",
+      "line": "Create, deploy and manage sites",
+      "about": "Creates and deploys Netlify projects, and manages env vars, forms and extensions. Agents can ship a site and check its deploys.",
+      "maker": "Netlify",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://netlify-mcp.netlify.app/mcp",
+      "website": "https://www.netlify.com",
+      "privacy": "https://www.netlify.com/privacy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "datadog",
+      "name": "Datadog",
+      "line": "Search logs, metrics and traces",
+      "about": "Queries Datadog logs, metrics, traces, monitors and incidents. Its remote server is in preview and serves the US1 site only.",
+      "maker": "Datadog",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.datadoghq.com/v1/mcp",
+      "website": "https://www.datadoghq.com",
+      "privacy": "https://www.datadoghq.com/legal/privacy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "exa",
+      "name": "Exa",
+      "line": "Web search for AI agents",
+      "about": "Searches the web and fetches page contents, built for agents rather than people. Works without signing in, within Exa's free limits.",
+      "maker": "Exa",
+      "category": "Developer Tools",
+      "popular": false,
+      "url": "https://mcp.exa.ai/mcp",
+      "website": "https://exa.ai",
+      "privacy": "https://exa.ai/privacy-policy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "posthog",
+      "name": "PostHog",
+      "line": "Analyze your product data",
+      "about": "Queries product analytics with HogQL and manages feature flags, experiments, surveys and error tracking. Agents can answer usage questions from real data.",
+      "maker": "PostHog",
+      "category": "Data & Analytics",
+      "popular": false,
+      "url": "https://mcp.posthog.com/mcp",
+      "website": "https://posthog.com",
+      "privacy": "https://posthog.com/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "posthog",
+          "name": "posthog",
+          "line": "Analytics, flags and experiments in PostHog"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "stripe",
+      "name": "Stripe",
+      "line": "Accept payments, grow revenue",
+      "about": "Reads and manages customers, payments, subscriptions, invoices and refunds, and searches Stripe docs. Agents can set up products and payment links.",
+      "maker": "Stripe",
+      "category": "Finance",
+      "popular": true,
+      "url": "https://mcp.stripe.com",
+      "website": "https://stripe.com",
+      "privacy": "https://stripe.com/privacy",
+      "skills": [
+        {
+          "source": "openai/plugins",
+          "skill": "stripe-best-practices",
+          "name": "stripe-best-practices",
+          "line": "Choose the right Stripe APIs and integration"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "upgrade-stripe",
+          "name": "upgrade-stripe",
+          "line": "Upgrade Stripe API versions and SDKs"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "connect-recommend",
+          "name": "connect-recommend",
+          "line": "Recommend a Stripe Connect setup"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "stripe-apps",
+          "name": "stripe-apps",
+          "line": "Build and ship a Stripe App"
+        },
+        {
+          "source": "openai/plugins",
+          "skill": "stripe-docs",
+          "name": "stripe-docs",
+          "line": "Search Stripe docs from the terminal"
+        }
+      ]
+    },
+    {
+      "kind": "server",
+      "id": "paypal",
+      "name": "PayPal",
+      "line": "Invoices, orders and payments",
+      "about": "Creates invoices, orders and products and looks up transactions and disputes in your PayPal business account.",
+      "maker": "PayPal",
+      "category": "Finance",
+      "popular": false,
+      "url": "https://mcp.paypal.com/mcp",
+      "website": "https://www.paypal.com",
+      "privacy": "https://www.paypal.com/us/legalhub/paypal/privacy-full",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "consensus",
+      "name": "Consensus",
+      "line": "Search peer-reviewed research",
+      "about": "Searches a large index of peer-reviewed papers and returns findings with citations. Useful for literature reviews and checking claims.",
+      "maker": "Consensus",
+      "category": "Education",
+      "popular": false,
+      "url": "https://mcp.consensus.app/mcp",
+      "website": "https://consensus.app",
+      "privacy": "https://consensus.app/home/privacy-policy/",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "wix",
+      "name": "Wix",
+      "line": "Build and manage Wix sites",
+      "about": "Manages Wix sites and their business apps, such as stores, bookings and blogs. Agents can change content and settings through Wix's APIs.",
+      "maker": "Wix",
+      "category": "Business & Operations",
+      "popular": false,
+      "url": "https://mcp.wix.com/mcp",
+      "website": "https://www.wix.com",
+      "privacy": "https://www.wix.com/about/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "webflow",
+      "name": "Webflow",
+      "line": "Edit Webflow sites and CMS",
+      "about": "Reads and updates Webflow sites, pages and CMS collections, and can publish. Agents can keep site content in step with your work.",
+      "maker": "Webflow",
+      "category": "Business & Operations",
+      "popular": false,
+      "url": "https://mcp.webflow.com/mcp",
+      "website": "https://webflow.com",
+      "privacy": "https://webflow.com/legal/privacy",
+      "skills": []
+    },
+    {
+      "kind": "server",
+      "id": "intercom",
+      "name": "Intercom",
+      "line": "Search conversations and contacts",
+      "about": "Searches Intercom conversations, tickets and contacts. Agents can see what customers report and pull it into bug fixes or answers.",
+      "maker": "Intercom",
+      "category": "Business & Operations",
+      "popular": false,
+      "url": "https://mcp.intercom.com/mcp",
+      "website": "https://www.intercom.com",
+      "privacy": "https://www.intercom.com/legal/privacy",
+      "skills": []
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "web-design-guidelines",
+      "name": "Web Design Guidelines",
+      "line": "Review UI code against web interface rules",
+      "about": "Checks UI code for accessibility, focus, forms, motion and layout issues against Vercel's Web Interface Guidelines. Reports each finding with its file and line.",
+      "maker": "Vercel",
+      "source": "vercel-labs/agent-skills",
+      "skill": "web-design-guidelines",
+      "website": "https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "react-best-practices",
+      "name": "React Best Practices",
+      "line": "React and Next.js performance rules",
+      "about": "A ranked set of performance rules for React and Next.js, from removing request waterfalls to trimming bundles. Used when writing or reviewing components.",
+      "maker": "Vercel",
+      "source": "vercel-labs/agent-skills",
+      "skill": "react-best-practices",
+      "website": "https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "frontend-design",
+      "name": "Frontend Design",
+      "line": "Distinctive visual design for new UI",
+      "about": "Guides typography, colour and layout choices so new interfaces look intentional rather than templated. For building or reshaping UI.",
+      "maker": "Anthropic",
+      "source": "anthropics/skills",
+      "skill": "frontend-design",
+      "website": "https://github.com/anthropics/skills/tree/main/skills/frontend-design"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "mcp-builder",
+      "name": "MCP Builder",
+      "line": "Build well-designed MCP servers",
+      "about": "A guide to designing, writing and evaluating MCP servers in Python or TypeScript. Covers tool design, errors and test questions.",
+      "maker": "Anthropic",
+      "source": "anthropics/skills",
+      "skill": "mcp-builder",
+      "website": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "webapp-testing",
+      "name": "Web App Testing",
+      "line": "Test local web apps with Playwright",
+      "about": "Drives a local web app with Playwright scripts to check behaviour, take screenshots and read console logs. Includes a helper to start servers.",
+      "maker": "Anthropic",
+      "source": "anthropics/skills",
+      "skill": "webapp-testing",
+      "website": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "skill-creator",
+      "name": "Skill Creator",
+      "line": "Write, test and improve agent skills",
+      "about": "Walks through drafting a skill, running test prompts and refining it from the results. Also tunes a skill's description so it triggers when it should.",
+      "maker": "Anthropic",
+      "source": "anthropics/skills",
+      "skill": "skill-creator",
+      "website": "https://github.com/anthropics/skills/tree/main/skills/skill-creator"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "systematic-debugging",
+      "name": "Systematic Debugging",
+      "line": "Find the root cause before fixing",
+      "about": "A four-phase method for bugs and failing tests: reproduce, trace, test a hypothesis, then fix. Stops guess-and-patch loops.",
+      "maker": "Jesse Vincent",
+      "source": "obra/superpowers",
+      "skill": "systematic-debugging",
+      "website": "https://github.com/obra/superpowers/tree/main/skills/systematic-debugging"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "test-driven-development",
+      "name": "Test-Driven Development",
+      "line": "Write the failing test first",
+      "about": "Red, green, refactor for every feature and fix: a failing test, the least code to pass it, then cleanup. Keeps changes covered as they land.",
+      "maker": "Jesse Vincent",
+      "source": "obra/superpowers",
+      "skill": "test-driven-development",
+      "website": "https://github.com/obra/superpowers/tree/main/skills/test-driven-development"
+    },
+    {
+      "kind": "skill",
+      "category": "Skills",
+      "id": "brainstorming",
+      "name": "Brainstorming",
+      "line": "Shape an idea into a design first",
+      "about": "Asks questions one at a time, compares approaches and writes up a design before any code. For new features or plans that are still vague.",
+      "maker": "Jesse Vincent",
+      "source": "obra/superpowers",
+      "skill": "brainstorming",
+      "website": "https://github.com/obra/superpowers/tree/main/skills/brainstorming"
+    }
+  ]
+}

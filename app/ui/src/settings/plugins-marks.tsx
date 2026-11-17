@@ -109,9 +109,16 @@ function SkillArt({ className }: { className: string }) {
 }
 
 /** An item's mark: its maker's for a well-known server, else the illustration for its kind; `large` beside its page's title. */
-export function PluginMark({ item, large = false, exact = false }: { item: { kind: string; name: string; detail: string }; large?: boolean; exact?: boolean }) {
+// The catalog's full-colour logos, each from its service's own site [D576], by catalog id.
+const LOGOS: Record<string, string> = Object.fromEntries(
+  Object.entries(import.meta.glob<string>("./logos/*.png", { eager: true, import: "default" })).map(([path, url]) => [path.slice(8, -4), url]),
+);
+
+export function PluginMark({ item, large = false, exact = false }: { item: { kind: string; name: string; detail: string; logo?: string | null }; large?: boolean; exact?: boolean }) {
   const brand = brandOf(item, exact);
   const size = large ? "size-11" : "size-9";
+  const logo = item.logo && LOGOS[item.logo];
+  if (logo) return <img data-slot="plugin-mark" src={logo} alt="" className={cx("shrink-0 border border-divider bg-white object-contain p-1", size, large ? "rounded-nav" : "rounded-control")} />;
   if (!brand) return item.kind === "skill" ? <SkillArt className={size} /> : <ServerArt className={size} />;
   return (
     <span data-slot="plugin-mark" className={cx("flex shrink-0 items-center justify-center bg-fill-subtle", size, large ? "rounded-nav" : "rounded-control")}>

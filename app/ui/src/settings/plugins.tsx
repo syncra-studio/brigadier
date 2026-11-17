@@ -14,9 +14,9 @@ import { ChevronDown, Folder, Folders, Mcp, Reload, ToolsSkills } from "../icons
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
 import { type AddFirst, AddDialog, type Draft, InstallDialog, RefreshDialog, RemoveDialog } from "./plugins-dialogs";
-import { BrowseTab, type Found } from "./plugins-browse";
+import { BrowseTab, entryRow, type Found, PickGrid } from "./plugins-browse";
 import { importable, MyTab } from "./plugins-mine";
-import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
+import { DetailsPage, type Device, type SignInStart, Trail } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
 /** Where an item is on: every project, or only these (by id). */
@@ -41,15 +41,36 @@ export type Item = {
   /** The agents that get it, by label. */
   agents: string[];
   note: string | null;
+  /** The catalog entry it is or came with [D572]; `with` only on a skill that came with a service. */
+  catalog?: string | null;
+  with?: string | null;
+};
+/** One of Browse's catalog, shipped with Brigadier [D566, D569]: a service (its server, and the skills that come with it) or a skill from a GitHub repo; `installed` the library's key for it. */
+export type Entry = {
+  kind: Kind;
+  id: string;
+  name: string;
+  line: string;
+  about: string;
+  maker: string;
+  category: string;
+  popular?: boolean;
+  url?: string;
+  website?: string;
+  privacy?: string;
+  skills?: { skill: string; name: string; line: string }[];
+  installed: string | null;
 };
 /** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
 export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string };
-export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[] };
+export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[]; catalog?: { categories: string[]; entries: Entry[] } };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
 export type PluginActions = {
   /** Adds one; with the user's pick, `on` and `scope`, it's on there at once [D571]. `added` is its key. */
   add: (draft: (Draft | { own: string }) & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
+  /** Installs a catalog entry, with its skills, on where picked [D571, D572]. `added` is its key. */
+  install: (id: string, scope: Scope) => Promise<Plugins & { added?: string }>;
   set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
   remove: (key: string) => Promise<Plugins>;
   /** Reads the page again, its agents' own included. */
@@ -97,7 +118,12 @@ export function chipOf(value: Plugins, item: Item): string | null {
 export const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
 /** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string } | { type: "install"; own: Own };
+export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string } | { type: "install"; own: Own } | { type: "catalog"; entry: Entry };
+
+/** A catalog entry's mark: its logo. */
+export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, detail: entry.url ?? "", logo: entry.id });
+/** The categories Browse shows, Popular first; each entry once in its own and in Popular. */
+export const inCategory = (entry: Entry, category: string) => (category === "Popular" ? Boolean(entry.popular) : entry.category === category);
 
 /**
  * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each card
@@ -167,7 +193,9 @@ export function PluginsPage({
       },
     );
   };
-  const withItem = (key: string, patch: Partial<Item>) => shown && { ...shown, items: shown.items.map((item) => (item.key === key ? { ...item, ...patch } : item)) };
+  // `skillset:<id>` is every skill that came with that service [D580].
+  const withItem = (key: string, patch: Partial<Item>) =>
+    shown && { ...shown, items: shown.items.map((item) => (item.key === key || (item.kind === "skill" && key === `skillset:${item.with}`) ? { ...item, ...patch } : item)) };
   const set = (key: string, patch: { on?: boolean; scope?: Scope }) => void change(withItem(key, patch)!, () => actions.set(key, patch));
   /** Copies agents' own items into the library, one after another; the page settles on the last answer. */
   const addOwn = (keys: string[]) =>
@@ -198,7 +226,18 @@ export function PluginsPage({
     }).finally(() => setChecking(false));
   };
 
-  const item = detail ? shown?.items.find((each) => each.key === detail) : undefined;
+  const entries = shown?.catalog?.entries ?? [];
+  // An item's page, or a catalog entry's (`catalog:<id>`), the library's item where it's installed [D574].
+  const asked = detail?.startsWith("catalog:") ? entries.find((each) => `catalog:${each.id}` === detail) : undefined;
+  const item = shown?.items.find((each) => each.key === (asked ? asked.installed : detail));
+  const entry = asked ?? entries.find((each) => each.id === item?.catalog && each.kind === item.kind);
+  const category = detail?.startsWith("category:") ? detail.slice(9) : null;
+  /** Rust's page after an install: the new item, and its key where it goes on to Brigadier's sign-in. */
+  const installed = (back: Plugins & { added?: string }) => {
+    setMine((confirmed.current = { base: value!, shown: back }));
+    const added = back.items.find((each) => each.key === back.added);
+    return added?.sign_in === "brigadier" && !added.signed_in ? added.key : null;
+  };
   const close = () => setOpen(null);
   /** Back to the list, on this tab: the breadcrumb's parts. */
   const back = (to: Tab) => () => {
@@ -207,53 +246,77 @@ export function PluginsPage({
   };
   const toAdd = (kind: Kind) => setOpen({ type: "add", remote, first: { form: { kind, remote } } });
   let page;
-  if (shown && item) {
+  const controls = (
+    <>
+      {/* "Search" alone fits a narrow window; the field's name still says what it searches. */}
+      <div className="flex w-64 min-w-28">
+        <SearchField label="Search plugins" value={query} onChange={setQuery} />
+      </div>
+      <Button variant="ghost" size="icon" aria-label="Refresh" disabled={!shown || checking} aria-busy={checking} onClick={refresh}>
+        <Reload aria-hidden className={cx(checking && "animate-spin motion-reduce:animate-none")} />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button size="sm" disabled={!shown} />}>
+          Add
+          <ChevronDown aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => toAdd("server")}>
+            <Mcp aria-hidden />
+            MCP server
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toAdd("skill")}>
+            <ToolsSkills aria-hidden />
+            Skill from a folder
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+  const toCategory = (name: string) => () => onDetail(`category:${name}`);
+  const onEntry = { onOpen: (entry: Entry) => onDetail(`catalog:${entry.id}`), onInstall: (entry: Entry) => setOpen({ type: "catalog", entry }) };
+  if (shown && (item || asked)) {
+    // A catalog entry's page sits under its category; the library's under its tab.
+    const trail = asked
+      ? [{ label: "Plugins", go: back("browse") }, { label: asked.category, go: toCategory(asked.category) }, { label: asked.name }]
+      : [{ label: "Plugins", go: back("browse") }, { label: TAB_LABEL[item!.kind], go: back(item!.kind) }, { label: entry?.name ?? item!.name }];
     page = (
       <DetailsPage
         value={shown}
         item={item}
+        entry={entry}
         marks={marks}
         actions={actions}
         signing={signing}
-        trail={[{ label: "Plugins", go: back("browse") }, { label: TAB_LABEL[item.kind], go: back(item.kind) }, { label: item.name }]}
-        onScope={(scope) => set(item.key, { scope })}
-        onSwitch={(on) => set(item.key, { on })}
-        onRemove={() => setOpen({ type: "remove", key: item.key })}
+        trail={trail}
+        onInstall={() => entry && onEntry.onInstall(entry)}
+        onScope={(scope) => item && set(item.key, { scope })}
+        onSwitch={(on) => item && set(item.key, { on })}
+        onRemove={() => item && setOpen({ type: "remove", key: item.key })}
       />
     );
+  } else if (shown && category) {
+    const listed = entries.filter((each) => inCategory(each, category) && matches(query, each.name, each.line, each.maker));
+    page = (
+      <>
+        <Trail parts={[{ label: "Plugins", go: back("browse") }, { label: category }]} />
+        <SettingsPage title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
+          {listed.length ? (
+            <PickGrid>{listed.map((each) => entryRow(each, onEntry))}</PickGrid>
+          ) : (
+            <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{query.trim()}”.</p>
+          )}
+        </SettingsPage>
+      </>
+    );
   } else {
-    const count = (kind: Kind) => shown?.items.filter((each) => each.kind === kind).length ?? 0;
+    // A skillset is one card, so one in the count [D580].
+    const count = (kind: Kind) => new Set(shown?.items.filter((each) => each.kind === kind).map((each) => each.with ?? each.key)).size;
     page = (
       <SettingsPage
         title="Plugins"
         description={DESCRIPTION}
-        actions={
-          <>
-            {/* "Search" alone fits a narrow window; the field's name still says what it searches. */}
-            <div className="flex w-64 min-w-28">
-              <SearchField label="Search plugins" value={query} onChange={setQuery} />
-            </div>
-            <Button variant="ghost" size="icon" aria-label="Refresh" disabled={!shown || checking} aria-busy={checking} onClick={refresh}>
-              <Reload aria-hidden className={cx(checking && "animate-spin motion-reduce:animate-none")} />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button size="sm" disabled={!shown} />}>
-                Add
-                <ChevronDown aria-hidden />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => toAdd("server")}>
-                  <Mcp aria-hidden />
-                  MCP server
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toAdd("skill")}>
-                  <ToolsSkills aria-hidden />
-                  Skill from a folder
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        }
+        actions={controls}
       >
         <div className="-mt-4 flex flex-col gap-7">
           <div>
@@ -288,7 +351,7 @@ export function PluginsPage({
               </p>
             )
           ) : tab === "browse" ? (
-            <BrowseTab value={shown} query={query} remote={remote} browse={actions.browse} onInstall={(own) => setOpen({ type: "install", own })} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
+            <BrowseTab value={shown} query={query} remote={remote} browse={actions.browse} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={(own) => setOpen({ type: "install", own })} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
           ) : (
             <MyTab value={shown} kind={tab} query={query} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={(own) => setOpen({ type: "install", own })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
@@ -336,14 +399,18 @@ export function PluginsPage({
           mark={<PluginMark item={open.own} large />}
           line="Every agent gets it, in the projects you pick."
           projects={shown.projects}
-          install={(scope) =>
-            actions.add({ own: open.own.key, on: true, scope }).then((back) => {
-              setMine((confirmed.current = { base: value!, shown: back }));
-              const added = back.items.find((each) => each.key === back.added);
-              // A server Brigadier signs in to goes on to its sign-in.
-              return added?.sign_in === "brigadier" && !added.signed_in ? added.key : null;
-            })
-          }
+          install={(scope) => actions.add({ own: open.own.key, on: true, scope }).then(installed)}
+          actions={actions}
+          onClose={close}
+        />
+      )}
+      {open?.type === "catalog" && shown && (
+        <InstallDialog
+          name={open.entry.name}
+          mark={<PluginMark item={markOf(open.entry)} large />}
+          line={open.entry.skills?.length ? `Comes with its server and ${open.entry.skills.length} skills, for every agent.` : "Every agent gets it, in the projects you pick."}
+          projects={shown.projects}
+          install={(scope) => actions.install(open.entry.id, scope).then(installed)}
           actions={actions}
           onClose={close}
         />
@@ -389,6 +456,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
   const marks = Object.fromEntries((agents ?? []).map((agent) => [agent.label, agent.mark]));
   const actions: PluginActions = {
     add: (draft) => send("add", JSON.stringify(draft)),
+    install: (id, scope) => send("install", id, JSON.stringify(scope)),
     set: (key, change) => send("set", key, JSON.stringify(change)),
     remove: (key) => send("remove", key),
     refresh: () => send(),
