@@ -12,7 +12,7 @@ import { ArrowLeft, Spinner } from "../icons";
  */
 
 export type Step = "intro" | "name" | "agents" | "git" | "projects";
-export const STEPS: readonly Step[] = ["name", "agents", "projects"];
+export const STEPS: readonly Step[] = ["name", "agents", "git", "projects"];
 const LABELS: Record<Step, string> = { intro: "Welcome", name: "Name", agents: "Agents", git: "GitHub or GitLab", projects: "Projects" };
 
 export const MAC = navigator.userAgent.includes("Mac");

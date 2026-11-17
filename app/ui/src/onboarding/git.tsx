@@ -104,7 +104,16 @@ export function GitStep({ onBack, onContinue }: { onBack: () => void; onContinue
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState<string | null>(null);
   const [failed, setFailed] = useState<Record<string, string>>({});
-  const read = () => run(["forges"]).then((reply) => setForges(reply.forges as Forge[]), (cause) => setError(errorText(cause)));
+  // A sign-in that ended well goes, as an agent's does; one that failed stays to say why.
+  const read = () =>
+    run(["forges"]).then(
+      (reply) => {
+        const list = reply.forges as Forge[];
+        setForges(list);
+        for (const forge of list) if (forge.setup && !forge.setup.running && forge.setup.code === 0) void run(["forges", forge.name, "close"]).catch(() => {});
+      },
+      (cause) => setError(errorText(cause)),
+    );
 
   useEffect(() => {
     if (online) void read();

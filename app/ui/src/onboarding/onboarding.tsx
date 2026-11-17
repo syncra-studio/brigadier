@@ -5,12 +5,13 @@ import { daemonSource } from "../projects/store";
 import { AgentsStep } from "./agents";
 import { errorText, type Profile, setProfile } from "./api";
 import "./onboarding.css";
+import { GitStep } from "./git";
 import { type Step, STEPS, TopBar } from "./parts";
 import { ProjectsStep } from "./projects";
 import { Welcome } from "./welcome";
 
 /**
- * The first launch [D45, D48, D616]: welcome, name, agents, projects, each kept in the profile as it is
+ * The first launch [D45, D48, D616]: welcome, name, agents, GitHub or GitLab, projects, each kept in the profile as it is
  * given, so a launch that stops part way picks up where it left off. Finishing the projects marks
  * it done.
  */
@@ -53,9 +54,11 @@ export function Onboarding({ profile }: { profile: Profile }) {
           }}
         />
       ) : step === "agents" ? (
-        <AgentsStep onBack={() => go("name")} onContinue={() => go("projects")} />
+        <AgentsStep onBack={() => go("name")} onContinue={() => go("git")} />
+      ) : step === "git" ? (
+        <GitStep onBack={() => go("agents")} onContinue={() => go("projects")} />
       ) : (
-        <ProjectsStep source={daemonSource} offline={!daemon} onBack={() => go("agents")} />
+        <ProjectsStep source={daemonSource} offline={!daemon} onBack={() => go("git")} />
       )}
     </main>
   );
