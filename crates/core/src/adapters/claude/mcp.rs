@@ -66,14 +66,30 @@ fn plugin_servers(folder: &Path) -> Vec<Value> {
     all
 }
 
+/// The servers of Claude Code's Slack plugin when it's on in the worker's project, under the
+/// plugin's own names, so Claude uses the sign-in it keeps for them: the one exception to naked
+/// workers, as `--strict-mcp-config` connects no plugin servers [D586].
+fn slack(cwd: &Path) -> Map<String, Value> {
+    let root = crate::projects::root(cwd).unwrap_or_else(|| cwd.into());
+    (plugin_servers(&root).into_iter())
+        .filter(|s| s["source"] == "plugin slack@claude-plugins-official")
+        .filter_map(|mut s| {
+            let o = s.as_object_mut()?;
+            o.remove("source");
+            let name = o.remove("name")?.as_str()?.to_string();
+            Some((name, s))
+        })
+        .collect()
+}
+
 /// A worker's launch is naked [D89]; any other gets the library.
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
+    let cwd = Path::new(&spec.cwd);
     if spec.naked {
-        return super::control::naked(argv);
+        return super::control::naked(argv, slack(cwd));
     }
     // Its own skill of a library skill's name wins, and no flag turns only that one off: the
     // library's isn't linked [D415].
-    let cwd = Path::new(&spec.cwd);
     let own: Vec<String> = (super::commands::fixed(Some(cwd), Some(spec)).into_iter())
         .filter(|k| k["kind"] == "skill")
         .filter_map(|k| k["name"].as_str().map(String::from))

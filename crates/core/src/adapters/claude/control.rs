@@ -5,7 +5,7 @@
 
 use super::super::{Delivery, Event, Retune, s, uuid};
 use crate::Spec;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
 /// A level as Claude's own permission mode: Auto is its real auto mode [D175].
@@ -97,13 +97,11 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
 /// the `brigadier` line [D2025]. Its own messages between sessions off, so every one goes through
 /// Brigadier and shows in the thread [D2035]: none come in, and it can't list or message the
 /// others. A subagent's final result comes back without `SendMessage` [D311].
-/// A worker's launch: no MCP servers, skills or user settings, only the project's [D89].
-pub fn naked(argv: &mut Vec<String>) {
-    let flags = [
-        "--strict-mcp-config",
-        "--mcp-config",
-        r#"{"mcpServers":{}}"#,
-    ];
+/// A worker's launch: no MCP servers, skills or user settings, only the project's [D89], and
+/// `servers`, Slack's when its project has it on [D586].
+pub fn naked(argv: &mut Vec<String>, servers: Map<String, Value>) {
+    let servers = json!({ "mcpServers": servers }).to_string();
+    let flags = ["--strict-mcp-config", "--mcp-config", &servers];
     let more = [
         "--disable-slash-commands",
         "--setting-sources",
