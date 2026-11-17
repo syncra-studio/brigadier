@@ -367,12 +367,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
         "level" => control::level(data, args),
         "answer" => control::answer(data, args),
-        "up" => {
-            for id in &args[1..] {
-                owner::ensure(data, &core::load(data, id)?)?;
-            }
-            Ok(json!({"ok": true}))
-        }
+        "up" => (args[1..].iter())
+            .try_for_each(|id| owner::ensure(data, &core::load(data, id)?))
+            .map(|()| json!({"ok": true})),
+        "mockup" => relay::mockup::app(data, arg(args, 1)?),
         "owner" => Ok(
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),

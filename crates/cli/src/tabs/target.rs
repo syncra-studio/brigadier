@@ -45,7 +45,7 @@ pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
         ("attachment", Some(target)) => target.split_once('/').is_some_and(|(id, name)| {
             core::check_id(id).is_ok() && !name.is_empty() && !name.contains(['/', '\0'])
         }),
-        ("note", Some(note)) => core::check_id(note).is_ok(),
+        ("note" | "mockup", Some(id)) => core::check_id(id).is_ok(),
         // A web page only: no file: or other scheme opens in the browser [D506].
         ("browser", Some(url)) => {
             url.len() <= URL_MAX
@@ -55,7 +55,7 @@ pub(crate) fn check_target(kind: &str, target: Option<&str>) -> io::Result<()> {
                         .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
                 })
         }
-        ("file" | "pr" | "attachment" | "note" | "browser", None) => false,
+        ("file" | "pr" | "attachment" | "note" | "browser" | "mockup", None) => false,
         (_, target) => target.is_none(),
     };
     if ok {

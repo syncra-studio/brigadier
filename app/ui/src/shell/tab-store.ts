@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, FileDocument, Globe, PlayCircle } from "../icons";
+import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle } from "../icons";
 import { Clock, PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
@@ -28,6 +28,7 @@ export const TAB_KINDS = {
   note: { name: "Note", icon: Document },
   actions: { name: "Actions", icon: PlayCircle },
   browser: { name: "Browser", icon: Globe },
+  mockup: { name: "Mockup", icon: ImageSquare },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
@@ -160,7 +161,7 @@ export const justOpened = (id: string): boolean => opened.delete(id);
 const has = (now: Tabs, id: string) => id === CHAT || now.tabs.some((tab) => tab.id === id);
 
 /** Kinds a session has one of, as Rust's `ONE` [D478, D1114]. */
-const ONE: readonly TabKind[] = ["review", "actions"];
+const ONE: readonly TabKind[] = ["review", "actions", "mockup"];
 // An attachment is one tab by its id, whichever name it was opened by, as Rust has it.
 const keyOf = (kind: TabKind, target?: string) => (kind === "attachment" ? target?.split("/")[0] : target);
 const isSame = (tab: Tab, kind: TabKind, target?: string) => tab.kind === kind && (ONE.includes(kind) || (target !== undefined && keyOf(kind, tab.target) === keyOf(kind, target)));

@@ -31,6 +31,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
+  brigadier mockup \"<what>\"   before a big UI change, never a small fix: offer the user a mockup first
   brigadier repo <name>       in a chat on a folder of repos: your own copy of a repo, before your first edit there
   brigadier help [command]    this, or one command's help
 
@@ -152,8 +153,7 @@ impl Call<'_> {
     fn value(&self, name: &str) -> Option<&str> {
         self.values
             .iter()
-            .find(|(k, _)| *k == name)
-            .map(|(_, v)| *v)
+            .find_map(|&(k, v)| (k == name).then_some(v))
     }
     fn has(&self, name: &str) -> bool {
         self.flags.contains(&name)
@@ -256,7 +256,7 @@ pub fn run(
         return finish(&call, reply);
     }
     let value = |name: &str| call.value(name).map(String::from);
-    if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &value, &rows()) {
+    if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &value, &rows(), here) {
         return finish(&call, reply);
     }
     let takes_id = matches!(call.cmd, "read" | "send" | "wait" | "stop");

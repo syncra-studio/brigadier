@@ -40,7 +40,7 @@ impl Thread {
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
         // A worker held before its first turn has no turn yet, and still shows its card [D2028].
-        if kind == "note" && item["event"] == "hold" {
+        if kind == "note" && matches!(item["event"].as_str(), Some("hold" | "mockup")) {
             return self.hold(item, ts);
         }
         let Some(turn) = self.turn_id() else {

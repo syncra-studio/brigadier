@@ -118,8 +118,12 @@ pub fn start(
     let title = (named.or(retry.as_ref().map(|r| r.title.clone())))
         .or(review.as_ref().map(|r| r.title.clone()))
         .unwrap_or_else(|| title::from(brief));
-    let asked = json!({"job": flags("--job"), "agent": flags("--agent"), "model": flags("--model"),
+    let mut asked = json!({"job": flags("--job"), "agent": flags("--agent"), "model": flags("--model"),
         "effort": flags("--effort")});
+    // A mockup worker's variant count, from its offer's Yes [D2067]; agents can't pass --mockup.
+    if let Some(n) = flags("--mockup").and_then(|n| n.parse::<u64>().ok()) {
+        asked["mockup"] = n.into();
+    }
     let reserved = (|| -> Result<Record, Value> {
         let _family = family_lock(data, &root).map_err(|e| refuse(&e.to_string()))?;
         if closing(data, me) || !parent.dir.join("session.json").exists() {
@@ -351,7 +355,11 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             title: r.title.clone(),
             brief: r.brief.clone(),
             at: r.at,
-            report: vec![r.cid.clone()],
+            // A mockup worker reports only once the user's pick is wired in [D560].
+            report: match r.asked["mockup"].is_null() {
+                true => vec![r.cid.clone()],
+                false => vec![],
+            },
             ran: ran.clone(),
             asked: r.asked.clone(),
             last: Value::Null,
@@ -361,6 +369,9 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         };
         write_json(&dir.join("worker.json"), &l)?;
         core::write_atomic(&dir.join("title"), r.title.as_bytes())?;
+        if let Some(n) = r.asked["mockup"].as_u64() {
+            crate::relay::mockup::begin(&dir, &r.title, n)?;
+        }
     }
     let mut branch = None;
     match &r.project {
@@ -390,8 +401,10 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         outcome[k] = v.clone();
     }
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
-    let merge =
-        (branch.as_deref().zip(r.base.as_deref())).map(|(b, base)| (parent.cwd.as_str(), b, base));
+    // A mockup's rounds stay on its branch: it merges only after Use wires the pick in [D560].
+    let merge = (branch.as_deref().zip(r.base.as_deref()))
+        .filter(|_| r.asked["mockup"].is_null())
+        .map(|(b, base)| (parent.cwd.as_str(), b, base));
     let line = fixed_line(
         &core::share::title(&parent),
         pid,

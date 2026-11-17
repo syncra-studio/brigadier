@@ -2,6 +2,7 @@
 //! a naked worker's only way to them: the user's own skills, read only from each agent's own
 //! folders, and past sessions.
 
+pub(crate) mod mockup;
 mod show;
 
 use brigadier_core::{self as core, adapters};
@@ -67,6 +68,20 @@ into the folder since this chat started is on the map from its next start.",
             &[],
             &[],
         ),
+        "mockup" => (
+            "brigadier mockup \"<what>\" [--reuse <session>] [--json]
+
+Before a big UI change (a new screen, a redesign, a layout across screens) and never for a small fix,
+offer the user a mockup on a card: Yes, 3 variants / Yes, just 1 / Skip. <what> is the change, in a
+line the user reads. It waits up to 5 minutes and prints what the pick did. On Yes, a mockup worker
+draws the variants from your repo's own components and the user compares them in the Mockup tab;
+the variant they pick there is wired in by that worker, so don't build the change yourself. On Skip,
+build it. --reuse <session>: another session already drew this change; the card offers its mockup.
+A mockup worker reports each variant: --round N --variant A|B|C --name \"<name>\" --why \"<line>\"
+--url <page> [--shot <png>], and --real <url> once the pick is wired in.",
+            &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real"],
+            &[],
+        ),
         _ => return None,
     })
 }
@@ -99,8 +114,10 @@ pub fn run(
     arg: Option<&str>,
     value: &dyn Fn(&str) -> Option<String>,
     rows: &[Value],
+    here: &dyn Fn() -> bool,
 ) -> Option<Value> {
     match cmd {
+        "mockup" => Some(mockup::run(data, me, arg, value, here)),
         "skill" => Some(skill(data, me, arg)),
         "search" => Some(search(data, arg.unwrap_or(""), value, rows)),
         "show" => Some(show::show(data, me, arg.unwrap_or(""))),
