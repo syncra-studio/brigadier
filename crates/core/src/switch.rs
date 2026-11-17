@@ -140,7 +140,8 @@ pub fn switch(
     if !still() {
         return json!({"ok": false, "error": "off", "message": "Automatic switching was turned off."});
     }
-    let mut reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    let mut reply = crate::host::accounts::launch(&run, call, req)
+        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
     if reply["error"] == "changed" {
         reply["message"] = "The session changed while switching. Try again.".into();
     }

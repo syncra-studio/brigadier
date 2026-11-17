@@ -7,6 +7,7 @@ use crate::adapters::{self, setup};
 use crate::git::{self, Target, push};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::{env, fs, io, thread};
 
 /// A CLI's config file: under this variable, else this under XDG_CONFIG_HOME, else these under
@@ -87,17 +88,37 @@ fn children(text: &str, path: &[&str]) -> Vec<(String, String)> {
     out
 }
 
+/// The push destination of this checkout's current branch, also when HEAD is detached.
+fn destination(checkout: &git::Checkout) -> io::Result<(String, String)> {
+    let branch = git::sync::branch(checkout).unwrap_or_default();
+    let remote = push::remote(checkout, &branch)?;
+    let url = push::url(checkout, &remote)?;
+    Ok((remote, url))
+}
+
 /// Project settings' GitHub account: whether `id`'s repository is on GitHub, each account signed in
 /// for its server with whether it can see it, and the one Automatic uses (the first that can).
 /// Without `probe`, no network: `sees` and `auto` are null, so the row draws at once.
 pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
-    // The project's main checkout, on a branch or not: its push remote, as git picks it.
     let checkout = git::checkout(data, &Target::Project(id))?;
-    let url = push::remote(&checkout, "").and_then(|remote| push::url(&checkout, &remote));
-    let repo = url.ok().and_then(|url| super::repo(&url));
-    let Some(repo) = repo.filter(|r| r.kind == Kind::GitHub) else {
+    let Ok((remote, url)) = destination(&checkout) else {
         return Ok(json!({"ok": true, "github": false}));
     };
+    let Some(repo) = super::repo(&url).filter(|r| r.kind == Kind::GitHub) else {
+        return Ok(json!({"ok": true, "github": false}));
+    };
+    // get-url includes insteadOf/pushInsteadOf rewrites, which can turn HTTPS into SSH.
+    let effective = git::read(
+        &checkout.root,
+        &["remote", "get-url", "--push", &remote],
+        &AtomicBool::new(false),
+    )
+    .ok();
+    let effective = effective.as_deref().map(String::from_utf8_lossy);
+    let url = effective.as_deref().unwrap_or(&url);
+    let ssh = url
+        .split_once("://")
+        .map_or_else(|| url.contains(':'), |(scheme, _)| scheme.contains("ssh"));
     let gh = setup::find("gh", &[]).and_then(|p| Some(p.to_str()?.to_string()));
     let logins = logins(&GH, &repo.host);
     if !probe {
@@ -105,7 +126,7 @@ pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
             .map(|login| json!({"login": login, "sees": null}))
             .collect();
         return Ok(
-            json!({"ok": true, "github": true, "repo": repo.path, "auto": null, "logins": all}),
+            json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": null, "logins": all}),
         );
     }
     let sees: Vec<bool> = thread::scope(|s| {
@@ -126,14 +147,60 @@ pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
     let all: Vec<Value> = (logins.iter().zip(&sees))
         .map(|(login, sees)| json!({"login": login, "sees": sees}))
         .collect();
-    Ok(json!({"ok": true, "github": true, "repo": repo.path, "auto": auto, "logins": all}))
+    Ok(
+        json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": auto, "logins": all}),
+    )
 }
 
-/// `GH_TOKEN` for a session, so its agent's own gh and git act as its project's account: the one
-/// picked, or the one that can see its repository when that isn't gh's active one; none leaves gh's
-/// active one [D631]. Never written anywhere.
-pub fn session_env(data: &Path, spec: &Spec) -> Option<(String, String)> {
-    let pr = super::pr(data, &spec.id).ok()?;
-    let gh = super::gh(pr.repo.as_ref()?, pr.account.as_deref())?;
-    Some(("GH_TOKEN".into(), gh.token?))
+/// Apply the project's account to each launch, including agent switches. Refuse a signed-out
+/// pick before a child can inherit gh's active account, and keep the reason in its setup line.
+pub fn launch(spec: &Spec, call: crate::send::Call<'_>, mut req: Value) -> io::Result<Value> {
+    match session_env(&crate::data_of(spec), spec) {
+        Ok(Some((key, token))) => req["env"][key] = token.into(),
+        Ok(None) => {}
+        Err(error) => {
+            let reply = call(
+                json!({"op": "note", "if_len": req["if_len"], "data": {"event": "spawn_failed",
+                "cid": req["cid"], "backend": req["backend"], "error": error}}),
+            )?;
+            if reply["ok"] != true {
+                return Ok(reply);
+            }
+            return Ok(json!({"ok": false, "result": "refused", "error": error}));
+        }
+    }
+    call(req)
+}
+
+/// The token stays in the launch environment only; an unavailable explicit pick is an error.
+fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, String> {
+    let pick = spec
+        .project
+        .as_deref()
+        .map(|id| crate::projects::get(data, id))
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .and_then(|project| project.github_account);
+    let url = git::checkout(data, &Target::session(&spec.id))
+        .and_then(|checkout| destination(&checkout).map(|(_, url)| url));
+    let url = match url {
+        Ok(url) => url,
+        Err(error) if pick.is_some() => return Err(error.to_string()),
+        Err(_) => return Ok(None),
+    };
+    let Some(repo) = super::repo(&url).filter(|repo| repo.kind == Kind::GitHub) else {
+        return Ok(None);
+    };
+    let gh = super::gh(&repo, pick.as_deref());
+    if gh.is_none()
+        && let Some(login) = pick
+    {
+        return Err(format!(
+            "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {}, or choose another account in Project settings.",
+            repo.host
+        ));
+    }
+    Ok(gh
+        .and_then(|gh| gh.token)
+        .map(|token| ("GH_TOKEN".into(), token)))
 }

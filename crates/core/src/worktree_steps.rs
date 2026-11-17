@@ -82,9 +82,15 @@ impl Startup {
 
     fn launch(&self, setup: &Value) -> Option<&Value> {
         let since = setup["since"].as_u64()?;
-        self.launches
+        let mut launches = self
+            .launches
             .iter()
-            .find(|l| l["ts"].as_u64().unwrap_or(0) >= since)
+            .filter(|l| l["ts"].as_u64().unwrap_or(0) >= since);
+        launches
+            .clone()
+            .next_back()
+            .filter(|l| l["state"] == "failed")
+            .or_else(|| launches.find(|l| l["state"] != "failed"))
     }
 
     pub fn running(&self, setup: &Value) -> bool {
@@ -98,7 +104,10 @@ impl Startup {
 
     pub fn sync(&self, mut setup: Value, alive: bool) -> (Value, Option<&str>) {
         if !setup.is_object() {
-            return (setup, None);
+            let Some(failed) = self.launches.last().filter(|l| l["state"] == "failed") else {
+                return (setup, None);
+            };
+            setup = json!({"since": failed["ts"], "steps": []});
         }
         let launch = self.launch(&setup);
         let steps = setup["steps"].as_array_mut().unwrap();
@@ -133,10 +142,7 @@ impl Startup {
             }
             steps.push(cli);
         }
-        setup["state"] = if steps
-            .iter()
-            .any(|s| s["kind"] != "cli" && s["state"] == "failed")
-        {
+        setup["state"] = if steps.iter().any(|s| s["state"] == "failed") {
             "failed"
         } else if steps.iter().any(|s| s["state"] == "running") {
             "running"

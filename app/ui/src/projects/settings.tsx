@@ -88,7 +88,7 @@ export function ProjectSettingsHost() {
  * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
  * the repository, and the one Automatic uses (the first that can). Not on GitHub: no row.
  */
-export type GithubAccounts = { github: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 const Login = ({ login, before = "" }: { login: string; before?: string }) => (
   <span className="flex min-w-0 items-center gap-2">
@@ -123,6 +123,7 @@ function AccountRow({ github, checking, value, onChange }: { github: GithubAccou
           ...(value && !github.logins.some((each) => each.login === value) ? [{ value, label: <Login login={value} />, hint: "Not signed in to gh" }] : []),
         ]}
       />
+      {github.ssh && value && <span className="text-xs text-muted-foreground">Pushes over SSH use your SSH key, not @{value}.</span>}
     </Field>
   );
 }

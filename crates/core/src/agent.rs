@@ -198,10 +198,6 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
         ("BRIGADIER_DATA".into(), data),
     ];
     vars.extend(browser_shim().map(|shim| ("BROWSER".into(), shim)));
-    vars.extend(crate::host::accounts::session_env(
-        &crate::data_of(spec),
-        spec,
-    ));
     Some((me.parent()?.display().to_string(), vars))
 }
 

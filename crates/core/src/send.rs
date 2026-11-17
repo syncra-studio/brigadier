@@ -309,7 +309,8 @@ pub fn send(
         req["replace"] = true.into();
         req["if_len"] = len.into();
     }
-    let mut reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    let mut reply = crate::host::accounts::launch(&run, call, req)
+        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
     if picking && reply["error"] == "changed" {
         reply["message"] = "The session changed while switching. Try again.".into();
     }
@@ -350,7 +351,6 @@ pub fn applied(dir: &std::path::Path, cid: &str, mut reply: Value) -> Value {
 
 /// How long an agent may take to confirm an input or new setup (proposed).
 pub(crate) const CONFIRM_WAIT: Duration = Duration::from_secs(10);
-
 /// Hands a setup to the idle child on its own, then waits for its reply to each request: the turn
 /// goes on only once every one succeeded, at the level the child says it took. An error or no
 /// reply refuses the turn, and nothing is recorded as applied [D175, D222].
