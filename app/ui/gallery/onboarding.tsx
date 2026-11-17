@@ -7,7 +7,7 @@ import type { Agent } from "../src/onboarding/api";
 import { type Forge, ForgeCard, GIT_LINE } from "../src/onboarding/git";
 import { type Step, StepFooter, StepHeader, TopBar } from "../src/onboarding/parts";
 import { ProjectsStep } from "../src/onboarding/projects";
-import type { Source } from "../src/projects/store";
+import type { GitHub, Source } from "../src/projects/store";
 import claudeMark from "../../../crates/core/src/adapters/claude/claude.svg?raw";
 import codexMark from "../../../crates/core/src/adapters/codex/codex.svg?raw";
 import opencodeMark from "../../../crates/core/src/adapters/opencode/opencode.svg?raw";
@@ -108,23 +108,37 @@ function Git({ forges }: { forges: Forge[] }) {
 }
 
 const never = () => new Promise<never>(noop);
-const source = (history: string[]): Source => ({
+const repo = (name: string, account: string) => ({ name, description: null, private: false, account });
+// Two signed-in accounts: sam-example (and its org) and sam-at-work [D625].
+const REPOS = [
+  repo("example-org/weather-bot", "sam-example"),
+  repo("sam-example/notes", "sam-example"),
+  repo("acme-corp/billing", "sam-at-work"),
+  repo("example-org/api", "sam-example"),
+  repo("sam-example/site", "sam-example"),
+  repo("acme-corp/design-system", "sam-at-work"),
+  repo("sam-at-work/dotfiles", "sam-at-work"),
+];
+const source = (history: string[], github: GitHub = { repos: REPOS }): Source => ({
   find: never,
-  history: async () => history,
+  history: async () => ({ found: history, parent: "~/Development/" }),
   check: never,
   add: never,
   clone: never,
   pick: never,
-  github: async () => ({
-    repos: [
-      { name: "sam-example/weather-bot", description: "A bot that tells you the weather", private: false },
-      { name: "sam-example/notes", description: "Markdown notes, synced", private: true },
-      { name: "sam-example/site", description: null, private: false },
-      { name: "example-org/api", description: "The public API", private: true },
-    ],
-  }),
+  github: async () => github,
 });
 const HISTORY = ["/Users/sam/Development/weather-bot", "/Users/sam/Development/notes", "/Users/sam/code/site", "/Users/sam/code/api"];
+
+function Projects({ label, from, start }: { label: string; from: Source; start: "clone" | "folder" | "new" }) {
+  return (
+    <State label={label}>
+      <Window step="projects">
+        <ProjectsStep source={from} offline={false} onBack={noop} start={start} />
+      </Window>
+    </State>
+  );
+}
 
 export function OnboardingGallery() {
   return (
@@ -155,26 +169,13 @@ export function OnboardingGallery() {
         </State>
       </Row>
       <Row name="Projects">
-        <State label="Local">
-          <Window step="projects">
-            <ProjectsStep source={source(HISTORY)} offline={false} onBack={noop} />
-          </Window>
-        </State>
-        <State label="Local · nothing in the history">
-          <Window step="projects">
-            <ProjectsStep source={source([])} offline={false} onBack={noop} />
-          </Window>
-        </State>
-        <State label="Clone">
-          <Window step="projects">
-            <ProjectsStep source={source(HISTORY)} offline={false} onBack={noop} start="clone" />
-          </Window>
-        </State>
-        <State label="New">
-          <Window step="projects">
-            <ProjectsStep source={source(HISTORY)} offline={false} onBack={noop} start="new" />
-          </Window>
-        </State>
+        <Projects label="Clone · two accounts' repositories" from={source(HISTORY)} start="clone" />
+        <Projects label="Clone · one picked" from={source(HISTORY)} start="clone" />
+        <Projects label="Clone · GitHub not connected" from={source(HISTORY, { gh: "signed-out" })} start="clone" />
+        <Projects label="Clone · no gh" from={source(HISTORY, { gh: "missing" })} start="clone" />
+        <Projects label="Existing folder" from={source(HISTORY)} start="folder" />
+        <Projects label="Existing folder · nothing in the history" from={source([])} start="folder" />
+        <Projects label="New" from={source(HISTORY)} start="new" />
       </Row>
     </Section>
   );

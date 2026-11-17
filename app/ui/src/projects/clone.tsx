@@ -70,9 +70,9 @@ export function useAdd() {
 }
 type Add = ReturnType<typeof useAdd>;
 
-/** A clone of `from` (a URL, or with `github` an `owner/name`) into `parent` + `folder`. */
-const cloneInto = (add: Add, source: Source, from: string, parent: string, folder: string, github = false) =>
-  add.start(from, (id) => source.clone(id, from, `${parent}${folder}`, github), `Cloned ${folder}`, `Could not clone ${folder}`);
+/** A clone of `from` (a URL, or with `github` an `owner/name`, as `account` when given) into `parent` + `folder`. */
+const cloneInto = (add: Add, source: Source, from: string, parent: string, folder: string, github = false, account?: string) =>
+  add.start(from, (id) => source.clone(id, from, `${parent}${folder}`, github, account), `Cloned ${folder}`, `Could not clone ${folder}`);
 
 // ----- Clone from URL -----
 
@@ -141,7 +141,7 @@ export function CloneView({
             source={source}
             filter={/[:@]/.test(url) ? "" : url}
             running={clone.running}
-            onPick={(name) => void cloneInto(clone, source, name, parent, name.split("/")[1]!, true)}
+            onPick={(name, account) => void cloneInto(clone, source, name, parent, name.split("/")[1]!, true, account)}
           />
         </div>
         <SaveTo parent={parent} name={folder} aside="Named after the repository" disabled={busy} source={source} onParent={setParent} onError={clone.setError} />
@@ -252,7 +252,8 @@ export function GitHubRepos({
   /** What's being cloned now: the rest wait. */
   running: string | null;
   chosen?: string;
-  onPick: (name: string) => void;
+  /** The repository, and the signed-in account that sees it [D625]. */
+  onPick: (name: string, account?: string) => void;
 }) {
   const [list, setList] = useState<GitHub | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -287,7 +288,7 @@ export function GitHubRepos({
             type="button"
             aria-pressed={chosen === undefined ? undefined : chosen === repo.name}
             disabled={running !== null}
-            onClick={() => onPick(repo.name)}
+            onClick={() => onPick(repo.name, repo.account)}
             className={cx(
               "flex h-10.5 w-full shrink-0 cursor-pointer items-center gap-3 rounded-surface px-3 text-start outline-none focus-visible:focus-ring",
               "hover:bg-fill-subtle disabled:cursor-not-allowed aria-pressed:bg-fill-hover",

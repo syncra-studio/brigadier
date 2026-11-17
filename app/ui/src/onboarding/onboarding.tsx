@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDaemon } from "../daemon";
 import { daemonSource } from "../projects/store";
 import { AgentsStep } from "./agents";
-import { errorText, type Profile, setProfile } from "./api";
+import { errorText, type Profile, run, setProfile } from "./api";
 import "./onboarding.css";
 import { GitStep } from "./git";
 import { type Step, STEPS, TopBar } from "./parts";
@@ -24,6 +24,11 @@ export function Onboarding({ profile }: { profile: Profile }) {
   const [nameFailed, setNameFailed] = useState<{ name: string; error: string } | null>(null);
   // Leaving the welcome before its sound has ended fades it out.
   useEffect(() => () => stopSound.current?.(), []);
+  // The Projects step's lists are read now, so they're there when it opens [D627]; it reads them itself if this fails.
+  const online = Boolean(daemon);
+  useEffect(() => {
+    if (online) run(["projects", "warm"]).catch(() => {});
+  }, [online]);
 
   const go = (next: Step) => {
     setStep(next);

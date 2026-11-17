@@ -15,8 +15,8 @@ export type FolderCheck =
   | { kind: "missing"; path: string }
   | { kind: "invalid"; reason: string };
 
-/** One of your GitHub repositories, by `owner/name` [D202]. */
-export type GitHubRepo = { name: string; description: string | null; private: boolean };
+/** One of your GitHub repositories, by `owner/name` [D202], and the signed-in account that sees it [D625]. */
+export type GitHubRepo = { name: string; description: string | null; private: boolean; account?: string };
 /** Your GitHub repositories through the gh CLI, or why there are none to show. */
 export type GitHub = { repos: GitHubRepo[] } | { gh: "missing" | "signed-out" };
 
@@ -27,16 +27,16 @@ export type GitHub = { repos: GitHubRepo[] } | { gh: "missing" | "signed-out" };
  */
 export type Source = {
   find(): Promise<Repo[]>;
-  /** The repositories the agents' own history ran in, for onboarding's Projects step [D45]. */
-  history(): Promise<string[]>;
+  /** The repositories the agents' own history ran in, and the folder most projects are in, for onboarding's Projects step [D45, D627]. */
+  history(): Promise<{ found: string[]; parent: string }>;
   check(path: string): Promise<FolderCheck>;
   /**
    * Adds the repository at `path`. With `init`, git starts there first: "here" in an existing folder
    * in no repository, "new" in a folder it makes (or an empty one).
    */
   add(id: string, path: string, init?: "here" | "new"): Promise<unknown>;
-  /** Clones a URL, or with `github` an `owner/name` through gh's own sign-in, into `dest`. */
-  clone(id: string, from: string, dest: string, github?: boolean): Promise<unknown>;
+  /** Clones a URL, or with `github` an `owner/name` through gh's own sign-in (`account`'s, else gh's active one), into `dest`. */
+  clone(id: string, from: string, dest: string, github?: boolean, account?: string): Promise<unknown>;
   github(): Promise<GitHub>;
   /** The native folder picker, starting at `at`. */
   pick(at?: string): Promise<string | null>;
@@ -100,10 +100,11 @@ export async function openFolders(source: Source, paths: readonly string[]): Pro
 /** Add project on the daemon: the commands in `crates/cli/src/setup.rs`, each add through `addProject` [D30]. */
 export const daemonSource: Source = {
   find: async () => (await run(["projects", "find"])).repos as Repo[],
-  history: async () => (await run(["projects"])).found as string[],
+  history: async () => (await run(["projects"])) as { found: string[]; parent: string },
   check: async (path) => (await run(["projects", "inspect", path])).check as FolderCheck,
   add: (id, path, init) => addProject(path, init ? ["init", path, ...(init === "here" ? ["--here"] : [])] : ["add", path], id),
-  clone: (id, from, dest, github) => addProject(dest, ["clone", from, "--to", dest, ...(github ? ["--github"] : [])], id),
+  clone: (id, from, dest, github, account) =>
+    addProject(dest, ["clone", from, "--to", dest, ...(github ? ["--github"] : []), ...(account ? ["--account", account] : [])], id),
   github: async () => (await run(["projects", "github"])).github as GitHub,
   pick: async (at) => ((await window.brigadier?.pickFolders({ at })) ?? [])[0] ?? null,
 };
