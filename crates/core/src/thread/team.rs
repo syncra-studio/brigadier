@@ -90,6 +90,27 @@ impl Thread {
                 self.worker_ended(ts);
                 self.settle_held(false);
             }
+            // A worker waits on the user, at Ask: its block waits with it, that time waited [D551].
+            Some("waits") => {
+                (self.asking).extend(
+                    ids.as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Value::as_str)
+                        .map(String::from),
+                );
+                self.worker_waits(ts);
+            }
+            Some("waited") => {
+                (ids.as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str))
+                .for_each(|w| {
+                    self.asking.remove(w);
+                });
+                self.end_wait(ts);
+            }
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
                 self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}));

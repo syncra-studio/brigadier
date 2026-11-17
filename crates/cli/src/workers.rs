@@ -79,6 +79,8 @@ pub(crate) struct Record {
     /// A reviewer's mark, as its link's (`review.rs`) [D3026].
     #[serde(default)]
     pub review: Value,
+    #[serde(default)]
+    pub waits: bool,
 }
 
 /// `worker.json` in the worker's own folder: who started it, and which of its turns report back.

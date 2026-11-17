@@ -96,6 +96,8 @@ pub struct Thread {
     /// Workers whose end the thread showed: a message to one starts it again [D115, D456].
     #[serde(default)]
     over: HashSet<String>,
+    /// Workers waiting on the user, at Ask: the block waits while any does [D551].
+    asking: HashSet<String>,
     /// What old rows the fold looks up, kept so it never reads old history back [D503]: message
     /// rows' `cid`s, rows by a custom id, and each turn's first row.
     cids: HashSet<String>,

@@ -178,6 +178,7 @@ pub fn start(
             hold: p.hold,
             retry: retry.as_ref().map_or(Value::Null, |r| r.note.clone()),
             review: review.as_ref().map_or(Value::Null, |r| r.mark.clone()),
+            waits: false,
         };
         save(data, me, &r).map_err(|e| refuse(&e.to_string()))?;
         Ok(r)

@@ -4,11 +4,11 @@
 //! parent answers with `brigadier send <id> --allow`, `--deny "<reason>"` or its answer as the
 //! message; the user sees no card, and the worker's thread shows the ask and the answer.
 
-use super::link;
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;
+use super::{link, record, save};
 use crate::agent::refuse;
-use crate::control;
+use crate::{control, owner};
 use brigadier_core::{self as core};
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -43,6 +43,26 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
         super::review::plan_held(data, id, request);
     }
     super::review::plan_gone(data, id);
+    if !row["worker"].is_null() {
+        user_waits(data, id, row["worker"]["kind"] == "needsYou");
+    }
+}
+
+/// Worker `wid` began or stopped waiting on the user: its parent's log says so once (its record's
+/// `waits` is what it was last told), and the parent's block waits with it, that time waited [D551].
+fn user_waits(data: &Path, wid: &str, waits: bool) {
+    let Some(l) = link(data, wid) else {
+        return;
+    };
+    let Some(mut r) = record(data, &l.parent, wid).filter(|r| r.waits != waits) else {
+        return;
+    };
+    let phase = if waits { "waits" } else { "waited" };
+    let note = json!({"op": "note", "data": {"event": "worker", "phase": phase, "ids": [wid]}});
+    if owner::call(data, &l.parent, note).is_ok() {
+        r.waits = waits;
+        let _ = save(data, &l.parent, &r);
+    }
 }
 
 /// Writes the first request worker `wid` waits on its parent for, if it has none yet.

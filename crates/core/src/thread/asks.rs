@@ -51,6 +51,16 @@ impl Thread {
         }
     }
 
+    /// A worker of the running or newest held block waits on the user: the block waits from `ts`.
+    pub(super) fn worker_waits(&mut self, ts: u64) {
+        let held = self.held.values_mut().map(|(o, _)| o).max_by_key(|o| o.at);
+        if let Some(o) = self.open.as_mut().or(held).filter(|o| o.wait.is_none()) {
+            o.wait = Some(ts);
+            self.turns[o.at]["waitingSince"] = ts.into();
+            self.changed_turns.insert(o.at);
+        }
+    }
+
     /// A plan's review moved on (fold `plan.rs`): its card names its reviewer, or the plan goes to
     /// its answerer with the review's line [§6].
     pub(super) fn plan_review(&mut self, item: &Value, ts: u64) {
@@ -99,7 +109,9 @@ impl Thread {
     /// The turn's wait on the user ends once nothing waits on them any more [D128]; so does a held
     /// turn's, whose subagent asked.
     pub(super) fn end_wait(&mut self, ts: u64) {
-        if (self.pending.iter()).any(|&at| self.items[at]["to"].is_null()) {
+        if !self.asking.is_empty()
+            || (self.pending.iter()).any(|&at| self.items[at]["to"].is_null())
+        {
             return;
         }
         let held = self.held.values_mut().map(|(o, _)| o);
