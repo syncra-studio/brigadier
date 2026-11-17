@@ -1,5 +1,5 @@
 // Dev-only: every component, live (D2). Screens are built from them in the app. Opened by `pnpm gallery`.
-import { type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 
 import { connected } from "../src/daemon";
 import { run } from "../src/onboarding/api";
@@ -7,7 +7,6 @@ import { ChangesGallery } from "./changes";
 import { ComposerGallery } from "./composer";
 import { Choices } from "./choices";
 import { Contents } from "./contents";
-import { Directions } from "./directions";
 import { FindGallery } from "./find";
 import { ForkGallery } from "./fork";
 import { Kit } from "./kit";
@@ -71,6 +70,9 @@ function LiveFrame() {
   );
 }
 
+export default function Gallery() {
+  return window.top === window ? <LiveFrame /> : <GalleryPage />;
+}
 
 /** Keeps the scroll place across the frame's reloads. */
 function useKeptScroll(scroller: RefObject<HTMLDivElement | null>) {
@@ -83,18 +85,6 @@ function useKeptScroll(scroller: RefObject<HTMLDivElement | null>) {
   }, [scroller]);
 }
 
-const onHash = (changed: () => void) => (addEventListener("hashchange", changed), () => removeEventListener("hashchange", changed));
-
-export default function Gallery() {
-  return window.top === window ? <LiveFrame /> : <Page />;
-}
-
-/** The components, or at #directions the right panel's directions (directions.tsx). */
-function Page() {
-  const hash = useSyncExternalStore(onHash, () => location.hash);
-  return hash === "#directions" ? <Directions /> : <GalleryPage />;
-}
-
 function GalleryPage() {
   const scroller = useRef<HTMLDivElement>(null);
   useKeptScroll(scroller);
@@ -102,7 +92,6 @@ function GalleryPage() {
     <div className="fixed inset-0 flex flex-col">
       <header className="app-drag flex h-titlebar shrink-0 items-center border-b border-divider bg-background ps-traffic-lights">
         <h1 className="ps-2 text-sm font-medium">Components</h1>
-        <a href="#directions" className="app-no-drag ms-auto pe-3 text-sm text-link">Right panel directions</a>
       </header>
       <div className="flex min-h-0 flex-1">
         <Contents scroller={scroller} />
