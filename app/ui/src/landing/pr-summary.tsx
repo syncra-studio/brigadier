@@ -6,18 +6,12 @@ import { Button } from "../components/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
-import { Branch, Check, CheckCircle, ChevronRight, Commit, Eye, Link, Publish, X } from "../icons";
+import { CheckCircle, ChevronRight, Minus } from "../icons";
 import { Markdown } from "../thread/markdown";
-import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, XCircle } from "./icons";
-import { type Sends, SendButton } from "./pr-parts";
+import { Clock, XCircle } from "./icons";
+import { Avatar, type Sends, SendButton } from "./pr-parts";
 import { ago } from "./pr-words";
-import type { PrComment, PrItem, PrThread, PullRequest } from "./pull-requests";
-
-// —— Conversation: the description, then what happened, oldest first, as GitHub's [D260].
-
-function Avatar({ login }: { login: string }) {
-  return <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground uppercase">{login[0]}</span>;
-}
+import type { PrCheck, PrComment, PrThread, PullRequest } from "./pull-requests";
 
 /** A body's HTML as GitHub shows it, for our Markdown: an `<a>` its link, a line break its own, other tags gone, their
  * text kept. */
@@ -163,223 +157,157 @@ const REVIEW_WORDS = {
   commented: "reviewed",
   dismissed: "reviewed",
 };
-const WAS_WORDS = { approved: "previously approved these changes", changes: "previously requested changes" };
-
-const REVIEW_ICONS = {
-  approved: <CheckCircle className="text-success" />,
-  changes: <XCircle className="text-destructive" />,
-  commented: <Eye />,
-  dismissed: <Eye />,
-};
-
-const MENTION_ICONS = { open: PullRequestOpen, draft: PullRequestDraft, merged: PullRequestMerged, closed: PullRequestClosed };
-
-const ITEM_WORDS = {
-  closed: ["closed this", <PullRequestClosed className="text-destructive" />],
-  reopened: ["reopened this", <PullRequestOpen className="text-success" />],
-  ready: ["marked this pull request as ready for review", <Eye />],
-  draft: ["marked this pull request as draft", <PullRequestDraft />],
-  force_pushed: ["force-pushed the branch", <Commit />],
-} as const;
-
-const list = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
-
-/** One timeline entry, as GitHub draws it. */
-function Item({ item, pr, comments, sends }: { item: PrItem; pr: PullRequest; comments: Map<string, PrComment>; sends: Sends }) {
-  const at = item.atMs === null ? "" : ago(item.atMs, sends.now);
-  const who = <Who login={item.actor} bot={item.bot} />;
-  const sha = (oid: string | null) => oid && <span className="font-mono text-xs text-foreground">{oid.slice(0, 7)}</span>;
-  switch (item.kind) {
-    case "comment": {
-      const comment = comments.get(item.id);
-      if (!comment) return null;
-      const box = <CommentBox comment={comment} at={at} author={pr.openedBy} sends={sends} />;
-      return (
-        <div className="flex gap-3">
-          <Avatar login={comment.author} />
-          {comment.minimized ? <Hidden reason={comment.minimized}>{box}</Hidden> : box}
-        </div>
-      );
-    }
-    case "commits": {
-      const [one] = item.commits;
-      if (item.commits.length === 1)
-        return (
-          <EventLine icon={<Commit />} at={at} end={sha(one.sha)}>
-            {who} pushed <span className="text-foreground">{one.message}</span>
-          </EventLine>
-        );
-      return (
-        <div className="flex flex-col gap-1">
-          <EventLine icon={<Commit />} at={at}>
-            {who} added {item.commits.length} commits
-          </EventLine>
-          <ul className="flex flex-col gap-1 ps-9">
-            {item.commits.map((commit) => (
-              <li key={commit.sha} className="flex items-center gap-3 text-sm">
-                <span className="min-w-0 flex-1 truncate text-foreground">{commit.message}</span>
-                {sha(commit.sha)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    }
-    case "review": {
-      const body = item.said ? comments.get(item.id) : undefined;
-      const changes = item.state === "changes";
-      const review = (
-        <div className="flex flex-col gap-2">
-          <EventLine icon={REVIEW_ICONS[item.state]} at={at} end={changes && <SendButton send={{ kind: "event", id: item.id }} sends={sends} />}>
-            {who} {item.state === "dismissed" && item.was ? WAS_WORDS[item.was] : REVIEW_WORDS[item.state]}
-          </EventLine>
-          {(body || item.threads.length > 0) && (
-            <div className="flex flex-col gap-2 ps-9">
-              {body && <CommentBox comment={body} did="left a comment" at="" author={pr.openedBy} sends={sends} />}
-              {item.threads.map((thread) => (
-                <Thread key={thread.id} thread={thread} comments={comments} author={pr.openedBy} sends={sends} />
-              ))}
-            </div>
-          )}
-        </div>
-      );
-      // A review GitHub hides shows as its hidden comment, the review under it.
-      return item.minimized ? (
-        <div className="flex gap-3">
-          <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted svg:size-icon-sm">
-            <Check />
-          </span>
-          <Hidden reason={item.minimized}>{review}</Hidden>
-        </div>
-      ) : (
-        review
-      );
-    }
-    case "requested": {
-      const names = item.who.filter((name): name is string => name !== null);
-      return (
-        <EventLine icon={<Eye />} at={at}>
-          {who} requested review from <span className="text-foreground">{list(names)}</span>
-        </EventLine>
-      );
-    }
-    case "dismissed":
-      return (
-        <EventLine icon={<X />} at={at}>
-          {who} dismissed <span className="text-foreground">{item.who}</span>’s stale review{item.sha && <> via {sha(item.sha)}</>}
-        </EventLine>
-      );
-    case "deployed": {
-      const url = item.url;
-      return (
-        <EventLine
-          icon={<Publish />}
-          at={at}
-          end={
-            url && (
-              <Button variant="soft" size="xs" onClick={() => sends.onOpen({ url })}>
-                View deployment
-              </Button>
-            )
-          }
-        >
-          {who} deployed to <span className="text-foreground">{item.env}</span>
-        </EventLine>
-      );
-    }
-    case "mentioned": {
-      const Icon = MENTION_ICONS[item.state];
-      const url = item.url;
-      return (
-        <div className="flex flex-col gap-1">
-          <EventLine icon={<Link />} at={at}>
-            {who} mentioned this pull request
-          </EventLine>
-          <button
-            type="button"
-            disabled={!url}
-            onClick={() => url && sends.onOpen({ url })}
-            className="ms-9 flex cursor-pointer items-center gap-2 rounded-control text-start text-sm text-foreground hover:underline focus-visible:focus-ring"
-          >
-            <Icon className={cx("size-icon-sm shrink-0", item.state === "merged" ? "text-pr-purple" : item.state === "closed" ? "text-destructive" : item.state === "open" ? "text-success" : "text-muted-foreground")} />
-            <span className="min-w-0 truncate">
-              {item.title} <span className="text-muted-foreground">#{item.number}</span>
-            </span>
-          </button>
-        </div>
-      );
-    }
-    case "merged":
-      return (
-        <EventLine icon={<PullRequestMerged className="text-pr-purple" />} at={at}>
-          {who} merged commit {sha(item.sha)} into <span className="font-mono text-xs text-foreground">{item.base}</span>
-        </EventLine>
-      );
-    case "deleted":
-      return (
-        <EventLine icon={<Branch />} at={at}>
-          {who} deleted the <span className="font-mono text-xs text-foreground">{item.branch}</span> branch
-        </EventLine>
-      );
-    default: {
-      const [words, icon] = ITEM_WORDS[item.kind];
-      return (
-        <EventLine icon={icon} at={at}>
-          {who} {words}
-        </EventLine>
-      );
-    }
-  }
-}
 
 /** A comment the user posted from the Add a comment box: on screen at once, until the read that has it [D260]. */
 export type Posted = { key: string; body: string; id: string | null };
 
+const SECTION = "flex flex-col gap-2 border-b border-divider pb-4";
+const H3 = "text-sm font-medium text-foreground";
+const QUIET = "text-xs text-muted-foreground";
+
+const VERDICT = {
+  approved: { words: "Approved", tint: "text-success" },
+  changes: { words: "Changes requested", tint: "text-destructive" },
+  commented: { words: "Commented", tint: "text-muted-foreground" },
+  requested: { words: "Review requested", tint: "text-muted-foreground" },
+};
+
+const GROUPS: { state: PrCheck["state"]; words: string; icon: ReactNode }[] = [
+  { state: "running", words: "Pending", icon: <Clock className="text-pr-yellow" /> },
+  { state: "failed", words: "Failed or cancelled", icon: <XCircle className="text-destructive" /> },
+  { state: "passed", words: "Passed", icon: <CheckCircle className="text-success" /> },
+  { state: "skipped", words: "Skipped or neutral", icon: <Minus className="text-muted-foreground" /> },
+];
+
+const FOLD = "group flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-fill-subtle focus-visible:focus-ring svg:size-icon-sm";
+
 /**
- * The description as the first comment, then GitHub's timeline as Rust reads it, every bot's comment in its place
- * [D260], then the user's own comments still on their way.
+ * The checks [D609]: one folded line of counts by group; opened, each group folds with its checks, each opening its
+ * run on the host; a failed one keeps Send log to agent [D1019].
  */
-export function Conversation({ pr, posted, sends }: { pr: PullRequest; posted: readonly Posted[]; sends: Sends }) {
-  const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
-  const viewer = pr.viewer ?? "you";
-  const description: PrComment = { id: "body", author: pr.openedBy, path: null, line: null, body: pr.body ?? "", atMs: pr.openedAtMs, url: pr.url };
+function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const groups = GROUPS.map((g) => ({ ...g, checks: pr.checks.filter((c) => c.state === g.state) })).filter((g) => g.checks.length);
+  if (!groups.length) return <p className="px-2 text-sm text-muted-foreground">No checks reported</p>;
   return (
-    <div className="relative flex flex-col gap-4">
-      {/* GitHub's line down the timeline, under its icons. */}
-      <span aria-hidden className="absolute inset-y-0 start-3 w-px bg-border" />
-      <div className="relative flex gap-3">
-        <Avatar login={pr.openedBy} />
-        <CommentBox comment={description} at={ago(pr.openedAtMs, sends.now)} author="" />
-      </div>
-      {(pr.timeline ?? []).map((item) => (
-        <div key={`${item.kind}:${item.id}`} className="relative">
-          <Item item={item} pr={pr} comments={comments} sends={sends} />
-        </div>
-      ))}
-      {posted
-        .filter((post) => post.id === null || !comments.has(post.id))
-        .map((post) => (
-          <div key={post.key} className="relative flex gap-3">
-            <Avatar login={viewer} />
-            <CommentBox comment={{ id: post.key, author: viewer, path: null, line: null, body: post.body, atMs: sends.now, url: null }} at={post.id ? "just now" : "· Posting…"} author={pr.openedBy} />
-          </div>
+    <Collapsible>
+      <CollapsibleTrigger className={FOLD}>
+        <span className="flex">{groups[0].icon}</span>
+        <span className="flex min-w-0 flex-1 flex-wrap gap-x-2 text-muted-foreground">
+          {groups.map((g) => (
+            <span key={g.state}>
+              {g.checks.length} {g.words}
+            </span>
+          ))}
+        </span>
+        <ChevronRight className="text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-1 pt-1">
+        {groups.map((g) => (
+          <Collapsible key={g.state} defaultOpen>
+            <CollapsibleTrigger className={FOLD}>
+              <span className="flex">{g.icon}</span>
+              <span className="flex-1 text-foreground">{g.words}</span>
+              <span className="text-muted-foreground tabular-nums">{g.checks.length}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="ms-6 flex flex-col">
+                {g.checks.map((check) => (
+                  <li key={check.id} className="flex min-h-8 items-center gap-2">
+                    <button type="button" onClick={() => sends.onOpen({ check: check.id })} className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-fill-subtle focus-visible:focus-ring svg:size-icon-sm">
+                      <span className="flex">{g.icon}</span>
+                      <span className="min-w-0 flex-1">{check.name}</span>
+                    </button>
+                    {check.state === "failed" && <SendButton send={{ kind: "check", id: check.id }} label="Send log to agent" sends={sends} />}
+                  </li>
+                ))}
+              </ul>
+            </CollapsibleContent>
+          </Collapsible>
         ))}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-/** Where the PR stands at the timeline's end once it's done: merged, or closed unmerged, as GitHub's box. */
-export function DoneBox({ pr }: { pr: PullRequest }) {
-  const merged = pr.state === "merged";
+/**
+ * A pull request's Summary [D609, D613, D614]: its labels, reviewers and checks, the description, the
+ * review comments by line; then its other comments, just as compact, with the user's own still on their way,
+ * and Add a comment [D260, D1017].
+ */
+export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; posted: readonly Posted[]; sends: Sends; onComment: (body: string) => Promise<string | null> }) {
+  const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
+  const viewer = pr.viewer ?? "you";
+  const timeline = pr.timeline ?? [];
+  const reviews = timeline.filter((item) => item.kind === "review").filter((item) => item.said || item.threads.length);
+  const talk = timeline.flatMap((item) => (item.kind === "comment" ? (comments.get(item.id) ?? []) : []));
+  const waiting = posted.filter((post) => post.id === null || !comments.has(post.id));
+  const said = (comment: PrComment, box: ReactNode) => (
+    <div key={comment.id} className="flex gap-3">
+      <Avatar login={comment.author} size="size-6" />
+      {comment.minimized ? <Hidden reason={comment.minimized}>{box}</Hidden> : box}
+    </div>
+  );
   return (
-    <div className="flex gap-3">
-      <span className={cx("flex size-6 shrink-0 items-center justify-center rounded-full svg:size-icon-sm", merged ? "text-pr-purple" : "text-destructive")}>
-        {merged ? <PullRequestMerged /> : <PullRequestClosed />}
-      </span>
-      <div className={cx("flex min-w-0 flex-1 flex-col rounded-surface border px-4 py-3", merged ? "border-pr-purple" : "border-border")}>
-        <span className="text-sm font-medium text-foreground">{merged ? "Pull request successfully merged and closed" : "Closed with unmerged commits"}</span>
-        <span className="text-xs text-muted-foreground">{merged ? "You’re all set — the branch has been merged." : "This pull request is closed."}</span>
-      </div>
+    <div className="flex flex-col gap-4">
+      {!!pr.labels?.length && (
+        <ul aria-label="Labels" className="flex flex-wrap gap-1.5">
+          {pr.labels.map((label) => (
+            <li key={label} className="rounded-control bg-muted px-2 py-1 text-xs text-foreground">
+              {label}
+            </li>
+          ))}
+        </ul>
+      )}
+      <section className={SECTION}>
+        <h3 className={H3}>Reviewers</h3>
+        {pr.reviewers.length ? (
+          pr.reviewers.map((r) => (
+            <div key={r.login} className="flex items-center gap-2 text-xs">
+              <Avatar login={r.login} />
+              <span className="min-w-0 flex-1 truncate text-foreground">{r.login}</span>
+              <span className={VERDICT[r.state].tint}>{VERDICT[r.state].words}</span>
+            </div>
+          ))
+        ) : (
+          <p className={QUIET}>No reviews yet</p>
+        )}
+      </section>
+      <section className={SECTION}>
+        <div className="-mx-2">
+          <Checks pr={pr} sends={sends} />
+        </div>
+      </section>
+      <section className="text-sm">{pr.body?.trim() ? <Body text={pr.body} keep={`pr-${pr.id}-body`} /> : <p className="text-muted-foreground">No description provided.</p>}</section>
+      <section className="flex flex-col gap-3">
+        <h3 className={H3}>Review comments</h3>
+        {reviews.length ? (
+          reviews.map((review) => {
+            const body = review.said ? comments.get(review.id) : undefined;
+            return (
+              <div key={review.id} className="flex flex-col gap-2">
+                {body && said(body, <CommentBox comment={body} did={REVIEW_WORDS[review.state]} at={ago(body.atMs, sends.now)} author={pr.openedBy} sends={sends} />)}
+                <div className="ms-9 flex flex-col gap-2">
+                  {review.threads.map((thread) => (
+                    <Thread key={thread.id} thread={thread} comments={comments} author={pr.openedBy} sends={sends} />
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <p className={QUIET}>No inline review comments.</p>
+        )}
+      </section>
+      <section className="flex flex-col gap-3">
+        <h3 className={H3}>Comments</h3>
+        {talk.map((comment) => said(comment, <CommentBox comment={comment} at={ago(comment.atMs, sends.now)} author={pr.openedBy} sends={sends} />))}
+        {waiting.map((post) => {
+          const mine: PrComment = { id: post.key, author: viewer, path: null, line: null, body: post.body, atMs: sends.now, url: null };
+          return said(mine, <CommentBox comment={mine} at={post.id ? "just now" : "· Posting…"} author={pr.openedBy} />);
+        })}
+        {!talk.length && !waiting.length && <p className={QUIET}>No comments yet.</p>}
+        <AddComment viewer={pr.viewer} offline={sends.offline} onPost={onComment} />
+      </section>
     </div>
   );
 }
@@ -407,7 +335,7 @@ export function AddComment({ viewer, offline, onPost }: { viewer: string | null 
   };
   return (
     <div className="flex gap-3">
-      <Avatar login={viewer ?? "?"} />
+      <Avatar login={viewer ?? "?"} size="size-6" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="text-sm font-medium text-foreground">Add a comment</span>
         <Tabs.Root defaultValue="write" className="flex flex-col overflow-clip rounded-surface border border-border">

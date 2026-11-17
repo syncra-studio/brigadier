@@ -7,7 +7,7 @@ import { addChip, useChips } from "../panel/chips";
 import { gitDone, gitFailed } from "../panel/notice";
 import { type AgentChip, chipFor } from "./agent-chip";
 import { useHost } from "./host";
-import type { Posted } from "./pr-conversation";
+import type { Posted } from "./pr-summary";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
 import { type PrSend, type PullRequest, sendKey } from "./pull-requests";

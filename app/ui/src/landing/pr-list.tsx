@@ -1,136 +1,57 @@
-import { type ComponentType, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { Button } from "../components/button";
 import { cx } from "../components/cx";
-import { EmptyState } from "../components/empty-state";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "../components/menu";
-import { NavRow } from "../components/nav";
+import { TooltipIconButton } from "../components/icon-button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
+import { Segment, SegmentedRoot } from "../components/segmented";
 import { SelectTrigger } from "../components/select";
-import { ask, useDaemon } from "../daemon";
-import { Chat, Check, CheckCircle, Comment, Dot, Eye, HandRaised, type IconProps, Pencil, X } from "../icons";
+import { Skeleton } from "../components/skeleton";
+import { ask, type Row as SessionRow, useDaemon } from "../daemon";
+import { ArrowRotateCw, Chat, Check } from "../icons";
 import { openPr } from "../panel/open";
-import { Note } from "../panel/source/rows";
 import type { Pr } from "../panel/types";
+import { Counts } from "../review/hunks";
 import { SearchField } from "../settings/archived-toolbar";
 import { useSecond } from "../thread/words";
 import { useHost } from "./host";
-import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "./icons";
-import { CheckAgain } from "./pr-parts";
+import { Avatar, StateIcon } from "./pr-parts";
 import { ago, FRESH_MS } from "./pr-words";
 
-/** The side views, as GitHub's: the session's own first, then GitHub searches of its repository [D258]. */
-const VIEWS: { id: string; label: string; Icon: ComponentType<IconProps>; query: string }[] = [
-  { id: "session", label: "This session", Icon: Chat, query: "" },
-  { id: "all", label: "All", Icon: PullRequestOpen, query: "is:pr state:open" },
-  { id: "authored", label: "Authored by me", Icon: Pencil, query: "is:pr state:open author:@me" },
-  { id: "assigned", label: "Assigned to me", Icon: HandRaised, query: "is:pr state:open assignee:@me" },
-  { id: "involves", label: "Involves me", Icon: Comment, query: "is:pr state:open involves:@me" },
-  { id: "review", label: "Review requests", Icon: Eye, query: "is:pr state:open review-requested:@me" },
-];
+/** The chips, each GitHub's search words [D609, D613]. */
+const VIEWS = [
+  { value: "all", label: "All", words: "" },
+  { value: "authored", label: "Created by me", words: "author:@me" },
+  { value: "review", label: "Review requested", words: "review-requested:@me" },
+  { value: "assigned", label: "Assigned to me", words: "assignee:@me" },
+] as const;
+export type View = (typeof VIEWS)[number]["value"];
+const LINKED = "Linked to session";
+const STATES = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed / merged" },
+] as const;
 
-const REVIEWS = [
-  { value: "review:none", label: "No reviews" },
-  { value: "review:required", label: "Review required" },
-  { value: "review:approved", label: "Approved review" },
-  { value: "review:changes_requested", label: "Changes requested" },
-  { value: "reviewed-by:@me", label: "Reviewed by you" },
-  { value: "-reviewed-by:@me", label: "Not reviewed by you" },
-  { value: "user-review-requested:@me", label: "Awaiting review from you" },
-];
+/** A found row: the list's, with its size [D613]. */
+export type FoundPr = Pr & { additions?: number | null; deletions?: number | null };
+/** What a found read is: `host <id> search`'s, kept per query, `next` its next page's cursor [D258, D613]. */
+type Found = { query: string; okAt: number | null; error: string | null; prs: FoundPr[]; next?: string | null };
 
-const SORTS = [
-  { value: "sort:created-desc", label: "Newest" },
-  { value: "sort:created-asc", label: "Oldest" },
-  { value: "sort:comments-desc", label: "Most commented" },
-  { value: "sort:comments-asc", label: "Least commented" },
-  { value: "sort:updated-desc", label: "Recently updated" },
-  { value: "sort:updated-asc", label: "Least recently updated" },
-];
+const CHIP = "h-6 shrink-0 cursor-pointer rounded-capsule px-2.5 text-label whitespace-nowrap text-faint-foreground hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground";
+const TRACK = "hidden shrink-0 items-center gap-0.5 rounded-capsule bg-fill-subtle p-0.5 @pr-bar:flex";
 
-const TOGGLE = "flex cursor-pointer items-center gap-1.5 rounded-control focus-visible:focus-ring";
-
-const REVIEW_WORDS = { review_required: "Review required", approved: "Approved", changes_requested: "Changes requested" };
-
-/** The query with `word` in place of the words it replaces (one author, one review, one sort, one state). */
-function withWord(query: string, word: string): string {
-  const kind = (w: string) => (w.startsWith("sort:") ? "sort" : w.startsWith("state:") ? "state" : w.startsWith("author:") ? "author" : REVIEWS.some((r) => r.value === w) ? "review" : w);
-  return [...query.split(/\s+/).filter((w) => w && kind(w) !== kind(word)), word].join(" ");
-}
-
-/** What a found read is: `host <id> search`'s, kept per query [D258]. */
-type Found = { query: string; okAt: number | null; error: string | null; prs: Pr[]; open: number | null; closed: number | null };
-
-function StateIcon({ pr }: { pr: Pr }) {
-  if (pr.state === "merged") return <PullRequestMerged className="size-icon-md text-pr-purple" />;
-  if (pr.state === "closed") return <PullRequestClosed className="size-icon-md text-destructive" />;
-  if (pr.draft) return <PullRequestDraft className="size-icon-md text-muted-foreground" />;
-  return <PullRequestOpen className="size-icon-md text-success" />;
-}
-
-const CHECK_MARK = {
-  pass: <Check aria-label="Checks passed" className="size-icon-sm text-success" />,
-  fail: <X aria-label="Checks failed" className="size-icon-sm text-destructive" />,
-  pending: <Dot aria-label="Checks running" className="size-icon-sm text-pr-yellow" />,
-};
-
-/** GitHub's list row: state, title, then #N · author opened when · review · checks n/m; comments at its end. */
-function Row({ owner, pr, now }: { owner: string; pr: Pr; now: number }) {
-  return (
-    <li className="border-b border-border last:border-b-0">
-      <button type="button" onClick={() => openPr(owner, pr)} className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-start hover:bg-fill-subtle focus-visible:focus-ring">
-        <span className="flex pt-0.5">
-          <StateIcon pr={pr} />
-        </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium text-foreground">{pr.title}</span>
-          <span className="flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
-            {/* One from another repository says which, short, as on the card [D213]. */}
-            <span>
-              {pr.repo && `${pr.repo.slice(pr.repo.indexOf("/") + 1)} `}#{pr.number}
-            </span>
-            {pr.author && <span>· {pr.author}</span>}
-            {pr.createdAtMs && <span>opened {ago(pr.createdAtMs, now)}</span>}
-            {pr.state === "open" && pr.review && <span>· {REVIEW_WORDS[pr.review]}</span>}
-            {pr.checks && (
-              <span className="flex items-center gap-1">
-                · {CHECK_MARK[pr.checks.mark]}
-                <span className="tabular-nums">
-                  {pr.checks.ok}/{pr.checks.all}
-                </span>
-              </span>
-            )}
-          </span>
-        </span>
-        {!!pr.comments && (
-          <span className="flex shrink-0 items-center gap-1 pt-0.5 text-xs text-muted-foreground tabular-nums">
-            <Comment aria-label="Comments" className="size-icon-sm" />
-            {pr.comments}
-          </span>
-        )}
-      </button>
-    </li>
-  );
-}
-
-/** One of the bar's menus: its pill, then its choices; a pick puts its word in the query. */
-export function Filter({ label, value, choices, onPick }: { label: string; value?: string; choices: { value: string; label: string }[]; onPick: (word: string) => void }) {
+/** A narrow list's chips as one menu [D609]. */
+function Menu({ label, value, choices, onPick }: { label: string; value: string; choices: readonly { value: string; label: string }[]; onPick: (value: string) => void }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
         render={
-          <SelectTrigger label={label} className="border-transparent bg-transparent">
-            {label}
+          <SelectTrigger label={label} className="border-transparent bg-fill-subtle @pr-bar:hidden">
+            {choices.find((c) => c.value === value)?.label}
           </SelectTrigger>
         }
       />
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{label}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={value ?? ""} onValueChange={onPick}>
+        <DropdownMenuRadioGroup value={value} onValueChange={onPick}>
           {choices.map((choice) => (
             <DropdownMenuRadioItem key={choice.value} value={choice.value} indicator={<Check className="size-icon-md" />}>
               {choice.label}
@@ -142,161 +63,275 @@ export function Filter({ label, value, choices, onPick }: { label: string; value
   );
 }
 
+/** A row: state, title, number, who opened it; its size and when it last changed at its end; under it, the session it's linked to. */
+function Row({ pr, now, linked, onOpen }: { pr: FoundPr; now: number; linked?: SessionRow; onOpen: () => void }) {
+  const at = pr.updatedAtMs ?? pr.createdAtMs;
+  const toSession = () => linked && (window.location.hash = `#thread/${encodeURIComponent(linked.id)}`);
+  return (
+    <li className="border-b border-divider">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onDoubleClick={toSession}
+        onKeyDown={(event) => event.key === "Enter" && onOpen()}
+        className="flex min-h-12 cursor-pointer items-start gap-3 rounded-control px-2 py-3 text-sm hover:bg-fill-subtle focus-visible:focus-ring"
+      >
+        <StateIcon state={pr.state === "open" && pr.draft ? "draft" : pr.state} className="h-5 items-center" />
+        <span className="flex min-w-0 flex-1 flex-col gap-2">
+          <span className="flex min-w-0 items-center gap-3">
+            <span title={pr.title} className="min-w-0 flex-1 truncate font-medium text-foreground">
+              {pr.title}
+            </span>
+            <span className="flex h-5 max-w-1/2 min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              <span className="shrink-0">#{pr.number}</span>
+              {pr.repo && <span className="truncate">{pr.repo.slice(pr.repo.indexOf("/") + 1)}</span>}
+              {pr.author && <Avatar login={pr.author} />}
+            </span>
+          </span>
+          {linked && (
+            <span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="max-w-full rounded-capsule"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toSession();
+                }}
+              >
+                <Chat />
+                <span className="truncate">{linked.title}</span>
+              </Button>
+            </span>
+          )}
+        </span>
+        <span className="flex h-5 shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
+          {pr.additions != null && <Counts insertions={pr.additions} deletions={pr.deletions ?? 0} />}
+          {at && <span>{ago(at, now).replace(" ago", "")}</span>}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+const LOADING = (count: number) =>
+  Array.from({ length: count }, (_, n) => (
+    <li key={n} className="flex h-12 items-center gap-3 border-b border-divider px-2">
+      <Skeleton className="size-4 rounded-full" />
+      <Skeleton className="h-3 flex-1" />
+      <Skeleton className="size-5 rounded-full" />
+      <Skeleton className="h-3 w-8" />
+    </li>
+  ));
+
 /**
- * The Pull requests tab, as GitHub's "All pull requests" page [D258]: side views (this session's PRs, D256/D257, then
- * searches of its repository), the search in GitHub's words, Open and Closed, Author, Reviews and Sort. Each paints
- * its last read at once and reads again when older than the watch's quickest pace, and on Check again [D207, D208].
+ * The Pull requests tab as a list [D609, D613]: the search, the chips, Linked to session, Open or Closed / merged and
+ * Refresh on one bar, folding into menus when narrow; then a row each, Load more at its end. A row opens its Pull request
+ * tab; a double-click on one linked to a session opens that session. Each query paints its last read at once and reads
+ * again when older than the watch's quickest pace [D207, D208].
  */
+export function PrListView({
+  found,
+  now,
+  view,
+  linked,
+  closed,
+  text,
+  busy,
+  more,
+  checked,
+  sessions,
+  onView,
+  onLinked,
+  onClosed,
+  onText,
+  onRefresh,
+  onMore,
+  onOpen,
+}: {
+  found: Found | null;
+  now: number;
+  view: View;
+  linked: boolean;
+  closed: boolean;
+  text: string;
+  busy: boolean;
+  more: boolean;
+  checked: string;
+  sessions: SessionRow[];
+  onView: (view: View) => void;
+  onLinked: (linked: boolean) => void;
+  onClosed: (closed: boolean) => void;
+  onText: (text: string) => void;
+  onRefresh?: () => void;
+  onMore: () => void;
+  onOpen: (pr: Pr) => void;
+}) {
+  const linkOf = (pr: FoundPr) => sessions.find((s) => s.prs?.prs.some((p) => p.url && p.url === pr.url));
+  const prs = (found?.prs ?? []).filter((pr) => !linked || linkOf(pr));
+  const state = closed ? "closed" : "open";
+  return (
+    <div data-slot="pr-list" className="@container flex min-h-0 flex-1 flex-col">
+      <div className="flex min-w-0 items-center gap-3 px-6 py-4">
+        <div className="flex max-w-60 min-w-24 flex-1">
+          <SearchField label="Search pull requests…" value={text} onChange={onText} />
+        </div>
+        <div className="ms-auto flex min-w-0 items-center justify-end gap-2">
+          <div className={TRACK}>
+            <SegmentedRoot aria-label="Pull requests" value={[view]} onValueChange={([next]) => next && onView(next as View)} className="flex items-center gap-0.5">
+              {VIEWS.map((v) => (
+                <Segment key={v.value} value={v.value} className={CHIP}>
+                  {v.label}
+                </Segment>
+              ))}
+            </SegmentedRoot>
+            <Segment pressed={linked} onPressedChange={onLinked} className={CHIP}>
+              {LINKED}
+            </Segment>
+          </div>
+          <Menu
+            label="Views"
+            value={linked ? "linked" : view}
+            choices={[...VIEWS, { value: "linked", label: LINKED }]}
+            onPick={(v) => {
+              onLinked(v === "linked");
+              if (v !== "linked") onView(v as View);
+            }}
+          />
+          <SegmentedRoot aria-label="State" value={[state]} onValueChange={([next]) => next && onClosed(next === "closed")} className={TRACK}>
+            {STATES.map((s) => (
+              <Segment key={s.value} value={s.value} className={CHIP}>
+                {s.label}
+              </Segment>
+            ))}
+          </SegmentedRoot>
+          <Menu label="State" value={state} choices={STATES} onPick={(s) => onClosed(s === "closed")} />
+          <TooltipIconButton tooltip={`Refresh · ${checked}`} size="icon-sm" disabled={!onRefresh || busy} onClick={onRefresh}>
+            <ArrowRotateCw className={cx(busy && "animate-spin motion-reduce:animate-none")} />
+          </TooltipIconButton>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!found?.okAt && found?.error && !busy ? (
+          <div role="alert" className="flex flex-col items-center gap-3 p-8 text-center text-sm">
+            <p>Couldn't load the pull requests.</p>
+            <p className="break-words text-muted-foreground">{found.error.split("\n")[0]}</p>
+            <Button onClick={onRefresh}>Retry</Button>
+          </div>
+        ) : !found?.okAt ? (
+          <ul aria-label="Loading pull requests" className="px-5">
+            {LOADING(5)}
+          </ul>
+        ) : (
+          <>
+            <ul aria-label="Pull requests" className="px-5">
+              {prs.map((pr) => (
+                <Row key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} now={now} linked={linkOf(pr)} onOpen={() => onOpen(pr)} />
+              ))}
+              {more && busy && LOADING(2)}
+            </ul>
+            {!prs.length && !busy && <p className="p-8 text-center text-sm text-muted-foreground">No matching items. Try another filter or search.</p>}
+            {found.error && (
+              <p role="alert" className="px-5 py-3 text-sm text-muted-foreground">
+                {found.error.split("\n")[0]}
+              </p>
+            )}
+            {found.next && (
+              <div className="p-4 text-center">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={onMore}>
+                  {found.error ? "Retry" : "Load more"}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The search's words for a chip, a state and what's typed. */
+const queryOf = (view: View, closed: boolean, text: string) => [`state:${closed ? "closed" : "open"}`, VIEWS.find((v) => v.value === view)!.words, text.trim()].filter(Boolean).join(" ");
+
+/** The Pull requests tab: Rust's search of the session's repository, drawn in this layout [D258, D609, D613]. */
 export function PrList({ owner }: { owner: string }) {
   const host = useHost(owner);
-  // Before the first message there's no session, so no This session view: it opens on All [D279].
-  const views = host === owner ? VIEWS : VIEWS.slice(1);
   const { daemon, rows } = useDaemon();
-  const kept = rows?.find((row) => row.id === owner)?.prs;
   const now = useSecond(true);
-  const [view, setView] = useState(views[0].id);
-  // The search's words: what the box shows, and what was last asked.
-  const [text, setText] = useState(views[0].query);
-  const [query, setQuery] = useState(views[0].query);
+  const [view, setView] = useState<View>("all");
+  const [linked, setLinked] = useState(false);
   const [closed, setClosed] = useState(false);
-  // Every query's last read the tab holds, the side views' brought in as it opens: a switch paints at once [D207].
+  const [text, setText] = useState("");
+  // What's typed is asked a moment after the last key.
+  const [typed, setTyped] = useState("");
+  useEffect(() => {
+    const wait = setTimeout(() => setTyped(text), 400);
+    return () => clearTimeout(wait);
+  }, [text]);
+  const query = queryOf(view, closed, typed);
+  // Every query's last read the tab holds: a switch back paints at once [D207].
   const [reads, setReads] = useState<Partial<Record<string, Found>>>({});
   const [reading, setReading] = useState<string[]>([]);
-  const [listing, setListing] = useState(false);
-  const session = view === "session";
+  const [paging, setPaging] = useState(false);
   const found = reads[query] ?? null;
-  const busy = session ? listing : reading.includes(query);
 
-  const put = (list: Found[]) => setReads((was) => ({ ...was, ...Object.fromEntries(list.map((f) => [f.query, f])) }));
-  // One read for all of them [D207]; a failed one keeps each last read with why.
-  const read = (queries: string[]) => {
-    setReading((was) => [...was, ...queries]);
-    ask({ op: "run", args: ["host", host, "search", ...queries] }, (reply) => {
-      setReading((was) => was.filter((q) => !queries.includes(q)));
-      const why = reply.error ?? "Couldn't search.";
-      setReads((was) => ({
-        ...was,
-        ...Object.fromEntries(queries.map((q, i) => [q, reply.found?.[i] ?? { query: q, okAt: null, prs: [], open: null, closed: null, ...(was[q] as Found | undefined), error: why }])),
-      }));
+  const put = (q: string, reply: { found?: Found[]; error?: string }) =>
+    setReads((was) => ({ ...was, [q]: reply.found?.[0] ?? { query: q, okAt: null, prs: [], ...was[q], error: reply.error ?? "Couldn't search." } }));
+  // A first page, the rows kept again from it [D207]; a failed one keeps the last read with why.
+  const read = (q: string) => {
+    setReading((was) => [...was, q]);
+    ask({ op: "run", args: ["host", host, "search", q] }, (reply) => {
+      setReading((was) => was.filter((r) => r !== q));
+      put(q, reply);
     });
   };
-  // Their last reads at once, then one read of those older than the watch's quickest pace.
-  const bring = (queries: string[]) =>
-    ask({ op: "run", args: ["host", host, "search", ...queries, "--kept"] }, (reply) => {
-      const last: (Found | null)[] = reply.found ?? [];
-      put(last.filter((f): f is Found => !!f));
-      const stale = queries.filter((_, i) => Date.now() - (last[i]?.okAt ?? 0) > FRESH_MS);
-      if (stale.length > 0) read(stale);
+  // The next page joins the rows; a failed one keeps them, with why and Retry.
+  const more = () => {
+    if (!found?.next) return;
+    setPaging(true);
+    ask({ op: "run", args: ["host", host, "search", query, "--after", found.next] }, (reply) => {
+      setPaging(false);
+      put(query, reply);
     });
-  const check = () => {
-    if (!session) return read([query]);
-    setListing(true);
-    ask({ op: "run", args: ["host", owner, "list"] }, () => setListing(false));
-  };
-  const search = (q: string, to = "") => {
-    setView(to);
-    setText(q);
-    setQuery(q);
-    const last = reads[q];
-    if (!last) bring([q]);
-    else if (Date.now() - (last.okAt ?? 0) > FRESH_MS && !reading.includes(q)) read([q]);
-  };
-  const pick = (id: string) => {
-    const to = VIEWS.find((v) => v.id === id)!;
-    if (to.id !== "session") return search(to.query, to.id);
-    setView("session");
-    setText("");
-    setQuery("");
   };
 
   const loaded = rows !== undefined;
   useEffect(() => {
-    if (!daemon || !loaded) return;
-    if (session && Date.now() - (kept?.okAt ?? 0) > FRESH_MS) check();
-    bring(VIEWS.slice(1).map((v) => v.query));
-  }, [daemon, host, loaded]);
+    if (!daemon || !loaded || reading.includes(query)) return;
+    const last = reads[query];
+    if (last) {
+      if (Date.now() - (last.okAt ?? 0) > FRESH_MS) read(query);
+      return;
+    }
+    // Its last read at once, then a read when it's older than the watch's quickest pace.
+    ask({ op: "run", args: ["host", host, "search", query, "--kept"] }, (reply) => {
+      const kept: Found | null = reply.found?.[0] ?? null;
+      if (kept) setReads((was) => ({ ...was, [query]: kept }));
+      if (Date.now() - (kept?.okAt ?? 0) > FRESH_MS) read(query);
+    });
+  }, [daemon, host, loaded, query]);
 
-  // Rust keeps the session's open first, then by recency [D256].
-  const mine = kept?.prs ?? [];
-  const opened = mine.filter((pr) => pr.state === "open").length;
-  const prs = session ? mine.filter((pr) => (pr.state === "open") !== closed) : (found?.prs ?? []);
-  const counts = session ? { open: opened, closed: mine.length - opened } : { open: found?.open ?? null, closed: found?.closed ?? null };
-  const showsClosed = session ? closed : /\b(state:closed|is:closed|is:merged)\b/.test(query);
-  const error = session ? kept?.error : found?.error;
-  const at = session ? (kept?.okAt ?? null) : (found?.okAt ?? null);
-  const words = query.split(/\s+/);
-  const authors = [...new Set(prs.map((pr) => pr.author).filter((a): a is string => !!a))];
-  // A filter from the session's own view asks the repository, open ones first.
-  const refine = (word: string) => search(withWord(session ? "is:pr state:open" : query, word));
-  const state = (to: boolean) => (session ? setClosed(to) : search(withWord(query, to ? "state:closed" : "state:open"), view));
-
+  const busy = reading.includes(query) || paging;
   return (
-    <div data-slot="pr-list" className="flex min-h-0 flex-1 gap-6 overflow-y-auto p-5">
-      <nav aria-label="Pull request views" className="flex w-52 shrink-0 flex-col gap-0.5">
-        {views.map(({ id, label, Icon }) => (
-          <NavRow key={id} aria-current={view === id ? "page" : undefined} onClick={() => pick(id)}>
-            <Icon className="text-muted-foreground" />
-            {label}
-          </NavRow>
-        ))}
-      </nav>
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <header className="flex items-baseline gap-3">
-          <h2 className="min-w-0 flex-1 font-display text-base font-medium">{VIEWS.find((v) => v.id === view)?.label ?? "Pull requests"}</h2>
-          {loaded || !daemon ? <CheckAgain at={at} busy={busy} offline={!daemon} onClick={check} /> : <span className="text-xs text-muted-foreground">Loading…</span>}
-        </header>
-        <form
-          className="flex"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (text.trim()) search(text.trim());
-            else pick(views[0].id);
-          }}
-        >
-          <SearchField label="Search all pull requests" value={text} onChange={setText} />
-        </form>
-        {error && <Note warn text={`Couldn't check · ${error.split("\n")[0]}`} />}
-        <ul className="flex flex-col overflow-clip rounded-surface border border-border">
-          <li className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-fill-subtle px-4 py-1.5 text-sm">
-            <button type="button" onClick={() => state(false)} className={cx(TOGGLE, showsClosed ? "text-muted-foreground hover:text-foreground" : "font-medium text-foreground")}>
-              <PullRequestOpen className="size-icon-sm" /> {counts.open?.toLocaleString() ?? "–"} Open
-            </button>
-            <button type="button" onClick={() => state(true)} className={cx(TOGGLE, showsClosed ? "font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-              <CheckCircle className="size-icon-sm" /> {counts.closed?.toLocaleString() ?? "–"} Closed
-            </button>
-            <span className="flex-1" />
-            <Filter
-              label="Author"
-              value={words.find((w) => w.startsWith("author:"))}
-              choices={[{ value: "author:@me", label: "You" }, ...authors.map((a) => ({ value: `author:${a}`, label: a }))]}
-              onPick={refine}
-            />
-            <Filter label="Reviews" value={words.find((w) => REVIEWS.some((r) => r.value === w))} choices={REVIEWS} onPick={refine} />
-            <Filter label={SORTS.find((s) => words.includes(s.value))?.label ?? "Newest"} value={words.find((w) => w.startsWith("sort:")) ?? "sort:created-desc"} choices={SORTS} onPick={refine} />
-          </li>
-          {prs.map((pr) => (
-            <Row key={`${pr.repo ?? ""}#${pr.number}`} owner={owner} pr={pr} now={now} />
-          ))}
-          {prs.length === 0 && (
-            <li className="px-4 py-10">
-              {session ? (
-                rows !== undefined && (
-                  <EmptyState
-                    variant="centered"
-                    icon={PullRequestOpen}
-                    title={mine.length ? "None here" : "No pull requests yet"}
-                    detail={mine.length ? undefined : "The ones this session opens or works on show here"}
-                  />
-                )
-              ) : found ? (
-                <EmptyState variant="centered" icon={PullRequestOpen} title="No pull requests match" />
-              ) : (
-                <p className="text-center text-sm text-muted-foreground">{busy ? "Searching…" : "Not checked yet"}</p>
-              )}
-            </li>
-          )}
-        </ul>
-      </div>
-    </div>
+    <PrListView
+      found={found}
+      now={now}
+      view={view}
+      linked={linked}
+      closed={closed}
+      text={text}
+      busy={busy}
+      more={paging}
+      checked={!daemon ? "Reconnecting…" : found?.okAt ? `checked ${ago(found.okAt, now)}` : "not checked yet"}
+      sessions={rows ?? []}
+      onView={setView}
+      onLinked={setLinked}
+      onClosed={setClosed}
+      onText={setText}
+      onRefresh={daemon ? () => read(query) : undefined}
+      onMore={more}
+      onOpen={(pr) => openPr(owner, pr)}
+    />
   );
 }

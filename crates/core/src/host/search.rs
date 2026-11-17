@@ -1,9 +1,8 @@
-//! The Pull requests tab's views beyond the session's own [D258]: a GitHub search of the session's
-//! repository, as its "All pull requests" page, in one GraphQL read with the Open and Closed counts
-//! [D207], each query's last read kept in `pr/search.json` in the session's folder so the tab paints
-//! it at once.
+//! The Pull requests tab's list [D258, D609]: a GitHub search of the session's repository,
+//! a page of 30 at a time with Load more, each query's last read kept in
+//! `pr/search.json` in the session's folder so the tab paints it at once [D207].
 
-use super::prs::{mark, tally};
+use super::prs::mark;
 use super::view::{keep, read_kept};
 use super::{Kind, NO_GH, Pr, err, gh, graphql};
 use crate::adapters::iso_ms;
@@ -12,13 +11,13 @@ use serde_json::{Value, json};
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Proposed: a view's page is GitHub's 25.
-const PAGE: u32 = 25;
-/// Proposed: the last reads of this many queries are kept, the side views' among them.
+/// The page size [D609].
+const PAGE: u32 = 30;
+/// Proposed: the last reads of this many queries are kept.
 const KEPT: usize = 20;
 
-/// A row's fields: the list's, with its checks counted by state rather than read one by one.
-const ROW: &str = "number url title state isDraft reviewDecision createdAt updatedAt author { login } comments { totalCount } commits(last: 1) { nodes { commit { statusCheckRollup { contexts { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }";
+/// A row's fields: a bare row [D613].
+const ROW: &str = "number url title state isDraft createdAt updatedAt additions deletions author { login avatarUrl }";
 
 fn path(dir: &Path) -> PathBuf {
     dir.join("pr").join("search.json")
@@ -36,10 +35,10 @@ pub fn kept_search(dir: &Path, query: &str) -> Value {
 }
 
 impl Pr {
-    /// The session repository's PRs that each query (GitHub's search words) finds, newest first
-    /// unless it sorts, with how many are open and closed, all in one read [D207]; each kept, with
-    /// why when the read failed.
-    pub fn search(&self, queries: &[&str]) -> io::Result<Vec<Value>> {
+    /// The session repository's PRs that each query (GitHub's search words) finds, the last
+    /// changed first unless it sorts, all in one read [D207]; each kept, with why when the read
+    /// failed. With `after` (one query's last `next`), the next page joins the rows kept [D613].
+    pub fn search(&self, queries: &[&str], after: Option<&str>) -> io::Result<Vec<Value>> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be searched.");
         };
@@ -47,24 +46,19 @@ impl Pr {
             return err(NO_GH);
         };
         let scope = format!("repo:{} is:pr", repo.path);
-        // Each query's list and its open and closed counts under its own aliases.
+        let from = after
+            .map(|a| format!(", after: {}", json!(a)))
+            .unwrap_or_default();
         let (mut vars, mut declared, mut asks) = (Vec::new(), Vec::new(), String::new());
         for (i, query) in queries.iter().enumerate() {
-            let words: Vec<&str> = query.split_whitespace().collect();
-            let sorted = words.iter().any(|w| w.starts_with("sort:"));
-            // The counts ask the same, open and then closed.
-            let stateless: Vec<&str> = (words.iter().copied())
-                .filter(|w| {
-                    !w.starts_with("state:") && !matches!(*w, "is:open" | "is:closed" | "is:merged")
-                })
-                .collect();
-            let base = format!("{scope} {}", stateless.join(" "));
-            let sort = if sorted { "" } else { " sort:created-desc" };
+            let sort = if query.contains("sort:") {
+                ""
+            } else {
+                " sort:updated-desc"
+            };
             vars.push((format!("q{i}"), format!("{scope} {query}{sort}")));
-            vars.push((format!("o{i}"), format!("{base} state:open")));
-            vars.push((format!("c{i}"), format!("{base} state:closed")));
-            declared.push(format!("$q{i}: String!, $o{i}: String!, $c{i}: String!"));
-            asks.push_str(&format!(" l{i}: search(query: $q{i}, type: ISSUE, first: {PAGE}) {{ nodes {{ ...R }} }} o{i}: search(query: $o{i}, type: ISSUE, first: 0) {{ issueCount }} c{i}: search(query: $c{i}, type: ISSUE, first: 0) {{ issueCount }}"));
+            declared.push(format!("$q{i}: String!"));
+            asks.push_str(&format!(" l{i}: search(query: $q{i}, type: ISSUE, first: {PAGE}{from}) {{ pageInfo {{ endCursor hasNextPage }} nodes {{ ...R }} }}"));
         }
         let ask = format!(
             "query({}) {{{asks} }} fragment R on PullRequest {{ {ROW} }}",
@@ -79,16 +73,25 @@ impl Pr {
                 let was = kept_search(&self.dir, query);
                 match &read {
                     Ok((data, partial)) => {
-                        let prs: Vec<Value> = (data[format!("l{i}")]["nodes"].as_array().into_iter().flatten())
+                        let list = &data[format!("l{i}")];
+                        let page = (list["nodes"].as_array().into_iter().flatten())
                             .filter(|p| p["number"].is_u64())
-                            .map(|p| mark(row(p), repo))
-                            .collect();
-                        json!({"query": query, "okAt": now_ms(), "error": partial, "prs": prs,
-                            "open": data[format!("o{i}")]["issueCount"], "closed": data[format!("c{i}")]["issueCount"]})
+                            .map(|p| mark(row(p), repo));
+                        // A next page joins what's kept; a first page starts it again.
+                        let prs: Vec<Value> = match after {
+                            Some(_) => (was["prs"].as_array().into_iter().flatten().cloned())
+                                .chain(page)
+                                .collect(),
+                            None => page.collect(),
+                        };
+                        let info = &list["pageInfo"];
+                        let next = (info["hasNextPage"] == true).then(|| info["endCursor"].clone());
+                        json!({"query": query, "okAt": now_ms(), "error": partial, "prs": prs, "next": next})
                     }
                     Err(why) if was.is_null() => {
-                        json!({"query": query, "okAt": null, "error": why, "prs": [], "open": null, "closed": null})
+                        json!({"query": query, "okAt": null, "error": why, "prs": [], "next": null})
                     }
+                    // The rows already read stay, with why the next didn't come.
                     Err(why) => {
                         let mut next = was;
                         next["error"] = why.clone().into();
@@ -107,38 +110,11 @@ impl Pr {
     }
 }
 
-/// A found PR's row, in the session list's own words (`prs::row`) for what the tab draws.
+/// A found PR's row: its state, title, number, author, size and when it last changed [D613].
 fn row(pr: &Value) -> Value {
-    let rollup = &pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"];
-    let counts = (rollup["checkRunCountsByState"]
-        .as_array()
-        .into_iter()
-        .flatten())
-    .chain(
-        rollup["statusContextCountsByState"]
-            .as_array()
-            .into_iter()
-            .flatten(),
-    );
-    let (mut all, mut not_ok, mut failed) = (0, 0, 0);
-    for c in counts {
-        let n = c["count"].as_u64().unwrap_or(0) as usize;
-        all += n;
-        match c["state"].as_str().unwrap_or("") {
-            "SUCCESS" | "SKIPPED" | "NEUTRAL" | "COMPLETED" => {}
-            "FAILURE" | "ERROR" | "TIMED_OUT" | "ACTION_REQUIRED" | "STARTUP_FAILURE"
-            | "CANCELLED" => {
-                not_ok += n;
-                failed += n;
-            }
-            _ => not_ok += n,
-        }
-    }
     json!({"number": pr["number"], "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "draft": pr["isDraft"],
-        "author": pr["author"]["login"], "comments": pr["comments"]["totalCount"],
+        "author": pr["author"]["login"], "additions": pr["additions"], "deletions": pr["deletions"],
         "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),
-        "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms),
-        "review": pr["reviewDecision"].as_str().map(str::to_lowercase),
-        "checks": (rollup.is_object() && all > 0).then(|| tally(all, not_ok, failed))})
+        "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms)})
 }

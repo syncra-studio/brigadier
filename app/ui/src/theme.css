@@ -336,6 +336,8 @@
   --spacing-session-tab-rule: 1px;
   --spacing-session-tab-rule-height: 1rem;
   --container-new-tab: 28rem;
+  /* The Pull requests tab's bar below this folds its chips into menus [D609]. */
+  --container-pr-bar: 64rem;
   /* The active tab's lift (the new design's). */
   --shadow-session-tab: 0 1px 3px #00000040;
   --ease-session-tab: cubic-bezier(0.333, 0.667, 0.667, 1);

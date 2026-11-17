@@ -12,6 +12,10 @@ export type PullRequest = {
   number: number;
   title: string;
   url: string;
+  /** Its repository, `owner/name`; absent in a read kept before it [D609]. */
+  repo?: string;
+  /** Its labels' names; absent in a read kept before them [D614]. */
+  labels?: string[];
   /** The head commit it was read at: a merge is pinned to the one its confirm showed [D1077]. */
   head: string;
   /** The host's name as Rust's host module gives it, for "Open on …"; nothing here names a host [D1030]. */
@@ -59,7 +63,7 @@ export type PullRequest = {
 export type PrCommit = { sha: string; message: string; author: string | null; atMs: number | null };
 export type PrReviewer = { login: string; state: "approved" | "changes" | "commented" | "requested" };
 
-export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed"; durationMs: number | null; logTail: string | null; url: string | null };
+export type PrCheck = { id: string; name: string; state: "failed" | "running" | "passed" | "skipped"; durationMs: number | null; logTail: string | null; url: string | null };
 
 /** `bot`: written by an app's account, as the host marks it. `minimized`: hidden as GitHub hides it, and why ("outdated"). */
 export type PrComment = {

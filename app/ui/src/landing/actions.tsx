@@ -1,18 +1,26 @@
 import { useEffect, useState } from "react";
 import { Button } from "../components/button";
 import { EmptyState } from "../components/empty-state";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../components/menu";
 import { NavRow } from "../components/nav";
 import { ask, useDaemon } from "../daemon";
 import { Check, DotsHorizontal, PlayCircle } from "../icons";
 import { openPr } from "../panel/open";
 import { Note } from "../panel/source/rows";
+import { SelectTrigger } from "../components/select";
 import { SearchField } from "../settings/archived-toolbar";
 import { useSecond } from "../thread/words";
 import { type Found, lasted, Ref, type Run, RunPage, StateIcon, duration, plural, useRerun, useSend, type Workflow } from "./action-run";
 import { useHost } from "./host";
 import { Sparkles } from "./icons";
-import { Filter } from "./pr-list";
 import { CheckAgain } from "./pr-parts";
 import { ago, FRESH_MS } from "./pr-words";
 
@@ -33,6 +41,32 @@ const STATUSES = [
   ["action_required", "Action required"],
   ["timed_out", "Timed out"],
 ].map(([value, label]) => ({ value: `is:${value}`, label }));
+
+
+/** One of the bar's menus: its pill, then its choices; a pick puts its word in the query. */
+function Filter({ label, value, choices, onPick }: { label: string; value?: string; choices: { value: string; label: string }[]; onPick: (word: string) => void }) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        render={
+          <SelectTrigger label={label} className="border-transparent bg-transparent">
+            {label}
+          </SelectTrigger>
+        }
+      />
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={value ?? ""} onValueChange={onPick}>
+          {choices.map((choice) => (
+            <DropdownMenuRadioItem key={choice.value} value={choice.value} indicator={<Check className="size-icon-md" />}>
+              {choice.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 /** The query's words, a quoted one ("Bump Go") whole, as Rust reads them. */
 const tokens = (query: string) => query.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];

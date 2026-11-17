@@ -1,5 +1,5 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -8,29 +8,28 @@ import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { Skeleton } from "../components/skeleton";
-import { ArrowUpRight, Check, CheckCircle, ChevronDown, Comment, Commit } from "../icons";
+import { ArrowUpRight, Branch, Check, ChevronDown, Folder } from "../icons";
 import type { Pr } from "../panel/types";
-import { Sparkles } from "./icons";
+import { PullRequestOpen, Sparkles } from "./icons";
 import { PrFiles } from "./pr-files";
-import { AddComment, Conversation, DoneBox, type Posted } from "./pr-conversation";
-import { CheckAgain, Checks, Commits, MergeBox, type Sends, StateBadge } from "./pr-parts";
+import { Avatar, CheckAgain, type Sends, StateIcon } from "./pr-parts";
+import { type Posted, Summary } from "./pr-summary";
 import type { MergeStyle, PullRequest } from "./pull-requests";
 
 const TAB = cx(
-  "flex cursor-pointer items-center gap-1.5 rounded-control px-2.5 py-1 text-sm text-muted-foreground svg:size-icon-sm",
-  "hover:text-foreground focus-visible:focus-ring data-active:bg-fill-subtle data-active:text-foreground",
+  "relative flex h-9 cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring",
+  "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full data-active:text-foreground data-active:after:bg-foreground",
 );
-const COUNT = "rounded-capsule bg-muted px-1.5 text-xs text-muted-foreground tabular-nums";
-/** The page's column: it fills the tab, as the lists do [D278, D206]. */
 const COLUMN = "w-full px-5";
 
-const Ref = ({ children }: { children: ReactNode }) => <span className="rounded-control bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">{children}</span>;
-
 /**
- * A pull request in a main-area tab, GitHub's page [D204]: its title, state and "wants to merge", then Conversation
- * (the description, GitHub's timeline, the merge box or where it ended, and Add a comment; no side column [D260]), Commits,
- * Checks and Files changed, the PR's diff as its host has it, any PR's, with Submit review [D231, D262]. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read at once and shows the watch's age, with
- * Check again; when a read fails, the last one stays with why [D207, D208, D1009].
+ * A pull request in a main-area tab [D204, D609, D613]: its title, state and number, Open on the host and
+ * Check again; who, which repository and which branches; then Summary (labels, reviewers, checks, the description,
+ * review comments, comments and Add a comment) and Code, the PR's diff as its host has it with Submit review [D231,
+ * D262]. Beside the tabs, its one action: Fix with agent when checks failed or changes were asked, else Merge while
+ * it's open; then Review on the host. Every Send and Fix leaves a chip above the composer and sends nothing [D1019,
+ * D1027]. It paints its last read at once and shows the watch's age; when a read fails, the last one stays with why
+ * [D207, D208, D1009].
  */
 export function PrTab({
   owner,
@@ -70,7 +69,7 @@ export function PrTab({
   /** Posts a comment; answers why the host refused it, or null. */
   onComment: (body: string) => Promise<string | null>;
 }) {
-  // Check again reads Files changed again too, when it's open [D231].
+  // Check again reads Code again too, when it's open [D231].
   const [tick, setTick] = useState(0);
   const check = () => {
     onCheck();
@@ -82,14 +81,14 @@ export function PrTab({
       <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">
         <div className={cx(COLUMN, "flex flex-col gap-4 py-5")}>
           <div className="flex min-h-control-sm items-center gap-2">
-            <h2 className="min-w-0 flex-1 truncate font-display text-lg font-medium">{row ? row.title : <Skeleton className="h-5 w-2/3" />}</h2>
+            <h2 className="min-w-0 flex-1 truncate font-display text-xl font-medium">{row ? row.title : <Skeleton className="h-5 w-2/3" />}</h2>
             {again}
           </div>
           {error ? (
             <ErrorLine error={error} />
           ) : (
             <div aria-label="Loading pull request" className="flex flex-col gap-3">
-              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
             </div>
@@ -102,92 +101,73 @@ export function PrTab({
   const fixAdded = sends.added.has("fix");
   // Merge only on Rust's word, while the read is current and the daemon is here.
   const canMerge = pr.merge.allowed && !sends.offline && !pr.problem && !error;
-  const open = pr.state === "open" || pr.state === "draft";
-  const hint = pr.state === "draft" ? "A draft can't be merged until it's marked ready for review" : canMerge ? `It lands on ${pr.base}` : "Merging is blocked until what's above is resolved";
+  const repo = pr.repo ?? target.split("#")[0];
   return (
     <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
-      <Tabs.Root defaultValue="conversation" className="flex min-h-0 flex-1 flex-col">
-        <div className={cx(COLUMN, "flex flex-col gap-4 pt-5")}>
-          <header className="flex flex-col gap-2.5">
-            <div className="flex min-h-control-sm items-start gap-2">
-              <h2 className="min-w-0 flex-1 font-display text-lg font-medium">
-                {pr.title} <span className="font-normal text-muted-foreground">#{pr.number}</span>
-              </h2>
-              {again}
-              {fix && (
+      <Tabs.Root defaultValue="summary" className="flex min-h-0 flex-1 flex-col">
+        <header className={cx(COLUMN, "flex flex-col gap-2.5 pt-4")}>
+          <div className="flex items-start gap-2">
+            <h2 className="min-w-0 flex-1 font-display text-xl leading-snug font-medium tracking-tight break-words">{pr.title}</h2>
+            <span className="flex h-control-sm shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <StateIcon state={pr.state} />#{pr.number}
+            </span>
+            <TooltipIconButton tooltip={`Open on ${pr.host}`} size="icon-md" onClick={() => sends.onOpen("pr")}>
+              <ArrowUpRight />
+            </TooltipIconButton>
+            {again}
+          </div>
+          <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+            <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="flex items-center gap-1.5 text-foreground">
+                <Avatar login={pr.openedBy} />
+                {pr.openedBy}
+              </span>
+              {repo && (
+                <span className="flex items-center gap-1.5">
+                  <Folder className="size-icon-sm" />
+                  {repo}
+                </span>
+              )}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Branch className="size-icon-sm shrink-0" />
+              <span className="truncate">
+                {pr.branch} → {pr.base}
+              </span>
+            </span>
+          </div>
+          {/* Why the last read or merge didn't go: what shows is the last one that did [D1009, D1264]. */}
+          <ErrorLine error={error ?? pr.problem ?? refused} />
+          <div className="flex items-center gap-4 border-b border-divider">
+            <Tabs.List className="flex flex-1 gap-4">
+              <Tabs.Tab value="summary" className={TAB}>
+                Summary
+              </Tabs.Tab>
+              <Tabs.Tab value="code" className={TAB}>
+                Code <span className="text-xs text-muted-foreground tabular-nums">{pr.files}</span>
+              </Tabs.Tab>
+            </Tabs.List>
+            <span className="flex items-center gap-1 pb-1">
+              {fix ? (
                 <Button size="sm" disabled={fixAdded || sends.offline} onClick={() => sends.onSend({ kind: "fix" })}>
                   {fixAdded ? <Check /> : <Sparkles />}
                   {fixAdded ? "Added" : "Fix with agent"}
                 </Button>
+              ) : (
+                pr.state === "open" && <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
               )}
-              <TooltipIconButton tooltip={`Open on ${pr.host}`} onClick={() => sends.onOpen("pr")}>
-                <ArrowUpRight />
+              <TooltipIconButton tooltip={`Review on ${pr.host}`} size="icon-md" onClick={() => sends.onOpen({ url: `${pr.url}/files` })}>
+                <PullRequestOpen />
               </TooltipIconButton>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
-              <StateBadge state={pr.state} />
-              <span>
-                <span className="text-foreground">{pr.openedBy}</span> {pr.state === "merged" ? "merged" : "wants to merge"} {pr.commitCount}{" "}
-                {pr.commitCount === 1 ? "commit" : "commits"} into <Ref>{pr.base}</Ref> from <Ref>{pr.branch}</Ref>
-              </span>
-            </div>
-            {/* Why the last read or merge didn't go: what shows is the last one that did [D1009, D1264]. */}
-            <ErrorLine error={error ?? pr.problem ?? refused} />
-          </header>
-          <Tabs.List className="flex gap-1 border-b border-border pb-2">
-            <Tabs.Tab value="conversation" className={TAB}>
-              <Comment />
-              Conversation <span className={COUNT}>{pr.comments.length}</span>
-            </Tabs.Tab>
-            <Tabs.Tab value="commits" className={TAB}>
-              <Commit />
-              Commits <span className={COUNT}>{pr.commitCount}</span>
-            </Tabs.Tab>
-            <Tabs.Tab value="checks" className={TAB}>
-              <CheckCircle />
-              Checks <span className={COUNT}>{pr.checks.length}</span>
-            </Tabs.Tab>
-            <Tabs.Tab value="files" className={TAB}>
-              Files changed <span className={COUNT}>{pr.files}</span>
-              <span className="text-xs text-success">+{pr.additions}</span>
-              <span className="text-xs text-destructive">−{pr.deletions}</span>
-            </Tabs.Tab>
-          </Tabs.List>
-        </div>
-        <Tabs.Panel value="conversation" className="min-h-0 flex-1 overflow-y-auto">
-          {/* GitHub's Conversation without its side column [D260]. */}
-          <div className={cx(COLUMN, "flex flex-col gap-5 py-5")}>
-            <Conversation pr={pr} posted={posted} sends={sends} />
-            {open ? (
-              <div className="ms-9">
-                <MergeBox
-                  pr={pr}
-                  sends={sends}
-                  merge={
-                    <>
-                      <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
-                      <span className="text-xs text-muted-foreground">{hint}</span>
-                    </>
-                  }
-                />
-              </div>
-            ) : (
-              <DoneBox pr={pr} />
-            )}
-            <AddComment viewer={pr.viewer} offline={sends.offline} onPost={onComment} />
+            </span>
+          </div>
+        </header>
+        <Tabs.Panel value="summary" className="min-h-0 flex-1 overflow-y-auto">
+          <div className={cx(COLUMN, "py-4")}>
+            <Summary pr={pr} posted={posted} sends={sends} onComment={onComment} />
           </div>
         </Tabs.Panel>
-        <Tabs.Panel value="commits" className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cx(COLUMN, "py-5")}>
-            <Commits pr={pr} sends={sends} />
-          </div>
-        </Tabs.Panel>
-        <Tabs.Panel value="checks" className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cx(COLUMN, "py-5")}>
-            <Checks pr={pr} sends={sends} />
-          </div>
-        </Tabs.Panel>
-        <Tabs.Panel value="files" className="flex min-h-0 flex-1 flex-col">
+        <Tabs.Panel value="code" className="flex min-h-0 flex-1 flex-col">
           <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} onReviewed={check} />
         </Tabs.Panel>
       </Tabs.Root>
@@ -219,7 +199,8 @@ function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabl
     setHead(pr.head);
     setAsking(next);
   };
-  const passed = pr.checks.filter((check) => check.state === "passed").length;
+  // A skipped check doesn't stand in the way, as on the host.
+  const passed = pr.checks.filter((check) => check.state === "passed" || check.state === "skipped").length;
   return (
     <div className="flex">
       <Button size={null} variant={null} disabled={!enabled || merging} className={cx(SPLIT, "rounded-s-capsule ps-2.5 pe-2")} onClick={() => ask(pr.merge.default)}>

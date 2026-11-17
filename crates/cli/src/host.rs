@@ -2,7 +2,8 @@
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
-//! PRs, every query in one read, `--kept` their last reads [D258]; `runs <query>... [--kept]`,
+//! PRs, every query in one read, `--kept` their last reads [D258], `--after <next>` one query's next
+//! page [D613]; `runs <query>... [--kept]`,
 //! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264]; `log <link>` is a failed check's log tail; `merge <n>
 //! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077]; `comment
 //! <n> <body>` posts a comment on it [D260]; `sides <n>
@@ -34,17 +35,19 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     // Several queries at once, the side views' as the tab opens: one read, or their last [D207, D258].
     if arg(args, 2)? == "search" {
-        let queries: Vec<&str> = args[3..]
-            .iter()
-            .map(String::as_str)
-            .filter(|a| *a != "--kept")
+        // `--after <cursor>`: one query's next page [D613].
+        let after = args.iter().position(|a| a == "--after");
+        let queries: Vec<&str> = (args.iter().enumerate().skip(3))
+            .filter(|(i, a)| *a != "--kept" && after.is_none_or(|p| *i != p && *i != p + 1))
+            .map(|(_, a)| a.as_str())
             .collect();
         if args.iter().any(|a| a == "--kept") {
             let dir = host::dir(data, id);
             let found: Vec<_> = queries.iter().map(|q| host::kept_search(&dir, q)).collect();
             return Ok(json!({"ok": true, "found": found}));
         }
-        return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries)?}));
+        let after = after.and_then(|p| args.get(p + 1)).map(String::as_str);
+        return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries, after)?}));
     }
     if let Some(done) = actions(data, id, args)? {
         return Ok(done);

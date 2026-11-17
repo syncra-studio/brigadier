@@ -19,6 +19,7 @@ import { PeersGallery } from "./peers";
 import { PickersGallery } from "./pickers";
 import { PluginsGallery } from "./plugins";
 import { Popups } from "./popups";
+import { PrsGallery } from "./prs";
 import { QuestionGallery } from "./questions";
 import { RewindGallery } from "./rewind";
 import { RoutingGallery } from "./routing";
@@ -114,6 +115,9 @@ function GalleryPage() {
             </Area>
             <Area name="Mockup">
               <MockupGallery />
+            </Area>
+            <Area name="Pull requests">
+              <PrsGallery />
             </Area>
             <Area name="Pickers">
               <PickersGallery />
