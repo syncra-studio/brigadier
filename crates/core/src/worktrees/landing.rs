@@ -95,8 +95,17 @@ pub fn landed(repo: &Path, base: &str, tip: &str, landing: &Landing) -> bool {
 }
 
 /// The session's branch when it holds work its base doesn't, uncommitted changes included: the
-/// delete confirm names it [D181]. A check git can't answer counts as unlanded, so it asks.
+/// delete confirm names it [D181]. A check git can't answer counts as unlanded, so it asks. A
+/// folder chat's claimed repos' too, each as `<repo> <branch>` [D494].
 pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
+    let mut all: Vec<String> = own_unlanded(dir)?.into_iter().collect();
+    for (name, rec) in crate::folder::claims(dir) {
+        all.extend(own_unlanded(&rec)?.map(|b| format!("{name} {b}")));
+    }
+    Ok((!all.is_empty()).then(|| all.join(", ")))
+}
+
+fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(None);
     };
@@ -110,8 +119,18 @@ pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
 }
 
 /// Whether the session's commits are all in its base, its uncommitted files aside: "Merged into
-/// ‹base›" [D97]. True without a branch; a check git can't answer counts as not merged.
+/// ‹base›" [D97]. True without a branch; a check git can't answer counts as not merged. A folder
+/// chat's claimed repos must all be merged too [D494].
 pub fn merged(dir: &Path) -> io::Result<bool> {
+    for (_, rec) in crate::folder::claims(dir) {
+        if !own_merged(&rec)? {
+            return Ok(false);
+        }
+    }
+    own_merged(dir)
+}
+
+fn own_merged(dir: &Path) -> io::Result<bool> {
     let Some(owned) = read(dir)? else {
         return Ok(true);
     };

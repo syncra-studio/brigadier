@@ -22,7 +22,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
-        "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
+        "archive" if has(args, "--check") => {
+            // A folder chat can't be archived yet: said before the app hides its row [D494].
+            let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
+            let off = (ids.filter_map(|id| core::load(data, id).ok()))
+                .find_map(|s| core::folder::off(&s, "Archive").err());
+            return Ok(match off {
+                Some(e) => json!({"ok": false, "error": e.to_string()}),
+                None => check(data, &args[1..]),
+            });
+        }
         // Every id given, each loaded first so an unknown one refuses before any is archived.
         "archive" => {
             let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
@@ -104,12 +113,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
 fn check(data: &Path, ids: &[String]) -> Value {
     let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
-    // A folder chat can't be archived yet: said before the app hides its row [D494].
-    let off = (ids.iter().filter_map(|id| core::load(data, id).ok()))
-        .find_map(|s| core::folder::off(&s, "Archive").err());
-    if let Some(e) = off {
-        return json!({"ok": false, "error": e.to_string()});
-    }
     let all = procs::all();
     let running: Vec<&String> = ids.iter().filter(|s| working(data, s, &all)).collect();
     json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids)})
@@ -200,8 +203,10 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
                     .map(|s| {
                         t.spawn(move || -> io::Result<_> {
                             let dir = core::session_dir(data, s);
-                            let bytes = (core::worktrees::present(&dir))
-                                .then(|| size(&core::worktrees::path(data, s)));
+                            // A folder chat's claimed copies are all in its own folder [D494].
+                            let has = core::worktrees::present(&dir)
+                                || !core::folder::claims(&dir).is_empty();
+                            let bytes = has.then(|| size(&core::worktrees::path(data, s)));
                             let unlanded = core::worktrees::unlanded(&dir)?;
                             let merged =
                                 unlanded.is_none() && core::worktrees::branch(&dir)?.is_some();

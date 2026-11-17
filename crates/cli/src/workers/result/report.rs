@@ -155,6 +155,10 @@ pub(in crate::workers) fn write(
         if !dirty.is_empty() {
             text += &format!("Uncommitted in {name}:\n  {}\n", dirty.join("\n  "));
         }
+        if made > 0 && !core::worktrees::merged(&rec).unwrap_or(false) {
+            text += &format!("Not merged into {base} in {name}.\n");
+            merge = format!("unmerged={base}");
+        }
         let num = git(&at, &["diff", "--numstat", &format!("{own}...HEAD")]).unwrap_or_default();
         for mut n in num
             .lines()
