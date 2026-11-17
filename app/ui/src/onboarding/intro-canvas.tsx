@@ -48,7 +48,7 @@ const FALLBACK_RADIUS = 12;
 /** The most device pixels drawn per point. */
 const MAX_DENSITY = 2;
 /** The shell's dark, if it can't be read from the page (theme.css --color-background). */
-const FALLBACK_DARK: [number, number, number] = [0.094, 0.094, 0.094];
+const FALLBACK_DARK: [number, number, number] = [0.0824, 0.0824, 0.0902];
 
 const VERTEX = `#version 300 es
 in vec2 position;
