@@ -87,6 +87,13 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
  * waiting meanwhile; both run unseen on a host. Every word on a card comes from its adapter;
  * nothing here names a provider. Continue needs one agent with a model to pick.
  */
+/**
+ * Each agent that answered its test prompt, as it stood then: kept for the rest of onboarding, so Back then Continue
+ * doesn't ask it again; a new install, sign-in or account asks again [D626].
+ */
+const passed = new Map<string, string>();
+const standing = (agent: Agent) => JSON.stringify([agent.path, agent.version, agent.signed_in, agent.how, agent.plan, agent.logins]);
+
 export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
   const { daemon } = useDaemon();
   const { list, checking, error } = useAgents();
@@ -96,7 +103,6 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   const { starting, failed, begin, close } = useAgentSetup(list, online);
   // Continue's test prompt [D617]: out now, answered, and each that didn't answer, which stays until it's signed in again.
   const [testing, setTesting] = useState<ReadonlySet<string>>(new Set());
-  const [passed, setPassed] = useState<ReadonlySet<string>>(new Set());
   const [untested, setUntested] = useState<Record<string, TestFailure>>({});
   // An install started here goes on to its sign-in by itself once it has ended and closed [D616].
   const [thenSignIn, setThenSignIn] = useState<ReadonlySet<string>>(new Set());
@@ -132,6 +138,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
 
   const act = (agent: Agent, action: "install" | "sign-in") => {
     setUntested(({ [agent.name]: _, ...rest }) => rest);
+    passed.delete(agent.name);
     if (action === "install") setThenSignIn((names) => new Set(names).add(agent.name));
     void begin(agent, action);
   };
@@ -139,7 +146,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   // Every ready agent not yet answered is asked at once; all answered goes on, else their cards say why, and Continue
   // again goes on with those that did.
   const testThenContinue = async () => {
-    const asked = ready.filter((agent) => !passed.has(agent.name));
+    const asked = ready.filter((agent) => passed.get(agent.name) !== standing(agent));
     if (!asked.length) return onContinue();
     setTesting(new Set(asked.map((agent) => agent.name)));
     const answers = await Promise.all(
@@ -152,7 +159,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
     );
     setTesting(new Set());
     const failures = answers.filter(({ reply }) => !reply.passed);
-    setPassed((names) => new Set([...names, ...answers.filter(({ reply }) => reply.passed).map(({ agent }) => agent.name)]));
+    for (const { agent, reply } of answers) if (reply.passed) passed.set(agent.name, standing(agent));
     setUntested((all) => ({
       ...all,
       ...Object.fromEntries(failures.map(({ agent, reply }) => [agent.name, { label: agent.label, reason: String(reply.reason ?? ""), login: (reply.login as string | null) ?? null }])),

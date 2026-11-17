@@ -78,14 +78,14 @@ const forge = (name: Forge["name"], extra: Partial<Forge> = {}): Forge => ({
   name,
   label: name === "github" ? "GitHub" : "GitLab",
   cli: true,
-  login: null,
+  logins: [],
   docs: name === "github" ? "https://cli.github.com" : "https://gitlab.com/gitlab-org/cli",
   setup: null,
   ...extra,
 });
 
 function Git({ forges }: { forges: Forge[] }) {
-  const connected = forges.filter((each) => each.login);
+  const connected = forges.filter((each) => each.logins.length > 0);
   return (
     <Window step="git">
       <div className="flex min-h-0 flex-1 flex-col">
@@ -145,7 +145,7 @@ export function OnboardingGallery() {
       </Row>
       <Row name="Git">
         <State label="connected">
-          <Git forges={[forge("github", { login: "sam-example" }), forge("gitlab")]} />
+          <Git forges={[forge("github", { logins: ["sam-example", "sam-at-work"] }), forge("gitlab")]} />
         </State>
         <State label="not connected · its CLI missing">
           <Git forges={[forge("github"), forge("gitlab", { cli: false })]} />

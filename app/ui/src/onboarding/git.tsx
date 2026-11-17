@@ -13,14 +13,14 @@ import { StepFooter, StepHeader } from "./parts";
 const RECHECK_MS = 2000;
 
 /**
- * GitHub or GitLab as Rust reads them through their own CLIs (gh, glab) [D616]: whether the CLI is here, the login it's
- * signed in as, its docs, and its sign-in run (a device code to enter on its page).
+ * GitHub or GitLab as Rust reads them through their own CLIs (gh, glab) [D616]: whether the CLI is here, every login it's
+ * signed in as (the active one first, read from its own config) [D624, D625], its docs, and its sign-in run (a device code to enter on its page).
  */
 export type Forge = {
   name: "github" | "gitlab";
   label: string;
   cli: boolean;
-  login: string | null;
+  logins: string[];
   docs: string;
   setup: Run | null;
 };
@@ -47,23 +47,25 @@ export function ForgeCard({ forge, starting, failed, online, onConnect, onCancel
               <ArrowUpRight className="size-icon-md" />
             </a>
           </p>
-          <p role={problem ? "alert" : undefined} title={problem ?? undefined} className="flex min-w-0 items-center gap-1.5 text-xs">
-            {forge.login && !waiting ? (
-              <>
+          {!waiting &&
+            forge.logins.map((login) => (
+              <p key={login} className="flex min-w-0 items-center gap-1.5 text-xs">
                 <Check className="size-icon-sm shrink-0 text-success" />
-                <span className="truncate">Connected as @{forge.login}</span>
-              </>
-            ) : problem && !waiting ? (
-              <>
-                <Warning className="size-icon-sm shrink-0 text-destructive" />
-                <span className="truncate">{problem}</span>
-              </>
-            ) : (
-              <span className="truncate text-muted-foreground">
+                <span className="truncate">Connected as @{login}</span>
+              </p>
+            ))}
+          {problem && !waiting ? (
+            <p role="alert" title={problem} className="flex min-w-0 items-center gap-1.5 text-xs">
+              <Warning className="size-icon-sm shrink-0 text-destructive" />
+              <span className="truncate">{problem}</span>
+            </p>
+          ) : (
+            (waiting || !forge.logins.length) && (
+              <p className="truncate text-xs text-muted-foreground">
                 {waiting ? "Complete sign-in in your browser" : forge.cli ? "Not connected" : `Needs its CLI (${forge.name === "github" ? "gh" : "glab"})`}
-              </span>
-            )}
-          </p>
+              </p>
+            )
+          )}
         </div>
         {waiting ? (
           <Button variant={null} size={null} aria-label={`Cancel connecting ${forge.label}`} disabled={starting} onClick={onCancel} className={cx(CARD_BUTTON, "group")}>
@@ -78,10 +80,10 @@ export function ForgeCard({ forge, starting, failed, online, onConnect, onCancel
             </span>
           </Button>
         ) : (
-          !forge.login &&
           forge.cli && (
+            // gh keeps several accounts: another sign-in adds one [D625].
             <Button variant={null} size={null} className={CARD_BUTTON} disabled={!online} onClick={onConnect}>
-              Connect {forge.label}
+              {forge.logins.length > 0 ? "Add account" : `Connect ${forge.label}`}
             </Button>
           )
         )}
@@ -133,7 +135,7 @@ export function GitStep({ onBack, onContinue }: { onBack: () => void; onContinue
     await read();
   };
 
-  const connected = forges?.filter((forge) => forge.login) ?? [];
+  const connected = forges?.filter((forge) => forge.logins.length > 0) ?? [];
   return (
     <div className="onboarding-step flex min-h-0 flex-1 flex-col">
       <StepHeader title="Connect GitHub or GitLab" description={GIT_LINE} />
