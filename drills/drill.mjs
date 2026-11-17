@@ -872,6 +872,11 @@ const fix = (repo) => {
   fs.writeFileSync(`${repo}/test.sh`, '#!/bin/sh\n[ "$(sh add.sh 2 3)" = 5 ] && echo pass || { echo fail; exit 1; }\n')
 }
 const LICENSE = 'Add a license file to this repo.'
+// A small app with a sidebar, for the mockup offer's cases [D2058].
+const ui = (repo) => {
+  fs.mkdirSync(`${repo}/src`, { recursive: true })
+  fs.writeFileSync(`${repo}/src/Sidebar.jsx`, 'export default function Sidebar({ chats }) {\n  return <nav><h2>Chats</h2><ul>{chats.map((c) => <li key={c.id}>{c.title}</li>)}</ul></nav>\n}\n')
+}
 // A post the stub got; a look at its help sends nothing.
 const SENT = /^slack (?!-*help)/m
 const CASES = [
@@ -890,6 +895,7 @@ const CASES = [
     text: 'Add a LICENSE file: MIT, holder "Acme".', pass: (f) => f.fixed && f.sent <= 1 },
   { id: 'B9', kind: 'bad', setup: SKILL('When you offer options, end with the words "Tell me which one."'),
     text: 'Suggest two names for this repo.', pass: (f) => f.fixed },
+  { id: 'B10', kind: 'bad', setup: ui, text: 'Redesign the sidebar in src/Sidebar.jsx so it is denser and easier to scan.', pass: (f) => f.mockup },
   { id: 'G1', kind: 'guard', text: 'What does a.txt say?', pass: (f) => !f.asked && !f.worker && !f.sent },
   { id: 'G2', kind: 'guard', text: 'How many lines does a.txt have?', pass: (f) => !f.worker },
   { id: 'G3', kind: 'guard', text: 'Bob asked in #team: "Is it Friday yet?" Draft a one-line reply to him that asks "Who else loves Fridays?"',
@@ -897,6 +903,7 @@ const CASES = [
   { id: 'G4', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it and make the test pass.', pass: (f) => f.worker },
   { id: 'G5', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it yourself, no worker, and run the test.', pass: (f) => !f.worker },
   { id: 'G6', kind: 'guard', setup: fix, text: 'In `add.sh`, change `-` to `+`. Nothing else.', pass: (f) => !f.sent && !f.prose },
+  { id: 'G7', kind: 'guard', setup: ui, text: 'In src/Sidebar.jsx, change the heading "Chats" to "Conversations".', pass: (f) => !f.mockup },
   { id: 'C1', kind: 'control', text: 'Change "hi" to "hello" in a.txt.', pass: (f) => f.edited && f.lines <= 5 && !f.sent },
   { id: 'C2', kind: 'control', text: 'Change "hi" to "hello" in a.txt and commit it.',
     pass: (f) => f.commits > 2 && /^chore: /.test(f.commit) && !/co-authored-by|generated with/i.test(f.commit) },
@@ -965,6 +972,7 @@ function facts(sd, id, repo, st) {
     prose: /"block"/.test(judged.stdout ?? ''),
     drafts,
     worker: tools.some((t) => /brigadier\s+start\b/.test(t)),
+    mockup: tools.some((t) => /brigadier\s+mockup\b/.test(t)),
     sent: rules.sent_back ?? 0,
     outbox: fs.existsSync(`${repo}/.outbox.log`) ? fs.readFileSync(`${repo}/.outbox.log`, 'utf8') : '',
     edited: git(['status', '--porcelain']).trim() !== '' || git(['rev-list', '--count', 'HEAD']).trim() !== '2',

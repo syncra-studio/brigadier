@@ -71,13 +71,14 @@ agents_bytes="$(cat AGENTS.md CONTRIBUTING.md ARCHITECTURE.md | wc -c)"
 line_bytes="$(wc -c <"$AGENT_LINE")"
 [ "$line_bytes" -gt "$AGENT_LINE_MAX_BYTES" ] && fail "$AGENT_LINE is $line_bytes bytes, the limit is $AGENT_LINE_MAX_BYTES"
 
-# The standing text each agent gets, as agent::standing joins its parts, the user's jobs left out [D527, D529].
+# The standing text each agent gets, as agent::standing joins its parts, the user's jobs left out [D527, D529];
+# 40 B more for the mockup trigger [D583].
 S="crates/core/src/standing"
 size() { cat "$@" | wc -c; }
 base=$(($(size "$S"/commits.txt "$S"/lead.txt "$S"/ask.txt "$S"/voice.txt) + $(tr -d '\n' <"$AGENT_LINE" | wc -c) + 7))
-for budget in "base $base 2000" "worker $((base - $(size "$S"/lead.txt) - 2)) 1550" \
-  "Claude $((base + 2 + $(size "$S"/claude-todo.txt))) 2107" \
-  "Codex $((base + 3 + $(size "$S"/codex-ask.txt "$S"/codex-escalate.txt))) 2352" "OpenCode $base 2000"; do
+for budget in "base $base 2040" "worker $((base - $(size "$S"/lead.txt) - 2)) 1550" \
+  "Claude $((base + 2 + $(size "$S"/claude-todo.txt))) 2147" \
+  "Codex $((base + 3 + $(size "$S"/codex-ask.txt "$S"/codex-escalate.txt))) 2392" "OpenCode $base 2040"; do
   set -- $budget
   [ "$2" -gt "$3" ] && fail "the standing text for $1 is $2 bytes, the limit is $3"
   # A folder chat's adds its repos rule, up to 300 B more; its map isn't counted [D494, D544].
