@@ -33,12 +33,12 @@ const worker = (id: string, name: string, kind: Worker["kind"], word: string, mo
 
 export const RETRY = worker("w-retry", "Retry backoff", "working", "Working", { now: "Running cargo test", added: 42, removed: 7 });
 export const PROGRESS = worker("w-progress", "Progress bar", "working", "Working", { now: "Writing…", startedAt: NOW - 210_000, added: 18, model: "Fast model", receipt: "Quick actions → Fast model · Low · Personal (5-hour 12%, resets 17:40)" });
-const HELD = worker("w-held", "Docs table", "needsYou", "Needs you", { startedAt: NOW - 240_000 });
-const LIMIT = worker("w-limit", "Schema check", "limit", "Limit until 15:10");
-const PAUSED = worker("w-paused", "Upload copy", "paused", "Paused", { startedAt: NOW - 300_000 });
+export const HELD = worker("w-held", "Docs table", "needsYou", "Needs you", { startedAt: NOW - 240_000 });
+export const LIMIT = worker("w-limit", "Schema check", "limit", "Limit until 15:10");
+export const PAUSED = worker("w-paused", "Upload copy", "paused", "Paused", { startedAt: NOW - 300_000 });
 
 /** Every state word wave 4 has a cause for [D3029]. */
-const STATES: Worker[] = [
+export const STATES: Worker[] = [
   HELD,
   LIMIT,
   worker("w-limit2", "Lint pass", "limit", "Limit"),
@@ -65,7 +65,7 @@ function Panel({ children }: { children: ReactNode }) {
   return <div className="flex h-110 w-90 flex-col overflow-hidden rounded-surface border border-border bg-background">{children}</div>;
 }
 
-const DONE_TURN: Turn = { id: "t-w", status: "done", startedAt: NOW - 184_000, endedAt: NOW };
+export const DONE_TURN: Turn = { id: "t-w", status: "done", startedAt: NOW - 184_000, endedAt: NOW };
 const tool = (id: string, step: "read" | "run" | "edit" | "search", name: string, input: string): Item => ({
   id,
   turnId: DONE_TURN.id,
@@ -79,9 +79,9 @@ const tool = (id: string, step: "read" | "run" | "edit" | "search", name: string
 });
 const reply = (id: string, text: string): Item => ({ id, turnId: DONE_TURN.id, kind: "message", role: "assistant", text, streaming: false, final: true });
 
-const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2", "run", "shell", "cargo test -p upload")];
-const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
-const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
+export const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2", "run", "shell", "cargo test -p upload")];
+export const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
+export const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
 /** A worker opened in the panel: its header, its details in its ⓘ's tip, and its thread. */
 function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
