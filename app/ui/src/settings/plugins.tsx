@@ -18,6 +18,7 @@ import { BrowseTab, entryRow, type Found, PickGrid } from "./plugins-browse";
 import { importable, MyTab } from "./plugins-mine";
 import { DetailsPage, type Device, type SignInStart, Trail } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
+import { type Shown, ViewDialog } from "./plugins-view";
 
 /** Where an item is on: every project, or only these (by id). */
 export type Scope = { all: true } | { projects: string[] };
@@ -81,6 +82,10 @@ export type PluginActions = {
   signOut: (key: string) => Promise<unknown>;
   /** A skill's folder, from the system's picker; null when none was chosen. */
   pickFolder: () => Promise<string | null>;
+  /** What View draws of an item, or of `skillset:<id>` [D582]. */
+  show: (key: string) => Promise<Shown[]>;
+  /** A skill you added, in Finder [D600]. */
+  reveal: (key: string) => Promise<unknown>;
   /** Searches the internet's servers or skills through Rust [D434]. */
   browse: (kind: Kind, query: string) => Promise<Found[]>;
 };
@@ -118,7 +123,7 @@ export function chipOf(value: Plugins, item: Item): string | null {
 export const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
 /** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string } | { type: "install"; own: Own } | { type: "catalog"; entry: Entry };
+export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string } | { type: "install"; own: Own } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
 
 /** A catalog entry's mark: its logo. */
 export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, detail: entry.url ?? "", logo: entry.id });
@@ -293,6 +298,7 @@ export function PluginsPage({
         onScope={(scope) => item && set(item.key, { scope })}
         onSwitch={(on) => item && set(item.key, { on })}
         onRemove={() => item && setOpen({ type: "remove", key: item.key })}
+        onView={(key, kind, at) => setOpen({ type: "view", key, kind, at, title: entry?.name ?? item?.name ?? key })}
       />
     );
   } else if (shown && category) {
@@ -415,6 +421,7 @@ export function PluginsPage({
           onClose={close}
         />
       )}
+      {open?.type === "view" && <ViewDialog title={open.title} kind={open.kind} at={open.at} read={() => actions.show(open.key)} reveal={(name) => actions.reveal(`skill:${name}`)} onClose={close} />}
       {target && (
         <RemoveDialog
           item={target}
@@ -470,6 +477,8 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     },
     cancel: (key) => send("cancel", key).then(setValue),
     signOut: (key) => send("signout", key).then(setValue),
+    show: async (key) => (await run(["plugins", "show", key])).files as Shown[],
+    reveal: (key) => run(["plugins", "reveal", key]),
     pickFolder: async () => (await window.brigadier?.pickFolder()) ?? null,
     // Outside the chain: a search never waits behind a change, nor holds one up.
     browse: async (kind, query) => (await run(["plugins", "browse", kind, query])).found as Found[],

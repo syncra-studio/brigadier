@@ -8,12 +8,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Radio, RadioGroup } from "../components/radio";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
-import { ChevronRight, Copy, DotsHorizontal, Folder, Globe, Spinner, Trash } from "../icons";
+import { ChevronRight, Copy, DotsHorizontal, Eye, Folder, Globe, Spinner, Trash } from "../icons";
 import { errorText } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "./parts";
 import { InstallDialog } from "./plugins-dialogs";
 import { AgentTile, PluginMark } from "./plugins-marks";
-import { type Entry, type Item, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
+import { type Entry, type Item, type Kind, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
 
 /** A device sign-in's one-time code and the page it's entered on (GitHub's). */
 export type Device = { code: string; page: string };
@@ -89,6 +89,7 @@ export function DetailsPage({
   onScope,
   onSwitch,
   onRemove,
+  onView,
 }: {
   value: Plugins;
   /** The library's; none for a catalog entry not installed. */
@@ -102,6 +103,8 @@ export function DetailsPage({
   onScope: (scope: Scope) => void;
   onSwitch: (on: boolean) => void;
   onRemove: () => void;
+  /** View [D582]: `key` an item or `skillset:<id>`, `at` the skill shown first. */
+  onView: (key: string, kind: Kind, at?: string) => void;
 }) {
   const kind = item?.kind ?? entry!.kind;
   const name = entry?.name ?? item!.name;
@@ -143,9 +146,15 @@ export function DetailsPage({
       </span>,
     ]);
   // What it brings: itself, and a service's skills [D572].
+  // Once installed, a row opens View: the item itself, or its service's skills with that one first.
   const includes = [
-    { name, line: [KIND_LABEL[kind], item?.description || entry?.line].filter(Boolean).join(" · "), mark },
-    ...(kind === "server" ? (entry?.skills ?? []) : []).map((skill) => ({ name: skill.name, line: `Skill · ${skill.line}`, mark: { kind: "skill", name: skill.name, detail: "" } })),
+    { name, line: [KIND_LABEL[kind], item?.description || entry?.line].filter(Boolean).join(" · "), mark, view: item && (() => onView(item.with ? `skillset:${item.with}` : item.key, kind, item.name)) },
+    ...(kind === "server" ? (entry?.skills ?? []) : []).map((skill) => ({
+      name: skill.name,
+      line: `Skill · ${skill.line}`,
+      mark: { kind: "skill", name: skill.name, detail: "" },
+      view: item && value.items.some((each) => each.with === entry!.id) ? () => onView(`skillset:${entry!.id}`, "skill", skill.skill) : undefined,
+    })),
   ];
   return (
     <>
@@ -167,6 +176,10 @@ export function DetailsPage({
                 <DotsHorizontal aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onView(item.with ? `skillset:${item.with}` : item.key, item.kind, item.name)}>
+                  <Eye aria-hidden />
+                  View
+                </DropdownMenuItem>
                 {entry?.website && (
                   <DropdownMenuItem onClick={() => window.brigadier?.openLink(entry.website!)}>
                     <Globe aria-hidden />
@@ -245,12 +258,19 @@ export function DetailsPage({
         )}
         <SettingsSection title={`Includes ${includes.length}`} setting="Includes">
           <SettingsCard>
-            {includes.map((each) => (
-              <div key={each.name} className="flex items-center gap-3 px-4 py-3">
-                <PluginMark item={each.mark} />
-                <RowText title={each.name} line={each.line} truncate />
-              </div>
-            ))}
+            {includes.map((each) =>
+              each.view ? (
+                <button key={each.name} type="button" aria-label={`View ${each.name}`} onClick={each.view} className="flex cursor-pointer items-center gap-3 px-4 py-3 text-start hover:bg-fill-subtle focus-visible:focus-ring">
+                  <PluginMark item={each.mark} />
+                  <RowText title={each.name} line={each.line} truncate />
+                </button>
+              ) : (
+                <div key={each.name} className="flex items-center gap-3 px-4 py-3">
+                  <PluginMark item={each.mark} />
+                  <RowText title={each.name} line={each.line} truncate />
+                </div>
+              ),
+            )}
           </SettingsCard>
         </SettingsSection>
         <Information rows={info} />

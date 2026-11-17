@@ -1,9 +1,10 @@
 //! `plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> |
-//! signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
+//! show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
 //! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
 
 mod browse;
 mod catalog;
+mod view;
 
 use brigadier_core::library::{self, secrets};
 use brigadier_core::{adapters, projects};
@@ -33,6 +34,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if arg(1) == "browse" {
         return browse::run(data, arg(2), &args[3.min(args.len())..].join(" "));
     }
+    match arg(1) {
+        "show" => return view::show(data, arg(2)),
+        "reveal" => return view::reveal(data, arg(2)),
+        _ => {}
+    }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match arg(1) {
         "" => {}
@@ -50,7 +56,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
+                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }
@@ -353,6 +359,12 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     saved.map(|()| key)
 }
 
+/// Whether `key` names this item: its own, or `skillset:<id>` for each skill that came with `id`.
+fn is(i: &Value, key: &str) -> bool {
+    let set = key.strip_prefix("skillset:");
+    i["key"] == key || set.is_some_and(|w| i["kind"] == "skill" && i["with"] == w)
+}
+
 /// `{all: true}` or `{projects: [<id>]}`.
 fn scope_of(s: &Value) -> io::Result<Value> {
     match s {
@@ -373,10 +385,7 @@ fn scope_of(s: &Value) -> io::Result<Value> {
 /// with the catalog's `id` [D580].
 fn set(data: &Path, key: &str, v: Value) -> io::Result<()> {
     let mut items = library::items(data);
-    let set = key.strip_prefix("skillset:");
-    let these: Vec<&mut Value> = (items.iter_mut())
-        .filter(|i| i["key"] == key || set.is_some_and(|w| i["kind"] == "skill" && i["with"] == w))
-        .collect();
+    let these: Vec<&mut Value> = items.iter_mut().filter(|i| is(i, key)).collect();
     if these.is_empty() {
         return Err(refuse("That item is no longer in the library."));
     }

@@ -5,6 +5,7 @@ import { type ReactNode, useRef, useState } from "react";
 import { Button } from "../src/components/button";
 import { CheckboxRow } from "../src/components/checkbox-row";
 import { type Open, type PluginActions, type Plugins, PluginsPage } from "../src/settings/plugins";
+import type { Shown } from "../src/settings/plugins-view";
 import type { SignInStart } from "../src/settings/plugins-details";
 import { Row, Section, State } from "./parts";
 
@@ -71,6 +72,8 @@ function useFake() {
           : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
       ),
     install: () => later((now) => now),
+    show: () => Promise.resolve([]),
+    reveal: () => Promise.resolve(),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
     remove: (key) => later((now) => ({ ...now, items: now.items.filter((item) => item.key !== key) })),
     refresh: () => later((now) => ({ ...now, own: [...now.own.filter((own) => !FOUND.some((found) => found.key === own.key)), ...FOUND] })),
@@ -86,6 +89,7 @@ function useFake() {
 const still: PluginActions = {
   add: () => new Promise(() => {}),
   install: () => new Promise(() => {}),
+  reveal: () => Promise.resolve(),
   set: () => Promise.resolve(VALUE),
   remove: () => Promise.resolve(VALUE),
   refresh: () => Promise.resolve(VALUE),
@@ -94,6 +98,7 @@ const still: PluginActions = {
   signOut: () => Promise.resolve(),
   pickFolder: () => Promise.resolve(null),
   browse: () => Promise.resolve([]),
+  show: (key) => Promise.resolve(VIEW[key] ?? []),
 };
 
 /** One still: the page as given, opened where it says. */
@@ -108,6 +113,39 @@ function Still({ label, value = VALUE, detail = null, open, signing, error, offl
     </State>
   );
 }
+
+// What View shows [D582, D600]: a skillset's SKILL.md files (from Browse, so no Reveal), a server's settings with its values hidden.
+const VIEW: Record<string, Shown[]> = {
+ "skillset:notion": [
+  {
+   "name": "notion-spec-to-implementation",
+   "path": "~/Library/Application Support/Brigadier/library/skills/notion-spec-to-implementation/SKILL.md",
+   "text": "---\nname: notion-spec-to-implementation\ndescription: Turn Notion specs into implementation plans, tasks, and progress tracking; use when implementing PRDs/feature specs and creating Notion plans + tasks from them.\nmetadata:\n  short-description: Turn Notion specs into implementation plans, tasks, and progress tracking\n---\n\n# Spec to Implementation\n\nConvert a Notion spec into linked implementation plans, tasks, and ongoing status updates.\n\n## Quick start\n1) Locate the spec with `Notion:search`, then fetch it with `Notion:fetch`.\n2) Parse requirements and ambiguities using `reference/spec-parsing.md`.\n3) Create a plan page with `Notion:notion-create-pages` (pick a template: quick vs. full).\n4) Find the task database, confirm schema, then create tasks with `Notion:notion-create-pages`.\n5) Link spec ↔ plan ↔ tasks; keep status current with `Notion:notion-update-page`.\n\n"
+  },
+  {
+   "name": "notion-research-documentation",
+   "path": "~/Library/Application Support/Brigadier/library/skills/notion-research-documentation/SKILL.md",
+   "text": "---\nname: notion-research-documentation\ndescription: Research across Notion and synthesize into structured documentation; use when gathering info from multiple Notion sources to produce briefs, comparisons, or reports with citations.\nmetadata:\n  short-description: Research Notion content and produce briefs/reports\n---\n\n# Research & Documentation\n\nPull relevant Notion pages, synthesize findings, and publish clear briefs or reports (with citations and links to sources).\n\n## Quick start\n1) Find sources with `Notion:search` using targeted queries; confirm scope with the user.\n2) Fetch pages via `Notion:fetch`; note key sections and capture citations (`reference/citations.md`).\n3) Choose output format (brief, summary, comparison, comprehensive report) using `reference/format-selection-guide.md`.\n4) Draft in Notion with `Notion:notion-create-pages` using the matching template (quick, summary, comparison, comprehensive).\n5) Link sources and add a references/citations section; update as new info arrives with `Notion:notion-update-page`.\n\n"
+  },
+  {
+   "name": "notion-meeting-intelligence",
+   "path": "~/Library/Application Support/Brigadier/library/skills/notion-meeting-intelligence/SKILL.md",
+   "text": "---\nname: notion-meeting-intelligence\ndescription: Prepare meeting materials with Notion context and supplemental research; use when gathering context, drafting agendas/pre-reads, and tailoring materials to attendees.\nmetadata:\n  short-description: Prep meetings with Notion context and tailored agendas\n---\n\n# Meeting Intelligence\n\nPrep meetings by pulling Notion context, tailoring agendas/pre-reads, and enriching with supplemental research.\n\n## Quick start\n1) Confirm meeting goal, attendees, date/time, and decisions needed.\n2) Gather context: search with `Notion:search`, then fetch with `Notion:fetch` (prior notes, specs, OKRs, decisions).\n3) Pick the right template via `reference/template-selection-guide.md` (status, decision, planning, retro, 1:1, brainstorming).\n4) Draft agenda/pre-read in Notion with `Notion:notion-create-pages`, embedding source links and owner/timeboxes.\n5) Enrich with supplemental research (industry insights, benchmarks, risks) and update the page with `Notion:notion-update-page` as plans change.\n\n"
+  },
+  {
+   "name": "notion-knowledge-capture",
+   "path": "~/Library/Application Support/Brigadier/library/skills/notion-knowledge-capture/SKILL.md",
+   "text": "---\nname: notion-knowledge-capture\ndescription: Capture conversations and decisions into structured Notion pages; use when turning chats/notes into wiki entries, how-tos, decisions, or FAQs with proper linking.\nmetadata:\n  short-description: Capture conversations into structured Notion pages\n---\n\n# Knowledge Capture\n\nConvert conversations and notes into structured, linkable Notion pages for easy reuse.\n\n## Quick start\n1) Clarify what to capture (decision, how-to, FAQ, learning, documentation) and target audience.\n2) Identify the right database/template in `reference/` (team wiki, how-to, FAQ, decision log, learning, documentation).\n3) Pull any prior context from Notion with `Notion:search` → `Notion:fetch` (existing pages to update/link).\n4) Draft the page with `Notion:notion-create-pages` using the database’s schema; include summary, context, source links, and tags/owners.\n5) Link from hub pages and related records; update status/owners with `Notion:notion-update-page` as the source evolves.\n\n"
+  }
+ ],
+ "datadog": [
+  {
+   "name": "datadog",
+   "path": "datadog.json",
+   "text": "{\n  \"url\": \"https://mcp.datadoghq.com/v1/mcp\",\n  \"headers\": {\n    \"DD-API-KEY\": \"••••••••\",\n    \"DD-APPLICATION-KEY\": \"••••••••\"\n  }\n}\n"
+  }
+ ]
+};
 
 const FILES = { name: "files", command: "uvx mcp-files --root .", values: [{ id: 0, name: "FILES_TOKEN", value: "secret" }] };
 const SKILL = { kind: "skill" as const, folder: "~/skills/changelog" };
@@ -127,6 +165,8 @@ const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][
   ["Before 4.13: no remote servers", { type: "add", remote: false }],
   ["Refresh found new ones", { type: "refresh", found: FOUND }],
   ["Remove", { type: "remove", key: "postgres" }],
+  ["View a skillset", { type: "view", key: "skillset:notion", title: "Notion", kind: "skill", at: "notion-research-documentation" }],
+  ["View a server's settings", { type: "view", key: "datadog", title: "datadog", kind: "server" }],
 ];
 
 /** Each dialog over the page, opened by its button: a modal covers the window, so one at a time. */
