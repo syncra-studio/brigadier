@@ -1,31 +1,69 @@
 //! The user's own MCP servers in Claude Code's config, for the relay [D100], and the library at
 //! launch [D2043].
 
-use crate::adapters::home_path;
+use crate::adapters::{files, home_path};
 use crate::{Spec, library};
 use serde_json::{Map, Value, json};
 use std::path::Path;
 
-/// The user's MCP servers in its global config, user scope, this folder's local scope and its
-/// `.mcp.json`, read only, the local first (code.claude.com/docs/en/mcp) [D100].
+/// The user's MCP servers in its global config, user scope, this folder's local scope, its
+/// `.mcp.json` and its plugins', read only, the local first (code.claude.com/docs/en/mcp) [D100];
+/// each with its `source`, the file or plugin it comes from [D565].
 // shortcut: `${VAR}` in values isn't expanded; upgrade when a relay call needs one.
 pub fn mcp_servers(folder: &Path) -> Vec<Value> {
-    let read = |path: &Path| -> Value {
-        serde_json::from_slice(&std::fs::read(path).unwrap_or_default()).unwrap_or_default()
-    };
-    let (v, project) = (
-        read(&home_path(".claude.json")),
-        read(&folder.join(".mcp.json")),
-    );
+    let (config, mcp) = (home_path(".claude.json"), folder.join(".mcp.json"));
+    let (v, project) = (read(&config), read(&mcp));
     let local = &v["projects"][folder.display().to_string()]["mcpServers"];
-    let all = [local, &project["mcpServers"], &v["mcpServers"]].into_iter();
-    (all.flat_map(|m| m.as_object().into_iter().flatten()))
-        .map(|(name, d)| {
+    let (config, mcp) = (config.display().to_string(), mcp.display().to_string());
+    let all = [
+        (local, &config),
+        (&project["mcpServers"], &mcp),
+        (&v["mcpServers"], &config),
+    ];
+    let mut found: Vec<Value> = (all.into_iter())
+        .flat_map(|(m, from)| (m.as_object().into_iter().flatten()).map(move |s| (s, from)))
+        .map(|((name, d), from)| {
             let mut d = d.clone();
-            d["name"] = name.as_str().into();
+            (d["name"], d["source"]) = (name.as_str().into(), from.as_str().into());
             d
         })
-        .collect()
+        .collect();
+    found.extend(plugin_servers(folder));
+    found
+}
+
+fn read(path: &Path) -> Value {
+    serde_json::from_slice(&std::fs::read(path).unwrap_or_default()).unwrap_or_default()
+}
+
+/// The servers of each plugin on in this folder, the last of the user's, the project's and its
+/// local `enabledPlugins` winning, named as Claude names them, `plugin:<plugin>:<server>`
+/// (code.claude.com/docs/en/plugins-reference) [D565].
+fn plugin_servers(folder: &Path) -> Vec<Value> {
+    let settings = [
+        home_path(".claude/settings.json"),
+        folder.join(".claude/settings.json"),
+        folder.join(".claude/settings.local.json"),
+    ];
+    let mut on = Map::new();
+    for f in settings.iter().map(|f| read(f)) {
+        on.extend(f["enabledPlugins"].as_object().cloned().unwrap_or_default());
+    }
+    let installed = read(&home_path(".claude/plugins/installed_plugins.json"));
+    let mut all = vec![];
+    for (key, _) in on.iter().filter(|(_, v)| **v == true) {
+        let installs = installed["plugins"][key].as_array().cloned();
+        let installs = installs.unwrap_or_default();
+        let here = (installs.iter()).find(|i| i["projectPath"].as_str() == folder.to_str());
+        if let Some(root) = here
+            .or(installs.first())
+            .and_then(|i| i["installPath"].as_str())
+        {
+            let (manifest, var) = (".claude-plugin/plugin.json", Some("${CLAUDE_PLUGIN_ROOT}"));
+            all.extend(files::plugin_servers(Path::new(root), manifest, key, var));
+        }
+    }
+    all
 }
 
 /// A worker's launch is naked [D89]; any other gets the library.

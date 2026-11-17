@@ -79,11 +79,14 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
 fn naked(spec: &Spec) -> Value {
     let mut config = json!({"features.plugins": false,
         "features.apps": false, "skills.include_instructions": false, "skills.bundled.enabled": false});
-    // Its servers can only be turned off by name: the user's and the project's.
+    // Its servers can only be turned off by name: the user's and the project's; its plugins' go
+    // with `features.plugins`.
     let home = super::super::cli_home(spec, ".codex", "");
     for server in servers(&home, std::path::Path::new(&spec.cwd)) {
         let name = server["name"].as_str().unwrap_or("");
-        config[format!("mcp_servers.{name}.enabled")] = false.into();
+        if !name.starts_with("plugin:") {
+            config[format!("mcp_servers.{name}.enabled")] = false.into();
+        }
     }
     config
 }
@@ -115,7 +118,8 @@ fn library(spec: &Spec, open: &mut Value) -> Value {
             }
         }
     }
-    for name in off {
+    // shortcut: a plugin's own copy stays on, as only its whole plugin turns off; upgrade if asked.
+    for name in off.iter().filter(|n| !n.starts_with("plugin:")) {
         config[format!("mcp_servers.{name}.enabled")] = false.into();
     }
     // A skill only by its app-server's own launch flag: a thread's config doesn't reach its list.
@@ -154,12 +158,13 @@ fn skills_config(home: &std::path::Path, folder: &std::path::Path) -> Vec<String
 }
 
 /// Its MCP servers in the folder's `.codex/config.toml` and its home's, read only, each as the
-/// relay takes it [D100].
+/// relay takes it [D100], and those of the plugins on in them, each with the file or plugin it
+/// comes from [D565].
 // shortcut: `env_vars` and `bearer_token_env_var` aren't passed; upgrade with the library (4.12).
 pub fn servers(home: &std::path::Path, folder: &std::path::Path) -> Vec<Value> {
-    let mut all = vec![];
+    let (mut all, mut on) = (vec![], std::collections::BTreeMap::new());
     for file in [folder.join(".codex/config.toml"), home.join("config.toml")] {
-        let text = std::fs::read_to_string(file).unwrap_or_default();
+        let text = std::fs::read_to_string(&file).unwrap_or_default();
         let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
             continue;
         };
@@ -168,7 +173,32 @@ pub fn servers(home: &std::path::Path, folder: &std::path::Path) -> Vec<Value> {
             let mut d = json_of(item);
             d["name"] = name.into();
             d["headers"] = d["http_headers"].take();
+            d["source"] = file.display().to_string().into();
             all.push(d);
+        }
+        // Its plugins, `[plugins."<plugin>@<marketplace>"] enabled = …`, the folder's word first.
+        let plugins = doc.get("plugins").and_then(|t| t.as_table_like());
+        for (key, item) in plugins.into_iter().flat_map(|t| t.iter()) {
+            if let Some(enabled) = item.get("enabled").and_then(|e| e.as_bool()) {
+                on.entry(key.to_string()).or_insert(enabled);
+            }
+        }
+    }
+    for (key, _) in on.iter().filter(|(_, on)| **on) {
+        let (plugin, market) = key.split_once('@').unwrap_or((key, ""));
+        // shortcut: the last version folder by name; upgrade if Codex records the one in use.
+        let dir = home.join("plugins/cache").join(market).join(plugin);
+        let mut versions: Vec<_> = (std::fs::read_dir(dir).into_iter().flatten())
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.join(".codex-plugin/plugin.json").is_file())
+            .collect();
+        versions.sort();
+        if let Some(root) = versions.last() {
+            let manifest = ".codex-plugin/plugin.json";
+            all.extend(crate::adapters::files::plugin_servers(
+                root, manifest, key, None,
+            ));
         }
     }
     all

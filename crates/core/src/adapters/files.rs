@@ -37,6 +37,44 @@ pub fn skills_in(folders: impl IntoIterator<Item = (PathBuf, String)>) -> Vec<Va
     list
 }
 
+/// A plugin's MCP servers: its `.mcp.json`'s and those its manifest names, inline or in a file,
+/// each named `plugin:<plugin>:<server>` with the plugin as its `source`, and `var`, where its CLI
+/// has one, in its values standing for its root [D565].
+pub fn plugin_servers(root: &Path, manifest: &str, key: &str, var: Option<&str>) -> Vec<Value> {
+    let read = |p: &Path| -> Value {
+        serde_json::from_slice(&std::fs::read(p).unwrap_or_default()).unwrap_or_default()
+    };
+    // Its manifest's, after its `.mcp.json`'s and replacing them: a file, servers, or a list of both.
+    let named = read(&root.join(manifest))["mcpServers"].clone();
+    let named = match named {
+        Value::Array(all) => all,
+        one => vec![one],
+    };
+    let files = std::iter::once(read(&root.join(".mcp.json"))).chain(named.into_iter().map(|n| {
+        match n.as_str() {
+            Some(file) => read(&root.join(file)),
+            None => n,
+        }
+    }));
+    let (plugin, at) = (
+        key.split('@').next().unwrap_or(key),
+        root.display().to_string(),
+    );
+    let mut all: Vec<Value> = vec![];
+    for file in files {
+        let servers = file.get("mcpServers").unwrap_or(&file).as_object().cloned();
+        for (name, d) in servers.into_iter().flatten() {
+            let name = format!("plugin:{plugin}:{name}");
+            let text = var.map_or(d.to_string(), |v| d.to_string().replace(v, &at));
+            let mut d: Value = serde_json::from_str(&text).unwrap_or_default();
+            (d["name"], d["source"]) = (name.as_str().into(), format!("plugin {key}").into());
+            all.retain(|s| s["name"] != *name);
+            all.push(d);
+        }
+    }
+    all
+}
+
 /// A random UUID (v4), for a conversation id the CLI lets us pick.
 pub fn uuid() -> String {
     let mut b = [0u8; 16];

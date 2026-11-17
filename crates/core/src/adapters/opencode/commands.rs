@@ -63,14 +63,15 @@ pub(super) fn command(spec: &crate::Spec, name: &str) -> Result<Delivery, String
 }
 
 /// Its MCP servers in the folder's `opencode.json(c)` and the user's, read only, each as the relay
-/// takes it, the folder's first (opencode.ai/docs/mcp-servers) [D100].
+/// takes it, the folder's first (opencode.ai/docs/mcp-servers) [D100], with the file it comes
+/// from [D565].
 pub(super) fn mcp_servers(folder: &std::path::Path) -> Vec<Value> {
     let names = ["opencode.jsonc", "opencode.json"];
     let dirs = [folder.to_path_buf(), home_path(".config/opencode")];
     let files = dirs.iter().flat_map(|d| names.map(|n| d.join(n)));
     let mut all = vec![];
     for file in files {
-        let text = std::fs::read_to_string(file).unwrap_or_default();
+        let text = std::fs::read_to_string(&file).unwrap_or_default();
         let v: Value = serde_json::from_str(&jsonc(&text)).unwrap_or_default();
         // Its current `mcp.servers` and `disabled`, else the older `mcp` and `enabled`.
         let servers = v["mcp"]["servers"].as_object().or(v["mcp"].as_object());
@@ -82,7 +83,8 @@ pub(super) fn mcp_servers(folder: &std::path::Path) -> Vec<Value> {
                 d["enabled"].clone()
             };
             all.push(json!({"name": name, "command": command.first(), "args": command.get(1..),
-                "env": d["environment"], "url": d["url"], "headers": d["headers"], "enabled": enabled}));
+                "env": d["environment"], "url": d["url"], "headers": d["headers"], "enabled": enabled,
+                "source": file.display().to_string()}));
         }
     }
     all

@@ -106,6 +106,7 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
                     if let Some(names) = names.filter(|n| !n.contains(&a.label().into())) {
                         names.push(a.label().into());
                     }
+                    row["sources"][a.label()] = o["source"].clone();
                     continue;
                 }
                 let key = format!("own:{id}:{}:{}", str(&o["kind"]), str(&o["name"]));
@@ -113,6 +114,8 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
                 o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
                 o["project"] = p.map(|p| p.name.clone()).into();
                 (o["key"], o["agents"], o["place"]) = (key.into(), json!([a.label()]), id.into());
+                // Where each agent has it from: a server's file or plugin [D565].
+                o["sources"] = json!({ a.label(): o["source"] });
                 all.push(o);
             }
         }
@@ -140,7 +143,7 @@ fn list(data: &Path) -> Value {
         .filter(|o| o["in_library"] != true)
         .map(|o| {
             json!({"key": o["key"], "kind": o["kind"], "name": o["name"], "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"]})
+            "agents": o["agents"], "project": o["project"], "sources": o["sources"]})
         })
         .collect();
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
