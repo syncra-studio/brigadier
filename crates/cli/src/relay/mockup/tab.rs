@@ -298,7 +298,7 @@ fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value
         (
             wid.to_string(),
             format!(
-                "{picked}. Wire {keep}, and delete the other variants' fixture code from your branch. Once the real screen works in the dev server, report its address with `brigadier mockup --real <url>`. {merge}{with}"
+                "{picked}. Wire {keep}, and delete the other variants' fixture code from your branch; keep {letter}'s own fixture page working at its address, for the compare. Once the real screen works in the dev server, report its address with `brigadier mockup --real <url>`. {merge}{with}"
             ),
         )
     };

@@ -104,7 +104,8 @@ impl Thread {
         if item["phase"] == "asked" {
             let q = &r["items"][0];
             let at = self.add(json!({"kind": "question", "question": q["text"],
-                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true}));
+                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true,
+                "offer": item["event"] == "mockup"}));
             self.pending.push(at);
             self.pending_changed = true;
             return self.user_waits(at, ts);
@@ -408,6 +409,8 @@ impl Thread {
 
     pub(super) fn withdraw_all(&mut self) {
         let ids: Vec<String> = (self.pending.iter())
+            // A mockup offer outlives its turn: a later pick comes as a message [D2055].
+            .filter(|&&at| self.items[at]["offer"] != true)
             .filter_map(|&at| self.items[at]["request"]["id"].as_str().map(String::from))
             .collect();
         ids.iter().for_each(|id| self.withdraw(id, None, 0));

@@ -60,6 +60,10 @@ export function VariantColumn({
   onRetry: () => void;
 }) {
   const [shot, setShot] = useState(false);
+  // Loads are kept by letter: a new page or round (this column's key) tries its page afresh, not failed from the last.
+  useEffect(() => {
+    if (load === "failed") onRetry();
+  }, []);
   const letter = variant.letter;
   const live = Boolean(variant.url && !shot && load !== "failed");
   let content: ReactNode;

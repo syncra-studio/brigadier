@@ -163,7 +163,7 @@ fn offer(
     if let Some(card) = CARDS.lock().unwrap().get_mut(&id) {
         card.waiter = None;
     }
-    json!({"ok": true, "text": "No pick yet. It comes as a message; don't build the change until it does."})
+    json!({"ok": true, "text": "No pick yet: the card stays up and the pick comes as a message. End your turn; don't build the change or ask about it until then."})
 }
 
 /// The user's pick on offer `request` of session `id`: Yes starts the mockup worker, Skip says

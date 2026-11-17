@@ -108,7 +108,11 @@ fn resume(data: &Path, wid: &str) -> Value {
         return refuse(&e.to_string());
     }
     // Only the continue reports back, once what was held went before it: one result at the end.
-    l.report = vec![cid];
+    // A mockup worker not yet picked reports nothing till Use [D560].
+    l.report = match l.asked["mockup"].is_null() || !l.report.is_empty() {
+        true => vec![cid],
+        false => vec![],
+    };
     (l.paused, l.last) = (false, Value::Null);
     if let Err(e) = write_json(&dir.join("worker.json"), &l) {
         return refuse(&e.to_string());
