@@ -177,6 +177,7 @@ const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][
   ["View a skillset", { type: "view", key: "skillset:notion", title: "Notion", kind: "skill", at: "notion-research-documentation" }],
   ["View a server's settings", { type: "view", key: "datadog", title: "datadog", kind: "server" }],
   ["Install Slack: your own app first", { type: "catalog", entry: SLACK }],
+  ["Install Slack: Claude Code's, or your own app", { type: "catalog", entry: { ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" } } }],
 ];
 
 /** Each dialog over the page, opened by its button: a modal covers the window, so one at a time. */

@@ -1,4 +1,4 @@
-//! `plugins [add '<json>' | install <id> '<scope>' [client_id] | set <key> '<json>' | remove <key> |
+//! `plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | set <key> '<json>' | remove <key> |
 //! show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
 //! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
 
@@ -53,10 +53,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             return Ok(page);
         }
         "set" => set(data, arg(2), json(3)?)?,
+        "use" => catalog::use_plugin(data, arg(2), json(3)?)?,
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
+                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }

@@ -19,6 +19,7 @@ import { importable, MyTab } from "./plugins-mine";
 import { DetailsPage, type Device, type SignInStart, Trail } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Shown, ViewDialog } from "./plugins-view";
+import type { App } from "./plugins-app";
 
 /** Where an item is on: every project, or only these (by id). */
 export type Scope = { all: true } | { projects: string[] };
@@ -60,8 +61,7 @@ export type Entry = {
   website?: string;
   privacy?: string;
   skills?: { skill: string; name: string; line: string }[];
-  /** One that signs in only through the user's own app [D591]: its prefilled create link, and the steps to its Client ID. */
-  app?: { link: string; steps: string[] };
+  app?: App; // One that signs in only through the user's own app [D591, D608].
   installed: string | null;
 };
 /** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
@@ -72,8 +72,8 @@ export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name:
 export type PluginActions = {
   /** Adds one; with the user's pick, `on` and `scope`, it's on there at once [D571]. `added` is its key. */
   add: (draft: (Draft | { own: string }) & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
-  /** Installs a catalog entry, with its skills, on where picked [D571, D572], signing in with the user's own app's `clientId` where it needs one [D591]. `added` is its key. */
-  install: (id: string, scope: Scope, clientId?: string) => Promise<Plugins & { added?: string }>;
+  /** Installs a catalog entry, with its skills, on where picked [D571, D572], signing in with the user's own app's `clientId` where it needs one [D591]; null turns its agent's own plugin on there instead [D608]. `added` is its key. */
+  install: (id: string, scope: Scope, clientId?: string | null) => Promise<Plugins & { added?: string }>;
   set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
   remove: (key: string) => Promise<Plugins>;
   /** Reads the page again, its agents' own included. */
@@ -414,7 +414,7 @@ export function PluginsPage({
         <InstallDialog
           name={open.entry.name}
           mark={<PluginMark item={markOf(open.entry)} large />}
-          line={open.entry.app ? `${open.entry.name} lets Brigadier in only through an app of your own. It takes a few clicks.` : open.entry.skills?.length ? `Comes with its server and ${open.entry.skills.length} skills, for every agent.` : "Every agent gets it, in the projects you pick."}
+          line={open.entry.app?.agent ? `Choose how your agents reach ${open.entry.name}.` : open.entry.app ? `${open.entry.name} lets Brigadier in only through an app of your own. It takes a few clicks.` : open.entry.skills?.length ? `Comes with its server and ${open.entry.skills.length} skills, for every agent.` : "Every agent gets it, in the projects you pick."}
           projects={shown.projects}
           app={open.entry.app}
           install={(scope, clientId) => actions.install(open.entry.id, scope, clientId).then(installed)}
@@ -464,7 +464,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
   const marks = Object.fromEntries((agents ?? []).map((agent) => [agent.label, agent.mark]));
   const actions: PluginActions = {
     add: (draft) => send("add", JSON.stringify(draft)),
-    install: (id, scope, clientId = "") => send("install", id, JSON.stringify(scope), clientId),
+    install: (id, scope, clientId = "") => (clientId === null ? send("use", id, JSON.stringify(scope)) : send("install", id, JSON.stringify(scope), clientId)),
     set: (key, change) => send("set", key, JSON.stringify(change)),
     remove: (key) => send("remove", key),
     refresh: () => send(),

@@ -1,7 +1,7 @@
 //! One small adapter per backend. Nothing outside this folder names a provider.
 
 mod classify;
-mod claude;
+pub mod claude;
 mod codex;
 mod fake;
 mod files;

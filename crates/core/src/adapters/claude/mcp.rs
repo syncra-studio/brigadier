@@ -4,7 +4,8 @@
 use crate::adapters::{files, home_path};
 use crate::{Spec, library};
 use serde_json::{Map, Value, json};
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
 
 /// The user's MCP servers in its global config, user scope, this folder's local scope, its
 /// `.mcp.json` and its plugins', read only, the local first (code.claude.com/docs/en/mcp) [D100];
@@ -34,6 +35,43 @@ pub fn mcp_servers(folder: &Path) -> Vec<Value> {
 
 fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap_or_default()).unwrap_or_default()
+}
+
+/// Whether Claude Code has plugin `key` installed, at home or for a project [D608].
+pub fn has_plugin(key: &str) -> bool {
+    let installed = read(&home_path(".claude/plugins/installed_plugins.json"));
+    installed["plugins"][key]
+        .as_array()
+        .is_some_and(|a| !a.is_empty())
+}
+
+/// Turns plugin `key` on, as `enabledPlugins` [D608]: in the user's settings for every project,
+/// or in each folder's own local settings. A file that isn't JSON is left as it is.
+pub fn plugin_on(key: &str, folders: Option<&[PathBuf]>) -> io::Result<()> {
+    let files: Vec<PathBuf> = match folders {
+        None => vec![home_path(".claude/settings.json")],
+        Some(f) => (f.iter())
+            .map(|f| f.join(".claude/settings.local.json"))
+            .collect(),
+    };
+    for f in files {
+        let text = std::fs::read(&f).unwrap_or_default();
+        let bad = || io::Error::other(format!("{} isn't JSON Brigadier can change.", f.display()));
+        let mut v: Value = match text.iter().all(u8::is_ascii_whitespace) {
+            true => json!({}),
+            false => serde_json::from_slice(&text).map_err(|_| bad())?,
+        };
+        let on = v.get("enabledPlugins").unwrap_or(&Value::Null);
+        if !v.is_object() || !(on.is_object() || on.is_null()) {
+            return Err(bad());
+        }
+        v["enabledPlugins"][key] = true.into();
+        std::fs::create_dir_all(f.parent().unwrap_or(Path::new(".")))?;
+        // Through a link to the file the link points at, so a dotfiles link stays one.
+        let to = std::fs::canonicalize(&f).unwrap_or(f);
+        crate::write_atomic(&to, format!("{v:#}\n").as_bytes())?;
+    }
+    Ok(())
 }
 
 /// The servers of each plugin on in this folder, the last of the user's, the project's and its

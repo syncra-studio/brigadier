@@ -5,7 +5,7 @@
 mod cleanup;
 mod commands;
 mod control;
-mod mcp;
+pub mod mcp;
 mod models;
 mod tools;
 mod trust;

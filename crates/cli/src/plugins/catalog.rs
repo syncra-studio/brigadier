@@ -3,10 +3,11 @@
 //! service installs with its own skills, on in the projects picked [D571].
 
 use super::{add, browse, refuse, str};
-use brigadier_core::library;
+use brigadier_core::adapters::{self, claude::mcp as claude};
+use brigadier_core::{library, projects};
 use serde_json::{Value, json};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 static CATALOG: LazyLock<Value> =
@@ -71,8 +72,32 @@ pub(super) fn page(items: &[Value]) -> Value {
             let link = format!("{}{}", str(&app["create"]), browse::enc(&m.to_string()));
             app.insert("link".into(), link.into());
         }
+        // The agent that has it as its own plugin, offered first where it's installed [D608].
+        if let Some(on) = plugin(e).map(claude::has_plugin) {
+            let agent = adapters::get("claude").map(|a| a.label());
+            e["app"]["agent"] = agent.filter(|_| on).into();
+        }
     }
     c
+}
+
+/// An entry's Claude Code plugin, by its key, the only agent with plugins of its own.
+fn plugin(e: &Value) -> Option<&str> {
+    e["app"]["claude_plugin"].as_str()
+}
+
+/// Turns entry `id`'s agent's own plugin on in `scope`, in place of a copy in the library [D608].
+pub(super) fn use_plugin(data: &Path, id: &str, scope: Value) -> io::Result<()> {
+    let e = entries().find(|e| e["id"] == id);
+    let key = (e.and_then(plugin)).ok_or_else(|| refuse("No agent has that one."))?;
+    let scope = super::scope_of(&scope)?;
+    let folders = scope["projects"].as_array().map(|ids| {
+        (projects::list(data).unwrap_or_default().into_iter())
+            .filter(|p| ids.contains(&p.id.as_str().into()))
+            .map(|p| PathBuf::from(p.folder))
+            .collect::<Vec<_>>()
+    });
+    claude::plugin_on(key, folders.as_deref())
 }
 
 /// Adds entry `id`, on in `scope`: a skill fetched from its repo; a service's server, then its

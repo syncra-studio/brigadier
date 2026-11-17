@@ -78,6 +78,7 @@
       "skills": [],
       "app": {
         "create": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "claude_plugin": "slack@claude-plugins-official",
         "manifest": {
           "display_information": {
             "name": "Brigadier",
