@@ -20,8 +20,8 @@ const CHAT: &str = "chat";
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
 /// card's Background history [D200]; a note, by its id [D244]; the session repository's Actions [D264]; a web page, by
-/// its address [D2002]; the Mockup tab, by its mockup worker [D2066].
-const KINDS: [&str; 10] = [
+/// its address [D2002]; the Mockup tab, by its mockup worker [D2066]; a worker or subagent, by its id [D603].
+const KINDS: [&str; 11] = [
     "new",
     "terminal",
     "pr",
@@ -32,6 +32,7 @@ const KINDS: [&str; 10] = [
     "actions",
     "browser",
     "mockup",
+    "worker",
 ];
 const TERMINAL: &str = "terminal";
 const NEW: &str = "new";

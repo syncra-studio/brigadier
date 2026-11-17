@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle } from "../icons";
+import { Agent, Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle } from "../icons";
 import { Clock, PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
 import { newId } from "../session/store";
@@ -29,10 +29,11 @@ export const TAB_KINDS = {
   actions: { name: "Actions", icon: PlayCircle },
   browser: { name: "Browser", icon: Globe },
   mockup: { name: "Mockup", icon: ImageSquare },
+  worker: { name: "Worker", icon: Agent },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**
- * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244], a browser tab's page. A file tab also has the line last asked for, and whether it's
+ * `target`: a file tab's path, a PR tab's number [D1014], an attachment's `<id>/<name>` [D2104], a note's id [D244], a browser tab's page, a worker's or subagent's id [D603]. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes; a browser tab its profile, none for the default one.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string; driver?: string };

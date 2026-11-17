@@ -9,7 +9,7 @@ import { WorkerHeader, WorkerThread } from "./view";
 
 /*
  * The agent CLI's own subagents [D78, D115]: in the thread only "‹name› started working", then
- * "finished", "failed" or "stopped", each with its glyph; their steps live in the side panel, which the name opens; the
+ * "finished", "failed" or "stopped", each with its glyph; their steps live in their own tab, which the name opens [D603]; the
  * card counts them. They draw with the workers' parts, as workers that can't be paused or ended from here.
  */
 
@@ -43,7 +43,7 @@ export function useAgents(owner: string): Agent[] {
   return useMemo(() => items.filter((item): item is Agent => item.kind === "childAgent" && !item.hidden), [items]);
 }
 
-/** Its row in the thread: "Find the parser started working", its name opening it in the side panel. */
+/** Its row in the thread: "Find the parser started working", its name opening its tab. */
 export function SubagentRow({ item }: { item: Agent }) {
   const owner = useThread()?.id ?? "";
   return (
@@ -62,8 +62,8 @@ export function SubagentsCard({ owner }: { owner: string }) {
 
 const NO_TURNS: readonly Turn[] = [];
 
-/** One subagent in the side panel: its header, its steps as they come, and its answer once it's in. */
-export function SubagentView({ item, onBack }: { item: Agent; onBack: () => void }) {
+/** One subagent in its tab [D603]: its header, its steps as they come, and its answer once it's in. */
+export function SubagentView({ item }: { item: Agent }) {
   const worker = asSubagent(item);
   const items = useMemo<Item[]>(
     () => [...(item.log ?? []), ...(item.answer ? [{ id: `${item.id}:answer`, turnId: item.turnId, kind: "message" as const, role: "assistant" as const, text: item.answer, streaming: false }] : [])],
@@ -71,11 +71,7 @@ export function SubagentView({ item, onBack }: { item: Agent; onBack: () => void
   );
   return (
     <section aria-label={`Subagent: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkerHeader
-        worker={worker}
-        list={SUBAGENTS_LABEL}
-        onBack={onBack}
-      />
+      <WorkerHeader worker={worker} />
       <WorkerThread worker={worker} items={items} turns={NO_TURNS} />
     </section>
   );

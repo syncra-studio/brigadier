@@ -26,8 +26,8 @@
   { "id": "show-tab", "keys": ["CmdOrCtrl+1–9"], "name": "Show tab", "line": "1 shows the chat, 2 to 8 the tabs after it, 9 the last" },
   { "id": "switch-profile", "keys": ["CmdOrCtrl+Alt+1–9"], "name": "Switch browser profile", "line": "Put the tab in front and new tabs on profile 1 to 9" },
   { "id": "terminal", "keys": ["CmdOrCtrl+J", "Ctrl+`"], "name": "Terminal", "line": "Open a terminal tab" },
-  { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the right panel, Files and Workers, on its last view" },
-  { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show the session's files in the right panel, or hide it where they show" },
+  { "id": "right-panel", "keys": ["CmdOrCtrl+Alt+B"], "name": "Toggle right panel", "line": "Show or hide the right panel's Files" },
+  { "id": "show-files", "keys": ["CmdOrCtrl+Shift+E"], "name": "Files", "line": "Show or hide the session's files in the right panel" },
 
   { "id": "send", "keys": ["Enter"], "name": "Send", "line": "Send the message", "where": "In the composer" },
   { "id": "new-line", "keys": ["Shift+Enter"], "name": "New line", "line": "Start a new line in the message" },
