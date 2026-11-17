@@ -124,15 +124,10 @@ pub(super) const PATHS: [&str; 3] = ["* /*", "* ~*", "*..*"];
 pub fn rules(spec: &Spec) -> Value {
     let rule = |action: &str, resource: &str, effect: &str| json!({"action": action, "resource": resource, "effect": effect});
     // A folder chat reads the repos where they are and never edits them there, at every level,
-    // after the level's own rules so they win [D494].
+    // after the level's own rules so they win [D494]. Reads stay the level's: secrets still ask.
     let folder = crate::folder::of(spec).map(|p| format!("{}/*", p.folder));
     let folder = (folder.iter()).flat_map(|f| {
-        [
-            ("external_directory", "allow"),
-            ("read", "allow"),
-            ("edit", "deny"),
-        ]
-        .map(|(a, e)| rule(a, f, e))
+        [("external_directory", "allow"), ("edit", "deny")].map(|(a, e)| rule(a, f, e))
     });
     if spec.level.as_deref() == Some("full") {
         return [rule("*", "*", "allow")]
