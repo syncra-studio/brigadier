@@ -40,8 +40,10 @@ const pictured = new Set<string>();
  * Who, as their picture once Rust keeps it, else their initial in the same circle [D614, D615]. `at`: the read that
  * named them; a new one looks again for a picture not kept yet, which takes the initial's place with no loader.
  */
-export function Avatar({ login, at = 0, size = "size-5" }: { login: string; at?: number | null; size?: string }) {
+export function Avatar({ login: who, at = 0, size = "size-5" }: { login: string | null; at?: number | null; size?: string }) {
   const [, shown] = useState(false);
+  // A deleted account has none: GitHub's ghost.
+  const login = who || "ghost";
   const src = `/avatar/${encodeURIComponent(login)}`;
   return (
     <span title={login} className={cx("flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-2xs font-medium text-foreground uppercase", size)}>

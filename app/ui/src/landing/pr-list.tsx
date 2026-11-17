@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -67,13 +67,19 @@ function Menu({ label, value, choices, onPick }: { label: string; value: string;
 function Row({ pr, now, at, linked, onOpen }: { pr: FoundPr; now: number; at: number | null; linked?: SessionRow; onOpen: () => void }) {
   const changed = pr.updatedAtMs ?? pr.createdAtMs;
   const toSession = () => linked && (window.location.hash = `#thread/${encodeURIComponent(linked.id)}`);
+  // A linked row waits out a double-click, which opens its session instead [D609].
+  const wait = useRef(0);
   return (
     <li className="border-b border-divider">
       <div
         role="button"
         tabIndex={0}
-        onClick={onOpen}
-        onDoubleClick={toSession}
+        onClick={(event) => {
+          clearTimeout(wait.current);
+          if (!linked) onOpen();
+          else if (event.detail > 1) toSession();
+          else wait.current = window.setTimeout(onOpen, 250);
+        }}
         onKeyDown={(event) => event.key === "Enter" && onOpen()}
         className="flex min-h-12 cursor-pointer items-start gap-3 rounded-control px-2 py-3 text-sm hover:bg-fill-subtle focus-visible:focus-ring"
       >
