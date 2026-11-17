@@ -1,27 +1,24 @@
-//! GitHub and GitLab through their own CLIs, gh and glab [D616]: every login each is signed in as,
-//! read from its own config file (no network, no keychain) [D624, D625], and its own sign-in run in a terminal on a host as an agent's is (`setup-forge-<name>`), its
-//! one-time code and page read from what it prints.
+//! GitHub and GitLab through their own CLIs, gh and glab [D616]: every login each is signed in as
+//! (`host::accounts`, from its own config) [D624, D625], and its own sign-in run in a terminal on a
+//! host as an agent's is (`setup-forge-<name>`), its one-time code and page read from what it prints.
 
 use super::{close, in_terminal, run_state, still_running};
 use brigadier_core::adapters::{self, setup as tools};
+use brigadier_core::host::accounts::{self, Cli};
 use brigadier_core::{SETUP, Spec, session_dir};
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
-use std::{env, fs, io, iter, thread};
+use std::path::Path;
+use std::{io, iter, thread};
 
 struct Forge {
     name: &'static str,
     label: &'static str,
     cli: &'static str,
     docs: &'static str,
-    /// Its config folder: this variable, else this under XDG_CONFIG_HOME, else these under home.
-    dir_var: &'static str,
-    xdg: &'static str,
-    homes: &'static [&'static str],
-    file: &'static str,
-    /// The keys over its host's entry: its active `user`, and every one under `users` where it keeps several.
-    host: &'static [&'static str],
+    /// Its config file, and the host its logins are kept under there.
+    config: &'static Cli,
+    host: &'static str,
     sign_in: &'static [&'static str],
 }
 
@@ -31,11 +28,8 @@ const FORGES: [Forge; 2] = [
         label: "GitHub",
         cli: "gh",
         docs: "https://cli.github.com/manual/",
-        dir_var: "GH_CONFIG_DIR",
-        xdg: "gh",
-        homes: &[".config/gh"],
-        file: "hosts.yml",
-        host: &["github.com"],
+        config: &accounts::GH,
+        host: "github.com",
         sign_in: &[
             "auth",
             "login",
@@ -52,11 +46,8 @@ const FORGES: [Forge; 2] = [
         label: "GitLab",
         cli: "glab",
         docs: "https://gitlab.com/gitlab-org/cli",
-        dir_var: "GLAB_CONFIG_DIR",
-        xdg: "glab-cli",
-        homes: &["Library/Application Support/glab-cli", ".config/glab-cli"],
-        file: "config.yml",
-        host: &["hosts", "gitlab.com"],
+        config: &accounts::GLAB,
+        host: "gitlab.com",
         sign_in: &[
             "auth",
             "login",
@@ -91,59 +82,12 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn card(data: &Path, f: &Forge) -> Value {
     let exe = tools::find(f.cli, &[]);
-    let logins = if exe.is_some() { logins(f) } else { vec![] };
+    let logins = match exe {
+        Some(_) => accounts::logins(f.config, f.host),
+        None => vec![],
+    };
     json!({"name": f.name, "label": f.label, "cli": exe.is_some(), "logins": logins, "docs": f.docs,
         "setup": state(data, &format!("{SETUP}forge-{}", f.name))})
-}
-
-/// The logins its CLI keeps for its host, the active one first.
-fn logins(f: &Forge) -> Vec<String> {
-    let home = adapters::home_path("");
-    let dirs = (env::var_os(f.dir_var).map(PathBuf::from).into_iter())
-        .chain(env::var_os("XDG_CONFIG_HOME").map(|x| Path::new(&x).join(f.xdg)))
-        .chain(f.homes.iter().map(|h| home.join(h)));
-    let file = dirs.map(|d| d.join(f.file)).find(|p| p.is_file());
-    let text = file
-        .and_then(|p| fs::read_to_string(p).ok())
-        .unwrap_or_default();
-    let active =
-        (children(&text, f.host).into_iter()).filter_map(|(k, v)| (k == "user").then_some(v));
-    let users = (children(&text, &[f.host, &["users"]].concat()).into_iter()).map(|(k, _)| k);
-    let mut all = vec![];
-    for login in active.chain(users) {
-        if !login.is_empty() && !all.contains(&login) {
-            all.push(login);
-        }
-    }
-    all
-}
-
-/// The keys and values right under `path` in a YAML file of plain nested maps, as gh and glab write.
-fn children(text: &str, path: &[&str]) -> Vec<(String, String)> {
-    let plain = |s: &str| s.trim().trim_matches(['"', '\'']).to_string();
-    let (mut over, mut out) = (Vec::<(usize, String)>::new(), vec![]);
-    for line in text.lines() {
-        let entry = line.trim_start();
-        let Some((key, value)) = entry.split_once(':') else {
-            continue;
-        };
-        if entry.starts_with(['#', '-']) {
-            continue;
-        }
-        let indent = line.len() - entry.len();
-        while over.last().is_some_and(|(i, _)| *i >= indent) {
-            over.pop();
-        }
-        if over
-            .iter()
-            .map(|(_, k)| k.as_str())
-            .eq(path.iter().copied())
-        {
-            out.push((plain(key), plain(value)));
-        }
-        over.push((indent, plain(key)));
-    }
-    out
 }
 
 /// Its sign-in's state, with the one-time code and its page while it waits for them.

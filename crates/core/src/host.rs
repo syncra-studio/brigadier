@@ -7,6 +7,7 @@ use crate::git::{self, Checkout, Target, push};
 use crate::load;
 use crate::repos::{failed, tool};
 
+pub mod accounts;
 mod actions;
 mod avatars;
 mod chip;
@@ -218,7 +219,7 @@ fn gh(repo: &Repo) -> Option<Gh> {
     let path = setup::find("gh", &[])?.to_str()?.to_string();
     let key = format!("{}/{}", repo.host, repo.path);
     let last = READER.lock().unwrap().get(&key).cloned();
-    let others = std::iter::once_with(|| others(&path, &repo.host)).flatten();
+    let others = std::iter::once_with(|| others(&repo.host)).flatten();
     let mut tried = Vec::new();
     for user in last
         .clone()
@@ -308,17 +309,11 @@ fn forget(repo: &Repo) {
         .remove(&format!("{}/{}", repo.host, repo.path));
 }
 
-/// The accounts gh has signed in for `host` other than its active one.
-fn others(gh: &str, host: &str) -> Vec<String> {
-    let mut command = tool(gh);
-    command.args(["auth", "status", "--hostname", host, "--json", "hosts"]);
-    let Ok(out) = setup::run(&mut command, GH_SECS) else {
-        return Vec::new();
-    };
-    let status: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
-    (status["hosts"][host].as_array().into_iter().flatten())
-        .filter(|a| a["active"] != true && a["state"] == "success")
-        .filter_map(|a| a["login"].as_str().map(String::from))
+/// The accounts gh has signed in for `host` other than its active one, which it lists first.
+fn others(host: &str) -> Vec<String> {
+    accounts::logins(&accounts::GH, host)
+        .into_iter()
+        .skip(1)
         .collect()
 }
 
