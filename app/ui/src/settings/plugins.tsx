@@ -60,18 +60,20 @@ export type Entry = {
   website?: string;
   privacy?: string;
   skills?: { skill: string; name: string; line: string }[];
+  /** One that signs in only through the user's own app [D591]: its prefilled create link, and the steps to its Client ID. */
+  app?: { link: string; steps: string[] };
   installed: string | null;
 };
 /** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
-export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string };
+export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string; catalog?: string | null };
 export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[]; catalog?: { categories: string[]; entries: Entry[] } };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
 export type PluginActions = {
   /** Adds one; with the user's pick, `on` and `scope`, it's on there at once [D571]. `added` is its key. */
   add: (draft: (Draft | { own: string }) & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
-  /** Installs a catalog entry, with its skills, on where picked [D571, D572]. `added` is its key. */
-  install: (id: string, scope: Scope) => Promise<Plugins & { added?: string }>;
+  /** Installs a catalog entry, with its skills, on where picked [D571, D572], signing in with the user's own app's `clientId` where it needs one [D591]. `added` is its key. */
+  install: (id: string, scope: Scope, clientId?: string) => Promise<Plugins & { added?: string }>;
   set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
   remove: (key: string) => Promise<Plugins>;
   /** Reads the page again, its agents' own included. */
@@ -279,6 +281,8 @@ export function PluginsPage({
     </>
   );
   const toCategory = (name: string) => () => onDetail(`category:${name}`);
+  // An agent's own that needs the user's own app installs as its catalog entry: a copy couldn't sign in [D591].
+  const installOwn = (own: Own, app = entries.find((each) => each.id === own.catalog && each.app)) => setOpen(app ? { type: "catalog", entry: app } : { type: "install", own });
   const onEntry = { onOpen: (entry: Entry) => onDetail(`catalog:${entry.id}`), onInstall: (entry: Entry) => setOpen({ type: "catalog", entry }) };
   if (shown && (item || asked)) {
     // A catalog entry's page sits under its category; the library's under its tab.
@@ -319,11 +323,7 @@ export function PluginsPage({
     // A skillset is one card, so one in the count [D580].
     const count = (kind: Kind) => new Set(shown?.items.filter((each) => each.kind === kind).map((each) => each.with ?? each.key)).size;
     page = (
-      <SettingsPage
-        title="Plugins"
-        description={DESCRIPTION}
-        actions={controls}
-      >
+      <SettingsPage title="Plugins" description={DESCRIPTION} actions={controls}>
         <div className="-mt-4 flex flex-col gap-7">
           <div>
             <Segmented
@@ -357,9 +357,9 @@ export function PluginsPage({
               </p>
             )
           ) : tab === "browse" ? (
-            <BrowseTab value={shown} query={query} remote={remote} browse={actions.browse} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={(own) => setOpen({ type: "install", own })} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
+            <BrowseTab value={shown} query={query} remote={remote} browse={actions.browse} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={installOwn} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
           ) : (
-            <MyTab value={shown} kind={tab} query={query} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={(own) => setOpen({ type: "install", own })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
+            <MyTab value={shown} kind={tab} query={query} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={installOwn} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
         </div>
       </SettingsPage>
@@ -414,9 +414,10 @@ export function PluginsPage({
         <InstallDialog
           name={open.entry.name}
           mark={<PluginMark item={markOf(open.entry)} large />}
-          line={open.entry.skills?.length ? `Comes with its server and ${open.entry.skills.length} skills, for every agent.` : "Every agent gets it, in the projects you pick."}
+          line={open.entry.app ? `${open.entry.name} lets Brigadier in only through an app of your own. It takes a few clicks.` : open.entry.skills?.length ? `Comes with its server and ${open.entry.skills.length} skills, for every agent.` : "Every agent gets it, in the projects you pick."}
           projects={shown.projects}
-          install={(scope) => actions.install(open.entry.id, scope).then(installed)}
+          app={open.entry.app}
+          install={(scope, clientId) => actions.install(open.entry.id, scope, clientId).then(installed)}
           actions={actions}
           onClose={close}
         />
@@ -463,7 +464,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
   const marks = Object.fromEntries((agents ?? []).map((agent) => [agent.label, agent.mark]));
   const actions: PluginActions = {
     add: (draft) => send("add", JSON.stringify(draft)),
-    install: (id, scope) => send("install", id, JSON.stringify(scope)),
+    install: (id, scope, clientId = "") => send("install", id, JSON.stringify(scope), clientId),
     set: (key, change) => send("set", key, JSON.stringify(change)),
     remove: (key) => send("remove", key),
     refresh: () => send(),

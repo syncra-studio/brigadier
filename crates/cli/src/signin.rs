@@ -5,6 +5,7 @@
 //! an outage keeps the grant and tries again. Nothing is ever deleted on a failure.
 
 mod flow;
+pub(crate) use flow::PRESET_PORT;
 mod oauth;
 
 pub use oauth::check;

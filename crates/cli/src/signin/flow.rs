@@ -61,7 +61,7 @@ fn kept<T>(data: &Path, f: impl FnOnce(&mut HashMap<String, Client>) -> T) -> T 
 
 /// The one redirect port a pre-registered client is registered with: its server matches it
 /// exactly, port included [D578].
-const PRESET_PORT: u16 = 47181;
+pub(crate) const PRESET_PORT: u16 = 47181;
 
 /// The client to sign in as, and the loopback listener its redirect comes back to.
 fn client(data: &Path, key: &str, found: &Found) -> Result<(Client, Option<TcpListener>), String> {

@@ -34,7 +34,7 @@ fn get(url: &str, max: u64) -> Result<Vec<u8>, String> {
     }
 }
 
-fn enc(s: &str) -> String {
+pub(super) fn enc(s: &str) -> String {
     let keep = |b: u8| b.is_ascii_alphanumeric() || b"-._~".contains(&b);
     (s.bytes())
         .map(|b| match keep(b) {

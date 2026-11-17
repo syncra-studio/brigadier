@@ -1,4 +1,4 @@
-//! `plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> |
+//! `plugins [add '<json>' | install <id> '<scope>' [client_id] | set <key> '<json>' | remove <key> |
 //! show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
 //! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
 
@@ -45,7 +45,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         verb @ ("add" | "install") => {
             let added = match verb {
                 "add" => add(data, json(2)?),
-                _ => catalog::install(data, arg(2), json(3)?),
+                _ => catalog::install(data, arg(2), json(3)?, arg(4)),
             };
             let _ = std::fs::remove_dir_all(browse::incoming(data));
             let mut page = list(data);
@@ -56,7 +56,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
+                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }
@@ -183,7 +183,7 @@ fn list(data: &Path) -> Value {
         .filter(|o| o["in_library"] != true)
         .map(|o| {
             json!({"key": o["key"], "kind": o["kind"], "name": shown(str(&o["name"])), "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o)})
+            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o), "catalog": catalog::id(&o)})
         })
         .collect();
     let agents: Vec<_> = crate::setup::available().into_iter().collect();

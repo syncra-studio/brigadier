@@ -336,6 +336,7 @@ export function InstallDialog({
   line,
   projects,
   install,
+  app,
   signKey,
   signing,
   actions,
@@ -345,8 +346,9 @@ export function InstallDialog({
   mark: ReactNode;
   line: string;
   projects: { id: string; name: string }[];
-  /** Installs it where picked; answers the key to sign in to, or null when it needs none. */
-  install: ((scope: Scope) => Promise<string | null>) | null;
+  /** Installs it where picked, with `app`'s Client ID; answers the key to sign in to, or null when it needs none. */
+  install: ((scope: Scope, clientId: string) => Promise<string | null>) | null;
+  app?: { link: string; steps: string[] }; // The user's own app, created and its Client ID pasted first [D591].
   signKey?: string;
   signing?: SignInStart;
   actions: Pick<PluginActions, "signIn" | "cancel">;
@@ -356,6 +358,7 @@ export function InstallDialog({
     install ? "choose" : typeof signing === "object" && "error" in signing ? "failed" : "waiting",
   );
   const [some, setSome] = useState<string[] | null>(null);
+  const [clientId, setClientId] = useState("");
   const [device, setDevice] = useState<Device | null>(typeof signing === "object" && "code" in signing ? signing : null);
   const [error, setError] = useState<string | null>(typeof signing === "object" && "error" in signing ? signing.error : null);
   const key = useRef(signKey ?? null);
@@ -393,7 +396,7 @@ export function InstallDialog({
     const current = ++generation.current;
     setStep("installing");
     setError(null);
-    install!(some ? { projects: some } : { all: true }).then(
+    install!(some ? { projects: some } : { all: true }, clientId.trim()).then(
       (next) => {
         if (generation.current !== current) return;
         key.current = next;
@@ -425,6 +428,16 @@ export function InstallDialog({
           <DialogTitle>{choosing ? `Install ${name}` : `Sign in to ${name}`}</DialogTitle>
           <DialogDescription>{choosing ? line : step === "waiting" ? `Finish signing in to ${name} in your browser.` : "The sign-in didn't finish."}</DialogDescription>
         </div>
+        {choosing && app && (
+          <div className="flex flex-col gap-3">
+            <ol className="flex list-decimal flex-col gap-2 ps-5 text-label marker:text-quiet-foreground">
+              {app.steps.map((step, at) => (
+                <li key={at}>{step}{at === 0 && <div className="mt-2"><Button variant="soft" size="sm" onClick={() => window.brigadier?.openLink(app.link)}>Create your {name} app</Button></div>}</li>
+              ))}
+            </ol>
+            <Input aria-label="Client ID" placeholder="Client ID" value={clientId} onChange={(event) => setClientId(event.target.value)} className="h-8 font-mono text-xs" />
+          </div>
+        )}
         {choosing && (
           <RadioGroup aria-label="Where it's on" value={some ? "some" : "all"} onValueChange={(next) => setSome(next === "some" ? projects.map((project) => project.id) : null)}>
             <SettingsCard>
@@ -459,7 +472,7 @@ export function InstallDialog({
         <ErrorLine error={error} className="text-center" />
         <div className="flex justify-end gap-2">
           {choosing && (
-            <Button className="w-full" disabled={step === "installing" || some?.length === 0} onClick={go}>
+            <Button className="w-full" disabled={step === "installing" || some?.length === 0 || (app && !clientId.trim())} onClick={go}>
               {step === "installing" && <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" />}
               Install
             </Button>

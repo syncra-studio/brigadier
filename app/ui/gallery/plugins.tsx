@@ -4,7 +4,7 @@ import { type ReactNode, useRef, useState } from "react";
 
 import { Button } from "../src/components/button";
 import { CheckboxRow } from "../src/components/checkbox-row";
-import { type Open, type PluginActions, type Plugins, PluginsPage } from "../src/settings/plugins";
+import { type Entry, type Open, type PluginActions, type Plugins, PluginsPage } from "../src/settings/plugins";
 import type { Shown } from "../src/settings/plugins-view";
 import type { SignInStart } from "../src/settings/plugins-details";
 import { Row, Section, State } from "./parts";
@@ -44,6 +44,15 @@ const FOUND = [
   { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null, from: "In Other agent's settings" },
   { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier", from: "In Local agent and Cloud agent's settings" },
 ];
+
+// A service that signs in only through the user's own app [D591]; its link as Rust builds it, cut short.
+const SLACK: Entry = {
+  kind: "server", id: "slack", name: "Slack", line: "Search, read and send messages", about: "", maker: "Slack", category: "Productivity", url: "https://mcp.slack.com/mcp", installed: null,
+  app: {
+    link: "https://api.slack.com/apps?new_app=1&manifest_json=%7B%7D",
+    steps: ["Slack opens with Brigadier's settings filled in. Pick your workspace, then Create.", "Under Agents, make sure Slack MCP Server is On.", "Under Basic Information, copy the Client ID and paste it here."],
+  },
+};
 
 /** A page in a box of its own, scrolled inside it as Settings scrolls it. */
 function Frame({ tall = false, children }: { tall?: boolean; children: ReactNode }) {
@@ -167,6 +176,7 @@ const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][
   ["Remove", { type: "remove", key: "postgres" }],
   ["View a skillset", { type: "view", key: "skillset:notion", title: "Notion", kind: "skill", at: "notion-research-documentation" }],
   ["View a server's settings", { type: "view", key: "datadog", title: "datadog", kind: "server" }],
+  ["Install Slack: your own app first", { type: "catalog", entry: SLACK }],
 ];
 
 /** Each dialog over the page, opened by its button: a modal covers the window, so one at a time. */

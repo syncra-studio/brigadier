@@ -61,6 +61,16 @@ pub(super) fn page(items: &[Value]) -> Value {
     for e in c["entries"].as_array_mut().into_iter().flatten() {
         let held = items.iter().find(|i| is(i, e));
         e["installed"] = held.map_or(Value::Null, |i| i["key"].clone());
+        // A service that signs in only through the user's own app: its prefilled create link [D591].
+        if let Some(app) = e["app"].as_object_mut()
+            && let Some(mut m) = app.remove("manifest")
+        {
+            let port = crate::signin::PRESET_PORT;
+            m["oauth_config"]["redirect_urls"] =
+                json!([format!("http://localhost:{port}/callback")]);
+            let link = format!("{}{}", str(&app["create"]), browse::enc(&m.to_string()));
+            app.insert("link".into(), link.into());
+        }
     }
     c
 }
@@ -68,11 +78,16 @@ pub(super) fn page(items: &[Value]) -> Value {
 /// Adds entry `id`, on in `scope`: a skill fetched from its repo; a service's server, then its
 /// skills (all fetched first, so one that can't be leaves nothing added), each `with` it; skills
 /// the library already holds by name and an existing matching server are kept as they are, so a
-/// partial install can be retried. Answers the server's or skill's key.
-pub(super) fn install(data: &Path, id: &str, scope: Value) -> io::Result<String> {
+/// partial install can be retried; one that signs in only through the user's own app takes its
+/// `client` id [D591]. Answers the server's or skill's key.
+pub(super) fn install(data: &Path, id: &str, scope: Value, client: &str) -> io::Result<String> {
     let e = (entries().find(|e| e["id"] == id))
         .ok_or_else(|| refuse("Brigadier doesn't offer that one."))?;
     let scope = super::scope_of(&scope)?;
+    let client = client.trim();
+    if e["app"].is_object() && client.is_empty() {
+        return Err(refuse("Paste your app's Client ID first."));
+    }
     let pick = |mut v: Value| {
         (v["on"], v["scope"]) = (true.into(), scope.clone());
         v
@@ -94,11 +109,13 @@ pub(super) fn install(data: &Path, id: &str, scope: Value) -> io::Result<String>
         true => vec![],
         false => browse::fetch(data, source, &skills)?,
     };
-    let key = match held.iter().find(|i| is(i, e)) {
+    // A server held without the user's app's id couldn't sign in: adding it says it's already there.
+    let kept = |i: &&Value| is(i, e) && (client.is_empty() || i["client_id"] == client);
+    let key = match held.iter().find(kept) {
         Some(server) => str(&server["key"]).to_string(),
         None => add(
             data,
-            pick(json!({"kind": "server", "name": id, "url": e["url"]})),
+            pick(json!({"kind": "server", "name": id, "url": e["url"], "client_id": client})),
         )?,
     };
     for folder in folders {
