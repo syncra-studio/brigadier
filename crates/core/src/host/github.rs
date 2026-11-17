@@ -63,13 +63,14 @@ pub fn github_repos(avatars: &Path) -> io::Result<Value> {
         return Ok(json!({"gh": "missing"}));
     };
     let logins = accounts::logins(&accounts::GH, HOST);
-    // The active account as gh runs it (a GH_TOKEN in its environment too), the others by their own token.
+    // Each account by its own token, so a GH_TOKEN the daemon inherited never stands in for one; with none
+    // in gh's file, gh as it runs.
     let reads: Vec<io::Result<Option<Vec<Value>>>> = thread::scope(|s| {
         let all: Vec<_> = (0..logins.len().max(1))
             .map(|i| {
-                let (gh, user) = (&gh, logins.get(i).filter(|_| i > 0));
+                let (gh, user) = (&gh, logins.get(i));
                 s.spawn(move || match user.map(|u| token(gh, HOST, u)) {
-                    Some(None) => Ok(Some(vec![])),
+                    Some(None) => Ok(None),
                     Some(token) => list(gh, token),
                     None => list(gh, None),
                 })

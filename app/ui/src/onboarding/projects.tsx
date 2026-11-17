@@ -76,7 +76,8 @@ export function ProjectsStep({ source, offline, onBack, start = "folder" }: { so
       (cause: unknown) => setError(errorText(cause)),
     );
 
-  const byName = SHORTHAND.test(repo.trim());
+  // Through gh when it can (a private repository, the account that sees it); else git itself clones its URL.
+  const byName = SHORTHAND.test(repo.trim()) && !(github && "gh" in github);
   const folder = tab === "clone" ? folderFromUrl(repo) : tab === "new" ? name.trim() : chosen && baseName(chosen);
   const finish = async () => {
     setBusy("adding");
