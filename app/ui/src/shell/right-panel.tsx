@@ -46,13 +46,13 @@ export function usePanelViews(owner: string): readonly PanelTab[] {
   return files ? BOTH : team ? TEAM : NONE;
 }
 
-/** The toolbar's rightmost button [D1014, D56]: the left toggle's icon mirrored, as the old app's; a click always shows or hides the panel. */
+/** The toolbar's rightmost button [D1014, D56]: the left toggle's icon mirrored, as the old app's; a click always shows or hides the panel. Always drawn white and lit, open or closed (owner). */
 export function RightPanelToggle({ owner, className }: { owner: string; className?: string | false }) {
   const memory = usePanelMemory();
   if (usePanelViews(owner).length === 0) return null;
   return (
     <span className={cx("app-no-drag flex", className)}>
-      <TooltipIconButton look="toggle" tooltip="Right panel" shortcut={keysOf("right-panel")[0]} pressed={memory.open} aria-controls="right-panel-content" onClick={() => setPanelOpen(!memory.open)}>
+      <TooltipIconButton look="pill" className="drop-shadow-toggle-glow" tooltip="Right panel" shortcut={keysOf("right-panel")[0]} pressed={memory.open} aria-controls="right-panel-content" onClick={() => setPanelOpen(!memory.open)}>
         {memory.open ? <Sidebar className="-scale-x-100" /> : <SidebarFloatingLeft className="-scale-x-100" />}
       </TooltipIconButton>
     </span>
