@@ -32,7 +32,8 @@
 //! `resize` go to its host, named by the terminal's spawn id [D45].
 //!
 //! The app starts one at every launch: it leaves at once if this build or a newer one runs, and
-//! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`).
+//! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`), as
+//! a launchd job of its own, so quitting the app leaves it and every session running [D60, D606].
 //! While it runs it keeps the Mac awake as `brigadier awake` says: off, while a session works, or
 //! always (`awake`) [D30, D36].
 
@@ -195,12 +196,28 @@ fn main() -> io::Result<()> {
 /// hello or refusal) counts as older. A refusal alone is never a reason, and a daemon that doesn't
 /// answer or is the same build or newer stays, so two app copies never replace each other's.
 fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
-    // Nothing answering means a daemon still starting up: leave it be.
-    let Ok(mut stream) = UnixStream::connect(data.join("daemon.sock")) else {
+    let Some((pid, build)) = answering(data)? else {
         return Ok(false);
     };
-    if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
+    if build.is_some_and(|b| b >= wire::build() as u64) {
         return Ok(false);
+    }
+    // The old one may hold the Mac awake: hold first, until this one's first pass decides.
+    if awake_mode(data) != "off" {
+        awake.hold_confirmed();
+    }
+    stop(data, pid);
+    Ok(true)
+}
+
+/// The pid and build (none before build numbers) of the daemon answering on the socket, if one does.
+fn answering(data: &Path) -> io::Result<Option<(libc::pid_t, Option<u64>)>> {
+    // Nothing answering means a daemon still starting up: leave it be.
+    let Ok(mut stream) = UnixStream::connect(data.join("daemon.sock")) else {
+        return Ok(None);
+    };
+    if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
+        return Ok(None);
     }
     // The kernel names the listener, whatever version it is.
     let mut pid: libc::pid_t = 0;
@@ -215,7 +232,7 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
         )
     };
     if got != 0 || pid <= 0 {
-        return Ok(false);
+        return Ok(None);
     }
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     stream.write_all(&PROTOCOL_VERSION.to_be_bytes())?;
@@ -223,19 +240,13 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
     else {
-        return Ok(false);
+        return Ok(None);
     };
-    if first["build"]
-        .as_u64()
-        .is_some_and(|b| b >= wire::build() as u64)
-    {
-        return Ok(false);
-    }
-    drop(stream);
-    // The old one may hold the Mac awake: hold first, until this one's first pass decides.
-    if awake_mode(data) != "off" {
-        awake.hold_confirmed();
-    }
+    Ok(Some((pid, first["build"].as_u64())))
+}
+
+/// Stops the daemon `pid`, harder if it doesn't let go of its lock.
+fn stop(data: &Path, pid: libc::pid_t) {
     let lock = data.join("daemon.lock");
     for sig in [libc::SIGTERM, libc::SIGKILL] {
         unsafe { libc::kill(pid, sig) };
@@ -247,7 +258,6 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
             break;
         }
     }
-    Ok(true)
 }
 
 /// Applies one pass's changes, and the projects' (read under the lock, so two readers never send

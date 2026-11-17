@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>APP_ID.daemon</string>
+	<key>CFBundleName</key>
+	<string>Brigadier</string>
+	<key>CFBundleDisplayName</key>
+	<string>Brigadier</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>An agent in Brigadier wants to control this app for your task.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>This app needs access to audio capture</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app needs access to Bluetooth</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app needs access to Bluetooth</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs access to the camera</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs access to the microphone</string>
+</dict>
+</plist>
