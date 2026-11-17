@@ -47,8 +47,7 @@ export function workWords(turn: Turn, work: Work | undefined, now: number): stri
   // Live, one clock from the turn's start that never resets [D128]; ended, like Rust's `Work.ms`, its waits on the user don't count.
   const live = turn.status === "running" || turn.held;
   const ms = work?.ms ?? (live ? now - turn.startedAt : (turn.endedAt ?? now) - turn.startedAt - (turn.waitedMs ?? 0));
-  // Answered, it still waits on its subagents, counting on [D114].
-  if (turn.helpers) return `Working for ${duration(ms)} · ${turn.helpers} ${turn.helpers === 1 ? "subagent" : "subagents"} running`;
+  // Answered, it still waits on what it started, counting on [D114]; WorkHeader says on what.
   if (turn.held) return `Working for ${duration(ms)}`;
   if (turn.status === "running" && ms < 1000) return "Working";
   // The actions turned down in it, beside the time (D487).

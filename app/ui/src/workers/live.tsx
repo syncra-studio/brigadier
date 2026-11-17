@@ -65,6 +65,7 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   startedAt: row.worker.started,
   // When it last said anything: its last turn's end, else its row's last change (a paused one).
   lastAt: row.worker.ended ?? row.updated,
+  heardAt: row.updated,
   model: row.worker.model,
   brief: row.worker.brief,
   receipt: row.worker.receipt,

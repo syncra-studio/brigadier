@@ -24,6 +24,8 @@ export type Worker = {
   startedAt: number;
   /** When its CLI last said anything, for a finished one's "4m ago". */
   lastAt?: number;
+  /** When its log last changed: a held block's quiet clock starts again [D552]. */
+  heardAt?: number;
   added?: number;
   removed?: number;
   model?: string;
