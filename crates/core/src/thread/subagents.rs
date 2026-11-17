@@ -34,8 +34,12 @@ impl Thread {
         !self.fold.workers.is_empty()
     }
 
-    /// A worker ended, by its result or an End: a block held meanwhile counts its time up to now.
+    /// A worker ended, by its result or an End: a block held meanwhile counts its time up to now,
+    /// and no longer waits on the user for it [D551].
     pub(super) fn worker_ended(&mut self, ts: u64) {
+        let over = &self.over;
+        self.asking.retain(|w| !over.contains(w));
+        self.end_wait(ts);
         for turn in self.held.keys().cloned().collect::<Vec<_>>() {
             self.held_left(&turn, ts);
         }
