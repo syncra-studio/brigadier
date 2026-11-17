@@ -1,6 +1,7 @@
 //! Agents' search over the archive's entries [D103].
 
-use super::{CLOSE, OPEN, db_err, words};
+use super::db_err;
+use super::search::{CLOSE, OPEN, words};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
 use std::io;
