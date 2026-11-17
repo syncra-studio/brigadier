@@ -59,3 +59,12 @@ export function Plugin(props: IconProps) {
     </svg>
   );
 }
+
+// A plug on its cable, for a connected agent's line ("─⊐ Connected") [D616].
+export function Plug(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+      <path d="M1 11.25h7.5v1.5H1zM10.5 7h4a2.5 2.5 0 0 1 2.5 2.5v5a2.5 2.5 0 0 1-2.5 2.5h-4A1.5 1.5 0 0 1 9 15.5v-7A1.5 1.5 0 0 1 10.5 7ZM17 9h5v1.75h-5zM17 13.25h5V15h-5z" />
+    </svg>
+  );
+}

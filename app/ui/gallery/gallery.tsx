@@ -13,6 +13,7 @@ import { Kit } from "./kit";
 import { MockupGallery } from "./mockup";
 import { Notices } from "./notices";
 import { NotificationsGallery } from "./notifications";
+import { OnboardingGallery } from "./onboarding";
 import { Panes } from "./panes";
 import { Area } from "./parts";
 import { PeersGallery } from "./peers";
@@ -121,6 +122,9 @@ function GalleryPage() {
             </Area>
             <Area name="Pickers">
               <PickersGallery />
+            </Area>
+            <Area name="Onboarding">
+              <OnboardingGallery />
             </Area>
             <Area name="Settings">
               <NotificationsGallery />

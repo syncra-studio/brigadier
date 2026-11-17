@@ -130,9 +130,7 @@ impl Adapter for OpenCode {
 
     /// The frame of its mark (opencode.ai/favicon.svg), in the current colour, as the old app drew it [D123].
     fn mark(&self) -> Option<&'static str> {
-        Some(
-            r#"<svg viewBox="96 96 320 320" fill="currentColor"><path d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"/></svg>"#,
-        )
+        Some(include_str!("opencode/opencode.svg"))
     }
 
     /// Its own picker, every provider and method it offers (a subscription's sign-in, a device

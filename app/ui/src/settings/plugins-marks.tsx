@@ -129,6 +129,15 @@ export function PluginMark({ item, large = false, exact = false }: { item: { kin
   );
 }
 
+/** A maker's mark alone, in the current colour: GitHub's and GitLab's on onboarding's Git step [D616]. */
+export function BrandMark({ brand, className }: { brand: Brand; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <path d={BRAND_MARKS[brand].path} />
+    </svg>
+  );
+}
+
 /** An agent's tile: its adapter's mark (`marks`, by its label), else its name's first letter; read-only. */
 export function AgentTile({ agent, mark, large = false }: { agent: string; mark: string | null | undefined; large?: boolean }) {
   return (

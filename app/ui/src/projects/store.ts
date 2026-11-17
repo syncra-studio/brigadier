@@ -27,6 +27,8 @@ export type GitHub = { repos: GitHubRepo[] } | { gh: "missing" | "signed-out" };
  */
 export type Source = {
   find(): Promise<Repo[]>;
+  /** The repositories the agents' own history ran in, for onboarding's Projects step [D45]. */
+  history(): Promise<string[]>;
   check(path: string): Promise<FolderCheck>;
   /**
    * Adds the repository at `path`. With `init`, git starts there first: "here" in an existing folder
@@ -98,6 +100,7 @@ export async function openFolders(source: Source, paths: readonly string[]): Pro
 /** Add project on the daemon: the commands in `crates/cli/src/setup.rs`, each add through `addProject` [D30]. */
 export const daemonSource: Source = {
   find: async () => (await run(["projects", "find"])).repos as Repo[],
+  history: async () => (await run(["projects"])).found as string[],
   check: async (path) => (await run(["projects", "inspect", path])).check as FolderCheck,
   add: (id, path, init) => addProject(path, init ? ["init", path, ...(init === "here" ? ["--here"] : [])] : ["add", path], id),
   clone: (id, from, dest, github) => addProject(dest, ["clone", from, "--to", dest, ...(github ? ["--github"] : [])], id),

@@ -172,6 +172,16 @@
   animation-delay: calc(var(--onboarding-stagger) * 3);
 }
 
+/* An installed agent's card on its own surface (theme.css), its mark in the card's ink. */
+.agent-card[data-brand] {
+  background: var(--agent-card);
+  color: var(--agent-card-ink);
+}
+
+.agent-card[data-brand] svg {
+  fill: currentColor;
+}
+
 .onboarding-heading {
   font-size: var(--onboarding-heading);
   line-height: 1.2;

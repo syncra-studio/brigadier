@@ -6,9 +6,9 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { useDaemon } from "../daemon";
-import { ArrowUpRight, Check, Spinner, Terminal } from "../icons";
+import { ArrowUpRight, Plug, Spinner, Terminal, Warning } from "../icons";
 import { type Agent, checkAll, checkOne, errorText, run, useAgents } from "./api";
-import { MAC, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
+import { MAC, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
 /** How often an agent is checked again while its install or sign-in runs. */
 const RECHECK_MS = 2000;
@@ -167,12 +167,21 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   );
 }
 
-export function AgentCard({ agent, online, starting, retrying, failed, onAction, onCancel, onRetry }: {
+/** A card's button: solid, so it reads on any agent's surface. */
+export const CARD_BUTTON = cx(PILL, "gap-1.75 border border-border bg-background px-3 text-foreground enabled:hover:bg-muted");
+
+/**
+ * An agent's card, our shape with that familiar look [D616]: its mark at the top, then its name (with its docs) over how it
+ * stands, and the one thing it needs next. Installed, it takes its own surface, by the name its adapter gives.
+ */
+export function AgentCard({ agent, online, starting, retrying, failed, testing = false, onAction, onCancel, onRetry }: {
   agent: Agent | undefined;
   online: boolean;
   starting: boolean;
   retrying: boolean;
   failed: string | undefined;
+  /** Its test prompt is out [D617]. */
+  testing?: boolean;
   onAction: (action: "install" | "sign-in") => void;
   onCancel: () => void;
   onRetry: () => void;
@@ -183,81 +192,109 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
   const waiting = starting || state === "running";
   const problem = failed ?? (state === "error" ? agent?.error : null) ?? runFailure(setup, label);
   const installing = (starting && state === "install") || setup?.action === "install";
+  const connected = state === "ready" && !waiting && !problem;
+  const brand = agent?.brand && state !== "install" && state !== "checking" && !installing ? agent.brand : null;
 
-  const line = problem
-    ? problem
-    : waiting
-      ? installing
-        ? `Installing ${label}…`
-        : "Complete sign-in in your browser"
-      : state === "checking"
-        ? "Checking…"
-        : state === "install"
-          ? "Not installed"
-          : state === "signIn"
-            ? `Found on ${HERE} · Not signed in`
-            : state === "noModel"
-              ? `${agent?.how || "Signed in"} · No model available`
-              : agent?.plan
-                ? `${agent.plan.charAt(0).toUpperCase()}${agent.plan.slice(1)} plan`
-                : agent?.how || (agent?.signed_in === false ? "No sign-in needed" : "Signed in");
+  const line = problem ? (
+    <>
+      <Warning className="size-icon-sm shrink-0" />
+      <span className="truncate">{problem}</span>
+    </>
+  ) : testing ? (
+    <>
+      <Spinner className="size-icon-sm shrink-0 animate-spin" />
+      <span className="truncate">Sending a test prompt…</span>
+    </>
+  ) : connected ? (
+    <>
+      <Plug className="size-icon-md shrink-0" />
+      <span className="truncate font-medium">Connected</span>
+      {(agent?.plan || agent?.how) && (
+        <span className="truncate opacity-70">· {agent.plan ? `${agent.plan.charAt(0).toUpperCase()}${agent.plan.slice(1)} plan` : agent.how}</span>
+      )}
+    </>
+  ) : (
+    <span className="truncate opacity-70">
+      {waiting
+        ? installing
+          ? `Installing ${label}…`
+          : "Complete sign-in in your browser"
+        : state === "checking"
+          ? "Checking…"
+          : state === "install"
+            ? "Not installed"
+            : state === "signIn"
+              ? `Found on ${HERE} · Not signed in`
+              : state === "noModel"
+                ? `${agent?.how || "Signed in"} · No model available`
+                : agent?.signed_in === false
+                  ? "No sign-in needed"
+                  : "Signed in"}
+    </span>
+  );
 
   const action = agent && state !== "checking" && (state === "install" ? (agent.install ? "install" : null) : agent.sign_in ? "sign-in" : null);
   return (
     <li
       data-state={waiting ? "waiting" : state}
-      className={cx("flex min-w-0 flex-col gap-3 rounded-settings border border-border bg-card p-4", !online && "opacity-disabled")}
+      data-brand={brand ?? undefined}
+      className={cx(
+        "agent-card flex min-h-36 min-w-0 flex-col gap-4 rounded-settings border p-5",
+        brand ? "border-transparent" : "border-border bg-card",
+        !online && "opacity-disabled",
+      )}
     >
-      <div className="flex min-w-0 items-center gap-3.5">
-        <span className="grid size-agent-mark shrink-0 place-items-center rounded-control bg-muted">
-          {agent?.mark ? (
-            // Its mark, from its adapter (trusted, built in).
-            <span aria-hidden className="grid size-6.5 place-items-center svg:size-full" dangerouslySetInnerHTML={{ __html: agent.mark }} />
-          ) : (
-            <Terminal className="size-6.5" />
-          )}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="truncate text-base font-medium">{agent?.label ?? " "}</p>
-          <p
-            role={problem ? "alert" : undefined}
-            title={problem ?? agent?.path ?? undefined}
-            className={cx("truncate text-xs", problem ? "text-destructive" : state === "ready" ? "text-muted-foreground" : "text-setup-hint")}
-          >
+      <span className={cx("grid size-8 place-items-center", state === "checking" && "animate-pulse")}>
+        {agent?.mark ? (
+          // Its mark, from its adapter (trusted, built in).
+          <span aria-hidden className="grid size-full place-items-center svg:size-full" dangerouslySetInnerHTML={{ __html: agent.mark }} />
+        ) : (
+          <Terminal className="size-full" />
+        )}
+      </span>
+      <div className="mt-auto flex min-w-0 items-end gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <p className="flex min-w-0 items-center gap-1.5 text-lg font-medium">
+            <span className="truncate">{agent?.label ?? " "}</span>
+            {agent?.docs && (
+              <a href={agent.docs} target="_blank" rel="noreferrer" aria-label={`Open ${label} docs`} className="shrink-0 opacity-50 hover:opacity-100">
+                <ArrowUpRight className="size-icon-md" />
+              </a>
+            )}
+          </p>
+          <p role={problem ? "alert" : undefined} title={problem ?? agent?.path ?? undefined} className="flex min-w-0 items-center gap-1.5 text-xs">
             {line}
           </p>
         </div>
-        {state === "ready" && !waiting ? (
-          <span className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-capsule border border-transparent bg-setup-connected px-2.5 text-xs font-medium whitespace-nowrap text-success svg:size-icon-xs">
-            <Check />
-            Connected
-          </span>
-        ) : waiting ? (
-          // Waiting… stays as it is; Cancel sits before it, so Waiting… keeps its place at the end [D15].
-          <span className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Cancel ${installing ? "installing" : "signing in to"} ${label}`}
-              disabled={starting}
-              onClick={onCancel}
-              className="text-muted-foreground"
-            >
-              Cancel
-            </Button>
-            <span className="inline-flex h-7.5 items-center gap-1.75 px-1 text-label font-medium text-muted-foreground">
-              <Spinner className="size-3.25 animate-spin" />
-              Waiting…
+        {waiting ? (
+          // While it runs: a spinner, which reads Cancel under the pointer [D616].
+          <Button
+            variant={null}
+            size={null}
+            aria-label={`Cancel ${installing ? "installing" : "signing in to"} ${label}`}
+            disabled={starting}
+            onClick={onCancel}
+            className={cx(CARD_BUTTON, "group")}
+          >
+            <span className="grid">
+              <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-1.75 group-enabled:group-hover:invisible">
+                <Spinner className="size-3.25 animate-spin" />
+                {installing ? "Installing…" : "Signing in…"}
+              </span>
+              <span aria-hidden className="invisible col-start-1 row-start-1 group-enabled:group-hover:visible">
+                Cancel
+              </span>
             </span>
-          </span>
+          </Button>
         ) : state === "error" ? (
-          <Button variant={null} size={null} className={RAISED_BUTTON} disabled={!online || retrying} onClick={onRetry}>
+          <Button variant={null} size={null} className={CARD_BUTTON} disabled={!online || retrying} onClick={onRetry}>
             {retrying && <Spinner className="size-icon-md animate-spin" />}
             Retry
           </Button>
         ) : (
-          action && (
-            <Button variant={null} size={null} className={RAISED_BUTTON} disabled={!online} onClick={() => onAction(action)}>
+          action &&
+          !connected && (
+            <Button variant={null} size={null} className={CARD_BUTTON} disabled={!online || testing} onClick={() => onAction(action)}>
               {action === "install" ? "Install" : agent?.sign_in}
             </Button>
           )
@@ -266,6 +303,36 @@ export function AgentCard({ agent, online, starting, retrying, failed, onAction,
       {/* A device code to enter on its page; or, when the browser couldn't hand the sign-in back, the code its page shows goes in here. */}
       {state === "running" && agent && <SetupCode agent={agent} run={setup} />}
     </li>
+  );
+}
+
+/** An agent whose test prompt failed [D617]: its CLI's own words, and its sign-in as typed in a terminal. */
+export type TestFailure = { label: string; reason: string; login: string | null };
+
+/** Under the cards: what to do about each agent that didn't answer its test prompt. */
+export function TestFailed({ failures }: { failures: TestFailure[] }) {
+  if (!failures.length) return null;
+  return (
+    <div role="alert" className="flex flex-col gap-4 rounded-settings border border-border bg-card p-4 text-sm">
+      {failures.map((failure) => (
+        <div key={failure.label} className="flex min-w-0 gap-2.5">
+          <Warning className="mt-0.5 size-icon-md shrink-0 text-destructive" />
+          <div className="flex min-w-0 flex-col gap-2">
+            <p className="font-medium">{failure.label} didn't answer its test prompt</p>
+            <p className="font-mono text-xs break-words text-muted-foreground">{failure.reason}</p>
+            {failure.login && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                Sign in again on its card, or run this in a terminal:
+                <span className="flex h-control-sm items-center gap-1 rounded-control border border-fill-hover bg-fill-subtle ps-2.5 pe-0.5">
+                  <span className="font-mono text-foreground">{failure.login}</span>
+                  <CopyButton text={failure.login} tooltip="Copy command" size="icon-xs" className="text-muted-foreground" />
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

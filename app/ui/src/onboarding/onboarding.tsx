@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useDaemon } from "../daemon";
+import { daemonSource } from "../projects/store";
 import { AgentsStep } from "./agents";
 import { errorText, type Profile, setProfile } from "./api";
 import "./onboarding.css";
@@ -8,11 +10,12 @@ import { ProjectsStep } from "./projects";
 import { Welcome } from "./welcome";
 
 /**
- * The first launch [D45, D48]: welcome, name, agents, projects, each kept in the profile as it is
+ * The first launch [D45, D48, D616]: welcome, name, agents, projects, each kept in the profile as it is
  * given, so a launch that stops part way picks up where it left off. Finishing the projects marks
  * it done.
  */
 export function Onboarding({ profile }: { profile: Profile }) {
+  const { daemon } = useDaemon();
   const [step, setStep] = useState<Step>(() => (!profile.intro_seen ? "intro" : profile.name ? "agents" : "name"));
   const [reached, setReached] = useState(() => Math.max(STEPS.indexOf(step), 0));
   const stopSound = useRef<(() => void) | null>(null);
@@ -52,7 +55,7 @@ export function Onboarding({ profile }: { profile: Profile }) {
       ) : step === "agents" ? (
         <AgentsStep onBack={() => go("name")} onContinue={() => go("projects")} />
       ) : (
-        <ProjectsStep onBack={() => go("agents")} />
+        <ProjectsStep source={daemonSource} offline={!daemon} onBack={() => go("agents")} />
       )}
     </main>
   );

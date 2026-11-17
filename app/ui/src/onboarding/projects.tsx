@@ -3,25 +3,39 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/button";
 import { CheckboxMark } from "../components/checkbox";
 import { cx } from "../components/cx";
-import { useDaemon } from "../daemon";
 import { ErrorLine } from "../components/error-line";
+import { Segmented } from "../components/segmented";
 import { FolderOpen, Spinner } from "../icons";
-import { addProject, useProjects } from "../projects/projects";
-import { errorText, pickRepo, run, setProfile } from "./api";
+import { cloneUrl, folderFromUrl, folderProblem } from "../projects/clone";
+import { addProject, newProjectId, useProjects } from "../projects/projects";
+import { DEFAULT_PARENT, type Source } from "../projects/store";
+import { errorText, pickRepo, setProfile } from "./api";
 import { PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
+import { CloneTab, NewTab } from "./sources";
 
 const baseName = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
 /** A home-relative path for display (`~/Development/app`), as the old app showed it. */
 const shortPath = (path: string) => path.replace(/^(\/Users|\/home)\/[^/]+(?=\/|$)/, "~");
 
+type Tab = "local" | "clone" | "new";
+const TABS = [
+  { value: "local", label: "Local" },
+  { value: "clone", label: "Clone" },
+  { value: "new", label: "New" },
+] as const;
+
 /**
- * The projects to start with [D45]: the repositories the agents' own history ran in, none ticked
- * to begin with, and any folder added with Add folder…, which must be in a git repository. Adding
- * them finishes the setup; with none ticked it finishes without projects. A picked folder joins
- * the cards ticked, as the old app had it, and is added with the rest at the finish.
+ * The projects to start with, Local / Clone / New in our kit [D45, D616]. Local: the repositories the agents'
+ * own history ran in, none ticked to begin with, and any folder added with Add folder…, which must be in a git
+ * repository; a picked folder joins the cards ticked, as the old app had it. Clone: one of your GitHub repositories
+ * or a URL. New: a name, git started in it. The footer's button adds them and finishes the setup; with none ticked
+ * on Local it finishes without projects.
  */
-export function ProjectsStep({ onBack }: { onBack: () => void }) {
-  const { daemon } = useDaemon();
+export function ProjectsStep({ source, offline, onBack, start = "local" }: { source: Source; offline: boolean; onBack: () => void; start?: Tab }) {
+  const [tab, setTab] = useState<Tab>(start);
+  const [url, setUrl] = useState("");
+  const [name, setName] = useState("");
+  const [parent, setParent] = useState(DEFAULT_PARENT);
   const added = (useProjects() ?? []).map((project) => project.folder);
   const [found, setFound] = useState<string[] | null>(null);
   // Folders picked with Add folder…, which the history count leaves out.
@@ -29,13 +43,13 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"adding" | "picking" | null>(null);
-  const online = Boolean(daemon);
+  const online = !offline;
 
   useEffect(() => {
     if (!online || found) return;
     let live = true;
-    run(["projects"]).then(
-      (reply) => live && setFound(reply.found),
+    source.history().then(
+      (list) => live && setFound(list),
       (cause) => {
         if (!live) return;
         setFound([]);
@@ -76,14 +90,23 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const folder = tab === "clone" ? folderFromUrl(url) : name.trim();
   const finish = async () => {
     setBusy("adding");
     setError(null);
     const failed: string[] = [];
-    for (const path of chosen) {
-      await addProject(path).catch((cause) => failed.push(`${baseName(path)}: ${errorText(cause)}`));
+    const add = (what: string, work: Promise<unknown>) => work.catch((cause) => failed.push(`${what}: ${errorText(cause)}`));
+    if (tab === "local") for (const path of chosen) await add(baseName(path), addProject(path));
+    // A clone or a new repository is added under an id made here, as Add project's are [D168].
+    else if (tab === "clone") {
+      const github = /^[\w.-]+\/[\w.-]+$/.test(url.trim());
+      await add(folder, source.clone(newProjectId(), github ? url.trim() : cloneUrl(url), `${parent}${folder}`, github));
+    } else {
+      const problem = folderProblem(folder);
+      if (problem) failed.push(problem);
+      else await add(folder, source.add(newProjectId(), `${parent}${folder}`, "new"));
     }
-    if (failed.length) setError(`Some projects could not be added.\n${failed.join("\n")}`);
+    if (failed.length) setError(tab === "local" ? `Some projects could not be added.\n${failed.join("\n")}` : failed.join("\n"));
     // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.
     else {
       // It ends on Home, never on a screen kept from an earlier run or opened under it (⌘,); set first, so that never draws.
@@ -94,10 +117,17 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
   };
 
   const count = chosen.length;
+  const where = { source, parent, busy: busy !== null, onParent: setParent, onError: setError };
   return (
     <div className="onboarding-step flex min-h-0 flex-1 flex-col">
-      <StepHeader title="Choose your projects" description="Pick the projects you want to work on." />
-      <div className="mt-12 flex min-h-0 flex-1 flex-col gap-3">
+      <StepHeader title="Choose your projects" description="Pick folders on this computer, clone a repository, or start a new one." />
+      <div className="mt-10 shrink-0 px-6">
+        <div className="mx-auto w-full max-w-onboarding">
+          <Segmented fill label="Where the project comes from" value={tab} options={TABS} disabled={busy !== null} onChange={(next) => (setTab(next), setError(null))} />
+        </div>
+      </div>
+      {tab === "local" ? (
+      <div className="mt-6 flex min-h-0 flex-1 flex-col gap-3">
         <div className="shrink-0 px-6">
           <div className="mx-auto flex w-full max-w-onboarding flex-wrap items-center gap-x-1 gap-y-2">
             <div className="flex items-center gap-2 px-1 text-label text-setup-hint">
@@ -139,7 +169,7 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
               </div>
             ) : cards.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                No repositories found in your history. Add a folder to start with one.
+                No repositories found in your history. Add a folder, or clone or start one above.
               </p>
             ) : (
               <ul className="onboarding-project-grid">
@@ -178,13 +208,31 @@ export function ProjectsStep({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       </div>
+      ) : (
+        <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+          <div className="mx-auto flex w-full max-w-onboarding flex-col gap-3">
+            {tab === "clone" ? (
+              <CloneTab url={url} onUrl={(next) => (setUrl(next), setError(null))} {...where} />
+            ) : (
+              <NewTab name={name} onName={(next) => (setName(next), setError(null))} {...where} />
+            )}
+            {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
+            <ErrorLine error={error} />
+          </div>
+        </div>
+      )}
       <StepFooter
         onBack={onBack}
-        count={addable.length > 0 ? `${count} of ${addable.length} selected` : added.length > 0 ? `${added.length} already added` : undefined}
+        count={tab !== "local" ? undefined : addable.length > 0 ? `${count} of ${addable.length} selected` : added.length > 0 ? `${added.length} already added` : undefined}
         primary={{
-          label: busy === "adding" ? "Adding…" : count === 0 ? (added.length ? "Finish" : "Continue without projects") : `Add ${count} ${count === 1 ? "project" : "projects"}`,
+          label:
+            tab === "clone"
+              ? busy === "adding" ? "Cloning…" : `Clone ${folder || "and continue"}`
+              : tab === "new"
+                ? busy === "adding" ? "Creating…" : `Create ${folder || "and continue"}`
+                : busy === "adding" ? "Adding…" : count === 0 ? (added.length ? "Finish" : "Continue without projects") : `Add ${count} ${count === 1 ? "project" : "projects"}`,
           onClick: () => void finish(),
-          disabled: !online,
+          disabled: !online || (tab !== "local" && !folder),
           busy: busy === "adding",
         }}
       />

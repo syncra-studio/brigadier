@@ -93,6 +93,9 @@ export type Agent = {
   sign_in: string | null;
   /** Its mark, one SVG from its adapter [D118, D123]; none: a generic terminal. */
   mark: string | null;
+  /** Its card's surface once installed, a theme name (`--agent-card-<brand>`), and its docs page [D616]. */
+  brand?: string | null;
+  docs?: string | null;
   /** Off: left out of new sessions, onboarding and switching; its sessions keep working [D2079]. */
   enabled: boolean;
   /** The command its Update runs, as typed; none: it can't be updated from here [D2082]. */

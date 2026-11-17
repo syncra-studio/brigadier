@@ -11,9 +11,9 @@ import { ArrowLeft, Spinner } from "../icons";
  * Back, a count and the step's one action.
  */
 
-export type Step = "intro" | "name" | "agents" | "projects";
+export type Step = "intro" | "name" | "agents" | "git" | "projects";
 export const STEPS: readonly Step[] = ["name", "agents", "projects"];
-const LABELS: Record<Step, string> = { intro: "Welcome", name: "Name", agents: "Agents", projects: "Projects" };
+const LABELS: Record<Step, string> = { intro: "Welcome", name: "Name", agents: "Agents", git: "GitHub or GitLab", projects: "Projects" };
 
 export const MAC = navigator.userAgent.includes("Mac");
 

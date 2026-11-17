@@ -13,12 +13,12 @@ import { closeAddProject, DEFAULT_PARENT, type GitHub, showProject, type Source 
 
 /** `owner/name` is a GitHub repository; anything else is taken as typed (the old app's). */
 const SHORTHAND = /^[\w.-]+\/[\w.-]+$/;
-const cloneUrl = (typed: string) => {
+export const cloneUrl = (typed: string) => {
   const url = typed.trim();
   return SHORTHAND.test(url) ? `https://github.com/${url.replace(/\.git$/, "")}.git` : url;
 };
 /** The folder a clone of `url` goes in: its last path part, without `.git`. */
-const folderFromUrl = (url: string) => (url.trim().replace(/\/+$/, "").split(/[/:]/).pop() ?? "").replace(/\.git$/, "");
+export const folderFromUrl = (url: string) => (url.trim().replace(/\/+$/, "").split(/[/:]/).pop() ?? "").replace(/\.git$/, "");
 
 /**
  * An add the dialog waits on (a clone, a new repository, a folder git starts in) under an id made
@@ -137,7 +137,12 @@ export function CloneView({
         </div>
         <div className="flex flex-col gap-2">
           <FieldLabel label="Your GitHub repositories" aside="Click one to clone it" />
-          <GitHubRepos source={source} filter={/[:@]/.test(url) ? "" : url} clone={clone} parent={parent} />
+          <GitHubRepos
+            source={source}
+            filter={/[:@]/.test(url) ? "" : url}
+            running={clone.running}
+            onPick={(name) => void cloneInto(clone, source, name, parent, name.split("/")[1]!, true)}
+          />
         </div>
         <SaveTo parent={parent} name={folder} aside="Named after the repository" disabled={busy} source={source} onParent={setParent} onError={clone.setError} />
         <div className="flex flex-col gap-1">
@@ -157,6 +162,10 @@ export function CloneView({
 }
 
 // ----- New repository -----
+
+/** Why a new repository's name can't be its folder's, or null. */
+export const folderProblem = (folder: string) =>
+  !folder || folder === "." || folder === ".." || folder.includes("/") ? (folder ? `"${folder}" can't be a folder name.` : "Name the repository.") : null;
 
 export function NewRepoView({
   source,
@@ -181,9 +190,8 @@ export function NewRepoView({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    if (!folder || folder === "." || folder === ".." || folder.includes("/")) {
-      return setTyped(folder ? `"${folder}" can't be a folder name.` : "Name the repository.");
-    }
+    const problem = folderProblem(folder);
+    if (problem) return setTyped(problem);
     void add.start(folder, (id) => source.add(id, `${parent}${folder}`, "new"));
   };
 
@@ -231,17 +239,20 @@ export function NewRepoView({
 
 // ----- Your GitHub repositories [D202] -----
 
-/** Your GitHub repositories through gh, each cloned in one click into `parent`; without gh, one line why. */
+/** Your GitHub repositories through gh, each picked in one click (`chosen` shows as picked); without gh, one line why. */
 export function GitHubRepos({
   source,
   filter,
-  clone,
-  parent,
+  running,
+  chosen,
+  onPick,
 }: {
   source: Source;
   filter: string;
-  clone: Add;
-  parent: string;
+  /** What's being cloned now: the rest wait. */
+  running: string | null;
+  chosen?: string;
+  onPick: (name: string) => void;
 }) {
   const [list, setList] = useState<GitHub | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -269,18 +280,18 @@ export function GitHubRepos({
   return (
     <div className={cx("flex shrink-0 flex-col gap-0.5 overflow-y-auto", height)}>
       {shown.map((repo) => {
-        const folder = repo.name.split("/")[1]!;
-        const mine = clone.running === repo.name;
+        const mine = running === repo.name;
         return (
           <button
             key={repo.name}
             type="button"
-            disabled={clone.running !== null}
-            onClick={() => void cloneInto(clone, source, repo.name, parent, folder, true)}
+            aria-pressed={chosen === undefined ? undefined : chosen === repo.name}
+            disabled={running !== null}
+            onClick={() => onPick(repo.name)}
             className={cx(
               "flex h-10.5 w-full shrink-0 cursor-pointer items-center gap-3 rounded-surface px-3 text-start outline-none focus-visible:focus-ring",
-              "hover:bg-fill-subtle disabled:cursor-not-allowed",
-              clone.running !== null && !mine && "opacity-row-disabled",
+              "hover:bg-fill-subtle disabled:cursor-not-allowed aria-pressed:bg-fill-hover",
+              running !== null && !mine && "opacity-row-disabled",
             )}
           >
             <span className="min-w-0 truncate font-mono text-xs" title={repo.name}>{repo.name}</span>
@@ -297,7 +308,7 @@ export function GitHubRepos({
 // ----- fields -----
 
 /** A field's label, with an optional note on the right. */
-function FieldLabel({ htmlFor, label, aside }: { htmlFor?: string; label: string; aside?: string }) {
+export function FieldLabel({ htmlFor, label, aside }: { htmlFor?: string; label: string; aside?: string }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">
       <label htmlFor={htmlFor} className="font-medium text-foreground">
@@ -309,15 +320,15 @@ function FieldLabel({ htmlFor, label, aside }: { htmlFor?: string; label: string
 }
 
 /** A 42-high capsule for a field, in the Input's look: its icon, then its content. */
-const BOX = cx(
+export const BOX = cx(
   "flex h-10.5 items-center gap-2.5 rounded-capsule border border-transparent bg-fill ps-3.5 pe-1.5 transition-colors",
   "focus-within:bg-background focus-within:focus-ring has-aria-invalid:border-invalid has-disabled:opacity-disabled",
   "svg:size-icon-sm svg:shrink-0 svg-uncoloured:text-muted-foreground",
 );
-const BOX_INPUT = "h-full min-w-0 flex-1 cursor-text bg-transparent font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground";
+export const BOX_INPUT = "h-full min-w-0 flex-1 cursor-text bg-transparent font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground";
 
 /** Save to: the folder it goes in (dimmer) and its own name brighter, with Change… for another parent. */
-function SaveTo({
+export function SaveTo({
   parent,
   name,
   aside,

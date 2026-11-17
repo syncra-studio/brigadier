@@ -1782,6 +1782,20 @@
   --onboarding-heading-tracking: -0.032em;
 }
 
+/* An installed agent's card [D616, D620]: its surface and the ink on it, by the name its adapter gives. */
+[data-brand="claude"] {
+  --agent-card: #d97757;
+  --agent-card-ink: #fff;
+}
+[data-brand="codex"] {
+  --agent-card: linear-gradient(in oklab to bottom, #cbe6ff 10%, #ddbefc 88%);
+  --agent-card-ink: #1e293b;
+}
+[data-brand="opencode"] {
+  --agent-card: linear-gradient(in oklab to bottom, #000 10%, #1e1e1e 88%);
+  --agent-card-ink: #fff;
+}
+
 /* The intro's mark, centred in the window: in over the first 0.14 s of --intro-mark-glide-for, held
    to 6.09 s, then it glides up to the title's centre, shrinking, by 7 s, and fades out by 7.35 s. */
 @keyframes intro-mark {
