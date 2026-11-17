@@ -94,6 +94,12 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   const [order, setOrder] = useState<string[] | null>(null);
   const online = Boolean(daemon);
   const { starting, failed, begin, close } = useAgentSetup(list, online);
+  // Continue's test prompt [D617]: out now, answered, and each that didn't answer, which stays until it's signed in again.
+  const [testing, setTesting] = useState<ReadonlySet<string>>(new Set());
+  const [passed, setPassed] = useState<ReadonlySet<string>>(new Set());
+  const [untested, setUntested] = useState<Record<string, TestFailure>>({});
+  // An install started here goes on to its sign-in by itself once it has ended and closed [D616].
+  const [thenSignIn, setThenSignIn] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     if (online) void checkAll(true);
@@ -113,7 +119,46 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
   const allChecked = list !== undefined && agents.every((agent) => stateOf(agent) !== "checking");
   if (allChecked && order === null) setOrder(agents.toSorted((a, b) => RANK[stateOf(a)] - RANK[stateOf(b)]).map((agent) => agent.name));
   const sorted = order ? agents.toSorted((a, b) => order.indexOf(a.name) - order.indexOf(b.name)) : agents;
-  const ready = agents.filter((agent) => agent.models?.length);
+  const ready = agents.filter((agent) => agent.models?.length && !untested[agent.name]);
+
+  useEffect(() => {
+    for (const agent of agents) {
+      const state = stateOf(agent);
+      if (!thenSignIn.has(agent.name) || agent.setup || state === "checking" || state === "install") continue;
+      setThenSignIn((names) => new Set([...names].filter((name) => name !== agent.name)));
+      if (state === "signIn") void begin(agent, "sign-in");
+    }
+  }, [list, thenSignIn]);
+
+  const act = (agent: Agent, action: "install" | "sign-in") => {
+    setUntested(({ [agent.name]: _, ...rest }) => rest);
+    if (action === "install") setThenSignIn((names) => new Set(names).add(agent.name));
+    void begin(agent, action);
+  };
+
+  // Every ready agent not yet answered is asked at once; all answered goes on, else their cards say why, and Continue
+  // again goes on with those that did.
+  const testThenContinue = async () => {
+    const asked = ready.filter((agent) => !passed.has(agent.name));
+    if (!asked.length) return onContinue();
+    setTesting(new Set(asked.map((agent) => agent.name)));
+    const answers = await Promise.all(
+      asked.map((agent) =>
+        run(["agents", "test", agent.name]).then(
+          (reply) => ({ agent, reply }),
+          (cause) => ({ agent, reply: { passed: false, reason: errorText(cause), login: null } }),
+        ),
+      ),
+    );
+    setTesting(new Set());
+    const failures = answers.filter(({ reply }) => !reply.passed);
+    setPassed((names) => new Set([...names, ...answers.filter(({ reply }) => reply.passed).map(({ agent }) => agent.name)]));
+    setUntested((all) => ({
+      ...all,
+      ...Object.fromEntries(failures.map(({ agent, reply }) => [agent.name, { label: agent.label, reason: String(reply.reason ?? ""), login: (reply.login as string | null) ?? null }])),
+    }));
+    if (!failures.length) onContinue();
+  };
 
   const description =
     list === undefined && error
@@ -147,21 +192,23 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
                   online={online}
                   starting={starting === agent?.name}
                   retrying={Boolean(agent && checking.has(agent.name))}
-                  failed={agent && failed[agent.name]}
-                  onAction={(action) => agent && void begin(agent, action)}
+                  failed={failed[agent.name] ?? untested[agent.name]?.reason}
+                  testing={testing.has(agent.name)}
+                  onAction={(action) => act(agent, action)}
                   onCancel={() => agent && void close(agent.name)}
                   onRetry={() => agent && void checkOne(agent.name)}
                 />
               ))}
             </ul>
           )}
+          <TestFailed failures={Object.values(untested)} />
           <p className="text-xs text-setup-hint">You can connect more accounts anytime in Settings.</p>
         </div>
       </div>
       <StepFooter
         onBack={onBack}
-        count={list && `${ready.length} of ${agents.length} connected`}
-        primary={{ label: "Continue", onClick: onContinue, disabled: ready.length === 0 }}
+        count={testing.size ? "Sending a test prompt…" : list && `${ready.length} of ${agents.length} connected`}
+        primary={{ label: "Continue", onClick: () => void testThenContinue(), busy: testing.size > 0, disabled: ready.length === 0 }}
       />
     </div>
   );
