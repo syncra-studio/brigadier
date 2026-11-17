@@ -173,12 +173,12 @@ setGitHandler((frame) => {
 /** The session's agent is at work: a turn open, stalled or not, or its background jobs still running [D1208, D1252]. */
 export const isWorking = (row: Row | undefined) => (row as ComposerRow | undefined)?.running === true || row?.works === true;
 
-/** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
 /** A folder chat's repo the panel reads, by session: Files, Review and the watch follow it [D494]. */
 const repoPicks = store<Record<string, string>>({});
 export const useRepoPick = (owner: string) => repoPicks.use()[owner] ?? null;
 export const pickRepo = (owner: string, repo: string) => repoPicks.set({ ...repoPicks.get(), [owner]: repo });
 
+/** Follows `owner`'s checkout while it's on screen: a session's, or Home's project's [D1039]. */
 export function useGitWatch(owner: string | null): void {
   const { daemon, rows } = useDaemon();
   const repo = useRepoPick(owner ?? "");

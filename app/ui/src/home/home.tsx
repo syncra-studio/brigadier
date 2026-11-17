@@ -57,6 +57,8 @@ export function HomeDraft() {
   const [setUp, setSetUp] = useState<string | null>(null);
   const asked = useRef(0);
   const id = project?.id;
+  // A folder of repos has no placement: each chat works in its own folder and claims copies there [D494].
+  const workIn = project?.kind === "folder" ? "worktree" : draft.workIn;
   // Trust this folder? asks about the project Home is drafted in [D167].
   useEffect(() => {
     enterProject(id ?? null);
@@ -129,8 +131,8 @@ export function HomeDraft() {
           before.current = new Set(projects?.map((each) => each.id));
           openAddProject(path);
         }}
-        workIn={draft.workIn}
-        localHolder={draft.workIn === "local" && id ? rows?.find((row) => row.project === id && row.local) : undefined}
+        workIn={workIn}
+        localHolder={workIn === "local" && id ? rows?.find((row) => row.project === id && row.local) : undefined}
         onWorkIn={(workIn) => setHomeDraft({ workIn })}
         repo={repo}
         base={base}
@@ -159,7 +161,7 @@ export function HomeDraft() {
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn: draft.workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />
       <SetUpAgentDialog
         name={setUp}
