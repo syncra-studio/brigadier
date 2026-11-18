@@ -1268,13 +1268,6 @@
   }
 }
 
-/* One animated width keeps the panel and title bar on the same frame [D740]. */
-@property --sidebar-shown {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
 /* The sidebar's width: where it was dragged (data-width on the sidebar, sidebar.tsx) or the default,
    kept in its range and leaving the content beside it room. */
 @utility sidebar-width-source {
@@ -1287,34 +1280,19 @@
       min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
     )
   );
-  /* Round once to layout precision so width and clearance cannot round apart. */
-  --sidebar-space: round(down, var(--sidebar-shown), calc(1px / 64));
-  /* How wide the panel shows beside the content: what the title bar keeps clear of. */
+  /* How wide the panel shows beside the content: what the title bar keeps clear of. It switches at once; the panel's
+     width and the title bar's padding each ease to it over the same 300ms spring, as in the old app [D745]. */
   --sidebar-shown: var(--spacing-sidebar-strip);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
   }
-  /* Keep the inset while the panel closes; changing it jumps the tabs [D740]. */
+  /* Hidden: no width, and no divider on the page, whose rounded corners stay where they are (page-corner) [D745]. */
   &[data-collapse="hidden"] {
     --sidebar-shown: 0px;
     & > .body-divider::after {
       display: none;
     }
-    & > .body-divider > main {
-      border-start-start-radius: var(--radius-surface);
-      border-end-start-radius: var(--radius-surface);
-    }
   }
-  transition: --sidebar-shown var(--duration-fold) var(--ease-out);
-  &[data-resizing] {
-    transition: none;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
-}
-@utility sidebar-shown-width {
-  width: var(--sidebar-space);
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
@@ -1368,6 +1346,44 @@
   }
 }
 
+/* A corner of the page surface (the old app's): it paints the window chrome, and the surface's hairline edge, outside the
+   surface's rounded corner over whatever the columns draw there, so the corner stays round whichever column reaches it,
+   the sidebar's or the page's, at every width of the sidebar [D745]. */
+@utility page-corner {
+  position: absolute;
+  width: var(--radius-surface);
+  height: var(--radius-surface);
+  background: radial-gradient(
+    circle at var(--page-corner),
+    transparent calc(var(--radius-surface) - 0.5px),
+    color-mix(in oklab, oklch(1 0 0) 6%, var(--color-chrome)) var(--radius-surface),
+    var(--color-chrome) calc(var(--radius-surface) + 0.5px)
+  );
+  &:dir(rtl) {
+    scale: -1 1;
+  }
+}
+@utility page-corner-top-start {
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  --page-corner: 100% 100%;
+}
+@utility page-corner-top-end {
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  --page-corner: 0 100%;
+}
+@utility page-corner-bottom-start {
+  inset-block-end: 0;
+  inset-inline-start: 0;
+  --page-corner: 100% 0;
+}
+@utility page-corner-bottom-end {
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  --page-corner: 0 0;
+}
+
 /* Full screen takes the traffic lights away, and Back moves to the titlebar's start. */
 :root[data-fullscreen] {
   --spacing-titlebar-start: calc(var(--spacing) * 2);
@@ -1384,13 +1400,17 @@
   padding-inline-end: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)));
 }
 
-/* A top bar's start: its own 12px, or more where Back, Forward and the toggle reach past the sidebar's edge,
-   so its first control starts 8px after them. It moves with the sidebar. */
+/* The tab bar's start: its own 8px (the old app's session tab bar, ps-clear-2), or more where Back, Forward and the
+   toggle reach past the sidebar's edge, so its first control starts 8px after them. It moves with the sidebar [D745]. */
 @utility titlebar-clear {
   padding-inline-start: max(
-    calc(var(--spacing) * 3),
-    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-space))
+    calc(var(--spacing) * 2),
+    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-shown))
   );
+  transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
@@ -1407,12 +1427,16 @@
   &::before {
     content: "";
     position: absolute;
-    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-space)));
+    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-shown)));
     top: calc((var(--spacing-titlebar) - var(--spacing) * 5) / 2);
     height: calc(var(--spacing) * 5);
     width: 0.5px;
     background: var(--color-divider);
     pointer-events: none;
+    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
   }
   /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
   &:not([data-settled]) .session-tab,
