@@ -96,7 +96,7 @@ export function DialogContent({ className, children, showCloseButton = true, con
         ref={ref}
         data-slot="dialog-content"
         className={cx(
-          "fixed start-1/2 z-popup grid w-full -translate-x-1/2 bg-material text-sm text-foreground shadow-material dialog-card",
+          "fixed start-1/2 z-popup grid w-full grid-cols-1 -translate-x-1/2 bg-material text-sm text-foreground shadow-material dialog-card",
           frame,
           top ?? "dialog-top",
           "outline-none backdrop-blur-material dialog-motion rtl:translate-x-1/2",
