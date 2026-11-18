@@ -132,6 +132,15 @@ pub fn rules(spec: &Spec) -> Value {
     // The desktop app's synced computer-use skill, found by OpenCode in ~/.claude/skills, says
     // computer use is missing; here it's `brigadier computer` [D922].
     let folder = folder.chain([rule("skill", "computer-use", "deny")]);
+    // osascript to System Events or an app, and cliclick, drive the user's apps in front of them;
+    // `brigadier computer` stays behind (proposed) [D929].
+    let drive = [
+        "*osascript*System Events*",
+        "*osascript*tell app*",
+        "*osascript*Application(*",
+        "*cliclick*",
+    ];
+    let folder = folder.chain(drive.map(|c| rule("shell", c, "deny")));
     if spec.level.as_deref() == Some("full") {
         return [rule("*", "*", "allow")]
             .into_iter()

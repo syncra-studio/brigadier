@@ -146,8 +146,12 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     // The desktop app's synced computer-use skill says computer use is missing; here it's
     // `brigadier computer`, so that skill is refused with the way to it [D922].
     let skill = "grep -q 'computer-use\"' || exit 0; echo 'Not here: in Brigadier the user'\\''s Mac apps are `brigadier computer`; `brigadier help computer` says how.' >&2; exit 2";
+    // osascript to System Events or an app, and cliclick, drive the user's apps in front of them:
+    // refused, with the way that stays behind (proposed) [D929].
+    let drive = "i=$(cat); case \"$i\" in *cliclick*) ;; *osascript*) printf %s \"$i\" | grep -qiE 'system events|tell app|application\\(' || exit 0;; *) exit 0;; esac; echo 'Refused: osascript to System Events or an app, and cliclick, drive the user'\\''s apps in front of them. Use `brigadier computer` (in the background); `brigadier help computer` says how.' >&2; exit 2";
     let mut settings = json!({"attribution": {"commit": "", "pr": ""}, "crossSessionInbound": "refuse", "showThinkingSummaries": true, "hooks": {
         "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "cat"}]},
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": drive}]},
             {"matcher": "Skill", "hooks": [{"type": "command", "command": skill}]}]},
         "permissions": {"allow": ["mcp__brigadier__show_draft"]}});
     // A worker's last words go to its lead as its result, a question included.
