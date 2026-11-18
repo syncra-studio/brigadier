@@ -1,15 +1,13 @@
 import { Tile, TileRemove } from "../components/composer/attachments";
-import { PullRequestOpen, Sparkles, XCircle } from "./icons";
+import { Sparkles, XCircle } from "./icons";
 
 /**
- * What waits above the composer for the agent: a Resolve with agent, a PR card's Fix, a failed run's, or a PR brought
- * to the agent from its tab [D674, D675]. Nothing is sent until the user sends [D1019, D1027, D1044]. The composer
- * carries it as an `agent` chip (panel/chips.ts).
+ * What waits above the composer for the agent: a Resolve with agent, a PR card's Fix or a failed run's. Nothing is
+ * sent until the user sends [D1019, D1027, D1044]. The composer carries it as an `agent` chip (panel/chips.ts).
  */
 export type AgentChip =
   | { id: string; kind: "resolve"; conflicts: number; files: number; operation: "merging" | "rebasing" | "pulling"; onto: string }
   | { id: string; kind: "fix"; pr: number; reasons: string }
-  | { id: string; kind: "pr"; pr: number; title: string; detail: string }
   | { id: string; kind: "run"; run: string; failed: string };
 
 const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
@@ -20,8 +18,6 @@ function face(chip: AgentChip) {
       return { icon: <Sparkles />, title: `Resolve ${plural(chip.conflicts, "conflict")}`, detail: `${plural(chip.files, "file")} · ${chip.operation} ${chip.onto}` };
     case "fix":
       return { icon: <Sparkles />, title: `Fix #${chip.pr}`, detail: chip.reasons };
-    case "pr":
-      return { icon: <PullRequestOpen />, title: `#${chip.pr} ${chip.title}`, detail: chip.detail };
     case "run":
       return { icon: <XCircle className="text-destructive" />, title: `Fix ${chip.run}`, detail: chip.failed };
   }

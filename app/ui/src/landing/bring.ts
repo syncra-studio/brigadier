@@ -1,40 +1,48 @@
+import { type Chip, EMPTY_DRAFT } from "../components/composer/draft";
 import type { Project, Row } from "../daemon";
 import { asGroups } from "../session/model";
 import { run } from "../onboarding/api";
-import { addChip, type Chip, hasChip } from "../panel/chips";
 import { newProjectId } from "../projects/projects";
 import { daemonSource } from "../projects/store";
-import { CHAT, selectTab } from "../shell/tab-store";
+import { draftOf, keepDraft, loadDraft } from "../session/draft";
+import { base64 } from "../session/files";
+import { CHAT, openTab, selectTab } from "../shell/tab-store";
 import { sessionId } from "../home/start";
 import type { PullRequest } from "./pull-requests";
 
 /** A row's last model, as Home reads it (1q's fold). */
 type Ran = Row & { backend: string; model?: string | null; effort?: string | null };
 
-/**
- * The PR as a chip for the agent [D675]: its number and title on the chip; the agent reads the PR, its failing checks
- * and its review comments. Nothing is sent until the user sends.
- */
-export function prChip(pr: PullRequest): Extract<Chip, { kind: "agent" }> {
+/** The PR as the agent reads it [D675]: the PR, its failing checks and its review comments. */
+export function prText(pr: PullRequest): string {
   const failing = pr.checks.filter((check) => check.state === "failed").map((check) => check.name);
   // Line comments (`r`) and reviews' own words (`v`), as Rust numbers them; not the ones the host hides.
   const reviews = pr.comments.filter((comment) => (comment.path || comment.id.startsWith("v")) && !comment.minimized);
-  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
-  const detail = [failing.length > 0 && plural(failing.length, "failing check"), reviews.length > 0 && plural(reviews.length, "review comment")].filter(Boolean).join(" · ");
   const text = [
     `PR #${pr.number} "${pr.title}" (${pr.url}), ${pr.branch} into ${pr.base}.`,
     failing.length > 0 && `Failing checks: ${failing.join(", ")}.`,
     reviews.length > 0 &&
       `Review comments:\n${reviews.map((c) => `${c.author}${c.path ? ` on ${c.path}${c.line === null ? "" : `:${c.line}`}` : ""}:\n${c.body.split("\n").map((line) => `> ${line}`).join("\n")}`).join("\n\n")}`,
   ];
-  const id = crypto.randomUUID();
-  return { kind: "agent", id, key: `pr:${pr.url}`, pr: pr.number, chip: { id, kind: "pr", pr: pr.number, title: pr.title, detail: detail || `${pr.branch} → ${pr.base}` }, text: text.filter(Boolean).join("\n\n") };
+  return text.filter(Boolean).join("\n\n");
 }
 
-/** The chip in `session`'s composer, once (Rust's too: this app may not have read them yet), and the session open on its chat. */
-async function open(session: string, chip: Extract<Chip, { kind: "agent" }>): Promise<void> {
-  const kept = ((await run(["chips", session])).chips ?? []) as Chip[];
-  if (!hasChip(session, chip.key) && !kept.some((each) => each.kind === "agent" && each.key === chip.key)) addChip(session, chip);
+/**
+ * The PR in `session`'s composer, once, as an inline chip named "Pull request #n" whose text is `prText` [D692]: the
+ * composer's own pasted-text chip, so a click opens that text in its tab. Then the session open on its chat, its PR tab
+ * beside it for the way back [D690]. Nothing is sent [D675].
+ */
+async function open(session: string, pr: PullRequest): Promise<void> {
+  const name = `Pull request #${pr.number}`;
+  await loadDraft(run, session);
+  const draft = draftOf(session) ?? EMPTY_DRAFT;
+  if (!draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) {
+    const id = crypto.randomUUID();
+    await run(["attach", session, "add", id, `${name}.txt`, "--data", base64(new TextEncoder().encode(prText(pr)).buffer)]);
+    const chip: Chip = { kind: "paste", attachmentId: id, preview: name };
+    keepDraft(run, session, { parts: [...draft.parts, chip, " "], attachmentIds: draft.attachmentIds });
+  }
+  openTab(session, "pr", String(pr.number));
   selectTab(session, CHAT);
   window.location.hash = `#thread/${encodeURIComponent(session)}`;
 }
@@ -71,9 +79,8 @@ async function cloned(repo: string, account: string | undefined): Promise<string
  * PR tab's (a session, or Home's project) and `target` its PR (`n`, or `owner/name#n`); `say` names each step on the button.
  */
 export async function bring(pr: PullRequest, owner: string, target: string, rows: readonly Row[], projects: readonly Project[], say: (words: string) => void): Promise<void> {
-  const chip = prChip(pr);
   const on = rows.find((row) => !row.archived && row.prs?.prs.some((each) => each.url === pr.url));
-  if (on) return open(on.id, chip);
+  if (on) return open(on.id, pr);
   // The tab's own project when it's that repository's PR; another repository's is looked up by its remote.
   const mine = rows.find((row) => row.id === owner)?.project ?? (projects.some((each) => each.id === owner) ? owner : null);
   const other = target.includes("#");
@@ -85,11 +92,11 @@ export async function bring(pr: PullRequest, owner: string, target: string, rows
   }
   // A session already on the branch that the watch hasn't linked to the PR yet.
   const held = (await run(["host", project, "session", pr.fork ? `pr-${pr.number}` : pr.branch])).session as string | null;
-  if (held) return open(held, chip);
+  if (held) return open(held, pr);
   say("Starting…");
   const model = await modelFor(project, rows);
   const id = sessionId();
   const where = ["--base", pr.base, "--pr", String(pr.number), "--head", pr.branch, ...(pr.fork ? ["--fork"] : [])];
-  await run(["start", id, "--backend", model.provider, "--project", project, ...where, "--model", model.model, ...(model.effort ? ["--effort", model.effort] : [])]);
-  open(id, chip);
+  await run(["start", id, "--backend", model.provider, "--project", project, ...where, "--title", `#${pr.number} ${pr.title}`, "--model", model.model, ...(model.effort ? ["--effort", model.effort] : [])]);
+  await open(id, pr);
 }

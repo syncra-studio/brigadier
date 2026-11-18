@@ -36,7 +36,7 @@ const subscribe = (listener: () => void) => {
 export const urlOf = (owner: string, id: string) => `/attachment/${owner === HOME_DRAFT ? "home" : owner}/${id}`;
 const set = (owner: string, id: string, attachment: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(id, attachment) }));
 
-const base64 = (buffer: ArrayBuffer) => {
+export const base64 = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
   let text = "";
   for (let at = 0; at < bytes.length; at += 0x8000) text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));

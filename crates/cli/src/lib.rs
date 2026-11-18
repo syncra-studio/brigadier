@@ -49,7 +49,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork]]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -223,7 +223,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
-                let on = host::pr_branch(args, &project)?;
+                let on = host::pr_branch(args, &project, &spec.dir)?;
                 core::folder::ensure(
                     &spec,
                     &project,

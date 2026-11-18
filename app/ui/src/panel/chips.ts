@@ -15,8 +15,8 @@ import { HOME } from "../shell/tab-store";
 
 /** `on`: the diff it was made on (the Review tab, or a commit's), which alone draws it. */
 /**
- * `agent`: a PR brought to the agent, a PR card's Fix or Resolve with agent [D674, D1093, D1290]: the chip's face, what
- * the agent reads, and `key`, what made it, so it's added once (`pr`: the PR it came from, or none).
+ * `agent`: a PR card's Fix or Resolve with agent [D1093, D1290]: the chip's face, what the agent reads, and `key`, what
+ * made it, so it's added once (`pr`: the PR it came from, or none).
  */
 export type Chip =
   | { kind: "comment"; id: string; on: string; comment: DiffComment }
@@ -92,9 +92,6 @@ export const addChip = (session: string, chip: Chip) => {
   set(session, [...(chips.get(session) ?? NONE), chip]);
   void tell(session, ["add", JSON.stringify(chip)]);
 };
-
-/** Whether `session`'s composer holds the agent chip `key` made, as read so far. */
-export const hasChip = (session: string, key: string) => (chips.get(session) ?? NONE).some((chip) => chip.kind === "agent" && chip.key === key);
 
 /** Takes chips away by hand. */
 export const dropChips = (session: string, ids: readonly string[]) => {

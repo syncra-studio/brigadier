@@ -246,6 +246,8 @@ impl Index {
             let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, holds);
             let mark = match &e.error {
                 Some(_) => Some("amber"),
+                // A session nothing was sent in yet isn't marked for its PR's checks [D691].
+                None if f.fold.turns.is_empty() && f.fold.finished == 0 => mark,
                 None => marked(mark, &e.marks.pr),
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].

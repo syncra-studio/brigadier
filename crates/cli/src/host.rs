@@ -98,15 +98,24 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     })
 }
 
-/// Bring to agent's `start --pr <n> --head <branch> [--fork]`: the PR's own branch, fetched, which
-/// the new session's worktree is on [D674]. None without `--pr`, and in a folder of repositories.
+/// Bring to agent's `start --pr <n> --head <branch> [--fork] [--title T]`: the PR's own branch,
+/// fetched, which the new session's worktree is on [D674], and the session named `T` after the PR
+/// [D689]. None without `--pr`, and in a folder of repositories.
 pub(super) fn pr_branch(
     args: &[String],
     project: &brigadier_core::projects::Project,
+    dir: &Path,
 ) -> io::Result<Option<String>> {
-    let (Some(n), true) = (super::flag(args, "--pr"), project.kind.is_empty()) else {
+    let Some(n) = super::flag(args, "--pr") else {
         return Ok(None);
     };
+    if let Some(title) = super::flag(args, "--title") {
+        let title = super::title::clean(title).map_err(io::Error::other)?;
+        core::write_atomic(&dir.join("title"), title.as_bytes())?;
+    }
+    if !project.kind.is_empty() {
+        return Ok(None);
+    }
     let n = n.parse().map_err(|_| io::Error::other("not a PR number"))?;
     let head = super::flag(args, "--head").unwrap_or_default();
     let fork = super::has(args, "--fork");
