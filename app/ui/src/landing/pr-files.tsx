@@ -30,8 +30,8 @@ const COUNT = "rounded-capsule bg-muted px-1.5 text-xs text-muted-foreground tab
 type File = Files["files"][number];
 type Event = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
 
-/** A review being written: its line comments and words, until it's submitted. */
-export type Draft = { comments: readonly DiffComment[]; body: string };
+/** A review being written: its line comments, the commit they were made on, and its words, until it's submitted. */
+export type Draft = { comments: readonly DiffComment[]; head?: string; body: string };
 // shortcut: kept while the app runs, not through a restart; keep it in the session's folder if that's missed.
 export const drafts = new Map<string, Draft>();
 const NO_COMMENTS: readonly DiffComment[] = [];
@@ -53,7 +53,6 @@ export function PrFiles({
   tick,
   draft,
   onDraft,
-  onHead,
   onOpen,
 }: {
   owner: string;
@@ -63,8 +62,6 @@ export function PrFiles({
   draft: Draft;
   /** Stable: the file cards keep it. */
   onDraft: (next: SetStateAction<Draft>) => void;
-  /** The commit the diff was read at, which a review's line comments are pinned to. */
-  onHead: (head: string) => void;
   onOpen: () => void;
 }) {
   const { daemon } = useDaemon();
@@ -81,7 +78,6 @@ export function PrFiles({
   const land = (next: Files) => {
     shown.current = next;
     setFiles(next);
-    onHead(next.head);
   };
   const read = () => {
     const mine = ++at.current;
@@ -121,7 +117,8 @@ export function PrFiles({
             reject(new Error(String(reply.error)));
           }),
         ),
-      comment: (comment) => onDraft((now) => ({ ...now, comments: [...now.comments, comment] })),
+      // A review's line comments are pinned to the commit the first was made on, whatever the diff reads after.
+      comment: (comment) => onDraft((now) => ({ ...now, head: now.comments.length ? now.head : shown.current?.head, comments: [...now.comments, comment] })),
       remove: (id) => onDraft((now) => ({ ...now, comments: now.comments.filter((comment) => comment.id !== id) })),
     }),
     [host, target, onDraft],
@@ -303,7 +300,7 @@ export function SubmitReview({
   owner: string;
   target: string;
   pr: PullRequest;
-  /** The commit the review is pinned to: the diff's lines' when it has line comments; null until known. */
+  /** The commit the review is pinned to: its line comments' when it has some, else the PR's as read. */
   head: string | null;
   draft: Draft;
   onDraft: (draft: Draft) => void;

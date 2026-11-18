@@ -84,8 +84,6 @@ export function PrTab({
       }),
     [key],
   );
-  // The commit Code's lines were read at.
-  const [read, setRead] = useState<string | null>(null);
   // Code is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
   const [tab, setTab] = useState("summary");
   const [coded, setCoded] = useState(false);
@@ -180,7 +178,7 @@ export function PrTab({
                 owner={owner}
                 target={target}
                 pr={pr}
-                head={read ?? (draft.comments.length ? null : pr.head)}
+                head={(draft.comments.length ? draft.head : pr.head) ?? null}
                 draft={draft}
                 onDraft={setDraft}
                 onReviewed={check}
@@ -197,11 +195,16 @@ export function PrTab({
               <Summary pr={pr} sends={sends} />
             </div>
           </Tabs.Panel>
-          {coded && (
-            <div role="tabpanel" aria-label="Code" inert={tab !== "code"} className={cx("absolute inset-0 flex flex-col", tab !== "code" && "invisible")}>
-              <PrFiles owner={owner} target={target} pr={pr} tick={tick} draft={draft} onDraft={setDraft} onHead={setRead} onOpen={() => sends.onOpen("pr")} />
-            </div>
-          )}
+          <Tabs.Panel
+            value="code"
+            keepMounted
+            inert={tab !== "code"}
+            // Invisible, not `hidden`: display none would lay every diff out again on each return.
+            render={(props) => <div {...props} hidden={false} />}
+            className={(state) => cx("absolute inset-0 flex flex-col", state.hidden && "invisible")}
+          >
+            {coded && <PrFiles owner={owner} target={target} pr={pr} tick={tick} draft={draft} onDraft={setDraft} onOpen={() => sends.onOpen("pr")} />}
+          </Tabs.Panel>
         </div>
       </Tabs.Root>
     </div>
