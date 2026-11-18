@@ -3,18 +3,19 @@ import { useSyncExternalStore } from "react";
 
 import type { StepKind, Turn, Work } from "./item";
 
+// The work-log words, counted: "Ran 2 commands" [D752].
 const STEPS: Record<StepKind, [string, string]> = {
-  edit: ["edited a file", "edited files"],
-  read: ["read a file", "read files"],
-  list: ["listed files", "listed files"],
-  search: ["searched once", "searched"],
-  run: ["ran a command", "ran commands"],
-  web: ["searched the web", "searched the web"],
-  agent: ["ran a subagent", "ran subagents"],
-  skill: ["used a skill", "used skills"],
-  other: ["used a tool", "used tools"],
+  edit: ["Changed # file", "Changed # files"],
+  read: ["Read # file", "Read # files"],
+  list: ["Listed files # time", "Listed files # times"],
+  search: ["Searched code # time", "Searched code # times"],
+  run: ["Ran # command", "Ran # commands"],
+  web: ["Searched the web # time", "Searched the web # times"],
+  agent: ["Ran # subagent", "Ran # subagents"],
+  skill: ["Used # skill", "Used # skills"],
+  other: ["Used # tool", "Used # tools"],
 };
-/** Kinds in the order a group names them; its icon is the first one it holds. */
+/** Kinds by the icon a group takes: its first one held. */
 export const ORDER = Object.keys(STEPS) as StepKind[];
 
 /** An MCP server as the user knows it, as the old app's: "atlassian" is "Atlassian". */
@@ -23,15 +24,30 @@ export function connectorName(server: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "an integration";
 }
 
-/** "Edited 3 files, ran 2 commands, used Atlassian 2 times": a group's counts, in a fixed kind order, only the first part capitalised. */
-export function groupWords(steps: readonly { kind: StepKind; n: number; server?: string | null }[]): string {
-  const text = [...steps]
-    .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind))
-    .map(({ kind, n, server }) =>
-      server ? `used ${connectorName(server)}` : STEPS[kind][n === 1 ? 0 : 1],
-    )
-    .join(", ");
-  return text.charAt(0).toUpperCase() + text.slice(1);
+const counted = (kind: StepKind, n: number) => STEPS[kind][n === 1 ? 0 : 1].replace("#", String(n));
+/** "A", "A and B", "A, B, and C". */
+const joined = (parts: readonly string[]) => (parts.length < 3 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`);
+/** Commands and edits name first, tools last. */
+const rank = (kind: StepKind) => (kind === "run" || kind === "edit" ? 0 : kind === "other" ? 2 : 1);
+
+/**
+ * A group's one line: "Used Atlassian, ran 2 commands, and read 1 file". MCP servers first,
+ * then the two kinds that matter most in the order they came, the rest "performed 3 other actions"; thoughts
+ * aren't counted, and a group of only thoughts is "Thought (×3)".
+ */
+export function groupWords(steps: readonly { kind: StepKind; n: number; server?: string | null }[], thoughts = 0): string {
+  const servers = [...new Set(steps.flatMap(({ server }) => (server ? [connectorName(server)] : [])))];
+  const kinds = steps.filter(({ server }) => !server);
+  if (!servers.length && !kinds.length) return thoughts > 1 ? `Thought (×${thoughts})` : "Thought";
+  const top = kinds
+    .map((step, at) => ({ ...step, at }))
+    .sort((a, b) => rank(a.kind) - rank(b.kind) || a.at - b.at)
+    .slice(0, 2)
+    .sort((a, b) => a.at - b.at);
+  const rest = kinds.reduce((sum, { n }) => sum + n, 0) - top.reduce((sum, { n }) => sum + n, 0);
+  const parts = [...(servers.length ? [`Used ${joined(servers)}`] : []), ...top.map(({ kind, n }) => counted(kind, n))];
+  if (rest > 0) parts.push(`Performed ${rest} other action${rest === 1 ? "" : "s"}`);
+  return joined(parts.map((part, at) => (at === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))));
 }
 
 const ENDED: Record<Turn["status"], string> = {

@@ -1,10 +1,11 @@
 import { useThread } from "../../daemon";
-import { Mcp } from "../../icons";
-import type { Turn, Work } from "../../thread/item";
+import { Lightbulb, Mcp } from "../../icons";
+import type { Item, Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
 import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
-import { Chevron, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
+import { Markdown } from "../../thread/markdown";
+import { Chevron, OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { finished } from "../../workers/chip";
 import { useWorkers } from "../../workers/live";
 
@@ -67,18 +68,30 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
 const QUIET_MS = 30 * 60_000;
 
 /**
- * Steps that came one after another, as one row: "Edited 3 files, ran 2 commands ›", with the first kind's icon.
- * Its count only goes up while the turn runs; a running step draws in its place until it ends (GroupLine) [D173, D227].
+ * Steps that came one after another, as one row: "Changed 3 files and ran 2 commands ›", with the first kind's icon,
+ * as a work log [D752]. Its count only goes up while the turn runs; a running step draws in its place until
+ * it ends (GroupLine) [D173, D227]. Its › always shows, so a folded group reads as one that opens.
  */
-export function GroupRow({ item, open, onToggle }: { item: Group; open: boolean; onToggle: (id: string) => void }) {
-  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";
+export function GroupRow({ item, thoughts = 0, open, onToggle }: { item: Group; thoughts?: number; open: boolean; onToggle: (id: string) => void }) {
+  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k));
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
-      {/* Only MCP tools: the MCP glyph, as their own rows [D666]. */}
-      <StepIcon kind={kind} icon={kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
-      <Words verb={groupWords(item.steps)} />
-      <Chevron />
+      {/* Only MCP tools: the MCP glyph, as their own rows [D666]; only thoughts, the thought's. */}
+      <StepIcon kind={kind} icon={!kind ? Lightbulb : kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
+      <Words verb={groupWords(item.steps, thoughts)} />
+      <Chevron always />
     </button>
+  );
+}
+
+/** A thought's line: its heading or first words, opening to the whole thought [D752]. */
+export function ThoughtRow({ item }: { item: Extract<Item, { kind: "reasoning" }> }) {
+  const words = item.heading || item.text.replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim() || "Thought";
+  return (
+    <OpeningRow keep={item.id} detail={<div className="ps-5.5"><Markdown text={item.text} keep={item.id} /></div>}>
+      <StepIcon icon={Lightbulb} />
+      <Words verb={words} />
+    </OpeningRow>
   );
 }
 

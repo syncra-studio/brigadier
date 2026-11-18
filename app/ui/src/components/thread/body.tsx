@@ -24,7 +24,7 @@ import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
-import { GroupRow } from "./work";
+import { GroupRow, ThoughtRow } from "./work";
 import { TodoRow } from "./todo";
 import { BrigadeMessagePill } from "../../sessions/brigade";
 
@@ -52,12 +52,14 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
 type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
 
 /** A group's row and, opened, its steps: the thread's, a worker's in its panel, a skill's. Its running step is its row till it ends [D227]. */
-export function GroupLine({ item, turn, open, steps, live, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; onToggle: (id: string) => void }) {
+export function GroupLine({ item, turn, open, steps, live, thoughts, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; thoughts?: number; onToggle: (id: string) => void }) {
+  // What it does now: its running step, or the thought it's on [D752].
+  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live && <Body item={live} turn={turn} step={false} />;
   // The turn's latest run is only what it does now: its header comes once something follows it [D230].
-  if (item.run) return live ? <Body item={live} turn={turn} step={false} /> : <ThinkingLine />;
+  if (item.run) return now || <ThinkingLine />;
   return (
     <>
-      {live ? <Body item={live} turn={turn} step={false} /> : <GroupRow item={item} open={open} onToggle={onToggle} />}
+      {now || <GroupRow item={item} thoughts={thoughts} open={open} onToggle={onToggle} />}
       {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
       {open && steps.length > 0 && (
         <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
@@ -133,8 +135,8 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         </>
       );
     case "reasoning":
-      // Finished thinking isn't drawn: "Worked for …" covers it.
-      return item.streaming ? <ThinkingLine heading={item.heading} /> : null;
+      // A thought is a line of the work; while it streams, the live line [D752].
+      return item.streaming ? <ThinkingLine heading={item.heading} /> : <ThoughtRow item={item} />;
     case "tool": {
       const ms = item.startedAt !== undefined && item.endedAt != null ? item.endedAt - item.startedAt : null;
       return (

@@ -68,7 +68,8 @@ export function OpeningRow({ keep, children, detail, trail }: { keep: string; ch
     <Collapsible open={open} onOpenChange={setOpen} className="flex min-w-0 flex-col">
       <CollapsibleTrigger className={cx(ROW, TOGGLE)}>
         {children}
-        <Chevron />
+        {/* Always there, its ›: every step line says it opens [D752]. */}
+        <Chevron always />
         {trail && <span className="ms-1 flex shrink-0 items-center gap-1.5 group-aria-expanded:hidden">{trail}</span>}
       </CollapsibleTrigger>
       {/* Base UI leaves a shut panel out of the page: a closed row costs one line. */}

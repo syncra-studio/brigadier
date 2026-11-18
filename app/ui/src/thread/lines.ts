@@ -13,8 +13,11 @@ export type Line =
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
-  /** A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn in its place [D227]. */
-  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item }
+  /**
+   * A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn in its place [D227];
+   * `thoughts`: how many of its lines are thoughts, which its words don't count [D752].
+   */
+  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; thoughts: number }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
 
@@ -136,14 +139,14 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (item.kind === "message" && item.role === "user" && item.origin === "system") continue;
 
     if (fold && !kept.includes(item.n!)) continue;
-    // Thinking is a row only while it lasts.
-    if (item.kind === "reasoning" && !item.streaming) continue;
     if (group && within(item.n, group.span)) {
-      // A running step or thinking is its group's line until it ends: it never shows apart and moves [D173, D227, D230].
-      if (live && group.line && (running(item) || item.kind === "reasoning")) {
+      // A running step is its group's line until it ends, and the run's latest thought while nothing runs: it never
+      // shows apart and moves [D173, D227, D230]. A thought once the run went on is one of its lines [D752].
+      if (live && group.line && (running(item) || (group.line.item.run && item.kind === "reasoning"))) {
         group.line.live = item;
         continue;
       }
+      if (group.line?.live?.kind === "reasoning") group.line.live = undefined;
       if (!group.open) continue;
       const step: StepLine = { type: "item", id: item.id, gap: group.line ? "step" : gap(item, false), item, turn, step: !group.single };
       if (group.line) group.line.steps.push(step);
@@ -152,11 +155,18 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     group = null;
     if (item.kind === "group") {
-      // Live and folded group alike, as the old app's; Rust counts only ended steps, so a live count only goes up [D173].
-      // Once its turn ends (done, stopped or failed alike), a group of one step draws as that step; more stay one line,
-      // so going live again never turns loose steps back into a header [D236, D694].
-      const single = !live && item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
-      const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [] };
+      // The same rule, live, ended, stopped or reloaded [D752]: a run of steps between the agent's words is one
+      // line saying what it did, and a run of one step or thought is that step's own line. Only the run still going is
+      // its live line whatever it holds, its header coming once something follows it [D230].
+      let size = 0;
+      let thoughts = 0;
+      for (let next = at + 1; next < items.length && within(items[next]!.n, item.span); next++) {
+        if (items[next]!.hidden) continue;
+        size++;
+        if (items[next]!.kind === "reasoning") thoughts++;
+      }
+      const single = !item.run && size === 1;
+      const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [], thoughts };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };
       continue;
