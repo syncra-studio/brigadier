@@ -270,7 +270,7 @@ function approvedHere(tab: string, approved: { generation: number; url: string }
   return approved && approved.generation === agentPage(tab).generation ? approved.url : null;
 }
 
-const SENSITIVE = ["pay", "send", "signIn", "credentials", "card", "oneTimeCode", "script", "action"];
+const SENSITIVE = ["pay", "send", "delete", "signIn", "credentials", "card", "oneTimeCode", "script", "action"];
 
 function askOf(answer: unknown): { sensitive: string; what: string } | null {
   if (typeof answer !== "object" || !answer || !("ask" in answer)) return null;
