@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
 
+/// Its local part, read from the agents' files at once; how each new address signs in is asked
+/// after, in the background, so nothing waits on a server that doesn't answer.
 pub(super) fn sync(data: &Path) -> io::Result<()> {
     let mut items = library::items(data);
     let all = projects::list(data).unwrap_or_default();
@@ -102,23 +104,45 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
             }
         }
     }
-    // How each new address signs in, all asked at once; one that doesn't answer signs in none.
-    // shortcut: an unreachable one isn't asked again; upgrade if one turns out to need Brigadier's sign-in.
-    std::thread::scope(|s| {
-        let new = items.iter_mut().filter(|i| {
-            i["found"].is_array() && i["url"].is_string() && i.get("sign_in").is_none()
-        });
-        for i in new {
-            s.spawn(move || {
-                let kind = crate::signin::kind(str(&i["url"]), false).ok().flatten();
-                i["sign_in"] = kind.into();
-            });
-        }
-    });
-    match items == before {
-        true => Ok(()),
-        false => library::save(data, &items),
+    if items != before {
+        library::save(data, &items)?;
     }
+    let data = data.to_path_buf();
+    std::thread::spawn(move || ask(&data));
+    Ok(())
+}
+
+/// How each new address signs in, all asked at once, saved once they answer; one that doesn't
+/// answer signs in none. One left unasked (Brigadier quit meanwhile) is asked at the next sync.
+// shortcut: an unreachable one isn't asked again; upgrade if one turns out to need Brigadier's sign-in.
+fn ask(data: &Path) {
+    let new =
+        |i: &&Value| i["found"].is_array() && i["url"].is_string() && i.get("sign_in").is_none();
+    let urls: Vec<String> = (library::items(data).iter().filter(new))
+        .map(|i| str(&i["url"]).to_string())
+        .collect();
+    if urls.is_empty() {
+        return;
+    }
+    let kinds: Vec<Value> = std::thread::scope(|s| {
+        let asked: Vec<_> = (urls.iter())
+            .map(|u| s.spawn(move || crate::signin::kind(u, false).ok().flatten()))
+            .collect();
+        asked
+            .into_iter()
+            .map(|a| a.join().ok().flatten().into())
+            .collect()
+    });
+    let _one = super::LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // Read again: the library may have changed while they were asked.
+    let mut items = library::items(data);
+    for (url, kind) in urls.iter().zip(kinds) {
+        let same = |i: &&mut Value| new(&&**i) && i["url"] == url.as_str();
+        if let Some(i) = items.iter_mut().find(same) {
+            i["sign_in"] = kind;
+        }
+    }
+    let _ = library::save(data, &items);
 }
 
 /// A SKILL.md's `metadata.author`, where its maker signs it: "github-spec-kit".
