@@ -68,7 +68,9 @@ export function HomeDraft() {
   const spot = draft.spot?.project === id ? draft.spot : undefined;
   const known = <T,>(picked: string | undefined, list: T[] | undefined, same: (each: T) => boolean) => (picked && (!list || list.some(same)) ? picked : null);
   // A pick the repository no longer has falls back; until it's read, the pick stands.
-  const base = known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
+  // A PR sent to the agent: a new worktree on its branch, until another branch or place is picked [D699].
+  const pr = draft.pr?.project === id && workIn === "worktree" ? draft.pr : undefined;
+  const base = pr ? (pr.fork ? `pr-${pr.number}` : pr.branch) : known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
   const worktree = known(spot?.worktree, repo.info?.worktrees, (each) => each.path === spot?.worktree);
   const groups = listed && listed.project === id ? listed.groups : null;
   const fresh = listed?.project === id && listed?.fresh;
@@ -122,6 +124,8 @@ export function HomeDraft() {
   return (
     <>
       <HomeView
+        // Drawn again as a PR is sent to the agent, so its field shows the draft with the PR's chip [D699].
+        key={draft.pr ? draft.focus : 0}
         name={name}
         projects={projects}
         project={project}
@@ -136,7 +140,7 @@ export function HomeDraft() {
         onWorkIn={(workIn) => setHomeDraft({ workIn })}
         repo={repo}
         base={base}
-        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined } })}
+        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined }, pr: undefined })}
         worktree={worktree}
         onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path } })}
         // Only a fresh list can say no model is available: a cached one before any check offers none, so it reads as loading.
@@ -161,7 +165,7 @@ export function HomeDraft() {
         }}
         loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />
       <SetUpAgentDialog
         name={setUp}

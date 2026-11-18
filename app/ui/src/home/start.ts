@@ -10,7 +10,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, rereadHome, selectTab } from "../shell/tab-store";
+import { carryHome, CHAT, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -43,6 +43,8 @@ export type HomeDraft = {
   text?: Draft;
   /** Bumped to put the cursor in the field. */
   focus: number;
+  /** A PR sent to the agent, while Home is in its project in a new worktree [D699]. */
+  pr?: PrStart;
 };
 const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
@@ -129,11 +131,23 @@ function runStart(entry: Starting): void {
 /** A new session's id, made here so its row and thread show before Rust has it [D30]. */
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-/** Where a project's session works: `base` for a new worktree, `worktree` for an existing one. */
-export type Place = { workIn: WorkIn; base: string | null; worktree: string | null };
+/** A PR's session: its new worktree on the PR's branch, named after it, its page in a browser tab [D674, D689, D699]. `tab`: its PR tab's target. */
+export type PrStart = { project: string; number: number; title: string; url: string; branch: string; base: string; fork: boolean; tab: string };
 
-const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
-  workIn === "local" ? ["--local"] : workIn === "existing" ? ["--local", "--cwd", worktree!] : base ? ["--base", base] : [];
+/** Where a project's session works: `base` for a new worktree, `worktree` for an existing one, `pr` a PR's branch. */
+export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; pr?: PrStart };
+
+const placeArgs = ({ workIn, base, worktree, pr }: Place): string[] =>
+  workIn === "local"
+    ? ["--local"]
+    : workIn === "existing"
+      ? ["--local", "--cwd", worktree!]
+      : pr
+        ? ["--base", pr.base, "--pr", String(pr.number), "--head", pr.branch, ...(pr.fork ? ["--fork"] : []), "--title", prTitle(pr), "--url", pr.url]
+        : base
+          ? ["--base", base]
+          : [];
+const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
 
 /** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
@@ -146,11 +160,14 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, parts, title: "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
+  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ text: undefined, level: undefined, brigade: undefined, model, ...(project && { project }) });
+  setHomeDraft({ text: undefined, level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
+  // Its PR tab stays behind: the session has the PR's page instead [D699].
+  const tab = place.pr && tabsOf(HOME_DRAFT).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
+  if (tab) closeTab(HOME_DRAFT, tab.id);
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

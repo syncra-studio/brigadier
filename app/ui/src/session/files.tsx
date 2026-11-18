@@ -36,6 +36,9 @@ const subscribe = (listener: () => void) => {
 export const urlOf = (owner: string, id: string) => `/attachment/${owner === HOME_DRAFT ? "home" : owner}/${id}`;
 const set = (owner: string, id: string, attachment: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(id, attachment) }));
 
+/** A file put in `owner`'s folder from elsewhere (a PR sent to the agent [D699]), known to its composer if that has listed them. */
+export const stored = (owner: string, id: string, name: string) => owners.has(owner) && set(owner, id, { id, name, mime: "text/plain", state: "ready", url: urlOf(owner, id) });
+
 export const base64 = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer);
   let text = "";

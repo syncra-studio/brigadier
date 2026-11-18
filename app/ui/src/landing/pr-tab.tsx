@@ -25,8 +25,8 @@ const COLUMN = "w-full px-5";
  * Check again; who, which repository and which branches on one line, each opening its page, all of it selectable
  * [D656]; then Summary (labels, reviewers, checks, the description and review comments) and Code, the PR's diff as
  * its host has it [D231, D262], kept as it was between switches. Beside the tabs, its one action, the Start
- * workspace: Bring to agent, which opens a session on the PR's branch with the PR waiting in its composer [D673,
- * D674, D675]; merging and reviewing are on the host or through the agent. It paints its last read at once; when a
+ * workspace: Send to agent, which opens the New chat page on the PR's branch with the PR waiting in its composer
+ * [D673, D674, D675, D699]; merging and reviewing are on the host or through the agent. It paints its last read at once; when a
  * read fails, the last one stays with why [D207, D208, D1009].
  */
 export function PrTab({
@@ -36,11 +36,11 @@ export function PrTab({
   row,
   error,
   checking,
-  bringing = null,
+  sending = null,
   failed = null,
   sends,
   onCheck,
-  onBring,
+  onSendToAgent,
 }: {
   owner: string;
   /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
@@ -52,13 +52,13 @@ export function PrTab({
   error?: string;
   /** A read under way. */
   checking: boolean;
-  /** Bring to agent under way: what it's doing, as its button says. */
-  bringing?: string | null;
-  /** Why the last Bring to agent didn't go, said under the header. */
+  /** Send to agent under way: what it's doing, as its button says. */
+  sending?: string | null;
+  /** Why the last Send to agent didn't go, said under the header. */
   failed?: string | null;
   sends: Sends;
   onCheck: () => void;
-  onBring: () => void;
+  onSendToAgent: () => void;
 }) {
   // Check again reads Code again too, when it's open [D231].
   const [tick, setTick] = useState(0);
@@ -132,7 +132,7 @@ export function PrTab({
               </span>
             </span>
           </div>
-          {/* Why the last read or Bring to agent didn't go: what shows is the last read that did [D1009]. */}
+          {/* Why the last read or Send to agent didn't go: what shows is the last read that did [D1009]. */}
           <ErrorLine error={failed ?? error ?? pr.problem} />
           <div className="flex items-center gap-4 border-b border-divider">
             <Tabs.List className="flex flex-1 gap-4">
@@ -144,9 +144,9 @@ export function PrTab({
               </Tabs.Tab>
             </Tabs.List>
             <span className="flex items-center pb-1">
-              <Button size="sm" disabled={bringing !== null || sends.offline} onClick={onBring}>
+              <Button size="sm" disabled={sending !== null || sends.offline} onClick={onSendToAgent}>
                 <Sparkles />
-                {bringing ?? "Bring to agent"}
+                {sending ?? "Send to agent"}
               </Button>
             </span>
           </div>

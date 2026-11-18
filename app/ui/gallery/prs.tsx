@@ -186,7 +186,7 @@ function List({ list, closed = false, view = "all", busy = false }: { list: Foun
   );
 }
 
-const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onBring={() => {}} />;
+const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onSendToAgent={() => {}} />;
 
 /** The Pull requests tab and a Pull request tab, on sample PRs [D609, D613]. */
 export function PrsGallery() {

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { openLink } from "../browser/links";
 import { ask, useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
-import { bring } from "./bring";
+import { sendToAgent } from "./send-to-agent";
 import { useHost } from "./host";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
@@ -12,8 +12,8 @@ import type { PullRequest } from "./pull-requests";
 /**
  * The live Pull requests tab [D204, D207]: PR `number`'s last read, kept in the session's folder, painted at once, then
  * read again only when it's older than the watch's pace, on focus likewise, and on Check again [D208]. The watch reads
- * it while the tab is open, and its row says so, which brings the kept read in again. Bring to agent opens a session on
- * the PR's branch with the PR in its composer [D674, D675].
+ * it while the tab is open, and its row says so, which brings the kept read in again. Send to agent opens the New chat page on
+ * the PR's branch with the PR in its composer [D674, D675, D699].
  */
 export function LivePrTab({ owner, target }: { owner: string; target: string }) {
   const host = useHost(owner);
@@ -26,7 +26,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
-  const [bringing, setBringing] = useState<string | null>(null);
+  const [sending, setSending] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const latest = useRef<PullRequest>(undefined);
   latest.current = pr;
@@ -79,7 +79,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       row={row}
       error={error}
       checking={checking}
-      bringing={bringing}
+      sending={sending}
       failed={failed}
       onCheck={read}
       sends={{
@@ -97,13 +97,13 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
           if (url) openLink(url);
         },
       }}
-      onBring={() => {
-        if (!pr || bringing) return;
+      onSendToAgent={() => {
+        if (!pr || sending) return;
         setFailed(null);
-        setBringing("Bring to agent");
-        bring(pr, host, target, rows ?? [], projects ?? [], setBringing)
-          .catch((cause) => setFailed(`Couldn't bring #${number} to the agent: ${errorText(cause)}`))
-          .finally(() => setBringing(null));
+        setSending("Send to agent");
+        sendToAgent(pr, host, target, rows ?? [], projects ?? [], setSending)
+          .catch((cause) => setFailed(`Couldn't send #${number} to the agent: ${errorText(cause)}`))
+          .finally(() => setSending(null));
       }}
     />
   );

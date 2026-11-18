@@ -98,20 +98,35 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     })
 }
 
-/// Bring to agent's `start --pr <n> --head <branch> [--fork] [--title T]`: the PR's own branch,
-/// fetched, which the new session's worktree is on [D674], and the session named `T` after the PR
-/// [D689]. None without `--pr`, and in a folder of repositories.
+/// Send to agent's `start --pr <n> --head <branch> [--fork] [--title T] [--url U]`: the PR's own
+/// branch, fetched, which the new session's worktree is on [D674], the session named `T` after the
+/// PR [D689] and its page `U` in a browser tab behind Chat [D699]. None without `--pr`, and in a
+/// folder of repositories.
 pub(super) fn pr_branch(
+    data: &Path,
     args: &[String],
     project: &brigadier_core::projects::Project,
-    dir: &Path,
+    spec: &core::Spec,
 ) -> io::Result<Option<String>> {
     let Some(n) = super::flag(args, "--pr") else {
         return Ok(None);
     };
     if let Some(title) = super::flag(args, "--title") {
         let title = super::title::clean(title).map_err(io::Error::other)?;
-        core::write_atomic(&dir.join("title"), title.as_bytes())?;
+        core::write_atomic(&spec.dir.join("title"), title.as_bytes())?;
+    }
+    if let Some(url) = super::flag(args, "--url") {
+        let open = [
+            "tabs",
+            &spec.id,
+            "open",
+            &format!("t-pr-{n}"),
+            "browser",
+            url,
+            "--behind",
+        ];
+        // The tabs are extras: a failure here never stops the session from starting.
+        let _ = super::tabs::run(data, &open.map(String::from));
     }
     if !project.kind.is_empty() {
         return Ok(None);
