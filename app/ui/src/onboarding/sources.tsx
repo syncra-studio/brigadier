@@ -1,10 +1,11 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useEffectEvent, useId, useRef, useState } from "react";
 
 import { CheckboxMark } from "../components/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
-import { Desktop, Folder, FolderOpen, FolderPlus, MagnifyingGlassSearch, Spinner } from "../icons";
+import { Branch, ChevronRight, Desktop, Folder, FolderOpen, FolderPlus, MagnifyingGlassSearch, Spinner } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { BOX, BOX_INPUT, cloneUrl, folderFromUrl, folderProblem } from "../projects/clone";
 import { newProjectId, useProjects } from "../projects/projects";
@@ -66,18 +67,26 @@ const Note = ({ children }: { children: ReactNode }) => <p className="px-3 py-2 
 const List = ({ children }: { children: ReactNode }) => <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1 pb-1">{children}</div>;
 const Count = ({ n }: { n: number }) => (n ? <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-fg">{n}</span> : null);
 
-function Side({ on, icon, label, count, disabled, onClick }: { on: boolean; icon: ReactNode; label: string; count: number; disabled: boolean; onClick: () => void }) {
+// The column is a tree, Git › GitHub › accounts, every row in one type and colour [D679].
+const SIDE = "flex h-9 w-full shrink-0 items-center gap-2 rounded-surface px-2.5 text-start text-sm svg:size-icon-sm svg:shrink-0 svg-uncoloured:text-muted-foreground";
+const DEPTH = ["", "ps-6.5", "ps-10.5"];
+
+/** A branch of the tree (Git, GitHub): its sources are the rows under it. */
+const Group = ({ icon, label, depth = 0 }: { icon: ReactNode; label: string; depth?: number }) => (
+  <div className={cx(SIDE, DEPTH[depth])}>
+    {icon}
+    <span className="min-w-0 flex-1 truncate">{label}</span>
+  </div>
+);
+
+function Side({ on, icon, label, count, disabled, onClick, depth = 0 }: { on: boolean; icon: ReactNode; label: string; count: number; disabled: boolean; onClick: () => void; depth?: number }) {
   return (
     <button
       type="button"
       aria-current={on || undefined}
       disabled={disabled}
       onClick={onClick}
-      className={cx(
-        "flex h-9 w-full shrink-0 cursor-pointer items-center gap-2 rounded-surface px-2.5 text-start text-sm outline-none hover:bg-fill-subtle focus-visible:focus-ring",
-        "disabled:cursor-not-allowed svg:size-icon-sm svg:shrink-0 svg-uncoloured:text-muted-foreground",
-        on && "bg-fill-hover font-medium",
-      )}
+      className={cx(SIDE, DEPTH[depth], "cursor-pointer outline-none hover:bg-fill-subtle focus-visible:focus-ring disabled:cursor-not-allowed", on && "bg-fill-hover font-medium")}
     >
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -257,19 +266,32 @@ export function useProjectSources({ source, offline, start = "mac", initialPath 
   const flip = (list: string[], item: string) => (list.includes(item) ? list.filter((each) => each !== item) : [...list, item]);
   const hint = adding && current ? `Cloning ${current}…` : where === "new" ? `In ${parent}` : targets.length ? `Clones go into ${parent}` : undefined;
   const go = (next: Where) => (setWhere(next), setError(null));
+  const account = (each: string) => {
+    const login = each.slice(1);
+    const count = repos.filter((name) => picks[name] === login).length + (typedOn === each ? extra.length : 0);
+    return <Side key={each} depth={login ? 2 : 1} on={where === each} icon={login ? <Avatar login={login} size="size-4" /> : <BrandMark brand="github" />} label={login || "GitHub"} count={count} disabled={busy !== null} onClick={() => go(each)} />;
+  };
   const body = (
     <div className="flex min-h-0 flex-1 gap-4">
-      <nav aria-label="Where the project comes from" className="flex w-48 shrink-0 flex-col gap-0.5 overflow-y-auto border-e border-divider pe-3">
+      <nav aria-label="Where the project comes from" className="flex w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-e border-divider pe-3">
         <Side on={where === "mac"} icon={<Desktop />} label="This Mac" count={folders.length} disabled={busy !== null} onClick={() => go("mac")} />
-        <span className="flex items-center gap-1.5 px-2.5 pt-3 pb-1 text-xs font-medium text-muted-foreground">
-          <BrandMark brand="github" className="size-icon-xs" />
-          GitHub
-        </span>
-        {accounts.map((each) => {
-          const login = each.slice(1);
-          const count = repos.filter((name) => picks[name] === login).length + (typedOn === each ? extra.length : 0);
-          return <Side key={each} on={where === each} icon={login ? <Avatar login={login} size="size-4" /> : <BrandMark brand="github" />} label={login || "GitHub"} count={count} disabled={busy !== null} onClick={() => go(each)} />;
-        })}
+        <Group icon={<Branch />} label="Git" />
+        {/* Signed in, GitHub folds its accounts (its picks stay, counted on it while shut); else it's the one source [D679, D686]. */}
+        {accounts[0] === "@" ? (
+          accounts.map(account)
+        ) : (
+          <Collapsible defaultOpen className="flex flex-col gap-0.5">
+            <CollapsibleTrigger className={cx(SIDE, DEPTH[1], "group cursor-pointer outline-none hover:bg-fill-subtle focus-visible:focus-ring")}>
+              <BrandMark brand="github" />
+              <span className="min-w-0 flex-1 truncate">GitHub</span>
+              <span className="group-data-panel-open:hidden">
+                <Count n={targets.length} />
+              </span>
+              <ChevronRight aria-hidden className="transition-transform group-data-panel-open:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-0.5">{accounts.map(account)}</CollapsibleContent>
+          </Collapsible>
+        )}
         <span className="my-2 h-px shrink-0 bg-divider" />
         <Side on={where === "new"} icon={<FolderPlus />} label="New project" count={0} disabled={busy !== null} onClick={() => go("new")} />
       </nav>
