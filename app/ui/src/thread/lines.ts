@@ -153,8 +153,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     group = null;
     if (item.kind === "group") {
       // Live and folded group alike, as the old app's; Rust counts only ended steps, so a live count only goes up [D173].
-      // Folded, a group of one step draws as that step.
-      const single = !live && (!done || item.steps.reduce((sum, step) => sum + step.n, 0) === 1);
+      // Once its turn ends (done, stopped or failed alike), a group of one step draws as that step; more stay one line,
+      // so going live again never turns loose steps back into a header [D236, D694].
+      const single = !live && item.steps.reduce((sum, step) => sum + step.n, 0) === 1;
       const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [] };
       if (line) push(line);
       group = { span: item.span, open: single || line!.open, single, line };
