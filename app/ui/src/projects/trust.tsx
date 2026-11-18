@@ -8,6 +8,7 @@ import { useDaemon } from "../daemon";
 import { errorText, store } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { type Project, setProject, useProjects } from "./projects";
+import { useAddProject } from "./store";
 
 /*
  * "Trust this folder?" [D166, D167, D201]: asked the first time you enter a project with no answer, a
@@ -27,7 +28,9 @@ export function TrustHost({ active }: { active: string | null }) {
   const projects = useProjects();
   const id = active === null ? draft : (rows?.find((row) => row.id === active)?.project ?? null);
   const project = projects?.find((each) => each.id === id && !each.pending);
-  const open = project !== undefined && project.trusted === null;
+  // Not over Add project: a folder added while its clones still run would ask mid-add; it asks once that closes.
+  const adding = useAddProject().open;
+  const open = project !== undefined && project.trusted === null && !adding;
   // A refused answer comes back to the same question with Rust's reason.
   const [failed, setFailed] = useState<{ id: string; error: string } | null>(null);
   const answer = (trusted: boolean) => {
