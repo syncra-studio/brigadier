@@ -1,15 +1,14 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
-import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
-import { SidebarPanel, useSidebar } from "../components/sidebar";
+import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openFeedback } from "../feedback/dialog";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
@@ -22,7 +21,7 @@ import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyou
 import { RenameDialog } from "./menu";
 import { askSearch, SearchField, SearchResults, SearchRoot, useSidebarSearch } from "./search";
 import { NeedYouPill } from "./pill";
-import { CARD_DELAY_MS, SessionRowItem } from "./row";
+import { CARD_DELAY_MS, ProjectBadge, SessionRowItem } from "./row";
 import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { Project, SessionRow } from "./words";
 
@@ -210,7 +209,7 @@ export function AppSidebar({
         </Strip>
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
-      mark={<BrigadierMark className="size-5 strip-mark-lit:invisible" />}
+      mark={<BrigadierMark className="size-5" />}
     >
       <NavHeader
         title={
@@ -284,6 +283,7 @@ export function AppSidebar({
                           <ProjectRow
                             key={project.id}
                             project={project}
+                            tone={projects.indexOf(project)}
                             open={isOpen(project.id)}
                             onOpenChange={(open) => setOpen(project.id, open)}
                           >
@@ -333,11 +333,14 @@ function Loading() {
 /** A project and its sessions, folding away under it; "No sessions yet" with none. Hovered, its menu and New session [D171, D212]. */
 function ProjectRow({
   project,
+  tone,
   open,
   onOpenChange,
   children,
 }: {
   project: Project;
+  /** Its place in Rust's list, for its badge. */
+  tone: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode[];
@@ -351,7 +354,8 @@ function ProjectRow({
       <div className="group/row relative">
         <Tooltip>
           <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-expanded={open} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => onOpenChange(!open)} />}>
-            {open ? <FolderOpen /> : <Folder />}
+            {/* Its logo, else its initials, as View's menu shows it [D650]; folded or not reads from aria-expanded. */}
+            <ProjectBadge id={project.id} name={project.name} tone={tone} />
             <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
           </TooltipTrigger>
           {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
@@ -386,19 +390,12 @@ function ProjectRow({
   );
 }
 
-/** The collapsed strip: the mark, which peeks the panel and opens it, New chat, Search and the lists (`children`). */
+/** The collapsed strip: room for the mark, New chat, Search and the lists (`children`). */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
-  const { setOpen, peek } = useSidebar();
   return (
     <div className="flex flex-col items-center gap-1 pt-2.75">
-      {/* Resting on its row peeks the panel, which stands in for a tooltip. */}
-      <div data-sidebar-peek-trigger className="flex w-full justify-center">
-        {/* Above the peek, which covers the strip, so a click on the mark still opens the sidebar. */}
-        <TooltipIconButton tooltip="Show sidebar" tip={false} look="strip" data-strip-mark className={cx("group/mark z-50", peek === "open" && "bg-fill text-foreground")} onClick={() => setOpen(true)}>
-          {/* The panel draws the logo over this space; hovered or focused, it gives way to this. */}
-          <Sidebar className="hidden group-hover/mark:block group-focus-visible/mark:block" />
-        </TooltipIconButton>
-      </div>
+      {/* The panel draws the logo over this space. */}
+      <div aria-hidden className="h-7.5" />
       <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
         <ComposeEditSquare />
       </TooltipIconButton>

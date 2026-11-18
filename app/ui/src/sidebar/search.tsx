@@ -1,7 +1,7 @@
 // The sidebar's search [D33, D37]: typing lists projects, then sessions by title and by message text from Rust, in the
 // sidebar's place, as ⌘K's palette did [D196, D197]. ⌘K focuses it, opening a strip or closed sidebar while it's used.
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { EmptyState } from "../components/empty-state";
@@ -174,8 +174,7 @@ export function useSidebarSearch(rows: SessionRow[] | undefined, projects: Proje
   const all = useShown(rows);
   const text = useTextSearch(query, searchText, offline);
   const groups = all && query ? results(all, projects, query, text.hits) : [];
-  // The peek mounts another field: resolve the visible one after the sidebar opens.
-  const input = () => [...document.querySelectorAll<HTMLInputElement>('[data-slot="sidebar-search"]')].find((each) => each.checkVisibility() && !each.closest("[inert]"));
+  const input = useRef<HTMLInputElement>(null);
   const { open, setOpen } = useSidebar();
   // ⌘K opened the sidebar, and where focus was before it.
   const opened = useRef(false);
@@ -189,19 +188,19 @@ export function useSidebarSearch(rows: SessionRow[] | undefined, projects: Proje
     if (!pending) return;
     asked.set(false);
     const active = document.activeElement;
-    if (active !== input()) before.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    if (active !== input.current) before.current = active instanceof HTMLElement && active !== document.body ? active : null;
     if (!open) {
       opened.current = true;
       setOpen(true);
     }
-    requestAnimationFrame(() => input()?.select());
+    requestAnimationFrame(() => input.current?.select());
   }, [pending]);
   // The sidebar as it was: no query, closed again if ⌘K opened it, and focus back where it was when `restore`.
   const leave = (restore: boolean) => {
     setQ("");
     const back = before.current;
     before.current = null;
-    input()?.blur();
+    input.current?.blur();
     if (opened.current) {
       opened.current = false;
       setOpen(false);
@@ -225,7 +224,7 @@ export function useSidebarSearch(rows: SessionRow[] | undefined, projects: Proje
     if (query && !opened.current) setQ("");
     else leave(true);
   };
-  return { q, setQ, query, groups, text, rows: all, offline, onKeyDown, choose };
+  return { q, setQ, query, groups, text, rows: all, offline, input, onKeyDown, choose };
 }
 
 /** Holds the field and the results, which sit apart in the sidebar, as one list the field's arrows move through. */
@@ -251,7 +250,7 @@ export function SearchRoot({ search, children }: { search: SidebarSearch; childr
 export function SearchField({ search, label }: { search: SidebarSearch; label: string }) {
   return (
     <Autocomplete.Input
-      data-slot="sidebar-search"
+      ref={search.input as RefObject<HTMLInputElement>}
       aria-label="Search"
       title={label}
       placeholder="Search"

@@ -368,8 +368,7 @@
   --spacing-sidebar-thread-min: 20rem;
   /* Collapsed to a strip of icons, each where it sits in the expanded panel. */
   --spacing-sidebar-strip: calc(var(--spacing) * 8 + var(--spacing-icon-md));
-  /* The window's start edge that peeks the hidden sidebar, and the panel's grab area. */
-  --spacing-sidebar-peek-edge: 0.5rem;
+  /* The panel's grab area. */
   --spacing-resize-handle: 1rem;
   /* A window narrower than this folds the sidebar by itself. */
   --spacing-narrow-window: 60rem;
@@ -506,9 +505,8 @@
   --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
-  /* A list folding open or shut, the sidebar's spring; the peek's way out. */
+  /* A list folding open or shut, the sidebar's spring. */
   --duration-fold: 300ms;
-  --duration-peek-out: 200ms;
   /* A rail card opening from nothing to its height; a queued row fading in. */
   --animate-rail-open: rail-open var(--duration-fold) var(--ease-enter);
   @keyframes rail-open {
@@ -562,19 +560,6 @@
     from {
       opacity: 0;
       transform: translate(calc(var(--spacing) * -2), var(--spacing)) scale(0.92);
-    }
-  }
-  --animate-peek-in: peek-in var(--duration-fold) var(--ease-sidebar);
-  --animate-peek-out: peek-out var(--duration-peek-out) var(--ease-sidebar) forwards;
-  /* The collapsed sidebar peeking: it only fades, so the mark never moves. */
-  @keyframes peek-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes peek-out {
-    to {
-      opacity: 0;
     }
   }
   /* The jump button's three dots while a reply streams: each rises in turn. */
@@ -874,8 +859,6 @@
 @custom-variant svg (& :where(svg:not([class*="size-"])));
 /* A part placed in another: a key hint on a button or in a tooltip. */
 @custom-variant in-button (:where([data-slot="button"]) &);
-/* The strip's mark button hovered or focused: the logo drawn over it gives way. */
-@custom-variant strip-mark-lit (:where([data-slot="sidebar-panel"]:has([data-strip-mark]:is(:hover, :focus-visible))) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
@@ -1312,21 +1295,6 @@
 }
 /* The right panel's start edge: the old app's hairline, fading with its slide. */
 @utility start-hairline {
-  &::before {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: 0.5px;
-    background: var(--color-divider);
-    pointer-events: none;
-    z-index: 1;
-  }
-}
-
-/* The peeking sidebar beside the strip: a hairline down its start edge, and nothing painted past it. */
-@utility peek-edge {
-  clip-path: inset(calc(var(--spacing) * -12) calc(var(--spacing) * -12) calc(var(--spacing) * -12) 0);
   &::before {
     content: "";
     position: absolute;

@@ -68,9 +68,6 @@ function SidebarContents() {
 function Strip() {
   return (
     <div className="flex flex-col items-center gap-1 pt-3">
-      <TooltipIconButton tooltip="Peek (rest the pointer here)" look="strip" data-sidebar-peek-trigger side="right">
-        <Dot />
-      </TooltipIconButton>
       <TooltipIconButton tooltip="New session" look="strip" side="right">
         <Copy />
       </TooltipIconButton>
@@ -95,16 +92,13 @@ function SidebarDemo() {
   const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse}>
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse}>
         <SidebarPanel strip={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
         <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-titlebar text-sm text-muted-foreground">
           <ToggleButton />
-          <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
-            Collapses to: {collapse}
-          </Button>
-          <span>Drag the panel's edge to resize; below half its least width it collapses. Collapsed, rest on the dot or the start edge to peek.</span>
+          <span>Drag the panel's edge to resize; below half its least width it collapses.</span>
           <span>The frame only: its rows are samples.</span>
           {width !== null && <span>Width {width}px</span>}
         </div>
