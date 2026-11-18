@@ -1,7 +1,7 @@
 //! Import's reading half: one source profile's cookies, read through `brigadier-browser-data` and handed straight
 //! to the page; nothing is held here but a browser's key, for its other profiles.
 
-use super::{Record, change_saved, distinct, running};
+use super::{Record, change_saved, distinct, lost_sign_ins, running, secrets};
 use brigadier_browser_data::{self as reader, ChromiumKeys, Error, Family, Profile, SecretError};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -100,9 +100,10 @@ pub(super) fn read(data: &Path, home: &Path, key: &str, id: &str) -> io::Result<
             format!("{browser}'s cookies are locked with a key Brigadier can't use."),
         ));
     }
+    // A hidden instance never asks the login keychain [D449, D736]: only cookies stored unsealed come across.
     let keys = match profile.family {
-        Family::Chromium => keys_of(&source.key, profile),
-        Family::Safari => Ok(ChromiumKeys::default()),
+        Family::Chromium if !secrets::walled() => keys_of(&source.key, profile),
+        _ => Ok(ChromiumKeys::default()),
     };
     let now_unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -122,13 +123,9 @@ pub(super) fn read(data: &Path, home: &Path, key: &str, id: &str) -> io::Result<
             return Ok(failure);
         }
     };
-    // Electron can't set a partitioned cookie, and its copy without the partition would go where the site never meant.
-    let left_out: Vec<String> = read
-        .read
-        .unreadable_domains
-        .into_iter()
-        .chain(read.read.partitioned_domains)
-        .collect();
+    // Electron 45's cookies.set takes no partition key, and a copy without it would go where the site never meant.
+    // They are embeds' and bot checks' cookies, not sign-ins, so they're only counted.
+    let skipped = read.read.unreadable + read.read.partitioned;
     let cookies = read.read.cookies;
     if cookies.is_empty() && profile.family == Family::Safari {
         return Ok(failed(
@@ -136,12 +133,11 @@ pub(super) fn read(data: &Path, home: &Path, key: &str, id: &str) -> io::Result<
             format!("There's nothing to bring from {}.", profile.name),
         ));
     }
-    let (skipped_domains, skipped_domain_count) =
-        distinct(left_out.iter().chain(&read.app_bound_domains).cloned());
+    let (skipped_domains, skipped_domain_count) = lost_sign_ins(read.read.unreadable_cookies);
     let record = Record {
         profiles: vec![profile.name.clone()],
         imported: cookies.len(),
-        skipped: left_out.len() + read.app_bound_domains.len(),
+        skipped,
         skipped_domains,
         skipped_domain_count,
         app_bound_domains: distinct(read.app_bound_domains).0,

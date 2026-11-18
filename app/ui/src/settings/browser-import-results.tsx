@@ -81,7 +81,7 @@ function ProfileResult({ result, source, session }: { result: ProfileImportResul
       <PartRow
         mark={record.skippedDomainCount > 0 ? "part" : "yes"}
         name="Sign-ins"
-        line={`${counted(record.imported, "cookie", "cookies")}${record.skippedDomainCount > 0 ? ` · ${counted(record.skippedDomainCount, "site", "sites")} left out` : ""}`}
+        line={`${counted(record.imported, "cookie", "cookies")}${record.skipped > 0 ? ` · ${record.skipped.toLocaleString()} left out` : ""}`}
       />
       {record.skippedDomains.map((site) => (
         <SiteRow

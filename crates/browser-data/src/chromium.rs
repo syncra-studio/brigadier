@@ -179,8 +179,8 @@ pub(crate) fn read_cookies(
             .filter(|key| !key.is_empty());
         if top_frame.is_some() {
             out.partitioned += 1;
-            out.partitioned_domains.push(host.clone());
         }
+        let name: String = row.get(1)?;
         let plain: Option<String> = row.get(2).ok().flatten();
         let encrypted: Option<Vec<u8>> = row.get(3)?;
         let value = match cookie_value(
@@ -195,13 +195,13 @@ pub(crate) fn read_cookies(
             _ if top_frame.is_some() => continue,
             Opened::AppBound => {
                 out.unreadable += 1;
-                out.unreadable_domains.push(host.clone());
+                out.unreadable_cookies.push((host.clone(), name));
                 all.app_bound_domains.push(host);
                 continue;
             }
             Opened::Unreadable => {
                 out.unreadable += 1;
-                out.unreadable_domains.push(host);
+                out.unreadable_cookies.push((host, name));
                 continue;
             }
         };
@@ -212,7 +212,7 @@ pub(crate) fn read_cookies(
             _ => None,
         };
         let cookie = Cookie {
-            name: row.get(1)?,
+            name,
             value,
             host_only: !host.starts_with('.'),
             domain: host,

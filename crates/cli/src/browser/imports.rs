@@ -7,7 +7,7 @@ mod read;
 
 use super::now;
 use brigadier_browser_data::{self as reader, Error, Family, Source};
-use brigadier_core as core;
+use brigadier_core::{self as core, library::secrets};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -83,6 +83,34 @@ fn distinct(domains: impl IntoIterator<Item = String>) -> (Vec<String>, usize) {
     (seen, count)
 }
 
+/// Whether a cookie named `name` holds a sign-in, by the names sites give them: GitHub's `user_session`, Google's
+/// `SID`, Rails' `remember_user_token`, `PHPSESSID`. A name it doesn't know counts as not one: a site listed to sign in
+/// to again for nothing is worse than one missed.
+fn signs_in(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    let sid = name
+        .match_indices("sid")
+        .any(|(at, _)| !name[at + 3..].starts_with(|c: char| c.is_ascii_alphabetic()));
+    !name.contains("csrf")
+        && !name.contains("xsrf")
+        && (sid
+            || [
+                "sess", "auth", "token", "login", "logged", "remember", "jwt",
+            ]
+            .iter()
+            .any(|word| name.contains(word)))
+}
+
+/// The sites among `cookies` (domain, name) whose sign-in didn't come across, as `distinct` gives them.
+fn lost_sign_ins(cookies: impl IntoIterator<Item = (String, String)>) -> (Vec<String>, usize) {
+    distinct(
+        cookies
+            .into_iter()
+            .filter(|(_, name)| signs_in(name))
+            .map(|(domain, _)| domain),
+    )
+}
+
 /// A browser's row: its source profiles' last imports summed up, naming each. None with none.
 fn merged(records: &[&Record]) -> Option<Record> {
     let sum = |field: fn(&Record) -> usize| records.iter().map(|r| field(r)).sum();
@@ -112,9 +140,11 @@ fn running(source: &Source) -> bool {
 /// Whether the browser's key can be asked for, without asking: only macOS has a question to ask.
 fn key_state(source: &Source) -> Option<&'static str> {
     let profile = source.profiles.first()?;
+    // A hidden instance never asks the login keychain [D449, D736].
     if !cfg!(target_os = "macos")
         || source.family != Family::Chromium
         || reader::key_off_limits(profile)
+        || secrets::walled()
     {
         return None;
     }
@@ -230,8 +260,9 @@ fn place(
     Ok(json!({"ok": true, "type": "done", "record": record, "siteStorage": site_storage}))
 }
 
-/// After `place`, the cookies main's store refused, by domain: the kept record counts them as skipped.
-fn refused(data: &Path, key: &str, id: &str, domains: Vec<String>) -> io::Result<Value> {
+/// After `place`, the cookies main's store refused, as (domain, name): the kept record counts them as skipped, and
+/// lists their sites when they held a sign-in.
+fn refused(data: &Path, key: &str, id: &str, cookies: Vec<(String, String)>) -> io::Result<Value> {
     let mut kept = None;
     change_saved(data, |saved| {
         let Some(record) = saved
@@ -241,10 +272,11 @@ fn refused(data: &Path, key: &str, id: &str, domains: Vec<String>) -> io::Result
         else {
             return;
         };
-        record.imported = record.imported.saturating_sub(domains.len());
-        record.skipped += domains.len();
+        record.imported = record.imported.saturating_sub(cookies.len());
+        record.skipped += cookies.len();
         let listed = record.skipped_domains.len();
-        let (list, count) = distinct(record.skipped_domains.drain(..).chain(domains));
+        let (sites, _) = lost_sign_ins(cookies);
+        let (list, count) = distinct(record.skipped_domains.drain(..).chain(sites));
         record.skipped_domain_count += count.saturating_sub(listed);
         record.skipped_domains = list;
         kept = Some(record.clone());
@@ -254,7 +286,7 @@ fn refused(data: &Path, key: &str, id: &str, domains: Vec<String>) -> io::Result
 }
 
 /// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]
-/// | refused <browser> <profile> <domains>`.
+/// | refused <browser> <profile> <cookies>`.
 pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
     let get = |i| crate::arg(args, i);
     // A hidden instance's throwaway HOME is where it looks, so it never reads the user's browsers.

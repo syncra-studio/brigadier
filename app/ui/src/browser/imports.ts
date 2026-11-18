@@ -18,7 +18,9 @@ export type ImportedRecord = {
   atMs: number;
   profiles: string[];
   imported: number;
+  /** Cookies left out: partitioned, unreadable or refused. */
   skipped: number;
+  /** The sites whose sign-in didn't come across: the first 20, and how many in all. */
   skippedDomains: string[];
   skippedDomainCount: number;
   appBoundDomains: string[];
@@ -113,15 +115,15 @@ export async function importProfile(source: Pick<ListedSource, "key" | "name">, 
   const opened = (await shell("opened", { profile: target })) === true;
   const placed = (await run(["browser", "-", "imports", "place", source.key, choice.id, JSON.stringify(read.record), ...(opened ? ["--open"] : []), "--profile", target])) as Extract<ImportedOutcome, { type: "done" }>;
   if (replaced) await shell("clear", { profile: target, storageCopied: placed.siteStorage === "copied" });
-  const refused: string[] = [];
+  const refused: [string, string][] = [];
   const total = read.cookies.length;
   onProgress({ type: "cookies", done: 0, total });
   for (let at = 0; at < total; at += COOKIES_AT_ONCE) {
-    refused.push(...((await shell("cookies", { profile: target, cookies: read.cookies.slice(at, at + COOKIES_AT_ONCE) })) as string[]));
+    refused.push(...((await shell("cookies", { profile: target, cookies: read.cookies.slice(at, at + COOKIES_AT_ONCE) })) as [string, string][]));
     onProgress({ type: "cookies", done: Math.min(at + COOKIES_AT_ONCE, total), total });
   }
   await shell("settled", { profile: target, replaced });
-  // Rust keeps the cookies main's store refused as skipped, with their sites.
+  // Rust keeps the cookies main's store refused as skipped, with their sites when they held a sign-in.
   const record = refused.length === 0 ? placed.record : ((await imports(["refused", source.key, choice.id, JSON.stringify(refused)])).record as ImportedRecord);
   const profile = allProfiles().find((each) => each.id === target) ?? { id: target, name, hue: nextHue(profiles) };
   return { choice, profile, replaced, outcome: { ...placed, record } };

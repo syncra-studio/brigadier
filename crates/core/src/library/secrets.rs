@@ -26,7 +26,7 @@ fn fail(what: &str) -> impl Fn(security_framework::base::Error) -> io::Error {
 
 /// An instance on another data folder without BRIGADIER_KEYCHAIN: it never reaches the login
 /// keychain, so it can't put up a prompt there [D449]. It reads no secrets and can't write one.
-fn walled() -> bool {
+pub fn walled() -> bool {
     std::env::var_os("BRIGADIER_KEYCHAIN").is_none()
         && std::env::var_os("BRIGADIER_DATA")
             .is_some_and(|d| Path::new(&d) != crate::default_data_dir())
