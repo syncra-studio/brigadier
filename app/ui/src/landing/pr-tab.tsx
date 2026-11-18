@@ -132,7 +132,7 @@ export function PrTab({
             </span>
           </div>
           {/* Why the last read or Bring to agent didn't go: what shows is the last read that did [D1009]. */}
-          <ErrorLine error={error ?? pr.problem ?? failed} />
+          <ErrorLine error={failed ?? error ?? pr.problem} />
           <div className="flex items-center gap-4 border-b border-divider">
             <Tabs.List className="flex flex-1 gap-4">
               <Tabs.Tab value="summary" className={TAB}>

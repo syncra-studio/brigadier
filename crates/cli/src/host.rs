@@ -1,4 +1,4 @@
-//! `brigadier host <id> view|list|files|search|project`: a session's PRs through its git host [D1030]. `view <n>`
+//! `brigadier host <id> view|list|files|search|project|session`: a session's PRs through its git host [D1030]. `view <n>`
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
@@ -6,10 +6,11 @@
 //! page [D613]; `runs <query>... [--kept]`,
 //! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264];
 //! `sides <n> <path>` is a file's two sides whole [D262]; `project <owner/name>` is the project
-//! whose repository that is, or null, for Bring to agent [D674].
+//! whose repository that is, or null, and `<project> session <branch>` its session whose worktree
+//! is on that branch, or null, for Bring to agent [D674].
 
 use super::arg;
-use brigadier_core::host;
+use brigadier_core::{self as core, host};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
@@ -42,6 +43,15 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     if arg(args, 2)? == "project" {
         return Ok(json!({"ok": true, "project": host::project_of(data, arg(args, 3)?)}));
+    }
+    if arg(args, 2)? == "session" {
+        let on = Some(arg(args, 3)?);
+        let held = (core::projects::sessions(data, id)?.into_iter()).find(|s| {
+            let dir = core::session_dir(data, s);
+            core::worktrees::present(&dir)
+                && core::worktrees::branch(&dir).ok().flatten().as_deref() == on
+        });
+        return Ok(json!({"ok": true, "session": held}));
     }
     if let Some(done) = actions(data, id, args)? {
         return Ok(done);

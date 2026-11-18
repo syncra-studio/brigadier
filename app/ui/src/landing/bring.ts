@@ -31,16 +31,20 @@ export function prChip(pr: PullRequest): Extract<Chip, { kind: "agent" }> {
   return { kind: "agent", id, key: `pr:${pr.url}`, pr: pr.number, chip: { id, kind: "pr", pr: pr.number, title: pr.title, detail: detail || `${pr.branch} → ${pr.base}` }, text: text.filter(Boolean).join("\n\n") };
 }
 
-/** The chip in `session`'s composer, once, and the session open on its chat. */
-function open(session: string, chip: Extract<Chip, { kind: "agent" }>): void {
-  if (!hasChip(session, chip.key)) addChip(session, chip);
+/** The chip in `session`'s composer, once (Rust's too: this app may not have read them yet), and the session open on its chat. */
+async function open(session: string, chip: Extract<Chip, { kind: "agent" }>): Promise<void> {
+  const kept = ((await run(["chips", session])).chips ?? []) as Chip[];
+  if (!hasChip(session, chip.key) && !kept.some((each) => each.kind === "agent" && each.key === chip.key)) addChip(session, chip);
   selectTab(session, CHAT);
   window.location.hash = `#thread/${encodeURIComponent(session)}`;
 }
 
 /** The model a new session there starts on: the project's last session's while it's offered, else the first, one on this computer first. */
 async function modelFor(project: string, rows: readonly Row[]) {
-  const groups = asGroups((await run(["models", "--project", project])).groups).filter((group) => !group.unavailable);
+  const read = async (fresh: string[]) => asGroups((await run(["models", "--project", project, ...fresh])).groups).filter((group) => !group.unavailable && group.models.length > 0);
+  // A project just cloned has no check kept yet: one now.
+  const kept = await read([]);
+  const groups = kept.length > 0 ? kept : await read(["--fresh"]);
   const offered = groups.flatMap((group) => group.models.map((each) => ({ provider: group.provider, model: each.id, effort: each.defaultEffort ?? null, local: (each as { local?: boolean }).local })));
   const last = (rows as Ran[]).filter((row) => row.project === project && row.model).toSorted((a, b) => b.sent - a.sent)[0];
   const again = last && offered.find((each) => each.provider === last.backend && each.model === last.model);
@@ -79,6 +83,9 @@ export async function bring(pr: PullRequest, owner: string, target: string, rows
     say(`Cloning ${pr.repo}…`);
     project = await cloned(pr.repo, projects.find((each) => each.id === mine)?.github_account ?? undefined);
   }
+  // A session already on the branch that the watch hasn't linked to the PR yet.
+  const held = (await run(["host", project, "session", pr.fork ? `pr-${pr.number}` : pr.branch])).session as string | null;
+  if (held) return open(held, chip);
   say("Starting…");
   const model = await modelFor(project, rows);
   const id = sessionId();
