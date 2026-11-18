@@ -116,9 +116,14 @@ pub(super) fn read(
     );
     // Unasked, the first window accessibility knows: list_windows keeps closed ones a while (Cua
     // #4038), and those read as nothing.
+    // The window the session is in comes first.
     let order: Vec<usize> = match asked {
         Some(n) => vec![n - 1],
-        None => (0..all.len()).collect(),
+        None => {
+            let mut all_i: Vec<usize> = (0..all.len()).collect();
+            all_i.sort_by_key(|&i| all[i]["window_id"].as_u64() != Some(s.window));
+            all_i
+        }
     };
     let (mut nth, mut found) = (0, Value::Null);
     for &i in &order {

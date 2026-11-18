@@ -281,20 +281,20 @@ pub(super) fn press(
     };
     loop {
         let now: Vec<u64> = windows(data, s.pid, here)?.iter().map(id).collect();
-        let opened = now.first().is_some_and(|w| !before.contains(w));
+        let opened = now.iter().find(|w| !before.contains(w)).copied();
         let closed = s.window != 0 && !now.contains(&s.window);
-        if opened || closed {
+        if opened.is_some() || closed {
             let gone = closed && !running(data, here)?.iter().any(|a| a["pid"] == s.pid);
             if gone {
                 *s = Sess::default();
                 return Ok(format!("Chose {chose}: done, the app quit."));
             }
-            let what = if opened {
-                "a window opened"
-            } else {
-                "its window closed"
+            let what = match opened {
+                Some(_) => "a window opened",
+                None => "its window closed",
             };
-            s.window = 0;
+            // The new window is read, else the app's first.
+            s.window = opened.unwrap_or(0);
             return Ok(format!(
                 "Chose {chose}: done, {what}.\n{}",
                 read(data, me, s, w, here)?
