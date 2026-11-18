@@ -1,10 +1,11 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { Archive, Branch, Cursor, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
 import { BROWSER_ROWS, BrowserPage } from "./browser";
 import { BROWSER_IMPORT_ROWS, BrowserImportPage } from "./browser-import";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
+import { COMPUTER_USE_ROWS, ComputerUsePage } from "./computer-use";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
 import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GIT_ROWS, GitPage } from "./git";
@@ -23,7 +24,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "Browser & Data" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "browser" | "browserImport" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "computerUse" | "browser" | "browserImport" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -47,6 +48,10 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   { id: "plugins", label: "Plugins", icon: Plugin, group: "Agents", component: PluginsSettings, rows: Object.values(PLUGINS_ROWS) },
   { id: "routing", label: "Routing", formerly: ["Who does what"], icon: Shuffle, group: "Agents", component: RoutingSettings, rows: Object.values(ROUTING_ROWS) },
   { id: "git", label: "Git", icon: Branch, group: "Agents", component: GitPage, rows: Object.values(GIT_ROWS) },
+  // The helper drives macOS apps through Accessibility: macOS only.
+  ...(window.brigadier?.platform === "darwin"
+    ? [{ id: "computerUse", label: "Computer use", icon: Cursor, group: "Agents", component: ComputerUsePage, rows: Object.values(COMPUTER_USE_ROWS) } as const]
+    : []),
   { id: "browser", label: "Browser", icon: Globe, group: "Browser & Data", component: BrowserPage, rows: Object.values(BROWSER_ROWS) },
   // Importing reads other browsers' macOS profiles: macOS only.
   ...(window.brigadier?.platform === "darwin"
