@@ -63,7 +63,8 @@ impl Thread {
             "text" | "text_delta" => self.said(item, kind, ts),
             "reasoning" => {
                 let text = str_of("text");
-                self.add(json!({"kind": "reasoning", "heading": heading(&text), "text": text, "streaming": false}));
+                // A step of its run, as a work log: a thought is one of the group's lines [D752].
+                self.step(json!({"kind": "reasoning", "heading": heading(&text), "text": text, "streaming": false}));
             }
             "tool" => {
                 let step = str_of("step");
@@ -466,17 +467,15 @@ impl Thread {
         at
     }
 
-    /// A group's counts per kind, made again from its member rows.
+    /// A group's counts per kind, from its member rows; hidden only while all they are is [D752].
     pub(super) fn recount(&mut self, g: usize) {
         let last = self.items[g]["span"][1].as_u64().unwrap_or(0) as usize;
-        let steps = super::subagents::counts(
-            (g + 1..last.min(self.items.len()))
-                .filter(|at| self.member.get(at) == Some(&g))
-                .map(|at| &self.items[at]),
-        );
-        if steps.is_empty() || self.items[g]["hidden"] == true {
-            self.items[g]["hidden"] = steps.is_empty().into();
-        }
+        let members: Vec<usize> = (g + 1..last.min(self.items.len()))
+            .filter(|at| self.member.get(at) == Some(&g))
+            .collect();
+        let steps = super::subagents::counts(members.iter().map(|&at| &self.items[at]));
+        let hidden = members.iter().all(|&at| self.items[at]["hidden"] == true);
+        self.items[g]["hidden"] = hidden.into();
         self.items[g]["steps"] = steps.into();
         self.changed_items.insert(g);
     }

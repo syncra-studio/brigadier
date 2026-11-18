@@ -110,6 +110,7 @@ fn words(item: &Value) -> Vec<std::borrow::Cow<'_, str>> {
                 .unwrap_or_default();
         }
         Some("message") | Some("notice") => vec![text("text")],
+        Some("reasoning") => vec![text("heading"), text("text")],
         // Another tool's row shows only its name.
         Some("tool") if matches!(text("step"), None | Some("other")) => vec![text("name")],
         Some("tool") => vec![text("name"), text("input")],

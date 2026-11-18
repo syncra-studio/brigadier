@@ -134,7 +134,7 @@ impl Thread {
     }
 
     /// A Brigadier cut, held open for its carry-on: one block, its answer an update in it [D108,
-    /// D124]. A reply it cut mid-way, only its divider (or thinking, never drawn) after it, stays
+    /// D124]. A reply it cut mid-way, only its divider or thinking (its group too) after it, stays
     /// out of the fold with the carry-on that finishes it: one reply under "Worked for" [D118].
     pub(super) fn hold_cut(&mut self, mut o: Open) {
         self.final_answer(&o, false);
@@ -143,6 +143,7 @@ impl Thread {
             o.kept.contains(&n)
                 || row["hidden"] == true
                 || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
+                || (row["kind"] == "group" && row["steps"].as_array().is_some_and(Vec::is_empty))
         };
         if let Some(answer) = (o.answer).filter(|&a| (a + 1..=self.items.len() as u64).all(mid)) {
             o.kept.push(answer);
@@ -170,6 +171,7 @@ impl Thread {
             o.kept.contains(&n)
                 || row["hidden"] == true
                 || matches!(row["kind"].as_str(), Some("reasoning" | "compaction"))
+                || (row["kind"] == "group" && row["steps"].as_array().is_some_and(Vec::is_empty))
         };
         // Not a model picked mid-turn: its carry-on starts under the divider, where it was picked [D124, D362].
         let cut = (o.cut() && !self.fold.switched) || o.stop.0.as_deref() == Some("user");
@@ -281,7 +283,10 @@ pub(super) fn counts<'a>(rows: impl Iterator<Item = &'a Value>) -> Vec<Value> {
     let mut steps: Vec<(String, Value, u64)> = vec![];
     let (mut files, mut unnamed) = (BTreeSet::new(), 0u64);
     for row in rows {
-        if row["hidden"] == true || matches!(row["progress"].as_str(), Some("running" | "pending"))
+        // Thoughts are lines of the group, never counted as steps [D752].
+        if row["hidden"] == true
+            || row["kind"] == "reasoning"
+            || matches!(row["progress"].as_str(), Some("running" | "pending"))
         {
             continue;
         }
