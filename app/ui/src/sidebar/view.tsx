@@ -63,7 +63,7 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, in the sidebar's search field [D658]; before it, how many projects show while anything is left out. */
+/** The View button, on the Projects row beside + [D663]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (
@@ -79,7 +79,7 @@ export function ViewTrigger({ projects, show }: { projects: Project[]; show: Sho
   );
 }
 
-/** A row of the View menu that opens its own menu beside it, as a submenu [D658]. */
+/** A row of the View menu that opens its own menu beside it [D655]. */
 function SubMenu({ icon, title, wide = false, children }: { icon: ReactNode; title: string; wide?: boolean; children: ReactNode }) {
   return (
     <DropdownMenu>
@@ -100,7 +100,7 @@ const CHECK = <Check className="size-icon-md" />;
 /**
  * Around the search field and the lists: Organize sidebar (by project or in one list), Sort by (your last
  * message, or anyone's last activity) and Show (each project, then chats without one, ticked, with counts, and
- * Show all while any is unticked [D440, D50]), each its own menu beside the row, then Add project [D658].
+ * Show all while any is unticked [D440, D50]), each its own menu beside the row, then Add project [D655].
  */
 export function ViewMenu({
   grouping,
