@@ -24,6 +24,8 @@ export type Found = {
   /** Its own icon where its source gives one, as Rust fetched it. */
   icon?: string | null;
   in_library: boolean;
+  /** Its catalog entry, matched by Rust using the server's normalized address. */
+  catalog?: string | null;
   form: { remote: boolean; name: string; url?: string; command?: string; values: string[] } | { source: string; skill: string } | null;
   why: string | null;
 };
@@ -154,7 +156,8 @@ export function BrowseTab({
 }
 
 /** A name or maker a word of which starts with what's asked: "rea" finds Readwise and realestate.com.au, not Create. */
-const named = (asked: string, ...texts: string[]) => texts.some((text) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((word) => word.startsWith(asked.toLowerCase())));
+const words = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const named = (asked: string, ...texts: string[]) => texts.some((text) => ` ${words(text)}`.includes(` ${words(asked)}`));
 const installed = <Badge variant="secondary">Installed</Badge>;
 const plus = (name: string, onClick: () => void) => (
   <Button variant="ghost" size="icon-md" aria-label={`Install ${name}`} onClick={onClick}>
@@ -212,10 +215,10 @@ export function SearchResults({
   if (!found && !error) return <Loading />;
   const entries = (value.catalog?.entries ?? []).filter((each) => named(asked, each.name, each.maker));
   // The library's own, those not shown as their catalog entry.
-  const items = value.items.filter((each) => !each.with && !entries.some((entry) => entry.installed === each.key) && named(asked, each.name));
+  const items = value.items.filter((each) => !entries.some((entry) => entry.installed === each.key) && named(asked, each.name));
   const own = value.own.filter((each) => importable(each, remote) && named(asked, each.name));
   // A result the catalog has already, by its address, shows once, as the catalog's.
-  const unreviewed = (found ?? []).filter((each) => named(asked, each.name, each.publisher) && !(value.catalog?.entries ?? []).some((entry) => entry.url && each.mark.startsWith(entry.url.replace(/\/mcp$/, ""))));
+  const unreviewed = (found ?? []).filter((each) => named(asked, each.name, each.publisher) && !(value.catalog?.entries ?? []).some((entry) => entry.id === each.catalog));
   const rows = [
     ...entries.map((each) => (
       <Pick key={each.id} mark={<PluginMark item={markOf(each)} />} name={each.name} line={`${each.maker} • ${each.line}`} onOpen={() => onEntry.onOpen(each)} end={each.installed ? installed : plus(each.name, () => onEntry.onInstall(each))} />
