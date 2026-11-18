@@ -8,6 +8,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Skeleton } from "../components/skeleton";
 import { ArrowUpRight, Branch, Folder } from "../icons";
 import type { Pr } from "../panel/types";
+import { Sparkles } from "./icons";
 import { PrFiles } from "./pr-files";
 import { Avatar, CheckAgain, type Sends, StateIcon } from "./pr-parts";
 import { Summary } from "./pr-summary";
@@ -144,6 +145,7 @@ export function PrTab({
             </Tabs.List>
             <span className="flex items-center pb-1">
               <Button size="sm" disabled={bringing !== null || sends.offline} onClick={onBring}>
+                <Sparkles />
                 {bringing ?? "Bring to agent"}
               </Button>
             </span>
