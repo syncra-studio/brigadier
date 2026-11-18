@@ -230,7 +230,31 @@ fn place(
     Ok(json!({"ok": true, "type": "done", "record": record, "siteStorage": site_storage}))
 }
 
-/// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]`.
+/// After `place`, the cookies main's store refused, by domain: the kept record counts them as skipped.
+fn refused(data: &Path, key: &str, id: &str, domains: Vec<String>) -> io::Result<Value> {
+    let mut kept = None;
+    change_saved(data, |saved| {
+        let Some(record) = saved
+            .browsers
+            .get_mut(key)
+            .and_then(|b| b.records.get_mut(id))
+        else {
+            return;
+        };
+        record.imported = record.imported.saturating_sub(domains.len());
+        record.skipped += domains.len();
+        let listed = record.skipped_domains.len();
+        let (list, count) = distinct(record.skipped_domains.drain(..).chain(domains));
+        record.skipped_domain_count += count.saturating_sub(listed);
+        record.skipped_domains = list;
+        kept = Some(record.clone());
+    })?;
+    let record = kept.ok_or_else(|| io::Error::other("No import kept for that profile"))?;
+    Ok(json!({"ok": true, "record": record}))
+}
+
+/// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]
+/// | refused <browser> <profile> <domains>`.
 pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
     let get = |i| crate::arg(args, i);
     // A hidden instance's throwaway HOME is where it looks, so it never reads the user's browsers.
@@ -275,6 +299,7 @@ pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Val
             args.iter().any(|a| a == "--open"),
             serde_json::from_str(get(3)?)?,
         ),
+        "refused" => refused(data, get(1)?, get(2)?, serde_json::from_str(get(3)?)?),
         _ => Err(io::Error::other("Unknown browser imports operation")),
     }
 }

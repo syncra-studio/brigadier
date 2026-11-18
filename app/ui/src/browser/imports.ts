@@ -121,7 +121,8 @@ export async function importProfile(source: Pick<ListedSource, "key" | "name">, 
     onProgress({ type: "cookies", done: Math.min(at + COOKIES_AT_ONCE, total), total });
   }
   await shell("settled", { profile: target, replaced });
-  const record = { ...placed.record, imported: total - refused.length, skipped: placed.record.skipped + refused.length };
+  // Rust keeps the cookies main's store refused as skipped, with their sites.
+  const record = refused.length === 0 ? placed.record : ((await imports(["refused", source.key, choice.id, JSON.stringify(refused)])).record as ImportedRecord);
   const profile = allProfiles().find((each) => each.id === target) ?? { id: target, name, hue: nextHue(profiles) };
   return { choice, profile, replaced, outcome: { ...placed, record } };
 }
