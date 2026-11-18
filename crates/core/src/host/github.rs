@@ -7,8 +7,9 @@ use std::path::Path;
 use std::{io, thread};
 
 const HOST: &str = "github.com";
-/// Proposed: each account's list is its 200 repositories pushed to last, 100 a page.
-const PAGES: usize = 2;
+/// Each account's list is every repository it sees, 100 a page [D680].
+/// shortcut: stops at 1,000 an account; page on demand if someone sees more.
+const PAGES: usize = 10;
 const QUERY: &str = "query($after: String) { viewer { login repositories(first: 100, after: $after, \
     orderBy: {field: PUSHED_AT, direction: DESC}, affiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER], \
     ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]) { nodes { nameWithOwner description \
@@ -55,8 +56,8 @@ pub fn clone_github(from: &str, dir: &Path, secs: u64, account: Option<&str>) ->
 }
 
 /// The repositories every account gh keeps for github.com sees (owned, collaborating, its
-/// organizations'), the last pushed first, each once under the first account that sees it, the
-/// active one first [D202, D625]; owners' pictures kept in `avatars` [D615]. Or `gh: "missing"` /
+/// organizations'), the last pushed first, each under every account that sees it, the active one
+/// first [D202, D625, D680]; owners' pictures kept in `avatars` [D615]. Or `gh: "missing"` /
 /// `"signed-out"`.
 pub fn github_repos(avatars: &Path) -> io::Result<Value> {
     let Ok(gh) = gh() else {
@@ -86,12 +87,7 @@ pub fn github_repos(avatars: &Path) -> io::Result<Value> {
         match read {
             Ok(Some(found)) => {
                 any = true;
-                for node in found {
-                    let name = &node["nameWithOwner"];
-                    if !nodes.iter().any(|n| &n["nameWithOwner"] == name) {
-                        nodes.push(node);
-                    }
-                }
+                nodes.extend(found);
             }
             Ok(None) => {}
             Err(e) => _ = first_err.get_or_insert(e),

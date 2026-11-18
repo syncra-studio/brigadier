@@ -139,7 +139,9 @@ export function useProjectSources({ source, offline, start = "mac", initialPath 
   const [byHand, setByHand] = useState<string[]>([]);
   const [plain, setPlain] = useState<string[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
-  const [repos, setRepos] = useState<string[]>([]);
+  // Each repository picked, with the account it was ticked under; another account's tick moves it [D680].
+  const [picks, setPicks] = useState<Record<string, string>>({});
+  const repos = Object.keys(picks);
   const [current, setCurrent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"adding" | "picking" | null>(null);
@@ -230,7 +232,7 @@ export function useProjectSources({ source, offline, start = "mac", initialPath 
       setCloned((all) => ({ ...all, [each]: id }));
       setCurrent(each);
       // The account it's listed under clones it; a typed one, the account whose list it was typed in [D625, D634].
-      const account = listed.find((one) => one.name === from)?.account ?? (each === typed ? typedOn?.slice(1) || undefined : undefined);
+      const account = picks[each] || (each === typed ? typedOn?.slice(1) || undefined : undefined);
       await add(id, source.clone(id, byName(from) ? from : cloneUrl(each), `${parent}${folderFromUrl(each)}`, byName(from), account));
     }
     setCurrent(null);
@@ -265,7 +267,7 @@ export function useProjectSources({ source, offline, start = "mac", initialPath 
         </span>
         {accounts.map((each) => {
           const login = each.slice(1);
-          const count = repos.filter((name) => (listed.find((one) => one.name === name)?.account ?? "") === login).length + (typedOn === each ? extra.length : 0);
+          const count = repos.filter((name) => picks[name] === login).length + (typedOn === each ? extra.length : 0);
           return <Side key={each} on={where === each} icon={login ? <Avatar login={login} size="size-4" /> : <BrandMark brand="github" />} label={login || "GitHub"} count={count} disabled={busy !== null} onClick={() => go(each)} />;
         })}
         <span className="my-2 h-px shrink-0 bg-divider" />
@@ -292,12 +294,12 @@ export function useProjectSources({ source, offline, start = "mac", initialPath 
             github={github}
             repos={listed.filter((each) => `@${each.account ?? ""}` === where)}
             repo={repo}
-            picked={repos}
+            picked={repos.filter((name) => `@${picks[name]}` === where)}
             current={current}
             busy={adding}
             typed={extra.length > 0}
             onRepo={(next) => (setRepo(next), setTypedOn(where), setError(null))}
-            onToggle={(next) => (setRepos((all) => flip(all, next)), setError(null))}
+            onToggle={(next) => (setPicks(({ [next]: was, ...rest }) => (`@${was}` === where ? rest : { ...rest, [next]: where.slice(1) })), setError(null))}
             onSubmit={submit}
           />
         )}
@@ -353,7 +355,7 @@ function Account({ github, repos, repo, typed, picked, current, busy, onRepo, on
         ) : github && shown.length === 0 ? (
           <Note>{repos.length ? (typed ? "Not in your list; it'll be cloned from its address." : "No repository matches.") : "No repositories on GitHub yet."}</Note>
         ) : (
-          shown.map((each, index) => <RepoRow key={each.name} repo={each} on={picked.includes(each.name)} current={current === each.name} busy={busy} props={rows.row(index)} />)
+          shown.map((each, index) => <RepoRow key={each.name} repo={each} on={picked.includes(each.name)} current={current === each.name && picked.includes(each.name)} busy={busy} props={rows.row(index)} />)
         )}
       </List>
     </>
