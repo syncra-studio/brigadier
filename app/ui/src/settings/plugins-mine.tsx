@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode, useState } from "react";
 
+import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { SettingsCard } from "../components/settings-card";
@@ -10,13 +11,12 @@ import { chipOf, type Item, type Kind, PLUGINS_ROWS, type Plugins, STATUS, type 
 import { Pick, PickGrid } from "./plugins-browse";
 import { PluginMark } from "./plugins-marks";
 
-/** A standing worth its words in the row's line, in its badge's colour; Off is the switch's. */
-const STANDING: Partial<Record<Status, string>> = { signed_in: "text-success", needs_sign_in: "text-warning", cant_reach: "text-destructive" };
+/** A problem worth a badge in the title row [D737]; Signed in and Off say nothing there. */
+const PROBLEM: Partial<Record<Status, true>> = { needs_sign_in: true, cant_reach: true };
 
-/** Browse's grey line [D735]: "<scope> · Signed in · <description or command>", one line; a command in code's letters. */
-function lineOf(chip: string | null, item: Item | null, text: ReactNode) {
-  const status = item?.on ? item.status : null;
-  const parts = [chip, status && STANDING[status] && <span className={STANDING[status]}>{STATUS[status].label}</span>, text].filter(Boolean);
+/** Browse's grey line [D737]: "<scope> · <description or command>", one line; a command in code's letters. */
+function lineOf(chip: string | null, text: ReactNode) {
+  const parts = [chip, text].filter(Boolean);
   return parts.map((part, at) => (
     <Fragment key={at}>
       {at > 0 && " · "}
@@ -25,12 +25,24 @@ function lineOf(chip: string | null, item: Item | null, text: ReactNode) {
   ));
 }
 
-/** One item, as a row of Browse's [D734]: its mark, name and line, its switch where Browse has +; it opens its page. */
+/** The item's name, with its problem (Needs sign-in, Can't reach, ...) as a badge right after it [D737]. */
+function titleOf(name: string, status: Status | null) {
+  if (!status || !PROBLEM[status]) return name;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate">{name}</span>
+      <Badge variant={STATUS[status].variant}>{STATUS[status].label}</Badge>
+    </span>
+  );
+}
+
+/** One item, as a row of Browse's [D734]: its mark, name (with its problem's badge [D737]) and line, its switch where Browse has +; it opens its page. */
 function PluginRow({ item, chip, onOpen, onSwitch }: { item: Item; chip: string | null; onOpen: () => void; onSwitch: (on: boolean) => void }) {
   const text = item.description || <span className="font-mono">{item.detail}</span>;
+  const status = item.on ? item.status : null;
   return (
     <div data-slot="plugin-row" data-key={item.key} data-off={!item.on || undefined} >
-      <Pick dim={!item.on} mark={<PluginMark item={{ ...item, logo: item.catalog }} />} name={item.name} line={lineOf(chip, item, text)} onOpen={onOpen} end={<Switch aria-label={item.name} checked={item.on} onCheckedChange={onSwitch} />} />
+      <Pick dim={!item.on} mark={<PluginMark item={{ ...item, logo: item.catalog }} />} name={titleOf(item.name, status)} line={lineOf(chip, text)} onOpen={onOpen} end={<Switch aria-label={item.name} checked={item.on} onCheckedChange={onSwitch} />} />
     </div>
   );
 }
@@ -47,7 +59,7 @@ function SkillsetRow({ id, skills, value, onOpen, onSwitch }: { id: string; skil
         dim={!on}
         mark={<PluginMark item={{ kind: "skill", name: service, detail: "", logo: id }} />}
         name={`${service} skillset`}
-        line={lineOf(chipOf(value, skills[0]!), null, `${skills.length} skills · ${entry ? `came with ${service}` : skills[0]!.from}`)}
+        line={lineOf(chipOf(value, skills[0]!), `${skills.length} skills · ${entry ? `came with ${service}` : skills[0]!.from}`)}
         // One found has no catalog page: it opens its list.
         onOpen={() => (entry ? onOpen(`catalog:${id}`) : setOpen(!open))}
         end={

@@ -38,7 +38,7 @@ function firstOf({ form, mark, icon }: Found & { form: object }): AddFirst {
 }
 
 /** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …); `dim` an off item's, its end not. */
-export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: ReactNode; name: string; line: ReactNode; end: ReactNode; onOpen?: () => void; dim?: boolean }) {
+export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: ReactNode; name: ReactNode; line: ReactNode; end: ReactNode; onOpen?: () => void; dim?: boolean }) {
   const text = (
     <>
       {mark}
