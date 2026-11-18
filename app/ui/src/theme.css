@@ -630,6 +630,11 @@
   [data-selectable] {
     @apply select-text;
   }
+  /* Electron's drag regions ignore stacking, so a dialog, menu or tooltip over a title-bar band would lose
+     its clicks to window dragging; everything portaled to the top opts out [D716]. */
+  [data-base-ui-portal] * {
+    -webkit-app-region: no-drag;
+  }
 }
 
 /* Thin scrollbars that appear on hover. The track stops short of its view's ends, so a thumb stays

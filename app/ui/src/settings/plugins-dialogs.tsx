@@ -419,7 +419,7 @@ export function InstallDialog({
           <X aria-hidden />
         </DialogClose>
         <div className="flex items-center justify-center gap-3 pt-2">
-          <span className="flex size-14 items-center justify-center rounded-surface bg-fill">
+          <span className="flex size-14 items-center justify-center rounded-surface bg-background">
             <BrigadierMark pixels={32} className="size-8" />
           </span>
           <DotsHorizontal aria-hidden className="size-5 text-faint-foreground" />
