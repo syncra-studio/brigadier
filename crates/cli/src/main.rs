@@ -81,7 +81,14 @@ fn typed(mut args: Vec<String>) -> Vec<String> {
                 .any(|s| s.trim_start().starts_with("type ")),
             _ => false,
         };
-    if !typing || std::io::stdin().is_terminal() {
+    if !typing {
+        return args;
+    }
+    // Text named on the command line is dropped: `type` then asks for it on stdin.
+    if let Some(i) = args.iter().position(|a| a == "--stdin") {
+        args.drain(i..(i + 2).min(args.len()));
+    }
+    if std::io::stdin().is_terminal() {
         return args;
     }
     let (tx, rx) = std::sync::mpsc::channel();

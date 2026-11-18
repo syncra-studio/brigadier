@@ -69,6 +69,8 @@ struct Sess {
     secure: HashSet<u64>,
     /// Each control's frame on screen, for a drag.
     frames: HashMap<u64, [f64; 4]>,
+    /// Each control's whole value: `type` reads its text back there.
+    values: HashMap<u64, String>,
     /// Menu items by number, by name: a menu open in its own window is out of the driver's reach.
     items: HashMap<u64, String>,
     /// The rows were renumbered since the last whole read.
@@ -369,7 +371,7 @@ fn verb(
                 lock(&SESSIONS).insert(me.to_string(), s);
                 return Ok(out);
             }
-            let landed = window::shows(&out, n, text);
+            let landed = window::shows(&s, n, text);
             let typed = match landed {
                 true => format!("{line}: done, [{n}] reads it back."),
                 false => format!("{line}: [{n}] doesn't read it back. Read it before going on."),
@@ -472,6 +474,11 @@ fn call(data: &Path, name: &str, args: Value, here: &dyn Fn() -> bool) -> Result
 
 /// Brigadier itself and the system's security prompts are closed at every level [D903].
 fn blocked(name: &str, bundle: &str) -> Result<(), Value> {
+    // `open` takes an app's path too: …/Brigadier.app is Brigadier.
+    let name = Path::new(name)
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or(name);
     if bundle.starts_with("sh.brigadier.")
         || name.eq_ignore_ascii_case("Brigadier")
         || name.eq_ignore_ascii_case("Brigadier Computer Use")

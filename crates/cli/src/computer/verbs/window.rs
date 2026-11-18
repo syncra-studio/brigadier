@@ -67,6 +67,10 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             true => drop(s.secure.insert(n)),
             false => drop(s.secure.remove(&n)),
         }
+        match e["value"].as_str() {
+            Some(v) => drop(s.values.insert(n, v.to_string())),
+            None => drop(s.values.remove(&n)),
+        }
         match (e["role"].as_str(), e["label"].as_str()) {
             (Some("AXMenuItem"), Some(name)) => drop(s.items.insert(n, name.to_string())),
             _ => drop(s.items.remove(&n)),
@@ -169,7 +173,7 @@ pub(super) fn read(
             last = n;
         }
     }
-    (s.secure, s.frames, s.moved) = Default::default();
+    (s.secure, s.frames, s.values, s.moved) = Default::default();
     learn(s, &found);
     let tree = found["tree_markdown"].as_str().unwrap_or("");
     // The window's own title, as accessibility gives it: the listed one is often empty.
@@ -205,32 +209,35 @@ fn thin(found: &Value) -> bool {
     unresolved(found) || found["total_element_count"].as_u64().unwrap_or(0) < THIN
 }
 
-/// Rows without the driver's action lists, which Chromium fills with its own menus.
+/// Rows without the driver's action lists, which Chromium fills with its own menus. A window's
+/// own text stays as it is: only the driver's words are said as ours, a row's after its list.
 pub(super) fn tidy(md: &str) -> String {
-    let mut out = String::with_capacity(md.len());
-    let mut rest = md;
-    while let Some(at) = rest.find("actions=[") {
-        out.push_str(rest[..at].trim_end_matches(' '));
-        let after = &rest[at + "actions=[".len()..];
-        rest = after.find(']').map_or("", |end| &after[end + 1..]);
-    }
-    out.push_str(rest);
-    ours(&out.replace(" []", ""))
+    let tidy_row = |line: &str| -> String {
+        if !line.trim_start().starts_with(['-', '+', '~']) {
+            return ours(line);
+        }
+        // The list is the row's last bracket, after its name and value.
+        let Some(at) = line.rfind("actions=[") else {
+            return line.to_string();
+        };
+        let before = line[..at].trim_end_matches(' ');
+        let after = &line[at + "actions=[".len()..];
+        let after = after.find(']').map_or("", |end| &after[end + 1..]);
+        // `[actions=[…]]` alone leaves `[]`: gone with its space.
+        let (before, after) = match (before.strip_suffix('['), after.strip_prefix(']')) {
+            (Some(b), Some(a)) => (b.trim_end_matches(' '), a),
+            _ => (before, after),
+        };
+        format!("{before}{}", ours(after))
+    };
+    md.lines().map(tidy_row).collect::<Vec<_>>().join("\n")
 }
 
 pub(super) const NO_CHANGE: &str = "No change in the window.";
 
-/// Whether row [n] of a read or a diff shows `text` (its first line, as far as a row shows it).
-pub(super) fn shows(md: &str, n: u64, text: &str) -> bool {
-    let want: String = text
-        .lines()
-        .next()
-        .unwrap_or("")
-        .trim()
-        .chars()
-        .take(30)
-        .collect();
-    md.lines().any(|l| row(l) == Some(n) && l.contains(&want))
+/// Whether control [n]'s whole value, as last read, holds all of `text` (its ends' spaces aside).
+pub(super) fn shows(s: &Sess, n: u64, text: &str) -> bool {
+    s.values.get(&n).is_some_and(|v| v.contains(text.trim()))
 }
 
 /// What changed in the window since the last read, from Cua's own `since` read.
@@ -271,7 +278,7 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
             )
         }
         _ => {
-            (s.secure, s.moved) = Default::default();
+            (s.secure, s.values, s.moved) = Default::default();
             learn(s, &found);
             format!(
                 "The window changed:\n{}",

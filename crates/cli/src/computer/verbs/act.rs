@@ -27,6 +27,12 @@ pub(super) fn act(
         args["post_action_wait"] = "none".into();
     }
     let done = match tool(data, name, args, &|| !here()) {
+        // A run stops at a step it can't vouch for: the next one may depend on it.
+        Err(Fail::Unknown) if s.batch => {
+            return Err(refuse(&format!(
+                "{line}: sent, but no answer came in time: the outcome is unknown."
+            )));
+        }
         Err(Fail::Unknown) => {
             return Ok(format!(
                 "{line}: sent, but no answer came in time: the outcome is unknown. Read again."
@@ -34,6 +40,11 @@ pub(super) fn act(
         }
         Err(f) => return Err(said(f)),
         // AX "cannot complete": the app often did it anyway (a button that opens a menu).
+        Ok(Err(why)) if why.contains("-25204") && s.batch => {
+            return Err(refuse(&format!(
+                "{line}: outcome unknown, the app didn't answer."
+            )));
+        }
         Ok(Err(why)) if why.contains("-25204") => {
             let diff = changes(data, me, s, here);
             return Ok(format!(
@@ -46,8 +57,14 @@ pub(super) fn act(
             )));
         }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
-        Ok(Ok(done)) if s.batch && done["effect"] != "refused" => {
-            return Ok(format!("{line}: sent."));
+        Ok(Ok(done)) if s.batch => {
+            return match done["effect"].as_str() {
+                Some(e @ ("refused" | "partial")) => Err(refuse(&format!(
+                    "{line}: {e}.{}",
+                    ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))
+                ))),
+                _ => Ok(format!("{line}: sent.")),
+            };
         }
         Ok(Ok(done)) => done,
     };

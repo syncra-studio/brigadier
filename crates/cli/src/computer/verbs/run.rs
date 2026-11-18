@@ -26,7 +26,7 @@ pub(super) fn run(
         ));
     }
     if verbs.iter().filter(|v| **v == "type").count() > 1
-        || steps.iter().flatten().any(|a| a == "--submit")
+        || (steps.iter().flatten()).any(|a| a == "--submit" || a == "--stdin")
     {
         return Err(refuse(
             "A run has one type step, its text on stdin, and no --submit: add 'key return' as a step.",
@@ -60,12 +60,12 @@ pub(super) fn run(
         return Ok(lines.join("\n"));
     }
     let diff = changes(data, me, &mut s, here);
-    lock(&SESSIONS).insert(me.to_string(), s);
     let verdict = match typed {
-        Some((n, text)) if shows(&diff, n, text) => format!("Done: [{n}] reads the text back."),
+        Some((n, text)) if shows(&s, n, text) => format!("Done: [{n}] reads the text back."),
         _ if diff == NO_CHANGE => "No change seen. Read again, or try another way.".into(),
         _ => "Change observed.".into(),
     };
+    lock(&SESSIONS).insert(me.to_string(), s);
     Ok(format!("{}\n{verdict}\n{diff}", lines.join("\n")))
 }
 

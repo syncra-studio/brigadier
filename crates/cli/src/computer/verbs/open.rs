@@ -4,7 +4,7 @@
 
 use super::act::{act, idle, wait_for_user};
 use super::window::{NO_CHANGE, changes, read};
-use super::{Fail, Sess, Words, blocked, call, lock, refuse, said};
+use super::{Fail, SESSIONS, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
@@ -276,6 +276,11 @@ pub(super) fn press(
     what["pid"] = s.pid.into();
     let read_again = format!("`brigadier computer read {}` shows its menus.", s.app);
     let chose = match crate::computer::own(data, "menu", what, &|| !here()) {
+        Err(Fail::Unknown) if s.batch => {
+            return Err(refuse(
+                "Sent, but no answer came in time: the outcome is unknown.",
+            ));
+        }
         Err(Fail::Unknown) => {
             return Ok(format!(
                 "Sent, but no answer came in time: the outcome is unknown. {read_again}"
@@ -299,9 +304,6 @@ pub(super) fn press(
         Ok(Err(why)) => return Err(refuse(&format!("{why} {read_again}"))),
         Ok(Ok(done)) => done["pressed"].as_str().unwrap_or("the item").to_string(),
     };
-    if s.batch {
-        return Ok(format!("Chose {chose}: sent."));
-    }
     let start = Instant::now();
     let wait = match before.is_empty() {
         true => WINDOW_WAIT,
@@ -323,6 +325,14 @@ pub(super) fn press(
             };
             // The new window is read, else the app's first.
             s.window = opened.unwrap_or(0);
+            // A run stops here: its next numbers belong to the window read before.
+            if s.batch {
+                s.snapshot.clear();
+                lock(&SESSIONS).insert(me.to_string(), s.clone());
+                return Err(refuse(&format!(
+                    "Chose {chose}: {what}. Read it before going on."
+                )));
+            }
             return Ok(format!(
                 "Chose {chose}: done, {what}.\n{}",
                 read(data, me, s, w, here)?
@@ -332,6 +342,9 @@ pub(super) fn press(
             break;
         }
         thread::sleep(Duration::from_millis(200));
+    }
+    if s.batch {
+        return Ok(format!("Chose {chose}: sent."));
     }
     if before.is_empty() {
         return Ok(format!(
