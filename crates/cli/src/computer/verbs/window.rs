@@ -125,13 +125,19 @@ pub(super) fn read(
             all_i
         }
     };
-    let (mut nth, mut found) = (0, Value::Null);
+    let (mut nth, mut found, want) = (0, Value::Null, s.window);
     for &i in &order {
         s.window = all[i]["window_id"].as_u64().unwrap_or(0);
         (nth, found) = (
             i + 1,
             call(data, "get_window_state", state_args(s, me), here)?,
         );
+        // The session's window, just opened, reaches accessibility a moment after the list.
+        let start = Instant::now();
+        while unresolved(&found) && s.window == want && start.elapsed() < THIN_WAIT / 2 {
+            thread::sleep(Duration::from_millis(250));
+            found = call(data, "get_window_state", state_args(s, me), here)?;
+        }
         if !unresolved(&found) {
             break;
         }
