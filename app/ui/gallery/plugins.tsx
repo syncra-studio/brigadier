@@ -54,6 +54,13 @@ const SLACK: Entry = {
   },
 };
 
+// Slack after "Use Claude Code's Slack" for freelogo: not in the library, its plugin's server in the agent's own [D608, D659].
+const SLACK_ON: Plugins = {
+  ...VALUE,
+  own: [...VALUE.own, { key: "own:p2:server:plugin:slack:slack", kind: "server", name: "slack", detail: "https://mcp.slack.com/mcp", agents: ["Claude Code"], project: "freelogo", from: "From Claude Code's slack plugin", catalog: "slack" }],
+  catalog: { categories: ["Productivity"], entries: [{ ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" } }] },
+};
+
 /** A page in a box of its own, scrolled inside it as Settings scrolls it. */
 function Frame({ tall = false, children }: { tall?: boolean; children: ReactNode }) {
   return <div className={tall ? "flex h-240 w-full overflow-hidden rounded-surface border border-divider bg-background" : "flex h-120 w-200 overflow-hidden rounded-surface border border-divider bg-background"}>{children}</div>;
@@ -230,6 +237,7 @@ export function PluginsGallery() {
         <Still label="Sign in" detail="notion" />
         <Still label="Signed in by each agent" detail="figma" />
         <Still label="A skill an agent keeps its own of" detail="release" />
+        <Still label="On through its agent's own plugin" detail="catalog:slack" value={SLACK_ON} />
       </Row>
       <Row name="Dialogs, one at a time">
         <Dialogs />

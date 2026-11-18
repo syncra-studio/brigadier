@@ -97,6 +97,9 @@ export function DetailsPage({
   const [error, setError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const signedIn = item?.signed_in === true;
+  // Not in the library but on through its agent's own plugin, "Use Claude Code's Slack" [D608]: where, instead of Install [D659].
+  const viaAgent = item || !entry ? [] : value.own.filter((own) => own.catalog === entry.id);
+  const agentNote = viaAgent.length > 0 && `${viaAgent[0]!.from}, on in ${viaAgent.some((own) => !own.project) ? "all projects" : viaAgent.map((own) => own.project).join(", ")}.`;
   const signOut = () => {
     setLeaving(true);
     setError(null);
@@ -145,9 +148,13 @@ export function DetailsPage({
         mark={<PluginMark item={mark} large />}
         actions={
           !item ? (
-            <Button size="sm" onClick={onInstall}>
-              Install
-            </Button>
+            viaAgent.length ? (
+              <Badge variant="success">Installed</Badge>
+            ) : (
+              <Button size="sm" onClick={onInstall}>
+                Install
+              </Button>
+            )
           ) : (
           <span className="flex items-center gap-3">
             {item.status === "cant_reach" && <Badge variant={STATUS.cant_reach.variant}>{STATUS.cant_reach.label}</Badge>}
@@ -194,9 +201,9 @@ export function DetailsPage({
         }
       >
         {entry && <p className="text-label">{entry.about}</p>}
-        {(item?.note || error) && (
+        {(item?.note || agentNote || error) && (
           <div className="-mt-5 flex flex-col gap-2">
-            {item?.note && <p className="text-xs text-quiet-foreground">{item.note}</p>}
+            {(item?.note || agentNote) && <p className="text-xs text-quiet-foreground">{item?.note || agentNote}</p>}
             <ErrorLine error={error} />
           </div>
         )}
