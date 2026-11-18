@@ -128,9 +128,11 @@ pub(super) fn open(
         .map(|t| format!(" with {t}"))
         .unwrap_or_default();
     let mut body = read(data, me, s, w, here)?;
-    // A page loads after its window shows: wait for its content.
+    // A page loads after its window shows: wait for its web area to take the page's title.
     while target.as_ref().is_some_and(|t| t.contains("://"))
-        && !body.contains("AXWebArea")
+        && !["AXWebArea \"", "AXWebArea ("]
+            .iter()
+            .any(|named| body.contains(named))
         && start.elapsed() < PAGE_WAIT
     {
         thread::sleep(Duration::from_millis(400));
