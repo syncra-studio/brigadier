@@ -105,6 +105,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "brigadier-computer"
+version = "0.1.0"
+dependencies = [
+ "brigadier-frames",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
 name = "brigadier-core"
 version = "0.1.0"
 dependencies = [

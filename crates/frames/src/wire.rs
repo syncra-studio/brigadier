@@ -129,7 +129,7 @@ pub fn connect_daemon(path: &Path, timeout: Duration) -> io::Result<Conn> {
 }
 
 pub struct Conn {
-    stream: UnixStream,
+    pub stream: UnixStream,
     pub hello: Value,
 }
 

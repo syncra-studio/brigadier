@@ -782,3 +782,40 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Cua Driver 0.53.2
+
+The Brigadier Computer Use helper ships Cua Driver (https://github.com/trycua/cua, tag `cua-driver-rs-v0.53.2`), unmodified, under the MIT License:
+
+```
+MIT License
+
+Copyright (c) 2025 Cua AI, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+Cua Driver's own third-party notices: parts of it are derived from, or embed, these projects, each under the MIT License text above with its own copyright notice.
+
+- trope-cua (https://github.com/voctory/trope-cua): Copyright (c) 2026 Victor Vannara
+- Interface-Agent (https://github.com/francedot/Interface-Agent): Copyright (c) 2024 Francesco Bonacci
+- yabai (https://github.com/koekeishiya/yabai): Copyright (c) 2019 Åsmund Vikane
+- QuickJS-ng (https://github.com/quickjs-ng/quickjs): Copyright (c) 2017-2026 Fabrice Bellard; (c) 2017-2024 Charlie Gordon; (c) 2023-2026 Ben Noordhuis; (c) 2023-2026 Saúl Ibarra Corretgé
+- rquickjs (https://github.com/DelSkayn/rquickjs): Copyright (c) 2020 Mees Delzenne; (c) 2025 Rquickjs Contributors
+- T3 Code (https://github.com/pingdotgg/t3code): Copyright (c) 2026 T3 Tools Inc.

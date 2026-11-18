@@ -9,11 +9,46 @@ set -eu
 cd "$(git rev-parse --show-toplevel)"
 export PATH="$HOME/.cargo/bin:$PATH"
 # Packaged builds number themselves by commit count, as `pnpm start` does (proposed).
-BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build --release --locked
+BUILD=$(git rev-list --count HEAD)
+BRIGADIER_BUILD=$BUILD cargo build --release --locked
 pnpm build
 rm -rf target/bin
 mkdir target/bin
 cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,libbrigadier_panel.dylib} target/bin/
+# Computer use's helper is its own app, launched through LaunchServices, so macOS charges the
+# Accessibility and Screen Recording grants to it, not to Brigadier or an agent's shell [D908, D913].
+# It hosts Cua Driver 0.53.2 (MIT) as released; osx-sign re-signs it, inside out, with the app.
+CUA=cua-driver-rs-0.53.2-darwin-universal-binary.tar.gz
+mkdir -p target/cua
+if [ ! -f "target/cua/$CUA" ]; then
+  curl -fsSL -o "target/cua/$CUA.part" "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.53.2/$CUA"
+  mv "target/cua/$CUA.part" "target/cua/$CUA"
+fi
+echo "4ac301e624ca8fc6bff6be7066477f8a79d3951af7b213ba0634b8661c0d139e  target/cua/$CUA" | shasum -a 256 -c -
+HELPER="target/Brigadier Computer Use.app/Contents"
+rm -rf "target/Brigadier Computer Use.app"
+mkdir -p "$HELPER/MacOS" "$HELPER/Resources"
+cp target/release/brigadier-computer "$HELPER/MacOS/"
+tar -xzf "target/cua/$CUA" -C "$HELPER/Resources" cua-driver
+cp app/main/icons/icon.icns "$HELPER/Resources/"
+cat >"$HELPER/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>sh.brigadier.computer-use</string>
+  <key>CFBundleName</key><string>Brigadier Computer Use</string>
+  <key>CFBundleDisplayName</key><string>Brigadier Computer Use</string>
+  <key>CFBundleExecutable</key><string>brigadier-computer</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>icon.icns</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
+  <key>CFBundleShortVersionString</key><string>$BUILD</string>
+  <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>An agent in Brigadier wants to control this app for your task.</string>
+</dict>
+</plist>
+EOF
 node --input-type=module <<'EOF'
 import { packager } from "@electron/packager";
 // Electron's own checksums, as its installer uses: a cached zip needs no network.
@@ -31,7 +66,7 @@ await packager({
   out: "out",
   overwrite: true,
   download: { checksums },
-  extraResource: ["target/bin", "THIRD_PARTY_NOTICES.md"],
+  extraResource: ["target/bin", "target/Brigadier Computer Use.app", "THIRD_PARTY_NOTICES.md"],
   extendInfo: {
     NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task.",
     // Finder's Open With on a folder [D165, D2004].
