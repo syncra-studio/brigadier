@@ -1,6 +1,5 @@
 //! The old browser store, with versioned SQLite migrations, one file per profile.
 
-use super::types::*;
 use rusqlite::Connection;
 use std::io;
 use std::path::Path;
@@ -50,42 +49,8 @@ const SCHEMA: &[&str] = &[
 ",
 ];
 
-/// The most downloads a list returns at once.
-pub(super) const PAGE_LIMIT: u32 = 500;
-
 pub struct Store {
     pub(super) db: Connection,
-}
-
-pub(super) fn state_text(state: DownloadState) -> &'static str {
-    match state {
-        DownloadState::Running => "running",
-        DownloadState::Done => "done",
-        DownloadState::Failed => "failed",
-        DownloadState::Cancelled => "cancelled",
-    }
-}
-
-pub(super) fn state(text: &str) -> DownloadState {
-    match text {
-        "done" => DownloadState::Done,
-        "running" => DownloadState::Running,
-        "cancelled" => DownloadState::Cancelled,
-        _ => DownloadState::Failed,
-    }
-}
-
-/// `query` as a LIKE pattern matching it anywhere, its own `%`, `_` and `\` taken literally.
-pub(super) fn like(query: &str) -> String {
-    let mut pattern = String::from("%");
-    for c in query.trim().chars() {
-        if matches!(c, '%' | '_' | '\\') {
-            pattern.push('\\');
-        }
-        pattern.push(c);
-    }
-    pattern.push('%');
-    pattern
 }
 
 impl Store {

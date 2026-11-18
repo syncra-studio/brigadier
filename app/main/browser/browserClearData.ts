@@ -1,5 +1,5 @@
-// Clear browsing data's engine part, for one profile: cookies, site storage and the cache. History, downloads and
-// site choices are Rust's, cleared by the page. Chromium gives neither cookies nor site storage a date Electron can
+// Clear browsing data's engine part, for one profile: cookies, site storage and the cache. Chromium gives
+// neither cookies nor site storage a date Electron can
 // read (`Cookie` has no creation time, `clearData` no range), so Rust keeps them (crates/cli/src/browser/dates.rs):
 // main sends when each cookie last changed and when each origin last had a frame. One last seen before this ran counts as older.
 import fs from "node:fs";

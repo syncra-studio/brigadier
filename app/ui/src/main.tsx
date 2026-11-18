@@ -46,7 +46,6 @@ import { SidebarFoot } from "./sidebar/foot";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
 import { Thread, type ThreadHandle } from "./thread/thread";
 import { installBrowserAgent } from "./browser/agent";
-import { startBrowserData } from "./browser/data";
 import { installTabLayer } from "./browser/layer";
 import { installLinks } from "./browser/links";
 import "./theme.css";
@@ -299,7 +298,6 @@ if (window.brigadier) document.documentElement.dataset.platform = window.brigadi
 if (window.brigadier) {
   installTabLayer();
   installBrowserAgent();
-  void startBrowserData();
 }
 installLinks();
 

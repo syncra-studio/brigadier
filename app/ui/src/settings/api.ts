@@ -17,9 +17,6 @@ export type Settings = {
   /** Where web links and local dev URLs open: Brigadier's browser or the default one (Settings › Browser) [D507]. */
   web_links_in: "brigadier" | "system";
   local_links_in: "brigadier" | "system";
-  /** Whether each browser download asks where to save it, and where they go: none is the system's Downloads folder. */
-  browser_ask_downloads: boolean;
-  browser_downloads_dir: string;
   /** The models starred in the model picker, as `<agent>/<id>`. */
   models_starred: string[];
 };
@@ -27,7 +24,6 @@ export type Settings = {
 const settings = store<{ value?: Settings; error?: string }>({});
 export const useSettings = settings.use;
 export const getSettings = () => settings.get().value;
-export const onSettings = settings.subscribe;
 
 // Rust's last word, and the changes still on their way, oldest first: what's shown is the one with the others on top.
 let confirmed: Settings | undefined;

@@ -9,7 +9,6 @@ import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
 import { plural } from "../panel/words";
 import { ClearBrowsingDataDialog } from "./browser-clear";
-import { openBrowserSettings } from "./browser-parts";
 import { ProfileDeleteDialog, useSessionIds } from "./browser-profile-dialogs";
 import { SettingsPage, SettingsSection } from "./parts";
 
@@ -84,14 +83,9 @@ export function ProfileDetailPage({ id }: { id: string }) {
       <SettingsSection title="Data in this profile">
         <SettingsCard>
           <SettingsRow label="Sign-ins" description={counts ? `${plural(counts.signIns, "site")} with cookies, not a count of accounts.` : undefined} />
-          <SettingsRow label="Download history" description="The files this profile downloaded.">
-            <Button variant="soft" size="sm" aria-label="Manage download history" onClick={() => openBrowserSettings("downloads", id)}>
-              Manage
-            </Button>
-          </SettingsRow>
           <SettingsRow
             label="Browsing data"
-            description="Clear this profile's sign-ins, site data, cache and download history, by time range. Other profiles aren't touched."
+            description="Clear this profile's sign-ins, site data and cache, by time range. Other profiles aren't touched."
           >
             <Button variant="soft" size="sm" onClick={() => setClearing(true)}>
               Clear browsing data

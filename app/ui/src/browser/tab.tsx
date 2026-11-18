@@ -8,7 +8,6 @@ import { ArrowUpRight, Globe } from "../icons";
 import { useDaemon } from "../daemon";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
-import { DownloadsButton } from "./downloads-button";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
 import { followLayout } from "./follow";
 import { showPage } from "./hole";
@@ -381,7 +380,6 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
           <OsRefusedNotice id={id} refused={active && page?.osRefused?.origin === originOf(url) ? page?.osRefused : null} anchor={address} />
         </form>
         <ProfileButton owner={owner} tab={tab} />
-        <DownloadsButton owner={owner} tab={tab} />
         {/* shortcut: no screenshot until its section lands; it goes here. */}
         <BrowserDevButton id={id} ready={ready} />
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />

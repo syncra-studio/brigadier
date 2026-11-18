@@ -84,9 +84,6 @@ export function BrowserOptions({
             Import Browser Data…
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("downloads")}>
-          Downloads
-        </DropdownMenuItem>
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("clear")}>
           Clear browsing data
         </DropdownMenuItem>

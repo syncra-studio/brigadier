@@ -7,7 +7,7 @@ import { app, session } from "electron";
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
 import { watchProfileCookies } from "./browserClearData";
 import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
-import { installDownloads, watchDownloads } from "./browserDownloads";
+import { watchDownloads } from "./browserDownloads";
 import { installBrowserImport } from "./browserImport";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
@@ -17,7 +17,7 @@ import { installGuest, webOrBlank } from "./guestPopups";
 import { installLocalCerts } from "./localCerts";
 import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers } from "./permissions";
 import { isDeleting, installProfileStore } from "./profileStore";
-import { isProfilePartition, profileOfStorage, profilePartition } from "./profiles";
+import { isProfilePartition, profilePartition } from "./profiles";
 import { keepSessionCookies } from "./sessionCookies";
 
 const guestPasskeyPath = path.join(__dirname, "guestPasskey.js");
@@ -35,7 +35,6 @@ export function installBrowserHost(origin: string): void {
   installBrowserDevtools();
   installProfileStore();
   installBrowserAgent();
-  installDownloads();
   installBrowserImport();
   installLocalCerts();
   app.on("render-process-gone", (_event, contents, details) => {
@@ -57,8 +56,7 @@ export function installBrowserHost(origin: string): void {
     watchProfileCookies(created);
     if (process.platform === "darwin") created.registerPreloadScript({ type: "frame", filePath: guestPasskeyPath });
     watchNetwork(created);
-    const profileId = profileOfStorage(created.storagePath ?? null);
-    if (profileId) watchDownloads(created, profileId);
+    watchDownloads(created);
   });
 
   app.on("web-contents-created", (_event, contents) => {

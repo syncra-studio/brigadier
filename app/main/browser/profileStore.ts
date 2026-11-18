@@ -6,7 +6,6 @@ import path from "node:path";
 import { app, BrowserWindow, session, webContents } from "electron";
 
 import { handleFromApp } from "./appPage";
-import { cancelDownloadsOf } from "./browserDownloads";
 import { clearEngineData, type EngineClear } from "./browserClearData";
 import { profileFolderName, profilePartition, refusalToRemove, type SavedProfiles } from "./profiles";
 
@@ -60,7 +59,6 @@ async function removeProfile(profileId: string): Promise<void> {
   // Written first: a crash during the clear still ends with the folder gone.
   writeJson(removedFile(), [...new Set([...removed, profileId])]);
   closePopupsOf(profileId);
-  cancelDownloadsOf(profileId);
   await clearProfile(profileId);
 }
 
