@@ -1,5 +1,5 @@
 import { getSettings } from "../settings/api";
-import { openTab } from "../shell/tab-store";
+import { HOME, openTab } from "../shell/tab-store";
 
 /**
  * Where a web link opens: in a Browser tab of the session in front, or in the user's default browser, as Settings ›
@@ -22,15 +22,16 @@ export function localUrl(url: string): boolean {
 /** The click asked for the other place: ⌘ on a Mac, Ctrl elsewhere. */
 export const swapped = (event: { metaKey: boolean; ctrlKey: boolean }): boolean => (MAC ? event.metaKey : event.ctrlKey);
 
-/** The session in front, when one is: the one a Browser tab opens in. */
+/** What's in front to hold a Browser tab: the open session, or Home, whose tabs (Pull requests…) are its own [D656]. */
 function sessionInFront(): string | null {
   const { hash } = window.location;
-  return hash.startsWith("#thread/") ? decodeURIComponent(hash.slice("#thread/".length)) : null;
+  if (hash.startsWith("#thread/")) return decodeURIComponent(hash.slice("#thread/".length));
+  return hash.startsWith("#settings") ? null : HOME;
 }
 
 /**
  * Opens web link `url` where Settings › Browser says, or in the other place with `swap`. A tab needs that row's
- * Brigadier's browser and a session in front to hold it (`session`: the one it belongs to); anything else goes to the
+ * Brigadier's browser and a session or Home in front to hold it (`session`: the one it belongs to); anything else goes to the
  * default browser.
  */
 export function openLink(url: string, { swap = false, session }: { swap?: boolean; session?: string } = {}): void {
