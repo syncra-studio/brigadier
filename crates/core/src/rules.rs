@@ -164,7 +164,13 @@ pub fn count(dir: &Path, reply: &str, hit: bool, sent: bool, retry: bool, by: Va
         add(
             "fence_drafts",
             fences
-                .filter(|l| l[3..].starts_with("text") || l[3..].starts_with("brigadier-message"))
+                // A bare `text` fence is output, not a draft [D749]; `l` is trimmed, so a space means a destination.
+                .filter(|l| {
+                    l[3..]
+                        .strip_prefix("text")
+                        .is_some_and(|r| r.starts_with(char::is_whitespace))
+                        || l[3..].starts_with("brigadier-message")
+                })
                 .filter(|l| *l != crate::norm::DRAFT.trim_end())
                 .count(),
         );

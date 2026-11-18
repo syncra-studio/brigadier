@@ -288,11 +288,9 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     // A reply's card, drawn once its JSON is whole and fits; until then, or if it never does, a code block [D477].
     const card = live ? replyCardFrame(language) : replyCard(language, text, at);
     if (card) return card;
-    // The words after a fence's language name what it is: a draft's destination, a diff's file [D477]. Some agents
-    // put a draft's destination on its first line instead. shortcut: any short first line with " · " counts as one.
-    const named = WRITING.test(language) && !code.data?.meta ? /^([^\n]{1,100} · [^\n]*)\n/.exec(text) : null;
-    const meta = code.data?.meta || named?.[1];
-    const said = (named ? text.slice(named[0].length) : text).replace(/\n$/, "");
+    // The words after a fence's language name what it is: a draft's destination, a diff's file [D477].
+    const meta = code.data?.meta;
+    const said = text.replace(/\n$/, "");
     const Icon = KIND_ICONS[language] ?? Code;
     const title = meta ? (
       <>
@@ -300,8 +298,9 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
         <span className="font-medium text-foreground">{meta}</span>
       </>
     ) : undefined;
-    // Words for a person to paste, titled or not, are a writing card in the reply's own font [D520].
-    if (WRITING.test(language)) return <WritingCard title={meta || "Draft"} text={said} keep={at} live={live} />;
+    // Words to paste somewhere, a `text <where>` fence, are a writing card in the reply's own font
+    // [D520]; a bare `text` fence is output, logs or an error, so a code block [D749].
+    if (WRITING.test(language) && meta) return <WritingCard title={meta} text={said} keep={at} live={live} />;
     return <CodeBlock code={said} language={language} keep={at} title={title} live={live} />;
   },
   // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].
