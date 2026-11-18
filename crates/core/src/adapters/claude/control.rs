@@ -142,7 +142,8 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     );
     // Brigadier's own tools, always loaded and never asked about: they only show the user things.
     let tools = json!({"mcpServers": {"brigadier": {"command": me, "args": ["mcp-server"], "alwaysLoad": true}}});
-    let mut settings = json!({"attribution": {"commit": "", "pr": ""}, "crossSessionInbound": "refuse", "hooks": {
+    // Its thinking as summaries, so thoughts are lines of the work [D752].
+    let mut settings = json!({"attribution": {"commit": "", "pr": ""}, "crossSessionInbound": "refuse", "showThinkingSummaries": true, "hooks": {
         "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "cat"}]}]},
         "permissions": {"allow": ["mcp__brigadier__show_draft"]}});
     // A worker's last words go to its lead as its result, a question included.
