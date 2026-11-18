@@ -5,7 +5,7 @@ use super::open::{menu_bar, own, windows};
 use super::{FULL, ROWS, SECURE, Sess, Words, call, lock, refuse};
 use brigadier_core as core;
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -18,6 +18,19 @@ const THIN: u64 = 12;
 const THIN_WAIT: Duration = Duration::from_secs(3);
 /// The apps asked to turn their tree on already, by pid: each is asked, and waited on, once.
 static ASKED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
+
+/// Chromium and Electron take AXManualAccessibility, native apps refuse it (-25205): asked once
+/// per pid, which also turns their tree on.
+static CHROMIUM: LazyLock<Mutex<HashMap<i64, bool>>> = LazyLock::new(Mutex::default);
+
+pub(super) fn chromium(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> bool {
+    if let Some(&c) = lock(&CHROMIUM).get(&pid) {
+        return c;
+    }
+    let c = own(data, "enable", json!({"pid": pid}), here).is_ok_and(|r| r["manual"] == 0);
+    lock(&CHROMIUM).insert(pid, c);
+    c
+}
 
 /// The tree's row number: `[N]` at the start of its row.
 pub(super) fn row(line: &str) -> Option<u64> {
@@ -128,7 +141,7 @@ pub(super) fn read(
     }
     let window = &all[nth - 1];
     if thin(&found) && lock(&ASKED).insert(s.pid) {
-        let _ = own(data, "enable", json!({"pid": s.pid}), here);
+        chromium(data, s.pid, here);
         let start = Instant::now();
         let mut last = 0;
         while start.elapsed() < THIN_WAIT {
@@ -304,6 +317,7 @@ pub(super) fn screenshot(
     data: &Path,
     me: &str,
     s: &Sess,
+    region: Option<&str>,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     if s.window == 0 {
@@ -315,7 +329,7 @@ pub(super) fn screenshot(
     fs::create_dir_all(&dir).map_err(|e| refuse(&e.to_string()))?;
     let n = fs::read_dir(&dir).map_or(0, |d| d.count()) + 1;
     let file = dir.join(format!("{n}.jpg"));
-    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file, "screenshot_format": "jpeg", "max_dimension": 1366});
+    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file, "screenshot_format": "jpeg", "max_dimension": 1280});
     let found = call(data, "get_window_state", shot, here)?;
     if found["screenshot_file_path"].is_null() {
         return Err(not_captured(&found));
@@ -327,7 +341,35 @@ pub(super) fn screenshot(
         (Some(w), Some(h)) => format!(" ({w}×{h})"),
         _ => String::new(),
     };
-    Ok(format!("Saved: {}{size}", file.display()))
+    let Some(r) = region else {
+        return Ok(format!(
+            "Saved: {}{size}. `click --at X,Y` clicks a point of it.",
+            file.display()
+        ));
+    };
+    // A part of the picture, cut in place (proposed).
+    let n: Vec<u64> = (r.split(','))
+        .filter_map(|v| v.trim().parse().ok())
+        .collect();
+    let [x, y, w, h] = n[..] else {
+        return Err(refuse(
+            "--region takes X,Y,W,H in the picture's pixels: --region 0,0,640,400",
+        ));
+    };
+    let cut = std::process::Command::new("sips")
+        .args(["--cropToHeightWidth", &h.to_string(), &w.to_string()])
+        .args(["--cropOffset", &y.to_string(), &x.to_string()])
+        .arg(&file)
+        .output();
+    if !cut.is_ok_and(|o| o.status.success()) {
+        return Err(refuse(
+            "Couldn't cut that region: check it lies inside the picture.",
+        ));
+    }
+    Ok(format!(
+        "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.",
+        file.display()
+    ))
 }
 
 /// A capture the driver couldn't make or place, in its own words.

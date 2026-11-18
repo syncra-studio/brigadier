@@ -31,7 +31,7 @@ macOS prompts in Brigadier's name. If this can't do it, say so.
   open <app> [<url>|<path>]     starts an app in the background, or hands it a url or path, and reads its window
   read [<app>] [--window N] [--query WORDS] [--full]
                                 one window as text, each control as [n] role \"name\" = \"value\"; about 300 rows, --full for more
-  click <n> [--double|--right]  clicks control [n] of your last read
+  click <n> [--double|--right]  clicks control [n] of your last read; click --at X,Y clicks a point of your last screenshot
   type <n> [--submit]           types the text on stdin into control [n]: echo \"…\" | brigadier computer type 4; --submit presses Return
   key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
   scroll <n> up|down [--pages N]
@@ -40,7 +40,8 @@ macOS prompts in Brigadier's name. If this can't do it, say so.
                                 one name (menu Close) picks it from the menu open now, after a click --right
   run '<step>' '<step>' …        a few actions in one call: run 'click 4' 'type 5' 'key return'; stops at the first that
                                 fails, then one diff; a type step takes stdin
-  screenshot                    a picture of the window, saved in your session's folder; only its path comes back
+  screenshot [--region X,Y,W,H] a picture of the window, 1280 px at most, or a part of it, saved in your session's
+                                folder; only its path comes back
 
 Each action says what changed in the window since your last read, or \"no change seen\" and what to try; only
 `type` says done, when the field reads the text back. Read again when it says the numbers moved. Read first; take
@@ -115,7 +116,7 @@ fn words(args: &[String]) -> Result<Words<'_>, Value> {
     let mut it = args.iter().skip(2).map(String::as_str);
     while let Some(a) = it.next() {
         match a {
-            "--window" | "--query" | "--pages" | "--stdin" => {
+            "--window" | "--query" | "--pages" | "--stdin" | "--at" | "--region" => {
                 let v = it
                     .next()
                     .ok_or_else(|| refuse(&format!("{a} needs a value.")))?;
@@ -226,7 +227,7 @@ fn verb(
             }
             read(data, me, &mut s, w, here)?
         }
-        "screenshot" => screenshot(data, me, &s, here)?,
+        "screenshot" => screenshot(data, me, &s, w.values.get("--region").copied(), here)?,
         _ if s.pid == 0 => {
             return Err(refuse(
                 "Name the app first: brigadier computer read <app>, or open <app>.",
@@ -271,6 +272,33 @@ fn verb(
                 "{} has no window read to act in. `brigadier computer read {}` reads it, or lists its menus when it has no window.",
                 s.app, s.app
             )));
+        }
+        // A point of the last screenshot (proposed): pixel clicks crash Chromium's pages (Cua #7292).
+        "click" if w.values.contains_key("--at") => {
+            let at: Vec<f64> = (w.values["--at"].split(','))
+                .filter_map(|v| v.trim().parse().ok())
+                .collect();
+            let [x, y] = at[..] else {
+                return Err(refuse(
+                    "--at takes X,Y in your last screenshot's pixels: click --at 120,48",
+                ));
+            };
+            if window::chromium(data, s.pid, here) {
+                return Err(refuse(&format!(
+                    "{} is built on Chromium, where a click on a point can crash the page: click a control's number from a read.",
+                    s.app
+                )));
+            }
+            let args = json!({"x": x, "y": y, "pid": s.pid, "window_id": s.window, "session": me});
+            act(
+                data,
+                me,
+                &mut s,
+                &format!("Clicked at {x},{y}"),
+                "click",
+                args,
+                here,
+            )?
         }
         "click" => {
             let n = n(0)?;
@@ -361,6 +389,13 @@ fn verb(
                 args,
                 here,
             )?
+        }
+        // A background drag kills hardened Electron apps (Cua #6258).
+        "drag" if window::chromium(data, s.pid, here) => {
+            return Err(refuse(&format!(
+                "{} is built on Chromium or Electron, where a background drag can crash it: use its menus or keys, or ask the user.",
+                s.app
+            )));
         }
         "drag" => {
             let (from, to) = (n(0)?, n(1)?);
