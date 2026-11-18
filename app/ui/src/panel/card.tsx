@@ -6,10 +6,8 @@ import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
-import { Branch, Check, ChevronDown } from "../icons";
-import type { AgentChip } from "../landing/agent-chip";
+import { Branch, ChevronDown } from "../icons";
 import { PullRequestOpen, Sparkles } from "../landing/icons";
-import { addChip, useChips } from "./chips";
 import { Offline } from "./source/branch";
 import { ReadError, type SourceData, type SourceOps } from "./source/data";
 import { Gone } from "./source/hero";
@@ -18,6 +16,11 @@ import { ago } from "../landing/pr-words";
 import { useBranchPicker } from "./branch-picker";
 import type { KeptPrs, Pr } from "./types";
 import { openLink } from "../browser/links";
+import { showToast } from "../components/toast";
+import { useHost } from "../landing/host";
+import type { PullRequest } from "../landing/pull-requests";
+import { sendToAgent } from "../landing/send-to-agent";
+import { errorText, run } from "../onboarding/api";
 
 /** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
 const folds = new Map<string, boolean>();
@@ -209,7 +212,7 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
               pr.state === "open" && pr.health === "failed" && session ? (
                 <div key={`${pr.repo ?? ""}#${pr.number}`} className="group/row relative min-w-0">
                   <PrLine pr={pr} failing onClick={() => onPr?.(pr)} />
-                  <SendFix owner={session} pr={pr} />
+                  <SendPr owner={session} pr={pr} />
                 </div>
               ) : (
                 <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
@@ -272,16 +275,21 @@ export function FolderCard({ project, repos, onReview, workers }: { project: str
 }
 
 /**
- * A failing PR's Send to agent, over its card row's end on hover as the Background rows' Stop: it leaves the PR tab's
- * Fix chip above the composer and sends nothing [D261, D1027]; once it has, it reads Added.
+ * A failing PR's Send to agent, over its card row's end on hover as the Background rows' Stop: the PR tab's own Send to
+ * agent, with the PR read as that tab reads it [D261, D701]: its "Pull request #n" chip in the composer, nothing sent.
  */
-function SendFix({ owner, pr }: { owner: string; pr: Pr }) {
-  const added = useChips(owner).some((chip) => chip.kind === "agent" && chip.pr === pr.number && chip.key === "fix");
-  const checks = pr.failedChecks ?? [];
+function SendPr({ owner, pr }: { owner: string; pr: Pr }) {
+  const host = useHost(owner);
+  const { rows, projects } = useDaemon();
+  const [sending, setSending] = useState(false);
+  const target = pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number);
   const send = () => {
-    const chip: AgentChip = { id: "fix", kind: "fix", pr: pr.number, reasons: checks.length ? `${checks.join(", ")} failed` : "checks failed" };
-    const text = `Fix PR #${pr.number}${pr.url ? ` (${pr.url})` : ""}: its checks failed. Its failed checks: ${checks.join(", ") || "none named"}.`;
-    addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: "fix", pr: pr.number, chip, text });
+    setSending(true);
+    run(["host", host, "view", target, "kept"])
+      .then((kept) => kept.pr ?? run(["host", host, "view", target]).then((read) => read.pr))
+      .then((read: PullRequest) => sendToAgent(read, host, target, rows ?? [], projects ?? [], () => {}))
+      .catch((cause) => showToast(`Couldn't send #${pr.number} to the agent: ${errorText(cause)}`, { tone: "error" }))
+      .finally(() => setSending(false));
   };
   return (
     <span
@@ -291,8 +299,8 @@ function SendFix({ owner, pr }: { owner: string; pr: Pr }) {
         "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100",
       )}
     >
-      <TooltipIconButton tooltip={added ? "Added" : "Send to agent"} aria-label={`Send #${pr.number}'s failed checks to agent`} disabled={added} className="shrink-0 rounded-icon-button text-row-foreground hover:text-foreground" onClick={send}>
-        {added ? <Check /> : <Sparkles />}
+      <TooltipIconButton tooltip="Send to agent" aria-label={`Send #${pr.number} to agent`} disabled={sending} className="shrink-0 rounded-icon-button text-row-foreground hover:text-foreground" onClick={send}>
+        <Sparkles />
       </TooltipIconButton>
     </span>
   );

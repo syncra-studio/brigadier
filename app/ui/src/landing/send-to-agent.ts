@@ -4,6 +4,7 @@ import { run } from "../onboarding/api";
 import { newProjectId } from "../projects/projects";
 import { daemonSource } from "../projects/store";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
+import { putBack } from "../session/side";
 import { base64, stored } from "../session/files";
 import { prPasteLabel } from "../shell/attachment-tab";
 import { CHAT, openTab, selectTab } from "../shell/tab-store";
@@ -41,7 +42,8 @@ async function withChip(owner: string, pr: PullRequest): Promise<Draft> {
 
 /** A session already on the PR: open on its chat with the PR in its composer, its page in a browser tab beside it [D699]. Nothing is sent [D675]. */
 async function open(session: string, pr: PullRequest): Promise<void> {
-  await withChip(session, pr);
+  // Its composer may be open already, having read its draft as it opened: it's handed the draft with the chip.
+  putBack(session, "", false, await withChip(session, pr));
   openTab(session, "browser", pr.url);
   selectTab(session, CHAT);
   window.location.hash = `#thread/${encodeURIComponent(session)}`;
