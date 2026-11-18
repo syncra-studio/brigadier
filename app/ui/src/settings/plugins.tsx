@@ -65,7 +65,7 @@ export type Entry = {
   installed: string | null;
 };
 /** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
-export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string; catalog?: string | null };
+export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string; catalog?: string | null; /** The catalog entry it installs, on through its agent's own plugin [D717]. */ via?: string | null };
 export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[]; catalog?: { categories: string[]; entries: Entry[] } };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
@@ -92,18 +92,18 @@ export type PluginActions = {
   browse: (kind: Kind, query: string) => Promise<Found[]>;
 };
 
-/** The page's tabs, in this order [D566, D573]. */
+/** The page's tabs: Browse · MCPs · Skills [D718]. */
 export type Tab = "browse" | Kind;
-export const TAB_LABEL: Record<Tab, string> = { browse: "Browse", skill: "My Skills", server: "My MCPs" };
-const TABS: Tab[] = ["browse", "skill", "server"];
+export const TAB_LABEL: Record<Tab, string> = { browse: "Browse", server: "MCPs", skill: "Skills" };
+const TABS: Tab[] = ["browse", "server", "skill"];
 // How library items reach sessions [D429, D432]: only where on; each agent loads skills and MCP tools by name first.
 const DESCRIPTION = "Connect your tools to every agent, in all your projects or just some.";
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const PLUGINS_ROWS = {
   browse: { label: "Browse", description: "MCP servers and skills to install, by category" },
-  server: { label: "My MCPs", description: "Servers every agent can use, in every project or only some" },
-  skill: { label: "My Skills", description: "Skills every agent can use, in every project or only some" },
+  server: { label: "MCPs", description: "Servers every agent can use, in every project or only some" },
+  skill: { label: "Skills", description: "Skills every agent can use, in every project or only some" },
   own: { label: "Found on this machine", description: "What your agents have in their own settings and plugins. Install copies it into Brigadier, never its sign-in." },
 } as const;
 
