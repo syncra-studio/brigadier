@@ -193,7 +193,7 @@ export function HomeView(props: HomeProps) {
                   </ul>
                 </RailItem>
               )}
-              <RailItem variant="controls" label="Composer utility bar">
+              <RailItem label="Composer utility bar">
                 {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
                 <UtilityBar className={projects ? undefined : "invisible"}>
                   <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />

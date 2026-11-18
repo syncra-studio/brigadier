@@ -36,10 +36,11 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
 }
 
 /**
- * One item of the rail, each on the project strip's fill [D480]. `card` is a framed card (notices, the queue); `controls` a tab with no frame;
- * `decision` a card waiting for the user, which at the rail's bottom shows its whole frame a small gap above
- * the card instead of tucking under it. Items open to their height as they come, except those the rail had
- * as it appeared and those that came while the window was hidden.
+ * One item of the rail, each on the project strip's fill [D480] and framed, so the frame runs unbroken down a rail
+ * of several [D684]. `card` holds notices, the queue and the project strip; `decision` a card waiting for the user,
+ * which at the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items
+ * open to their height as they come, except those the rail had as it appeared and those that came while the window
+ * was hidden.
  */
 export function RailItem({
   variant = "card",
@@ -47,7 +48,7 @@ export function RailItem({
   className,
   children,
 }: {
-  variant?: "controls" | "card" | "decision";
+  variant?: "card" | "decision";
   label: string;
   className?: string;
   children: ReactNode;
@@ -67,8 +68,7 @@ export function RailItem({
         // The tuck under the card is padding, so the last item's content never hides behind it.
         variant !== "decision" && "last:pb-rail-tuck",
         // Every strip has the project strip's fill [D480].
-        "bg-code-surface",
-        variant !== "controls" && "border-x border-t border-border",
+        "bg-code-surface border-x border-t border-border",
         variant === "decision" && "last:mb-rail-clear last:rounded-b-overlay last:border-b",
         className,
       )}

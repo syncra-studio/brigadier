@@ -325,7 +325,7 @@ function Live() {
                 </RailItem>
               )}
               {home && (
-                <RailItem variant="controls" label="Composer utility bar">
+                <RailItem label="Composer utility bar">
                   <ProjectBar loading={branchesLoading} failed={branchesFailed} />
                 </RailItem>
               )}
