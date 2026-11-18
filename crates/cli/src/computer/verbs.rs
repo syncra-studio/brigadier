@@ -25,8 +25,9 @@ pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps o
 
 Use it when files, the shell or an app's own CLI can't do the job; a web page goes to `brigadier browser` unless the
 user names their own browser. Never drive apps with osascript, System Events, `open -a` or cliclick: they raise
-macOS prompts in Brigadier's name. If this can't do it, say so. In a browser, its profiles, history and bookmarks
-are in its menus: `read Dia --query jira` finds a page you have no address for; `open Dia <url>` opens one.
+macOS prompts in Brigadier's name. If this can't do it, say so. In a browser, its history and bookmarks are in its
+menus; another profile's tabs show after `menu \"Window > <this window's profile> > <name>\"` (switch back after):
+`read Dia --query jira` then finds a page you have no address for; `open Dia <url>` opens one.
 
   apps                          the running apps; (front) is the one in front
   open <app> [<url>|<path>]     starts an app in the background, or hands it a url or path, and reads its window
