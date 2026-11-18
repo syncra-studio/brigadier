@@ -6,6 +6,7 @@ use super::{plain, refuse, str};
 use brigadier_core::adapters::setup;
 use brigadier_core::library;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -16,18 +17,22 @@ use std::process::Command;
 const MAX_BYTES: u64 = 10 << 20;
 const MAX_FILES: usize = 200;
 
+/// A row's icon: at most this many bytes, waited for this many seconds [D660].
+const ICON_BYTES: u64 = 64 << 10;
+const ICON_SECS: u64 = 5;
+
 /// One GET through the system's curl, as the rest of Brigadier's requests; `max` bytes at most.
-fn get(url: &str, max: u64) -> Result<Vec<u8>, String> {
+fn get(url: &str, max: u64, secs: u64) -> Result<Vec<u8>, String> {
     let mut c = Command::new("/usr/bin/curl");
     c.args([
         "-sSfL",
         "--max-time",
-        "20",
+        &secs.to_string(),
         "--max-filesize",
         &max.to_string(),
     ])
     .args(["--", url]);
-    let out = setup::run(&mut c, 25)?;
+    let out = setup::run(&mut c, secs + 5)?;
     match out.status.success() {
         true => Ok(out.stdout),
         false => Err(String::from_utf8_lossy(&out.stderr).trim().to_string()),
@@ -46,7 +51,7 @@ pub(super) fn enc(s: &str) -> String {
 
 pub(super) fn run(data: &Path, kind: &str, query: &str) -> io::Result<Value> {
     let lib = library::items(data);
-    let found = match kind {
+    let mut found: Vec<Value> = match kind {
         // shortcut: live registry query per search, upgrade to a cached copy (updated_since) if it rate-limits or changes.
         "server" => {
             let url = format!(
@@ -72,7 +77,96 @@ pub(super) fn run(data: &Path, kind: &str, query: &str) -> io::Result<Value> {
             ));
         }
     };
+    // Every row's icon at once, so a search waits for the slowest one only.
+    std::thread::scope(|scope| {
+        for row in &mut found {
+            scope.spawn(move || {
+                let from = row["icon"].take();
+                let urls = from
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str);
+                row["icon"] = urls.into_iter().find_map(|url| icon(data, url)).into();
+            });
+        }
+    });
     Ok(json!({"ok": true, "found": found}))
+}
+
+/// An image at `url` as a data URL, the page's only way to show one (its CSP); each kept in the
+/// data folder, a miss too, so it's asked for once.
+// shortcut: the cache never expires; upgrade to a dated one if makers change their icons often.
+fn icon(data: &Path, url: &str) -> Option<String> {
+    let key: String = (Sha256::digest(url.as_bytes()).iter())
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let file = data.join("plugins").join("icons").join(key);
+    let bytes = fs::read(&file).unwrap_or_else(|_| {
+        let got = get(url, ICON_BYTES, ICON_SECS).unwrap_or_default();
+        let got = if image(&got).is_some() { got } else { vec![] };
+        let _ = fs::create_dir_all(data.join("plugins").join("icons"));
+        let _ = fs::write(&file, &got);
+        got
+    });
+    let kind = image(&bytes)?;
+    Some(format!(
+        "data:{kind};base64,{}",
+        brigadier_frames::base64(&bytes)
+    ))
+}
+
+/// What image these bytes are, by their first bytes; None for a page or anything else.
+fn image(b: &[u8]) -> Option<&'static str> {
+    let head = String::from_utf8_lossy(&b[..b.len().min(512)]).to_ascii_lowercase();
+    match b {
+        [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
+        [0xFF, 0xD8, ..] => Some("image/jpeg"),
+        [b'G', b'I', b'F', ..] => Some("image/gif"),
+        [0, 0, 1, 0, ..] => Some("image/x-icon"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("image/webp"),
+        _ if head.contains("<svg") && !head.contains("<html") => Some("image/svg+xml"),
+        _ => None,
+    }
+}
+
+/// Where a registry server's icon may come from: the icons it lists, then its proven namespace's
+/// (a GitHub account's avatar, a domain's favicon).
+fn server_icons(s: &Value) -> Vec<String> {
+    let listed = (s["icons"].as_array().into_iter().flatten())
+        .filter_map(|i| i["src"].as_str())
+        .filter(|src| src.starts_with("https://"))
+        .map(String::from);
+    let ns = str(&s["name"]).split('/').next().unwrap_or("");
+    let proven = match ns.strip_prefix("io.github.") {
+        Some(user) => avatar(user),
+        None if ns.contains('.') => Some(format!(
+            "https://{}/favicon.ico",
+            ns.rsplit('.').collect::<Vec<_>>().join(".")
+        )),
+        None => None,
+    };
+    listed.chain(proven).collect()
+}
+
+/// A GitHub account's avatar, small.
+fn avatar(user: &str) -> Option<String> {
+    let ok = !user.is_empty() && user.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    ok.then(|| format!("https://github.com/{user}.png?size=64"))
 }
 
 fn reach(url: &str, source: &str) -> io::Result<Value> {
@@ -81,7 +175,7 @@ fn reach(url: &str, source: &str) -> io::Result<Value> {
             "Couldn't reach {source}. Check your connection and try again."
         ))
     };
-    let bytes = get(url, 8 << 20).map_err(|_| said())?;
+    let bytes = get(url, 8 << 20, 20).map_err(|_| said())?;
     serde_json::from_slice(&bytes).map_err(|_| said())
 }
 
@@ -166,7 +260,7 @@ fn server(s: &Value, lib: &[Value]) -> Value {
     });
     json!({"key": s["name"], "kind": "server", "name": s["title"].as_str().unwrap_or(str(&s["name"])),
         "description": s["description"], "publisher": publisher(str(&s["name"])), "how": how,
-        "mark": mark, "in_library": held, "form": form, "why": why})
+        "mark": mark, "icon": server_icons(s), "in_library": held, "form": form, "why": why})
 }
 
 /// A stdio package as its version-pinned command line, and what it is; None for one Brigadier
@@ -232,6 +326,7 @@ fn skill(s: &Value, lib: &[Value]) -> Value {
     let held = (lib.iter()).any(|i| i["kind"] == "skill" && i["name"] == id);
     json!({"key": s["id"], "kind": "skill", "name": id, "description": "", "publisher": source,
         "how": installs(s["installs"].as_u64().unwrap_or(0)), "mark": "", "in_library": held,
+        "icon": avatar(source.split('/').next().unwrap_or("")).into_iter().collect::<Vec<_>>(),
         "form": why.is_none().then(|| json!({"source": source, "skill": id})), "why": why})
 }
 
@@ -272,6 +367,7 @@ pub(super) fn fetch(data: &Path, source: &str, ids: &[&str]) -> io::Result<Vec<P
         let bytes = get(
             &format!("https://api.github.com/repos/{source}/{path}"),
             32 << 20,
+            20,
         );
         serde_json::from_slice(&bytes.map_err(|_| gone())?).map_err(|_| gone())
     };
@@ -286,6 +382,7 @@ pub(super) fn fetch(data: &Path, source: &str, ids: &[&str]) -> io::Result<Vec<P
         get(
             &format!("https://raw.githubusercontent.com/{source}/{sha}/{path}"),
             max,
+            20,
         )
         .map_err(|_| gone())
     };

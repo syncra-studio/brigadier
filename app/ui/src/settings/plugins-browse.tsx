@@ -3,11 +3,11 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
-import { RowText, SettingsCard } from "../components/settings-card";
+import { RowText } from "../components/settings-card";
+import { Skeleton } from "../components/skeleton";
 import { ChevronRight, DotsHorizontal, Plus } from "../icons";
 import { errorText } from "../onboarding/api";
-import { SettingsSection } from "./parts";
-import { type Entry, inCategory, type Kind, markOf, matches, type Own, type Plugins } from "./plugins";
+import { type Entry, inCategory, type Kind, markOf, type Own, type Plugins } from "./plugins";
 import { importable } from "./plugins-mine";
 import type { AddFirst } from "./plugins-dialogs";
 import { PluginMark } from "./plugins-marks";
@@ -21,12 +21,12 @@ export type Found = {
   publisher: string;
   how: string;
   mark: string;
+  /** Its own icon where its source gives one, as Rust fetched it. */
+  icon?: string | null;
   in_library: boolean;
   form: { remote: boolean; name: string; url?: string; command?: string; values: string[] } | { source: string; skill: string } | null;
   why: string | null;
 };
-
-const SOURCE: Record<Kind, string> = { server: "From the MCP Registry", skill: "From skills.sh" };
 
 /** Add filled in from a result: a server's form, its declared secrets' names with their values left to the user; a skill added at once [D418, D436]. */
 function firstOf(form: NonNullable<Found["form"]>): AddFirst {
@@ -115,35 +115,23 @@ const ownRow = (own: Own, onInstall: (own: Own) => void) => (
 
 /**
  * Plugins › Browse [D566, D569]: what installs, by category, "Found on this machine" first (your agents' own, not yet in
- * Brigadier), then the catalog's, 6 of each, empty ones hidden; a search looks through them, then the Official MCP
- * Registry and skills.sh (Rust asks them [D434]).
+ * Brigadier), then the catalog's, 6 of each, empty ones hidden.
  */
 export function BrowseTab({
   value,
-  query,
   remote,
-  browse,
   onEntry,
   onCategory,
   onInstall,
-  onAdd,
 }: {
   value: Plugins;
-  query: string;
   remote: boolean;
-  browse: (kind: Kind, query: string) => Promise<Found[]>;
   onEntry: EntryActions;
   onCategory: (name: string) => void;
   onInstall: (own: Own) => void;
-  onAdd: (first: AddFirst, added: () => void) => void;
 }) {
-  const asked = query.trim();
   const own = value.own.filter((each) => importable(each, remote));
   const catalog = value.catalog ?? { categories: [], entries: [] };
-  if (asked) {
-    const entries = catalog.entries.filter((each) => matches(asked, each.name, each.line, each.maker, each.category));
-    return <Search asked={asked} own={own.filter((each) => matches(asked, each.name, each.detail, each.from))} entries={entries} onEntry={onEntry} browse={browse} onInstall={onInstall} onAdd={onAdd} />;
-  }
   return (
     <>
       {own.length > 0 && (
@@ -165,24 +153,40 @@ export function BrowseTab({
   );
 }
 
-function Search({ asked, own, entries, onEntry, browse, onInstall, onAdd }: { asked: string; own: Own[]; entries: Entry[]; onEntry: EntryActions; browse: (kind: Kind, query: string) => Promise<Found[]>; onInstall: (own: Own) => void; onAdd: (first: AddFirst, added: () => void) => void }) {
-  return (
-    <>
-      {(own.length > 0 || entries.length > 0) && (
-        <PickGrid>
-          {entries.map((each) => entryRow(each, onEntry))}
-          {own.map((each) => ownRow(each, onInstall))}
-        </PickGrid>
-      )}
-      {(["server", "skill"] as const).map((kind) => (
-        <Results key={kind} kind={kind} asked={asked} browse={browse} onAdd={onAdd} />
-      ))}
-    </>
-  );
-}
+/** A name or maker a word of which starts with what's asked: "rea" finds Readwise and realestate.com.au, not Create. */
+const named = (asked: string, ...texts: string[]) => texts.some((text) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((word) => word.startsWith(asked.toLowerCase())));
+const installed = <Badge variant="secondary">Installed</Badge>;
+const plus = (name: string, onClick: () => void) => (
+  <Button variant="ghost" size="icon-md" aria-label={`Install ${name}`} onClick={onClick}>
+    <Plus aria-hidden />
+  </Button>
+);
 
-/** One source's results, asked once typing pauses; an older answer never replaces a newer one. */
-function Results({ kind, asked, browse, onAdd }: { kind: Kind; asked: string; browse: (kind: Kind, query: string) => Promise<Found[]>; onAdd: (first: AddFirst, added: () => void) => void }) {
+/**
+ * Plugins' search [D660, D661]: typing hides the tabs (clearing it brings back the one you were on) for one
+ * grid of everything matching, the catalog, the library, your agents' own,
+ * then the MCP Registry and skills.sh (Rust asks them once typing pauses [D434]), a grid of grey rows until they answer.
+ * Each row its mark, name and "maker • line"; what's already in Brigadier says Installed where others have +.
+ */
+export function SearchResults({
+  value,
+  asked,
+  remote,
+  browse,
+  onEntry,
+  onOpen,
+  onInstall,
+  onAdd,
+}: {
+  value: Plugins;
+  asked: string;
+  remote: boolean;
+  browse: (kind: Kind, query: string) => Promise<Found[]>;
+  onEntry: EntryActions;
+  onOpen: (key: string) => void;
+  onInstall: (own: Own) => void;
+  onAdd: (first: AddFirst, added: () => void) => void;
+}) {
   const [found, setFound] = useState<Found[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -191,57 +195,69 @@ function Results({ kind, asked, browse, onAdd }: { kind: Kind; asked: string; br
     let live = true;
     const timer = setTimeout(
       () =>
-        browse(kind, asked).then(
-          (next) => live && setFound(next),
-          (cause: unknown) => live && setError(errorText(cause)),
-        ),
+        void Promise.allSettled((["server", "skill"] as const).map((kind) => browse(kind, asked))).then((answers) => {
+          if (!live) return;
+          const failed = answers.find((answer) => answer.status === "rejected");
+          setError(failed ? errorText(failed.reason) : null);
+          setFound(answers.flatMap((answer) => (answer.status === "fulfilled" ? answer.value : [])));
+        }),
       300,
     );
     return () => {
       live = false;
       clearTimeout(timer);
     };
-  }, [kind, asked]);
+  }, [asked]);
   const held = (key: string) => setFound((now) => now && now.map((each) => (each.key === key ? { ...each, in_library: true } : each)));
+  if (!found && !error) return <Loading />;
+  const entries = (value.catalog?.entries ?? []).filter((each) => named(asked, each.name, each.maker));
+  // The library's own, those not shown as their catalog entry.
+  const items = value.items.filter((each) => !each.with && !entries.some((entry) => entry.installed === each.key) && named(asked, each.name));
+  const own = value.own.filter((each) => importable(each, remote) && named(asked, each.name));
+  // A result the catalog has already, by its address, shows once, as the catalog's.
+  const unreviewed = (found ?? []).filter((each) => named(asked, each.name, each.publisher) && !(value.catalog?.entries ?? []).some((entry) => entry.url && each.mark.startsWith(entry.url.replace(/\/mcp$/, ""))));
+  const rows = [
+    ...entries.map((each) => (
+      <Pick key={each.id} mark={<PluginMark item={markOf(each)} />} name={each.name} line={`${each.maker} • ${each.line}`} onOpen={() => onEntry.onOpen(each)} end={each.installed ? installed : plus(each.name, () => onEntry.onInstall(each))} />
+    )),
+    ...items.map((each) => <Pick key={each.key} mark={<PluginMark item={{ ...each, logo: each.catalog }} />} name={each.name} line={each.description || each.detail} onOpen={() => onOpen(each.key)} end={installed} />),
+    ...own.map((each) => <Pick key={each.key} mark={<PluginMark item={each} />} name={each.name} line={each.from} end={plus(each.name, () => onInstall(each))} />),
+    ...unreviewed.map((each) => (
+      <Pick
+        key={each.key}
+        // Its maker's mark only from its own address or package: anyone can name a server "Linear" [D437].
+        mark={<PluginMark item={{ kind: each.kind, name: "", detail: each.mark, icon: each.icon }} exact />}
+        name={each.name}
+        line={[each.publisher, each.form ? each.description || each.how : each.why].filter(Boolean).join(" • ")}
+        end={each.in_library ? installed : each.form && plus(each.name, () => onAdd(firstOf(each.form!), () => held(each.key)))}
+      />
+    )),
+  ];
   return (
-    <SettingsSection title={SOURCE[kind]} description="Brigadier doesn't review these: install only what you trust." setting={SOURCE[kind]}>
-      {error ? (
-        <ErrorLine error={error} className="py-4 text-center" />
-      ) : !found ? (
-        <p role="status" className="py-4 text-center text-label text-quiet-foreground">
-          Searching…
-        </p>
-      ) : found.length === 0 ? (
-        <p className="py-4 text-center text-label text-quiet-foreground">Nothing matches “{asked}”.</p>
-      ) : (
-        <SettingsCard>
-          {found.map((each) => (
-            <div key={each.key} data-slot="found-row" className="flex items-center gap-3 px-4 py-3">
-              {/* Its maker's mark only from its own address or package: anyone can name a server "Linear" [D437]. */}
-              <PluginMark item={{ kind: each.kind, name: "", detail: each.mark }} exact />
-              <RowText
-                title={each.name}
-                line={
-                  <span className="flex flex-col gap-0.5">
-                    {each.description && <span>{each.description}</span>}
-                    <span className="text-faint-foreground">{[each.publisher, each.how].join(" · ")}</span>
-                    {each.why && <span className="text-faint-foreground">{each.why}</span>}
-                  </span>
-                }
-              />
-              {each.in_library ? (
-                <Badge variant="secondary">Installed</Badge>
-              ) : (
-                each.form && (
-                  <Button variant="ghost" size="icon-md" aria-label={`Install ${each.name}`} onClick={() => onAdd(firstOf(each.form!), () => held(each.key))}>
-                    <Plus aria-hidden />
-                  </Button>
-                )
-              )}
+    <div className="flex flex-col gap-4">
+      {rows.length > 0 ? <PickGrid>{rows}</PickGrid> : !error && <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{asked}”.</p>}
+      <ErrorLine error={error} className="text-center" />
+      {unreviewed.length > 0 && <p className="text-xs text-faint-foreground">Results from the MCP Registry and skills.sh aren't reviewed by Brigadier: install only what you trust.</p>}
+    </div>
+  );
+}
+
+/** Grey rows while a search is out: six, in the grid's two columns. */
+function Loading() {
+  return (
+    <div role="status" aria-label="Searching" className="contents">
+      <PickGrid>
+        {[0, 1, 2, 3, 4, 5].map((at) => (
+          <div key={at} className="flex items-center gap-3 px-2 py-2.5">
+            <Skeleton className="size-9 shrink-0" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className={at % 3 === 1 ? "h-3 w-56" : "h-3 w-44"} />
             </div>
-          ))}
-        </SettingsCard>
-      )}
-    </SettingsSection>
+            <Skeleton className="h-8 w-14 rounded-full" />
+          </div>
+        ))}
+      </PickGrid>
+    </div>
   );
 }

@@ -14,7 +14,7 @@ import { ChevronDown, Folder, Folders, Mcp, Reload, ToolsSkills } from "../icons
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
 import { type AddFirst, AddDialog, type Draft, InstallDialog, RefreshDialog, RemoveDialog } from "./plugins-dialogs";
-import { BrowseTab, entryRow, type Found, PickGrid } from "./plugins-browse";
+import { BrowseTab, entryRow, type Found, PickGrid, SearchResults } from "./plugins-browse";
 import { importable, MyTab } from "./plugins-mine";
 import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
@@ -322,7 +322,7 @@ export function PluginsPage({
     page = (
       <SettingsPage title="Plugins" description={DESCRIPTION} actions={controls}>
         <div className="-mt-4 flex flex-col gap-7">
-          <div>
+          {!query.trim() && (
             <Segmented
               label="Plugins"
               value={tab}
@@ -339,7 +339,7 @@ export function PluginsPage({
               }))}
               onChange={(next) => setTab((lastTab = next))}
             />
-          </div>
+          )}
           {said && (
             <p role="status" className="text-label text-quiet-foreground">
               {said}
@@ -353,10 +353,12 @@ export function PluginsPage({
                 Loading plugins…
               </p>
             )
+          ) : query.trim() ? (
+            <SearchResults value={shown} asked={query.trim()} remote={remote} browse={actions.browse} onEntry={onEntry} onOpen={onDetail} onInstall={installOwn} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
           ) : tab === "browse" ? (
-            <BrowseTab value={shown} query={query} remote={remote} browse={actions.browse} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={installOwn} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
+            <BrowseTab value={shown} remote={remote} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={installOwn} />
           ) : (
-            <MyTab value={shown} kind={tab} query={query} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={installOwn} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
+            <MyTab value={shown} kind={tab} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={installOwn} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
         </div>
       </SettingsPage>

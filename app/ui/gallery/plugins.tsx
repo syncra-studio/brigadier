@@ -5,6 +5,7 @@ import { type ReactNode, useRef, useState } from "react";
 import { Button } from "../src/components/button";
 import { CheckboxRow } from "../src/components/checkbox-row";
 import { type Entry, type Open, type PluginActions, type Plugins, PluginsPage } from "../src/settings/plugins";
+import type { Found } from "../src/settings/plugins-browse";
 import type { Shown } from "../src/settings/plugins-view";
 import type { SignInStart } from "../src/settings/plugins-details";
 import { Row, Section, State } from "./parts";
@@ -61,9 +62,29 @@ const SLACK_ON: Plugins = {
   catalog: { categories: ["Productivity"], entries: [{ ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" } }] },
 };
 
+// A search for "rea" [D660]: the catalog's React Best Practices, then what the MCP Registry and skills.sh answer.
+const ICONS: Record<string, string> = {};
+const found = (kind: Found["kind"], name: string, publisher: string, description: string, mark: string): Found => ({
+  key: `${kind}:${name}`, kind, name, description, publisher, how: "", mark, icon: ICONS[name] ?? null, in_library: false, why: null,
+  form: kind === "skill" ? { source: mark, skill: name } : { remote: true, name, url: mark, values: [] },
+});
+const FOUND_REA = [
+  found("server", "Readwise", "Readwise Inc.", "Save, read, search and review your highlights", "https://mcp.readwise.io/mcp"),
+  found("server", "Read AI", "Read AI, Inc.", "Meeting notes and transcripts", "https://api.read.ai/mcp"),
+  found("server", "ReadMe", "ReadMe", "Manage your ReadMe docs", "https://docs.readme.com/mcp"),
+  found("server", "Realtor", "Move, Inc.", "Search homes for sale and rent", "https://mcp.realtor.com"),
+  found("server", "Reasonbook", "aquex.ai", "Decisions that survive the session", "@aquex/reasonbook"),
+  found("skill", "react-native-best-practices", "callstackincubator", "Performance rules for React Native apps", "callstackincubator/agent-skills"),
+  found("skill", "react-view-transitions", "vercel-labs", "Animate route changes with view transitions", "vercel-labs/agent-skills"),
+];
+const SEARCH_VALUE: Plugins = {
+  ...VALUE,
+  catalog: { categories: ["Development"], entries: [{ kind: "skill", id: "react-best-practices", name: "React Best Practices", line: "React and Next.js performance rules", about: "", maker: "Vercel", category: "Development", installed: null }] },
+};
+
 /** A page in a box of its own, scrolled inside it as Settings scrolls it. */
 function Frame({ tall = false, children }: { tall?: boolean; children: ReactNode }) {
-  return <div className={tall ? "flex h-240 w-full overflow-hidden rounded-surface border border-divider bg-background" : "flex h-120 w-200 overflow-hidden rounded-surface border border-divider bg-background"}>{children}</div>;
+  return <div className={tall ? "flex h-240 w-full min-w-260 overflow-hidden rounded-surface border border-divider bg-background" : "flex h-120 w-200 overflow-hidden rounded-surface border border-divider bg-background"}>{children}</div>;
 }
 
 /** Rust's answers after a moment, or its refusal; a sign-in fails with the server's words. */
@@ -118,12 +139,12 @@ const still: PluginActions = {
 };
 
 /** One still: the page as given, opened where it says. */
-function Still({ label, value = VALUE, detail = null, open, signing, error, offline, remote = true, tall = false }: { label: string; value?: Plugins | null; detail?: string | null; open?: Open; signing?: SignInStart; error?: string; offline?: boolean; remote?: boolean; tall?: boolean }) {
+function Still({ label, value = VALUE, detail = null, open, signing, error, offline, remote = true, tall = false, browse }: { label: string; value?: Plugins | null; detail?: string | null; open?: Open; signing?: SignInStart; error?: string; offline?: boolean; remote?: boolean; tall?: boolean; browse?: PluginActions["browse"] }) {
   return (
     <State label={label}>
       <div data-held data-still={label} className="contents">
         <Frame tall={tall}>
-          <PluginsPage value={value} error={error} offline={offline} marks={MARKS} actions={still} detail={detail} onDetail={() => {}} remote={remote} open={open} signing={signing} />
+          <PluginsPage value={value} error={error} offline={offline} marks={MARKS} actions={browse ? { ...still, browse } : still} detail={detail} onDetail={() => {}} remote={remote} open={open} signing={signing} />
         </Frame>
       </div>
     </State>
@@ -241,6 +262,10 @@ export function PluginsGallery() {
       </Row>
       <Row name="Dialogs, one at a time">
         <Dialogs />
+      </Row>
+      <Row name="Search, “rea” typed in its field">
+        <Still label="Searching" tall value={SEARCH_VALUE} browse={() => new Promise(() => {})} />
+        <Still label="Results" tall value={SEARCH_VALUE} browse={(kind) => Promise.resolve(FOUND_REA.filter((each) => each.kind === kind))} />
       </Row>
       <Row name="States">
         <Still label="Loading" value={null} />

@@ -7,7 +7,7 @@ import { SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
 import { ChevronDown, Folder, Folders, Mcp, ToolsSkills } from "../icons";
 import { SettingsSection } from "./parts";
-import { chipOf, type Item, type Kind, matches, type Own, PLUGINS_ROWS, type Plugins, STATUS } from "./plugins";
+import { chipOf, type Item, type Kind, type Own, PLUGINS_ROWS, type Plugins, STATUS } from "./plugins";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
 /** One item in the list's grid: its mark, name, line, where it's on, its standing and agents; its switch at the corner. */
@@ -96,7 +96,6 @@ export function ScopeChip({ text }: { text: string }) {
 export function MyTab({
   value,
   kind,
-  query,
   marks,
   remote,
   onOpen,
@@ -107,7 +106,6 @@ export function MyTab({
 }: {
   value: Plugins;
   kind: Kind;
-  query: string;
   marks: Record<string, string | null>;
   remote: boolean;
   onOpen: (key: string) => void;
@@ -116,20 +114,14 @@ export function MyTab({
   onBrowse: () => void;
   onAdd: () => void;
 }) {
-  const items = value.items.filter((each) => each.kind === kind && matches(query, each.name, each.description, each.detail));
+  const items = value.items.filter((each) => each.kind === kind);
   // A service's skills are one card, its skillset [D580].
   const sets = Map.groupBy(
     items.filter((each) => each.with),
     (each) => each.with!,
   );
-  const own = value.own.filter((each) => each.kind === kind && matches(query, each.name, each.detail, each.from, ...each.agents, each.project ?? ""));
-  if (!query.trim() && items.length === 0 && own.length === 0) return <EmptyTab tab={kind} onBrowse={onBrowse} onAdd={onAdd} />;
-  if (items.length === 0 && own.length === 0)
-    return (
-      <p data-slot="no-match" className="py-6 text-center text-label text-quiet-foreground">
-        Nothing matches “{query.trim()}”.
-      </p>
-    );
+  const own = value.own.filter((each) => each.kind === kind);
+  if (items.length === 0 && own.length === 0) return <EmptyTab tab={kind} onBrowse={onBrowse} onAdd={onAdd} />;
   return (
     <>
       {items.length > 0 && (
