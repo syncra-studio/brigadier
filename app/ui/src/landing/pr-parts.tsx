@@ -1,20 +1,16 @@
 import { useState } from "react";
 
-import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
-import { Check, Reload } from "../icons";
-import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles } from "./icons";
+import { Reload } from "../icons";
+import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "./icons";
 import { STATE_WORDS } from "./pr-words";
-import { type PrSend, type PrState, sendKey } from "./pull-requests";
+import type { PrState } from "./pull-requests";
 
-/** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
+/** What every PR part shares: the time to measure from, and how to open its pages on the host. */
 export type Sends = {
   now: number;
   offline: boolean;
-  /** Sends already waiting as chips, by `sendKey`: their buttons read Added. */
-  added: ReadonlySet<string>;
-  onSend: (send: PrSend) => void;
   onOpen: (url: "pr" | { check: string } | { comment: string } | { url: string }) => void;
 };
 
@@ -64,17 +60,6 @@ export function Avatar({ login: who, at = 0, size = "size-5" }: { login: string 
         </>
       )}
     </span>
-  );
-}
-
-/** A Send to agent button: it leaves a chip above the composer and sends nothing [D1019, D1027]; once it has, it reads Added. */
-export function SendButton({ send, label = "Send to agent", sends }: { send: PrSend; label?: string; sends: Sends }) {
-  const added = sends.added.has(sendKey(send));
-  return (
-    <Button variant="soft" size="xs" disabled={added || sends.offline} onClick={() => sends.onSend(send)}>
-      {added ? <Check /> : <Sparkles />}
-      {added ? "Added" : label}
-    </Button>
   );
 }
 

@@ -120,6 +120,19 @@ fn slug(path: &str) -> bool {
     path.split_once('/').is_some_and(|(o, n)| ok(o) && ok(n))
 }
 
+/// The project whose repository is `owner/name` (its `origin`), for Bring to agent [D674]; None
+/// when none is: that PR's repository gets cloned first.
+pub fn project_of(data: &Path, path: &str) -> Option<String> {
+    let projects = crate::projects::list(data).ok()?;
+    projects.into_iter().find_map(|p| {
+        let checkout = git::checkout(data, &Target::Project(&p.id)).ok()?;
+        let url = push::url(&checkout, "origin").ok()?;
+        repo(&url)
+            .is_some_and(|r| r.path.eq_ignore_ascii_case(path))
+            .then_some(p.id)
+    })
+}
+
 /// A PR tab's target [D213]: `n` for the session's own repository's PR `n`, `owner/name#n` for
 /// another's on the same server.
 pub fn pr_ref(target: &str) -> Option<(Option<String>, u64)> {
@@ -372,8 +385,8 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         false => Target::session(id),
     };
     let checkout = git::checkout(data, &target)?;
-    // A "here" fork's is its folder's holder's [D1082]; only its owner may land (`share::lands`).
-    // A Local session has none: its PRs are still read, and none of them lands it.
+    // A "here" fork's is its folder's holder's [D1082]. A Local session has none: its PRs are
+    // still read.
     let base = match target {
         Target::Project(_) => String::new(),
         Target::Repo(..) => git::base_of(data, &target).unwrap_or_default(),

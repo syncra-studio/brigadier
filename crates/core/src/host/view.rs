@@ -1,7 +1,7 @@
-//! One PR as the Pull requests tab shows it, and its merge, through the user's own gh [D1017,
-//! D1030]: one GraphQL read for the whole page [D204, D207], its checks bucketed as `gh pr checks`
-//! does (`prs::checks_of`), kept in `pr/<n>.json` in the session's folder (`pr/<owner>/<name>/<n>.json`
-//! for another repository's [D213]) so the tab paints the last read at once. A failed check's log tail is its own read, when the tab asks (`log`).
+//! One PR as the Pull requests tab shows it, through the user's own gh [D1017, D1030]: one GraphQL
+//! read for the whole page [D204, D207], its checks bucketed as `gh pr checks` does
+//! (`prs::checks_of`), kept in `pr/<n>.json` in the session's folder (`pr/<owner>/<name>/<n>.json`
+//! for another repository's [D213]) so the tab paints the last read at once.
 
 use super::prs::{FIELDS, checks_of};
 use super::timeline::{bot, hidden, nodes, state_of, timeline};
@@ -10,10 +10,6 @@ use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-
-/// Proposed: a failed check's log tail is its last lines.
-const TAIL_LINES: usize = 40;
-const MERGE_SECS: u64 = 60;
 
 /// What the page reads beside the list's fields: GitHub's Conversation, its review threads and the
 /// timeline events it draws [D260]; its comments as `talk`, apart from the fields' count of them.
@@ -91,7 +87,7 @@ impl Pr {
         let (repo, gh) = self.gh_repo(other)?;
         let repo = &repo;
         let query = format!(
-            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed viewerDefaultMergeMethod pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
+            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
         );
         let (data, partial) = super::graphql(&gh, repo, &query, &[]).map_err(io::Error::other)?;
         super::avatars::keep(&self.avatars, &data);
@@ -186,20 +182,6 @@ impl Pr {
             _ => "ready",
         };
         let blocked = failed > 0 || !changes_by.is_empty() || conflicts;
-        // The methods the repository allows, the one GitHub offers the user first leading [D1028].
-        let first = found["viewerDefaultMergeMethod"]
-            .as_str()
-            .map(str::to_lowercase);
-        let mut styles: Vec<&str> = [
-            ("mergeCommitAllowed", "merge"),
-            ("squashMergeAllowed", "squash"),
-            ("rebaseMergeAllowed", "rebase"),
-        ]
-        .into_iter()
-        .filter(|(key, _)| found[key] == true)
-        .map(|(_, style)| style)
-        .collect();
-        styles.sort_by_key(|s| Some(*s) != first.as_deref());
         // Only the branch's own PR is its open one.
         if mine && matches!(state, "open" | "draft") {
             super::note_open(&self.id, &self.branch, Some(number));
@@ -212,13 +194,11 @@ impl Pr {
             "labels": nodes(&pr["labels"]).iter().map(|l| l["name"].clone()).collect::<Vec<_>>(),
             "blockers": blocked.then(|| json!({"failedChecks": failed, "changesBy": changes_by,
                 "conflicts": conflicts})),
-            // Off until checks pass on this head, as a merge is pinned to it [D1077, D1287].
-            "merge": {"allowed": state == "open" && pr["mergeable"] == "MERGEABLE"
-                    && !blocked && running == 0 && pr["reviewDecision"] != "REVIEW_REQUIRED"
-                    && !styles.is_empty(),
-                "default": styles.first(), "styles": styles},
             "mergeState": pr["mergeStateStatus"].as_str().map(str::to_lowercase),
             "head": pr["headRefOid"], "branch": pr["headRefName"], "base": pr["baseRefName"],
+            // Its branch in another repository, or deleted: Bring to agent fetches it by number [D674].
+            "fork": pr["headRef"].is_null() || !(pr["headRepository"]["nameWithOwner"].as_str())
+                .is_some_and(|h| h.eq_ignore_ascii_case(&repo.path)),
             // Its diff is the session's own branch's, which the Review tab shows [D204].
             "onBranch": mine,
             "openedBy": author, "openedAtMs": ms(&pr["createdAt"]),
@@ -273,98 +253,9 @@ impl Pr {
         keep(&kept_path(&self.dir, other, number, "files.json"), &view);
         Ok(view)
     }
-
-    /// Posts `body` on PR `number` as a comment, through the user's own gh, as the Conversation's
-    /// Add a comment box asks [D260]: the comment as the page shows it, by its id. Only a PR whose
-    /// page was read (and so found the session's) is commented on.
-    pub fn comment(&self, other: Option<&str>, number: u64, body: &str) -> io::Result<Value> {
-        if kept_view(&self.dir, other, number).is_null() {
-            return err(format!("#{number} isn't one of this session's PRs."));
-        }
-        if body.trim().is_empty() {
-            return err("A comment needs some words.");
-        }
-        let (repo, gh) = self.gh_repo(other)?;
-        let path = format!("repos/{}/issues/{number}/comments", repo.path);
-        let body = format!("body={body}");
-        let c = run_json(
-            &gh,
-            &[
-                "api",
-                "--hostname",
-                &repo.host,
-                "--method",
-                "POST",
-                &path,
-                "-f",
-                &body,
-            ],
-        )?;
-        Ok(
-            json!({"id": c["id"].to_string(), "author": c["user"]["login"], "path": null,
-            "line": null, "body": c["body"], "atMs": ms(&c["created_at"]), "url": c["html_url"],
-            "bot": false, "minimized": null}),
-        )
-    }
-
-    /// The failed steps' last lines of the Actions job at `link`, read when the tab shows its check.
-    pub fn log(&self, link: &str) -> io::Result<Option<String>> {
-        // The job's repository, from its link (`…/owner/name/actions/runs/…`): any PR's [D213].
-        let path: Vec<&str> = link.split("://").last().unwrap_or("").split('/').collect();
-        let other = (path.len() > 2).then(|| format!("{}/{}", path[1], path[2]));
-        let other = other.filter(|o| super::slug(o));
-        let (repo, gh) = self.gh_repo(other.as_deref())?;
-        Ok(log_tail(&gh, &repo, link))
-    }
-
-    /// Merges PR `number` on the host with `method`, only if its head is still `head`, the one its
-    /// confirm showed [D1028, D1077]. True once the host says it's merged: with a merge queue,
-    /// gh's success may only have queued it. The PR list read that records the landing is the
-    /// caller's, after it answers (`list`).
-    pub fn merge(
-        &self,
-        other: Option<&str>,
-        number: u64,
-        method: &str,
-        head: &str,
-    ) -> io::Result<bool> {
-        if !matches!(method, "merge" | "squash" | "rebase") {
-            return err(format!("not a merge method: {method:?}"));
-        }
-        let (repo, gh) = self.gh_repo(other)?;
-        let mut command = gh.command();
-        command.env("GH_PROMPT_DISABLED", "1").args([
-            "pr",
-            "merge",
-            &number.to_string(),
-            &format!("--repo={}/{}", repo.host, repo.path),
-            &format!("--{method}"),
-            &format!("--match-head-commit={head}"),
-        ]);
-        let out = setup::run(&mut command, MERGE_SECS).map_err(io::Error::other)?;
-        if !out.status.success() {
-            return err(failed(&out));
-        }
-        let slug = format!("--repo={}/{}", repo.host, repo.path);
-        let now = run_json(
-            &gh,
-            &["pr", "view", &number.to_string(), &slug, "--json=state"],
-        );
-        Ok(now.is_ok_and(|pr| pr["state"] == "MERGED"))
-    }
 }
 
-fn run_json(gh: &Gh, args: &[&str]) -> io::Result<Value> {
-    let mut command = gh.command();
-    command.args(args);
-    let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
-    if !out.status.success() {
-        return err(failed(&out));
-    }
-    Ok(serde_json::from_slice(&out.stdout)?)
-}
-
-/// One check as the tab shows it; a failed one's log tail is read apart (`log`).
+/// One check as the tab shows it.
 fn check(c: &Value) -> Value {
     let state = match c["bucket"].as_str() {
         // A cancelled check didn't pass, so it can't let Merge on.
@@ -417,32 +308,6 @@ fn file(f: &Value) -> Value {
     json!({"path": path, "from": from, "status": status, "insertions": insertions,
         "deletions": deletions, "binary": patch.is_none() && insertions + deletions == 0,
         "staged": false, "large": false, "patch": patch})
-}
-
-/// The failed steps' last lines of an Actions job, from its link's job id; none for other checks.
-fn log_tail(gh: &Gh, repo: &Repo, link: &str) -> Option<String> {
-    let job = link.split("/job/").nth(1)?.split(['/', '?']).next()?;
-    let mut command = gh.command();
-    command.args([
-        "run",
-        "view",
-        &format!("--repo={}/{}", repo.host, repo.path),
-        "--job",
-        job,
-        "--log-failed",
-    ]);
-    let out = setup::run(&mut command, GH_SECS).ok()?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    // gh prefixes each line with its job, step and time: the tail keeps the line's own words.
-    let lines: Vec<&str> = (text.lines())
-        .map(|l| l.splitn(3, '\t').last().unwrap_or(l))
-        .map(|l| match l.split_once(' ') {
-            Some((at, rest)) if at.ends_with('Z') && at.contains('T') => rest,
-            _ => l,
-        })
-        .collect();
-    let tail = lines[lines.len().saturating_sub(TAIL_LINES)..].join("\n");
-    (out.status.success() && !tail.is_empty()).then_some(tail)
 }
 
 /// A timeline item the tab names; the rest (labels, references…) are left out.

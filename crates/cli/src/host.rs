@@ -1,13 +1,12 @@
-//! `brigadier host <id> view|list|log|merge`: a session's PRs through its git host [D1030]. `view <n>`
+//! `brigadier host <id> view|list|files|search|project`: a session's PRs through its git host [D1030]. `view <n>`
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
 //! PRs, every query in one read, `--kept` their last reads [D258], `--after <next>` one query's next
 //! page [D613]; `runs <query>... [--kept]`,
-//! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264]; `log <link>` is a failed check's log tail; `merge <n>
-//! <merge|squash|rebase> <head>` merges it only while its head is still `head` [D1077]; `comment
-//! <n> <body>` posts a comment on it [D260]; `sides <n>
-//! <path>` is a file's two sides whole, `review <n> <json>` submits a review [D262].
+//! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264];
+//! `sides <n> <path>` is a file's two sides whole [D262]; `project <owner/name>` is the project
+//! whose repository that is, or null, for Bring to agent [D674].
 
 use super::arg;
 use brigadier_core::host;
@@ -25,14 +24,6 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     if brigadier_core::projects::get(data, id).is_err() {
         brigadier_core::load(data, id)?;
     }
-    // Landing is the folder owner's alone; all of these wait for no other session's turn [D1082].
-    if arg(args, 2)? == "merge"
-        && let Some(owner) = brigadier_core::share::lands(data, id)
-    {
-        return Err(io::Error::other(format!(
-            "Landing stays with {owner} while it's there."
-        )));
-    }
     // Several queries at once, the side views' as the tab opens: one read, or their last [D207, D258].
     if arg(args, 2)? == "search" {
         // `--after <cursor>`: one query's next page [D613].
@@ -48,6 +39,9 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         let after = after.and_then(|p| args.get(p + 1)).map(String::as_str);
         return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries, after)?}));
+    }
+    if arg(args, 2)? == "project" {
+        return Ok(json!({"ok": true, "project": host::project_of(data, arg(args, 3)?)}));
     }
     if let Some(done) = actions(data, id, args)? {
         return Ok(done);
@@ -90,27 +84,23 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             let (other, n) = number(args)?;
             json!({"ok": true, "sides": pr.sides(other.as_deref(), n, arg(args, 4)?)?})
         }
-        "review" => {
-            let (other, n) = number(args)?;
-            let review: Value = serde_json::from_str(arg(args, 4)?)?;
-            pr.review(other.as_deref(), n, &review)?;
-            json!({"ok": true})
-        }
-        "log" => json!({"ok": true, "log": pr.log(arg(args, 3)?)?}),
-        "comment" => {
-            let (other, n) = number(args)?;
-            json!({"ok": true, "comment": pr.comment(other.as_deref(), n, arg(args, 4)?)?})
-        }
-        "merge" => {
-            let (other, n) = number(args)?;
-            let merged = pr.merge(other.as_deref(), n, arg(args, 4)?, arg(args, 5)?)?;
-            // The list read that records the landing goes on after the answer, so Merging… ends
-            // with the merge; a shell's run that exits first leaves it to the watch.
-            std::thread::spawn(move || pr.list());
-            json!({"ok": true, "merged": merged})
-        }
         _ => return Err(io::Error::other(super::USAGE)),
     })
+}
+
+/// Bring to agent's `start --pr <n> --head <branch> [--fork]`: the PR's own branch, fetched, which
+/// the new session's worktree is on [D674]. None without `--pr`, and in a folder of repositories.
+pub(super) fn pr_branch(
+    args: &[String],
+    project: &brigadier_core::projects::Project,
+) -> io::Result<Option<String>> {
+    let (Some(n), true) = (super::flag(args, "--pr"), project.kind.is_empty()) else {
+        return Ok(None);
+    };
+    let n = n.parse().map_err(|_| io::Error::other("not a PR number"))?;
+    let head = super::flag(args, "--head").unwrap_or_default();
+    let fork = super::has(args, "--fork");
+    brigadier_core::worktrees::fetch_pr(Path::new(&project.folder), n, head, fork).map(Some)
 }
 
 /// `n`, or `owner/name#n` for another repository's PR [D213].

@@ -31,10 +31,11 @@ pub fn ensure(
     fresh: bool,
     base: Option<&str>,
     title: &str,
+    on: Option<&str>,
 ) -> io::Result<()> {
     match project.kind == KIND {
         true => fs::create_dir_all(&spec.cwd),
-        false => worktrees::ensure(spec, project, fresh, base, title),
+        false => worktrees::ensure(spec, project, fresh, base, title, on),
     }
 }
 
@@ -225,7 +226,15 @@ pub fn claim(spec: &Spec, name: &str) -> io::Result<String> {
         ..spec.clone()
     };
     // Two calls at once: the one that lost the record's lock gets the other's folder.
-    let made = worktrees::create(&claimer, &repo, base.as_deref(), None, title, Some(&path));
+    let made = worktrees::create(
+        &claimer,
+        &repo,
+        base.as_deref(),
+        None,
+        title,
+        Some(&path),
+        None,
+    );
     made.or_else(|e| worktrees::made(&rec).then_some(()).ok_or(e))?;
     let mut out = worktrees::folder(&rec)
         .unwrap_or(path)

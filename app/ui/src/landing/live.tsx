@@ -1,41 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 
 import { openLink } from "../browser/links";
-import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { addChip, useChips } from "../panel/chips";
-import { gitDone, gitFailed } from "../panel/notice";
-import { type AgentChip, chipFor } from "./agent-chip";
+import { errorText } from "../onboarding/api";
+import { bring } from "./bring";
 import { useHost } from "./host";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
-import { type PrSend, type PullRequest, sendKey } from "./pull-requests";
-
-/** What the agent reads for a Send: the chip's facts, in full. */
-function textFor(pr: PullRequest, send: PrSend, chip: AgentChip): string {
-  const on = `PR #${pr.number} (${pr.url})`;
-  if (send.kind === "fix") return `Fix ${on}: ${chip.kind === "fix" ? chip.reasons : ""}. Its failed checks: ${pr.checks.filter((c) => c.state === "failed").map((c) => c.name).join(", ") || "none"}.`;
-  if (send.kind === "check") {
-    const check = pr.checks.find((each) => each.id === send.id);
-    return `The check "${check?.name}" failed on ${on}.${check?.logTail ? ` Its log ends:\n\`\`\`\n${check.logTail}\n\`\`\`` : ""}`;
-  }
-  if (send.kind === "comment") {
-    const comment = pr.comments.find((each) => each.id === send.id);
-    return `${comment?.author} commented on ${on}${comment?.path ? ` at ${comment.path}:${comment.line}` : ""}:\n${(comment?.body ?? "").split("\n").map((line) => `> ${line}`).join("\n")}`;
-  }
-  return `On ${on}: ${chip.kind === "event" ? `${chip.what}${chip.detail ? ` (${chip.detail})` : ""}` : ""}.`;
-}
-
-/** Failed checks' log tails by check id, each read once while the app runs; those asked so far. */
-const logs = new Map<string, string | null>();
-const asked = new Set<string>();
+import type { PullRequest } from "./pull-requests";
 
 /**
  * The live Pull requests tab [D204, D207]: PR `number`'s last read, kept in the session's folder, painted at once, then
  * read again only when it's older than the watch's pace, on focus likewise, and on Check again [D208]. The watch reads
- * it while the tab is open, and its row says so, which brings the kept read in again. A failed check's log tail is its
- * own read, after the page shows. Merge is pinned to the head its confirm showed [D1077]; a refusal is said above the
- * composer [D1264]. Each Send leaves a chip the user sends [D1027].
+ * it while the tab is open, and its row says so, which brings the kept read in again. Bring to agent opens a session on
+ * the PR's branch with the PR in its composer [D674, D675].
  */
 export function LivePrTab({ owner, target }: { owner: string; target: string }) {
   const host = useHost(owner);
@@ -43,15 +21,13 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const hash = target.lastIndexOf("#");
   const repo = hash < 0 ? null : target.slice(0, hash);
   const number = Number(target.slice(hash + 1));
-  const { daemon, rows } = useDaemon();
+  const { daemon, rows, projects } = useDaemon();
   const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
-  const [merging, setMerging] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
-  const [, setLogged] = useState(0);
-  const chips = useChips(owner);
+  const [bringing, setBringing] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   const latest = useRef<PullRequest>(undefined);
   latest.current = pr;
   // A newer read never gives way to an older one.
@@ -95,42 +71,20 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
   }, [daemon, host, target]);
-  // Each failed check's log tail, once the page shows: one read each, at once.
-  useEffect(() => {
-    if (!daemon || !pr) return;
-    for (const check of pr.checks) {
-      if (check.state !== "failed" || !check.url || asked.has(check.id)) continue;
-      asked.add(check.id);
-      ask({ op: "run", args: ["host", host, "log", check.url] }, (reply) => {
-        if (!reply.ok) return void asked.delete(check.id);
-        logs.set(check.id, reply.log ?? null);
-        setLogged((n) => n + 1);
-      });
-    }
-  }, [daemon, pr]);
-
-  const shown = pr && { ...pr, checks: pr.checks.map((check) => (logs.has(check.id) ? { ...check, logTail: logs.get(check.id) ?? null } : check)) };
-  const added = new Set(chips.flatMap((chip) => (chip.kind === "agent" && chip.pr === number ? [chip.key] : [])));
   return (
     <PrTab
       owner={owner}
       target={target}
-      pr={shown}
+      pr={pr}
       row={row}
       error={error}
       checking={checking}
-      merging={merging}
-      refused={refused}
+      bringing={bringing}
+      failed={failed}
       onCheck={read}
       sends={{
         now: Date.now(),
         offline: !daemon,
-        added,
-        onSend: (send) => {
-          if (!shown || added.has(sendKey(send))) return;
-          const chip = chipFor(shown, send);
-          addChip(owner, { kind: "agent", id: crypto.randomUUID(), key: sendKey(send), pr: number, chip, text: textFor(shown, send, chip) });
-        },
         onOpen: (what) => {
           const url =
             what === "pr"
@@ -143,27 +97,13 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
           if (url) openLink(url);
         },
       }}
-      onMerge={(style, head) => {
-        setMerging(true);
-        setRefused(null);
-        ask({ op: "run", args: ["host", host, "merge", target, style, head] }, (reply) => {
-          setMerging(false);
-          if (!reply.ok) {
-            const why = reply.error === "disconnected" ? "Brigadier isn't connected." : String(reply.error);
-            gitFailed({ session: owner }, `Couldn't merge #${number}.`, why);
-            // Said in the tab too, where Merge was clicked: the host's own first line.
-            setRefused(`Couldn't merge #${number}: ${why.split("\n")[0]}`);
-          } else {
-            gitDone({ session: owner });
-            // Merged on the host, as Rust checked (a merge queue only queues it): shown at once, and the read after
-            // settles the rest [D30].
-            if (reply.merged) {
-              setPr((last) => last && { ...last, state: "merged", status: "merged", merge: { ...last.merge, allowed: false } });
-              showToast(`Merged #${number}`, { tone: "success" });
-            }
-          }
-          read();
-        });
+      onBring={() => {
+        if (!pr || bringing) return;
+        setFailed(null);
+        setBringing("Bring to agent");
+        bring(pr, host, target, rows ?? [], projects ?? [], setBringing)
+          .catch((cause) => setFailed(`Couldn't bring #${number} to the agent: ${errorText(cause)}`))
+          .finally(() => setBringing(null));
       }}
     />
   );

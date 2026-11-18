@@ -13,7 +13,7 @@ use std::process::Command;
 
 mod branch;
 mod copy;
-pub use branch::rename_held;
+pub use branch::{fetch_pr, rename_held};
 mod hand;
 pub(crate) mod landing;
 pub mod lost;
@@ -143,6 +143,7 @@ pub fn ensure(
     fresh: bool,
     base: Option<&str>,
     title: &str,
+    on: Option<&str>,
 ) -> io::Result<()> {
     {
         let _one = lock(&spec.dir)?;
@@ -155,7 +156,7 @@ pub fn ensure(
             None => {}
         }
     }
-    if let Err(e) = create(spec, project, base, None, title, None) {
+    if let Err(e) = create(spec, project, base, None, title, None, on) {
         if fresh && !spec.dir.join(RECORD).exists() {
             fs::remove_dir_all(&spec.dir)?;
         }
@@ -195,6 +196,7 @@ pub fn branches(data: &Path, repo: &Path) -> io::Result<serde_json::Value> {
 /// Makes the session's worktree from `base`, else the project's current branch, with its files to copy. A failure undoes what
 /// it made; one it can't undo stays recorded for the daemon to retry.
 /// `at`: a fork's start, the commit its answer's files were taken on, on `base` [D1068]. `path`: where it goes (None: `worktree` in `spec.dir`, its record's folder).
+/// `on`: a branch that's already there (a PR's, `fetch_pr`) to work on as it is, from where it left `base` [D674].
 pub fn create(
     spec: &Spec,
     project: &projects::Project,
@@ -202,6 +204,7 @@ pub fn create(
     at: Option<&str>,
     title: &str,
     path: Option<&Path>,
+    on: Option<&str>,
 ) -> io::Result<()> {
     let path = &path.map_or_else(|| spec.dir.join("worktree"), Path::to_path_buf);
     let (repo, picks) = (Path::new(&project.folder), &project.include);
@@ -244,20 +247,20 @@ pub fn create(
         )?,
         None => base_commit,
     };
-    let (_names, branch) = names::reserve(repo, project.branch_prefix.as_deref(), title, None)?;
-    if git(
-        repo,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{branch}"),
-        ],
-    )
-    .is_ok()
-    {
-        return err(format!("A branch {branch} already exists."));
-    }
+    let (branch, base_commit) = match on {
+        Some(on) => {
+            let fork = git(repo, &["merge-base", &base_commit, on]).unwrap_or(base_commit);
+            (on.to_string(), fork)
+        }
+        None => {
+            let (_names, branch) =
+                names::reserve(repo, project.branch_prefix.as_deref(), title, None)?;
+            if has_branch(repo, &branch) {
+                return err(format!("A branch {branch} already exists."));
+            }
+            (branch, base_commit)
+        }
+    };
     crate::worktree_setup::begin(&spec.dir, &branch, &base)?;
     let mut owned = Owned {
         repo: repo.display().to_string(),
@@ -267,7 +270,7 @@ pub fn create(
         ..Default::default()
     };
     write(&spec.dir, &owned)?;
-    let made = make(spec, path, repo, &branch, picks, &mut owned).and_then(|()| {
+    let made = make(spec, path, repo, &branch, picks, &mut owned, on.is_none()).and_then(|()| {
         owned.failed = false;
         write(&spec.dir, &owned)
     });
@@ -295,11 +298,14 @@ fn make(
     branch: &str,
     picks: &[String],
     owned: &mut Owned,
+    new: bool,
 ) -> io::Result<()> {
     // A failed branch create must never claim a branch another session made.
-    git(repo, &["branch", branch, &owned.base_commit])?;
-    owned.branch = Some(branch.into());
-    write(&spec.dir, owned)?;
+    if new {
+        git(repo, &["branch", branch, &owned.base_commit])?;
+        owned.branch = Some(branch.into());
+        write(&spec.dir, owned)?;
+    }
     if path.exists() {
         return err(format!("{} already exists", path.display()));
     }
@@ -316,7 +322,10 @@ fn make(
     if owned.admin.is_none() {
         return err("Git did not report the worktree's registration.".into());
     }
-    include(repo, path, picks)
+    include(repo, path, picks)?;
+    // A branch that was there before is claimed only once it's whole, so an undo never deletes it.
+    owned.branch = Some(branch.into());
+    Ok(())
 }
 
 /// Removes the worktree and its registration, by their recorded paths only.
@@ -344,16 +353,7 @@ fn undo(owned: &Owned) -> io::Result<()> {
     unregister(owned)?;
     let repo = Path::new(&owned.repo);
     if let Some(branch) = &owned.branch
-        && git(
-            repo,
-            &[
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                &format!("refs/heads/{branch}"),
-            ],
-        )
-        .is_ok()
+        && has_branch(repo, branch)
     {
         git(repo, &["branch", "-D", branch])?;
     }

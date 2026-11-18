@@ -1,5 +1,5 @@
-//! A PR's review through the user's own gh [D262]: a file's two sides whole, so its diff opens
-//! what GitHub's patch leaves out, and a review submitted with its line comments.
+//! A PR's file through the user's own gh [D262]: its two sides whole, so its diff opens what
+//! GitHub's patch leaves out.
 
 use super::view::kept_files;
 use super::{GH_SECS, Pr, err, failed, setup};
@@ -42,62 +42,6 @@ impl Pr {
             Some(before) => Ok(json!({"before": before, "after": after})),
             None => err(format!("{path} on {head} doesn't match its patch.")),
         }
-    }
-
-    /// Submits a review of PR `number` as the user, with its line comments [D262]: `review` is
-    /// `{event, body, head, comments: [{path, side, start, end, text}]}`, `event` one of GitHub's
-    /// COMMENT, APPROVE or REQUEST_CHANGES, `head` the commit its lines were read at.
-    pub fn review(&self, other: Option<&str>, number: u64, review: &Value) -> io::Result<()> {
-        let event = review["event"].as_str().unwrap_or("");
-        if !matches!(event, "COMMENT" | "APPROVE" | "REQUEST_CHANGES") {
-            return err(format!("not a review: {event:?}"));
-        }
-        let comments: Vec<Value> = (review["comments"].as_array().into_iter().flatten())
-            .map(|c| {
-                let side = if c["side"] == "deletions" {
-                    "LEFT"
-                } else {
-                    "RIGHT"
-                };
-                let mut out =
-                    json!({"path": c["path"], "body": c["text"], "line": c["end"], "side": side});
-                if c["start"].as_u64() < c["end"].as_u64() {
-                    out["start_line"] = c["start"].clone();
-                    out["start_side"] = side.into();
-                }
-                out
-            })
-            .collect();
-        let body = json!({"event": event, "body": review["body"], "commit_id": review["head"],
-            "comments": comments});
-        let (repo, gh) = self.gh_repo(other)?;
-        let mut command = gh.command();
-        command.args([
-            "api",
-            "--hostname",
-            &repo.host,
-            "--method",
-            "POST",
-            &format!("repos/{}/pulls/{number}/reviews", repo.path),
-            "--input",
-            "-",
-        ]);
-        let stop = std::sync::atomic::AtomicBool::new(false);
-        let out = setup::run_fed(&mut command, GH_SECS, &stop, Some(&body.to_string()))
-            .map_err(io::Error::other)?;
-        if !out.status.success() {
-            // GitHub's why ("Can not approve your own pull request") is in the body gh prints.
-            let said: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
-            let why: Vec<&str> = (said["errors"].as_array().into_iter().flatten())
-                .filter_map(|e| e.as_str().or(e["message"].as_str()))
-                .collect();
-            return err(if why.is_empty() {
-                failed(&out)
-            } else {
-                why.join(" ")
-            });
-        }
-        Ok(())
     }
 }
 

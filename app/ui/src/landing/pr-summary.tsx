@@ -5,7 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { CheckCircle, ChevronRight, Minus } from "../icons";
 import { Markdown } from "../thread/markdown";
 import { Clock, XCircle } from "./icons";
-import { Avatar, type Sends, SendButton } from "./pr-parts";
+import { Avatar, type Sends } from "./pr-parts";
 import { ago } from "./pr-words";
 import type { PrCheck, PrComment, PrThread, PullRequest } from "./pull-requests";
 
@@ -71,8 +71,8 @@ const Who = ({ login, bot }: { login: string | null; bot?: boolean }) => (
   </>
 );
 
-/** A comment's box: who, what they did and when, Author or Bot, the words, and Send to agent. */
-function CommentBox({ comment, did = "commented", at, author, sends }: { comment: PrComment; did?: string; at: string; author: string; sends?: Sends }) {
+/** A comment's box: who, what they did and when, Author or Bot, and the words. */
+function CommentBox({ comment, did = "commented", at, author }: { comment: PrComment; did?: string; at: string; author: string }) {
   const where = comment.path && (comment.line === null ? comment.path : `${comment.path}:${comment.line}`);
   return (
     <div className="min-w-0 flex-1 overflow-clip rounded-surface border border-border">
@@ -86,7 +86,6 @@ function CommentBox({ comment, did = "commented", at, author, sends }: { comment
         {where && <span className="min-w-0 truncate font-mono">{where}</span>}
         <span className="flex-1" />
         {comment.author === author && <Badge variant="outline">Author</Badge>}
-        {sends && <SendButton send={{ kind: "comment", id: comment.id }} sends={sends} />}
       </div>
       <div className="px-3 py-2 text-sm">
         <Body text={comment.body.trim() || "_No description provided._"} keep={`pr-${comment.id}`} />
@@ -140,7 +139,7 @@ function Thread({ thread, comments, author, sends }: { thread: PrThread; comment
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-3 border-t border-border p-3">
         {said.map((comment) => (
-          <CommentBox key={comment.id} comment={{ ...comment, path: null }} at={ago(comment.atMs, sends.now)} author={author} sends={sends} />
+          <CommentBox key={comment.id} comment={{ ...comment, path: null }} at={ago(comment.atMs, sends.now)} author={author} />
         ))}
       </CollapsibleContent>
     </Collapsible>
@@ -176,7 +175,7 @@ const FOLD = "group flex h-control-md w-full cursor-pointer items-center gap-2 r
 
 /**
  * The checks [D609]: one folded line of counts by group; opened, each group folds with its checks, each opening its
- * run on the host; a failed one keeps Send log to agent [D1019].
+ * run on the host.
  */
 function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const groups = GROUPS.map((g) => ({ ...g, checks: pr.checks.filter((c) => c.state === g.state) })).filter((g) => g.checks.length);
@@ -210,7 +209,6 @@ function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
                       <span className="flex">{g.icon}</span>
                       <span className="min-w-0 flex-1">{check.name}</span>
                     </button>
-                    {check.state === "failed" && <SendButton send={{ kind: "check", id: check.id }} label="Send log to agent" sends={sends} />}
                   </li>
                 ))}
               </ul>
@@ -273,7 +271,7 @@ export function Summary({ pr, sends }: { pr: PullRequest; sends: Sends }) {
             const body = review.said ? comments.get(review.id) : undefined;
             return (
               <div key={review.id} className="flex flex-col gap-2">
-                {body && said(body, <CommentBox comment={body} did={REVIEW_WORDS[review.state]} at={ago(body.atMs, sends.now)} author={pr.openedBy} sends={sends} />)}
+                {body && said(body, <CommentBox comment={body} did={REVIEW_WORDS[review.state]} at={ago(body.atMs, sends.now)} author={pr.openedBy} />)}
                 <div className="ms-9 flex flex-col gap-2">
                   {review.threads.map((thread) => (
                     <Thread key={thread.id} thread={thread} comments={comments} author={pr.openedBy} sends={sends} />

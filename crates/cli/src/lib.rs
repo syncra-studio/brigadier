@@ -49,7 +49,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -68,7 +68,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier browser <session|-> profiles|history|visit|downloads|sites|imports|bookmarks|vault <op> ... [--profile ID] [--json]
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> log <link> | host <id> merge <n|owner/name#n> <merge|squash|rebase> <head> | host <id> comment <n|owner/name#n> <body> | host <id> sides <n|owner/name#n> <path> | host <id> review <n|owner/name#n> <json>
+       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
@@ -223,12 +223,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
+                let on = host::pr_branch(args, &project)?;
                 core::folder::ensure(
                     &spec,
                     &project,
                     fresh,
                     base,
                     &title::from(flag(args, "--text").unwrap_or("")),
+                    on.as_deref(),
                 )?;
             }
             drop(projects_lock);

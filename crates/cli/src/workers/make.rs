@@ -387,7 +387,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             let project = project
                 .filter(|x| !x.removing)
                 .ok_or_else(|| io::Error::other("Its project is gone or being removed."))?;
-            core::folder::ensure(&spec, &project, false, r.base.as_deref(), &r.title)?;
+            core::folder::ensure(&spec, &project, false, r.base.as_deref(), &r.title, None)?;
             branch = core::worktrees::branch(&dir)?;
         }
         None => fs::create_dir_all(&cwd)?,

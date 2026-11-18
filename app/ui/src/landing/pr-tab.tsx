@@ -1,21 +1,17 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { type SetStateAction, useCallback, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "../components/button";
-import { ConfirmDialog } from "../components/confirm-dialog";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { Skeleton } from "../components/skeleton";
-import { ArrowUpRight, Branch, Check, ChevronDown, Folder } from "../icons";
+import { ArrowUpRight, Branch, Folder } from "../icons";
 import type { Pr } from "../panel/types";
-import { PullRequestOpen, Sparkles } from "./icons";
-import { type Draft, drafts, PrFiles, SubmitReview } from "./pr-files";
+import { PrFiles } from "./pr-files";
 import { Avatar, CheckAgain, type Sends, StateIcon } from "./pr-parts";
-import { useHost } from "./host";
 import { Summary } from "./pr-summary";
-import type { MergeStyle, PullRequest } from "./pull-requests";
+import type { PullRequest } from "./pull-requests";
 
 const TAB = cx(
   "relative flex h-9 cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring",
@@ -23,16 +19,14 @@ const TAB = cx(
 );
 const COLUMN = "w-full px-5";
 
-const NO_DRAFT: Draft = { comments: [], body: "" };
-
 /**
  * A pull request in a main-area tab [D204, D609, D613]: its title, state and number, Open on the host and
  * Check again; who, which repository and which branches on one line, each opening its page, all of it selectable
  * [D656]; then Summary (labels, reviewers, checks, the description and review comments) and Code, the PR's diff as
- * its host has it [D231, D262], kept as it was between switches. Beside the tabs, its one action: Fix with agent when
- * checks failed or changes were asked, a draft's too, else Merge while it's open; then Submit review and Review on the
- * host. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read
- * at once; when a read fails, the last one stays with why [D207, D208, D1009].
+ * its host has it [D231, D262], kept as it was between switches. Beside the tabs, its one action, the Start
+ * workspace: Bring to agent, which opens a session on the PR's branch with the PR waiting in its composer [D673,
+ * D674, D675]; merging and reviewing are on the host or through the agent. It paints its last read at once; when a
+ * read fails, the last one stays with why [D207, D208, D1009].
  */
 export function PrTab({
   owner,
@@ -41,11 +35,11 @@ export function PrTab({
   row,
   error,
   checking,
-  merging = false,
-  refused = null,
+  bringing = null,
+  failed = null,
   sends,
   onCheck,
-  onMerge,
+  onBring,
 }: {
   owner: string;
   /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
@@ -57,14 +51,13 @@ export function PrTab({
   error?: string;
   /** A read under way. */
   checking: boolean;
-  /** A merge on its way to the host; its refusal is said above the composer [D1264]. */
-  merging?: boolean;
-  /** Why the host refused the last merge, said under the header too. */
-  refused?: string | null;
+  /** Bring to agent under way: what it's doing, as its button says. */
+  bringing?: string | null;
+  /** Why the last Bring to agent didn't go, said under the header. */
+  failed?: string | null;
   sends: Sends;
   onCheck: () => void;
-  /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
-  onMerge: (style: MergeStyle, head: string) => void;
+  onBring: () => void;
 }) {
   // Check again reads Code again too, when it's open [D231].
   const [tick, setTick] = useState(0);
@@ -72,18 +65,6 @@ export function PrTab({
     onCheck();
     setTick((n) => n + 1);
   };
-  // The review being written, Code's line comments and Submit review's words, kept while the app runs.
-  const key = `${useHost(owner)} ${target}`;
-  const [draft, setDraftState] = useState<Draft>(() => drafts.get(key) ?? NO_DRAFT);
-  const setDraft = useCallback(
-    (next: SetStateAction<Draft>) =>
-      setDraftState((now) => {
-        const draft = typeof next === "function" ? next(now) : next;
-        drafts.set(key, draft);
-        return draft;
-      }),
-    [key],
-  );
   // Code is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
   const [tab, setTab] = useState("summary");
   const [coded, setCoded] = useState(false);
@@ -109,10 +90,6 @@ export function PrTab({
       </div>
     );
   }
-  const fix = (pr.state === "open" || pr.state === "draft") && pr.blockers !== null && (pr.blockers.failedChecks > 0 || pr.blockers.changesBy.length > 0);
-  const fixAdded = sends.added.has("fix");
-  // Merge only on Rust's word, while the read is current and the daemon is here.
-  const canMerge = pr.merge.allowed && !sends.offline && !pr.problem && !error;
   const repo = pr.repo ?? target.split("#")[0];
   const links = pr.links;
   return (
@@ -154,8 +131,8 @@ export function PrTab({
               </span>
             </span>
           </div>
-          {/* Why the last read or merge didn't go: what shows is the last one that did [D1009, D1264]. */}
-          <ErrorLine error={error ?? pr.problem ?? refused} />
+          {/* Why the last read or Bring to agent didn't go: what shows is the last read that did [D1009]. */}
+          <ErrorLine error={error ?? pr.problem ?? failed} />
           <div className="flex items-center gap-4 border-b border-divider">
             <Tabs.List className="flex flex-1 gap-4">
               <Tabs.Tab value="summary" className={TAB}>
@@ -165,27 +142,10 @@ export function PrTab({
                 Code <span className="text-xs text-muted-foreground tabular-nums">{pr.files}</span>
               </Tabs.Tab>
             </Tabs.List>
-            <span className="flex items-center gap-1 pb-1">
-              {fix ? (
-                <Button size="sm" disabled={fixAdded || sends.offline} onClick={() => sends.onSend({ kind: "fix" })}>
-                  {fixAdded ? <Check /> : <Sparkles />}
-                  {fixAdded ? "Added" : "Fix with agent"}
-                </Button>
-              ) : (
-                pr.state === "open" && <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
-              )}
-              <SubmitReview
-                owner={owner}
-                target={target}
-                pr={pr}
-                head={(draft.comments.length ? draft.head : pr.head) ?? null}
-                draft={draft}
-                onDraft={setDraft}
-                onReviewed={check}
-              />
-              <TooltipIconButton tooltip={`Review on ${pr.host}`} size="icon-md" onClick={() => sends.onOpen({ url: `${pr.url}/files` })}>
-                <PullRequestOpen />
-              </TooltipIconButton>
+            <span className="flex items-center pb-1">
+              <Button size="sm" disabled={bringing !== null || sends.offline} onClick={onBring}>
+                {bringing ?? "Bring to agent"}
+              </Button>
             </span>
           </div>
         </header>
@@ -203,7 +163,7 @@ export function PrTab({
             render={(props) => <div {...props} hidden={false} />}
             className={(state) => cx("absolute inset-0 flex flex-col", state.hidden && "invisible")}
           >
-            {coded && <PrFiles owner={owner} target={target} pr={pr} tick={tick} draft={draft} onDraft={setDraft} onOpen={() => sends.onOpen("pr")} />}
+            {coded && <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} />}
           </Tabs.Panel>
         </div>
       </Tabs.Root>
@@ -220,67 +180,3 @@ const Link = ({ href, children }: { href?: string | null; children: string }) =>
   ) : (
     children
   );
-
-const SPLIT = "inline-flex h-control-sm items-center bg-muted text-sm font-medium text-foreground transition-all hover:bg-popover focus-visible:focus-ring disabled:opacity-disabled";
-
-const STYLE_WORDS: Record<MergeStyle, string> = {
-  merge: "with a merge commit",
-  squash: "squashed into one commit",
-  rebase: "rebased onto it, commit by commit",
-};
-
-const STYLE_ITEMS: Record<MergeStyle, string> = { merge: "Create a merge commit", squash: "Squash and merge", rebase: "Rebase and merge" };
-
-/**
- * Merge in the repo's default style, with the other styles it allows behind the arrow [D1028]; on only while Rust
- * allows it. Each asks first, saying where the checks stand [D1019]; the ask closes if merging stops being allowed.
- */
-function MergeButton({ pr, enabled, merging, onMerge }: { pr: PullRequest; enabled: boolean; merging: boolean; onMerge: (style: MergeStyle, head: string) => void }) {
-  const [asking, setAsking] = useState<MergeStyle | null>(null);
-  const [style, setStyle] = useState<MergeStyle>(pr.merge.default);
-  // The head the confirm shows: a push landing while it's open isn't merged unseen [D1077].
-  const [head, setHead] = useState(pr.head);
-  const ask = (next: MergeStyle) => {
-    setStyle(next);
-    setHead(pr.head);
-    setAsking(next);
-  };
-  // A skipped check doesn't stand in the way, as on the host.
-  const passed = pr.checks.filter((check) => check.state === "passed" || check.state === "skipped").length;
-  return (
-    <div className="flex">
-      <Button size={null} variant={null} disabled={!enabled || merging} className={cx(SPLIT, "rounded-s-capsule ps-2.5 pe-2")} onClick={() => ask(pr.merge.default)}>
-        {merging ? "Merging…" : "Merge"}
-      </Button>
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger
-          disabled={!enabled || merging}
-          render={<Button size={null} variant={null} aria-label="Merge options" className={cx(SPLIT, "rounded-e-capsule border-s border-border px-1.5 svg:size-icon-md")} />}
-        >
-          <ChevronDown />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {pr.merge.styles.map((each) => (
-            <DropdownMenuItem key={each} onClick={() => ask(each)}>
-              {STYLE_ITEMS[each]}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <ConfirmDialog
-        open={asking !== null && enabled}
-        onOpenChange={(open) => !open && setAsking(null)}
-        title={`Merge #${pr.number} into ${pr.base}?`}
-        description={`${pr.checks.length === 0 ? "It has no checks" : passed === pr.checks.length ? "All checks passed" : `${passed} of ${pr.checks.length} checks passed`}. It lands on ${pr.base} on ${pr.host} ${STYLE_WORDS[style]}.`}
-        confirm="Merge"
-        busy={merging}
-        disabled={!enabled}
-        onConfirm={() => {
-          if (!enabled) return;
-          setAsking(null);
-          onMerge(style, head);
-        }}
-      />
-    </div>
-  );
-}

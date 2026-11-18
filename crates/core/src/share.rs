@@ -111,12 +111,3 @@ pub fn title(spec: &Spec) -> String {
         })
         .unwrap_or_else(|| "Another session".into())
 }
-
-/// Who lands session `id`'s work instead of it (merge into base, a pull request): the folder's
-/// owner's name where that's another session, else None [D1082]. One that can't be read lands its own.
-pub fn lands(data: &Path, id: &str) -> Option<String> {
-    let spec = load(data, id).ok()?;
-    let others = others(data, &spec);
-    let owner = owner(&spec, &others);
-    (owner.id != spec.id).then(|| title(owner))
-}

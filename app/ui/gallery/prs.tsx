@@ -58,7 +58,6 @@ const base: PullRequest = {
   state: "merged",
   status: "merged",
   blockers: null,
-  merge: { allowed: false, styles: ["squash"], default: "squash" },
   branch: "brigadier/05966928/task-4-proof-run-fixes",
   base: "main",
   openedBy: "stephen-golban",
@@ -123,7 +122,6 @@ const REVIEWED: PullRequest = {
   state: "open",
   status: "changes_requested",
   blockers: { failedChecks: 1, changesBy: ["mira-k"], conflicts: false },
-  merge: { allowed: true, styles: ["squash", "merge"], default: "squash" },
   branch: "brigadier/w70/pr-tabs",
   checks: [...checks(["App tests"], "failed"), ...checks(["Rust tests (Linux)"], "running"), ...PASS_8.slice(0, 5)],
   reviewers: [
@@ -149,7 +147,7 @@ const REVIEWED: PullRequest = {
   files: 6,
 };
 
-const SENDS: Sends = { now: NOW, offline: false, added: new Set(), onSend: () => {}, onOpen: () => {} };
+const SENDS: Sends = { now: NOW, offline: false, onOpen: () => {} };
 type Found = { query: string; okAt: number | null; error: string | null; prs: Pr[]; next: string | null };
 const found = (prs: Pr[], more = false): Found => ({ query: "", okAt: NOW - 120_000, error: null, prs, next: more ? "next" : null });
 
@@ -188,7 +186,7 @@ function List({ list, closed = false, view = "all", busy = false }: { list: Foun
   );
 }
 
-const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onMerge={() => {}} />;
+const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onBring={() => {}} />;
 
 /** The Pull requests tab and a Pull request tab, on sample PRs [D609, D613]. */
 export function PrsGallery() {

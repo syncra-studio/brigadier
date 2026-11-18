@@ -5,7 +5,6 @@ import type { PatchContents, Review, ReviewFile } from "../review/types";
 
 export type PrState = "open" | "draft" | "merged" | "closed";
 export type PrStatus = "merged" | "closed" | "checks_failed" | "draft" | "checks_running" | "changes_requested" | "conflicts" | "ready" | "review_needed";
-export type MergeStyle = "merge" | "squash" | "rebase";
 
 export type PullRequest = {
   id: string;
@@ -16,7 +15,7 @@ export type PullRequest = {
   repo?: string;
   /** Its labels' names; absent in a read kept before them [D614]. */
   labels?: string[];
-  /** The head commit it was read at: a merge is pinned to the one its confirm showed [D1077]. */
+  /** The head commit it was read at. */
   head: string;
   /** The host's name as Rust's host module gives it, for "Open on …"; nothing here names a host [D1030]. */
   host: string;
@@ -25,9 +24,9 @@ export type PullRequest = {
   status: PrStatus;
   /** What stands in the way of merging; null when nothing does. */
   blockers: { failedChecks: number; changesBy: string[]; conflicts: boolean } | null;
-  /** Whether Merge is on, the styles the repo allows and the one the button uses [D1019, D1028]. */
-  merge: { allowed: boolean; styles: MergeStyle[]; default: MergeStyle };
   branch: string;
+  /** Its branch is in another repository (a fork's, or deleted): Bring to agent takes it by number [D674]. */
+  fork?: boolean;
   base: string;
   openedBy: string;
   /** The author's, the repository's and the head branch's pages on the host; absent in a read kept before them [D656]. */
@@ -122,16 +121,6 @@ export type PrEvent = {
   /** On checks_failed, when one check failed: its id, so the event's Send is that check's log, one chip for both. */
   check?: string;
 };
-
-/** What a Send or Fix with agent leaves above the composer; nothing is sent until the user sends [D1019, D1027]. */
-export type PrSend =
-  | { kind: "fix" }
-  | { kind: "check"; id: string }
-  | { kind: "comment"; id: string }
-  | { kind: "event"; id: string };
-
-/** A send's key, for the "Added" state of the button that made it. */
-export const sendKey = (send: PrSend): string => (send.kind === "fix" ? "fix" : `${send.kind}:${send.id}`);
 
 /** A PR's Files changed as Rust reads it from the host (`host <id> files <n>`) and keeps it [D231]: each file with
  * the host's patch, read at `head`; `total` is how many files changed, more than the list when the host cut it. */
