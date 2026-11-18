@@ -69,18 +69,21 @@ fn main() {
 }
 
 /// `computer type` takes its text on stdin, never on the command line, where others could read it [D902].
+/// A stdin left open with nothing on it gives up after 5 s [D2026].
 fn typed(mut args: Vec<String>) -> Vec<String> {
     use std::io::{IsTerminal, Read};
     let typing =
         args.first().is_some_and(|a| a == "computer") && args.get(1).is_some_and(|a| a == "type");
-    let mut text = String::new();
-    if typing
-        && !std::io::stdin().is_terminal()
-        && std::io::stdin()
-            .take(64 << 10)
-            .read_to_string(&mut text)
-            .is_ok()
-    {
+    if !typing || std::io::stdin().is_terminal() {
+        return args;
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut text = String::new();
+        let read = std::io::stdin().take(64 << 10).read_to_string(&mut text);
+        let _ = tx.send(read.map(|_| text));
+    });
+    if let Ok(Ok(text)) = rx.recv_timeout(Duration::from_secs(5)) {
         // `echo` ends its text with a newline the agent didn't mean to type; --submit presses Return.
         let text = text.strip_suffix('\n').unwrap_or(&text).to_string();
         args.extend(["--stdin".into(), text]);

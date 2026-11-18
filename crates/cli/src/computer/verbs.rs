@@ -61,6 +61,9 @@ struct Sess {
     full: bool,
 }
 
+pub(super) const OFF: &str =
+    "Computer use is off: ask the user to turn it on in Settings › Computer use.";
+
 /// The session using the computer now [D907].
 static HOLDER: Mutex<Option<String>> = Mutex::new(None);
 static SESSIONS: LazyLock<Mutex<HashMap<String, Sess>>> = LazyLock::new(Mutex::default);
@@ -71,6 +74,10 @@ pub fn turn_ended(id: &str) {
     if holder.as_deref() == Some(id) {
         *holder = None;
     }
+}
+
+pub(super) fn held() -> bool {
+    lock(&HOLDER).is_some()
 }
 
 pub(super) fn release_all() {
@@ -165,9 +172,7 @@ fn verb(
         )));
     }
     if !super::on(data) {
-        return Err(refuse(
-            "Computer use is off: ask the user to turn it on in Settings › Computer use.",
-        ));
+        return Err(refuse(OFF));
     }
     take(me, rows)?;
     need(data, w.verb == "screenshot" || w.verb == "drag")?;
@@ -225,18 +230,20 @@ fn verb(
         "click" => {
             let n = n(0)?;
             let mut args = json!({"element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
-            if w.flags.contains("--double") {
-                args["count"] = 2.into();
-            }
             if w.flags.contains("--right") {
                 args["button"] = "right".into();
             }
+            // On an element, the driver's click ignores a count: a double click is its own tool.
+            let tool = match w.flags.contains("--double") {
+                true => "double_click",
+                false => "click",
+            };
             act(
                 data,
                 me,
                 &mut s,
                 &format!("Clicked [{n}]"),
-                "click",
+                tool,
                 args,
                 here,
             )?
@@ -263,10 +270,13 @@ fn verb(
             let args = json!({"text": text, "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
             let line = format!("Typed {} characters into [{n}]", text.chars().count());
             let mut out = act(data, me, &mut s, &line, "type_text", args, here)?;
-            if w.flags.contains("--submit") {
+            let typed = out.lines().next().unwrap_or("").to_string();
+            // Return only after text that landed: never on a refusal or an unknown outcome.
+            if w.flags.contains("--submit") && !typed.ends_with(": done.") {
+                out.push_str("\nNot submitted: read the window, then `key return`.");
+            } else if w.flags.contains("--submit") {
                 let enter =
                     json!({"key": "return", "pid": s.pid, "window_id": s.window, "session": me});
-                let typed = out.lines().next().unwrap_or("").to_string();
                 out = act(data, me, &mut s, "Pressed Return", "press_key", enter, here)?;
                 out = format!("{typed}\n{out}");
             }

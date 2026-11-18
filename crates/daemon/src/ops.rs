@@ -240,7 +240,7 @@ pub(super) fn serve(
             }
             // Brigadier Computer Use, connected out: the driver's calls go to it, its answers come back [D913].
             "computer_helper" => brigadier::computer::helper(conn, out.clone(), peer),
-            "computer_reply" => brigadier::computer::reply(req["reply"].clone()),
+            "computer_reply" => brigadier::computer::reply(conn, req["reply"].clone()),
             "git_refresh" => {
                 git::refresh(conn);
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());

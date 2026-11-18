@@ -85,13 +85,13 @@ pub(super) fn token(s: &Sess, n: u64) -> String {
     format!("{}:{n}", s.snapshot)
 }
 
-/// A key or a combination: a modifier with any key, or alone a key that types nothing, so a key
-/// can never type into a password field [D903].
+/// A key or a combination: cmd or ctrl with any key, or a key that types nothing, so a key can
+/// never type into a password field; nor can a paste in a window that has one [D903].
 pub(super) fn key(s: &Sess, me: &str, keys: &str) -> Result<(&'static str, Value), Value> {
     const MODS: [&str; 7] = [
         "cmd", "command", "shift", "option", "alt", "ctrl", "control",
     ];
-    const NAMED: [&str; 18] = [
+    const NAMED: [&str; 17] = [
         "return",
         "enter",
         "escape",
@@ -108,7 +108,6 @@ pub(super) fn key(s: &Sess, me: &str, keys: &str) -> Result<(&'static str, Value
         "end",
         "pageup",
         "pagedown",
-        "space",
         "fn",
     ];
     let parts: Vec<String> = keys.split('+').map(|k| k.trim().to_lowercase()).collect();
@@ -117,12 +116,19 @@ pub(super) fn key(s: &Sess, me: &str, keys: &str) -> Result<(&'static str, Value
         .ok_or_else(|| refuse("Name the keys: brigadier computer key cmd+s"))?;
     let named = NAMED.contains(&last.as_str())
         || (last.starts_with('f') && last[1..].parse::<u8>().is_ok_and(|f| (1..=20).contains(&f)));
-    if last.is_empty()
-        || !mods.iter().all(|m| MODS.contains(&m.as_str()))
-        || (mods.iter().all(|m| m == "shift") && !named)
-    {
+    // Shift and option with a letter type it (A, å).
+    let types = mods
+        .iter()
+        .all(|m| ["shift", "option", "alt"].contains(&m.as_str()));
+    if last.is_empty() || !mods.iter().all(|m| MODS.contains(&m.as_str())) || (types && !named) {
         return Err(refuse(
-            "Press a named key (return, escape, tab, arrows…) or a combination with cmd, ctrl or option; type text with `type`.",
+            "Press a named key (return, escape, tab, arrows…) or a combination with cmd or ctrl; type text with `type`.",
+        ));
+    }
+    let cmd = mods.iter().any(|m| m == "cmd" || m == "command");
+    if cmd && last == "v" && !s.secure.is_empty() {
+        return Err(refuse(
+            "This window has a password field, so no pasting: ask the user.",
         ));
     }
     Ok(match mods.is_empty() {

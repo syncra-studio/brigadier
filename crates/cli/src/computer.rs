@@ -91,12 +91,16 @@ pub fn helper(conn: u64, out: Sender<String>, pid: i32) {
     });
 }
 
-/// A line the driver answered, through the helper.
-pub fn reply(answer: Value) {
+/// A line the driver answered, through the helper on `conn`; a replaced helper's late answers go.
+pub fn reply(conn: u64, answer: Value) {
     let Some(id) = answer["id"].as_u64() else {
         return;
     };
-    if let Some(to) = lock(&HUB.link).waiting.remove(&id) {
+    let mut link = lock(&HUB.link);
+    if link.conn != conn {
+        return;
+    }
+    if let Some(to) = link.waiting.remove(&id) {
         let _ = to.send(answer);
     }
 }
@@ -187,6 +191,10 @@ pub(crate) fn tool(
 
 /// The helper is up and its driver answers, launched if it isn't; else why not.
 fn ready(data: &Path) -> Result<(), Fail> {
+    // Turned off while a call waited: nothing more is sent [D912].
+    if !on(data) {
+        return Err(Fail::NotSent(verbs::OFF.into()));
+    }
     let started = Instant::now();
     let mut link = lock(&HUB.link);
     loop {
@@ -267,7 +275,8 @@ pub(crate) fn grants(data: &Path) -> Result<(bool, bool), Fail> {
     );
     *lock(&HUB.grants) = Some(both);
     let stale = lock(&HUB.launched).is_none_or(|at| at.elapsed() > RECHECK);
-    if !(both.0 && both.1) && stale {
+    // A restart drops the driver's reads, so never under a session that holds the computer.
+    if !(both.0 && both.1) && stale && !verbs::held() {
         let _ = launch(data, None);
     }
     Ok(both)

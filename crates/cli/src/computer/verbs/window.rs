@@ -43,14 +43,10 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             true => drop(s.secure.insert(n)),
             false => drop(s.secure.remove(&n)),
         }
-        if let Some(f) = e["frame"].as_array().filter(|f| f.len() == 4) {
-            s.frames
-                .insert(n, [0, 1, 2, 3].map(|i| f[i].as_f64().unwrap_or(0.0)));
-        } else if let Some(f) = e["frame"].as_object() {
+        if let Some(f) = e["frame"].as_object() {
             s.frames.insert(
                 n,
-                ["x", "y", "width", "height"]
-                    .map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0)),
+                ["x", "y", "w", "h"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0)),
             );
         }
     }
@@ -185,12 +181,13 @@ pub(super) fn drag(
     let _ = fs::remove_file(&file);
     let found = found?;
     let bounds = &found["window_bounds"];
-    let (x, y, width) = (
-        bounds["x"].as_f64().unwrap_or(0.0),
-        bounds["y"].as_f64().unwrap_or(0.0),
-        bounds["width"].as_f64().unwrap_or(0.0),
-    );
-    let scale = found["screenshot_width"].as_f64().unwrap_or(0.0) / width.max(1.0);
+    let (Some(x), Some(y), Some(scale)) = (
+        bounds["x"].as_f64(),
+        bounds["y"].as_f64(),
+        found["screenshot_scale"].as_f64(),
+    ) else {
+        return Err(not_captured(&found));
+    };
     let at = |f: [f64; 4]| {
         (
             (f[0] + f[2] / 2.0 - x) * scale,
@@ -221,6 +218,9 @@ pub(super) fn screenshot(
     let file = dir.join(format!("{n}.jpg"));
     let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file, "screenshot_format": "jpeg", "max_dimension": 1366});
     let found = call(data, "get_window_state", shot, here)?;
+    if found["screenshot_file_path"].is_null() {
+        return Err(not_captured(&found));
+    }
     let size = match (
         found["screenshot_width"].as_u64(),
         found["screenshot_height"].as_u64(),
@@ -229,4 +229,14 @@ pub(super) fn screenshot(
         _ => String::new(),
     };
     Ok(format!("Saved: {}{size}", file.display()))
+}
+
+/// A capture the driver couldn't make or place, in its own words.
+fn not_captured(found: &Value) -> Value {
+    let why = found["screenshot_error"]["code"]
+        .as_str()
+        .unwrap_or("no picture came back");
+    refuse(&format!(
+        "Couldn't capture the window: {why}. Read it again."
+    ))
 }
