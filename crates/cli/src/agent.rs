@@ -31,7 +31,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
-  brigadier computer …        the apps on the user's Mac, in the background: read a window, click, type, keys, menus
+  brigadier computer …        the user's Mac apps, in the background, when files, shell and CLIs can't; never osascript
   brigadier mockup \"<what>\"   before a big UI change, never a small fix: offer the user a mockup first
   brigadier repo <name>       in a chat on a folder of repos: your own copy of a repo, before your first edit there
   brigadier help [command]    this, or one command's help

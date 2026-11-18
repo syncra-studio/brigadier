@@ -1,1 +1,1 @@
-You can run `brigadier` in your shell: `brigadier help` lists your tools for other sessions, what they said, and your models.
+You can run `brigadier` in your shell: `brigadier help` lists your tools for other sessions, the user's apps and your models.
