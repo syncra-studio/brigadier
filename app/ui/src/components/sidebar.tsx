@@ -136,6 +136,7 @@ export function SidebarProvider({
       <TooltipProvider delay={0}>
         <div
           data-slot="sidebar-wrapper"
+          data-resizing={resizing || undefined}
           data-state={state}
           data-collapse={hidden ? "hidden" : "strip"}
           data-width={width ?? undefined}
@@ -162,14 +163,10 @@ export function SidebarPanel({
   children,
   ...props
 }: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode; mark?: ReactNode }) {
-  const { open, hidden, resizing } = useSidebar();
+  const { open, hidden } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
-      <div
-        inert={hidden}
-        data-resizing={resizing || undefined}
-        className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
-      >
+      <div inert={hidden} className="sidebar-shown-width h-full overflow-clip">
         <div className="flex h-full flex-col">
           <div className="app-drag h-titlebar shrink-0" />
           <div data-sidebar="sidebar" className={cx("flex min-h-0 flex-1 flex-col rounded-s-surface bg-background text-foreground", className)} {...props}>

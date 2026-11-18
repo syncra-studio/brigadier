@@ -1268,6 +1268,13 @@
   }
 }
 
+/* One animated width keeps the panel and title bar on the same frame [D740]. */
+@property --sidebar-shown {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 /* The sidebar's width: where it was dragged (data-width on the sidebar, sidebar.tsx) or the default,
    kept in its range and leaving the content beside it room. */
 @utility sidebar-width-source {
@@ -1280,21 +1287,34 @@
       min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) * 2 - var(--spacing-sidebar-thread-min))
     )
   );
+  /* Round once to layout precision so width and clearance cannot round apart. */
+  --sidebar-space: round(down, var(--sidebar-shown), calc(1px / 64));
   /* How wide the panel shows beside the content: what the title bar keeps clear of. */
   --sidebar-shown: var(--spacing-sidebar-strip);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
   }
-  /* Hidden: no panel, and the page meets the window's start edge, square there (main.tsx) [D714]. */
+  /* Keep the inset while the panel closes; changing it jumps the tabs [D740]. */
   &[data-collapse="hidden"] {
-    --sidebar-shown: calc(var(--spacing-surface-inset) * -1);
-    padding-inline-start: 0;
-    & > [data-slot="page-edge"] {
-      inset-inline-start: 0;
-      border-start-start-radius: 0;
-      border-end-start-radius: 0;
+    --sidebar-shown: 0px;
+    & > .body-divider::after {
+      display: none;
+    }
+    & > .body-divider > main {
+      border-start-start-radius: var(--radius-surface);
+      border-end-start-radius: var(--radius-surface);
     }
   }
+  transition: --sidebar-shown var(--duration-fold) var(--ease-out);
+  &[data-resizing] {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+@utility sidebar-shown-width {
+  width: var(--sidebar-space);
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
@@ -1369,14 +1389,8 @@
 @utility titlebar-clear {
   padding-inline-start: max(
     calc(var(--spacing) * 3),
-    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-shown))
+    calc(var(--spacing-titlebar-nav-end) + var(--spacing) * 2 - var(--spacing-surface-inset) - var(--sidebar-space))
   );
-  transition-property: padding-inline-start;
-  transition-duration: var(--duration-fold);
-  transition-timing-function: var(--ease-sidebar);
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
 }
 
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
@@ -1393,16 +1407,12 @@
   &::before {
     content: "";
     position: absolute;
-    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-shown)));
+    inset-inline-start: max(0%, calc(var(--spacing-titlebar-nav-end) + var(--spacing) - var(--spacing-surface-inset) - var(--sidebar-space)));
     top: calc((var(--spacing-titlebar) - var(--spacing) * 5) / 2);
     height: calc(var(--spacing) * 5);
     width: 0.5px;
     background: var(--color-divider);
     pointer-events: none;
-    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
-    @media (prefers-reduced-motion: reduce) {
-      transition: none;
-    }
   }
   /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
   &:not([data-settled]) .session-tab,
