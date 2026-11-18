@@ -244,32 +244,22 @@ impl Thread {
             && (t.switch.is_null() || (cut && t.origin == "system"));
         let holds =
             !cut && (last.as_ref()).is_some_and(|id| self.helpers(id) > 0 || self.working());
-        // Continue after the user's Stop carries the stopped block on, the pause a wait: one clock, one
-        // fold [D154]. So does the agent waking on its own, for a command it left running that
-        // ended after its block folded: no new block without the user's words [D117, D179].
+        // Resume after the user's Stop is a block of its own under the stopped one, which stays as it
+        // ended, as the next message after a stop is in any CLI [D693]. The agent waking on its own,
+        // for a command it left running that ended after its block folded, carries that block on: no
+        // new block without the user's words [D117, D179].
         let resume = t.origin == "system" && t.text == crate::send::RESUME;
         // Brigadier's send-back of a reply that asked in prose goes on in its block [D529].
         let back = t.origin == "system" && t.text == crate::rules::SEND_BACK;
         let resumed = (self.ended.take())
             .filter(|o| o.at + 1 == self.turns.len())
-            .filter(|o| match resume || back {
-                true if back => self.turns[o.at]["status"] == "done",
-                true => {
-                    self.turns[o.at]["status"] == "cancelled" && o.stop.0.as_deref() == Some("user")
-                }
+            .filter(|o| match back {
+                true => self.turns[o.at]["status"] == "done",
                 // A stopped worker's result, let go after the turn, follows on in its block [D316].
                 false => {
                     (t.origin == "agent" || t.origin.starts_with("result:stopped:"))
                         && !self.held.contains_key(&o.id)
                 }
-            })
-            .map(|mut o| {
-                if resume {
-                    let ended = self.turns[o.at]["endedAt"].as_u64().unwrap_or(ts);
-                    o.waited += ts.saturating_sub(ended);
-                    self.turns[o.at]["waitedMs"] = o.waited.into();
-                }
-                o
             });
         let resuming = resumed.is_some();
         let held = last
@@ -369,8 +359,12 @@ impl Thread {
                 self.add(json!({"kind": "line", "reason": "limit-reset", "at": at}));
             }
         }
-        // Brigadier's words carrying on a cut or stopped turn are no row: its steps flow on in that block [D124, D154].
-        if (cut && wakes || resuming) && t.origin == "system" {
+        // Brigadier's words carrying on a cut or stopped turn are no row: its steps flow on in that block [D124, D693].
+        if (cut && wakes || resuming || resume) && t.origin == "system" {
+            // A Resume's own block folds its work as any turn does.
+            if let Some(o) = self.open.as_mut().filter(|_| resume) {
+                o.input = true;
+            }
             return;
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].

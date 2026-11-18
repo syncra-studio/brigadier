@@ -11,7 +11,7 @@ import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
 import { ThinkingLine, UserBubble, datedAfter } from "../components/thread/message";
-import { ask, type Row, threadSource, useDaemon } from "../daemon";
+import { ask, type Row, showStop, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
 import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
 import { AgentChipTile } from "../landing/agent-chip";
@@ -197,7 +197,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setEmpty(false);
     });
   }, []);
-  const { running, busy, resumable } = useTurn(id, row, source, useOnItsWay(id));
+  const { running, busy, resumable, stopping } = useTurn(id, row, source, useOnItsWay(id));
   const canSteer = row?.steer === true;
   // Queue or Steer, Rust's setting [D188].
   const followUp = useSettings().value?.follow_up ?? "queue";
@@ -382,7 +382,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const stuck = row?.queue?.items.find((each) => each.error);
   const stop = () => {
     setStopError(null);
-    void run(["stop", id]).then((reply) => !reply.ok && setStopError(failure(reply)));
+    const shown = showStop(id);
+    void run(["stop", id]).then((reply) => (shown(reply.ok === true), !reply.ok && setStopError(failure(reply))));
   };
   const resume = () => act({ kind: "resume", qid: "" }, ["resume"]);
   const resuming = live.some((op) => op.kind === "resume");
@@ -397,7 +398,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           <QueueCard
             items={items}
             paused={paused}
-            resuming={resuming || offline}
+            resuming={resuming || stopping || offline}
             steer={canSteer && running}
             canEdit={empty}
             error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
@@ -442,7 +443,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={<SessionModel id={id} row={row} offline={offline} />}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}

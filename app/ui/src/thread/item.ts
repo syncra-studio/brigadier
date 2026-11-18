@@ -59,6 +59,8 @@ export type Turn = {
   waitingSince?: number | null;
   /** How long the turn has waited on the user in all (ms). */
   waitedMs?: number;
+  /** Drawn stopped by the UI while the user's Stop is on its way to Rust [D693]. */
+  stopping?: true;
   /** Its subagents still running after its answer: its block stays open, counting, until the last ends [D114]. */
   helpers?: number;
   /** Answered while its subagents run, or till the agent wakes once they ended: one open block, drawn as running [D118]. */

@@ -25,7 +25,8 @@ export function useTurn(id: string, row: (ComposerRow & { holding?: boolean }) |
   const running = turn ? turn.status === "running" || (turn.held === true && holds) : row?.running === true || row?.holding === true;
   // Only after a stopped turn; stopped in the thread before Rust's row says so (it still runs there), Resume at once.
   const resumable = !sending && (turn ? turn.status === "cancelled" && (row?.resumable === true || row?.running === true) : row?.resumable === true);
-  return { running, busy: running || sending, resumable };
+  // Stopped in the view while Rust's Stop is on its way: Resume waits for it [D693].
+  return { running, busy: running || sending, resumable, stopping: turn?.stopping === true };
 }
 
 /**

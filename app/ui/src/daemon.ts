@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { KeptPrs } from "./panel/types";
 import type { Mark } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
+import { asStopped, markStop } from "./thread/stopping";
 import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string; build: number };
@@ -430,7 +431,8 @@ function page(request: object, done: (result: Paged) => void): void {
   });
 }
 
-/** The open thread as the view's source: null while it loads. */
+export const showStop = (id: string) => markStop(id, thread?.id === id ? session : null, () => setThread(thread, session));
+/** The open thread as the view's source, a Stop on its way drawn: null while it loads. */
 export const threadSource: Omit<Source, "older"> & {
   older(): Promise<Paged>;
   /** The rows held after find went to an island far up: the page under them, or the newest again [D503]. */
@@ -444,7 +446,7 @@ export const threadSource: Omit<Source, "older"> & {
     threadListeners.add(listener);
     return () => threadListeners.delete(listener);
   },
-  get: () => session,
+  get: () => asStopped(thread?.id, session),
   older() {
     // `before` is only this session's once its snapshot is in.
     if (!thread || !session || threadN === undefined) return Promise.resolve({ ok: false, error: "loading" });
