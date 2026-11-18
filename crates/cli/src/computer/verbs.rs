@@ -11,8 +11,8 @@ mod window;
 
 use super::{Fail, HUB, lock, tool};
 use crate::agent::{cap, refuse};
-use act::{act, key, token};
-use open::{apps, find, press};
+use act::{act, key, need, token};
+use open::{apps, find, menu_path, press};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -416,20 +416,6 @@ fn verb(
     Ok(text)
 }
 
-/// A menu's path from `menu "File > Save As…"`.
-fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
-    let path: Vec<String> = (w.rest.join(" ").split('>'))
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect();
-    match path.len() {
-        0 => Err(refuse(
-            "Give the menu's path: brigadier computer menu \"File > Save As…\"",
-        )),
-        _ => Ok(path),
-    }
-}
-
 /// Takes the computer for `me`, or names the session that has it [D907]. A holder waiting on the
 /// user (a question, an approval) has let it go: its turn goes on only once they answer.
 fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
@@ -446,25 +432,6 @@ fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
     }
     *holder = Some(me.to_string());
     Ok(())
-}
-
-/// Accessibility is needed for everything, Screen Recording for a picture.
-fn need(data: &Path, screen: bool) -> Result<(), Value> {
-    let last = *lock(&HUB.grants);
-    let (ax, sr) = match last {
-        Some(g) if g.0 && (g.1 || !screen) => g,
-        _ => super::grants(data).map_err(said)?,
-    };
-    let ask = |what: &str| {
-        refuse(&format!(
-            "Computer use isn't set up: {what} isn't allowed for Brigadier Computer Use. Ask the user to open Settings › Computer use."
-        ))
-    };
-    match (ax, sr || !screen) {
-        (false, _) => Err(ask("Accessibility")),
-        (_, false) => Err(ask("Screen Recording")),
-        _ => Ok(()),
-    }
 }
 
 fn said(f: Fail) -> Value {

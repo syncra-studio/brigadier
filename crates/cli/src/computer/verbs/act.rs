@@ -154,3 +154,22 @@ pub(super) fn key(s: &Sess, me: &str, keys: &str) -> Result<(&'static str, Value
         ),
     })
 }
+
+/// Accessibility is needed for everything, Screen Recording for a picture.
+pub(super) fn need(data: &Path, screen: bool) -> Result<(), Value> {
+    let last = *super::lock(&super::HUB.grants);
+    let (ax, sr) = match last {
+        Some(g) if g.0 && (g.1 || !screen) => g,
+        _ => super::super::grants(data).map_err(said)?,
+    };
+    let ask = |what: &str| {
+        refuse(&format!(
+            "Computer use isn't set up: {what} isn't allowed for Brigadier Computer Use. Ask the user to open Settings › Computer use."
+        ))
+    };
+    match (ax, sr || !screen) {
+        (false, _) => Err(ask("Accessibility")),
+        (_, false) => Err(ask("Screen Recording")),
+        _ => Ok(()),
+    }
+}

@@ -371,3 +371,17 @@ pub(super) fn find(
     blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
     Ok((app["pid"].as_i64().unwrap_or(0), found))
 }
+
+/// A menu's path from `menu "File > Save As…"`.
+pub(super) fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
+    let path: Vec<String> = (w.rest.join(" ").split('>'))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    match path.len() {
+        0 => Err(refuse(
+            "Give the menu's path: brigadier computer menu \"File > Save As…\"",
+        )),
+        _ => Ok(path),
+    }
+}
