@@ -3,7 +3,7 @@
 //! the helper's own calls (Cua's need a window, #8055).
 
 use super::act::{act, idle, wait_for_user};
-use super::window::{changes, read};
+use super::window::{NO_CHANGE, changes, read};
 use super::{Fail, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -308,7 +308,12 @@ pub(super) fn press(
             s.app
         ));
     }
-    Ok(format!("Chose {chose}.\n{}", changes(data, me, s, here)))
+    match changes(data, me, s, here) {
+        diff if diff == NO_CHANGE => Ok(format!(
+            "Chose {chose}: no change seen in the window. Read again, or try another way."
+        )),
+        diff => Ok(format!("Chose {chose}: change observed.\n{diff}")),
+    }
 }
 
 pub(super) fn running(data: &Path, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {

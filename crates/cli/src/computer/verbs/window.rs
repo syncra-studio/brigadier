@@ -190,6 +190,21 @@ pub(super) fn tidy(md: &str) -> String {
     ours(&out.replace(" []", ""))
 }
 
+pub(super) const NO_CHANGE: &str = "No change in the window.";
+
+/// Whether row [n] of a read or a diff shows `text` (its first line, as far as a row shows it).
+pub(super) fn shows(md: &str, n: u64, text: &str) -> bool {
+    let want: String = text
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(30)
+        .collect();
+    md.lines().any(|l| row(l) == Some(n) && l.contains(&want))
+}
+
 /// What changed in the window since the last read, from Cua's own `since` read.
 pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) -> String {
     let mut args = state_args(s, me);
@@ -212,7 +227,7 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
     };
     learn(s, &found);
     match found["since_status"].as_str() {
-        Some("no_change") => "No change in the window.".into(),
+        Some("no_change") => NO_CHANGE.into(),
         Some("diff") => {
             let diff = found["tree_diff"].as_str().unwrap_or("");
             s.moved |= diff.contains("\nreindexed:");

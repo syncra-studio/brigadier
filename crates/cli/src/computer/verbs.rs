@@ -302,9 +302,15 @@ fn verb(
             let args = json!({"text": text, "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
             let line = format!("Typed {} characters into [{n}]", text.chars().count());
             let mut out = act(data, me, &mut s, &line, "type_text", args, here)?;
-            let typed = out.lines().next().unwrap_or("").to_string();
+            // Done only when the field reads the text back.
+            let landed = window::shows(&out, n, text);
+            let typed = match landed {
+                true => format!("{line}: done, [{n}] reads it back."),
+                false => format!("{line}: [{n}] doesn't read it back. Read it before going on."),
+            };
+            out = out.replacen(out.lines().next().unwrap_or(""), &typed, 1);
             // Return only after text that landed: never on a refusal or an unknown outcome.
-            if w.flags.contains("--submit") && !typed.ends_with(": done.") {
+            if w.flags.contains("--submit") && !landed {
                 out.push_str("\nNot submitted: read the window, then `key return`.");
             } else if w.flags.contains("--submit") {
                 let enter =

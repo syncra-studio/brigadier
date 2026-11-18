@@ -2,14 +2,15 @@
 //! what changed.
 
 use super::open::front;
-use super::window::changes;
-use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, ours, refuse, said, tool};
+use super::window::{NO_CHANGE, changes, ours};
+use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Runs one action once the user isn't in its app, then says how it went and what changed.
+/// Runs one action once the user isn't in its app, then says what changed: our own before/after
+/// read decides, never the driver's guess [D922]. Only `type` says "done", from its read-back.
 pub(super) fn act(
     data: &Path,
     me: &str,
@@ -27,21 +28,31 @@ pub(super) fn act(
             ));
         }
         Err(f) => return Err(said(f)),
+        // AX "cannot complete": the app often did it anyway (a button that opens a menu).
+        Ok(Err(why)) if why.contains("-25204") => {
+            let diff = changes(data, me, s, here);
+            return Ok(format!(
+                "{line}: outcome unknown, the app didn't answer.\n{diff}"
+            ));
+        }
+        Ok(Err(why)) if why.contains("-25206") => {
+            return Err(refuse(&format!(
+                "{line}: failed, it takes no press. A field takes `type`; a row or cell, its parent's number or `click N --double`."
+            )));
+        }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
         Ok(Ok(done)) => done,
     };
-    let hint = done["hint"]
-        .as_str()
-        .map(|h| format!(" {h}"))
-        .unwrap_or_default();
+    let diff = changes(data, me, s, here);
     let how = match done["effect"].as_str() {
-        Some("partial") => "partly done.".to_string(),
-        Some("unverifiable") => format!("sent, but {} didn't confirm it.", s.app),
-        Some("suspected_noop") => "sent, but nothing seems to have happened.".into(),
-        Some("refused") => format!("refused.{hint}"),
-        _ => "done.".into(),
+        Some("refused") => format!("refused.{}", ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))),
+        _ if diff == NO_CHANGE => {
+            "no change seen. Try another way: a key, a menu item, `click N --double`, or read again.".into()
+        }
+        Some("partial") => "partly done.".into(),
+        _ => "change observed.".into(),
     };
-    Ok(format!("{line}: {how}\n{}", changes(data, me, s, here)))
+    Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
 /// Seconds since the user last moved the mouse, clicked or typed anywhere; no grant needed.
