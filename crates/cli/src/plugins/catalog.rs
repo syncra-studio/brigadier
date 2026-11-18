@@ -81,6 +81,23 @@ pub(super) fn page(items: &[Value]) -> Value {
     c
 }
 
+/// The entry whose agent's own plugin this own row is: on that way ("Use Claude Code's Slack"), it is
+/// installed, not one to install again [D608 D717].
+pub(super) fn via(own: &Value) -> Value {
+    let sources = own["sources"].as_object();
+    let from = |e: &&Value| {
+        plugin(e).is_some_and(|k| {
+            sources.is_some_and(|s| {
+                s.values()
+                    .any(|v| str(v).strip_prefix("plugin ") == Some(k))
+            })
+        })
+    };
+    entries()
+        .find(from)
+        .map_or(Value::Null, |e| e["id"].clone())
+}
+
 /// An entry's Claude Code plugin, by its key, the only agent with plugins of its own.
 fn plugin(e: &Value) -> Option<&str> {
     e["app"]["claude_plugin"].as_str()
@@ -150,4 +167,20 @@ pub(super) fn install(data: &Path, id: &str, scope: Value, client: &str) -> io::
         )?;
     }
     Ok(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn via_is_the_entry_whose_agent_plugin_it_is() {
+        let own = |s: &str| json!({"sources": {"Claude Code": s}});
+        assert_eq!(
+            via(&own("plugin slack@claude-plugins-official")),
+            json!("slack")
+        );
+        assert_eq!(via(&own("/home/.claude.json")), Value::Null);
+        assert_eq!(via(&own("plugin other@market")), Value::Null);
+    }
 }

@@ -196,9 +196,15 @@ fn list(data: &Path) -> Value {
         .filter(|o| o["in_library"] != true)
         .map(|o| {
             json!({"key": o["key"], "kind": o["kind"], "name": shown(str(&o["name"])), "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o), "catalog": catalog::id(&o)})
+            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o), "catalog": catalog::id(&o), "via": catalog::via(&o)})
         })
         .collect();
+    let mut catalog = catalog::page(&items);
+    for e in catalog["entries"].as_array_mut().into_iter().flatten() {
+        if let Some(o) = (own.iter()).find(|o| e["installed"].is_null() && o["via"] == e["id"]) {
+            e["installed"] = o["key"].clone();
+        }
+    }
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
     let projects: Vec<Value> = (all.iter())
         .map(|p| json!({"id": p.id, "name": p.name}))
@@ -246,7 +252,7 @@ fn list(data: &Path) -> Value {
                 "note": note, "catalog": catalog::id(i), "with": i.get("with")})
         })
         .collect();
-    json!({"ok": true, "items": shown, "own": own, "projects": projects, "catalog": catalog::page(&items)})
+    json!({"ok": true, "items": shown, "own": own, "projects": projects, "catalog": catalog})
 }
 
 fn refuse(why: &str) -> io::Error {

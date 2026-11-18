@@ -58,8 +58,8 @@ const SLACK: Entry = {
 // Slack after "Use Claude Code's Slack" for freelogo: not in the library, its plugin's server in the agent's own [D608, D659].
 const SLACK_ON: Plugins = {
   ...VALUE,
-  own: [...VALUE.own, { key: "own:p2:server:plugin:slack:slack", kind: "server", name: "slack", detail: "https://mcp.slack.com/mcp", agents: ["Claude Code"], project: "freelogo", from: "From Claude Code's slack plugin", catalog: "slack" }],
-  catalog: { categories: ["Productivity"], entries: [{ ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" } }] },
+  own: [...VALUE.own, { key: "own:p2:server:plugin:slack:slack", kind: "server", name: "slack", detail: "https://mcp.slack.com/mcp", agents: ["Claude Code"], project: "freelogo", from: "From Claude Code's slack plugin", catalog: "slack", via: "slack" }],
+  catalog: { categories: ["Productivity"], entries: [{ ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" }, installed: "own:p2:server:plugin:slack:slack" }] },
 };
 
 // A search for "rea" [D660]: the catalog's React Best Practices, then what the MCP Registry and skills.sh answer.

@@ -94,7 +94,7 @@ export function ScopeChip({ text }: { text: string }) {
   );
 }
 
-/** My Skills or My MCPs [D566, D580]: the library's, 2 columns of cards; then those found on this machine, to install. */
+/** The Skills or MCPs tab [D566, D580, D718]: the library's, 2 columns of cards; then those found on this machine, to install. */
 export function MyTab({
   value,
   kind,
@@ -178,8 +178,8 @@ function OwnCard({ own, marks, remote, onInstall }: { own: Own; marks: Record<st
   );
 }
 
-// A server at an address comes to the library with 4.13's sign-in.
-export const importable = (own: Own, remote: boolean) => remote || !/^[a-z][a-z0-9+.-]*:\/\//i.test(own.detail);
+// A server at an address comes to the library with 4.13's sign-in; one on through its agent's plugin is installed already [D717].
+export const importable = (own: Own, remote: boolean) => !own.via && (remote || !/^[a-z][a-z0-9+.-]*:\/\//i.test(own.detail));
 
 /** A tab with nothing in it yet: Browse, or Add your own. */
 function EmptyTab({ tab, onBrowse, onAdd }: { tab: Kind; onBrowse: () => void; onAdd: () => void }) {
