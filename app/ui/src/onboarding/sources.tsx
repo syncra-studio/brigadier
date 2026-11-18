@@ -107,7 +107,7 @@ export function CloneTab({ repo, github, picked, current, busy, onRepo, onToggle
     >
       {github && "gh" in github ? (
         <Note>
-          {github.gh === "missing" ? "Install the GitHub CLI (gh) to see your repositories here." : "Connect GitHub on the step before to see your repositories here."} Any
+          {github.gh === "missing" ? "Install the GitHub CLI (gh) to see your repositories here." : "Connect GitHub to see your repositories here."} Any
           repository's URL works too.
         </Note>
       ) : github && repos.length === 0 ? (

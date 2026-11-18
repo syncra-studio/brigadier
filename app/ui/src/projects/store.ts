@@ -3,9 +3,6 @@ import { connected } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 import { addProject, newProjectId } from "./projects";
 
-/** A repository found on this Mac, or a folder the user chose; `project_id` once it is a project. */
-export type Repo = { path: string; name: string; project_id: string | null; plain?: boolean; folder?: string[] };
-
 /** What a chosen folder is, as Rust checked it [D165]. */
 export type FolderCheck =
   | { kind: "repo"; repo: string; name: string; project_id: string | null }
@@ -26,8 +23,7 @@ export type GitHub = { repos: GitHubRepo[] } | { gh: "missing" | "signed-out" };
  * reason; "disconnected" while the daemon is away, the add then settling by id [D30].
  */
 export type Source = {
-  find(): Promise<Repo[]>;
-  /** The repositories the agents' own history ran in, and the folder most projects are in, for onboarding's Projects step [D45, D627]. */
+  /** The repositories the agents' own history ran in, and the folder most projects are in, for the Projects tabs [D45, D627]. */
   history(): Promise<{ found: string[]; parent: string }>;
   check(path: string): Promise<FolderCheck>;
   /**
@@ -41,9 +37,6 @@ export type Source = {
   /** The native folder picker, starting at `at`. */
   pick(at?: string): Promise<string | null>;
 };
-
-/** Where clones and new repositories go unless changed; made when missing [D168]. */
-export const DEFAULT_PARENT = "~/code/";
 
 /** The dialog: open, with the folder it starts on ("" for none). Each opening starts over. */
 const dialog = store({ open: false, path: "", opening: 0 });
@@ -99,7 +92,6 @@ export async function openFolders(source: Source, paths: readonly string[]): Pro
 
 /** Add project on the daemon: the commands in `crates/cli/src/setup.rs`, each add through `addProject` [D30]. */
 export const daemonSource: Source = {
-  find: async () => (await run(["projects", "find"])).repos as Repo[],
   history: async () => (await run(["projects"])) as { found: string[]; parent: string },
   check: async (path) => (await run(["projects", "inspect", path])).check as FolderCheck,
   add: (id, path, init) => addProject(path, init ? ["init", path, ...(init === "here" ? ["--here"] : [])] : ["add", path], id),

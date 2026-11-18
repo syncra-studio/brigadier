@@ -120,7 +120,6 @@ const REPOS = [
   repo("sam-at-work/dotfiles", "sam-at-work"),
 ];
 const source = (history: string[], github: GitHub = { repos: REPOS }): Source => ({
-  find: never,
   history: async () => ({ found: history, parent: "~/Development/" }),
   check: never,
   add: never,

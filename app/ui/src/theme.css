@@ -338,7 +338,8 @@
   --container-dialog: 24rem;
   /* Add project: its card, and the list's room for five rows (the old app's). */
   --container-add-project: 47.5rem;
-  --spacing-add-project-list: 18.625rem;
+  /* Add project's tabs, their lists scrolling inside [D668]. */
+  --spacing-add-project-body: 30rem;
   /* Plugins › View: the size of a file tab (the old app's Open). */
   --container-plugin-file: min(96rem, calc(100vw - 4rem));
   --spacing-plugin-file-height: min(64rem, calc(100dvh - 6rem));
