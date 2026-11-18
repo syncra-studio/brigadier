@@ -81,11 +81,11 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
   const value = useMemo(() => {
     if (!owner) return null;
     const commands = new Map((listed ?? []).map((command) => [command.id, command]));
-    const open = (kind: OpenKind, id: string) => {
+    const open = (kind: OpenKind, id: string, name?: string) => {
       // A file's chip carries its line after a newline, which no path holds.
       const [path, line] = id.split("\n");
       if (kind === "file") return openFile(owner, path!, { line: line ? Number(line) : undefined, preview: false });
-      openChip(owner, kind, id, commands.get(id), daemonRun);
+      openChip(owner, kind, id, commands.get(id), daemonRun, name);
     };
     const chip = (each: Chip) => (
       <ChipContext value={{ onOpen: open, commands }}>

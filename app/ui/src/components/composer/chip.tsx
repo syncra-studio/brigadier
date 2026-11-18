@@ -13,7 +13,7 @@ import type { SlashCommand } from "./menus";
 export type OpenKind = "file" | "folder" | "chat" | "worker" | "command" | "skill" | "mcp" | "image" | "paste";
 
 /** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
-export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
+export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string, name?: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
   commands: new Map(),
 });
 
@@ -31,7 +31,7 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
         id={chip.attachmentId}
         paste={chip.kind === "paste"}
         preview={chip.kind === "paste" ? chip.preview : undefined}
-        onOpen={onOpen && (() => onOpen(chip.kind, chip.attachmentId))}
+        onOpen={onOpen && (() => onOpen(chip.kind, chip.attachmentId, chip.kind === "paste" ? chip.preview : undefined))}
         onRemove={onRemove}
       />
     );

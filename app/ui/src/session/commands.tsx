@@ -7,7 +7,7 @@ import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../com
 import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
-import { PASTE_LABEL } from "../shell/attachment-tab";
+import { isPasteLabel, PASTE_LABEL } from "../shell/attachment-tab";
 import { openAttachment, openFile } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
@@ -64,7 +64,7 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     },
   };
 
-  const onOpen = (kind: OpenKind, id: string) => openChip(owner, kind, id, listed?.find((each) => each.id === id), run);
+  const onOpen = (kind: OpenKind, id: string, name?: string) => openChip(owner, kind, id, listed?.find((each) => each.id === id), run, name);
 
   const plus = <PlusMenu onFiles={onFiles} field={field} commands={commands} chats={chats} />;
   return { commands, onOpen, plus };
@@ -81,15 +81,16 @@ export const useListedCommands = (owner: string | undefined) => useSyncExternalS
 
 /**
  * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in
- * its panel, an image in the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list.
+ * its panel, an image in the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list;
+ * `name`: a paste's chip's words, its tab's title when it's a PR's ("Pull request #n") [D696].
  */
-export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner) {
+export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner, name?: string) {
   const home = owner === HOME_DRAFT;
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
   if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].
-  if (kind === "paste") return openAttachment(owner, id, PASTE_LABEL);
+  if (kind === "paste") return openAttachment(owner, id, name && isPasteLabel(name) ? name : PASTE_LABEL);
   if (home) return;
   if (kind === "file") return openFile(owner, id, { preview: false });
   if (kind === "folder") {

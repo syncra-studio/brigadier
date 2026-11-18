@@ -116,7 +116,7 @@ export function UserBubble({
     const markdown = parts.map((part) => (typeof part === "string" ? part : `[@](chip:${list.push(part) - 1})`)).join("");
     const files = list.flatMap((chip): [string, Attachment][] => ("attachmentId" in chip ? [[chip.attachmentId, known.get(chip.attachmentId) ?? { id: chip.attachmentId, name: "", mime: "", state: "ready", url: urlOf(owner, chip.attachmentId) }]] : []));
     // shortcut: a sent /command chip opens nothing (its `/` list isn't kept with the message), until the message keeps its command's file.
-    const open = { onOpen: (kind: OpenKind, id: string) => openChip(owner, kind, id), commands: new Map() };
+    const open = { onOpen: (kind: OpenKind, id: string, name?: string) => openChip(owner, kind, id, undefined, undefined, name), commands: new Map() };
     return { markdown, numbers: numbersOf(parts), files: new Map(files), open, chip: (n: number) => list[n] && <ComposerChip chip={list[n]} /> };
   }, [owner, parts, known]);
   const [more, setMore] = useKept(`${keep}:more`);

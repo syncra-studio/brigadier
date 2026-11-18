@@ -6,6 +6,7 @@ import { newProjectId } from "../projects/projects";
 import { daemonSource } from "../projects/store";
 import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { base64 } from "../session/files";
+import { prPasteLabel } from "../shell/attachment-tab";
 import { CHAT, openTab, selectTab } from "../shell/tab-store";
 import { sessionId } from "../home/start";
 import type { PullRequest } from "./pull-requests";
@@ -33,7 +34,7 @@ export function prText(pr: PullRequest): string {
  * beside it for the way back [D690]. Nothing is sent [D675].
  */
 async function open(session: string, pr: PullRequest): Promise<void> {
-  const name = `Pull request #${pr.number}`;
+  const name = prPasteLabel(pr.number);
   await loadDraft(run, session);
   const draft = draftOf(session) ?? EMPTY_DRAFT;
   if (!draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) {

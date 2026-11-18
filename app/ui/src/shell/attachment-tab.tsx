@@ -7,8 +7,12 @@ import { daemonRun } from "../session/composer";
 
 /** How long typing rests before an edit is kept, as the old app's. */
 const KEEP_AFTER_MS = 500;
-/** The composer's pasted text: the one label that opens editable while it's still the draft's. */
+/** The composer's pasted text: the label that opens editable while it's still the draft's. */
 export const PASTE_LABEL = "Pasted text";
+/** A PR brought to the agent is a pasted text by its own name, its chip's and its tab's [D692, D696]. */
+export const prPasteLabel = (n: number) => `Pull request #${n}`;
+/** Whether a tab of this label is a pasted text: "Pasted text" or a PR's. */
+export const isPasteLabel = (label: string) => label === PASTE_LABEL || /^Pull request #\d+$/.test(label);
 
 /**
  * An attachment in its own tab, as the old app opened a pasted text or a text file in one, and now every file that
@@ -33,14 +37,14 @@ export function AttachmentTab({ owner, id, label, active }: { owner: string; id:
     };
   }, [owner, id, active]);
   // A cut preview is never edited: saved, it would drop the rest.
-  if (label === PASTE_LABEL && !sent && read.state === "read" && read.file.text !== null && !read.file.truncated) return <PastePage owner={owner} id={id} text={read.file.text} active={active} />;
+  if (isPasteLabel(label) && !sent && read.state === "read" && read.file.text !== null && !read.file.truncated) return <PastePage owner={owner} id={id} label={label} text={read.file.text} active={active} />;
   return <FileViewer path={label} read={read} active={active} />;
 }
 
 /** The composer's pasted text as the old app's PastedTextView, kept under its id; sent or taken out, it says so [D2098]. */
-function PastePage({ owner, id, text, active }: { owner: string; id: string; text: string; active: boolean }) {
+function PastePage({ owner, id, label, text, active }: { owner: string; id: string; label: string; text: string; active: boolean }) {
   const save = (next: string) => daemonRun(["attach", owner, "write", id, next]).then((reply) => ({ ...reply, gone: String(reply.error).includes("no longer") }));
-  return <KeptText label={PASTE_LABEL} text={text} active={active} save={save} gone="This pasted text is no longer in the message." />;
+  return <KeptText label={label} text={text} active={active} save={save} gone="This pasted text is no longer in the message." />;
 }
 
 /**
