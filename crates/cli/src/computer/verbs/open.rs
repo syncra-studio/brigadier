@@ -68,9 +68,12 @@ pub(super) fn open(
             .map(|w| w["window_id"].clone()),
         None => None,
     };
-    // A path goes through LaunchServices in the background: Cua's handoff of a Finder folder
-    // times out after 5 s.
-    let opened = match target.as_ref().filter(|t| t.starts_with('/')) {
+    // A path, or a url for a running app, goes through LaunchServices in the background: Cua's
+    // handoff timed out on a Finder folder (5 s) and took 8 s to give Dia a url (0.5 s here). A
+    // cold start stays Cua's, for its focus guard.
+    let handoff =
+        (target.as_ref()).filter(|t| t.starts_with('/') || find(data, &name, here).is_ok());
+    let opened = match handoff {
         Some(path) => {
             let sent = std::process::Command::new("open")
                 .args(["-g", "-a", &name, path])
