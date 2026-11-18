@@ -152,7 +152,7 @@ function ClearForm({ opened, clearing, setClearing, onDone, onCancel }: { opened
           </label>
         ))}
       </SettingsCard>
-      <p className="text-xs text-muted-foreground">Saved passwords and bookmarks are kept. Other profiles aren't touched.</p>
+      <p className="text-xs text-muted-foreground">Bookmarks are kept. Other profiles aren't touched.</p>
       <ErrorLine error={error} />
       <DialogFooter>
         <Button variant="ghost" disabled={clearing} onClick={onCancel}>

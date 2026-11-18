@@ -13,7 +13,6 @@ import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 import { watchUserComposition } from "./focus-guard";
 import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
-import { installGuestLogins } from "./logins";
 import { type SignInSeen, signInSeen } from "./sign-in";
 import { recordDates, trustLocalCert } from "./profiles";
 
@@ -42,11 +41,6 @@ declare global {
       onDownload(listener: (details: unknown) => void): void;
       /** A profile's saved site choices, for main's permission checks (main's browser/permissions.ts). */
       sites(profile: string, sites: unknown[]): Promise<void>;
-      /** Saved passwords' part in main (main's browser/browserLogins.ts): `check` asks the system (Touch ID) before one shows; `fill` gives a tab's page its site's logins. */
-      logins(op: "check", args: { reason: string }): Promise<"passed" | "declined" | "unavailable">;
-      logins(op: "fill", args: { guest: number; site: string; logins: { username: string; password: string; usedMs: number }[] }): Promise<void>;
-      /** A guest's sign-in worked (`signed-in`, with what was typed) or its page has fields to fill (`fields`). */
-      onGuestLogin(listener: (details: { from: number; kind: "signed-in" | "fields"; site: string; username?: string; password?: string }) => void): void;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       /** A local dev site's untrusted certificate opened anyway (main's browser/localCerts.ts), for Rust to keep. */
       onLocalCert(listener: (details: { profile: string; host: string }) => void): void;
@@ -180,7 +174,6 @@ export function installTabLayer(): void {
   installKeyboardHandover();
   installAgentOverlays();
   watchUserComposition();
-  installGuestLogins((from) => [...pages].find(([, page]) => page.ready && page.element.getWebContentsId() === from)?.[0] ?? null);
 
   // A drag anywhere in the app must not fall into a page it crosses: the divider's or a text
   // selection's pointer stays with the app until it's let go.

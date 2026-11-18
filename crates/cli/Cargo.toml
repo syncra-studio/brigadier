@@ -8,7 +8,6 @@ publish = false
 brigadier-core = { path = "../core" }
 brigadier-browser-data = { path = "../browser-data" }
 brigadier-frames = { path = "../frames" }
-aes-gcm = "=0.11.1"
 libc.workspace = true
 rusqlite = { version = "=0.41.1", features = ["bundled"] }
 serde = { version = "=1.0.229", features = ["derive"] }

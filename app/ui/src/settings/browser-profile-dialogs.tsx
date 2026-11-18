@@ -54,7 +54,7 @@ function Form({ editing, onClose, onCreated }: { editing: BrowserProfile | undef
       <DialogHeader>
         <DialogTitle>{editing ? `Rename ${editing.name}` : "New profile"}</DialogTitle>
         <DialogDescription>
-          {editing ? "Its sign-ins, history, bookmarks and passwords stay as they are." : "A separate set of sign-ins, history, bookmarks and passwords. It starts empty."}
+          {editing ? "Its sign-ins, history and bookmarks stay as they are." : "A separate set of sign-ins, history and bookmarks. It starts empty."}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
@@ -124,14 +124,13 @@ function DeleteForm({ profile, onClose, onDeleted }: { profile: BrowserProfile; 
     <>
       <DialogHeader>
         <DialogTitle>Delete {profile.name}?</DialogTitle>
-        <DialogDescription>Its sign-ins, history, bookmarks and passwords are removed from Brigadier. This can't be undone.</DialogDescription>
+        <DialogDescription>Its sign-ins, history and bookmarks are removed from Brigadier. This can't be undone.</DialogDescription>
       </DialogHeader>
       <p className="text-xs text-muted-foreground">
         {sessions + tabs === 0
           ? `Nothing is open on ${profile.name}.`
           : `${plural(sessions, "session")} and ${plural(tabs, "open tab")} move to ${target}. Those pages reload, signed in as ${target}.`}
       </p>
-      <p className="text-xs text-muted-foreground">Its saved passwords are deleted with it. They don't move to {target}.</p>
       <div className="grid gap-1.5">
         <label htmlFor={field} className="text-label">
           Type <span className="font-medium">{profile.name}</span> to confirm

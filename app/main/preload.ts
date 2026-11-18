@@ -79,8 +79,6 @@ contextBridge.exposeInMainWorld("brigadierShell", {
   downloads: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:downloads", op, args),
   onDownload: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:browser-download", (_event, details) => listener(details)),
   sites: (profile: string, sites: unknown) => ipcRenderer.invoke("brigadier:sites", profile, sites),
-  logins: (op: string, args: unknown) => ipcRenderer.invoke("brigadier:logins", op, args),
-  onGuestLogin: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-login", (_event, details) => listener(details)),
   onLocalCert: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:browser-local-cert", (_event, details) => listener(details)),
   onBrowserDates: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:browser-dates", (_event, details) => listener(details)),
   agent: (call: unknown) => ipcRenderer.invoke("brigadier:agent", call),

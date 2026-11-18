@@ -40,7 +40,7 @@ export function ProfileButton({ owner, tab }: { owner: string; tab: Tab }) {
               <>
                 <span className="text-label font-medium">{driver} is working in {current.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  It uses this profile's sign-ins and never sees its saved passwords. Picking another profile opens a new tab there, and {driver}'s next tabs follow.
+                  It uses this profile's sign-ins. Picking another profile opens a new tab there, and {driver}'s next tabs follow.
                 </span>
               </>
             ) : (

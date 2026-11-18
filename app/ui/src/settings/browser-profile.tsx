@@ -95,7 +95,6 @@ export function ProfileDetailPage({ id }: { id: string }) {
             </Button>
           </SettingsRow>
           <SettingsRow label="Bookmarks" />
-          <SettingsRow label="Saved passwords" description="Agents never see these." />
           <SettingsRow label="Site settings" description="Which sites may use your camera, microphone and location in this profile.">
             <Button variant="soft" size="sm" aria-label="Manage site settings" onClick={() => openBrowserSettings("sites", id)}>
               Manage
@@ -103,7 +102,7 @@ export function ProfileDetailPage({ id }: { id: string }) {
           </SettingsRow>
           <SettingsRow
             label="Browsing data"
-            description="Clear this profile's history, sign-ins, site data, cache and download history, by time range. Saved passwords are kept, and other profiles aren't touched."
+            description="Clear this profile's history, sign-ins, site data, cache and download history, by time range. Other profiles aren't touched."
           >
             <Button variant="soft" size="sm" onClick={() => setClearing(true)}>
               Clear browsing data

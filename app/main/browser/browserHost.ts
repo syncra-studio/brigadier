@@ -1,5 +1,7 @@
 // The browser's security foundations: which pages may be guests, what they may have, and what they keep.
 // Browser features come by section.
+import path from "node:path";
+
 import { app, session } from "electron";
 
 import { handleFromApp, refuseUnsafeSwitches, setAppPage } from "./appPage";
@@ -7,7 +9,6 @@ import { watchProfileCookies } from "./browserClearData";
 import { installBrowserAgent, watchGuest, watchNetwork } from "./browserAgent";
 import { installDownloads, watchDownloads } from "./browserDownloads";
 import { installBrowserImport } from "./browserImport";
-import { guestPasskeyPath, guestPasswordsPath, installBrowserLogins } from "./browserLogins";
 import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
@@ -18,6 +19,8 @@ import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers 
 import { isDeleting, installProfileStore } from "./profileStore";
 import { isProfilePartition, profileOfStorage, profilePartition } from "./profiles";
 import { keepSessionCookies } from "./sessionCookies";
+
+const guestPasskeyPath = path.join(__dirname, "guestPasskey.js");
 
 /** The partitions main has named for a profile: the only sessions a guest may have. */
 const profileSessions = new Set<string>();
@@ -33,7 +36,6 @@ export function installBrowserHost(origin: string): void {
   installProfileStore();
   installBrowserAgent();
   installDownloads();
-  installBrowserLogins();
   installBrowserImport();
   installLocalCerts();
   app.on("render-process-gone", (_event, contents, details) => {
@@ -54,7 +56,6 @@ export function installBrowserHost(origin: string): void {
     keepSessionCookies(created);
     watchProfileCookies(created);
     if (process.platform === "darwin") created.registerPreloadScript({ type: "frame", filePath: guestPasskeyPath });
-    created.registerPreloadScript({ type: "frame", filePath: guestPasswordsPath });
     watchNetwork(created);
     const profileId = profileOfStorage(created.storagePath ?? null);
     if (profileId) watchDownloads(created, profileId);

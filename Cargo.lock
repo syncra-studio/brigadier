@@ -71,7 +71,6 @@ dependencies = [
 name = "brigadier"
 version = "0.1.0"
 dependencies = [
- "aes-gcm",
  "brigadier-browser-data",
  "brigadier-core",
  "brigadier-frames",
