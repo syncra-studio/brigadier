@@ -16,7 +16,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 import { type AddFirst, AddDialog, type Draft, InstallDialog, RefreshDialog, RemoveDialog } from "./plugins-dialogs";
 import { BrowseTab, entryRow, type Found, PickGrid } from "./plugins-browse";
 import { importable, MyTab } from "./plugins-mine";
-import { DetailsPage, type Device, type SignInStart, Trail } from "./plugins-details";
+import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Shown, ViewDialog } from "./plugins-view";
 import type { App } from "./plugins-app";
@@ -308,16 +308,13 @@ export function PluginsPage({
   } else if (shown && category) {
     const listed = entries.filter((each) => inCategory(each, category) && matches(query, each.name, each.line, each.maker));
     page = (
-      <>
-        <Trail parts={[{ label: "Plugins", go: back("browse") }, { label: category }]} />
-        <SettingsPage title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
-          {listed.length ? (
-            <PickGrid>{listed.map((each) => entryRow(each, onEntry))}</PickGrid>
-          ) : (
-            <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{query.trim()}”.</p>
-          )}
-        </SettingsPage>
-      </>
+      <SettingsPage trail={[{ label: "Plugins", go: back("browse") }, { label: category }]} title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
+        {listed.length ? (
+          <PickGrid>{listed.map((each) => entryRow(each, onEntry))}</PickGrid>
+        ) : (
+          <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{query.trim()}”.</p>
+        )}
+      </SettingsPage>
     );
   } else {
     // A skillset is one card, so one in the count [D580].

@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 
 import { cx } from "../components/cx";
 import { ScrollFade } from "../components/scroll-fade";
-import { ChevronLeft } from "../icons";
+import { ChevronRight } from "../icons";
 
 /*
  * The parts every Settings page is built from, the old app's: a page (its title, an optional line and
@@ -10,15 +10,47 @@ import { ChevronLeft } from "../icons";
  * rows are the kit's SettingsCard and SettingsRow.
  */
 
+/** One step of a Settings page's breadcrumb: a page to go back to (`go` or `href`), else plain words. */
+export type Crumb = { label: string; go?: () => void; href?: string };
+
+/** The breadcrumb, Plugins › My MCPs › Linear [D577]; the last part is where you are. */
+function Trail({ parts }: { parts: Crumb[] }) {
+  const link = "cursor-pointer text-quiet-foreground hover:text-foreground focus-visible:focus-ring";
+  return (
+    <nav aria-label="Breadcrumb" className="app-no-drag flex w-fit items-center gap-2 text-label">
+      {parts.map((part, at) => (
+        <span key={at} className="flex items-center gap-2">
+          {at > 0 && <ChevronRight aria-hidden className="size-icon-sm text-faint-foreground" />}
+          {at === parts.length - 1 ? (
+            <span aria-current="page">{part.label}</span>
+          ) : part.go ? (
+            <button type="button" onClick={part.go} className={link}>
+              {part.label}
+            </button>
+          ) : part.href ? (
+            <a href={part.href} className={link}>
+              {part.label}
+            </a>
+          ) : (
+            <span className="text-quiet-foreground">{part.label}</span>
+          )}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 /**
- * A Settings page: its title, then its sections. A page that scrolls its own list passes `scrollable={false}`.
- * `mark` sits before the title (an agent's); `back` is a page inside another's link back to it, over the title.
+ * A Settings page: its breadcrumb, title, then its sections. A page that scrolls its own list passes `scrollable={false}`.
+ * `mark` sits before the title (an agent's). The breadcrumb is `trail`, else `back` (the page this one is inside) or
+ * Settings, then the title [D659].
  */
 export function SettingsPage({
   title,
   description,
   mark,
   back,
+  trail,
   actions,
   scrollable = true,
   children,
@@ -27,6 +59,7 @@ export function SettingsPage({
   description?: ReactNode;
   mark?: ReactNode;
   back?: { label: string; href: string };
+  trail?: Crumb[];
   actions?: ReactNode;
   scrollable?: boolean;
   children: ReactNode;
@@ -40,38 +73,36 @@ export function SettingsPage({
     return () => cancelAnimationFrame(frame);
   }, []);
   return (
-    <div data-slot="settings-page" className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
-        {/* The band under the titlebar drags the window; it scrolls away with the page. */}
-        <div className="app-drag h-settings-band shrink-0" />
-        <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-4", scrollable ? "pb-12" : "min-h-0 flex-1")}>
-          {back && (
-            <a href={back.href} className="-ms-1 flex w-fit items-center gap-0.5 text-label text-quiet-foreground hover:text-foreground focus-visible:focus-ring">
-              <ChevronLeft aria-hidden className="size-icon-sm" />
-              {back.label}
-            </a>
-          )}
-          <header className="flex shrink-0 items-start gap-4 py-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3.5">
-              {mark}
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <h1 ref={heading} tabIndex={-1} className="text-page-title font-medium outline-none">
-                  {title}
-                </h1>
-                {description && <div className="text-sm text-quiet-foreground">{description}</div>}
-              </div>
-            </div>
-            {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-          </header>
-          <div className={cx("flex flex-col", scrollable ? "gap-10 pt-5" : "min-h-0 flex-1")}>{children}</div>
-        </div>
+    <div data-slot="settings-page" className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      {/* The band under the titlebar drags the window and holds the breadcrumb, above the scroll and its fade. */}
+      <div className="app-drag h-settings-band shrink-0 px-5 pt-3">
+        <Trail parts={trail ?? [back ?? { label: "Settings" }, { label: typeof title === "string" ? title : "" }]} />
       </div>
-      {scrollable && (
-        <>
-          <ScrollFade edge="top" />
-          <ScrollFade edge="bottom" />
-        </>
-      )}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
+          <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-6", scrollable ? "pb-12" : "min-h-0 flex-1")}>
+            <header className="flex shrink-0 items-start gap-4 py-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3.5">
+                {mark}
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <h1 ref={heading} tabIndex={-1} className="text-page-title font-medium outline-none">
+                    {title}
+                  </h1>
+                  {description && <div className="text-sm text-quiet-foreground">{description}</div>}
+                </div>
+              </div>
+              {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+            </header>
+            <div className={cx("flex flex-col", scrollable ? "gap-10 pt-5" : "min-h-0 flex-1")}>{children}</div>
+          </div>
+        </div>
+        {scrollable && (
+          <>
+            <ScrollFade edge="top" />
+            <ScrollFade edge="bottom" />
+          </>
+        )}
+      </div>
     </div>
   );
 }

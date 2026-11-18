@@ -50,7 +50,7 @@ export function AgentPage({
   const enabledKey = `${agent.name}:enabled`;
   return (
     <SettingsPage
-      back={{ label: "Providers", href: "#settings/providers" }}
+      trail={[{ label: "Providers", href: "#settings/providers" }, { label: agent.label }]}
       mark={<AgentMark agent={agent} size="lg" idle={state === "install"} dim={!on} />}
       title={
         <span className="flex items-center gap-2.5">

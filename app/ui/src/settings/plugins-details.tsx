@@ -8,9 +8,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Radio, RadioGroup } from "../components/radio";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
-import { ChevronRight, Copy, DotsHorizontal, Eye, Folder, Globe, Spinner, Trash } from "../icons";
+import { Copy, DotsHorizontal, Eye, Folder, Globe, Spinner, Trash } from "../icons";
 import { errorText } from "../onboarding/api";
-import { SettingsPage, SettingsSection } from "./parts";
+import { type Crumb, SettingsPage, SettingsSection } from "./parts";
 import { InstallDialog } from "./plugins-dialogs";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Entry, type Item, type Kind, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
@@ -21,26 +21,6 @@ export type Device = { code: string; page: string };
 export type SignInStart = "waiting" | Device | { error: string } | undefined;
 
 const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
-
-/** The breadcrumb, Plugins › My MCPs › Linear, in the band over the page [D577]; the last part is where you are. */
-export function Trail({ parts }: { parts: { label: string; go?: () => void }[] }) {
-  return (
-    <nav aria-label="Breadcrumb" className="app-no-drag absolute top-3 left-5 z-10 flex items-center gap-2 text-label">
-      {parts.map((part, at) => (
-        <span key={at} className="flex items-center gap-2">
-          {at > 0 && <ChevronRight aria-hidden className="size-icon-sm text-faint-foreground" />}
-          {part.go ? (
-            <button type="button" onClick={part.go} className="cursor-pointer text-quiet-foreground hover:text-foreground focus-visible:focus-ring">
-              {part.label}
-            </button>
-          ) : (
-            <span aria-current="page">{part.label}</span>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
-}
 
 /** Information's two columns: what, then its value. */
 export function Information({ rows }: { rows: [string, ReactNode][] }) {
@@ -98,7 +78,7 @@ export function DetailsPage({
   marks: Record<string, string | null>;
   actions: PluginActions;
   signing: SignInStart;
-  trail: { label: string; go?: () => void }[];
+  trail: Crumb[];
   onInstall: () => void;
   onScope: (scope: Scope) => void;
   onSwitch: (on: boolean) => void;
@@ -158,8 +138,8 @@ export function DetailsPage({
   ];
   return (
     <>
-      <Trail parts={trail} />
       <SettingsPage
+        trail={trail}
         title={name}
         description={entry ? `By ${entry.maker} · ${entry.line}` : `${KIND_LABEL[kind]} · ${item!.description || detail.replace(/^https:\/\//, "")}`}
         mark={<PluginMark item={mark} large />}
