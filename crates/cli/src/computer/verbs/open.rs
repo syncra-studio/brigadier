@@ -274,6 +274,7 @@ pub(super) fn press(
     let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
     let before: Vec<u64> = windows(data, s.pid, here)?.iter().map(id).collect();
     what["pid"] = s.pid.into();
+    what["no_paste"] = (!s.secure.is_empty()).into();
     let read_again = format!("`brigadier computer read {}` shows its menus.", s.app);
     let chose = match crate::computer::own(data, "menu", what, &|| !here()) {
         Err(Fail::Unknown) if s.batch => {
@@ -294,6 +295,8 @@ pub(super) fn press(
                 s.app
             )));
         }
+        // Refused, so no second try through Cua's menu [D903].
+        Ok(Err(why)) if why.ends_with("no pasting: ask the user.") => return Err(refuse(&why)),
         Ok(Err(_)) if !cua.0.is_empty() && s.window != 0 && !s.snapshot.is_empty() => {
             let line = match cua.0 {
                 "hotkey" => format!("Pressed {}", w.rest.join(" ")),

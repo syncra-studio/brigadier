@@ -212,6 +212,12 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
             found.ok_or_else(|| format!("No menu item has {}.", keys.join("+")))?
         }
     };
+    // D903: no paste into a window with a password field, the item found by its ⌘V in any language.
+    let cmd_v = text(&item, "AXMenuItemCmdChar").eq_ignore_ascii_case("v")
+        && number(&item, "AXMenuItemCmdModifiers").unwrap_or(0) & 8 == 0;
+    if p["no_paste"] == true && (cmd_v || text(&item, "AXTitle").to_lowercase().contains("paste")) {
+        return Err("This window has a password field, so no pasting: ask the user.".into());
+    }
     if !enabled(&item) {
         return Err(format!("{path} is greyed out now."));
     }
