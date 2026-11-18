@@ -72,7 +72,7 @@ export type Plugins = { items: Item[]; projects: { id: string; name: string }[];
 /** What the page asks of Rust; each answers with the whole page as it is after. */
 export type PluginActions = {
   /** Adds one; with the user's pick, `on` and `scope`, it's on there at once [D571]. `added` is its key. */
-  add: (draft: Draft & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
+  add: (draft: Draft & { on: true; scope: Scope }) => Promise<Plugins & { added?: string }>;
   /** Installs a catalog entry, with its skills, on where picked [D571, D572], signing in with the user's own app's `clientId` where it needs one [D591]; null turns its agent's own plugin on there instead [D608]. `added` is its key. */
   install: (id: string, scope: Scope, clientId?: string | null) => Promise<Plugins & { added?: string }>;
   set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
@@ -365,19 +365,27 @@ export function PluginsPage({
       {/* What a change failed with, on the list or an item's page alike, the old app's. */}
       <ErrorLine error={failed} className="absolute inset-x-5 bottom-4 bg-background" />
       {open?.type === "add" && shown && (
-        <AddDialog remote={open.remote} first={open.first} pickFolder={actions.pickFolder} onAdd={(draft) =>
+        <AddDialog
+          remote={open.remote}
+          first={open.first}
+          projects={shown.projects}
+          pickFolder={actions.pickFolder}
+          onAdd={(draft) =>
             actions.add(draft).then(
               (back) => {
-                setMine((confirmed.current = { base: value!, shown: back }));
                 open.added?.();
+                return installed(back);
               },
               (cause: unknown) => {
-                // Said on the page too: the dialog may be hidden by then.
+                // Said on the page too: the dialog may be closed by then.
                 setFailed(errorText(cause));
                 throw cause;
               },
             )
-          } onClose={close} />
+          }
+          actions={actions}
+          onClose={close}
+        />
       )}
       {open?.type === "catalog" && shown && (
         <InstallDialog

@@ -31,8 +31,8 @@ pub fn save(data: &Path, items: &[Value]) -> io::Result<()> {
     crate::write_atomic(&dir(data).join("items.json"), &bytes)
 }
 
-/// Whether an item is on for a session in `project`: off until switched on, for all projects or
-/// chosen ones [D2046].
+/// Whether an item is on for a session in `project`: switched on, for all projects or chosen ones
+/// [D2046 D727].
 pub fn on(item: &Value, project: Option<&str>) -> bool {
     let chosen = item["scope"]["projects"].as_array();
     let here = project.is_some_and(|p| chosen.is_some_and(|l| l.iter().any(|x| x == p)));

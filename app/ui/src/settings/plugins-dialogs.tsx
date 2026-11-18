@@ -18,7 +18,7 @@ import { type App, type AppPick, OwnApp } from "./plugins-app";
 import type { Device, SignInStart } from "./plugins-details";
 import { PluginMark } from "./plugins-marks";
 
-/** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]. */
+/** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]; on where picked [D727]. */
 export type Draft =
   | { kind: "skill"; folder: string }
   | { kind: "skill"; source: string; skill: string }
@@ -51,9 +51,9 @@ function PluginDialog({ onClose, title, description, slot, children }: { onClose
 type ValueRow = { id: number; name: string; value: string };
 /** The Add form as filled so far; the gallery opens it filled. */
 export type AddForm = { kind: "skill" | "server"; remote: boolean; name: string; url: string; command: string; values: ValueRow[]; folder: string | null; from?: { source: string; skill: string } };
-type Step = "form" | "confirm" | "adding" | "added";
-/** Where the gallery and Browse open Add; `start` adds it at once (a skill from Browse, D436). */
-export type AddFirst = { form: Partial<AddForm>; step?: Step; start?: boolean };
+type Step = "form" | "install";
+/** Where the gallery and search open Add: filled in, on the install step where nothing is left to fill [D726]; `mark` a result's own address and icon. */
+export type AddFirst = { form: Partial<AddForm>; step?: Step; mark?: { detail: string; icon?: string | null } };
 
 const EMPTY: AddForm = { kind: "server", remote: false, name: "", url: "", command: "", values: [], folder: null };
 
@@ -69,19 +69,24 @@ function draftOf(form: AddForm): Draft {
 }
 
 /**
- * Add: a skill's folder, or an MCP server by its command (or, with `remote`, its address); a local command is shown
- * and confirmed once before it's added, as it runs at each session's start. New items start off [D2046].
+ * Add: a skill's folder, or an MCP server by its command (or, with `remote`, its address); then Browse's own install
+ * dialog, where it's on [D571 D726], which installs it on there [D727]. A local command is shown there, as it runs at
+ * each session's start. `onAdd` answers the key to sign in to, or null.
  */
 export function AddDialog({
   remote,
+  projects,
   pickFolder,
   onAdd,
+  actions,
   onClose,
   first,
 }: {
   remote: boolean;
+  projects: { id: string; name: string }[];
   pickFolder: () => Promise<string | null>;
-  onAdd: (draft: Draft) => Promise<unknown>;
+  onAdd: (draft: Draft & { on: true; scope: Scope }) => Promise<string | null>;
+  actions: Pick<PluginActions, "signIn" | "cancel">;
   onClose: () => void;
   first?: AddFirst;
 }) {
@@ -92,79 +97,32 @@ export function AddDialog({
   const edit = (change: Partial<AddForm>) => setForm((now) => ({ ...now, ...change }));
   const local = form.kind === "server" && !form.remote;
   const ready = form.kind === "skill" ? Boolean(form.folder) : Boolean(form.name.trim() && (form.remote ? form.url.trim() : form.command.trim()));
-  const add = (from: Step) => {
-    setStep("adding");
-    setError(null);
-    onAdd(draftOf(form)).then(
-      () => setStep("added"),
-      (cause: unknown) => {
-        setStep(from);
-        setError(errorText(cause));
-      },
-    );
-  };
-  useEffect(() => {
-    if (first?.start) add("adding");
-  }, []);
   const choose = () => pickFolder().then((folder) => folder && edit({ folder }), (cause: unknown) => setError(errorText(cause)));
   const shownName = form.kind === "skill" ? (form.from?.skill ?? form.folder?.split("/").filter(Boolean).pop() ?? "skill") : form.name.trim();
 
-  if (step === "adding" || step === "added") {
-    return (
-      <PluginDialog slot="adding" onClose={onClose} title={`Adding ${shownName}`} description="Saved in Brigadier's library for your next sessions.">
-        {error ? (
-          <ErrorLine error={error} />
-        ) : step === "adding" ? (
-          <div className="flex items-center gap-3 text-label text-quiet-foreground">
-            <Spinner aria-label="Adding" className="size-icon-sm animate-spin motion-reduce:animate-none" />
-            Adding it to your library…
-          </div>
-        ) : (
-          <p className="text-label text-quiet-foreground">Added to your library. It's off until you switch it on, for all projects or only some.</p>
-        )}
-        <div className="flex justify-end gap-2">
-          {step === "added" || error ? (
-            <Button onClick={onClose}>{error ? "Close" : "Done"}</Button>
-          ) : (
-            <Button variant="ghost" onClick={onClose}>
-              Hide
-            </Button>
-          )}
-        </div>
-      </PluginDialog>
-    );
-  }
-
-  if (step === "confirm") {
+  if (step === "install") {
     const draft = draftOf(form);
     const names = Object.keys("env" in draft ? draft.env : {});
+    const line = local
+      ? `Your agents start ${form.command.trim()} on this computer, with your permissions, in the projects you pick.${names.length ? ` With ${names.join(", ")} set; their values stay in Brigadier's Keychain item.` : ""}`
+      : "Every agent gets it, in the projects you pick.";
+    // Its maker's mark only from its own address, command or package: anyone can name a server "linear" [D437].
+    const mark = first?.mark ?? { detail: form.kind === "skill" ? "" : form.remote ? form.url : form.command };
     return (
-      <PluginDialog slot="add-confirm" onClose={onClose} title={`Add ${shownName}?`} description="Your agents start this command on this computer, with your permissions, whenever a session that has it is on starts.">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-3 rounded-control bg-fill-subtle px-4 py-3">
-            {/* Its maker's mark from its command only: anyone can name a server "linear" [D437]. */}
-            <PluginMark item={{ kind: "server", name: "", detail: form.command }} />
-            <span className="min-w-0 flex-1 font-mono text-xs break-all">{form.command.trim()}</span>
-          </div>
-          {names.length > 0 && <p className="text-xs text-quiet-foreground">With {names.join(", ")} set. Their values stay in Brigadier's Keychain item.</p>}
-        </div>
-        <ErrorLine error={error} />
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setStep("form")}>
-            Back
-          </Button>
-          <span className="flex-1" />
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => add("confirm")}>Add</Button>
-        </div>
-      </PluginDialog>
+      <InstallDialog
+        name={shownName}
+        mark={<PluginMark item={{ kind: form.kind, name: "", ...mark }} exact large />}
+        line={line}
+        projects={projects}
+        install={(scope) => onAdd({ ...draft, on: true, scope })}
+        actions={actions}
+        onClose={onClose}
+      />
     );
   }
 
   return (
-    <PluginDialog slot="add" onClose={onClose} title="Add to your library" description="Every agent can use it, once you switch it on for all your projects or only some.">
+    <PluginDialog slot="add" onClose={onClose} title="Add to your library" description="Every agent can use it, in all your projects or only some.">
       <div className="flex flex-col gap-4">
         <Segmented
           label="Kind"
@@ -216,8 +174,8 @@ export function AddDialog({
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button disabled={!ready} onClick={() => (local ? setStep("confirm") : add("form"))}>
-          {local ? "Next" : "Add"}
+        <Button disabled={!ready} onClick={() => setStep("install")}>
+          Next
         </Button>
       </div>
     </PluginDialog>

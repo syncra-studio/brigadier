@@ -29,11 +29,11 @@ export type Found = {
   why: string | null;
 };
 
-/** Add filled in from a result: a server's form, its declared secrets' names with their values left to the user; a skill added at once [D418, D436]. */
-function firstOf(form: NonNullable<Found["form"]>): AddFirst {
-  if ("source" in form) return { form: { kind: "skill", from: form }, step: "adding", start: true };
+/** Add filled in from a result, with its mark: straight to the install dialog unless it declares secrets, their values left to the user [D418 D726]. */
+function firstOf({ form, mark, icon }: Found & { form: object }): AddFirst {
+  if ("source" in form) return { form: { kind: "skill", from: form }, step: "install", mark: { detail: mark, icon } };
   const values = form.values.map((name, id) => ({ id, name, value: "" }));
-  return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values } };
+  return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values }, step: values.length ? "form" : "install", mark: { detail: mark, icon } };
 }
 
 /** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …). */
@@ -193,7 +193,7 @@ export function SearchResults({
         mark={<PluginMark item={{ kind: each.kind, name: "", detail: each.mark, icon: each.icon }} exact />}
         name={each.name}
         line={[each.publisher, each.form ? each.description || each.how : each.why].filter(Boolean).join(" • ")}
-        end={each.in_library ? installed : each.form && plus(each.name, () => onAdd(firstOf(each.form!), () => held(each.key)))}
+        end={each.in_library ? installed : each.form && plus(each.name, () => onAdd(firstOf({ ...each, form: each.form! }), () => held(each.key)))}
       />
     )),
   ];

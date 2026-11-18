@@ -168,10 +168,10 @@ fn plain(name: &str) -> io::Result<()> {
 
 /// `{kind: "skill", folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
 /// `{kind: "server", name, url, client_id?}`; `{kind: "server", name, command, args, env}`, its
-/// command shown and confirmed in the Add dialog first. New items start off [D2046], unless the
-/// draft carries the user's pick, `on` and `scope` [D571]. Answers the new item's key.
+/// command shown in the install dialog first. An install is on where picked, `scope` [D571 D727],
+/// all projects without one; `on: false` keeps it off. Answers the new item's key.
 fn add(data: &Path, mut v: Value) -> io::Result<String> {
-    let (on, scope) = (v["on"] == true, v["scope"].clone());
+    let (on, scope) = (v["on"] != false, v["scope"].clone());
     if let Some(source) = v["source"].as_str() {
         let folder = browse::fetch(data, source, &[str(&v["skill"])])?.remove(0);
         v = json!({"kind": "skill", "folder": folder});
