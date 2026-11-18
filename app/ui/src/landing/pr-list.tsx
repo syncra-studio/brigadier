@@ -7,6 +7,7 @@ import { Segment, SegmentedRoot } from "../components/segmented";
 import { SelectTrigger } from "../components/select";
 import { Skeleton } from "../components/skeleton";
 import { ask, type Row as SessionRow, useDaemon } from "../daemon";
+import { useStart } from "../home/start";
 import { ArrowRotateCw, Chat, Check } from "../icons";
 import { openPr } from "../panel/open";
 import type { Pr } from "../panel/types";
@@ -172,7 +173,7 @@ export function PrListView({
   onMore: () => void;
   onOpen: (pr: Pr) => void;
 }) {
-  const linkOf = (pr: FoundPr) => sessions.find((s) => s.prs?.prs.some((p) => p.url && p.url === pr.url));
+  const linkOf = (pr: FoundPr) => sessions.find((s) => !s.archived && s.prs?.prs.some((p) => p.url && p.url === pr.url));
   const prs = (found?.prs ?? []).filter((pr) => !linked || linkOf(pr));
   const state = closed ? "closed" : "open";
   return (
@@ -301,8 +302,10 @@ export function PrList({ owner }: { owner: string }) {
   };
 
   const loaded = rows !== undefined;
+  // A start Rust hasn't answered has no checkout to search from yet (Home's list tab carried into it).
+  const starting = useStart(owner)?.asking ?? false;
   useEffect(() => {
-    if (!daemon || !loaded || reading.includes(query)) return;
+    if (!daemon || !loaded || starting || reading.includes(query)) return;
     const last = reads[query];
     if (last) {
       if (Date.now() - (last.okAt ?? 0) > FRESH_MS) read(query);
@@ -314,7 +317,7 @@ export function PrList({ owner }: { owner: string }) {
       if (kept) setReads((was) => ({ ...was, [query]: kept }));
       if (Date.now() - (kept?.okAt ?? 0) > FRESH_MS) read(query);
     });
-  }, [daemon, host, loaded, query]);
+  }, [daemon, host, loaded, starting, query]);
 
   const busy = reading.includes(query) || paging;
   return (

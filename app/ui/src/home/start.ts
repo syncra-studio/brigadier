@@ -160,7 +160,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }) };
+  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.

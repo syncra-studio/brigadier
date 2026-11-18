@@ -252,9 +252,10 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
 
 /** The mount near the thread: sessions and project chats, where Source reads the same checkout [D1014, D1039]. */
 export function SummarySlot({ owner, children }: { owner: string; children: ReactNode }) {
-  const has = useHasPanel(owner) && owner !== HOME;
-  const { data, ops } = useSource(owner);
   const { rows, projects } = useDaemon();
+  // An archived session's worktree went with it by design: its page has Restore, its card would only say "gone" [D180].
+  const has = useHasPanel(owner) && owner !== HOME && !rows?.find((row) => row.id === owner)?.archived;
+  const { data, ops } = useSource(owner);
   // A start's own project until Rust's row, so the card's title is there from its first frame.
   const start = useStart(owner);
   const projectId = rows?.find((row) => row.id === owner)?.project ?? start?.project;

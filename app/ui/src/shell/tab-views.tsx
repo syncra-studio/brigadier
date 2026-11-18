@@ -192,7 +192,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             {/* Each kind until it's wired: the terminal comes later [D361]. */}
             <HostOf.Provider key={host} value={host}>
               {owner === HOME && !host && (tab.kind === "pr" || tab.kind === "actions") ? (
-                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
+                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={tab.target === "list" ? "Pull requests" : TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
               ) : tab.kind === "file" ? (
                 <FileTab key={tab.target} tab={tab} active={tab.id === active} />
               ) : tab.kind === "pr" ? (
