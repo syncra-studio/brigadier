@@ -11,7 +11,7 @@
   --color-background: #151517;
   --color-chrome: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
   --color-card: #222224;
-  --color-popover: #2b2b2ef2;
+  --color-popover: #2b2b2e;
   --color-muted: oklch(0.315 0.004 106);
   --color-foreground: #f5f5f7;
   --color-muted-foreground: #ebebf599;

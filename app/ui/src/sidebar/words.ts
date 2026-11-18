@@ -20,6 +20,8 @@ export type SessionRow = {
   resets: number | null;
   /** The user's last send, else when the session was made (ms): the list's order. */
   sent: number;
+  /** Its last activity, the user's or an agent's (ms): View's other order [D658]. */
+  updated?: number;
   /** When a turn last ended (ms); later than the user last saw it, the row is unread. */
   finished: number;
   /** Its project's id; null for a session from before projects. */

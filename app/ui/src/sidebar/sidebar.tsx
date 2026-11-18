@@ -22,14 +22,15 @@ import { RenameDialog } from "./menu";
 import { askSearch, SearchField, SearchResults, SearchRoot, useSidebarSearch } from "./search";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, ProjectBadge, SessionRowItem } from "./row";
-import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
+import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { Project, SessionRow } from "./words";
 
 /*
  * The app's sidebar [D173, D174]: New chat, then the sessions in one of two layouts, picked in View.
  * Group by None is one list across projects, each row with its project's badge. Group by Project lists
  * the projects by name, each folding its own sessions. Rows go by the user's last send, newest first,
- * so a row never moves while it works. Layout and folds are this window's view, kept in localStorage.
+ * so a row never moves while it works; or, picked in View, by anyone's last activity. Layout, order and
+ * folds are this window's view, kept in localStorage.
  */
 
 
@@ -81,6 +82,7 @@ export function AppSidebar({
   storeKey?: string;
 }) {
   const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "none");
+  const [sort, setSort] = useStored<Sort>(`${storeKey}.sort`, "sent");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -102,9 +104,10 @@ export function AppSidebar({
   const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
-  // Pinned rows sit in Pinned only, the latest pin first; the rest by last send [D185].
-  const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || byLastSend(a, b)) ?? [];
-  const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(byLastSend), (id) => isOpen(`brigade:${id}`));
+  // Pinned rows sit in Pinned only, the latest pin first; the rest by last send, or by last activity [D185, D658].
+  const bySort = sort === "activity" ? (a: SessionRow, b: SessionRow) => (b.updated ?? b.sent) - (a.updated ?? a.sent) || byLastSend(a, b) : byLastSend;
+  const pinned = kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || bySort(a, b)) ?? [];
+  const rest = underSources(kept?.filter((each) => !each.pinned).toSorted(bySort), (id) => isOpen(`brigade:${id}`));
   const forked = new Set(rest?.filter((each) => each.forkOf && rest.some((source) => source.id === each.forkOf)).map((each) => each.id));
   const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
@@ -236,12 +239,13 @@ export function AppSidebar({
         </li>
       </NavList>
       <SearchRoot search={search}>
+        <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
         {/* ⌘K's field, as the new sidebar's [D652]. */}
         <div className="mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1 field-focus:focus-ring">
           <MagnifyingGlassSmSearch className="size-icon-sm shrink-0 text-placeholder" />
           <SearchField search={search} label={`Search ${keysOf("search")[0]}`} />
+          {view}
         </div>
-        <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div ref={list} className={LIST}>
               {search.query ? (
@@ -260,7 +264,6 @@ export function AppSidebar({
                     title={grouping === "none" ? "Open" : "Projects"}
                     open={isOpen(grouping === "none" ? "open" : "projects")}
                     onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
-                    steadyEnd={view}
                     actions={
                       grouping === "project" && (
                         <Tooltip>
@@ -299,10 +302,13 @@ export function AppSidebar({
                       </NavList>
                     )}
                   </NavSection>
-                  {/* Sessions with no project (made before projects were records) [D224]. */}
-                  {grouping === "project" && homeless.length > 0 && (
+                  {/* Sessions with no project; shown while ticked in View, empty or not [D224, D658]. */}
+                  {grouping === "project" && !show.hideChats && (
                     <NavSection title="Chats without a project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
-                      <NavList>{homeless.map((each) => row(each, {}))}</NavList>
+                      <NavList>
+                        {homeless.map((each) => row(each, {}))}
+                        {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
+                      </NavList>
                     </NavSection>
                   )}
                 </>
