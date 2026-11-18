@@ -11,7 +11,7 @@ use std::io;
 use std::path::Path;
 
 /// Its local part, read from the agents' files at once; how each new address signs in is asked
-/// after, in the background, so nothing waits on a server that doesn't answer.
+/// after (`ask`), outside the library's lock, so nothing waits on a server that doesn't answer.
 pub(super) fn sync(data: &Path) -> io::Result<()> {
     let mut items = library::items(data);
     let all = projects::list(data).unwrap_or_default();
@@ -107,15 +107,13 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
     if items != before {
         library::save(data, &items)?;
     }
-    let data = data.to_path_buf();
-    std::thread::spawn(move || ask(&data));
     Ok(())
 }
 
 /// How each new address signs in, all asked at once, saved once they answer; one that doesn't
 /// answer signs in none. One left unasked (Brigadier quit meanwhile) is asked at the next sync.
 // shortcut: an unreachable one isn't asked again; upgrade if one turns out to need Brigadier's sign-in.
-fn ask(data: &Path) {
+pub(super) fn ask(data: &Path) {
     let new =
         |i: &&Value| i["found"].is_array() && i["url"].is_string() && i.get("sign_in").is_none();
     let urls: Vec<String> = (library::items(data).iter().filter(new))

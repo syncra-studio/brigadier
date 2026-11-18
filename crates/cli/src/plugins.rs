@@ -1,4 +1,4 @@
-//! `plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | sync | set <key> '<json>' | remove <key> |
+//! `plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | sync | ask | set <key> '<json>' | remove <key> |
 //! show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
 //! items, what the agents have on this machine among them [D721], and the projects; `signin` its URL, `browse` what it found.
 
@@ -38,6 +38,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match arg(1) {
         "show" => return view::show(data, arg(2)),
         "reveal" => return view::reveal(data, arg(2)),
+        // After `sync`, outside the lock: the page waits on this, not the changes behind it [D721].
+        "ask" => {
+            found::ask(data);
+            return Ok(list(data));
+        }
         _ => {}
     }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -60,11 +65,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "use" => {
             catalog::use_plugin(data, arg(2), json(3)?)?;
             found::sync(data)?;
+            let data = data.to_path_buf();
+            std::thread::spawn(move || found::ask(&data));
         }
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
-                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | sync | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
+                "usage: brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | sync | ask | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]",
             ));
         }
     }
@@ -76,9 +83,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 pub fn sync(data: &Path) {
     let data = data.to_path_buf();
     std::thread::spawn(move || {
-        let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // A failure leaves the library as it was.
-        let _ = found::sync(&data);
+        {
+            let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            // A failure leaves the library as it was.
+            let _ = found::sync(&data);
+        }
+        found::ask(&data);
     });
 }
 

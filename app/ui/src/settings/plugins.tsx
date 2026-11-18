@@ -425,6 +425,8 @@ const send = (...args: string[]) => {
   chain = sent.catch(() => {});
   return sent;
 };
+/** After a sync, how its new servers sign in, outside the chain so no change waits on a server that doesn't answer. */
+const asked = () => run(["plugins", "ask"]).then((page) => (last = page as Plugins));
 
 /** The page in Settings: Rust's library, each change through `plugins`, its reply the page [D30, D2043]. */
 export function PluginsSettings({ detail }: { detail?: string }) {
@@ -439,7 +441,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     // The library at once, then again once what the agents have on this machine is in it [D721].
     send().then(setValue, (cause) => setError(errorText(cause)));
     // A failed sync leaves the page as it was; the next change says what's wrong.
-    send("sync").then(setValue, () => {});
+    send("sync").then(setValue).then(asked).then(setValue, () => {});
   }, [online]);
   const marks = Object.fromEntries((agents ?? []).map((agent) => [agent.label, agent.mark]));
   const actions: PluginActions = {
@@ -447,7 +449,7 @@ export function PluginsSettings({ detail }: { detail?: string }) {
     install: (id, scope, clientId = "") => (clientId === null ? send("use", id, JSON.stringify(scope)) : send("install", id, JSON.stringify(scope), clientId)),
     set: (key, change) => send("set", key, JSON.stringify(change)),
     remove: (key) => send("remove", key),
-    refresh: () => send("sync"),
+    refresh: () => send("sync").then((page) => (void asked().then(setValue, () => {}), page)),
     // Rust starts it and answers its page, which opens in the browser; its end answers the page, waited
     // for outside the chain so Cancel isn't held behind it.
     signIn: async (key, onDevice) => {
