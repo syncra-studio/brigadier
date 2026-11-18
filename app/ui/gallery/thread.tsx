@@ -151,14 +151,23 @@ export function Toggled({ children }: { children: (open: boolean, onToggle: () =
 
 const item = (it: Item, turn: Turn = DONE, step = false) => <Body item={it} turn={turn} step={step} />;
 
-const GROUP: Group = { ...base("g1"), kind: "group", steps: [{ kind: "read", n: 4 }, { kind: "edit", n: 3 }, { kind: "run", n: 2 }], span: [0, 0] };
+const GROUP: Group = { ...base("g1"), kind: "group", steps: [{ kind: "run", n: 2 }], span: [0, 0] };
+// What a group's steps did, said from their own words [D755].
+const GROUP_STEPS: Item[] = [
+  tool("g1-1", "run", "shell", "brigadier computer read Calculator", "done", { description: "Read Calculator's window" }),
+  tool("g1-2", "run", "shell", "brigadier sessions", "done", { description: "List Brigadier sessions to find who holds the computer" }),
+];
 // The running step a live group draws in its line's place, a new one each second [D227].
 const LIVE_STEPS: Item[] = [
   tool("live-1", "read", "read", "src/thread/blocks.ts", "running"),
   tool("live-2", "run", "shell", "pnpm typecheck", "running", { description: "Check the types" }),
   tool("live-3", "skill", "code-review", "high 2747", "running", { log: [tool("live-3a", "run", "shell", "git diff --stat", "done"), tool("live-3b", "run", "shell", "gh pr view 2747", "running", { description: "Get the PR" })], logSteps: [{ kind: "run", n: 1 }] }),
 ];
-const MCP_GROUP: Group = { ...base("g2"), kind: "group", steps: [{ kind: "run", n: 3 }, { kind: "other", n: 2, server: "atlassian" }], span: [0, 0] };
+const MCP_GROUP: Group = { ...base("g2"), kind: "group", steps: [{ kind: "run", n: 1 }, { kind: "other", n: 1, server: "atlassian" }], span: [0, 0] };
+const MCP_STEPS: Item[] = [
+  tool("g2-1", "run", "shell", "git log -5", "done", { description: "Show the last commits" }),
+  tool("g2-2", "other", "searchJiraIssues", "BRIG-12", "done", { server: "atlassian" }),
+];
 
 export function ThreadGallery() {
   const tick = useTick();
@@ -188,13 +197,13 @@ export function ThreadGallery() {
         </Row>
         <Row name="Group">
           <State label="done">
-            <Toggled>{(open, onToggle) => <GroupRow item={GROUP} open={open} onToggle={onToggle} />}</Toggled>
+            <Toggled>{(open, onToggle) => <GroupRow item={GROUP} members={GROUP_STEPS} open={open} onToggle={onToggle} />}</Toggled>
           </State>
-          <State label="live: its running step in its place">
-            <Toggled>{(open, onToggle) => <GroupLine item={GROUP} turn={RUNNING} open={open} steps={[]} live={LIVE_STEPS[tick % LIVE_STEPS.length]} onToggle={onToggle} />}</Toggled>
+          <State label="live: its running step under it">
+            <Toggled>{(open, onToggle) => <GroupLine item={GROUP} turn={RUNNING} open={open} steps={[]} members={GROUP_STEPS} live={LIVE_STEPS[tick % LIVE_STEPS.length]} onToggle={onToggle} />}</Toggled>
           </State>
           <State label="MCP server">
-            <Toggled>{(open, onToggle) => <GroupRow item={MCP_GROUP} open={open} onToggle={onToggle} />}</Toggled>
+            <Toggled>{(open, onToggle) => <GroupRow item={MCP_GROUP} members={MCP_STEPS} open={open} onToggle={onToggle} />}</Toggled>
           </State>
         </Row>
         <Row name="Working line">

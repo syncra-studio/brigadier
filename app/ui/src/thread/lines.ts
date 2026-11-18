@@ -14,10 +14,10 @@ export type Line =
   /** An item: `step` when it is one of an opened group's steps. */
   | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
   /**
-   * A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn in its place [D227];
-   * `thoughts`: how many of its lines are thoughts, which its words don't count [D752].
+   * A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn under its line;
+   * `members`: every step it holds, which its words say [D755].
    */
-  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; thoughts: number }
+  | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: Item[] }
   /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
 
@@ -73,7 +73,7 @@ export function lineMaker() {
 function lines({ items, out, starts, counts }: Walk, from: number, turns: ReadonlyMap<string, Turn>, work: ReadonlyMap<string, Work>, open: ReadonlySet<string>): void {
   let fold: [number, number] | null = null;
   let kept: number[] = [];
-  let group: { span: [number, number]; open: boolean; single: boolean; line: GroupLine | null } | null = null;
+  let group: { span: [number, number]; line: GroupLine } | null = null;
   let before: Item | undefined;
   // A turn its agent woke for on its own, with no input: its header goes over its first step or reply [D106, D118].
   let woke: string | null = null;
@@ -142,33 +142,23 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (group && within(item.n, group.span)) {
       // A running step is its group's line until it ends, and the run's latest thought while nothing runs: it never
       // shows apart and moves [D173, D227, D230]. A thought once the run went on is one of its lines [D752].
-      if (live && group.line && (running(item) || (group.line.item.run && item.kind === "reasoning"))) {
+      if (live && (running(item) || (group.line.item.run && item.kind === "reasoning"))) {
         group.line.live = item;
         continue;
       }
-      if (group.line?.live?.kind === "reasoning") group.line.live = undefined;
-      if (!group.open) continue;
-      const step: StepLine = { type: "item", id: item.id, gap: group.line ? "step" : gap(item, false), item, turn, step: !group.single };
-      if (group.line) group.line.steps.push(step);
-      else push(step);
+      if (group.line.live?.kind === "reasoning") group.line.live = undefined;
+      if (group.line.open) group.line.steps.push({ type: "item", id: item.id, gap: "step", item, turn, step: true });
       continue;
     }
     group = null;
     if (item.kind === "group") {
-      // The same rule, live, ended, stopped or reloaded [D752]: a run of steps between the agent's words is one
-      // line saying what it did, and a run of one step or thought is that step's own line. Only the run still going is
-      // its live line whatever it holds, its header coming once something follows it [D230].
-      let size = 0;
-      let thoughts = 0;
-      for (let next = at + 1; next < items.length && within(items[next]!.n, item.span); next++) {
-        if (items[next]!.hidden) continue;
-        size++;
-        if (items[next]!.kind === "reasoning") thoughts++;
-      }
-      const single = !item.run && size === 1;
-      const line: GroupLine | null = single ? null : { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [], thoughts };
-      if (line) push(line);
-      group = { span: item.span, open: single || line!.open, single, line };
+      // Every run of steps between the agent's words, one step or many, is the gallery's group line, the same live,
+      // ended, stopped, resumed or reloaded: one line saying what its steps did [D697, D755].
+      const members: Item[] = [];
+      for (let next = at + 1; next < items.length && within(items[next]!.n, item.span); next++) if (!items[next]!.hidden) members.push(items[next]!);
+      const line: GroupLine = { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [], members };
+      push(line);
+      group = { span: item.span, line };
       continue;
     }
     // A send-as-new line follows the reply, so the reply's actions stay directly under it [D204].

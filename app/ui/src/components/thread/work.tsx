@@ -68,18 +68,17 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
 const QUIET_MS = 30 * 60_000;
 
 /**
- * Steps that came one after another, as one row: "Changed 3 files and ran 2 commands ›", with the first kind's icon,
- * as a work log [D752]. Its count only goes up while the turn runs; a running step draws in its place until
- * it ends (GroupLine) [D173, D227]. Its › always shows, so a folded group reads as one that opens.
+ * Steps that came one after another, as one row saying what they did: "Read Calculator's window and listed Brigadier
+ * sessions", with the first kind's icon [D697, D755]. It says only steps that ended; a running one draws under it (GroupLine).
  */
-export function GroupRow({ item, thoughts = 0, open, onToggle }: { item: Group; thoughts?: number; open: boolean; onToggle: (id: string) => void }) {
+export function GroupRow({ item, members, open, onToggle }: { item: Group; members: readonly Item[]; open: boolean; onToggle: (id: string) => void }) {
   const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k));
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
       {/* Only MCP tools: the MCP glyph, as their own rows [D666]; only thoughts, the thought's. */}
       <StepIcon kind={kind} icon={!kind ? Lightbulb : kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
-      <Words verb={groupWords(item.steps, thoughts)} />
-      <Chevron always />
+      <Words verb={groupWords(members)} />
+      <Chevron />
     </button>
   );
 }

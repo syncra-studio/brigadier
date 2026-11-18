@@ -24,6 +24,8 @@ import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
+import { DETAIL } from "./activity-row";
+import { cx } from "../cx";
 import { GroupRow, ThoughtRow } from "./work";
 import { TodoRow } from "./todo";
 import { BrigadeMessagePill } from "../../sessions/brigade";
@@ -51,15 +53,18 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
 
 type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
 
-/** A group's row and, opened, its steps: the thread's, a worker's in its panel, a skill's. Its running step is its row till it ends [D227]. */
-export function GroupLine({ item, turn, open, steps, live, thoughts, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; thoughts?: number; onToggle: (id: string) => void }) {
-  // What it does now: its running step, or the thought it's on [D752].
-  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live && <Body item={live} turn={turn} step={false} />;
-  // The turn's latest run is only what it does now: its header comes once something follows it [D230].
-  if (item.run) return now || <ThinkingLine />;
+/**
+ * The group line, the gallery's, for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. One line
+ * saying what its ended steps did; live, what it does now (its running step, its thought, or Thinking while it is the
+ * turn's latest run) under it, or in its place before any step ended.
+ */
+export function GroupLine({ item, turn, open, steps, live, members, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: readonly Item[]; onToggle: (id: string) => void }) {
+  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live ? <Body item={live} turn={turn} step={false} /> : item.run && <ThinkingLine />;
+  const ended = members.filter((member) => !running(member) && !(member.kind === "reasoning" && member.streaming));
+  if (!ended.length) return now || null;
   return (
     <>
-      {now || <GroupRow item={item} thoughts={thoughts} open={open} onToggle={onToggle} />}
+      <GroupRow item={item} members={ended} open={open} onToggle={onToggle} />
       {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
       {open && steps.length > 0 && (
         <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
@@ -71,6 +76,7 @@ export function GroupLine({ item, turn, open, steps, live, thoughts, onToggle }:
           ))}
         </div>
       )}
+      {now && <div className={cx(DETAIL, "ps-5.5")}>{now}</div>}
     </>
   );
 }
@@ -81,7 +87,7 @@ function SkillSteps({ id, log, counts, turn }: { id: string; log: Item[]; counts
   const [open, setOpen] = useKept(key);
   const group: Group = { id: key, turnId: turn?.id ?? "", kind: "group", steps: counts, span: [0, 0] };
   const ended = log.filter((step) => !running(step)).map((step) => ({ id: step.id, item: step, turn, step: true }));
-  return <GroupLine item={group} turn={turn} open={open} steps={ended} live={log.findLast(running)} onToggle={() => setOpen(!open)} />;
+  return <GroupLine item={group} turn={turn} open={open} steps={ended} live={log.findLast(running)} members={log} onToggle={() => setOpen(!open)} />;
 }
 
 function Said({ backend }: { backend: string | undefined }) {
