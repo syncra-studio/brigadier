@@ -1,8 +1,9 @@
-import { type FormEvent } from "react";
+import { type FormEvent, useEffect } from "react";
 
 import { Button } from "../components/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/dialog";
 import { Spinner } from "../icons";
+import { run } from "../onboarding/api";
 import { useProjectSources } from "../onboarding/sources";
 import { useDaemon } from "../daemon";
 import { closeAddProject, daemonSource, showProject, type Source, useAddProject } from "./store";
@@ -26,7 +27,13 @@ export function AddProjectDialog({ source, offline }: { source: Source; offline:
 
 /** The app's Add project, on the daemon. */
 export function AddProjectHost() {
-  return <AddProjectDialog source={daemonSource} offline={useDaemon().daemon === null} />;
+  const { daemon } = useDaemon();
+  const pid = daemon?.pid;
+  // Each daemon reads its lists once it's up, so the first open shows them at once, as onboarding's do [D678, D627].
+  useEffect(() => {
+    if (pid) run(["projects", "warm"]).catch(() => {});
+  }, [pid]);
+  return <AddProjectDialog source={daemonSource} offline={daemon === null} />;
 }
 
 const VERB = { folder: "Add", clone: "Clone", new: "Create" };
