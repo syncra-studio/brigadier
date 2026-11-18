@@ -1,9 +1,7 @@
 //! The app's browser data commands. Agent actions use separate verbs [D515, D516, D519].
 
-mod bookmarks;
 mod certs;
 mod dates;
-mod history;
 mod hub;
 mod imports;
 pub(crate) mod profiles;
@@ -17,12 +15,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
 use store::{Device, Store};
-use types::{DownloadState, HistoryFilter, SitePermission};
+use types::{DownloadState, SitePermission};
 
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page, turn_ended};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|place | bookmarks list|add|update|remove|import | certs trust|clear | dates record|since|clear [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|place | certs trust|clear | dates record|since|clear [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
@@ -36,12 +34,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "--at-ms",
         "--since-ms",
         "--until-ms",
-        "--before-ms",
-        "--before-id",
-        "--limit",
         "--query",
-        "--filter",
-        "--last",
     ] {
         if args
             .iter()
@@ -58,12 +51,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let area = crate::arg(args, 2)?;
     if ![
         "profiles",
-        "history",
-        "visit",
         "downloads",
         "sites",
         "imports",
-        "bookmarks",
         "certs",
         "dates",
     ]
@@ -89,9 +79,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let folder = root.join(&profile);
     fs::create_dir_all(&folder)?;
     let args = &args[3..];
-    if area == "bookmarks" {
-        return bookmarks::run(&folder, args);
-    }
     if area == "certs" {
         return certs::run(&folder, args);
     }
@@ -118,63 +105,6 @@ fn stored(store: &mut Store, area: &str, args: &[String]) -> io::Result<Value> {
     let done = || Ok(json!({"ok": true}));
     let sql = |e| io::Error::other(e);
     match (area, op) {
-        ("history", "list" | "search") => {
-            let filter = match crate::flag(args, "--filter").unwrap_or("all") {
-                "all" => HistoryFilter::All,
-                "agent" => HistoryFilter::Agent,
-                "other" => HistoryFilter::Other,
-                _ => return Err(io::Error::other("Unknown history filter")),
-            };
-            let before = optional_number(args, "--before-ms")?
-                .map(|ms| {
-                    Ok::<_, io::Error>((
-                        ms,
-                        optional_number(args, "--before-id")?.unwrap_or(i64::MAX),
-                    ))
-                })
-                .transpose()?;
-            let limit: u32 = crate::flag(args, "--limit")
-                .unwrap_or("500")
-                .parse()
-                .map_err(io::Error::other)?;
-            let query = if op == "search" {
-                get(1)?
-            } else {
-                crate::flag(args, "--query").unwrap_or("")
-            };
-            Ok(
-                json!({"ok": true, "history": store.history(query, filter, before, limit).map_err(sql)?}),
-            )
-        }
-        ("history", "remove") => {
-            store.remove_visits(&ids(args)?).map_err(sql)?;
-            done()
-        }
-        ("history", "clear") => {
-            store.clear_history(since, until).map_err(sql)?;
-            done()
-        }
-        ("visit", "record") => {
-            web_address(get(1)?)?;
-            let title = args
-                .get(2)
-                .filter(|s| !s.starts_with("--"))
-                .map_or("", String::as_str);
-            let id = store
-                .visit(
-                    optional_number(args, "--last")?,
-                    get(1)?,
-                    title,
-                    crate::has(args, "--agent"),
-                    at,
-                )
-                .map_err(sql)?;
-            Ok(json!({"ok": true, "id": id}))
-        }
-        ("visit", "title") => {
-            store.titled(number(1)?, get(2)?).map_err(sql)?;
-            done()
-        }
         ("downloads", "list") => Ok(
             json!({"ok": true, "downloads": store.downloads(crate::flag(args, "--query").unwrap_or("")).map_err(sql)?}),
         ),

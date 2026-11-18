@@ -1,34 +1,15 @@
 import { connected } from "../daemon";
-import { historyGone } from "./history";
 import { run, store } from "../onboarding/api";
 import { getSettings, onSettings } from "../settings/api";
 import { allProfiles, loadProfiles } from "./profiles";
 
 /*
- * What the built-in browser remembers (its history, downloads and site choices, kept by Rust's `brigadier browser`),
+ * What the built-in browser remembers (its downloads and site choices, kept by Rust's `brigadier browser`),
  * and the pure helpers Settings › Browser lists them with. Main has the live downloads and the site choices'
  * copy its permission checks read (main's browser/browserDownloads.ts, permissions.ts) [D515, D516].
  */
 
 const data = (profile: string, args: string[]) => run(["browser", "-", ...args, "--profile", profile]);
-
-export type BrowserVisit = { id: number; url: string; title: string; atMs: number; agent: boolean };
-export type HistoryFilter = "all" | "agent" | "other";
-
-/** How many pages the history view asks for at a time. */
-export const HISTORY_PAGE = 200;
-
-/** History newest first; `after` (the last visit shown) asks for the next page. */
-export async function browserHistory(profile: string, query: string, filter: HistoryFilter, after: BrowserVisit | null, limit = HISTORY_PAGE): Promise<BrowserVisit[]> {
-  const page = after ? ["--before-ms", String(after.atMs), "--before-id", String(after.id)] : [];
-  const reply = await data(profile, ["history", "list", "--filter", filter, "--limit", String(limit), ...page, ...(query ? ["--query", query] : [])]);
-  return reply.history as BrowserVisit[];
-}
-
-export async function removeHistory(profile: string, ids: number[]): Promise<void> {
-  await data(profile, ["history", "remove", ...ids.map(String)]);
-  historyGone(profile, ids);
-}
 
 
 /** A download as listed: while running, its bytes so far and in all (0: not known), from main. */

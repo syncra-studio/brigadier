@@ -6,7 +6,6 @@ import { stepZoom } from "./keys";
 import { closeFind, findState, forgetFind } from "./find";
 import { type BrowserBounds, closePage as closeInLayer, focusPage, navigatePage, openPage as openInLayer, zoom } from "./layer";
 import { saveCardAnswer, siteAsked } from "./data";
-import { forgetVisits, titled, visited } from "./history";
 import { defaultOf, known, pinTab } from "./profiles";
 
 /**
@@ -136,10 +135,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
           ...(shown?.asking && originOf(event.url) !== shown.asking.origin ? { asking: null } : {}),
         });
       } else if (event.type === "history") update(id, { canGoBack: event.canGoBack, canGoForward: event.canGoForward });
-      else if (event.type === "title") {
-        update(id, { title: event.title });
-        titled(id, event.title);
-      } else if (event.type === "visit") visited(owner, id, event.url);
+      else if (event.type === "title") update(id, { title: event.title });
       else if (event.type === "favicon") {
         if (faviconFits(pages.get(id), event.url)) update(id, { favicon: event.dataUrl });
       } else if (event.type === "escape") {
@@ -227,7 +223,6 @@ export function reopenPage(id: string, focus: boolean): void {
 /** The tab closed: the page goes. */
 export function closeBrowserPage(id: string): void {
   forgetFind(id);
-  forgetVisits(id);
   owners.delete(id);
   if (!pages.get(id)) return;
   made.delete(id);

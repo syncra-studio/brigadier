@@ -54,7 +54,7 @@ function Form({ editing, onClose, onCreated }: { editing: BrowserProfile | undef
       <DialogHeader>
         <DialogTitle>{editing ? `Rename ${editing.name}` : "New profile"}</DialogTitle>
         <DialogDescription>
-          {editing ? "Its sign-ins, history and bookmarks stay as they are." : "A separate set of sign-ins, history and bookmarks. It starts empty."}
+          {editing ? "Its sign-ins stay as they are." : "A separate set of sign-ins. It starts empty."}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
@@ -124,7 +124,7 @@ function DeleteForm({ profile, onClose, onDeleted }: { profile: BrowserProfile; 
     <>
       <DialogHeader>
         <DialogTitle>Delete {profile.name}?</DialogTitle>
-        <DialogDescription>Its sign-ins, history and bookmarks are removed from Brigadier. This can't be undone.</DialogDescription>
+        <DialogDescription>Its sign-ins are removed from Brigadier. This can't be undone.</DialogDescription>
       </DialogHeader>
       <p className="text-xs text-muted-foreground">
         {sessions + tabs === 0

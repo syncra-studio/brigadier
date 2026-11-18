@@ -4,28 +4,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum HistoryFilter {
-    All,
-    /// Pages in tabs opened from something an agent gave: a link in its reply, a preview.
-    Agent,
-    /// Everything else: pages the user opened, and imported history.
-    Other,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BrowserVisit {
-    pub id: i64,
-    pub url: String,
-    /// Empty when the page had none.
-    pub title: String,
-    /// When, in ms since the Unix epoch.
-    pub at_ms: i64,
-    pub agent: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub enum DownloadState {
     Running,
     Done,

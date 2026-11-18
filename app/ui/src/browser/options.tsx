@@ -87,9 +87,6 @@ export function BrowserOptions({
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("downloads")}>
           Downloads
         </DropdownMenuItem>
-        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("history")}>
-          History
-        </DropdownMenuItem>
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("clear")}>
           Clear browsing data
         </DropdownMenuItem>

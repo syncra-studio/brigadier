@@ -8,7 +8,6 @@ import { ArrowUpRight, Globe } from "../icons";
 import { useDaemon } from "../daemon";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
-import { BookmarkStar } from "./bookmark-star";
 import { DownloadsButton } from "./downloads-button";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
 import { followLayout } from "./follow";
@@ -250,7 +249,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   };
   const editing = focused || typed !== null;
   const suggestions = useAddressSuggestions(owner, id, focused ? typed : null);
-  const suggestionsOpen = focused && suggesting && typed !== null && suggestions.rows.length > 0;
+  const suggestionsOpen = focused && suggesting && typed !== null && suggestions.length > 0;
   const pick = (row: Suggestion) => {
     setHighlight(-1);
     if (row.kind === "tab") {
@@ -259,7 +258,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
       selectTab(owner, row.id);
       return;
     }
-    goTo(row.kind === "go" ? row.text : row.url);
+    goTo(row.text);
   };
   // What Open in external browser opens: what is being typed, else the page.
   const outside = (typed !== null ? browserAddress(typed) : null) ?? (url || null);
@@ -328,10 +327,10 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
               onKeyDown={(event) => {
                 if (suggestionsOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
                   event.preventDefault();
-                  setHighlight((at) => stepSuggestion(at, event.key === "ArrowDown" ? 1 : -1, suggestions.rows.length));
+                  setHighlight((at) => stepSuggestion(at, event.key === "ArrowDown" ? 1 : -1, suggestions.length));
                   return;
                 }
-                const row = suggestionsOpen && highlight >= 0 ? suggestions.rows[highlight] : undefined;
+                const row = suggestionsOpen && highlight >= 0 ? suggestions[highlight] : undefined;
                 if (event.key === "Enter" && row) {
                   event.preventDefault();
                   pick(row);
@@ -355,7 +354,6 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
                 focused ? "text-start" : "text-center",
               )}
             />
-            {!focused && typed === null && <BookmarkStar owner={owner} tab={tab} url={url} title={page?.title ?? ""} />}
             {outside && (url || typed !== null) && (
               <TooltipIconButton
                 tooltip="Open in external browser"
@@ -371,13 +369,11 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
           </div>
           <AddressSuggestions
             anchor={address}
-            field={field}
-            rows={suggestions.rows}
+            rows={suggestions}
             open={suggestionsOpen}
             highlight={highlight}
             onPick={pick}
             onHighlight={setHighlight}
-            onRemove={suggestions.remove}
             onClose={() => setSuggesting(false)}
           />
           {/* Only over its own tab: a question waits, unanswered, while another tab is in front. */}

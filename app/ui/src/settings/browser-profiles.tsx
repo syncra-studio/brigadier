@@ -41,7 +41,7 @@ export function ProfilesSection() {
     <SettingsSection
       title="Profiles"
       setting="Profiles"
-      description="Each profile keeps its own sign-ins, history and bookmarks."
+      description="Each profile keeps its own sign-ins."
       actions={
         <>
           {MAC && (

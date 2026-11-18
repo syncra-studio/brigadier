@@ -84,17 +84,11 @@ export function ProfileDetailPage({ id }: { id: string }) {
       <SettingsSection title="Data in this profile">
         <SettingsCard>
           <SettingsRow label="Sign-ins" description={counts ? `${plural(counts.signIns, "site")} with cookies, not a count of accounts.` : undefined} />
-          <SettingsRow label="Browsing history" description="The pages this profile visited.">
-            <Button variant="soft" size="sm" aria-label="Manage browsing history" onClick={() => openBrowserSettings("history", id)}>
-              Manage
-            </Button>
-          </SettingsRow>
           <SettingsRow label="Download history" description="The files this profile downloaded.">
             <Button variant="soft" size="sm" aria-label="Manage download history" onClick={() => openBrowserSettings("downloads", id)}>
               Manage
             </Button>
           </SettingsRow>
-          <SettingsRow label="Bookmarks" />
           <SettingsRow label="Site settings" description="Which sites may use your camera, microphone and location in this profile.">
             <Button variant="soft" size="sm" aria-label="Manage site settings" onClick={() => openBrowserSettings("sites", id)}>
               Manage
@@ -102,7 +96,7 @@ export function ProfileDetailPage({ id }: { id: string }) {
           </SettingsRow>
           <SettingsRow
             label="Browsing data"
-            description="Clear this profile's history, sign-ins, site data, cache and download history, by time range. Other profiles aren't touched."
+            description="Clear this profile's sign-ins, site data, cache and download history, by time range. Other profiles aren't touched."
           >
             <Button variant="soft" size="sm" onClick={() => setClearing(true)}>
               Clear browsing data

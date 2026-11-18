@@ -1,12 +1,8 @@
-import { useState } from "react";
-
 import { Button } from "../components/button";
 import { Select } from "../components/select";
 import { shortPath } from "../projects/add-project";
-import { BrowserBookmarks } from "./browser-bookmarks";
 import { ClearBrowsingDataDialog } from "./browser-clear";
 import { BrowserDownloads } from "./browser-downloads";
-import { BrowserHistory } from "./browser-history";
 import { type BrowserSettingsView, openBrowserSettings, setClearingBrowsingData as setClearing, useClearingBrowsingData } from "./browser-parts";
 import { ProfileDetailPage } from "./browser-profile";
 import { ProfilesSection } from "./browser-profiles";
@@ -23,13 +19,11 @@ const MAC = window.brigadier?.platform === "darwin";
 export const BROWSER_ROWS = {
   webLinks: { label: "Open web links in", description: "Where links in answers, search results and pull requests open", section: "General" },
   localLinks: { label: "Open local dev URLs in", description: "Where localhost and other local development sites open, such as a running preview", section: "General" },
-  data: { label: "Browsing data", description: "Clear the built-in browser's history, cookies, site data, cache and download history", section: "General" },
-  history: { label: "Browsing history", description: "View and remove pages you visited in the built-in browser", section: "General" },
-  bookmarks: { label: "Bookmarks", description: "View, add and remove the built-in browser's bookmarks", section: "Bookmarks" },
+  data: { label: "Browsing data", description: "Clear the built-in browser's cookies, site data, cache and download history", section: "General" },
   location: { label: "Location", description: "Where files you download in the built-in browser are saved", section: "Downloads" },
   askDownloads: { label: "Ask where to save downloads", description: "Choose the folder and name for each download", section: "Downloads" },
   downloads: { label: "Download history", description: "View the files you downloaded in the built-in browser", section: "Downloads" },
-  profiles: { label: "Profiles", description: "Separate sign-ins, history and bookmarks for each part of your life, and which profile new sessions start on" },
+  profiles: { label: "Profiles", description: "Separate sign-ins for each part of your life, and which profile new sessions start on" },
   sites: { label: "Site settings", description: "Which sites may use your camera, microphone and location, for each profile", section: "Browser permissions" },
 } as const;
 
@@ -88,8 +82,8 @@ function ManageRow({ row, view }: { row: { label: string; description: string };
 }
 
 /**
- * Settings › Browser, the old app's page [D507, D516]. Its data pages are details of it: `history`, `downloads`,
- * `bookmarks` and `sites`, each with `/<profile>` when a profile's page opened it.
+ * Settings › Browser, the old app's page [D507, D516]. Its data pages are details of it: `downloads` and `sites`,
+ * each with `/<profile>` when a profile's page opened it.
  */
 export function BrowserPage({ detail = "" }: { detail?: string }) {
   const view = detail.split("/")[0];
@@ -97,28 +91,9 @@ export function BrowserPage({ detail = "" }: { detail?: string }) {
   const settings = useSettings().value;
   const ask = useSave();
   const clearing = useClearingBrowsingData();
-  const [cleared, setCleared] = useState(0);
-  const [clearOn, setClearOn] = useState<string | undefined>(undefined);
-  const clearDialog = <ClearBrowsingDataDialog profile={clearOn ?? profileId} open={clearing} onOpenChange={setClearing} onCleared={() => setCleared((count) => count + 1)} />;
   if (view === "profile" && profileId) return <ProfileDetailPage id={profileId} />;
-  if (view === "bookmarks") return <BrowserBookmarks profile={profileId} />;
   if (view === "sites") return <BrowserSiteSettings profile={profileId} />;
   if (view === "downloads") return <BrowserDownloads profile={profileId} />;
-  if (view === "history") {
-    return (
-      <>
-        <BrowserHistory
-          profile={profileId}
-          onClear={(profile) => {
-            setClearOn(profile);
-            setClearing(true);
-          }}
-          cleared={cleared}
-        />
-        {clearDialog}
-      </>
-    );
-  }
   return (
     <SettingsPage title="Browser" description={PAGE_DESCRIPTION}>
       <ProfilesSection />
@@ -127,23 +102,10 @@ export function BrowserPage({ detail = "" }: { detail?: string }) {
           <LinkRow setting="web_links_in" row={BROWSER_ROWS.webLinks} />
           <LinkRow setting="local_links_in" row={BROWSER_ROWS.localLinks} />
           <SettingsRow label={BROWSER_ROWS.data.label} description={BROWSER_ROWS.data.description}>
-            <Button
-              variant="soft"
-              size="sm"
-              onClick={() => {
-                setClearOn(undefined);
-                setClearing(true);
-              }}
-            >
+            <Button variant="soft" size="sm" onClick={() => setClearing(true)}>
               Clear browsing data
             </Button>
           </SettingsRow>
-          <ManageRow row={BROWSER_ROWS.history} view="history" />
-        </SettingsCard>
-      </SettingsSection>
-      <SettingsSection title="Bookmarks">
-        <SettingsCard>
-          <ManageRow row={BROWSER_ROWS.bookmarks} view="bookmarks" />
         </SettingsCard>
       </SettingsSection>
       <SettingsSection title="Downloads">
@@ -160,7 +122,7 @@ export function BrowserPage({ detail = "" }: { detail?: string }) {
           <ManageRow row={BROWSER_ROWS.sites} view="sites" />
         </SettingsCard>
       </SettingsSection>
-      {clearDialog}
+      <ClearBrowsingDataDialog open={clearing} onOpenChange={setClearing} />
     </SettingsPage>
   );
 }

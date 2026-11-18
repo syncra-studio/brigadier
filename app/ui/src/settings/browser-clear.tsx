@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { sitesCleared } from "../browser/data";
-import { historyGone } from "../browser/history";
 import { profileCounts, reloadProfileTabs, useDefaultProfile, useProfiles } from "../browser/profiles";
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
@@ -11,11 +10,11 @@ import { Segmented } from "../components/segmented";
 import { Select } from "../components/select";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
-import { Download, Globe, SettingsCog, Trash } from "../icons";
+import { Download, SettingsCog, Trash } from "../icons";
 import { Images } from "../icons/browser";
 import { errorText, run } from "../onboarding/api";
 
-/** Which profile's data a Settings page shows: history, downloads and clearing are each profile's own. */
+/** Which profile's data a Settings page shows: downloads and clearing are each profile's own. */
 export function ProfilePicker({ value, onChange }: { value: string; onChange: (profile: string) => void }) {
   const profiles = useProfiles();
   return (
@@ -39,20 +38,16 @@ const RANGES = [
 const HOUR = 60 * 60 * 1000;
 const SINCE: Record<ClearRange, number | null> = { hour: HOUR, day: 24 * HOUR, week: 7 * 24 * HOUR, month: 28 * 24 * HOUR, all: null };
 
-type Kind = "history" | "cookies" | "cache" | "downloads" | "sites";
+type Kind = "cookies" | "cache" | "downloads" | "sites";
 type ClearRequest = { sinceMs: number | null } & Record<Kind, boolean>;
 
 /** Picked when the dialog opens: everything but the sites' camera, microphone and location choices. */
-const PICKED: Record<Kind, boolean> = { history: true, cookies: true, cache: true, downloads: true, sites: false };
+const PICKED: Record<Kind, boolean> = { cookies: true, cache: true, downloads: true, sites: false };
 
 /** Rust clears what it keeps; main clears Chromium's, with Rust's dates for a range (main's browser/browserClearData.ts). */
 async function clearBrowsingData(profile: string, clear: ClearRequest): Promise<void> {
   const data = (args: string[]) => run(["browser", "-", ...args, "--profile", profile]);
   const range = clear.sinceMs === null ? [] : ["--since-ms", String(clear.sinceMs)];
-  if (clear.history) {
-    await data(["history", "clear", ...range]);
-    historyGone(profile, null, clear.sinceMs);
-  }
   if (clear.downloads) await data(["downloads", "clear", ...range]);
   if (clear.sites) {
     await data(["sites", "clear", ...range]);
@@ -111,7 +106,6 @@ function ClearForm({ opened, clearing, setClearing, onDone, onCancel }: { opened
     profileCounts(profile).then(({ signIns }) => setSites(signIns), () => setSites(null));
   }, [profile]);
   const kinds: { kind: Kind; icon: ReactNode; label: string; detail: string }[] = [
-    { kind: "history", icon: <Globe />, label: "Browsing history", detail: "The pages you visited." },
     { kind: "cookies", icon: <Trash />, label: "Cookies and site data", detail: sitesLine(sites) },
     { kind: "cache", icon: <Images />, label: "Cached images and files", detail: "All of it, whatever the time range. Pages may load more slowly the next time." },
     { kind: "downloads", icon: <Download />, label: "Download history", detail: "The list only; downloaded files stay." },
@@ -152,7 +146,7 @@ function ClearForm({ opened, clearing, setClearing, onDone, onCancel }: { opened
           </label>
         ))}
       </SettingsCard>
-      <p className="text-xs text-muted-foreground">Bookmarks are kept. Other profiles aren't touched.</p>
+      <p className="text-xs text-muted-foreground">Other profiles aren't touched.</p>
       <ErrorLine error={error} />
       <DialogFooter>
         <Button variant="ghost" disabled={clearing} onClick={onCancel}>

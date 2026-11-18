@@ -50,7 +50,7 @@ const SCHEMA: &[&str] = &[
 ",
 ];
 
-/// The most pages a history list returns at once.
+/// The most downloads a list returns at once.
 pub(super) const PAGE_LIMIT: u32 = 500;
 
 pub struct Store {

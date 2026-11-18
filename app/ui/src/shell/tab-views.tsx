@@ -21,7 +21,7 @@ import { ReviewView } from "../review/view";
 import { daemonRun } from "../session/composer";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
-import { LocalServers, SuggestedSites } from "../browser/new-tab";
+import { LocalServers } from "../browser/new-tab";
 import { BrowserTab } from "../browser/tab";
 import { WorkersPanelSlot } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
@@ -118,7 +118,6 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
         </div>
         <LocalServers owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
         <NoteList owner={owner} active={active} onOpen={(note) => replaceTab(owner, tab.id, "note", note)} />
-        <SuggestedSites owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
       </div>
     </div>
   );

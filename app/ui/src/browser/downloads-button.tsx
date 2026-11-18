@@ -8,10 +8,17 @@ import { Download } from "../icons";
 import { errorText } from "../onboarding/api";
 import { openBrowserSettings } from "../settings/browser-parts";
 import { type Tab } from "../shell/tab-store";
-import { useTabProfile } from "./bookmark-star";
+import { known, useProfiles, useSessionProfile } from "./profiles";
 import { browserDownloads, cancelDownload, downloadProgress, type DownloadRecord, openDownload, revealDownload, siteOf, useDownloadChanges } from "./data";
 
 const MAC = window.brigadier?.platform === "darwin";
+
+/** The profile a tab's page is on: its own, else its session's (the old tabProfileId). */
+function useTabProfile(owner: string, tab: Tab): string {
+  useProfiles();
+  const session = useSessionProfile(owner);
+  return known(tab.profile) ?? session;
+}
 
 const STATES: Record<DownloadRecord["state"], string | null> = {
   running: "Downloading",
