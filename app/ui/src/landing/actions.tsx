@@ -258,7 +258,7 @@ function RunList({ owner, hidden, onOpen }: { owner: string; hidden: boolean; on
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <header className="flex items-baseline gap-3">
           <h2 className="min-w-0 flex-1 truncate font-display text-base font-medium">{flow?.name ?? "All workflows"}</h2>
-          <CheckAgain at={found?.okAt ?? null} busy={busy} offline={!daemon} onClick={() => read([query])} />
+          <CheckAgain busy={busy} offline={!daemon} onClick={() => read([query])} />
         </header>
         <form
           className="flex"

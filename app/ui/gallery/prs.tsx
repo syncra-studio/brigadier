@@ -177,7 +177,6 @@ function List({ list, closed = false, view = "all", busy = false }: { list: Foun
       text={text}
       busy={busy}
       more={false}
-      checked="checked 2 min ago"
       sessions={[]}
       onView={setV}
       onLinked={setLinked}

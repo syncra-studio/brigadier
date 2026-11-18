@@ -263,7 +263,7 @@ export function RunPage({ owner, first, onBack }: { owner: string; first: Run; o
             <h2 className="min-w-0 flex-1 font-display text-lg font-medium">
               {run.title} <span className="font-normal text-muted-foreground">#{run.number}</span>
             </h2>
-            <CheckAgain at={page.okAt} busy={busy} offline={!daemon} onClick={read} />
+            <CheckAgain busy={busy} offline={!daemon} onClick={read} />
             {failed && (
               <Button size="sm" variant="soft" disabled={sends.added(run) || !daemon} onClick={() => sends.send(run, failedJobs)}>
                 {sends.added(run) ? <Check /> : <Sparkles />}

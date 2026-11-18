@@ -28,7 +28,7 @@ const COLUMN = "w-full px-5";
  * review comments, comments and Add a comment) and Code, the PR's diff as its host has it with Submit review [D231,
  * D262]. Beside the tabs, its one action: Fix with agent when checks failed or changes were asked, else Merge while
  * it's open; then Review on the host. Every Send and Fix leaves a chip above the composer and sends nothing [D1019,
- * D1027]. It paints its last read at once and shows the watch's age; when a read fails, the last one stays with why
+ * D1027]. It paints its last read at once; when a read fails, the last one stays with why
  * [D207, D208, D1009].
  */
 export function PrTab({
@@ -75,7 +75,7 @@ export function PrTab({
     onCheck();
     setTick((n) => n + 1);
   };
-  const again = <CheckAgain at={pr?.checkedAtMs ?? null} busy={checking} offline={sends.offline} onClick={check} />;
+  const again = <CheckAgain busy={checking} offline={sends.offline} onClick={check} />;
   if (!pr) {
     return (
       <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">

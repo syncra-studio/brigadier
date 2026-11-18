@@ -4,9 +4,8 @@ import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { Check, Reload } from "../icons";
-import { useSecond } from "../thread/words";
 import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen, Sparkles } from "./icons";
-import { ago, STATE_WORDS } from "./pr-words";
+import { STATE_WORDS } from "./pr-words";
 import { type PrSend, type PrState, sendKey } from "./pull-requests";
 
 /** What every PR part shares: the time to measure from, what's already above the composer, and how to add more. */
@@ -80,17 +79,13 @@ export function SendButton({ send, label = "Send to agent", sends }: { send: PrS
 }
 
 /**
- * When the host was last read, and Check again: it reads it now, the icon turning until it answers [D208]. It ticks on
- * its own, so the page under it isn't drawn again each second.
+ * Check again: it reads the host now, the icon turning until it answers [D208]. No age beside it, so nothing shifts
+ * as seconds pass [D656].
  */
-export function CheckAgain({ at, busy, offline, onClick }: { at: number | null; busy: boolean; offline: boolean; onClick: () => void }) {
-  const now = useSecond(at !== null);
+export function CheckAgain({ busy, offline, onClick }: { busy: boolean; offline: boolean; onClick: () => void }) {
   return (
-    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-      {offline ? "Reconnecting…" : at !== null ? `Checked ${ago(at, now)}` : busy ? "Checking…" : "Not checked yet"}
-      <TooltipIconButton tooltip="Check again" size="icon-sm" disabled={offline || busy} onClick={onClick}>
-        <Reload className={cx(busy && "animate-spin motion-reduce:animate-none")} />
-      </TooltipIconButton>
-    </span>
+    <TooltipIconButton tooltip={offline ? "Reconnecting…" : "Check again"} size="icon-sm" disabled={offline || busy} onClick={onClick}>
+      <Reload className={cx(busy && "animate-spin motion-reduce:animate-none")} />
+    </TooltipIconButton>
   );
 }

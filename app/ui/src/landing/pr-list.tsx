@@ -146,7 +146,6 @@ export function PrListView({
   text,
   busy,
   more,
-  checked,
   sessions,
   onView,
   onLinked,
@@ -164,7 +163,6 @@ export function PrListView({
   text: string;
   busy: boolean;
   more: boolean;
-  checked: string;
   sessions: SessionRow[];
   onView: (view: View) => void;
   onLinked: (linked: boolean) => void;
@@ -213,7 +211,7 @@ export function PrListView({
             ))}
           </SegmentedRoot>
           <Menu label="State" value={state} choices={STATES} onPick={(s) => onClosed(s === "closed")} />
-          <TooltipIconButton tooltip={`Refresh · ${checked}`} size="icon-sm" disabled={!onRefresh || busy} onClick={onRefresh}>
+          <TooltipIconButton tooltip="Refresh" size="icon-sm" disabled={!onRefresh || busy} onClick={onRefresh}>
             <ArrowRotateCw className={cx(busy && "animate-spin motion-reduce:animate-none")} />
           </TooltipIconButton>
         </div>
@@ -329,7 +327,6 @@ export function PrList({ owner }: { owner: string }) {
       text={text}
       busy={busy}
       more={paging}
-      checked={!daemon ? "Reconnecting…" : found?.okAt ? `checked ${ago(found.okAt, now)}` : "not checked yet"}
       sessions={rows ?? []}
       onView={setView}
       onLinked={setLinked}
