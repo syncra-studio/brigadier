@@ -100,11 +100,11 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
     let places = [None].into_iter().chain(
         (projects.iter())
             .filter(|p| p.trusted == Some(true))
-            .map(Some),
+            .flat_map(|p| folders_of(p).into_iter().map(move |f| Some((p, f)))),
     );
     let mut all: Vec<Value> = vec![];
-    for p in places {
-        let folder = p.map(|p| PathBuf::from(&p.folder));
+    for place in places {
+        let (p, folder) = (place.as_ref().map(|(p, _)| *p), place.map(|(_, f)| f));
         let id = p.map_or("", |p| p.id.as_str());
         for a in &agents {
             let found = skills(*a, folder.as_deref());
@@ -134,6 +134,18 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
         }
     }
     all
+}
+
+/// A project's folders its own are read from: its folder, and a folder of repositories' each
+/// repository too, where the agents keep a repository's own [D494, D669].
+fn folders_of(p: &projects::Project) -> Vec<PathBuf> {
+    let top = PathBuf::from(&p.folder);
+    let repos = match p.kind == brigadier_core::folder::KIND {
+        true => brigadier_core::folder::repos(&top),
+        false => vec![],
+    };
+    let inside: Vec<PathBuf> = repos.iter().map(|r| top.join(r)).collect();
+    [top].into_iter().chain(inside).collect()
 }
 
 fn same(own: &Value, item: &Value) -> bool {
@@ -194,7 +206,7 @@ fn list(data: &Path) -> Value {
     // A project's folder is read only once trusted, as the "/" menu's [D2098].
     let folders: Vec<PathBuf> = (all.iter())
         .filter(|p| p.trusted == Some(true))
-        .map(|p| PathBuf::from(&p.folder))
+        .flat_map(folders_of)
         .collect();
     let shown: Vec<Value> = (items.iter())
         .map(|i| {
