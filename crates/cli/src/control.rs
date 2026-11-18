@@ -332,33 +332,44 @@ pub fn steer_as(
 
 /// How long a clean stop may take before the kill (proposed).
 const STOP_WAIT: Duration = Duration::from_secs(3);
-/// How long the command an agent's own stop ended gets to go.
+/// How long the command an agent's own stop left gets to go before the KILL.
 const COMMAND_WAIT: Duration = Duration::from_secs(1);
 
-/// Whether what's below the child and started since `since` (ms) outlives this wait. An agent's
-/// stop can end its turn and leave the command it was running [D222]; the old app closed the CLI.
-fn command_left(dir: &Path, since: u64) -> io::Result<bool> {
-    let started = Instant::now();
-    loop {
-        let fold = core::fold(dir, true)?.fold;
-        let child = (fold.child.as_ref())
-            .filter(|c| !c.exited)
-            .and_then(|c| procs::same(c.pid, c.start_us));
-        let left = child.is_some_and(|c| {
-            procs::descendants(&procs::all(), c.pid)
-                .iter()
-                .any(|p| p.start_us / 1000 >= since)
+/// Ends what's below the child and started since `since` (ms). An agent's stop can end its turn and
+/// leave the command it was running [D222]: that command goes, a TERM then a KILL for whatever
+/// outlives the wait, and the agent stays, as any CLI's own stop leaves it [D159, D693].
+fn end_commands(dir: &Path, since: u64) -> io::Result<()> {
+    let fold = core::fold(dir, true)?.fold;
+    let child = (fold.child.as_ref())
+        .filter(|c| !c.exited)
+        .and_then(|c| procs::same(c.pid, c.start_us));
+    let left: Vec<_> = child.map_or(vec![], |c| {
+        (procs::descendants(&procs::all(), c.pid).into_iter())
+            .filter(|p| p.start_us / 1000 >= since)
+            .map(|p| (p.pid, p.start_us))
+            .collect()
+    });
+    let signal = |sig| {
+        let live: Vec<_> = (left.iter())
+            .filter(|&&(p, s)| procs::same(p, s).is_some_and(|p| !p.zombie))
+            .collect();
+        live.iter().for_each(|&&(p, _)| unsafe {
+            libc::kill(p, sig);
         });
-        if !left || started.elapsed() >= COMMAND_WAIT {
-            return Ok(left);
-        }
-        thread::sleep(Duration::from_millis(50));
+        !live.is_empty()
+    };
+    let started = Instant::now();
+    signal(libc::SIGTERM);
+    while started.elapsed() < COMMAND_WAIT && signal(0) {
+        thread::sleep(Duration::from_millis(25));
     }
+    signal(libc::SIGKILL);
+    Ok(())
 }
 
-/// Stops the running turn through the adapter's own stop, the process staying alive. None when it
-/// can't, the turn didn't end in time, or the turn's command outlived it: the caller kills
-/// instead, and the next message resumes [D159, D222]. `by`: "user", or "pause" for a worker's Pause.
+/// Stops the running turn through the adapter's own stop, the process staying alive, and ends the
+/// command it left. None when it can't or the turn didn't end in time: the caller kills instead,
+/// and the next message resumes [D159, D222]. `by`: "user", or "pause" for a worker's Pause.
 pub fn interrupt(data: &Path, id: &str, by: &str) -> io::Result<Option<Value>> {
     let dir = core::session_dir(data, id);
     let turn = core::fold(&dir, true)?.fold.turns.into_iter().next();
@@ -382,10 +393,8 @@ pub fn interrupt(data: &Path, id: &str, by: &str) -> io::Result<Option<Value>> {
     let started = Instant::now();
     while started.elapsed() < STOP_WAIT {
         if core::fold(&dir, true)?.fold.turns.is_empty() {
-            if let Some(since) = tool_since
-                && command_left(&dir, since)?
-            {
-                return Ok(None);
+            if let Some(since) = tool_since {
+                end_commands(&dir, since)?;
             }
             return Ok(Some(
                 json!({"ok": true, "how": "interrupt", "ms": started.elapsed().as_millis() as u64}),
