@@ -1,6 +1,6 @@
 //! A session's branch renamed in its record [D35, D1021], and a PR's fetched to work on [D674].
 
-use super::{Owned, err, git, has_branch, read, write};
+use super::{Owned, err, git, read, write};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -63,4 +63,18 @@ pub fn fetch_pr(repo: &Path, number: u64, head: &str, fork: bool) -> io::Result<
         git(repo, &["branch", "--quiet", "--track", head, &from])?;
     }
     Ok(head.into())
+}
+
+/// Whether the branch exists in the repository.
+pub(super) fn has_branch(repo: &Path, branch: &str) -> bool {
+    git(
+        repo,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .is_ok()
 }

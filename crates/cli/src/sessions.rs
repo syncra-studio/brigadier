@@ -99,7 +99,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map(|r| r.wid)
                 .collect();
             let mut reply = check(data, &[&args[1..2], &family[..]].concat());
-            reply["branch"] = session::unlanded(&spec)?.into();
+            // A PR's branch or another session's stays whatever the choice: said, not offered [D703].
+            let branch = session::unlanded(&spec)?;
+            let kept = branch.as_ref().and(core::worktrees::kept(&spec.dir)?);
+            reply["branch"] = branch.filter(|_| kept.is_none()).into();
+            reply["kept"] = kept.map(|(b, why)| json!({"branch": b, "why": why})).into();
             reply["stays"] = session::stays(&spec).into();
             reply["workers"] = workers::unlanded(data, &family).into();
             return Ok(reply);

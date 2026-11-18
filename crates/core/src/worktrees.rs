@@ -13,8 +13,12 @@ use std::process::Command;
 
 mod branch;
 mod copy;
+use branch::has_branch;
 pub use branch::{fetch_pr, rename_held};
 mod hand;
+mod kept;
+use kept::keeps;
+pub use kept::kept;
 pub(crate) mod landing;
 pub mod lost;
 mod missing;
@@ -50,6 +54,8 @@ struct Owned {
     landing: Option<Landing>,
     /// The deleted session that made it and handed it on, whose folder holds it [D1080].
     inherited: Option<String>,
+    /// Started on a branch that was there before (a PR's, `create`'s `on`): delete never takes it [D703].
+    on: bool,
 }
 
 fn err<T>(message: String) -> io::Result<T> {
@@ -267,6 +273,7 @@ pub fn create(
         base,
         base_commit,
         failed: true,
+        on: on.is_some(),
         ..Default::default()
     };
     write(&spec.dir, &owned)?;
@@ -360,20 +367,6 @@ fn undo(owned: &Owned) -> io::Result<()> {
     Ok(())
 }
 
-/// Whether the branch exists in the repository.
-fn has_branch(repo: &Path, branch: &str) -> bool {
-    git(
-        repo,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{branch}"),
-        ],
-    )
-    .is_ok()
-}
-
 /// Frees the session's worktree [D180]: its changes are committed to its branch as a checkpoint
 /// first, and if that fails nothing is removed and the error says why. Then the worktree and its
 /// registration go; the branch and this record stay, for a restore or a delete. The caller holds
@@ -427,8 +420,9 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
-    if unlanded(dir)?.is_some() && !drop {
-        return Ok(Some(branch));
+    let unlanded = unlanded(dir)?.is_some();
+    if keeps(dir, &owned, &branch).is_some() || (unlanded && !drop) {
+        return Ok(unlanded.then_some(branch));
     }
     // Only the branch this session made or was handed, as its record names it, renamed or not
     // [D181, D1080].

@@ -107,12 +107,17 @@ export function ArchivedSection({
 
 /** `stays`: another session still works in its folder, which stays [D1080]. `running`, `lost`: as archive's [D1197]. */
 /** `workers`: its workers' branches with work that never landed, deleted with it under the one choice [D3017]. */
-export type Check = { state: "checking" } | ({ state: "done"; branch: string | null; stays?: string | null; workers?: { id: string; title: string; branch: string }[] } & Partial<ArchiveCheck>) | { state: "failed"; error: string };
+/** `kept`: its branch with such work that delete leaves whatever is picked, and why [D703]. */
+export type Check =
+  | { state: "checking" }
+  | ({ state: "done"; branch: string | null; kept?: Kept | null; stays?: string | null; workers?: { id: string; title: string; branch: string }[] } & Partial<ArchiveCheck>)
+  | { state: "failed"; error: string };
+type Kept = { branch: string; why: "pr" | "shared" };
 
 /** Rust's delete check, read before its confirm opens, so the confirm opens whole and never grows after [D463]. */
 export const readDelete = (id: string): Promise<Check> =>
   run(["delete", id, "--check"]).then(
-    (reply) => ({ state: "done", branch: reply.branch ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [], workers: reply.workers ?? [] }),
+    (reply) => ({ state: "done", branch: reply.branch ?? null, kept: reply.kept ?? null, stays: reply.stays ?? null, running: reply.running ?? [], lost: reply.lost ?? [], workers: reply.workers ?? [] }),
     (cause) => ({ state: "failed", error: errorText(cause) }),
   );
 
@@ -179,6 +184,7 @@ export function DeleteForm({ row, first, onClose }: { row: SessionRow; first: Ch
       {check.state === "done" && check.stays && (
         <p className="text-xs text-muted-foreground">Its folder stays: {rows?.find((each) => each.id === check.stays)?.title ?? "another session"} still works there.</p>
       )}
+      {check.state === "done" && <KeptBranches kept={check.kept ? [check.kept] : []} />}
       {check.state === "done" && (check.workers?.length ?? 0) > 0 && (
         <FamilyBranches branches={[...(check.branch ? [{ branch: check.branch, title: titleOf(row) }] : []), ...check.workers!]} drop={drop} setDrop={setDrop} />
       )}
@@ -200,6 +206,21 @@ export function DeleteForm({ row, first, onClose }: { row: SessionRow; first: Ch
         </div>
       )}
     </ConfirmForm>
+  );
+}
+
+/** Branches delete leaves whatever is picked [D703]: a pull request's, or one another session uses; one line each. */
+export function KeptBranches({ kept }: { kept: Kept[] }) {
+  const why = new Map(kept.map((each) => [each.branch, each.why]));
+  if (!why.size) return null;
+  return (
+    <div className="flex flex-col gap-1 text-xs break-words text-muted-foreground">
+      {[...why].map(([branch, reason]) => (
+        <p key={branch}>
+          <code className="font-mono text-foreground">{branch}</code> stays either way: {reason === "pr" ? "it's a pull request's branch." : "another session uses it."}
+        </p>
+      ))}
+    </div>
   );
 }
 

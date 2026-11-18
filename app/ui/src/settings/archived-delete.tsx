@@ -7,9 +7,7 @@ import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
 import { hideDeleting } from "../sessions/archive";
-import { readDelete } from "../sessions/archived";
-
-type Check = { state: "checking" } | { state: "done"; branch: string | null } | { state: "failed"; error: string };
+import { type Check, KeptBranches, readDelete } from "../sessions/archived";
 
 const titleOf = (row: { title: string }) => row.title || "New session";
 
@@ -37,6 +35,10 @@ export function DeleteManyForm({ rows, first, onClose }: { rows: { id: string; t
   const branched = rows.flatMap((row) => {
     const each = of(row.id);
     return each.state === "done" && each.branch ? [{ row, branch: each.branch }] : [];
+  });
+  const kept = rows.flatMap((row) => {
+    const each = of(row.id);
+    return each.state === "done" && each.kept ? [each.kept] : [];
   });
   const confirm = () => {
     onClose();
@@ -77,6 +79,7 @@ export function DeleteManyForm({ rows, first, onClose }: { rows: { id: string; t
           </Button>
         </div>
       )}
+      <KeptBranches kept={kept} />
       {branched.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <p className="text-xs text-muted-foreground">{branched.length === 1 ? "This branch has" : "These branches have"} work that never landed:</p>
