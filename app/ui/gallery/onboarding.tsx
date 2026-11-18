@@ -129,7 +129,7 @@ const source = (history: string[], github: GitHub = { repos: REPOS }): Source =>
 });
 const HISTORY = ["/Users/sam/Development/weather-bot", "/Users/sam/Development/notes", "/Users/sam/code/site", "/Users/sam/code/api"];
 
-function Projects({ label, from, start }: { label: string; from: Source; start: "clone" | "folder" | "new" }) {
+function Projects({ label, from, start }: { label: string; from: Source; start?: string }) {
   return (
     <State label={label}>
       <Window step="projects">
@@ -168,12 +168,11 @@ export function OnboardingGallery() {
         </State>
       </Row>
       <Row name="Projects">
-        <Projects label="Clone · two accounts' repositories" from={source(HISTORY)} start="clone" />
-        <Projects label="Clone · one picked" from={source(HISTORY)} start="clone" />
-        <Projects label="Clone · GitHub not connected" from={source(HISTORY, { gh: "signed-out" })} start="clone" />
-        <Projects label="Clone · no gh" from={source(HISTORY, { gh: "missing" })} start="clone" />
-        <Projects label="Existing folder" from={source(HISTORY)} start="folder" />
-        <Projects label="Existing folder · nothing in the history" from={source([])} start="folder" />
+        <Projects label="This Mac" from={source(HISTORY)} />
+        <Projects label="This Mac · nothing in the history" from={source([])} />
+        <Projects label="GitHub · the second account's repositories" from={source(HISTORY)} start="@sam-at-work" />
+        <Projects label="GitHub not connected" from={source(HISTORY, { gh: "signed-out" })} start="@" />
+        <Projects label="No gh" from={source(HISTORY, { gh: "missing" })} start="@" />
         <Projects label="New" from={source(HISTORY)} start="new" />
       </Row>
     </Section>
