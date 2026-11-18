@@ -51,8 +51,7 @@ pub(super) fn show(data: &Path, key: &str) -> io::Result<Value> {
 }
 
 fn skill_md(data: &Path, i: &Value) -> PathBuf {
-    let folder = library::dir(data).join("skills").join(str(&i["name"]));
-    folder.join("SKILL.md")
+    library::skill_dir(data, i).join("SKILL.md")
 }
 
 /// A skill's SKILL.md in Finder: only one the user added, to edit it in their own editor [D600].

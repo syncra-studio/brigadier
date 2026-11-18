@@ -7,13 +7,13 @@ import { SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
 import { ChevronDown, Folder, Folders, Mcp, ToolsSkills } from "../icons";
 import { SettingsSection } from "./parts";
-import { chipOf, type Item, type Kind, type Own, PLUGINS_ROWS, type Plugins, STATUS } from "./plugins";
+import { chipOf, type Item, type Kind, PLUGINS_ROWS, type Plugins, STATUS } from "./plugins";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
 /** A card's chips: one row that never wraps, so every card is the same height; its note is on its page [D664]. */
 const CHIPS = "mt-1.5 flex h-5 items-center gap-1.5 overflow-hidden";
 
-/** One item in the list's grid: its mark, name, line, where it's on, its standing and agents; its switch at the corner. */
+/** One item in the list's grid: its mark, name, line, where it's on, its standing, agents and where it was found; its switch at the corner. */
 function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip: string | null; marks: Record<string, string | null>; onOpen: () => void; onSwitch: (on: boolean) => void }) {
   const status = item.on ? item.status : "off";
   // How it runs (a command, an address or a folder) is in code's letters; its chip says if it needs sign-in.
@@ -31,6 +31,7 @@ function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip:
             {item.agents.map((agent) => (
               <AgentTile key={agent} agent={agent} mark={marks[agent]} />
             ))}
+            {item.from && <span className="min-w-0 truncate text-xs text-quiet-foreground">{item.from}</span>}
           </span>
         </span>
       </button>
@@ -39,7 +40,7 @@ function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip:
   );
 }
 
-/** The skills that came with a catalog service, as one card [D580]: its logo, "Notion skillset", where it's on, its agents and one switch; the chevron lists its skills in place, each opening its page. */
+/** The skills that came with a catalog service, or were found from one source (D720), as one card [D580]: its logo, "Notion skillset", where it's on, its agents and one switch; the chevron lists its skills in place, each opening its page. */
 function SkillsetCard({ id, skills, value, marks, onOpen, onSwitch }: { id: string; skills: Item[]; value: Plugins; marks: Record<string, string | null>; onOpen: (key: string) => void; onSwitch: (on: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const entry = value.catalog?.entries.find((each) => each.id === id);
@@ -49,12 +50,13 @@ function SkillsetCard({ id, skills, value, marks, onOpen, onSwitch }: { id: stri
   return (
     <SettingsCard data-slot="skillset" data-key={id} data-off={!on || undefined} split={false} className="gap-3 px-4 py-3.5">
       <div className="flex items-start gap-3">
-        <button type="button" onClick={() => onOpen(`catalog:${id}`)} aria-label={`Open ${service}`} className={cx("flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-start focus-visible:focus-ring", !on && "opacity-disabled")}>
+        {/* One found has no catalog page: it opens its list. */}
+        <button type="button" onClick={() => (entry ? onOpen(`catalog:${id}`) : setOpen(!open))} aria-label={`Open ${service}`} className={cx("flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-start focus-visible:focus-ring", !on && "opacity-disabled")}>
           <PluginMark item={{ kind: "skill", name: service, detail: "", logo: id }} />
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="truncate text-label font-medium">{service} skillset</span>
             <span className="truncate text-xs text-quiet-foreground">
-              {skills.length} skills · came with {service}
+              {skills.length} skills · {entry ? `came with ${service}` : skills[0]!.from}
             </span>
             <span className={CHIPS}>
               {chip && <ScopeChip text={chip} />}
@@ -94,92 +96,46 @@ export function ScopeChip({ text }: { text: string }) {
   );
 }
 
-/** The Skills or MCPs tab [D566, D580, D718]: the library's, 2 columns of cards; then those found on this machine, to install. */
+/** The Skills or MCP servers tab [D566, D580, D718, D724]: the library's, what the agents have on this machine among them [D721], 2 columns of cards. */
 export function MyTab({
   value,
   kind,
   marks,
-  remote,
   onOpen,
   onSwitch,
-  onInstall,
   onBrowse,
   onAdd,
 }: {
   value: Plugins;
   kind: Kind;
   marks: Record<string, string | null>;
-  remote: boolean;
   onOpen: (key: string) => void;
   onSwitch: (key: string, on: boolean) => void;
-  onInstall: (own: Own) => void;
   onBrowse: () => void;
   onAdd: () => void;
 }) {
   const items = value.items.filter((each) => each.kind === kind);
-  // A service's skills are one card, its skillset [D580].
+  // A service's skills are one card, its skillset [D580]; so are those found from one source [D720].
   const sets = Map.groupBy(
-    items.filter((each) => each.with),
-    (each) => each.with!,
+    items.filter((each) => each.with ?? each.set),
+    (each) => (each.with ?? each.set)!,
   );
-  const own = value.own.filter((each) => each.kind === kind);
-  if (items.length === 0 && own.length === 0) return <EmptyTab tab={kind} onBrowse={onBrowse} onAdd={onAdd} />;
+  if (items.length === 0) return <EmptyTab tab={kind} onBrowse={onBrowse} onAdd={onAdd} />;
   return (
-    <>
-      {items.length > 0 && (
-        <SettingsSection title={kind === "skill" ? "Skills" : "Servers"} setting={PLUGINS_ROWS[kind].label}>
-          <div data-slot="plugins-grid" className="grid grid-cols-1 items-start gap-2.5 @reading:grid-cols-2">
-            {[...sets].map(([id, skills]) => (
-              <SkillsetCard key={id} id={id} skills={skills} value={value} marks={marks} onOpen={onOpen} onSwitch={(on) => onSwitch(`skillset:${id}`, on)} />
-            ))}
-            {items
-              .filter((each) => !each.with)
-              .map((each) => (
-                <PluginCard key={each.key} item={each} chip={chipOf(value, each)} marks={marks} onOpen={() => onOpen(each.key)} onSwitch={(on) => onSwitch(each.key, on)} />
-              ))}
-          </div>
-        </SettingsSection>
-      )}
-      {own.length > 0 && (
-        <SettingsSection title={PLUGINS_ROWS.own.label} description={PLUGINS_ROWS.own.description} setting={PLUGINS_ROWS.own.label}>
-          <div className="grid grid-cols-1 items-start gap-2.5 @reading:grid-cols-2">
-            {own.map((each) => (
-              <OwnCard key={each.key} own={each} marks={marks} remote={remote} onInstall={() => onInstall(each)} />
-            ))}
-          </div>
-        </SettingsSection>
-      )}
-    </>
-  );
-}
-
-/** One of an agent's own, read-only, as a card: where it is, which agents have it and from where; Install copies it in. */
-function OwnCard({ own, marks, remote, onInstall }: { own: Own; marks: Record<string, string | null>; remote: boolean; onInstall: () => void }) {
-  return (
-    <SettingsCard data-slot="own-row" data-key={own.key} split={false} className="flex-row items-start gap-3 px-4 py-3.5">
-      <PluginMark item={own} />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="truncate text-label font-medium">{own.name}</span>
-        <span className="truncate font-mono text-xs text-quiet-foreground">{own.detail}</span>
-        <span className={CHIPS}>
-          {own.project && <ScopeChip text={own.project} />}
-          {own.agents.map((agent) => (
-            <AgentTile key={agent} agent={agent} mark={marks[agent]} />
+    <SettingsSection title={kind === "skill" ? "Skills" : "Servers"} setting={PLUGINS_ROWS[kind].label}>
+      <div data-slot="plugins-grid" className="grid grid-cols-1 items-start gap-2.5 @reading:grid-cols-2">
+        {[...sets].map(([id, skills]) => (
+          <SkillsetCard key={id} id={id} skills={skills} value={value} marks={marks} onOpen={onOpen} onSwitch={(on) => onSwitch(`skillset:${id}`, on)} />
+        ))}
+        {items
+          .filter((each) => !(each.with ?? each.set))
+          .map((each) => (
+            <PluginCard key={each.key} item={each} chip={chipOf(value, each)} marks={marks} onOpen={() => onOpen(each.key)} onSwitch={(on) => onSwitch(each.key, on)} />
           ))}
-          <span className="min-w-0 truncate text-xs text-quiet-foreground">{own.from}</span>
-        </span>
-      </span>
-      {importable(own, remote) && (
-        <Button variant="soft" size="sm" aria-label={`Install ${own.name}`} onClick={onInstall}>
-          Install
-        </Button>
-      )}
-    </SettingsCard>
+      </div>
+    </SettingsSection>
   );
 }
-
-// A server at an address comes to the library with 4.13's sign-in; one on through its agent's plugin is installed already [D717].
-export const importable = (own: Own, remote: boolean) => !own.via && (remote || !/^[a-z][a-z0-9+.-]*:\/\//i.test(own.detail));
 
 /** A tab with nothing in it yet: Browse, or Add your own. */
 function EmptyTab({ tab, onBrowse, onAdd }: { tab: Kind; onBrowse: () => void; onAdd: () => void }) {

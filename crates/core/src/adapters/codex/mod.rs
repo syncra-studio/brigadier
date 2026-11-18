@@ -212,7 +212,7 @@ impl Adapter for Codex {
     }
 
     fn mcp_servers(&self, folder: &Path) -> Vec<Value> {
-        control::servers(&home_path(".codex"), folder)
+        control::shared(&home_path(".codex"), folder)
     }
 
     /// Its compact, then the skills its folders hold: the repo's `.agents`, its home's, the user's

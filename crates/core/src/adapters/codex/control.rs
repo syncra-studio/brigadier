@@ -204,6 +204,18 @@ pub fn servers(home: &std::path::Path, folder: &std::path::Path) -> Vec<Value> {
     all
 }
 
+/// Its servers but those that work only inside Codex, not shared with other agents: its bundled
+/// plugins' (codex_app, cua_repl) and the ChatGPT app's (node_repl) [D722].
+pub fn shared(home: &std::path::Path, folder: &std::path::Path) -> Vec<Value> {
+    let mut all = servers(home, folder);
+    let app = |c: &str| c.contains("/ChatGPT.app/") || c.contains("/Codex.app/");
+    all.retain(|s| {
+        let source = s["source"].as_str().unwrap_or("");
+        !source.ends_with("@openai-bundled") && !s["command"].as_str().is_some_and(app)
+    });
+    all
+}
+
 /// A TOML item as JSON: tables, arrays, strings, numbers and booleans.
 fn json_of(item: &toml_edit::Item) -> Value {
     if let Some(t) = item.as_table_like() {

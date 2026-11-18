@@ -13,7 +13,7 @@ import { DotsHorizontal, Folder, Plus, Spinner, X } from "../icons";
 import { DeviceCode } from "../onboarding/agents";
 import { errorText } from "../onboarding/api";
 import { BrigadierMark } from "../onboarding/mark";
-import type { Item, Own, PluginActions, Scope } from "./plugins";
+import type { Item, PluginActions, Scope } from "./plugins";
 import { type App, type AppPick, OwnApp } from "./plugins-app";
 import type { Device, SignInStart } from "./plugins-details";
 import { PluginMark } from "./plugins-marks";
@@ -266,48 +266,6 @@ function ValueRows({ label, rows, onChange }: { label: "Headers" | "Environment"
         <p className="text-xs text-faint-foreground">Values stay in Brigadier's Keychain item; the library keeps only their names.</p>
       </div>
     </div>
-  );
-}
-
-/** What Refresh found in the agents' own settings since it last looked: tick what to copy into the library. */
-export function RefreshDialog({ found, onApply, onClose }: { found: Own[]; onApply: (keys: string[]) => void; onClose: () => void }) {
-  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
-  const id = useId();
-  return (
-    <PluginDialog slot="refresh" onClose={onClose} title="Changes found" description="Skills and MCP servers your agents have in their own settings that weren't there before.">
-      <section aria-label={`New (${found.length})`} className="flex min-w-0 flex-col gap-2">
-        <h3 className="text-label font-medium">New ({found.length})</h3>
-        <p className="text-xs text-quiet-foreground">Tick what to add to your library. Each starts off, and their own copies stay as they are.</p>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          {found.map((own) => (
-            <label key={own.key} htmlFor={`${id}-${own.key}`} className="flex cursor-pointer items-center gap-3 rounded-control bg-fill-subtle px-3 py-2">
-              <Checkbox
-                id={`${id}-${own.key}`}
-                aria-label={`Add ${own.name}`}
-                checked={ticked.has(own.key)}
-                onCheckedChange={(on) => setTicked((now) => (on ? new Set([...now, own.key]) : new Set([...now].filter((key) => key !== own.key))))}
-              />
-              <PluginMark item={own} />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-label font-medium">{own.name}</span>
-                <span className="truncate text-xs text-quiet-foreground">
-                  {KIND_LABEL[own.kind]} in {[...own.agents, ...(own.project ? [own.project] : [])].join(" · ")}
-                </span>
-                <span className="truncate font-mono text-xs text-quiet-foreground">{own.detail.replace(/^https:\/\//, "")}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </section>
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>
-          Not now
-        </Button>
-        <Button disabled={ticked.size === 0} onClick={() => onApply([...ticked])}>
-          Add to library
-        </Button>
-      </div>
-    </PluginDialog>
   );
 }
 

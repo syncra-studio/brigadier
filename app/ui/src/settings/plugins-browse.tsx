@@ -7,8 +7,7 @@ import { RowText } from "../components/settings-card";
 import { Skeleton } from "../components/skeleton";
 import { ChevronRight, DotsHorizontal, Plus } from "../icons";
 import { errorText } from "../onboarding/api";
-import { type Entry, inCategory, type Kind, markOf, type Own, type Plugins } from "./plugins";
-import { importable } from "./plugins-mine";
+import { type Entry, inCategory, type Kind, markOf, type Plugins } from "./plugins";
 import type { AddFirst } from "./plugins-dialogs";
 import { PluginMark } from "./plugins-marks";
 
@@ -101,46 +100,14 @@ export function Category({ title, onOpen, children }: { title: string; onOpen?: 
   );
 }
 
-const ownRow = (own: Own, onInstall: (own: Own) => void) => (
-  <Pick
-    key={own.key}
-    mark={<PluginMark item={own} />}
-    name={own.name}
-    line={own.from}
-    end={
-      <Button variant="ghost" size="icon-md" aria-label={`Install ${own.name}`} onClick={() => onInstall(own)}>
-        <Plus aria-hidden />
-      </Button>
-    }
-  />
-);
-
 /**
- * Plugins › Browse [D566, D569]: what installs, by category, "Found on this machine" first (your agents' own, not yet in
- * Brigadier), then the catalog's, 6 of each, empty ones hidden.
+ * Plugins › Browse [D566, D569]: what installs, by category, 6 of each, empty ones hidden. What the agents have on this
+ * machine is installed already [D721].
  */
-export function BrowseTab({
-  value,
-  remote,
-  onEntry,
-  onCategory,
-  onInstall,
-}: {
-  value: Plugins;
-  remote: boolean;
-  onEntry: EntryActions;
-  onCategory: (name: string) => void;
-  onInstall: (own: Own) => void;
-}) {
-  const own = value.own.filter((each) => importable(each, remote));
+export function BrowseTab({ value, onEntry, onCategory }: { value: Plugins; onEntry: EntryActions; onCategory: (name: string) => void }) {
   const catalog = value.catalog ?? { categories: [], entries: [] };
   return (
     <>
-      {own.length > 0 && (
-        <Category title="Found on this machine">
-          <PickGrid>{own.map((each) => ownRow(each, onInstall))}</PickGrid>
-        </Category>
-      )}
       {catalog.categories.map((name) => {
         const entries = catalog.entries.filter((each) => inCategory(each, name));
         return (
@@ -167,27 +134,23 @@ const plus = (name: string, onClick: () => void) => (
 
 /**
  * Plugins' search [D660, D661]: typing hides the tabs (clearing it brings back the one you were on) for one
- * grid of everything matching, the catalog, the library, your agents' own,
+ * grid of everything matching, the catalog, the library,
  * then the MCP Registry and skills.sh (Rust asks them once typing pauses [D434]), a grid of grey rows until they answer.
  * Each row its mark, name and "maker • line"; what's already in Brigadier says Installed where others have +.
  */
 export function SearchResults({
   value,
   asked,
-  remote,
   browse,
   onEntry,
   onOpen,
-  onInstall,
   onAdd,
 }: {
   value: Plugins;
   asked: string;
-  remote: boolean;
   browse: (kind: Kind, query: string) => Promise<Found[]>;
   onEntry: EntryActions;
   onOpen: (key: string) => void;
-  onInstall: (own: Own) => void;
   onAdd: (first: AddFirst, added: () => void) => void;
 }) {
   const [found, setFound] = useState<Found[] | null>(null);
@@ -216,7 +179,6 @@ export function SearchResults({
   const entries = (value.catalog?.entries ?? []).filter((each) => named(asked, each.name, each.maker));
   // The library's own, those not shown as their catalog entry.
   const items = value.items.filter((each) => !entries.some((entry) => entry.installed === each.key) && named(asked, each.name));
-  const own = value.own.filter((each) => importable(each, remote) && named(asked, each.name));
   // A result the catalog has already, by its address, shows once, as the catalog's.
   const unreviewed = (found ?? []).filter((each) => named(asked, each.name, each.publisher) && !(value.catalog?.entries ?? []).some((entry) => entry.id === each.catalog));
   const rows = [
@@ -224,7 +186,6 @@ export function SearchResults({
       <Pick key={each.id} mark={<PluginMark item={markOf(each)} />} name={each.name} line={`${each.maker} • ${each.line}`} onOpen={() => onEntry.onOpen(each)} end={each.installed ? installed : plus(each.name, () => onEntry.onInstall(each))} />
     )),
     ...items.map((each) => <Pick key={each.key} mark={<PluginMark item={{ ...each, logo: each.catalog }} />} name={each.name} line={each.description || each.detail} onOpen={() => onOpen(each.key)} end={installed} />),
-    ...own.map((each) => <Pick key={each.key} mark={<PluginMark item={each} />} name={each.name} line={each.from} end={plus(each.name, () => onInstall(each))} />),
     ...unreviewed.map((each) => (
       <Pick
         key={each.key}

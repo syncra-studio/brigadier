@@ -119,11 +119,19 @@ fn servers(data: &Path, me: &str) -> (Vec<Value>, PathBuf) {
     let library = |x: &Value, s: &Value| x["key"].is_string() && core::library::same(s, x);
     for a in adapters::all() {
         for mut s in a.mcp_servers(&folder) {
+            s["agent"] = a.label().into();
+            // One found on this machine runs as the agent has it, with its env [D721].
+            let found = |x: &Value| x["found"].is_array() && library(x, &s);
+            if s["enabled"] != false
+                && let Some(x) = all.iter_mut().find(|x| found(x))
+            {
+                *x = s;
+                continue;
+            }
             if s["enabled"] == false || all.iter().any(|x| x["name"] == s["name"] || library(x, &s))
             {
                 continue;
             }
-            s["agent"] = a.label().into();
             all.push(s);
         }
     }

@@ -428,3 +428,17 @@ fn load(db: &Connection) -> rusqlite::Result<BTreeMap<String, Entry>> {
     }
     Ok(entries)
 }
+
+/// `index [--cold]`: the index brought up to date, or built afresh.
+pub fn rebuild(data: &Path, cold: bool) -> io::Result<Value> {
+    let started = std::time::Instant::now();
+    // The daemon keeps the index while it runs; a second writer would only fight it.
+    let Some(_lock) = take_lock(&data.join("daemon.lock"))? else {
+        return Err(io::Error::other(
+            "the daemon is running and keeps the index",
+        ));
+    };
+    let mut ix = Index::open(data, cold)?;
+    ix.sync()?;
+    Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
+}

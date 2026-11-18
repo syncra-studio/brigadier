@@ -13,9 +13,9 @@ import { errorText, run, useAgents } from "../onboarding/api";
 import { ChevronDown, Folder, Folders, Mcp, Reload, ToolsSkills } from "../icons";
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
-import { type AddFirst, AddDialog, type Draft, InstallDialog, RefreshDialog, RemoveDialog } from "./plugins-dialogs";
+import { type AddFirst, AddDialog, type Draft, InstallDialog, RemoveDialog } from "./plugins-dialogs";
 import { BrowseTab, entryRow, type Found, PickGrid, SearchResults } from "./plugins-browse";
-import { importable, MyTab } from "./plugins-mine";
+import { MyTab } from "./plugins-mine";
 import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Shown, ViewDialog } from "./plugins-view";
@@ -46,6 +46,9 @@ export type Item = {
   /** The catalog entry it is or came with [D572]; `with` only on a skill that came with a service. */
   catalog?: string | null;
   with?: string | null;
+  /** Found on this machine [D721]: where ("In Claude Code's settings"), and the skillset of its source [D720]. */
+  from?: string | null;
+  set?: string | null;
 };
 /** One of Browse's catalog, shipped with Brigadier [D566, D569]: a service (its server, and the skills that come with it) or a skill from a GitHub repo; `installed` the library's key for it. */
 export type Entry = {
@@ -64,19 +67,17 @@ export type Entry = {
   app?: App; // One that signs in only through the user's own app [D591, D608].
   installed: string | null;
 };
-/** A skill or server in agents' own settings, once however many have it: at home, or in one of `project`'s folder (by name); none the library holds [D445]. Read-only: Add to library copies its definition, never its tokens [D424]. */
-export type Own = { key: string; kind: Kind; name: string; detail: string; agents: string[]; project: string | null; from: string; catalog?: string | null; /** The catalog entry it installs, on through its agent's own plugin [D717]. */ via?: string | null };
-export type Plugins = { items: Item[]; own: Own[]; projects: { id: string; name: string }[]; catalog?: { categories: string[]; entries: Entry[] } };
+export type Plugins = { items: Item[]; projects: { id: string; name: string }[]; catalog?: { categories: string[]; entries: Entry[] } };
 
 /** What the page asks of Rust; each answers with the whole page as it is after. */
 export type PluginActions = {
   /** Adds one; with the user's pick, `on` and `scope`, it's on there at once [D571]. `added` is its key. */
-  add: (draft: (Draft | { own: string }) & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
+  add: (draft: Draft & { on?: boolean; scope?: Scope }) => Promise<Plugins & { added?: string }>;
   /** Installs a catalog entry, with its skills, on where picked [D571, D572], signing in with the user's own app's `clientId` where it needs one [D591]; null turns its agent's own plugin on there instead [D608]. `added` is its key. */
   install: (id: string, scope: Scope, clientId?: string | null) => Promise<Plugins & { added?: string }>;
   set: (key: string, change: { on?: boolean; scope?: Scope }) => Promise<Plugins>;
   remove: (key: string) => Promise<Plugins>;
-  /** Reads the page again, its agents' own included. */
+  /** Reads the page again, what the agents have on this machine brought in first [D721]. */
   refresh: () => Promise<Plugins>;
   /** Signs in through the browser: settles once it's done, or with its error. */
   signIn: (key: string, onDevice: (device: Device) => void) => Promise<unknown>;
@@ -92,9 +93,9 @@ export type PluginActions = {
   browse: (kind: Kind, query: string) => Promise<Found[]>;
 };
 
-/** The page's tabs: Browse · MCPs · Skills [D718]. */
+/** The page's tabs: Browse · MCP servers · Skills [D718, D724]. */
 export type Tab = "browse" | Kind;
-export const TAB_LABEL: Record<Tab, string> = { browse: "Browse", server: "MCPs", skill: "Skills" };
+export const TAB_LABEL: Record<Tab, string> = { browse: "Browse", server: "MCP servers", skill: "Skills" };
 const TABS: Tab[] = ["browse", "server", "skill"];
 // How library items reach sessions [D429, D432]: only where on; each agent loads skills and MCP tools by name first.
 const DESCRIPTION = "Connect your tools to every agent, in all your projects or just some.";
@@ -102,9 +103,8 @@ const DESCRIPTION = "Connect your tools to every agent, in all your projects or 
 /** The page's rows, for Settings search; the page draws these words. */
 export const PLUGINS_ROWS = {
   browse: { label: "Browse", description: "MCP servers and skills to install, by category" },
-  server: { label: "MCPs", description: "Servers every agent can use, in every project or only some" },
+  server: { label: "MCP servers", description: "Servers every agent can use, in every project or only some" },
   skill: { label: "Skills", description: "Skills every agent can use, in every project or only some" },
-  own: { label: "Found on this machine", description: "What your agents have in their own settings and plugins. Install copies it into Brigadier, never its sign-in." },
 } as const;
 
 export const STATUS: Record<Status, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {
@@ -125,7 +125,7 @@ export function chipOf(value: Plugins, item: Item): string | null {
 export const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
 /** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "refresh"; found: Own[] } | { type: "remove"; key: string } | { type: "install"; own: Own } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
+export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "remove"; key: string } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
 
 /** A catalog entry's mark: its logo. */
 export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, detail: entry.url ?? "", logo: entry.id });
@@ -134,7 +134,7 @@ export const inCategory = (entry: Entry, category: string) => (category === "Pop
 
 /**
  * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each card
- * with its mark, line, scope chip, status chip, agents and switch; each agent's own with Add to library; an item's page.
+ * with its mark, line, scope chip, status chip, agents and switch; an item's page.
  * Pure props: a change shows at once and settles on the page Rust answers with, or goes back with Rust's words [D30].
  * `value` null is loading; `detail` an item's page. `remote` offers remote servers in Add (4.13).
  */
@@ -202,14 +202,8 @@ export function PluginsPage({
   };
   // `skillset:<id>` is every skill that came with that service [D580].
   const withItem = (key: string, patch: Partial<Item>) =>
-    shown && { ...shown, items: shown.items.map((item) => (item.key === key || (item.kind === "skill" && key === `skillset:${item.with}`) ? { ...item, ...patch } : item)) };
+    shown && { ...shown, items: shown.items.map((item) => (item.key === key || (item.kind === "skill" && key === `skillset:${item.with ?? item.set}`) ? { ...item, ...patch } : item)) };
   const set = (key: string, patch: { on?: boolean; scope?: Scope }) => void change(withItem(key, patch)!, () => actions.set(key, patch));
-  /** Copies agents' own items into the library, one after another; the page settles on the last answer. */
-  const addOwn = (keys: string[]) =>
-    shown &&
-    change({ ...shown, own: shown.own.filter((each) => !keys.includes(each.key)) }, () =>
-      keys.reduce<Promise<Plugins>>((before, key) => before.then(() => actions.add({ own: key })), Promise.resolve(shown)),
-    );
   const remove = (key: string) => {
     if (!shown) return Promise.resolve(false);
     // The list shows at once (the item is gone from it); the route follows once Rust agrees, so a refusal is said here.
@@ -218,17 +212,16 @@ export function PluginsPage({
       return done;
     });
   };
-  /** The only place an agent's new own items are looked for: what wasn't there before opens the dialog. */
+  /** Reads again; what the agents have that's new comes in installed [D721], said in a line. */
   const refresh = () => {
     if (!shown || checking) return;
-    const before = new Set(shown.own.map((own) => own.key));
+    const before = new Set(shown.items.map((item) => item.key));
     // The page stays as it is while Rust reads again: its line is replaced only by the answer [D427].
     setChecking(true);
     void change(shown, async () => {
       const back = await actions.refresh();
-      const found = back.own.filter((own) => !before.has(own.key) && importable(own, remote));
-      if (found.length) setOpen({ type: "refresh", found });
-      setSaid(found.length ? null : "Nothing changed. There are no new skills or MCP servers on this machine.");
+      const found = back.items.filter((item) => !before.has(item.key));
+      setSaid(found.length ? `Found on this machine and installed: ${found.map((item) => item.name).join(", ")}.` : "Nothing changed. There are no new skills or MCP servers on this machine.");
       return back;
     }).finally(() => setChecking(false));
   };
@@ -281,8 +274,6 @@ export function PluginsPage({
     </>
   );
   const toCategory = (name: string) => () => onDetail(`category:${name}`);
-  // An agent's own that needs the user's own app installs as its catalog entry: a copy couldn't sign in [D591].
-  const installOwn = (own: Own, app = entries.find((each) => each.id === own.catalog && each.app)) => setOpen(app ? { type: "catalog", entry: app } : { type: "install", own });
   const onEntry = { onOpen: (entry: Entry) => onDetail(`catalog:${entry.id}`), onInstall: (entry: Entry) => setOpen({ type: "catalog", entry }) };
   if (shown && (item || asked)) {
     // A catalog entry's page sits under its category; the library's under its tab.
@@ -318,7 +309,7 @@ export function PluginsPage({
     );
   } else {
     // A skillset is one card, so one in the count [D580].
-    const count = (kind: Kind) => new Set(shown?.items.filter((each) => each.kind === kind).map((each) => each.with ?? each.key)).size;
+    const count = (kind: Kind) => new Set(shown?.items.filter((each) => each.kind === kind).map((each) => each.with ?? each.set ?? each.key)).size;
     page = (
       <SettingsPage title="Plugins" description={DESCRIPTION} actions={controls}>
         <div className="-mt-4 flex flex-col gap-7">
@@ -354,11 +345,11 @@ export function PluginsPage({
               </p>
             )
           ) : query.trim() ? (
-            <SearchResults value={shown} asked={query.trim()} remote={remote} browse={actions.browse} onEntry={onEntry} onOpen={onDetail} onInstall={installOwn} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
+            <SearchResults value={shown} asked={query.trim()} browse={actions.browse} onEntry={onEntry} onOpen={onDetail} onAdd={(first, added) => setOpen({ type: "add", remote, first, added })} />
           ) : tab === "browse" ? (
-            <BrowseTab value={shown} remote={remote} onEntry={onEntry} onCategory={(name) => toCategory(name)()} onInstall={installOwn} />
+            <BrowseTab value={shown} onEntry={onEntry} onCategory={(name) => toCategory(name)()} />
           ) : (
-            <MyTab value={shown} kind={tab} marks={marks} remote={remote} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onInstall={installOwn} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
+            <MyTab value={shown} kind={tab} marks={marks} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
         </div>
       </SettingsPage>
@@ -387,27 +378,6 @@ export function PluginsPage({
               },
             )
           } onClose={close} />
-      )}
-      {open?.type === "refresh" && (
-        <RefreshDialog
-          found={open.found}
-          onApply={(keys) => {
-            void addOwn(keys);
-            close();
-          }}
-          onClose={close}
-        />
-      )}
-      {open?.type === "install" && shown && (
-        <InstallDialog
-          name={open.own.name}
-          mark={<PluginMark item={open.own} large />}
-          line="Every agent gets it, in the projects you pick."
-          projects={shown.projects}
-          install={(scope) => actions.add({ own: open.own.key, on: true, scope }).then(installed)}
-          actions={actions}
-          onClose={close}
-        />
       )}
       {open?.type === "catalog" && shown && (
         <InstallDialog

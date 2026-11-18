@@ -20,7 +20,7 @@ async function results(asked, { items = [], found = [], onOpen = () => {} } = {}
     return new Proxy({}, { get: (_, name) => name === "then" ? undefined : () => null });
   };
   await new AsyncFunction("__vite_ssr_import__", "__vite_ssr_exportName__", code)(require, (name, get) => Object.defineProperty(exports, name, { get }));
-  const page = exports.SearchResults({ value: { catalog, items, own: [] }, asked, remote: true, onOpen, onEntry: {} });
+  const page = exports.SearchResults({ value: { catalog, items }, asked, onOpen, onEntry: {} });
   const grid = page.props.children[0];
   return grid.type === exports.PickGrid ? grid.props.children : [];
 }

@@ -68,13 +68,21 @@ pub fn same(own: &Value, item: &Value) -> bool {
     own["name"] == item["name"] || (!detail(own).is_empty() && detail(own) == detail(item))
 }
 
+/// A skill's folder: one found on this machine where the agent keeps it [D721], else the library's copy.
+pub fn skill_dir(data: &Path, item: &Value) -> PathBuf {
+    match item["folder"].as_str() {
+        Some(f) => PathBuf::from(f),
+        None => dir(data).join("skills").join(plain_str(&item["name"])),
+    }
+}
+
 /// The library items on for `project`, a skill's folder as its `path`.
 pub fn on_for(data: &Path, project: Option<&str>) -> Vec<Value> {
     let mut all: Vec<Value> = (items(data).into_iter())
         .filter(|i| on(i, project))
         .collect();
     for i in all.iter_mut().filter(|i| i["kind"] == "skill") {
-        i["path"] = json!(dir(data).join("skills").join(plain_str(&i["name"])));
+        i["path"] = json!(skill_dir(data, i));
     }
     all
 }
@@ -119,7 +127,8 @@ pub fn split(servers: &[Value], own: &[Value]) -> (Vec<Value>, Vec<String>) {
         let names: Vec<String> = mine
             .filter_map(|o| o["name"].as_str().map(String::from))
             .collect();
-        if s["sign_in"] == "cli" && !names.is_empty() {
+        // One found on this machine too: the agent that has it keeps its own, env and sign-in [D721].
+        if (s["sign_in"] == "cli" || s["found"].is_array()) && !names.is_empty() {
             continue;
         }
         off.extend(names);

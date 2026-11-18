@@ -42,7 +42,7 @@ pub mod workers;
 pub use brigadier_core::title;
 
 use brigadier_core::{self as core, Spec, adapters, fold};
-use brigadier_frames::{log, procs, take_lock};
+use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
@@ -203,6 +203,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             let fresh = !core::session_dir(data, id).join("session.json").exists();
             let spec = if fresh {
+                plugins::sync(data);
                 core::share::one_local(data, project.as_ref(), &spec)?;
                 core::create(data, &accounts::starting(data, spec))?
             } else {
@@ -393,7 +394,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             thread.sync_setup(setup, live.child.is_some());
             Ok(thread.session(id, "", None, None))
         }
-        "index" => index(data, has(args, "--cold")),
+        "index" => index::rebuild(data, has(args, "--cold")),
         "git" => git::run(data, args),
         "source" => git::source(data, args),
         "panel" => panel::run(data, args),
@@ -476,19 +477,6 @@ fn read(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         stdout.flush()?;
         thread::sleep(Duration::from_millis(100));
     }
-}
-
-fn index(data: &Path, cold: bool) -> io::Result<Value> {
-    let started = Instant::now();
-    // The daemon keeps the index while it runs; a second writer would only fight it.
-    let Some(_lock) = take_lock(&data.join("daemon.lock"))? else {
-        return Err(io::Error::other(
-            "the daemon is running and keeps the index",
-        ));
-    };
-    let mut ix = index::Index::open(data, cold)?;
-    ix.sync()?;
-    Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
 }
 
 /// Removes a file that may already be gone.

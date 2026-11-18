@@ -1,5 +1,5 @@
 // Settings › Plugins on fake data (4.11), shaped as Rust's `plugins` reply: both tabs, search, every status chip, Off,
-// All projects / Only some, Sign in, each agent's own, the Add, Refresh and Remove dialogs; loading, empty, error, offline.
+// All projects / Only some, Sign in, what the agents have on this machine, the Add and Remove dialogs; loading, empty, error, offline.
 import { type ReactNode, useRef, useState } from "react";
 
 import { Button } from "../src/components/button";
@@ -32,18 +32,15 @@ const VALUE: Plugins = {
     { key: "files", kind: "server", name: "files", description: "", detail: "uvx mcp-files --root .", on: false, scope: { projects: [] }, status: null, sign_in: null, signed_in: null, agents: [], note: null },
     { key: "review", kind: "skill", name: "review", description: "Reviews a change the way you would: correctness first, then reuse.", detail: "~/Library/Application Support/Brigadier/library/skills/review", on: true, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null },
     { key: "release", kind: "skill", name: "release", description: "Cuts a release: changelog, tag and notes.", detail: "~/Library/Application Support/Brigadier/library/skills/release", on: true, scope: { projects: ["p1"] }, status: null, sign_in: null, signed_in: null, agents: ["Cloud agent", "Local agent"], note: "Other agent uses your own release skill: it can't turn just that one off for a session." },
-  ],
-  own: [
-    { key: "own-github", kind: "server", name: "github", detail: "https://api.githubcopilot.com/mcp", agents: ["Cloud agent", "Other agent"], project: null, from: "From Cloud agent's github plugin" },
-    { key: "own-tidy", kind: "skill", name: "tidy", detail: "~/.cloud/skills/tidy", agents: ["Cloud agent", "Other agent", "Local agent"], project: null, from: "In Cloud agent, Other agent and Local agent's settings" },
-    { key: "own-p2-postgres", kind: "server", name: "postgres", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", agents: ["Cloud agent", "Other agent"], project: "freelogo", from: "In Cloud agent and Other agent's settings" },
-    { key: "own-p2-logo-kit", kind: "skill", name: "logo-kit", detail: "~/Development/freelogo/.cloud/skills/logo-kit", agents: ["Cloud agent"], project: "freelogo", from: "In Cloud agent's settings" },
-    { key: "own-p3-deploy", kind: "skill", name: "deploy", detail: "~/Development/website/.agents/skills/deploy", agents: ["Other agent"], project: "website", from: "In Other agent's settings" },
+    // Found on this machine, installed as the agents have them [D721]; two skills of one maker are one skillset [D720].
+    { key: "server:github", kind: "server", name: "github", description: "", detail: "https://api.githubcopilot.com/mcp", on: true, scope: { all: true }, status: null, sign_in: "cli", signed_in: null, agents: BOTH, note: "Signed in by each agent.", from: "From Cloud agent's github plugin" },
+    { key: "server:postgres-freelogo", kind: "server", name: "postgres-freelogo", description: "", detail: "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/freelogo", on: true, scope: { projects: ["p2"] }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null, from: "In Cloud agent and Other agent's settings" },
+    { key: "skill:speckit-plan", kind: "skill", name: "speckit-plan", description: "Plans the implementation from the spec.", detail: "~/Development/freelogo/.cloud/skills/speckit-plan", on: true, scope: { projects: ["p2"] }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null, from: "In Cloud agent's settings", set: "speckit" },
+    { key: "skill:speckit-tasks", kind: "skill", name: "speckit-tasks", description: "Breaks the plan into tasks.", detail: "~/Development/freelogo/.cloud/skills/speckit-tasks", on: true, scope: { projects: ["p2"] }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null, from: "In Cloud agent's settings", set: "speckit" },
   ],
 };
-const FOUND = [
-  { key: "own-stripe", kind: "server" as const, name: "stripe", detail: "https://mcp.stripe.com", agents: ["Other agent"], project: null, from: "In Other agent's settings" },
-  { key: "own-p1-docs", kind: "skill" as const, name: "docs", detail: "~/Development/brigadier/.local-agent/skills/docs", agents: ["Local agent", "Cloud agent"], project: "brigadier", from: "In Local agent and Cloud agent's settings" },
+const FOUND: Plugins["items"] = [
+  { key: "server:stripe", kind: "server", name: "stripe", description: "", detail: "https://mcp.stripe.com", on: true, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: BOTH, note: null, from: "In Other agent's settings" },
 ];
 
 // A service that signs in only through the user's own app [D591]; its link as Rust builds it, cut short.
@@ -53,13 +50,6 @@ const SLACK: Entry = {
     link: "https://api.slack.com/apps?new_app=1&manifest_json=%7B%7D",
     steps: ["Slack opens with Brigadier's settings filled in. Pick your workspace, then Create.", "Under Agents, make sure Slack MCP Server is On.", "Under Basic Information, copy the Client ID and paste it here."],
   },
-};
-
-// Slack after "Use Claude Code's Slack" for freelogo: not in the library, its plugin's server in the agent's own [D608, D659].
-const SLACK_ON: Plugins = {
-  ...VALUE,
-  own: [...VALUE.own, { key: "own:p2:server:plugin:slack:slack", kind: "server", name: "slack", detail: "https://mcp.slack.com/mcp", agents: ["Claude Code"], project: "freelogo", from: "From Claude Code's slack plugin", catalog: "slack", via: "slack" }],
-  catalog: { categories: ["Productivity"], entries: [{ ...SLACK, app: { ...SLACK.app!, agent: "Claude Code" }, installed: "own:p2:server:plugin:slack:slack" }] },
 };
 
 // A search for "rea" [D660]: the catalog's React Best Practices, then what the MCP Registry and skills.sh answer.
@@ -103,17 +93,13 @@ function useFake() {
     );
   const actions: PluginActions = {
     add: (draft) =>
-      later((now) =>
-        "own" in draft
-          ? { ...now, own: now.own.filter((own) => own.key !== draft.own), items: [...now.items, ...now.own.filter((own) => own.key === draft.own).map((own) => ({ key: own.key, kind: own.kind, name: own.name, description: "", detail: own.detail, on: Boolean(draft.on), scope: draft.scope ?? { all: true }, status: null, sign_in: null, signed_in: null, agents: own.agents, note: null }))], added: draft.own }
-          : { ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] },
-      ),
+      later((now) => ({ ...now, items: [...now.items, { key: `new-${now.items.length}`, kind: draft.kind, name: "name" in draft ? draft.name : "skill" in draft ? draft.skill : draft.folder.split("/").pop()!, description: "", detail: "url" in draft ? draft.url : "command" in draft ? [draft.command, ...draft.args].join(" ") : "folder" in draft ? draft.folder : draft.source, on: false, scope: { all: true }, status: null, sign_in: null, signed_in: null, agents: [], note: null }] })),
     install: () => later((now) => now),
     show: () => Promise.resolve([]),
     reveal: () => Promise.resolve(),
     set: (key, change) => later((now) => ({ ...now, items: now.items.map((item) => (item.key === key ? { ...item, ...change } : item)) })),
     remove: (key) => later((now) => ({ ...now, items: now.items.filter((item) => item.key !== key) })),
-    refresh: () => later((now) => ({ ...now, own: [...now.own.filter((own) => !FOUND.some((found) => found.key === own.key)), ...FOUND] })),
+    refresh: () => later((now) => ({ ...now, items: [...now.items.filter((item) => !FOUND.some((found) => found.key === item.key)), ...FOUND] })),
     signIn: () => new Promise((_, fail) => setTimeout(() => fail(new Error("Linear said: access_denied. Try again, or check the account you picked.")), 2500)),
     cancel: () => Promise.resolve(),
     signOut: () => later((now) => now),
@@ -188,7 +174,6 @@ const FILES = { name: "files", command: "uvx mcp-files --root .", values: [{ id:
 const SKILL = { kind: "skill" as const, folder: "~/skills/changelog" };
 // An item's page opens its sign-in over itself: those open with `detail` and `signing`.
 const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][] = [
-  ["Install, found on this machine", { type: "install", own: VALUE.own[0]! }],
   ["Sign in: waiting for browser", null, { detail: "notion", signing: "waiting" }],
   ["Sign in: a device code", null, { detail: "notion", signing: { code: "WDJB-MJHT", page: "https://github.com/login/device" } }],
   ["Sign in failed", null, { detail: "notion", signing: { error: "Notion said: access_denied. Try again, or check the account you picked." } }],
@@ -200,7 +185,6 @@ const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][
   ["Adding", { type: "add", remote: true, first: { form: SKILL, step: "adding" } }],
   ["Added", { type: "add", remote: true, first: { form: SKILL, step: "added" } }],
   ["Before 4.13: no remote servers", { type: "add", remote: false }],
-  ["Refresh found new ones", { type: "refresh", found: FOUND }],
   ["Remove", { type: "remove", key: "postgres" }],
   ["View a skillset", { type: "view", key: "skillset:notion", title: "Notion", kind: "skill", at: "notion-research-documentation" }],
   ["View a server's settings", { type: "view", key: "datadog", title: "datadog", kind: "server" }],
@@ -258,7 +242,7 @@ export function PluginsGallery() {
         <Still label="Sign in" detail="notion" />
         <Still label="Signed in by each agent" detail="figma" />
         <Still label="A skill an agent keeps its own of" detail="release" />
-        <Still label="On through its agent's own plugin" detail="catalog:slack" value={SLACK_ON} />
+        <Still label="Found on this machine" detail="server:postgres-freelogo" />
       </Row>
       <Row name="Dialogs, one at a time">
         <Dialogs />
@@ -271,8 +255,7 @@ export function PluginsGallery() {
         <Still label="Loading" value={null} />
         <Still label="Can't be read" value={null} error="Couldn't read the library: Brigadier stopped answering." />
         <Still label="Brigadier isn't running" offline />
-        <Still label="Empty" value={{ items: [], own: [], projects: VALUE.projects }} />
-        <Still label="Empty, with an agent's own" value={{ ...VALUE, items: [] }} />
+        <Still label="Empty" value={{ items: [], projects: VALUE.projects }} />
       </Row>
     </Section>
   );

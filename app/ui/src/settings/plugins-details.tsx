@@ -97,9 +97,6 @@ export function DetailsPage({
   const [error, setError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const signedIn = item?.signed_in === true;
-  // Not in the library but on through its agent's own plugin, "Use Claude Code's Slack" [D608]: where, instead of Install [D659].
-  const viaAgent = item || !entry ? [] : value.own.filter((own) => own.catalog === entry.id);
-  const agentNote = viaAgent.length > 0 && `${viaAgent[0]!.from}, on in ${viaAgent.some((own) => !own.project) ? "all projects" : viaAgent.map((own) => own.project).join(", ")}.`;
   const signOut = () => {
     setLeaving(true);
     setError(null);
@@ -148,13 +145,9 @@ export function DetailsPage({
         mark={<PluginMark item={mark} large />}
         actions={
           !item ? (
-            viaAgent.length ? (
-              <Badge variant="success">Installed</Badge>
-            ) : (
-              <Button size="sm" onClick={onInstall}>
-                Install
-              </Button>
-            )
+            <Button size="sm" onClick={onInstall}>
+              Install
+            </Button>
           ) : (
           <span className="flex items-center gap-3">
             {item.status === "cant_reach" && <Badge variant={STATUS.cant_reach.variant}>{STATUS.cant_reach.label}</Badge>}
@@ -163,7 +156,7 @@ export function DetailsPage({
                 <DotsHorizontal aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onView(item.with ? `skillset:${item.with}` : item.key, item.kind, item.name)}>
+                <DropdownMenuItem onClick={() => onView(item.with || item.set ? `skillset:${item.with ?? item.set}` : item.key, item.kind, item.name)}>
                   <Eye aria-hidden />
                   View
                 </DropdownMenuItem>
@@ -177,10 +170,13 @@ export function DetailsPage({
                   <Copy aria-hidden />
                   Copy {item.kind === "skill" ? "folder path" : first.toLowerCase()}
                 </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={onRemove}>
-                  <Trash aria-hidden />
-                  Remove {item.name}
-                </DropdownMenuItem>
+                {/* One found on this machine follows the agent's settings: it's switched off, not removed [D721]. */}
+                {!item.from && (
+                  <DropdownMenuItem variant="destructive" onClick={onRemove}>
+                    <Trash aria-hidden />
+                    Remove {item.name}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
             {/* The same switch as its card's in the list [D443]. */}
@@ -201,9 +197,9 @@ export function DetailsPage({
         }
       >
         {entry && <p className="text-label">{entry.about}</p>}
-        {(item?.note || agentNote || error) && (
+        {(item?.note || error) && (
           <div className="-mt-5 flex flex-col gap-2">
-            {(item?.note || agentNote) && <p className="text-xs text-quiet-foreground">{item?.note || agentNote}</p>}
+            {item?.note && <p className="text-xs text-quiet-foreground">{item.note}</p>}
             <ErrorLine error={error} />
           </div>
         )}

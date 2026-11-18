@@ -1,9 +1,10 @@
 //! `plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | set <key> '<json>' | remove <key> |
 //! show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]`: Settings › Plugins [D2043, D2046]. Each prints the library's
-//! items, each agent's own (read only) and the projects; `signin` its URL, `browse` what it found.
+//! items, what the agents have on this machine among them [D721], and the projects; `signin` its URL, `browse` what it found.
 
 mod browse;
 mod catalog;
+mod found;
 mod view;
 
 use brigadier_core::library::{self, secrets};
@@ -41,7 +42,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     match arg(1) {
-        "" => {}
+        "" => found::sync(data)?,
         verb @ ("add" | "install") => {
             let added = match verb {
                 "add" => add(data, json(2)?),
@@ -53,7 +54,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             return Ok(page);
         }
         "set" => set(data, arg(2), json(3)?)?,
-        "use" => catalog::use_plugin(data, arg(2), json(3)?)?,
+        // Its agent's own plugin, on: in the library at once, as found [D608, D721].
+        "use" => {
+            catalog::use_plugin(data, arg(2), json(3)?)?;
+            found::sync(data)?;
+        }
         "remove" => remove(data, arg(2))?,
         _ => {
             return Err(io::Error::other(
@@ -64,76 +69,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(list(data))
 }
 
-/// Each skill (its folder) and server (its URL or command) in the agents' own settings, once
-/// however many agents have it [D424]: those at home first, then each trusted project's own that
-/// aren't at home too, `project` its name, once under each project [D430]. `in_library` where the
-/// library holds one of its name, URL or command.
-fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
-    let home = adapters::home_path("");
-    let agents: Vec<_> = crate::setup::available().into_iter().collect();
-    let skills = |a: &dyn adapters::Adapter, folder: Option<&Path>| -> Vec<Value> {
-        (a.fixed_commands(folder, None).into_iter())
-            .filter(|k| {
-                k["kind"] == "skill" && k["path"].is_string() && !str(&k["name"]).contains(':')
-            })
-            // A project's own are those in its folder.
-            .filter(|k| folder.is_none_or(|f| Path::new(str(&k["path"])).starts_with(f)))
-            .map(|k| {
-                let folder = Path::new(str(&k["path"])).parent().map(Path::to_path_buf);
-                json!({"kind": "skill", "name": k["name"], "detail": folder})
-            })
-            .collect()
-    };
-    let servers = |a: &dyn adapters::Adapter, folder: Option<&Path>| -> Vec<Value> {
-        let at_home = a.mcp_servers(&home);
-        let here = folder.map_or_else(|| at_home.clone(), |f| a.mcp_servers(f));
-        (here.into_iter())
-            .filter(|s| folder.is_none() || !at_home.contains(s))
-            .map(|mut s| {
-                s["kind"] = "server".into();
-                s["detail"] = library::detail(&s).into();
-                s
-            })
-            .collect()
-    };
-    // A project's folder is read only once trusted, as the "/" menu's [D2098].
-    let places = [None].into_iter().chain(
-        (projects.iter())
-            .filter(|p| p.trusted == Some(true))
-            .flat_map(|p| folders_of(p).into_iter().map(move |f| Some((p, f)))),
-    );
-    let mut all: Vec<Value> = vec![];
-    for place in places {
-        let (p, folder) = (place.as_ref().map(|(p, _)| *p), place.map(|(_, f)| f));
-        let id = p.map_or("", |p| p.id.as_str());
-        for a in &agents {
-            let found = skills(*a, folder.as_deref());
-            for mut o in found.into_iter().chain(servers(*a, folder.as_deref())) {
-                let kin = |x: &Value| x["kind"] == o["kind"] && same(&o, x);
-                // One at home too is shown there only.
-                if p.is_some() && all.iter().any(|x| x["place"] == "" && kin(x)) {
-                    continue;
-                }
-                if let Some(row) = all.iter_mut().find(|x| x["place"] == id && kin(x)) {
-                    let names = row["agents"].as_array_mut();
-                    if let Some(names) = names.filter(|n| !n.contains(&a.label().into())) {
-                        names.push(a.label().into());
-                    }
-                    row["sources"][a.label()] = o["source"].clone();
-                    continue;
-                }
-                let key = format!("own:{id}:{}:{}", str(&o["kind"]), str(&o["name"]));
-                let held = |i: &&Value| i["kind"] == o["kind"];
-                o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
-                o["project"] = p.map(|p| p.name.clone()).into();
-                (o["key"], o["agents"], o["place"]) = (key.into(), json!([a.label()]), id.into());
-                // Where each agent has it from: a server's file or plugin [D565].
-                o["sources"] = json!({ a.label(): o["source"] });
-                all.push(o);
-            }
-        }
-    }
-    all
+/// What the agents have, into the library before a new session starts, so it has them [D721].
+pub fn sync(data: &Path) {
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // A failure leaves the library as it was: the session starts all the same.
+    let _ = found::sync(data);
 }
 
 /// A project's folders its own are read from: its folder, and a folder of repositories' each
@@ -148,41 +88,6 @@ fn folders_of(p: &projects::Project) -> Vec<PathBuf> {
     [top].into_iter().chain(inside).collect()
 }
 
-fn same(own: &Value, item: &Value) -> bool {
-    match own["kind"] == "skill" {
-        true => own["name"] == item["name"],
-        false => library::same(own, item),
-    }
-}
-
-/// A plugin's server by its own name: `plugin:slack:slack` → `slack` [D565].
-fn shown(name: &str) -> &str {
-    name.rsplit(':').next().unwrap_or(name)
-}
-
-/// Where the agents have it: "From Claude Code's slack plugin", else "In Codex's settings".
-fn from(own: &Value) -> String {
-    let sources = own["sources"].as_object().cloned().unwrap_or_default();
-    // A plugin's is `plugin <plugin>@<marketplace>` [D565]; a file's is its path.
-    let plugin = (sources.iter()).find_map(|(agent, s)| {
-        let key = str(s).strip_prefix("plugin ")?;
-        Some(format!(
-            "From {agent}'s {} plugin",
-            key.split('@').next().unwrap_or(key)
-        ))
-    });
-    plugin.unwrap_or_else(|| {
-        let agents: Vec<&str> = (own["agents"].as_array().into_iter().flatten())
-            .map(str)
-            .collect();
-        let all = match agents.split_last() {
-            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
-            _ => agents.join(""),
-        };
-        format!("In {all}'s settings")
-    })
-}
-
 fn str(v: &Value) -> &str {
     v.as_str().unwrap_or("")
 }
@@ -190,21 +95,6 @@ fn str(v: &Value) -> &str {
 fn list(data: &Path) -> Value {
     let items = library::items(data);
     let all = projects::list(data).unwrap_or_default();
-    // Only what the page draws: an own server's env and headers may hold its token. One the library
-    // holds isn't listed [D445].
-    let own: Vec<Value> = (own(&items, &all).into_iter())
-        .filter(|o| o["in_library"] != true)
-        .map(|o| {
-            json!({"key": o["key"], "kind": o["kind"], "name": shown(str(&o["name"])), "detail": o["detail"],
-            "agents": o["agents"], "project": o["project"], "sources": o["sources"], "from": from(&o), "catalog": catalog::id(&o), "via": catalog::via(&o)})
-        })
-        .collect();
-    let mut catalog = catalog::page(&items);
-    for e in catalog["entries"].as_array_mut().into_iter().flatten() {
-        if let Some(o) = (own.iter()).find(|o| e["installed"].is_null() && o["via"] == e["id"]) {
-            e["installed"] = o["key"].clone();
-        }
-    }
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
     let projects: Vec<Value> = (all.iter())
         .map(|p| json!({"id": p.id, "name": p.name}))
@@ -217,7 +107,7 @@ fn list(data: &Path) -> Value {
     let shown: Vec<Value> = (items.iter())
         .map(|i| {
             let detail = match i["kind"] == "skill" {
-                true => json!(library::dir(data).join("skills").join(str(&i["name"]))),
+                true => json!(library::skill_dir(data, i)),
                 false => library::detail(i).into(),
             };
             // Where an agent's own skill of its name stays on, that agent uses its own [D415].
@@ -249,10 +139,10 @@ fn list(data: &Path) -> Value {
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
                 "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
                 "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
-                "note": note, "catalog": catalog::id(i), "with": i.get("with")})
+                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from")})
         })
         .collect();
-    json!({"ok": true, "items": shown, "own": own, "projects": projects, "catalog": catalog})
+    json!({"ok": true, "items": shown, "projects": projects, "catalog": catalog::page(&items)})
 }
 
 fn refuse(why: &str) -> io::Error {
@@ -270,8 +160,7 @@ fn plain(name: &str) -> io::Result<()> {
     }
 }
 
-/// `{own: <key>}` copies one of an agent's own, its definition and never a token; `{kind: "skill",
-/// folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
+/// `{kind: "skill", folder}`; `{kind: "skill", source, skill}` from Browse, its folder fetched from GitHub first;
 /// `{kind: "server", name, url, client_id?}`; `{kind: "server", name, command, args, env}`, its
 /// command shown and confirmed in the Add dialog first. New items start off [D2046], unless the
 /// draft carries the user's pick, `on` and `scope` [D571]. Answers the new item's key.
@@ -280,17 +169,6 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     if let Some(source) = v["source"].as_str() {
         let folder = browse::fetch(data, source, &[str(&v["skill"])])?.remove(0);
         v = json!({"kind": "skill", "folder": folder});
-    }
-    if let Some(key) = v["own"].as_str() {
-        let all = projects::list(data).unwrap_or_default();
-        let o = (own(&library::items(data), &all).into_iter()).find(|o| o["key"] == key);
-        let o = o.ok_or_else(|| refuse("That agent's entry is gone. Refresh and try again."))?;
-        v = match o["kind"] == "skill" {
-            true => json!({"kind": "skill", "folder": o["detail"]}),
-            // Its env and headers stay behind: they may hold its token.
-            false => json!({"kind": "server", "name": shown(str(&o["name"])), "url": o["url"],
-                "command": o["command"], "args": o["args"]}),
-        };
     }
     let mut items = library::items(data);
     let skill = v["kind"] == "skill";
@@ -378,10 +256,12 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     saved.map(|()| key)
 }
 
-/// Whether `key` names this item: its own, or `skillset:<id>` for each skill that came with `id`.
+/// Whether `key` names this item: its own, or `skillset:<id>` for each skill that came with `id`,
+/// or that was found in set `id` [D720].
 fn is(i: &Value, key: &str) -> bool {
     let set = key.strip_prefix("skillset:");
-    i["key"] == key || set.is_some_and(|w| i["kind"] == "skill" && i["with"] == w)
+    i["key"] == key
+        || set.is_some_and(|w| i["kind"] == "skill" && (i["with"] == w || i["set"] == w))
 }
 
 /// `{all: true}` or `{projects: [<id>]}`.
@@ -428,6 +308,12 @@ fn remove(data: &Path, key: &str) -> io::Result<()> {
     let Some(at) = items.iter().position(|i| i["key"] == key) else {
         return Ok(());
     };
+    // It follows the agent's settings [D721].
+    if let Some(from) = items[at]["from"].as_str() {
+        return Err(refuse(&format!(
+            "{from}: remove it there, or switch it off here."
+        )));
+    }
     // Signed out first, its grant revoked where the server offers that.
     if items[at]["url"].is_string() {
         crate::signin::run(data, &["signout", key]);

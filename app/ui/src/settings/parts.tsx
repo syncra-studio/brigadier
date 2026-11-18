@@ -13,7 +13,7 @@ import { ChevronRight } from "../icons";
 /** One step of a Settings page's breadcrumb: a page to go back to (`go` or `href`), else plain words. */
 export type Crumb = { label: string; go?: () => void; href?: string };
 
-/** The breadcrumb, Plugins › MCPs › Linear [D577]; the last part is where you are. */
+/** The breadcrumb, Plugins › MCP servers › Linear [D577]; the last part is where you are. */
 function Trail({ parts }: { parts: Crumb[] }) {
   const link = "cursor-pointer text-quiet-foreground hover:text-foreground focus-visible:focus-ring";
   return (
