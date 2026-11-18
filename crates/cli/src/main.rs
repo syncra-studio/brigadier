@@ -72,8 +72,15 @@ fn main() {
 /// A stdin left open with nothing on it gives up after 5 s [D2026].
 fn typed(mut args: Vec<String>) -> Vec<String> {
     use std::io::{IsTerminal, Read};
-    let typing =
-        args.first().is_some_and(|a| a == "computer") && args.get(1).is_some_and(|a| a == "type");
+    // A `run` with a type step takes it the same way.
+    let typing = args.first().is_some_and(|a| a == "computer")
+        && match args.get(1).map(String::as_str) {
+            Some("type") => true,
+            Some("run") => args[2..]
+                .iter()
+                .any(|s| s.trim_start().starts_with("type ")),
+            _ => false,
+        };
     if !typing || std::io::stdin().is_terminal() {
         return args;
     }

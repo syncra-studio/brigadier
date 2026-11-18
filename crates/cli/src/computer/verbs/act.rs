@@ -41,6 +41,9 @@ pub(super) fn act(
             )));
         }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
+        Ok(Ok(done)) if s.batch && done["effect"] != "refused" => {
+            return Ok(format!("{line}: sent."));
+        }
         Ok(Ok(done)) => done,
     };
     let diff = changes(data, me, s, here);

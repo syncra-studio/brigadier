@@ -271,6 +271,9 @@ pub(super) fn press(
         Ok(Err(why)) => return Err(refuse(&format!("{why} {read_again}"))),
         Ok(Ok(done)) => done["pressed"].as_str().unwrap_or("the item").to_string(),
     };
+    if s.batch {
+        return Ok(format!("Chose {chose}: sent."));
+    }
     let start = Instant::now();
     let wait = match before.is_empty() {
         true => WINDOW_WAIT,

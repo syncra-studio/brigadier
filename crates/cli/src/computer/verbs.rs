@@ -6,6 +6,7 @@
 
 mod act;
 mod open;
+mod run;
 mod window;
 
 use super::{Fail, HUB, lock, tool};
@@ -37,6 +38,8 @@ macOS prompts in Brigadier's name. If this can't do it, say so.
   drag <n> <m>                  drags control [n] onto control [m]
   menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window;
                                 one name (menu Close) picks it from the menu open now, after a click --right
+  run '<step>' '<step>' …        a few actions in one call: run 'click 4' 'type 5' 'key return'; stops at the first that
+                                fails, then one diff; a type step takes stdin
   screenshot                    a picture of the window, saved in your session's folder; only its path comes back
 
 Each action says what changed in the window since your last read, or \"no change seen\" and what to try; only
@@ -67,6 +70,8 @@ struct Sess {
     moved: bool,
     query: Option<String>,
     full: bool,
+    /// Its actions are steps of a `run`, which reads once at its end.
+    batch: bool,
 }
 
 pub(super) const OFF: &str =
@@ -146,7 +151,11 @@ pub fn agent(
         return json!({"ok": true, "text": HELP});
     }
     // What the launch watch saw since, said once.
-    let verb = verb(data, me, &w, rows, here).map(|text| match open::notes(me) {
+    let verb = match w.verb {
+        "run" => run::run(data, me, &w, rows, here),
+        _ => verb(data, me, &w, rows, here),
+    };
+    let verb = verb.map(|text| match open::notes(me) {
         n if n.is_empty() => text,
         n => format!("{n}\n{text}"),
     });
@@ -307,6 +316,10 @@ fn verb(
             let line = format!("Typed {} characters into [{n}]", text.chars().count());
             let mut out = act(data, me, &mut s, &line, "type_text", args, here)?;
             // Done only when the field reads the text back.
+            if s.batch {
+                lock(&SESSIONS).insert(me.to_string(), s);
+                return Ok(out);
+            }
             let landed = window::shows(&out, n, text);
             let typed = match landed {
                 true => format!("{line}: done, [{n}] reads it back."),
