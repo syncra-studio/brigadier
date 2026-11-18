@@ -10,6 +10,9 @@ import { SettingsSection } from "./parts";
 import { chipOf, type Item, type Kind, type Own, PLUGINS_ROWS, type Plugins, STATUS } from "./plugins";
 import { AgentTile, PluginMark } from "./plugins-marks";
 
+/** A card's chips: one row that never wraps, so every card is the same height; its note is on its page [D664]. */
+const CHIPS = "mt-1.5 flex h-5 items-center gap-1.5 overflow-hidden";
+
 /** One item in the list's grid: its mark, name, line, where it's on, its standing and agents; its switch at the corner. */
 function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip: string | null; marks: Record<string, string | null>; onOpen: () => void; onSwitch: (on: boolean) => void }) {
   const status = item.on ? item.status : "off";
@@ -22,8 +25,7 @@ function PluginCard({ item, chip, marks, onOpen, onSwitch }: { item: Item; chip:
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-label font-medium">{item.name}</span>
           <span className={cx("truncate text-xs text-quiet-foreground", !item.description && "font-mono")}>{line}</span>
-          {item.note && <span className="text-xs text-quiet-foreground">{item.note}</span>}
-          <span className="flex flex-wrap items-center gap-1.5 pt-1.5">
+          <span className={CHIPS}>
             {chip && <ScopeChip text={chip} />}
             {status && <Badge variant={STATUS[status].variant}>{STATUS[status].label}</Badge>}
             {item.agents.map((agent) => (
@@ -54,7 +56,7 @@ function SkillsetCard({ id, skills, value, marks, onOpen, onSwitch }: { id: stri
             <span className="truncate text-xs text-quiet-foreground">
               {skills.length} skills · came with {service}
             </span>
-            <span className="flex flex-wrap items-center gap-1.5 pt-1.5">
+            <span className={CHIPS}>
               {chip && <ScopeChip text={chip} />}
               {skills[0]!.agents.map((agent) => (
                 <AgentTile key={agent} agent={agent} mark={marks[agent]} />
@@ -159,12 +161,12 @@ function OwnCard({ own, marks, remote, onInstall }: { own: Own; marks: Record<st
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="truncate text-label font-medium">{own.name}</span>
         <span className="truncate font-mono text-xs text-quiet-foreground">{own.detail}</span>
-        <span className="flex flex-wrap items-center gap-1.5 pt-1.5">
+        <span className={CHIPS}>
           {own.project && <ScopeChip text={own.project} />}
           {own.agents.map((agent) => (
             <AgentTile key={agent} agent={agent} mark={marks[agent]} />
           ))}
-          <span className="text-xs text-quiet-foreground">{own.from}</span>
+          <span className="min-w-0 truncate text-xs text-quiet-foreground">{own.from}</span>
         </span>
       </span>
       {importable(own, remote) && (
