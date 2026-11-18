@@ -1,10 +1,9 @@
 import { useState } from "react";
 
-import { counted, type ImportChoice, type ImportWhat, type ListedSource } from "../browser/imports";
+import { counted, type ImportChoice, type ListedSource } from "../browser/imports";
 import { type BrowserProfile, tabsOn, useProfiles } from "../browser/profiles";
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
-import { CheckboxRow } from "../components/checkbox-row";
 import { DialogFooter } from "../components/dialog";
 import { Select } from "../components/select";
 import { FlowHeader } from "./browser-import";
@@ -18,21 +17,16 @@ function when(atMs: number | undefined): string {
   return days <= 0 ? "Imported today" : days === 1 ? "Imported yesterday" : `Imported ${days} days ago`;
 }
 
-/** Which profiles to bring, each as a new profile or replacing one, and what of them. A profile already imported from here defaults to replacing what it became. */
-export function ProfileImportPick({ source, onCancel, onImport }: { source: ListedSource; onCancel: () => void; onImport: (source: ListedSource, choices: ImportChoice[], what: ImportWhat) => void }) {
+/** Which profiles' sign-ins to bring, each as a new profile or replacing one. A profile already imported from here defaults to replacing what it became. */
+export function ProfileImportPick({ source, onCancel, onImport }: { source: ListedSource; onCancel: () => void; onImport: (source: ListedSource, choices: ImportChoice[]) => void }) {
   const profiles = useProfiles();
   const before = (id: string): BrowserProfile | undefined => profiles.find((profile) => profile.id === source.imports[id]?.into);
   const [ticked, setTicked] = useState<Set<string>>(() => new Set(source.profiles.filter((each, index) => index === 0 || !before(each.id)).map((each) => each.id)));
   const [targets, setTargets] = useState<Record<string, string>>(() =>
     Object.fromEntries(source.profiles.map((each) => [each.id, before(each.id)?.id ?? "new"])),
   );
-  const [picked, setWhat] = useState<ImportWhat>({ signIns: true, history: true, bookmarks: true, passwords: true });
-  const { passwords, signIns } = source;
-  const what = { ...picked, signIns: signIns && picked.signIns, passwords: passwords && picked.passwords };
   const chosen = source.profiles.filter((each) => ticked.has(each.id));
-  const part = (key: keyof ImportWhat) => ({ checked: what[key], onCheckedChange: (on: boolean) => setWhat((current) => ({ ...current, [key]: on })) });
   const replacing = new Set(chosen.map((each) => targets[each.id]).filter((target) => target !== "new"));
-  const nothing = !Object.values(what).some(Boolean);
   // Two profiles can't replace the same one.
   const twice = replacing.size !== chosen.filter((each) => targets[each.id] !== "new").length;
   // A profile being imported into is let go of first, so its open pages load again.
@@ -71,31 +65,16 @@ export function ProfileImportPick({ source, onCancel, onImport }: { source: List
         })}
       </div>
       <p className={twice ? "text-xs text-destructive" : "text-xs text-quiet-foreground"}>
-        {twice
-          ? "Two profiles can't replace the same one."
-          : !signIns
-            ? "Replacing combines a profile's bookmarks and history with these."
-            : passwords
-              ? "Replacing swaps a profile's sign-ins and passwords for these. Its bookmarks and history are combined."
-              : "Replacing swaps a profile's sign-ins for these. Its bookmarks and history are combined."}
+        {twice ? "Two profiles can't replace the same one." : "Replacing swaps a profile's sign-ins for these."}
       </p>
       {reloading.length > 0 && (
         <p data-slot="import-reload" className="text-xs text-quiet-foreground">
           {reloading.map(({ name, tabs }) => `${counted(tabs, "open tab", "open tabs")} on ${name} will reload.`).join(" ")}
         </p>
       )}
-      <div className="grid gap-2">
-        <span className="text-label font-medium">What to bring</span>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
-          {signIns && <CheckboxRow label="Sign-ins" note="Stay signed in on your sites" {...part("signIns")} />}
-          <CheckboxRow label="Browsing history" note="Pages you visited" {...part("history")} />
-          <CheckboxRow label="Bookmarks" note="With their folders" {...part("bookmarks")} />
-          {passwords && <CheckboxRow label="Passwords" note="Filled for you, never shown to agents" {...part("passwords")} />}
-        </div>
-      </div>
-      {!signIns && (
+      {!source.signIns && (
         <p data-slot="import-no-sign-ins" className="text-xs text-quiet-foreground">
-          {source.name}'s sign-ins and passwords stay behind: they are locked with a key Brigadier doesn't touch. You'll sign in again here.
+          {source.name}'s sign-ins stay behind: they are locked with a key Brigadier doesn't touch. You'll sign in again here.
         </p>
       )}
       {source.emptyProfiles.length > 0 && (
@@ -116,7 +95,7 @@ export function ProfileImportPick({ source, onCancel, onImport }: { source: List
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button disabled={chosen.length === 0 || nothing || twice} onClick={() => onImport(source, chosen.map((each) => ({ id: each.id, name: each.name, into: targets[each.id] ?? "new" })), what)}>
+        <Button disabled={chosen.length === 0 || twice || !source.signIns} onClick={() => onImport(source, chosen.map((each) => ({ id: each.id, name: each.name, into: targets[each.id] ?? "new" })))}>
           Import {counted(chosen.length, "profile", "profiles")}
         </Button>
       </DialogFooter>

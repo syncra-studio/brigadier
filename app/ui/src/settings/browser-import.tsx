@@ -4,7 +4,6 @@ import {
   type ImportChoice,
   type ImportFailure,
   type ImportProgress,
-  type ImportWhat,
   type ListedSource,
   type ProfileImportResult,
   type RowTone,
@@ -38,7 +37,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 export const BROWSER_IMPORT_ROWS = {
   import: {
     label: "Import from your browser",
-    description: "Bring sign-ins, history, bookmarks and passwords from Safari, Chrome, Arc, Dia, Brave, Edge, Firefox, Zen and other browsers",
+    description: "Bring your sign-ins from Safari, Chrome, Arc, Dia, Brave, Edge and other Chromium browsers",
   },
 } as const;
 
@@ -120,7 +119,7 @@ export function FlowHeader({ source, title, description }: { source: ListedSourc
 
 /** How far the cookies have come. */
 function ImportBar({ progress }: { progress: ImportProgress | null }) {
-  const share = progress?.type === "cookies" && progress.total > 0 ? progress.done / progress.total : progress?.type === "history" ? 1 : 0;
+  const share = progress?.type === "cookies" && progress.total > 0 ? progress.done / progress.total : 0;
   return <UsageBar value={share * 100} fill="bg-quiet-foreground" label="Import progress" />;
 }
 
@@ -162,8 +161,8 @@ type Flow =
 
 /**
  * Settings › Import Browser Data: one row per browser installed on this computer, with where it stands and one button.
- * Import… asks which of its profiles to bring, each as a new profile or replacing one, and what of them, then says per
- * profile how each part went.
+ * Import… asks which of its profiles' sign-ins to bring, each as a new profile or replacing one, then says per profile
+ * how it went.
  */
 export function BrowserImportPage() {
   // The browsers as last listed show at once; the page lists them again as it opens.
@@ -196,12 +195,12 @@ export function BrowserImportPage() {
   const onProgress = (progress: ImportProgress) => setFlow((current) => (current?.step === "importing" ? { ...current, progress } : current));
 
   /** Imports the ticked profiles in turn; a refusal that needs the person stops the rest. */
-  const run = async (source: ListedSource, choices: ImportChoice[], what: ImportWhat) => {
+  const run = async (source: ListedSource, choices: ImportChoice[]) => {
     setFlow({ step: "importing", source, progress: null });
     const results: ProfileImportResult[] = [];
     try {
       for (const choice of choices) {
-        const result = await importProfile(source, choice, what, onProgress);
+        const result = await importProfile(source, choice, onProgress);
         const { outcome } = result;
         if (outcome.type === "failed" && opensDialog(outcome.reason)) {
           if (outcome.reason === "needsFullDiskAccess") setFlow({ step: "fullDiskAccess", source, checked: true, checking: false });
@@ -217,20 +216,6 @@ export function BrowserImportPage() {
     } finally {
       void load();
     }
-  };
-
-  /** Try again on one part that failed: that part only, into the profile it went to. */
-  const retry = async (source: ListedSource, index: number, part: keyof ImportWhat) => {
-    const earlier = flow?.step === "results" ? flow.results[index] : null;
-    if (!earlier) return;
-    const result = await importProfile(source, { ...earlier.choice, into: earlier.profile.id }, { signIns: false, history: false, bookmarks: false, passwords: false, [part]: true }, () => {}).catch(
-      (cause: unknown) => {
-        showToast(`${source.name}: ${errorText(cause)}`, { tone: "error" });
-        return null;
-      },
-    );
-    if (!result) return;
-    setFlow((current) => (current?.step === "results" ? { ...current, results: current.results.map((each, at) => (at === index ? mergeRetry(each, result, part) : each)) } : current));
   };
 
   /** Import… on a browser that can be imported from. */
@@ -308,8 +293,7 @@ export function BrowserImportPage() {
       <ImportDialog
         flow={flow}
         onClose={() => setFlow(null)}
-        onImport={(source, choices, what) => void run(source, choices, what)}
-        onRetry={(source, index, part) => void retry(source, index, part)}
+        onImport={(source, choices) => void run(source, choices)}
         onRecheck={recheck}
       />
     </SettingsPage>
@@ -320,13 +304,11 @@ function ImportDialog({
   flow: current,
   onClose,
   onImport,
-  onRetry,
   onRecheck,
 }: {
   flow: Flow | null;
   onClose: () => void;
-  onImport: (source: ListedSource, choices: ImportChoice[], what: ImportWhat) => void;
-  onRetry: (source: ListedSource, index: number, part: keyof ImportWhat) => void;
+  onImport: (source: ListedSource, choices: ImportChoice[]) => void;
   onRecheck: (flow: Extract<Flow, { checking: boolean }>) => void;
 }) {
   // While it closes, the dialog keeps showing its last step instead of shrinking away blank.
@@ -340,7 +322,7 @@ function ImportDialog({
     <Dialog open={current !== null} onOpenChange={(open) => !open && !importing && onClose()}>
       <DialogContent data-slot="import-dialog" data-step={flow?.step} frame={cx(wide ? "max-w-import-dialog" : "max-w-dialog", "gap-4 p-5")} showCloseButton={flow?.step !== "importing"}>
         {flow?.step === "choose" && <ProfileImportPick key={flow.source.key} source={flow.source} onCancel={onClose} onImport={onImport} />}
-        {flow?.step === "results" && <ProfileImportResults source={flow.source} results={flow.results} onRetry={(index, part) => onRetry(flow.source, index, part)} onDone={onClose} />}
+        {flow?.step === "results" && <ProfileImportResults source={flow.source} results={flow.results} onDone={onClose} />}
         {flow?.step === "importing" && (
           <>
             <FlowHeader source={flow.source} title={`Importing from ${flow.source.name}…`} description={progressText(flow.progress)} />
@@ -397,15 +379,4 @@ function emptyLine(source: ListedSource): string | undefined {
   const names = source.emptyProfiles;
   if (names.length === 0) return undefined;
   return `Skipped ${new Intl.ListFormat("en", { type: "conjunction" }).format(names)}: nothing to bring`;
-}
-
-/** A retried part's answer put over the first try's, which keeps the other parts. */
-function mergeRetry(first: ProfileImportResult, again: ProfileImportResult, part: keyof ImportWhat): ProfileImportResult {
-  if (first.outcome.type !== "done" || again.outcome.type !== "done") return part === "passwords" && first.outcome.type !== "done" ? again : first;
-  const before = first.outcome;
-  const now = again.outcome;
-  if (part === "passwords") return { ...first, outcome: { ...before, passwordsError: now.passwordsError, record: { ...before.record, passwords: now.record.passwords } } };
-  if (part === "bookmarks") return { ...first, outcome: { ...before, bookmarksError: now.bookmarksError, record: { ...before.record, bookmarks: now.record.bookmarks } } };
-  if (part === "history") return { ...first, outcome: { ...before, historyError: now.historyError, record: { ...before.record, history: now.record.history } } };
-  return first;
 }

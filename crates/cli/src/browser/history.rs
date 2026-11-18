@@ -100,31 +100,6 @@ impl Store {
         Ok(())
     }
 
-    /// Adds pages another browser showed, as the user's own; ones already here at the same time
-    /// are skipped. Returns how many were added.
-    pub fn import_visits<'a>(
-        &mut self,
-        visits: impl IntoIterator<Item = (&'a str, &'a str, i64)>,
-    ) -> rusqlite::Result<usize> {
-        let transaction = self.db.transaction()?;
-        let mut added = 0;
-        {
-            let mut known =
-                transaction.prepare_cached("SELECT 1 FROM visits WHERE url = ?1 AND at_ms = ?2")?;
-            let mut insert = transaction.prepare_cached(
-                "INSERT INTO visits (url, title, at_ms, agent) VALUES (?1, ?2, ?3, 0)",
-            )?;
-            for (url, title, at_ms) in visits {
-                if !known.exists(params![url, at_ms])? {
-                    insert.execute(params![url, title, at_ms])?;
-                    added += 1;
-                }
-            }
-        }
-        transaction.commit()?;
-        Ok(added)
-    }
-
     pub fn clear_history(
         &self,
         since_ms: Option<i64>,

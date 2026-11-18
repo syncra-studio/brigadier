@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::catalog::*;
-use super::{BOOKMARK_FILES, cookies_path};
+use super::cookies_path;
 use crate::layout::join_rel;
 use crate::{Family, Layout, Profile, app_path, existing_app, key_for, opens_web_links, probe};
 
@@ -290,7 +290,6 @@ fn profile(
         linux_secret_application: root.linux_secret_application.clone(),
         has_cookies,
         has_history,
-        has_bookmarks: BOOKMARK_FILES.iter().any(|file| probe(&dir.join(file)).0),
         readable: (!has_cookies || cookies_readable) && (!has_history || history_readable),
         is_default,
         dir,

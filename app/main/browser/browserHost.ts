@@ -49,6 +49,8 @@ export function installBrowserHost(origin: string): void {
       return;
     }
     applyPermissionPolicy(created);
+    // Pages see plain Chrome: sites treat an "Electron" or "Brigadier" agent as an embedded app, and Google may drop an imported session for it [D728].
+    created.setUserAgent(created.getUserAgent().replace(/ (Electron|Brigadier)\/\S+/g, ""));
     keepSessionCookies(created);
     watchProfileCookies(created);
     if (process.platform === "darwin") created.registerPreloadScript({ type: "frame", filePath: guestPasskeyPath });

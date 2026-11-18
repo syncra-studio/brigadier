@@ -1,6 +1,6 @@
-// Settings › Import Browser Data, main's half (the old app's browserImport.ts): Rust (crates/cli/src/browser/imports.rs)
-// reads the other browser and writes history, bookmarks and passwords; main sets the cookies in the profile's session,
-// which only it can reach, and puts staged site storage in place before any session opens.
+// Settings › Import Browser Data, main's half: Rust (crates/cli/src/browser/imports.rs) reads the other browser's
+// sign-ins and copies its site storage; main sets the cookies in the profile's session, which only it can reach, and
+// puts staged site storage in place before any session opens [D725].
 import path from "node:path";
 
 import { app, type CookiesSetDetails, nativeImage, session, shell, webContents } from "electron";
@@ -85,6 +85,10 @@ const OPS: Record<string, (args: Args) => unknown> = {
     for (const contents of webContents.getAllWebContents()) {
       if (contents.session === target && contents.getType() === "webview") contents.reload();
     }
+  },
+  restart: () => {
+    app.relaunch();
+    app.quit();
   },
   access: () => {
     if (process.platform === "darwin") void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");

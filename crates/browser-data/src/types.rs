@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 pub enum Family {
     /// Chrome, Edge, Brave, Arc, Dia, Vivaldi, Opera and other Chromium builds.
     Chromium,
-    /// Firefox and its forks (Zen, LibreWolf, Waterfox, Floorp).
-    Gecko,
     /// Safari.
     Safari,
 }
@@ -42,8 +40,6 @@ pub struct Profile {
     pub has_cookies: bool,
     /// Whether the profile has a history database.
     pub has_history: bool,
-    /// Whether the profile has bookmarks to read.
-    pub has_bookmarks: bool,
     /// False when the cookie or history files exist but can't be opened, which for Safari means
     /// Brigadier lacks Full Disk Access.
     pub readable: bool,
@@ -97,7 +93,7 @@ pub struct Cookies {
     pub cookies: Vec<Cookie>,
     /// Skipped because they had already expired.
     pub expired: usize,
-    /// Skipped because they were partitioned (per top-level site, or per Firefox container),
+    /// Skipped because they were partitioned (per top-level site),
     /// an isolation WebKit's cookie store can't keep.
     pub partitioned: usize,
     /// Skipped because they could not be decrypted, failed their integrity check or were
@@ -130,55 +126,6 @@ pub struct ChromiumCookies {
     /// The domains of the `v20` App-Bound cookies, one per cookie: Chrome on Windows locks these
     /// to itself, so the user has to sign in to these sites again.
     pub app_bound_domains: Vec<String>,
-}
-
-/// One visit to a page.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Visit {
-    /// The page's URL (http or https).
-    pub url: String,
-    /// The page's title, empty when the browser recorded none.
-    pub title: String,
-    /// When the visit happened, in Unix milliseconds.
-    pub visited_at_ms: i64,
-}
-
-/// Which part of a browser's bookmarks a bookmark is under. The engines name these differently.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BookmarkRoot {
-    /// The bar under the address field (Chromium's bookmarks bar, Firefox's toolbar, Safari's
-    /// Favorites).
-    Bar,
-    /// The menu (Firefox and Safari).
-    Menu,
-    /// Other bookmarks, including Safari's reading list and anything at its top level.
-    Other,
-    /// Bookmarks synced from a phone.
-    Mobile,
-}
-
-/// One bookmark, in the order the browser shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Bookmark {
-    /// The page's URL (http or https).
-    pub url: String,
-    /// The bookmark's title, empty when it has none.
-    pub title: String,
-    /// The part of the browser's bookmarks it is under.
-    pub root: BookmarkRoot,
-    /// The folders from that root down to the bookmark, outermost first.
-    pub folders: Vec<String>,
-    /// When it was added, in Unix milliseconds, when the browser recorded it.
-    pub added_at_ms: Option<i64>,
-}
-
-/// The bookmarks read from one profile.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Bookmarks {
-    /// The bookmarks to import.
-    pub bookmarks: Vec<Bookmark>,
-    /// Left out because the built-in browser can't open them, such as `javascript:` or `file:`.
-    pub skipped: usize,
 }
 
 /// Why a browser's cookie key couldn't be fetched, on any OS.

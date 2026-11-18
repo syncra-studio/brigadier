@@ -1,22 +1,18 @@
-//! Settings › Import Browser Data (the old app's browserImport.ts and shell-native's browser_import.rs): which
-//! browsers are on this computer and where each stands, and one of their profiles read into a Brigadier profile.
-//! History, bookmarks and passwords are written here and never leave Rust; cookies go to main, which sets them in
-//! the profile's session. `brigadier-browser-data` reads and never writes a source's files.
+//! Settings › Import Browser Data: which browsers are on this computer and where each stands, and one profile's
+//! sign-ins brought into a Brigadier profile [D725, D729]. `read` hands the cookies to the page, which has main set
+//! them; `place` puts the site storage in and keeps the record. Nothing is held between the two.
+//! `brigadier-browser-data` reads and never writes a source's files.
 
 mod read;
 
-use super::{Store, bookmarks, now, vault, web_address};
-use brigadier_browser_data::{self as reader, Cookie, Error, Family, Source};
+use super::now;
+use brigadier_browser_data::{self as reader, Error, Family, Source};
 use brigadier_core as core;
-use read::{Login, reads};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
-
-/// Linux has no password import, by the user's decision: it holds for every browser there.
-const PASSWORDS_HERE: bool = !cfg!(target_os = "linux");
 
 /// What one source profile's import brought.
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -29,12 +25,6 @@ struct Record {
     skipped_domains: Vec<String>,
     skipped_domain_count: usize,
     app_bound_domains: Vec<String>,
-    history: usize,
-    bookmarks: usize,
-    passwords: usize,
-    passwords_skipped: usize,
-    /// Importing over this profile found no usable password, so the ones it had were left alone.
-    passwords_kept: bool,
 }
 
 /// What's kept of imports: each browser's last per source profile, each source profile's place here, the notice seen.
@@ -111,15 +101,10 @@ fn merged(records: &[&Record]) -> Option<Record> {
             .unwrap_or(0)
             .max(count),
         app_bound_domains: distinct(records.iter().flat_map(|r| r.app_bound_domains.clone())).0,
-        history: sum(|r| r.history),
-        bookmarks: sum(|r| r.bookmarks),
-        passwords: sum(|r| r.passwords),
-        passwords_skipped: sum(|r| r.passwords_skipped),
-        passwords_kept: records.iter().any(|r| r.passwords_kept),
     })
 }
 
-/// Whether a browser is open. Safari's cookie file is read whole and its history through a snapshot, so it can stay open.
+/// Whether a browser is open. Safari's cookie file is read whole, so it can stay open.
 fn running(source: &Source) -> bool {
     source.family != Family::Safari && source.profiles.first().is_some_and(reader::running)
 }
@@ -182,174 +167,72 @@ fn listed(source: Source, saved: &Saved) -> Value {
         .unwrap_or_default();
     json!({
         "key": source.key, "name": source.name, "appPath": source.app_path,
-        "family": match source.family { Family::Chromium => "chromium", Family::Gecko => "gecko", Family::Safari => "safari" },
+        "family": match source.family { Family::Chromium => "chromium", Family::Safari => "safari" },
         "state": state, "profiles": profiles, "emptyProfiles": empty,
-        "signIns": !off_limits, "passwords": PASSWORDS_HERE && !off_limits,
+        "signIns": !off_limits,
         "record": merged(&records), "imports": saved.sources, "firstImport": !saved.noticed,
     })
 }
 
-/// The sign-ins half, before main sets the cookies: site storage goes into the profile's partition now, or when
-/// the app next starts if its session is `open` (Chromium holds the folders), and the cookies go back to the page.
-fn write(data: &Path, token: u64, profile: &str, open: bool) -> io::Result<Value> {
-    let (cookies, storage) = reads(|held| {
-        let read = held
-            .get_mut(&token)
-            .filter(|r| r.written.is_none())
-            .ok_or_else(|| io::Error::other("That read has expired. Import again."))?;
-        // Google's come too: a source's Google session is bound to it only with Device Bound Session Credentials, and
-        // then its copy just fails here, as one left out would.
-        let cookies: Vec<Cookie> = read.cookies.clone();
-        let storage = read
-            .site_storage_from
-            .clone()
-            .filter(|_| read.sign_ins_read);
-        read.written = Some((profile.into(), None));
-        io::Result::Ok((cookies, storage))
-    })?;
-    let site_storage = match storage {
-        Some(from) => {
-            let place = if open {
-                "browser-import-staged"
-            } else {
-                "Partitions"
-            };
-            reader::copy_site_storage(
-                &from,
-                &data
+/// After `read`, into Brigadier profile `profile`: the source's site storage goes into its partition now, or at the
+/// app's next start if its session is `open` (Chromium holds the folders then), and the import is kept as `record`.
+fn place(
+    data: &Path,
+    key: &str,
+    id: &str,
+    profile: &str,
+    open: bool,
+    record: Record,
+) -> io::Result<Value> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::other("No home folder"))?;
+    let source = reader::sources(&home).into_iter().find(|s| s.key == key);
+    let dir = source
+        .as_ref()
+        .and_then(|s| s.profiles.iter().find(|p| p.id == id));
+    let site_storage =
+        match dir.filter(|p| p.family == Family::Chromium && !reader::key_off_limits(p)) {
+            Some(from) => {
+                let place = if open {
+                    "browser-import-staged"
+                } else {
+                    "Partitions"
+                };
+                let into = data
                     .join("chromium")
                     .join(place)
-                    .join(format!("browser-profile-{profile}")),
-            )
-            .map_err(io::Error::other)?;
-            Some(if open { "nextStart" } else { "copied" })
-        }
-        None => None,
-    };
-    let sign_ins = reads(|held| {
-        held.get_mut(&token).map(|r| {
-            if let Some(w) = r.written.as_mut() {
-                w.1 = site_storage;
+                    .join(format!("browser-profile-{profile}"));
+                reader::copy_site_storage(&from.dir, &into).map_err(io::Error::other)?;
+                Some(if open { "nextStart" } else { "copied" })
             }
-            r.sign_ins_read
-        })
-    });
-    Ok(
-        json!({"ok": true, "signIns": sign_ins == Some(true), "cookies": cookies, "siteStorage": site_storage}),
-    )
-}
-
-/// The rest, once main set the cookies (`refused`: the domains it wouldn't take): history, bookmarks and passwords
-/// into the profile, and the record kept.
-fn finish(
-    data: &Path,
-    folder: &Path,
-    token: u64,
-    profile: &str,
-    replace: bool,
-    refused: Vec<String>,
-) -> io::Result<Value> {
-    let read = reads(|held| held.remove(&token))
-        .filter(|r| r.written.as_ref().is_some_and(|w| w.0 == profile));
-    let read = read.ok_or_else(|| io::Error::other("That read has expired. Import again."))?;
-    let (_, site_storage) = read.written.clone().unwrap_or_default();
-    let mut history_error = read.history_error.clone();
-    let mut history = 0;
-    if !read.history.is_empty() {
-        let visits = read
-            .history
-            .iter()
-            .filter(|v| web_address(&v.url).is_ok())
-            .map(|v| (v.url.as_str(), v.title.as_str(), v.visited_at_ms));
-        match Store::open(&folder.join("browser.sqlite"))
-            .and_then(|mut store| store.import_visits(visits).map_err(io::Error::other))
-        {
-            Ok(added) => history = added,
-            Err(error) => history_error = Some(format!("History couldn't be added ({error}).")),
-        }
-    }
-    let mut bookmarks_error = read.bookmarks_error.clone();
-    let mut bookmarks = 0;
-    if !read.bookmarks.is_empty() {
-        let items: Vec<Value> = (read.bookmarks.iter())
-            .map(|b| json!({"url": b.url, "title": b.title, "folders": b.folders, "addedMs": b.added_at_ms}))
-            .collect();
-        match bookmarks::run(folder, &["import".into(), serde_json::to_string(&items)?]) {
-            Ok(added) => bookmarks = added["added"].as_u64().unwrap_or(0) as usize,
-            Err(error) => bookmarks_error = Some(format!("Bookmarks couldn't be added ({error}).")),
-        }
-    }
-    let mut passwords_error = read.passwords_error.clone();
-    let (mut passwords, mut passwords_skipped) = (0, read.logins_left_out);
-    // Replacing with nothing usable would empty the profile, so that swap doesn't happen.
-    let usable = |l: &Login| !l.password.is_empty() && vault::login_site(&l.url).is_some();
-    let passwords_kept = replace && read.passwords_read && !read.logins.iter().any(usable);
-    if passwords_kept {
-        passwords_skipped += read.logins.len();
-    } else if !read.logins.is_empty() {
-        let op = if replace { "replace" } else { "import" };
-        match vault::run(
-            data,
-            folder,
-            &[op.into(), serde_json::to_string(&read.logins)?],
-        ) {
-            Ok(counts) => {
-                let n = |k: &str| counts["counts"][k].as_u64().unwrap_or(0) as usize;
-                passwords = n("added") + n("updated") + n("unchanged");
-                passwords_skipped += n("skipped");
-            }
-            // Not the error's text: nothing about a password's store needs repeating.
-            Err(_) => passwords_error = Some("Passwords couldn't be saved.".into()),
-        }
-    }
-    let (skipped_domains, skipped_domain_count) = distinct(
-        read.left_out_domains
-            .iter()
-            .chain(&read.app_bound_domains)
-            .chain(&refused)
-            .cloned(),
-    );
+            None => None,
+        };
     let record = Record {
         at_ms: now(),
-        profiles: vec![read.profile_name.clone()],
-        imported: read.cookies.len() - refused.len().min(read.cookies.len()),
-        skipped: read.left_out_domains.len() + read.app_bound_domains.len() + refused.len(),
-        skipped_domains,
-        skipped_domain_count,
-        app_bound_domains: distinct(read.app_bound_domains.iter().cloned()).0,
-        history,
-        bookmarks,
-        passwords,
-        passwords_skipped,
-        passwords_kept,
+        ..record
     };
+    let browser = source.map_or_else(|| key.to_owned(), |s| s.name);
     change_saved(data, |saved| {
         saved.noticed = true;
         saved.sources.insert(
-            read.id.clone(),
+            id.into(),
             Place {
                 into: profile.into(),
                 at_ms: record.at_ms,
-                browser: read.browser.clone(),
+                browser,
             },
         );
-        // A try at another part says nothing of what the import brought.
-        if read.sign_ins_read {
-            let browser = saved.browsers.entry(read.key.clone()).or_default();
-            browser.denied = false;
-            browser.records.insert(read.id.clone(), record.clone());
-        }
+        let kept = saved.browsers.entry(key.into()).or_default();
+        kept.denied = false;
+        kept.records.insert(id.into(), record.clone());
     })?;
-    Ok(json!({
-        "ok": true, "type": "done", "record": record, "historyError": history_error, "siteStorage": site_storage,
-        "passwordsError": passwords_error, "bookmarksError": bookmarks_error,
-    }))
+    Ok(json!({"ok": true, "type": "done", "record": record, "siteStorage": site_storage}))
 }
 
-/// `imports sources | origins | read <browser> <profile> <parts> | write <token> [--open] | finish <token> <refused> [--replace]`.
-pub(super) fn run(data: &Path, folder: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
+/// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]`.
+pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
     let get = |i| crate::arg(args, i);
-    let token = || get(1)?.parse::<u64>().map_err(io::Error::other);
     // A hidden instance's throwaway HOME is where it looks, so it never reads the user's browsers.
     let home = || {
         std::env::var_os("HOME")
@@ -383,21 +266,14 @@ pub(super) fn run(data: &Path, folder: &Path, profile: &str, args: &[String]) ->
                 .collect();
             Ok(json!({"ok": true, "origins": origins}))
         }
-        "read" => read::read(
+        "read" => read::read(data, &home()?, get(1)?, get(2)?),
+        "place" => place(
             data,
-            &home()?,
             get(1)?,
             get(2)?,
-            &serde_json::from_str(get(3)?)?,
-        ),
-        "write" => write(data, token()?, profile, args.iter().any(|a| a == "--open")),
-        "finish" => finish(
-            data,
-            folder,
-            token()?,
             profile,
-            args.iter().any(|a| a == "--replace"),
-            serde_json::from_str(get(2)?)?,
+            args.iter().any(|a| a == "--open"),
+            serde_json::from_str(get(3)?)?,
         ),
         _ => Err(io::Error::other("Unknown browser imports operation")),
     }

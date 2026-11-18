@@ -1,13 +1,11 @@
-//! Reads other browsers' cookies, history and bookmarks so Brigadier's built-in browser can import
-//! them, on macOS, Windows and Linux.
+//! Reads other browsers' sign-ins (cookies and site storage) so Brigadier's built-in browser can
+//! import them, on macOS, Windows and Linux.
 //!
-//! - **Discovery.** [`discover`] lists the profiles of the Chromium-family, Gecko-family and
-//!   Safari browsers installed for one user, from the folders those browsers keep on this OS
-//!   (see [`Layout`]). Known browsers get their display name, app path and where their cookie key
-//!   is kept; on macOS, unknown Chromium and Gecko browsers are found by the shape of their
-//!   folders.
-//! - **Reading.** [`read_cookies`], [`read_history`] and [`read_bookmarks`] turn a profile's files
-//!   into plain structs. Source databases are opened read-only and copied into memory with
+//! - **Discovery.** [`discover`] lists the profiles of the Chromium-family and Safari browsers
+//!   installed for one user, from the folders those browsers keep on this OS (see [`Layout`]).
+//!   Known browsers get their display name, app path and where their cookie key is kept; on macOS,
+//!   unknown Chromium browsers are found by the shape of their folders.
+//! - **Reading.** [`read_cookies`] turns a profile's cookie store into plain structs. Source databases are opened read-only and copied into memory with
 //!   SQLite's online backup before any query runs, so a browser's own files are never written.
 //! - **Keys.** [`chromium_keys`] fetches what opens Chromium's encrypted cookies on this OS, and
 //!   [`read_cookies_with_keys`] uses it. Chrome's `v20` App-Bound cookies are never opened: see
@@ -19,11 +17,9 @@
 //! because a running browser holds its databases open and may not have flushed them.
 
 mod chromium;
-mod gecko;
 mod icons;
 mod keys;
 mod layout;
-mod passwords;
 mod running;
 mod safari;
 mod site_storage;
@@ -38,7 +34,6 @@ pub use types::*;
 pub use icons::app_icon_file;
 pub use keys::{ChromiumKeys, chromium_keys};
 pub use layout::{Layout, Os};
-pub use passwords::{Credential, Password, Passwords, read_passwords};
 pub use running::running;
 pub use site_storage::{SITE_STORAGE_FOLDERS, copy_site_storage};
 pub use sources::{Source, browser_rank, sources, sources_in, sources_layout};
@@ -82,12 +77,10 @@ pub fn discover_layout(layout: &Layout) -> Vec<Profile> {
         Layout::Macos { home, app_dirs } => {
             let app_dirs: Vec<&Path> = app_dirs.iter().map(PathBuf::as_path).collect();
             profiles.extend(chromium::discover(home, &app_dirs));
-            profiles.extend(gecko::discover(home, &app_dirs));
             profiles.extend(safari::discover(home, &app_dirs));
         }
         Layout::Windows { .. } | Layout::Linux { .. } => {
             profiles.extend(chromium::discover_other(layout));
-            profiles.extend(gecko::discover_other(layout));
         }
     }
     profiles.sort_by(|a, b| {
@@ -116,7 +109,6 @@ pub fn read_cookies(
                 .unwrap_or_default();
             chromium::read_cookies(&profile.dir, &keys, now_unix).map(|cookies| cookies.read)
         }
-        Family::Gecko => gecko::read_cookies(&profile.dir, now_unix),
         Family::Safari => safari::read_cookies(profile, now_unix),
     }
 }
@@ -131,7 +123,7 @@ pub fn read_cookies_with_keys(
 ) -> Result<ChromiumCookies, Error> {
     match profile.family {
         Family::Chromium => chromium::read_cookies(&profile.dir, keys, now_unix),
-        Family::Gecko | Family::Safari => Ok(ChromiumCookies {
+        Family::Safari => Ok(ChromiumCookies {
             read: read_cookies(profile, None, now_unix)?,
             app_bound_domains: Vec::new(),
         }),
@@ -143,27 +135,7 @@ pub fn read_cookies_with_keys(
 pub fn count_cookies(profile: &Profile) -> Result<usize, Error> {
     match profile.family {
         Family::Chromium => chromium::count_cookies(&profile.dir),
-        Family::Gecko => gecko::count_cookies(&profile.dir),
         Family::Safari => safari::count_cookies(profile),
-    }
-}
-
-/// Reads up to `limit` visits from a profile's history, newest first, one entry per visit,
-/// http and https pages only.
-pub fn read_history(profile: &Profile, limit: usize) -> Result<Vec<Visit>, Error> {
-    match profile.family {
-        Family::Chromium => chromium::read_history(&profile.dir, limit),
-        Family::Gecko => gecko::read_history(&profile.dir, limit),
-        Family::Safari => safari::read_history(&profile.dir, limit),
-    }
-}
-
-/// Reads a profile's bookmarks in the order the browser shows them, http and https pages only.
-pub fn read_bookmarks(profile: &Profile) -> Result<Bookmarks, Error> {
-    match profile.family {
-        Family::Chromium => chromium::read_bookmarks(&profile.dir),
-        Family::Gecko => gecko::read_bookmarks(&profile.dir),
-        Family::Safari => safari::read_bookmarks(&profile.dir),
     }
 }
 
@@ -239,35 +211,20 @@ pub fn chromium_password_exists(service: &str, account: Option<&str>) -> Result<
 
 /// The one secret this crate never asks for, even to see whether it exists: Brigadier's own engine
 /// is Chromium too, and this item isn't another browser's to give. A Chromium-branded source
-/// therefore brings no cookies or passwords where the item is what locks them (macOS and Linux).
+/// therefore brings no cookies where the item is what locks them (macOS and Linux).
 pub const OFF_LIMITS_KEY: &str = "Chromium Safe Storage";
 
-/// Whether `profile`'s cookies and passwords are locked with [`OFF_LIMITS_KEY`].
+/// Whether `profile`'s cookies are locked with [`OFF_LIMITS_KEY`].
 pub fn key_off_limits(profile: &Profile) -> bool {
     profile.keychain_service.as_deref() == Some(OFF_LIMITS_KEY)
         || (cfg!(target_os = "linux")
             && profile.linux_secret_application.as_deref() == Some("chromium"))
 }
 
-/// Whether a profile has nothing an import could bring: no cookies, visits, bookmarks or saved
-/// passwords. Reads no secret. A store that can't be read counts as having something, so a problem
-/// shows when importing rather than as an empty profile.
+/// Whether a profile has no cookies to bring. Reads no secret. A store that can't be read counts as
+/// having some, so a problem shows when importing rather than as an empty profile.
 pub fn profile_is_empty(profile: &Profile) -> bool {
-    let cookies = !profile.has_cookies || matches!(count_cookies(profile), Ok(0));
-    let history =
-        !profile.has_history || read_history(profile, 1).is_ok_and(|visits| visits.is_empty());
-    let bookmarks = !profile.has_bookmarks
-        || read_bookmarks(profile).is_ok_and(|found| found.bookmarks.is_empty());
-    cookies && history && bookmarks && !passwords::has_saved(profile)
-}
-
-/// Whether a URL is one the built-in browser can open again.
-fn is_web_url(url: &str) -> bool {
-    let lower = url
-        .get(..8)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
-    lower.starts_with("http://") || lower.starts_with("https://")
+    !profile.has_cookies || matches!(count_cookies(profile), Ok(0))
 }
 
 /// Whether a file exists, and whether it can be opened. A file whose metadata the OS refuses

@@ -23,7 +23,7 @@ use types::{DownloadState, HistoryFilter, SitePermission};
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page, turn_ended};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|write|finish | bookmarks list|add|update|remove|import | certs trust|clear | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> history list|search|remove|clear | visit record|title | downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|place | bookmarks list|add|update|remove|import | certs trust|clear | dates record|since|clear | vault list|reveal|fill|never|add|used|remove|never-add|allow|import|replace ... [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
@@ -101,7 +101,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return vault::run(data, &folder, args);
     }
     if area == "imports" {
-        return imports::run(data, &folder, &profile, args);
+        return imports::run(data, &profile, args);
     }
     let mut store = Store::open(&folder.join("browser.sqlite"))?;
     if area == "dates" {

@@ -8,8 +8,7 @@ use crate::{Family, Layout, Profile, discover_layout};
 /// The browsers listed first, by key, in this order; every other browser follows by name, and
 /// the stores found only by their shape ("‹App› (Chromium)") come last.
 const ORDER: &[&str] = &[
-    "chrome", "chromium", "helium", "edge", "brave", "vivaldi", "opera", "arc", "dia", "firefox",
-    "zen", "safari",
+    "chrome", "chromium", "helium", "edge", "brave", "vivaldi", "opera", "arc", "dia", "safari",
 ];
 
 /// One installed browser and the profiles found for it.
@@ -36,7 +35,7 @@ pub fn browser_rank(key: &str, name: &str) -> (usize, String) {
         .unwrap_or(key);
     let rank = match ORDER.iter().position(|known| *known == base) {
         Some(at) => at,
-        None if name.ends_with(" (Chromium)") || name.ends_with(" (Firefox)") => ORDER.len() + 1,
+        None if name.ends_with(" (Chromium)") => ORDER.len() + 1,
         None => ORDER.len(),
     };
     (rank, name.to_lowercase())

@@ -4,8 +4,7 @@
 //! `Cookies` is a SQLite store whose values are encrypted with a key that depends on the OS (see
 //! the `keys` module and components/os_crypt/sync); and since cookie store version 24 the
 //! plaintext starts with the SHA-256 of the cookie's domain
-//! (net/extras/sqlite/sqlite_persistent_cookie_store.cc). Bookmarks are a JSON file
-//! (components/bookmarks/browser/bookmark_codec.cc).
+//! (net/extras/sqlite/sqlite_persistent_cookie_store.cc).
 
 use std::path::{Path, PathBuf};
 
@@ -16,10 +15,10 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
-use crate::sqlite::{columns, io_error, open_copy};
+use crate::sqlite::{columns, open_copy};
 use crate::{
-    Bookmark, BookmarkRoot, Bookmarks, ChromiumCookies, ChromiumKeys, Cookie, Error,
-    PartitionedCookie, SameSite, Visit, WEBKIT_EPOCH_OFFSET_SECS, is_web_url,
+    ChromiumCookies, ChromiumKeys, Cookie, Error, PartitionedCookie, SameSite,
+    WEBKIT_EPOCH_OFFSET_SECS,
 };
 
 mod catalog;
@@ -30,8 +29,6 @@ pub(crate) use discovery::{discover, discover_other};
 const IV: [u8; 16] = [b' '; 16];
 /// AES-GCM nonce length Chromium uses on Windows.
 const GCM_NONCE: usize = 12;
-/// A profile's bookmarks, then the ones Chromium keeps apart for a signed-in account.
-const BOOKMARK_FILES: [&str; 2] = ["Bookmarks", "AccountBookmarks"];
 /// Cookie store version from which plaintexts carry a SHA-256 of the domain.
 const DOMAIN_HASH_VERSION: i64 = 24;
 
@@ -258,110 +255,4 @@ fn meta_version(conn: &Connection) -> i64 {
     .ok()
     .flatten()
     .unwrap_or(0)
-}
-
-pub(crate) fn read_history(dir: &Path, limit: usize) -> Result<Vec<Visit>, Error> {
-    let conn = open_copy(&dir.join("History"))?;
-    let mut stmt = conn.prepare(
-        "SELECT u.url, COALESCE(u.title, ''), v.visit_time
-         FROM visits v JOIN urls u ON u.id = v.url
-         WHERE u.url LIKE 'http://%' OR u.url LIKE 'https://%'
-         GROUP BY u.url, v.visit_time
-         ORDER BY v.visit_time DESC, u.url
-         LIMIT ?1",
-    )?;
-    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
-    let rows = stmt.query_map([limit], |row| {
-        let micros: i64 = row.get(2)?;
-        Ok(Visit {
-            url: row.get(0)?,
-            title: row.get(1)?,
-            visited_at_ms: micros.div_euclid(1000) - WEBKIT_EPOCH_OFFSET_SECS * 1000,
-        })
-    })?;
-    let mut visits = Vec::new();
-    for visit in rows {
-        let visit = visit?;
-        if is_web_url(&visit.url) {
-            visits.push(visit);
-        }
-    }
-    Ok(visits)
-}
-
-/// A profile's bookmarks: its own file, then any kept apart for a signed-in account. The second
-/// file's name is recalled from Chromium's sources, not checked; it is read only when it is there.
-pub(crate) fn read_bookmarks(dir: &Path) -> Result<Bookmarks, Error> {
-    let mut out = Bookmarks::default();
-    let mut found = false;
-    for file in BOOKMARK_FILES {
-        let path = dir.join(file);
-        let bytes = match std::fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(err) => return Err(io_error(&path, err)),
-        };
-        found = true;
-        let tree: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|err| Error::Format(format!("{file}: {err}")))?;
-        let roots = tree
-            .get("roots")
-            .ok_or_else(|| Error::Format(format!("{file}: no roots")))?;
-        for (name, root) in [
-            ("bookmark_bar", BookmarkRoot::Bar),
-            ("other", BookmarkRoot::Other),
-            ("synced", BookmarkRoot::Mobile),
-        ] {
-            if let Some(children) = roots.get(name).and_then(|node| node.get("children")) {
-                walk_bookmarks(children, root, &mut Vec::new(), &mut out);
-            }
-        }
-    }
-    if !found {
-        return Err(Error::NotFound(dir.join(BOOKMARK_FILES[0])));
-    }
-    Ok(out)
-}
-
-/// Collects the bookmarks under a JSON array of nodes. serde_json refuses documents nested past
-/// its recursion limit, which bounds the depth here.
-fn walk_bookmarks(
-    children: &serde_json::Value,
-    root: BookmarkRoot,
-    folders: &mut Vec<String>,
-    out: &mut Bookmarks,
-) {
-    for node in children.as_array().into_iter().flatten() {
-        let name = node.get("name").and_then(|name| name.as_str());
-        match node.get("type").and_then(|kind| kind.as_str()) {
-            Some("folder") => {
-                folders.push(name.unwrap_or_default().to_owned());
-                if let Some(children) = node.get("children") {
-                    walk_bookmarks(children, root, folders, out);
-                }
-                folders.pop();
-            }
-            Some("url") => {
-                let url = node.get("url").and_then(|url| url.as_str());
-                let Some(url) = url.filter(|url| is_web_url(url)) else {
-                    out.skipped += 1;
-                    continue;
-                };
-                out.bookmarks.push(Bookmark {
-                    url: url.to_owned(),
-                    title: name.unwrap_or_default().to_owned(),
-                    root,
-                    folders: folders.clone(),
-                    added_at_ms: added_at_ms(node),
-                });
-            }
-            _ => {}
-        }
-    }
-}
-
-/// A node's `date_added`, a string of microseconds since 1601; `"0"` means unrecorded.
-fn added_at_ms(node: &serde_json::Value) -> Option<i64> {
-    let micros: i64 = node.get("date_added")?.as_str()?.parse().ok()?;
-    (micros > 0).then(|| micros.div_euclid(1000) - WEBKIT_EPOCH_OFFSET_SECS * 1000)
 }

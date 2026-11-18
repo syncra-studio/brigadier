@@ -7,15 +7,8 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use crate::{Os, Profile};
 
 /// Executable names that identify a browser regardless of where or under which bundle it is
-/// installed; Firefox's Developer Edition and Nightly share Firefox's profiles.
-const PROCESS_NAMES: &[(&str, &[&str])] = &[
-    ("Firefox", &["firefox"]),
-    ("Zen", &["zen"]),
-    ("LibreWolf", &["librewolf"]),
-    ("Waterfox", &["waterfox"]),
-    ("Floorp", &["floorp"]),
-    ("Safari", &["Safari"]),
-];
+/// installed.
+const PROCESS_NAMES: &[(&str, &[&str])] = &[("Safari", &["Safari"])];
 
 /// On Linux the launcher on `$PATH` is often a script or a symlink, so a Chromium browser's
 /// process is recognised by its executable's name. Channels share a name, which at worst asks the
@@ -33,7 +26,6 @@ const LINUX_PROCESS_NAMES: &[(&str, &[&str])] = &[
     ("Brave Nightly", &["brave"]),
     ("Vivaldi", &["vivaldi-bin", "vivaldi"]),
     ("Opera", &["opera"]),
-    ("Firefox", &["firefox-bin", "firefox-esr"]),
 ];
 
 /// On Windows, Opera's launcher is not the process that runs: that lives in a folder per version.
