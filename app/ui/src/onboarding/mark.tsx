@@ -66,7 +66,34 @@ const bar = (key: string, cx: number, width: number, height: number) => {
   return w > 0 && <rect key={key} x={cx - w / 2} y={128 - height / 2} width={w} height={height} rx={w / 2} />;
 };
 
-export function BrigadierMark({ spinOnHover = false, ...props }: SVGProps<SVGSVGElement> & { spinOnHover?: boolean }) {
+/**
+ * The old app's small cut (small-mark.ts) for a mark drawn `size` px wide (even): under ~32 px the master's 4.4-unit
+ * strokes are under a pixel and blur into a haze round the core, so here every stripe and gap is a whole pixel, the
+ * middle stripe two, their tips on the master's outline, round a core half the mark wide [D658].
+ */
+function SmallCut({ size }: { size: number }) {
+  const unit = size / 256;
+  const outline = (x: number) => {
+    const at = (x / unit - FIRST_COLUMN_X) / COLUMN_GAP;
+    const i = Math.max(0, Math.min(STRIPES.length - 2, Math.floor(at)));
+    return Math.max(0, STRIPES[i]! * (1 - (at - i)) + STRIPES[i + 1]! * (at - i)) * unit;
+  };
+  const stripe = (x: number, width: number) => {
+    const height = Math.min(size, Math.max(2, Math.round(outline(x + width / 2) / 2) * 2));
+    return <rect key={x} x={x} y={(size - height) / 2} width={width} height={height} />;
+  };
+  const stripes = [stripe(size / 2 - 1, 2)];
+  for (let x = size / 2 - 3; x >= 0; x -= 2) stripes.push(stripe(x, 1), stripe(size - 1 - x, 1));
+  return (
+    <g transform={`scale(${256 / size})`}>
+      {stripes}
+      <circle cx={size / 2} cy={size / 2} r={size / 4} />
+    </g>
+  );
+}
+
+/** `pixels`: the size it's drawn at, when small, to draw the small cut for that grid instead of the master. */
+export function BrigadierMark({ spinOnHover = false, pixels, ...props }: SVGProps<SVGSVGElement> & { spinOnHover?: boolean; pixels?: number }) {
   const [hovered, setHovered] = useState(false);
   const offset = useSpinOffset(spinOnHover && hovered);
   const t = offset / COLUMN_GAP;
@@ -81,9 +108,15 @@ export function BrigadierMark({ spinOnHover = false, ...props }: SVGProps<SVGSVG
       onPointerLeave={spinOnHover ? () => setHovered(false) : undefined}
       {...props}
     >
-      {COLUMNS.map((column) => bar(`s${column}`, x(column), 4.4, height(STRIPES, column)))}
-      <circle cx={128} cy={128} r={59} />
-      {COLUMNS.map((column) => bar(`c${column}`, x(column), 9.6, height(CORE_BARS, column)))}
+      {pixels ? (
+        <SmallCut size={pixels} />
+      ) : (
+        <>
+          {COLUMNS.map((column) => bar(`s${column}`, x(column), 4.4, height(STRIPES, column)))}
+          <circle cx={128} cy={128} r={59} />
+          {COLUMNS.map((column) => bar(`c${column}`, x(column), 9.6, height(CORE_BARS, column)))}
+        </>
+      )}
     </svg>
   );
 }

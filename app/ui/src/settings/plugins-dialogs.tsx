@@ -414,13 +414,13 @@ export function InstallDialog({
   const choosing = step === "choose" || step === "installing";
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent data-dialog="install" showCloseButton={false} frame="project-dialog max-w-project-dialog gap-5 overflow-y-auto p-6">
+      <DialogContent data-dialog="install" showCloseButton={false} frame="project-dialog max-w-install-dialog gap-5 overflow-y-auto p-6">
         <DialogClose render={<Button variant="ghost" size="icon-sm" className="absolute top-4 right-4 text-muted-foreground" aria-label="Close" />}>
           <X aria-hidden />
         </DialogClose>
         <div className="flex items-center justify-center gap-3 pt-2">
           <span className="flex size-14 items-center justify-center rounded-surface bg-fill">
-            <BrigadierMark className="size-8" />
+            <BrigadierMark pixels={32} className="size-8" />
           </span>
           <DotsHorizontal aria-hidden className="size-5 text-faint-foreground" />
           {mark}
