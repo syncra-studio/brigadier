@@ -29,7 +29,7 @@ import { MockupTab } from "../mockup/live";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
-import { CHAT, closeTab, HOME, openTab, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint not-has-disabled:hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key or chevron along the top, its name under them. */
@@ -52,11 +52,6 @@ function Card({ why, children }: { why: string | null; children: ReactNode }) {
 
 /** The old app's New tab, under the browser's toolbar: what's picked replaces it; Side chat and Find file aren't built yet [D361, D388, D240, D244, D508]. */
 function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; archived: boolean; active: boolean }) {
-  // What's picked opens in this tab's place, as Terminal does, though Rust's replace takes no target [D240].
-  const replaceWith = (open: () => void) => {
-    open();
-    closeTab(owner, tab.id);
-  };
   // Before the first message they read the picked project's repository; a chat with no project has none [D279].
   const home = useHomeProject();
   const noRepo = owner === HOME && home === null;
@@ -86,16 +81,16 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
             </button>
           </Card>
           <Card why={shut}>
-            <button type="button" disabled={archived} onClick={() => replaceWith(() => openTab(owner, "note", newId()))} className={TOOL}>
+            <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "note", newId())} className={TOOL}>
               <span className={TOP}>
                 <Document className={ICON} />
               </span>
               <span className={LABEL}>New note</span>
             </button>
           </Card>
-          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceWith(() => openTab(owner, "pr", "list")))}
+          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceTab(owner, tab.id, "pr", "list"))}
           {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
-          {repoTile(PlayCircle, "Actions", "workflow runs", () => replaceWith(() => openTab(owner, "actions")))}
+          {repoTile(PlayCircle, "Actions", "workflow runs", () => replaceTab(owner, tab.id, "actions"))}
           <div className={CARD}>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
@@ -122,7 +117,7 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
           </div>
         </div>
         <LocalServers owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
-        <NoteList owner={owner} active={active} onOpen={(note) => replaceWith(() => openTab(owner, "note", note))} />
+        <NoteList owner={owner} active={active} onOpen={(note) => replaceTab(owner, tab.id, "note", note)} />
         <SuggestedSites owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
       </div>
     </div>

@@ -360,8 +360,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             // A New tab becomes what was picked on it, or the page typed in it.
             let target = args.get(5).cloned();
             check_target(&kind, target.as_deref())?;
-            // A kind there's one of, already open, comes to the front and the New tab stays.
-            if let Some(same) = now.same(&kind, &None) {
+            // One already open (a kind there's one of, a PR, a note) comes to the front and the New tab stays; a typed page
+            // opens here even if another tab shows it.
+            let key = target.clone().filter(|_| kind != "browser");
+            if let Some(same) = now.same(&kind, &key) {
                 now.active = same;
             } else if let Some(at) = now.at(tab)
                 && now.tabs[at].kind == NEW

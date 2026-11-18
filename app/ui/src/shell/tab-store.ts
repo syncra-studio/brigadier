@@ -187,11 +187,16 @@ export function openTab(owner: string, kind: TabKind, target?: string): string {
   return id;
 }
 
-/** A New tab becomes what was picked on it, in place, as Rust does: only a New tab; a browser with the page typed in it. */
-export function replaceTab(owner: string, id: string, kind: "new" | "terminal" | "browser", target?: string): void {
+/** A New tab becomes what was picked on it, in place, as Rust does, so the bar doesn't swap tabs: only a New tab; one already
+ *  open comes to the front instead; a browser with the page typed in it. */
+export function replaceTab(owner: string, id: string, kind: TabKind, target?: string): void {
   act(owner, {
     args: ["replace", id, kind, ...(target === undefined ? [] : [target])],
-    change: (now) => (now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind, ...(target === undefined ? {} : { target }) } : tab)), active: id } : now),
+    change: (now) => {
+      const same = now.tabs.find((tab) => isSame(tab, kind, kind === "browser" ? undefined : target));
+      if (same) return { ...now, active: same.id };
+      return now.tabs.some((tab) => tab.id === id && tab.kind === "new") ? { tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, kind, ...(target === undefined ? {} : { target }) } : tab)), active: id } : now;
+    },
   });
 }
 
