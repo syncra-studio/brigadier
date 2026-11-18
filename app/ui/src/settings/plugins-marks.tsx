@@ -1,8 +1,10 @@
+import { COMMAND_TONES } from "../components/composer/kind-icons";
 import { cx } from "../components/cx";
+import { Mcp, ToolsSkills } from "../icons";
 
 /*
  * The Plugins page's marks, the old app's: a well-known server maker's mark (Simple Icons, CC0, in the current colour),
- * else the illustration for its kind (a server on a blue wash, a skill's page on a pink one); and an agent's small tile.
+ * else its kind's glyph in the composer's colour [D666], each on a neutral tile; and an agent's small tile.
  */
 
 const BRAND_MARKS = {
@@ -72,43 +74,7 @@ function brandOf(item: { kind: string; name: string; detail: string }, exact = f
   );
 }
 
-/** The art's tile, and its top half a shade lighter. */
-const TILE = "M6.67 0h10.66A6.67 6.67 0 0 1 24 6.67v10.66A6.67 6.67 0 0 1 17.33 24H6.67A6.67 6.67 0 0 1 0 17.33V6.67A6.67 6.67 0 0 1 6.67 0Z";
-const TILE_TOP = "M6.67 0h10.66A6.67 6.67 0 0 1 24 6.67V12H0V6.67A6.67 6.67 0 0 1 6.67 0Z";
-
-function ServerArt({ className }: { className: string }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden className={cx("shrink-0", className)}>
-      <path d={TILE} className="fill-toggle-on" fillOpacity={0.2} />
-      <path d={TILE_TOP} className="fill-toggle-on" fillOpacity={0.1} />
-      <g fill="none" strokeLinecap="round" className="stroke-toggle-on stroke-1">
-        <path d="M6.47 6h7.06a1.47 1.47 0 0 1 1.47 1.47v2.06A1.47 1.47 0 0 1 13.53 11H6.47A1.47 1.47 0 0 1 5 9.53V7.47A1.47 1.47 0 0 1 6.47 6Z" />
-        <path d="M6.47 13h7.06a1.47 1.47 0 0 1 1.47 1.47v2.06A1.47 1.47 0 0 1 13.53 18H6.47A1.47 1.47 0 0 1 5 16.53v-2.06A1.47 1.47 0 0 1 6.47 13Z" />
-        <path d="M15 8.5h2a1.33 1.33 0 0 1 1.33 1.33v4.34A1.33 1.33 0 0 1 17 15.5h-2" />
-        <path d="M9.67 8.5h3M9.67 15.5h3" strokeOpacity={0.6} />
-      </g>
-      <path d="M7.33 7.77a.73.73 0 1 1 0 1.46a.73.73 0 1 1 0-1.46ZM7.33 14.77a.73.73 0 1 1 0 1.46a.73.73 0 1 1 0-1.46Z" className="fill-success" />
-      <path d="M19.33 10.53a1.47 1.47 0 1 1 0 2.94a1.47 1.47 0 1 1 0-2.94Z" className="fill-toggle-on" />
-    </svg>
-  );
-}
-
-function SkillArt({ className }: { className: string }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden className={cx("shrink-0", className)}>
-      <path d={TILE} className="fill-file-pink" fillOpacity={0.2} />
-      <path d={TILE_TOP} className="fill-file-pink" fillOpacity={0.1} />
-      <g fill="none" strokeLinejoin="round" strokeLinecap="round" className="stroke-file-pink stroke-1">
-        <path d="M6.67 5.67h7l3.33 3.33v8.33a1.33 1.33 0 0 1-1.33 1.34H6.67a1.33 1.33 0 0 1-1.34-1.34V7a1.33 1.33 0 0 1 1.34-1.33Z" />
-        <path d="M13.67 5.67V8a1 1 0 0 0 1 1H17" />
-        <path d="M7.67 10.33h4M7.67 12.67h2.66" strokeOpacity={0.6} />
-      </g>
-      <path d="M16 12.33l.83 2.17 2.17.83-2.17.84L16 18.33l-.83-2.16-2.17-.84 2.17-.83Z" className="fill-foreground" />
-    </svg>
-  );
-}
-
-/** An item's mark: its maker's for a well-known server, else the illustration for its kind; `large` beside its page's title. */
+/** An item's mark: its logo, its maker's mark for a well-known server, else its kind's glyph as the composer draws it [D666]; `large` beside its page's title. */
 // The catalog's full-colour logos, each from its service's own site [D576], by catalog id.
 const LOGOS: Record<string, string> = Object.fromEntries(
   Object.entries(import.meta.glob<string>("./logos/*.png", { eager: true, import: "default" })).map(([path, url]) => [path.slice(8, -4), url]),
@@ -119,12 +85,17 @@ export function PluginMark({ item, large = false, exact = false }: { item: { kin
   const size = large ? "size-11" : "size-9";
   const logo = (item.logo && LOGOS[item.logo]) || item.icon;
   if (logo) return <img data-slot="plugin-mark" src={logo} alt="" className={cx("shrink-0 border border-divider bg-white object-contain p-1", size, large ? "rounded-nav" : "rounded-control")} />;
-  if (!brand) return item.kind === "skill" ? <SkillArt className={size} /> : <ServerArt className={size} />;
+  const glyph = large ? "size-5.5" : "size-4.5";
+  const Kind = item.kind === "skill" ? ToolsSkills : Mcp;
   return (
     <span data-slot="plugin-mark" className={cx("flex shrink-0 items-center justify-center bg-fill-subtle", size, large ? "rounded-nav" : "rounded-control")}>
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={cx("text-strip-foreground", large ? "size-5.5" : "size-4.5")}>
-        <path d={BRAND_MARKS[brand].path} />
-      </svg>
+      {brand ? (
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={cx("text-strip-foreground", glyph)}>
+          <path d={BRAND_MARKS[brand].path} />
+        </svg>
+      ) : (
+        <Kind aria-hidden className={cx(COMMAND_TONES[item.kind === "skill" ? "skill" : "mcp"], glyph)} />
+      )}
     </span>
   );
 }

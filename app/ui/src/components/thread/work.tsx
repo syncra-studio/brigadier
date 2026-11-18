@@ -1,4 +1,5 @@
 import { useThread } from "../../daemon";
+import { Mcp } from "../../icons";
 import type { Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
 import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
@@ -73,7 +74,8 @@ export function GroupRow({ item, open, onToggle }: { item: Group; open: boolean;
   const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k)) ?? "other";
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
-      <StepIcon kind={kind} />
+      {/* Only MCP tools: the MCP glyph, as their own rows [D666]. */}
+      <StepIcon kind={kind} icon={kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
       <Words verb={groupWords(item.steps)} />
       <Chevron />
     </button>

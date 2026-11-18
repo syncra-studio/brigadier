@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo } from "react";
 
-import { Check, Stop } from "../../icons";
+import { Check, Mcp, Stop } from "../../icons";
 import type { Progress, StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
 import { connectorName } from "../../thread/words";
@@ -120,7 +120,7 @@ export function ToolRow({
     );
   const head = (
     <>
-      <StepIcon kind={kind} icon={progress === "cancelled" ? Stop : undefined} />
+      <StepIcon kind={kind} icon={progress === "cancelled" ? Stop : server ? Mcp : undefined} />
       {words}
       {took && <span className="shrink-0 tabular-nums">{took}</span>}
     </>
