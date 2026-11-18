@@ -153,7 +153,7 @@ const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
   const id = sessionId();
   const cid = newId();
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, "--carry-tabs"];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, ...(place.pr ? [] : ["--carry-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
@@ -165,13 +165,15 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
   setHomeDraft({ text: undefined, level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
-  // Its PR tab stays behind: the session has the PR's page instead [D699].
+  // Its PR tab closes on Home: the session has the PR's page instead [D699].
   const tab = place.pr && tabsOf(HOME_DRAFT).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
   if (tab) closeTab(HOME_DRAFT, tab.id);
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
-  carryHome(id, () => runStart(entry));
+  // A PR's session has Chat and the PR's page only: Home's tabs stay on Home [D706].
+  if (place.pr) runStart(entry);
+  else carryHome(id, () => runStart(entry));
 }
 
 /** Forks session `source` at answer `at` and opens the fork at once, pending, under the title Rust gives it [D30, D1063]. */
