@@ -68,7 +68,30 @@ pub(super) fn open(
             .map(|w| w["window_id"].clone()),
         None => None,
     };
-    let opened = call(data, "launch_app", args, here)?;
+    // A path goes through LaunchServices in the background: Cua's handoff of a Finder folder
+    // times out after 5 s.
+    let opened = match target.as_ref().filter(|t| t.starts_with('/')) {
+        Some(path) => {
+            let sent = std::process::Command::new("open")
+                .args(["-g", "-a", &name, path])
+                .output();
+            if !sent.as_ref().is_ok_and(|o| o.status.success()) {
+                let why = sent.map(|o| {
+                    String::from_utf8_lossy(&o.stderr)
+                        .trim()
+                        .trim_end_matches('.')
+                        .to_string()
+                });
+                return Err(refuse(&format!(
+                    "{name} couldn't open {path}: {}. `brigadier computer apps` lists what runs.",
+                    why.unwrap_or_else(|e| e.to_string())
+                )));
+            }
+            let (pid, app) = find(data, &name, here)?;
+            json!({"pid": pid, "name": app})
+        }
+        None => call(data, "launch_app", args, here)?,
+    };
     let pid = opened["pid"].as_i64().ok_or_else(|| {
         refuse(&format!(
             "{name} didn't start. `brigadier computer apps` lists what runs."
