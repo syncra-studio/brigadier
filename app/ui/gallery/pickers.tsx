@@ -31,7 +31,9 @@ export function useAgents(): ModelGroup[] {
   const [groups, setGroups] = useState(STAND_IN);
   useEffect(() => {
     agents ??= window.top!.galleryRun!(["models", "--fresh"]).then((reply) => {
-      const groups = asGroups(reply.groups);
+      const listed = asGroups(reply.groups);
+      // A Mac with no agent ready (a fresh data folder) keeps the stand-in's live one, so the pickers have a model.
+      const groups = listed.some((group) => !group.unavailable && group.models.length > 0) ? listed : [STAND_IN[0]!, ...listed];
       return [...groups, ...UNAVAILABLE.filter((stand) => !groups.some((group) => group.unavailable === stand.unavailable))];
     });
     agents.then(setGroups, (cause) => showToast(`Couldn't read the agents: ${cause.message}`, { tone: "error" }));
