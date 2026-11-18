@@ -46,14 +46,16 @@ const LOOKS = {
   code: {
     card: "my-3 rounded-thread bg-code-surface first:mt-0 last:mb-0",
     head: "h-control-md gap-1.5 bg-code-surface pe-1.5 text-xs text-muted-foreground",
-    pre: "pb-3 text-sm leading-relaxed",
+    pre: "pb-3 text-code",
     fade: "from-code-surface",
+    border: "",
   },
   diff: {
     card: "mt-1 rounded-shell",
     head: "min-h-8 gap-2 bg-fill-subtle pe-1 text-sm text-action-hover",
     pre: "text-diff",
     fade: "from-background",
+    border: "border border-border",
   },
 } as const;
 
@@ -93,7 +95,7 @@ export function CodeBlock({
   const [wrap, setWrap] = useKept(`${keep}:wrap`);
   const canWrap = !prose && look === "code";
   return (
-    <div data-look={look} className={cx("relative overflow-clip border border-border", frame.card)}>
+    <div data-look={look} className={cx("relative overflow-clip", frame.border, frame.card)}>
       <div className={cx("flex items-center ps-3", frame.head)}>
         {title ?? (
           <>

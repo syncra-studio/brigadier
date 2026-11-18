@@ -13,12 +13,12 @@
   & h1 {
     @apply mt-5 mb-2 font-display text-xl font-semibold tracking-hero;
   }
-  /* Section headings sit above the body text (h3 1.125x body), as Claude's (body size, semibold) do [D446]. */
+  /* Section headings sit above the body text, as bb's quieter answers do [D753]. */
   & h2 {
-    @apply mt-6 mb-2 font-display text-xl font-semibold tracking-section;
+    @apply mt-6 mb-2 font-display text-lg font-semibold tracking-section;
   }
   & h3 {
-    @apply mt-6 mb-1.5 font-display text-lg font-semibold tracking-section;
+    @apply mt-5 mb-2 font-display font-semibold tracking-section;
   }
   & h4 {
     @apply mt-4 mb-1 font-semibold;
