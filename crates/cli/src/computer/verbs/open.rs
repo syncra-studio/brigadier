@@ -312,7 +312,7 @@ pub(super) fn press(
         let opened = now.iter().find(|w| !before.contains(w)).copied();
         let closed = s.window != 0 && !now.contains(&s.window);
         if opened.is_some() || closed {
-            let gone = closed && !running(data, here)?.iter().any(|a| a["pid"] == s.pid);
+            let gone = !running(data, here)?.iter().any(|a| a["pid"] == s.pid);
             if gone {
                 *s = Sess::default();
                 return Ok(format!("Chose {chose}: done, the app quit."));
