@@ -13,6 +13,7 @@ import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
 import { installGuestKeys } from "./guestKeys";
 import { installGuest, webOrBlank } from "./guestPopups";
+import { installLocalCerts } from "./localCerts";
 import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers } from "./permissions";
 import { isDeleting, installProfileStore } from "./profileStore";
 import { isProfilePartition, profileOfStorage, profilePartition } from "./profiles";
@@ -34,6 +35,7 @@ export function installBrowserHost(origin: string): void {
   installDownloads();
   installBrowserLogins();
   installBrowserImport();
+  installLocalCerts();
   app.on("render-process-gone", (_event, contents, details) => {
     console.error("A renderer is gone:", contents.getType(), contents.getURL(), details);
   });

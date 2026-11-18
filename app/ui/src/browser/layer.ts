@@ -15,7 +15,7 @@ import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
 import { installGuestLogins } from "./logins";
 import { type SignInSeen, signInSeen } from "./sign-in";
-import { recordDates } from "./profiles";
+import { recordDates, trustLocalCert } from "./profiles";
 
 declare global {
   interface Window {
@@ -48,6 +48,8 @@ declare global {
       /** A guest's sign-in worked (`signed-in`, with what was typed) or its page has fields to fill (`fields`). */
       onGuestLogin(listener: (details: { from: number; kind: "signed-in" | "fields"; site: string; username?: string; password?: string }) => void): void;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
+      /** A local dev site's untrusted certificate opened anyway (main's browser/localCerts.ts), for Rust to keep. */
+      onLocalCert(listener: (details: { profile: string; host: string }) => void): void;
       onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
       agent(call: Record<string, unknown>): Promise<unknown>;
@@ -198,6 +200,7 @@ export function installTabLayer(): void {
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
   window.brigadierShell.onBrowserDates(recordDates);
+  window.brigadierShell.onLocalCert(trustLocalCert);
   // shortcut: no passkey notice until that section lands (guestPasskey's refusal); the passkey preload already fails a request at once.
   window.brigadierShell.onGuestSignIn(({ from, ...seen }) => {
     const page = pageOf(from);

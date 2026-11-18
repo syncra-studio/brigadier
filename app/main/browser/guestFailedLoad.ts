@@ -6,9 +6,13 @@ import path from "node:path";
 
 import type { WebContents } from "electron";
 
+import { isLocalHost, trustLocalCert } from "./localCerts";
+import { profileOfStorage } from "./profiles";
+
 /** The headline and the sentence for Chromium's net error codes that a person can act on. */
-function words(code: number, host: string): { title: string; body: string } {
+function words(code: number, host: string, local: boolean): { title: string; body: string } {
   const site = host || "This site";
+  if (local) return { title: "This local site's certificate isn't trusted", body: "Open it anyway? Brigadier won't ask again for this site in this profile." };
   if (code === -105 || code === -137) return { title: "Can't find this site", body: `No server was found for ${site}. Check the address for a typo.` };
   if (code === -102) return { title: "This site refused to connect", body: `${site} isn't accepting connections right now. It may be down, or on another port.` };
   if (code === -106) return { title: "You're offline", body: "This Mac isn't connected to the internet." };
@@ -37,14 +41,14 @@ const STYLE = `
 `;
 
 /** Runs in the error document. Everything from outside goes in as text, never as markup. */
-function fill(url: string, code: number, description: string): string {
+function fill(url: string, code: number, description: string, local: boolean): string {
   let host = "";
   try {
     host = new URL(url).host;
   } catch { /* the words manage without */ }
-  const { title, body } = words(code, host);
+  const { title, body } = words(code, host, local);
   return `(() => {
-    const text = ${JSON.stringify({ url, title, body, host, detail: description || `Error ${code}`, css: STYLE })};
+    const text = ${JSON.stringify({ url, title, body, host, local, detail: description || `Error ${code}`, css: STYLE })};
     document.title = text.host || text.title;
     const sheet = document.createElement("style");
     sheet.textContent = text.css;
@@ -55,18 +59,31 @@ function fill(url: string, code: number, description: string): string {
     part("h1", text.title);
     part("p", text.body);
     part("code", text.url + " · " + text.detail);
-    const again = part("button", "Try again");
-    again.id = "try-again";
-    again.addEventListener("click", () => location.reload());
+    const again = part("button", text.local ? "Open anyway" : "Try again");
+    again.id = text.local ? "open-anyway" : "try-again";
+    if (!text.local) again.addEventListener("click", () => location.reload());
     document.body.replaceChildren(main);
   })()`;
 }
+
+const OPEN_ANYWAY = `new Promise((resolve) => document.getElementById("open-anyway").addEventListener("click", () => resolve(true)))`;
 
 export function installFailedLoad(contents: WebContents): void {
   contents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
     // -3 is an aborted load: a newer navigation or Stop. A scheme that isn't the web's has the tab's own banner.
     if (!isMainFrame || code === -3 || !/^https?:/.test(url)) return;
-    contents.executeJavaScript(fill(url, code, description)).catch((error: unknown) => {
+    // A certificate error (-2xx) on this computer's dev host may be opened anyway; anywhere else it stays refused.
+    const profileId = profileOfStorage(contents.session.storagePath ?? null);
+    const hostname = URL.parse(url)?.hostname ?? "";
+    const local = code <= -200 && code > -300 && profileId !== null && isLocalHost(hostname);
+    contents.executeJavaScript(fill(url, code, description, local)).then(async () => {
+      if (!local || !profileId) return;
+      // Leaving the page ends the wait, which is no error.
+      const open: unknown = await contents.executeJavaScript(OPEN_ANYWAY).catch(() => false);
+      if (open !== true || contents.isDestroyed()) return;
+      trustLocalCert(profileId, hostname);
+      contents.reload();
+    }, (error: unknown) => {
       console.warn("Could not show a page's failed load:", url, code, error);
     });
   });

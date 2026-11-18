@@ -225,6 +225,13 @@ export async function deleteProfile(id: string): Promise<void> {
 export type ProfileCounts = { signIns: number };
 export const profileCounts = (id: string): Promise<ProfileCounts> => window.brigadierShell.profiles("counts", { profile: id }) as Promise<ProfileCounts>;
 
+/** A local dev site opened anyway, kept by Rust until Clear browsing data (main's browser/localCerts.ts) [D725]. */
+export function trustLocalCert({ profile, host }: { profile: string; host: string }): void {
+  run(["browser", "-", "certs", "trust", host, "--profile", profile]).catch((error: unknown) => {
+    console.warn("Could not keep a local site's certificate choice:", host, error);
+  });
+}
+
 /** What main saw of a profile's cookies and sites (browserClearData.ts), dated in Rust for Clear's time ranges. */
 export function recordDates({ profile, ...seen }: { profile: string; cookies: unknown[]; sites: unknown[] }): void {
   run(["browser", "-", "dates", "record", JSON.stringify(seen), "--profile", profile]).catch(() => {

@@ -58,6 +58,8 @@ async function clearBrowsingData(profile: string, clear: ClearRequest): Promise<
     await data(["sites", "clear", ...range]);
     sitesCleared(profile);
   }
+  // Local sites opened anyway ask again (main's browser/localCerts.ts forgets its copy with the cookies).
+  if (clear.cookies) await data(["certs", "clear"]);
   if (!clear.cookies && !clear.cache) return;
   const dated = clear.cookies && clear.sinceMs !== null ? await data(["dates", "since", String(clear.sinceMs)]) : null;
   await window.brigadierShell.profiles("clear", { profile, clear: { sinceMs: clear.sinceMs, cookies: clear.cookies, cache: clear.cache, dated } });

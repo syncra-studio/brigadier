@@ -7,6 +7,7 @@ import path from "node:path";
 import { app, session, webContents, type Session, type WebContents } from "electron";
 
 import { toAppPages } from "./appPage";
+import { forgetLocalCerts } from "./localCerts";
 import { profileFolderName, profileOfStorage, profilePartition } from "./profiles";
 
 const STORAGE_KINDS = ["backgroundFetch", "fileSystems", "indexedDB", "localStorage", "serviceWorkers", "webSQL"] as const;
@@ -111,6 +112,7 @@ async function clearCookiesAndSiteData(profileId: string, profileSession: Sessio
 export async function clearEngineData(profileId: string, clear: EngineClear): Promise<void> {
   const profileSession = session.fromPartition(profilePartition(profileId));
   if (clear.cookies) await clearCookiesAndSiteData(profileId, profileSession, clear);
+  if (clear.cookies) forgetLocalCerts(profileId, profileSession);
   // Chromium's cache has no range Electron offers: any range clears all of it, as the form says.
   if (clear.cache) await profileSession.clearData({ dataTypes: ["cache"] });
 }
