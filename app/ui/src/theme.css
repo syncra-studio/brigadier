@@ -1281,8 +1281,15 @@
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
   }
+  /* Hidden: no panel, and the page meets the window's start edge, square there (main.tsx) [D714]. */
   &[data-collapse="hidden"] {
-    --sidebar-shown: 0px;
+    --sidebar-shown: calc(var(--spacing-surface-inset) * -1);
+    padding-inline-start: 0;
+    & > [data-slot="page-edge"] {
+      inset-inline-start: 0;
+      border-start-start-radius: 0;
+      border-end-start-radius: 0;
+    }
   }
 }
 @utility sidebar-panel-width {
