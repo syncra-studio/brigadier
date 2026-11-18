@@ -129,11 +129,10 @@ impl Thread {
                 if self.children.remove(&str_of("id")).is_some() {
                     self.helper_ended(at, item["at"].as_u64().unwrap_or(ts));
                 }
-                // One its turn's Stop settled stays stopped when the command Brigadier ended reports in after it [D693].
-                let settled = self.items[at]["progress"] == "cancelled";
+                let stopped = self.stopping() || self.items[at]["progress"] == "cancelled";
                 let progress = match item["ok"] == true {
                     true => "done",
-                    false if self.stopping() || settled => "cancelled",
+                    false if stopped => "cancelled",
                     false => "failed",
                 };
                 let ended = item["at"].as_u64().unwrap_or(ts);

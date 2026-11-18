@@ -5,7 +5,7 @@
 
 use crate::{call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
-use brigadier_core::fold::Fold;
+use brigadier_core::fold::{self, Fold};
 use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
@@ -336,34 +336,20 @@ const STOP_WAIT: Duration = Duration::from_secs(3);
 const COMMAND_WAIT: Duration = Duration::from_secs(1);
 
 /// Ends what's below the child and started since `since` (ms). An agent's stop can end its turn and
-/// leave the command it was running [D222]: that command goes, a TERM then a KILL for whatever
-/// outlives the wait, and the agent stays, as any CLI's own stop leaves it [D159, D693].
+/// leave the command it was running [D222]: that command goes, and the agent stays, as any CLI's
+/// own stop leaves it [D159, D693].
 fn end_commands(dir: &Path, since: u64) -> io::Result<()> {
     let fold = core::fold(dir, true)?.fold;
     let child = (fold.child.as_ref())
         .filter(|c| !c.exited)
         .and_then(|c| procs::same(c.pid, c.start_us));
-    let left: Vec<_> = child.map_or(vec![], |c| {
-        (procs::descendants(&procs::all(), c.pid).into_iter())
-            .filter(|p| p.start_us / 1000 >= since)
-            .map(|p| (p.pid, p.start_us))
-            .collect()
-    });
-    let signal = |sig| {
-        let live: Vec<_> = (left.iter())
-            .filter(|&&(p, s)| procs::same(p, s).is_some_and(|p| !p.zombie))
-            .collect();
-        live.iter().for_each(|&&(p, _)| unsafe {
-            libc::kill(p, sig);
-        });
-        !live.is_empty()
-    };
-    let started = Instant::now();
-    signal(libc::SIGTERM);
-    while started.elapsed() < COMMAND_WAIT && signal(0) {
-        thread::sleep(Duration::from_millis(25));
-    }
-    signal(libc::SIGKILL);
+    let left: Vec<_> = (child.map(|c| procs::descendants(&procs::all(), c.pid)))
+        .into_iter()
+        .flatten()
+        .filter(|p| p.start_us / 1000 >= since)
+        .map(|p| (p.pid, p.start_us))
+        .collect();
+    fold::end(&left, COMMAND_WAIT);
     Ok(())
 }
 

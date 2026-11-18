@@ -14,7 +14,7 @@ mod status;
 mod turns;
 pub use input::Picked;
 pub use live::{
-    Job, Live, background_row, history, live, live_groups, note_stop, stop_job, task_of,
+    Job, Live, background_row, end, history, live, live_groups, note_stop, stop_job, task_of,
 };
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};

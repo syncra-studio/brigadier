@@ -151,6 +151,12 @@ pub fn stop_job(fold: &Fold, data: &Path, pid: i32, start_us: u64) {
         .chain(procs::descendants(&all, pid))
         .map(|p| (p.pid, p.start_us))
         .collect();
+    end(&tree, Duration::from_secs(2));
+}
+
+/// Ends these processes, each only while it's still that one: a TERM, then a KILL for whatever
+/// outlives the grace.
+pub fn end(tree: &[(i32, u64)], grace: Duration) {
     let signal = |sig| {
         let left: Vec<_> = (tree.iter())
             .filter(|&&(p, s)| procs::same(p, s).is_some_and(|p| !p.zombie))
@@ -161,9 +167,9 @@ pub fn stop_job(fold: &Fold, data: &Path, pid: i32, start_us: u64) {
         !left.is_empty()
     };
     signal(libc::SIGTERM);
-    let until = Instant::now() + Duration::from_secs(2);
+    let until = Instant::now() + grace;
     while Instant::now() < until && signal(0) {
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(25));
     }
     signal(libc::SIGKILL);
 }
