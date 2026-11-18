@@ -392,6 +392,8 @@ pub(super) fn ours(text: &str) -> String {
     [
         ("take a fresh get_window_state snapshot and re-address it", "read again"),
         ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS finds one)"),
+        ("retry with a larger max_elements or narrow with query / max_depth", "read with --full, or narrow it with --query WORDS"),
+        ("the max_elements node budget", "the row budget"),
         ("get_window_state", "read"),
         ("element_token", "number"),
         ("invoke_menu", "menu"),
