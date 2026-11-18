@@ -11,7 +11,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, useHomeProject, useStart, useStartingRows } from "./home/start";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -33,7 +33,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { HOME } from "./shell/tab-store";
+import { HOME, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -170,6 +170,8 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
 
 // Home is a new session's draft [D161].
 function Home({ offline }: { offline: boolean }) {
+  const project = useHomeProject()?.id ?? null;
+  useLayoutEffect(() => setHomeTabs(project), [project]);
   return (
     <>
       <TabBar key={HOME} owner={HOME} offline={offline} />

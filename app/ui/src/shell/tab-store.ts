@@ -44,6 +44,13 @@ type Slot = { rev: number | null; rust: Tabs; pending: Action[]; shown: Tabs };
 const NONE: Tabs = { tabs: [], active: CHAT };
 const slots = new Map<string, Slot>();
 const listeners = new Set<() => void>();
+/** Home's tabs are its project's, as the old app's draft:<project>; a chat in no project has its own [D706]. */
+let homeKey = HOME;
+const own = (owner: string) => (owner === HOME ? homeKey : owner);
+export function setHomeTabs(project: string | null): void {
+  homeKey = project ? `${HOME}:${project}` : HOME;
+  for (const listener of listeners) listener();
+}
 const opened = new Set<string>();
 const restored = new Set<string>();
 /** Whether tab `id` came back from an earlier run and its page hasn't loaded since; asking ends that. */
@@ -112,10 +119,11 @@ function pump(owner: string): void {
 }
 
 function act(owner: string, action: Action): void {
-  const slot = slotOf(owner);
+  const key = own(owner);
+  const slot = slotOf(key);
   slot.pending.push(action);
   draw(slot);
-  pump(owner);
+  pump(key);
 }
 
 const subscribe = (listener: () => void) => {
@@ -124,12 +132,12 @@ const subscribe = (listener: () => void) => {
 };
 
 export function useTabs(owner: string): Tabs {
-  return useSyncExternalStore(subscribe, () => slots.get(owner)?.shown ?? NONE);
+  return useSyncExternalStore(subscribe, () => slots.get(own(owner))?.shown ?? NONE);
 }
 
 /** True once Rust has answered for `owner`, or its tabs came from Home's. */
 export function useTabsRead(owner: string): boolean {
-  return useSyncExternalStore(subscribe, () => (slots.get(owner)?.rev ?? null) !== null);
+  return useSyncExternalStore(subscribe, () => (slots.get(own(owner))?.rev ?? null) !== null);
 }
 
 /** Asks Rust on opening, on every reconnect and when the session's folder changed (an agent's `brigadier show` opens
@@ -137,20 +145,21 @@ export function useTabsRead(owner: string): boolean {
 export function useTabsFromRust(owner: string): void {
   const { daemon, rows } = useDaemon();
   const touched = rows?.find((row) => row.id === owner)?.touched;
+  const key = useSyncExternalStore(subscribe, () => own(owner));
   useEffect(() => {
     if (!daemon) return;
-    read(owner);
+    read(key);
     for (const each of slots.keys()) pump(each);
-  }, [owner, daemon, touched]);
+  }, [key, daemon, touched]);
 }
 
-export const tabsOf = (owner: string): Tabs => slotOf(owner).shown;
+export const tabsOf = (owner: string): Tabs => slotOf(own(owner)).shown;
 
 /** `owner`'s tabs, asked of Rust first if nothing has yet: an agent's browser call on a session not on screen. */
 export function tabsRead(owner: string): Promise<Tabs> {
-  const slot = slotOf(owner);
+  const slot = slotOf(own(owner));
   if (slot.rev !== null) return Promise.resolve(slot.shown);
-  return new Promise((resolve) => ask({ op: "run", args: ["tabs", owner] }, (reply) => {
+  return new Promise((resolve) => ask({ op: "run", args: ["tabs", own(owner)] }, (reply) => {
     if (reply.ok) land(slot, reply);
     resolve(slot.shown);
   }));
@@ -342,7 +351,7 @@ export function selectNumber(owner: string, number: number): void {
  * Home's changes still out. The session's rev 0 yields to Rust's first answer after.
  */
 export function carryHome(to: string, start: () => void): void {
-  const home = slotOf(HOME);
+  const home = slotOf(homeKey);
   slots.set(to, { rev: 0, rust: home.shown, pending: [], shown: home.shown });
   act(HOME, {
     args: [],
@@ -356,8 +365,8 @@ export function carryHome(to: string, start: () => void): void {
 
 /** A refused start may have moved nothing: Rust's Home counts again, even at the rev it had. */
 export function rereadHome(): void {
-  slotOf(HOME).rev = null;
-  read(HOME);
+  slotOf(homeKey).rev = null;
+  read(homeKey);
 }
 
 /** The gallery's fixed tabs; Infinity so no answer from Rust replaces them. */

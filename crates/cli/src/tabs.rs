@@ -4,13 +4,17 @@
 //! `reopen`, and answers the whole state with a `rev` that only grows, so the app can tell Rust's
 //! newer word from an older one after a lost reply [D30, D71].
 
+mod home;
 pub(crate) mod target;
 
-use crate::{HOME_DRAFT, USAGE, arg, attach::note};
+pub use home::carry;
+use home::is_home;
+
+use crate::{HOME_DRAFT, USAGE, arg};
 use brigadier_core::{self as core, projects, session, worktrees};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use target::{check_target, relative};
@@ -82,7 +86,9 @@ struct Tabs {
 }
 
 fn file(data: &Path, id: &str) -> PathBuf {
-    if id == HOME_DRAFT {
+    if let Some(project) = id.strip_prefix("@home:") {
+        data.join(format!("home-tabs-{project}.json"))
+    } else if id == HOME_DRAFT {
         data.join("home-tabs.json")
     } else {
         core::session_dir(data, id).join("tabs.json")
@@ -92,7 +98,7 @@ fn file(data: &Path, id: &str) -> PathBuf {
 /// Commands run at once on the daemon's threads: every change holds the session's lifecycle lock,
 /// so it can't overwrite another or land on a session being archived or deleted [D35].
 fn lock(data: &Path, id: &str) -> io::Result<File> {
-    if id == HOME_DRAFT {
+    if is_home(id) {
         projects::lock(data, "home-tabs.lock")
     } else {
         worktrees::lock(&core::session_dir(data, id))
@@ -217,7 +223,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         return Ok(state(&read(&path)));
     };
     let _one = lock(data, id)?;
-    let home = id == HOME_DRAFT;
+    let home = is_home(id);
     if !home {
         core::load(data, id)?;
     }
@@ -435,59 +441,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         now.rev = was.rev + 1;
         write(&path, &now)?;
     }
-    // A note closed before the first message goes with its tab, its side chats too: there's no
-    // session to list it [D280, D287]. A session's keeps its side chats for History [D288].
+    // A note closed before the first message goes with its tab: there's no session to list it [D280].
     if home {
-        let open = |note: &str| {
-            (now.tabs.iter()).any(|t| t.kind == "note" && t.target.as_deref() == Some(note))
-        };
-        let dir = note::home(data);
-        for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let path = entry.path();
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            if open(stem) {
-                continue;
-            }
-            // A chat's record goes once its chats have, so one that failed is tried again.
-            if path.extension().is_some_and(|e| e == "chat") {
-                let _ = note::drop_chat(data, &dir, stem);
-            } else {
-                let _ = fs::remove_file(path);
-            }
-        }
+        home::drop_closed_notes(data);
     }
     Ok(state(&now))
-}
-
-/// A session made from Home takes Home's tabs, in order, with the one in front, as the old app's
-/// did. The session's file is written first: a crash between the two leaves tabs in both places
-/// rather than in neither.
-pub fn carry(data: &Path, to: &str) -> io::Result<()> {
-    let _home = lock(data, HOME_DRAFT)?;
-    let _one = lock(data, to)?;
-    let from = file(data, HOME_DRAFT);
-    let mut home = read(&from);
-    if home.tabs.is_empty() {
-        return Ok(());
-    }
-    let carried = Tabs {
-        rev: 1,
-        active: home.active.clone(),
-        tabs: std::mem::take(&mut home.tabs),
-        closed: vec![],
-    };
-    write(&file(data, to), &carried)?;
-    // Home's notes are the session's now, as their tabs are [D280].
-    let notes = note::home(data);
-    if notes.is_dir() {
-        fs::rename(&notes, core::session_dir(data, to).join("notes"))?;
-        note::carried(data, &core::load(data, to)?)?;
-    }
-    home.active = CHAT.into();
-    home.rev += 1;
-    write(&from, &home)
 }
 
 /// A browser tab's saved pin; the registry decides whether it is still live.

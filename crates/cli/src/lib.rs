@@ -126,7 +126,7 @@ const HOME_DRAFT: &str = "@home";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
-    // Every session id this command names, checked before any path is built from it.
+    // Every session id this command names, checked before any path is built from it [D706].
     let ids = match cmd {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
@@ -137,7 +137,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
     let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT);
     for id in ids.iter().filter(checked) {
-        core::check_id(id)?;
+        core::check_id((id.strip_prefix("@home:").filter(|_| cmd == "tabs")).unwrap_or(id))?;
     }
     match cmd {
         "start" => {
