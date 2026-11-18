@@ -1,12 +1,23 @@
 //! One window as the agent reads it: its rows with password fields hidden, what changed since the
 //! last read (Cua's own `since`), and a picture of it.
 
-use super::{FULL, ROWS, SECURE, Sess, Words, call, refuse};
+use super::open::{menu_bar, own, windows};
+use super::{FULL, ROWS, SECURE, Sess, Words, call, lock, refuse};
 use brigadier_core as core;
 use serde_json::{Value, json};
 use std::collections::HashSet;
-use std::fs;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
+use std::{fs, thread};
+
+/// Below this many elements a window reads as thin: Chromium and Electron keep their tree off
+/// until a client asks, and Cua asks only apps on its list (#7751), so Dia read empty.
+const THIN: u64 = 12;
+/// How long the first thin read waits for the tree to fill (Chromium builds it ~2 s after asked).
+const THIN_WAIT: Duration = Duration::from_secs(3);
+/// The apps asked to turn their tree on already, by pid: each is asked, and waited on, once.
+static ASKED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
 
 /// The tree's row number: `[N]` at the start of its row.
 pub(super) fn row(line: &str) -> Option<u64> {
@@ -72,46 +83,79 @@ pub(super) fn read(
     w: &Words,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
-    let windows = call(
-        data,
-        "list_windows",
-        json!({"pid": s.pid, "on_screen_only": true}),
-        here,
-    )?;
-    let all: Vec<Value> = (windows["windows"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter())
-    .filter(|w| w["layer"].as_i64().unwrap_or(0) == 0)
-    .collect();
-    let nth: usize = w
-        .values
-        .get("--window")
-        .and_then(|n| n.parse().ok())
-        .unwrap_or(1);
-    let window = all.get(nth.max(1) - 1).ok_or_else(|| match all.len() {
-        0 => refuse(&format!("{} has no window open on this screen.", s.app)),
-        n => refuse(&format!("{} has {n} windows: --window 1 to {n}.", s.app)),
-    })?;
-    s.window = window["window_id"].as_u64().unwrap_or(0);
+    let all = windows(data, s.pid, here)?;
+    if all.is_empty() {
+        (s.window, s.snapshot, s.secure, s.frames) = Default::default();
+        return menu_bar(data, s, here);
+    }
+    let asked: Option<usize> = (w.values.get("--window")).and_then(|n| n.parse().ok());
+    if asked.is_some_and(|n| n == 0 || n > all.len()) {
+        return Err(refuse(&format!(
+            "{} has {} windows: --window 1 to {}.",
+            s.app,
+            all.len(),
+            all.len()
+        )));
+    }
     (s.query, s.full) = (
         w.values.get("--query").map(|q| q.to_string()),
         w.flags.contains("--full"),
     );
-    let found = call(data, "get_window_state", state_args(s, me), here)?;
+    // Unasked, the first window accessibility knows: list_windows keeps closed ones a while (Cua
+    // #4038), and those read as nothing.
+    let order: Vec<usize> = match asked {
+        Some(n) => vec![n - 1],
+        None => (0..all.len()).collect(),
+    };
+    let (mut nth, mut found) = (0, Value::Null);
+    for &i in &order {
+        s.window = all[i]["window_id"].as_u64().unwrap_or(0);
+        (nth, found) = (
+            i + 1,
+            call(data, "get_window_state", state_args(s, me), here)?,
+        );
+        if !unresolved(&found) {
+            break;
+        }
+    }
+    // A window just closed lingers in the list a moment: none left means the app has none.
+    if unresolved(&found) && asked.is_none() && {
+        thread::sleep(Duration::from_millis(500));
+        windows(data, s.pid, here)?.is_empty()
+    } {
+        (s.window, s.snapshot, s.secure, s.frames) = Default::default();
+        return menu_bar(data, s, here);
+    }
+    let window = &all[nth - 1];
+    if thin(&found) && lock(&ASKED).insert(s.pid) {
+        let _ = own(data, "enable", json!({"pid": s.pid}), here);
+        let start = Instant::now();
+        let mut last = 0;
+        while start.elapsed() < THIN_WAIT {
+            thread::sleep(Duration::from_millis(500));
+            found = call(data, "get_window_state", state_args(s, me), here)?;
+            let n = found["total_element_count"].as_u64().unwrap_or(0);
+            if !thin(&found) && n == last {
+                break;
+            }
+            last = n;
+        }
+    }
     (s.secure, s.frames, s.moved) = Default::default();
     learn(s, &found);
-    let title = window["title"]
-        .as_str()
+    let tree = found["tree_markdown"].as_str().unwrap_or("");
+    // The window's own title, as accessibility gives it: the listed one is often empty.
+    let named = (tree.split("AXWindow \"").nth(1)).and_then(|t| t.split('"').next());
+    let title = (window["title"].as_str())
         .filter(|t| !t.is_empty())
+        .or(named)
         .unwrap_or("untitled");
     let total = found["total_element_count"].as_u64().unwrap_or(0);
     let mut text = format!(
         "{} · \"{title}\" · window {nth} of {} · {total} elements\n{}",
         s.app,
         all.len(),
-        mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure)
+        tidy(&mask(tree, &s.secure))
     );
     if found["truncated"] == true {
         text.push_str(&format!(
@@ -119,10 +163,31 @@ pub(super) fn read(
             state_args(s, me)["max_elements"]
         ));
     }
-    if found["returned_element_count"].as_u64().unwrap_or(0) < 3 {
-        text.push_str("\nLooks visual: run `brigadier computer screenshot`.");
+    if thin(&found) {
+        text.push_str(&format!("\n{}'s window shows little to accessibility yet: read again in a few seconds, or `brigadier computer screenshot` to look at it.", s.app));
     }
     Ok(text)
+}
+
+fn unresolved(found: &Value) -> bool {
+    (found["degraded_reason"].as_str()).is_some_and(|r| r.starts_with("ax_window_unresolved"))
+}
+
+fn thin(found: &Value) -> bool {
+    unresolved(found) || found["total_element_count"].as_u64().unwrap_or(0) < THIN
+}
+
+/// Rows without the driver's action lists, which Chromium fills with its own menus.
+pub(super) fn tidy(md: &str) -> String {
+    let mut out = String::with_capacity(md.len());
+    let mut rest = md;
+    while let Some(at) = rest.find("actions=[") {
+        out.push_str(rest[..at].trim_end_matches(' '));
+        let after = &rest[at + "actions=[".len()..];
+        rest = after.find(']').map_or("", |end| &after[end + 1..]);
+    }
+    out.push_str(rest);
+    out.replace(" []", "")
 }
 
 /// What changed in the window since the last read, from Cua's own `since` read.
@@ -130,7 +195,20 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
     let mut args = state_args(s, me);
     args["since"] = "latest".into();
     let Ok(found) = call(data, "get_window_state", args, here) else {
-        return "Couldn't read the window after it: read again.".into();
+        // The window went (a panel closed, a document replaced it): read what the app shows now.
+        let again = Words {
+            verb: "read",
+            rest: vec![],
+            values: Default::default(),
+            flags: Default::default(),
+        };
+        return match read(data, me, s, &again, here) {
+            Ok(text) => format!("The window changed:\n{text}"),
+            Err(_) => format!(
+                "Couldn't read {} after it: `brigadier computer read {}`.",
+                s.app, s.app
+            ),
+        };
     };
     learn(s, &found);
     match found["since_status"].as_str() {
@@ -144,14 +222,20 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
             } else {
                 ""
             };
-            format!("Changed:\n{}{moved}", mask(&body.join("\n"), &s.secure))
+            format!(
+                "Changed:\n{}{moved}",
+                tidy(&mask(&body.join("\n"), &s.secure))
+            )
         }
         _ => {
             (s.secure, s.moved) = Default::default();
             learn(s, &found);
             format!(
                 "The window changed:\n{}",
-                mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure)
+                tidy(&mask(
+                    found["tree_markdown"].as_str().unwrap_or(""),
+                    &s.secure
+                ))
             )
         }
     }

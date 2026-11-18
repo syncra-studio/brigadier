@@ -2,13 +2,17 @@
 //! grants [D2032, D908, D913]. It runs the pinned Cua Driver as its own child over the child's
 //! stdio, so no socket an agent could reach, and pipes it to the daemon: driver calls come in as
 //! frames with an `rpc`, and each line the driver writes goes back as a `computer_reply`. All logic
-//! is in the daemon.
+//! is in the daemon. A call named `brigadier/…` is the helper's own (ax.rs), answered the same way.
+
+#[cfg(target_os = "macos")]
+mod ax;
 
 use brigadier_frames::wire::{self, read_frame, write_frame};
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{self, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{env, thread};
 
@@ -74,15 +78,22 @@ fn main() {
     };
 
     let (stdout, mut stdin) = (child.stdout.take().unwrap(), child.stdin.take().unwrap());
-    let mut back = daemon.try_clone().unwrap_or_else(|e| fail(&e));
+    let back = Arc::new(Mutex::new(daemon.try_clone().unwrap_or_else(|e| fail(&e))));
+    let send = move |reply: Value| {
+        let frame = json!({"op": "computer_reply", "reply": reply}).to_string();
+        let mut out = back
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        write_frame(&mut out, &frame).is_ok()
+    };
+    let to_daemon = send.clone();
     thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
             let Ok(line) = line else { break };
             let Ok(reply) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
-            let frame = json!({"op": "computer_reply", "reply": reply}).to_string();
-            if write_frame(&mut back, &frame).is_err() {
+            if !to_daemon(reply) {
                 break;
             }
         }
@@ -94,9 +105,22 @@ fn main() {
         let Ok(frame) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
-        if let Some(rpc) = frame.get("rpc")
-            && writeln!(stdin, "{rpc}").is_err()
+        let Some(rpc) = frame.get("rpc") else {
+            continue;
+        };
+        if let Some(method) = rpc["method"]
+            .as_str()
+            .filter(|m| m.starts_with("brigadier/"))
         {
+            let (method, rpc, send) = (method.to_string(), rpc.clone(), send.clone());
+            thread::spawn(move || {
+                let id = &rpc["id"];
+                send(match ax::handle(&method, &rpc["params"]) {
+                    Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
+                    Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"message": e}}),
+                });
+            });
+        } else if writeln!(stdin, "{rpc}").is_err() {
             break;
         }
     }
@@ -179,6 +203,13 @@ mod mac {
                 CGRequestScreenCaptureAccess();
             }
         }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod ax {
+    pub fn handle(_: &str, _: &serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("Only on macOS.".into())
     }
 }
 

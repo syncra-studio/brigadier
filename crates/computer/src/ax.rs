@@ -1,0 +1,289 @@
+//! The few calls the helper makes itself, under its own grants, where the driver has no route
+//! [D928]: an app's menu bar read and pressed by pid with no window (Cua #8055), Chromium's tree
+//! turned on for any app (Cua #7751 lists names), and the process in front read and given back
+//! through WindowServer, as Cua's own `key_focus_guard` does after an action. The daemon decides
+//! when; these only do.
+
+use core_foundation::array::CFArray;
+use core_foundation::base::{CFType, CFTypeRef, TCFType};
+use core_foundation::boolean::CFBoolean;
+use core_foundation::number::CFNumber;
+use core_foundation::string::{CFString, CFStringRef};
+use serde_json::{Value, json};
+use std::ffi::{CStr, c_void};
+use std::sync::OnceLock;
+
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+    fn AXUIElementCopyAttributeValue(e: CFTypeRef, attr: CFStringRef, out: *mut CFTypeRef) -> i32;
+    fn AXUIElementSetAttributeValue(e: CFTypeRef, attr: CFStringRef, value: CFTypeRef) -> i32;
+    fn AXUIElementPerformAction(e: CFTypeRef, action: CFStringRef) -> i32;
+    fn AXUIElementSetMessagingTimeout(e: CFTypeRef, seconds: f32) -> i32;
+}
+
+/// One `brigadier/…` call: its result, or why not.
+pub fn handle(method: &str, p: &Value) -> Result<Value, String> {
+    let pid = p["pid"].as_i64().unwrap_or(0) as i32;
+    match method {
+        "brigadier/menus" => Ok(json!({"menus": menus(&app(pid)?)})),
+        "brigadier/menu" => press(&app(pid)?, p),
+        "brigadier/enable" => {
+            let app = app(pid)?;
+            let on = CFBoolean::true_value();
+            let set = |name: &str| unsafe {
+                AXUIElementSetAttributeValue(
+                    app.as_CFTypeRef(),
+                    CFString::new(name).as_concrete_TypeRef(),
+                    on.as_CFTypeRef(),
+                )
+            };
+            Ok(
+                json!({"manual": set("AXManualAccessibility"), "enhanced": set("AXEnhancedUserInterface")}),
+            )
+        }
+        "brigadier/front" => Ok(json!({"pid": front()})),
+        "brigadier/restore" => {
+            let wid = p["window"].as_u64().unwrap_or(0) as u32;
+            Ok(json!({"restored": restore(pid, wid) && front() == Some(pid), "front": front()}))
+        }
+        _ => Err(format!("{method} isn't a call of this helper.")),
+    }
+}
+
+fn app(pid: i32) -> Result<CFType, String> {
+    if pid <= 0 {
+        return Err("No app named.".into());
+    }
+    let e = unsafe { AXUIElementCreateApplication(pid) };
+    if e.is_null() {
+        return Err("No such app.".into());
+    }
+    // A hung app answers nothing: never wait on it for long.
+    unsafe { AXUIElementSetMessagingTimeout(e, 1.0) };
+    Ok(unsafe { CFType::wrap_under_create_rule(e) })
+}
+
+fn attr(e: &CFType, name: &str) -> Option<CFType> {
+    let mut out: CFTypeRef = std::ptr::null();
+    let key = CFString::new(name);
+    let err = unsafe {
+        AXUIElementCopyAttributeValue(e.as_CFTypeRef(), key.as_concrete_TypeRef(), &mut out)
+    };
+    (err == 0 && !out.is_null()).then(|| unsafe { CFType::wrap_under_create_rule(out) })
+}
+
+fn text(e: &CFType, name: &str) -> String {
+    attr(e, name)
+        .and_then(|v| v.downcast::<CFString>())
+        .map(|s| s.to_string())
+        .unwrap_or_default()
+}
+
+fn number(e: &CFType, name: &str) -> Option<i64> {
+    attr(e, name)?.downcast::<CFNumber>()?.to_i64()
+}
+
+fn children(e: &CFType) -> Vec<CFType> {
+    let Some(list) = attr(e, "AXChildren").and_then(|v| v.downcast::<CFArray<*const c_void>>())
+    else {
+        return vec![];
+    };
+    list.iter()
+        .map(|p| unsafe { CFType::wrap_under_get_rule(*p) })
+        .collect()
+}
+
+fn enabled(e: &CFType) -> bool {
+    attr(e, "AXEnabled")
+        .and_then(|v| v.downcast::<CFBoolean>())
+        .is_none_or(bool::from)
+}
+
+/// A menu bar item's or menu item's own menu.
+fn submenu(e: &CFType) -> Option<CFType> {
+    children(e).into_iter().next()
+}
+
+/// An item's key equivalent as macOS writes it: ⌃⌥⇧⌘N.
+fn shortcut(e: &CFType) -> String {
+    let key = text(e, "AXMenuItemCmdChar");
+    if key.is_empty() {
+        return key;
+    }
+    let mods = number(e, "AXMenuItemCmdModifiers").unwrap_or(0);
+    let mut out = String::new();
+    for (bit, sign) in [(4, "⌃"), (2, "⌥"), (1, "⇧")] {
+        if mods & bit != 0 {
+            out.push_str(sign);
+        }
+    }
+    if mods & 8 == 0 {
+        out.push('⌘');
+    }
+    out + &key
+}
+
+/// The menu bar with each menu's enabled items, the Apple menu left out.
+fn menus(app: &CFType) -> Vec<Value> {
+    let Some(bar) = attr(app, "AXMenuBar") else {
+        return vec![];
+    };
+    (children(&bar).iter().skip(1))
+        .map(|top| {
+            let items: Vec<Value> = (submenu(top).as_ref().map(children).unwrap_or_default())
+                .iter()
+                .filter(|i| enabled(i))
+                .filter_map(|i| {
+                    let title = text(i, "AXTitle");
+                    (!title.is_empty()).then(|| json!({"title": title, "key": shortcut(i)}))
+                })
+                .collect();
+            json!({"title": text(top, "AXTitle"), "items": items})
+        })
+        .collect()
+}
+
+fn same(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.trim().replace('…', "...").to_lowercase();
+    norm(a) == norm(b)
+}
+
+/// Presses a menu item by its path, or by its key equivalent (`keys`: ["cmd", "n"]), with no
+/// window needed: menus belong to the app.
+fn press(app: &CFType, p: &Value) -> Result<Value, String> {
+    let bar = attr(app, "AXMenuBar").ok_or("This app has no menu bar.")?;
+    let (item, path) = match p["path"].as_array() {
+        Some(path) => {
+            let mut at = bar;
+            let mut item = None;
+            for (i, name) in path.iter().filter_map(Value::as_str).enumerate() {
+                let menu = if i == 0 { Some(at) } else { submenu(&at) };
+                let found = (menu.as_ref().map(children).unwrap_or_default())
+                    .into_iter()
+                    .find(|c| same(&text(c, "AXTitle"), name))
+                    .ok_or_else(|| format!("No menu item \"{name}\"."))?;
+                at = found.clone();
+                item = Some(found);
+            }
+            (
+                item.ok_or("No menu path.")?,
+                path.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" > "),
+            )
+        }
+        None => {
+            let keys: Vec<String> = (p["keys"].as_array().into_iter().flatten())
+                .filter_map(|k| k.as_str().map(str::to_lowercase))
+                .collect();
+            let (last, mods) = keys.split_last().ok_or("No keys.")?;
+            let has = |m: &[&str]| mods.iter().any(|k| m.contains(&k.as_str()));
+            let want = (has(&["shift"]) as i64)
+                | (has(&["option", "alt"]) as i64) << 1
+                | (has(&["ctrl", "control"]) as i64) << 2
+                | (!has(&["cmd", "command"]) as i64) << 3;
+            let mut found = None;
+            for top in children(&bar).iter().skip(1) {
+                found = find_key(top, &text(top, "AXTitle"), last, want, 0);
+                if found.is_some() {
+                    break;
+                }
+            }
+            found.ok_or_else(|| format!("No menu item has {}.", keys.join("+")))?
+        }
+    };
+    if !enabled(&item) {
+        return Err(format!("{path} is greyed out now."));
+    }
+    let act = |name: &str| unsafe {
+        AXUIElementPerformAction(
+            item.as_CFTypeRef(),
+            CFString::new(name).as_concrete_TypeRef(),
+        )
+    };
+    match act("AXPress") == 0 || act("AXPick") == 0 {
+        true => Ok(json!({"pressed": path})),
+        false => Err(format!("{path} didn't take the press.")),
+    }
+}
+
+/// The item under `e` whose key equivalent is `key` with modifiers `mods`, and its path.
+fn find_key(e: &CFType, path: &str, key: &str, mods: i64, depth: u8) -> Option<(CFType, String)> {
+    for item in submenu(e).as_ref().map(children).unwrap_or_default() {
+        let title = text(&item, "AXTitle");
+        let here = format!("{path} > {title}");
+        if text(&item, "AXMenuItemCmdChar").to_lowercase() == key
+            && number(&item, "AXMenuItemCmdModifiers").unwrap_or(0) == mods
+        {
+            return Some((item, here));
+        }
+        if depth < 2
+            && let Some(found) = find_key(&item, &here, key, mods, depth + 1)
+        {
+            return Some(found);
+        }
+    }
+    None
+}
+
+// WindowServer's front process, as Cua's skylight.rs reads and sets it.
+type GetFront = unsafe extern "C" fn(*mut c_void) -> i32;
+type PsnPid = unsafe extern "C" fn(*const c_void, *mut i32) -> i32;
+type PidPsn = unsafe extern "C" fn(i32, *mut c_void) -> i32;
+type SetFront = unsafe extern "C" fn(*const c_void, u32, u32) -> i32;
+type PostRecord = unsafe extern "C" fn(*const c_void, *const u8) -> i32;
+
+fn sym<T: Copy>(name: &CStr) -> Option<T> {
+    static LOADED: OnceLock<()> = OnceLock::new();
+    LOADED.get_or_init(|| unsafe {
+        libc::dlopen(
+            c"/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight".as_ptr(),
+            libc::RTLD_LAZY | libc::RTLD_GLOBAL,
+        );
+    });
+    let p = unsafe { libc::dlsym(libc::RTLD_DEFAULT, name.as_ptr()) };
+    (!p.is_null()).then(|| unsafe { std::mem::transmute_copy(&p) })
+}
+
+/// The pid WindowServer has in front now, without waiting on a run loop.
+fn front() -> Option<i32> {
+    let get: GetFront = sym(c"_SLPSGetFrontProcess")?;
+    let to_pid: PsnPid = sym(c"GetProcessPID")?;
+    let mut psn = [0u8; 8];
+    let mut pid = 0;
+    (unsafe { get(psn.as_mut_ptr().cast()) } == 0
+        && psn != [0; 8]
+        && unsafe { to_pid(psn.as_ptr().cast(), &mut pid) } == 0
+        && pid > 0)
+        .then_some(pid)
+}
+
+/// Gives `pid`'s window `wid` the front and the keyboard back: a user-generated front request
+/// plus the two make-key records, Cua's `return_key_to`; `activate` is only a request macOS may
+/// ignore.
+fn restore(pid: i32, wid: u32) -> bool {
+    let (Some(psn_of), Some(set), Some(post)) = (
+        sym::<PidPsn>(c"GetProcessForPID"),
+        sym::<SetFront>(c"SLPSSetFrontProcessWithOptions"),
+        sym::<PostRecord>(c"SLPSPostEventRecordTo"),
+    ) else {
+        return false;
+    };
+    let mut psn = [0u8; 8];
+    if unsafe { psn_of(pid, psn.as_mut_ptr().cast()) } != 0
+        || unsafe { set(psn.as_ptr().cast(), wid, 0x200) } != 0
+    {
+        return false;
+    }
+    [0x01u8, 0x02].iter().all(|&kind| {
+        let mut record = [0u8; 0xF8];
+        record[0x04] = 0xF8;
+        record[0x08] = kind;
+        record[0x3A] = 0x10;
+        record[0x3C..0x40].copy_from_slice(&wid.to_le_bytes());
+        record[0x20..0x30].fill(0xFF);
+        unsafe { post(psn.as_ptr().cast(), record.as_ptr()) == 0 }
+    })
+}

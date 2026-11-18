@@ -5,11 +5,13 @@
 //! block list [D903]; an action waits while the user is in its app [D910].
 
 mod act;
+mod open;
 mod window;
 
 use super::{Fail, HUB, lock, tool};
 use crate::agent::{cap, refuse};
 use act::{act, key, token};
+use open::press;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -20,7 +22,7 @@ use window::{drag, read, screenshot};
 pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them.
 
   apps                          the running apps; (front) is the one in front
-  open <app>                    starts an app in the background (it never comes to the front) and reads its window
+  open <app> [<url>|<path>]     starts an app in the background, or hands it a url or path, and reads its window
   read [<app>] [--window N] [--query WORDS] [--full]
                                 one window as text, each control as [n] role \"name\" = \"value\"; about 300 rows, --full for more
   click <n> [--double|--right]  clicks control [n] of your last read
@@ -28,7 +30,7 @@ pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps o
   key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
   scroll <n> up|down [--pages N]
   drag <n> <m>                  drags control [n] onto control [m]
-  menu \"File > Save As…\"        picks an item in the app's menu bar
+  menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window
   screenshot                    a picture of the window, saved in your session's folder; only its path comes back
 
 Each action answers whether it worked and what changed in the window since your last read; read again when it
@@ -190,24 +192,7 @@ fn verb(
     };
     let text = match w.verb {
         "apps" => apps(data, here)?,
-        "open" => {
-            let name = w.rest.join(" ");
-            blocked(&name, "")?;
-            let opened = call(data, "launch_app", json!({"name": name}), here)?;
-            let pid = opened["pid"]
-                .as_i64()
-                .ok_or_else(|| refuse(&format!("{name} didn't start.")))?;
-            blocked(&name, opened["bundle_id"].as_str().unwrap_or(""))?;
-            s = Sess {
-                pid,
-                app: name.clone(),
-                ..Sess::default()
-            };
-            format!(
-                "Opened {name} in the background.\n{}",
-                read(data, me, &mut s, w, here)?
-            )
-        }
+        "open" => open::open(data, me, &mut s, w, here)?,
         "read" => {
             if !w.rest.is_empty() {
                 let (pid, app) = find(data, &w.rest.join(" "), here)?;
@@ -222,10 +207,52 @@ fn verb(
             read(data, me, &mut s, w, here)?
         }
         "screenshot" => screenshot(data, me, &s, here)?,
-        _ if s.snapshot.is_empty() => {
+        _ if s.pid == 0 => {
             return Err(refuse(
-                "Read a window first: brigadier computer read <app>.",
+                "Name the app first: brigadier computer read <app>, or open <app>.",
             ));
+        }
+        // Menus and key equivalents go to the app's menu bar by pid, window or not [D928]: Cua's
+        // background key events never reach a native app's menus, and its menu needs a window.
+        "menu" => {
+            let path = menu_path(w)?;
+            let cua = json!({"pid": s.pid, "window_id": s.window, "path": path});
+            press(
+                data,
+                me,
+                &mut s,
+                json!({"path": path}),
+                ("invoke_menu", cua),
+                w,
+                here,
+            )?
+        }
+        "key" => match key(&s, me, w.rest.first().copied().unwrap_or(""))? {
+            ("hotkey", args) => {
+                let keys = json!({"keys": args["keys"]});
+                press(data, me, &mut s, keys, ("hotkey", args), w, here)?
+            }
+            (name, args) if s.window != 0 && !s.snapshot.is_empty() => act(
+                data,
+                me,
+                &mut s,
+                &format!("Pressed {}", w.rest[0]),
+                name,
+                args,
+                here,
+            )?,
+            _ => {
+                return Err(refuse(&format!(
+                    "{} has no window for keys to go to. `brigadier computer read {}` lists its menus; File > New opens a window in most apps.",
+                    s.app, s.app
+                )));
+            }
+        },
+        _ if s.window == 0 || s.snapshot.is_empty() => {
+            return Err(refuse(&format!(
+                "{} has no window read to act in. `brigadier computer read {}` reads it, or lists its menus when it has no window.",
+                s.app, s.app
+            )));
         }
         "click" => {
             let n = n(0)?;
@@ -282,18 +309,6 @@ fn verb(
             }
             out
         }
-        "key" => {
-            let (name, args) = key(&s, me, w.rest.first().copied().unwrap_or(""))?;
-            act(
-                data,
-                me,
-                &mut s,
-                &format!("Pressed {}", w.rest[0]),
-                name,
-                args,
-                here,
-            )?
-        }
         "scroll" => {
             let n = n(0)?;
             let way = w
@@ -332,33 +347,24 @@ fn verb(
                 here,
             )?
         }
-        "menu" => {
-            let joined = w.rest.join(" ");
-            let path: Vec<&str> = joined
-                .split('>')
-                .map(str::trim)
-                .filter(|p| !p.is_empty())
-                .collect();
-            if path.len() < 2 {
-                return Err(refuse(
-                    "Give the menu's path: brigadier computer menu \"File > Save As…\"",
-                ));
-            }
-            let args = json!({"pid": s.pid, "window_id": s.window, "path": path});
-            act(
-                data,
-                me,
-                &mut s,
-                &format!("Chose {}", path.join(" > ")),
-                "invoke_menu",
-                args,
-                here,
-            )?
-        }
         _ => unreachable!(),
     };
     lock(&SESSIONS).insert(me.to_string(), s);
     Ok(text)
+}
+
+/// A menu's path from `menu "File > Save As…"`.
+fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
+    let path: Vec<String> = (w.rest.join(" ").split('>'))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    match path.len() {
+        0 | 1 => Err(refuse(
+            "Give the menu's path: brigadier computer menu \"File > Save As…\"",
+        )),
+        _ => Ok(path),
+    }
 }
 
 /// Takes the computer for `me`, or names the session that has it [D907].

@@ -17,14 +17,14 @@ mkdir target/bin
 cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,libbrigadier_panel.dylib} target/bin/
 # Computer use's helper is its own app, launched through LaunchServices, so macOS charges the
 # Accessibility and Screen Recording grants to it, not to Brigadier or an agent's shell [D908, D913].
-# It hosts Cua Driver 0.53.2 (MIT) as released; osx-sign re-signs it, inside out, with the app.
-CUA=cua-driver-rs-0.53.2-darwin-universal-binary.tar.gz
+# It hosts Cua Driver 0.54.0 (MIT) as released; osx-sign re-signs it, inside out, with the app.
+CUA=cua-driver-rs-0.54.0-darwin-universal-binary.tar.gz
 mkdir -p target/cua
 if [ ! -f "target/cua/$CUA" ]; then
-  curl -fsSL -o "target/cua/$CUA.part" "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.53.2/$CUA"
+  curl -fsSL -o "target/cua/$CUA.part" "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.54.0/$CUA"
   mv "target/cua/$CUA.part" "target/cua/$CUA"
 fi
-echo "4ac301e624ca8fc6bff6be7066477f8a79d3951af7b213ba0634b8661c0d139e  target/cua/$CUA" | shasum -a 256 -c -
+echo "c0ddcf71381ec4b745703694c2cd19812d2938b8a095cbccac994d8d2dc4893d  target/cua/$CUA" | shasum -a 256 -c -
 HELPER="target/Brigadier Computer Use.app/Contents"
 rm -rf "target/Brigadier Computer Use.app"
 mkdir -p "$HELPER/MacOS" "$HELPER/Resources"

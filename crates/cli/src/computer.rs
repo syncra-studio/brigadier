@@ -189,6 +189,21 @@ pub(crate) fn tool(
     Ok(Ok(structured))
 }
 
+/// One of the helper's own calls (`brigadier/<method>`, its ax.rs) [D928]: its result, or why not.
+pub(crate) fn own(
+    data: &Path,
+    method: &str,
+    params: Value,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Result<Value, String>, Fail> {
+    ready(data)?;
+    let answer = send(&format!("brigadier/{method}"), params, CALL_WAIT, cancel)?;
+    Ok(match answer["error"]["message"].as_str() {
+        Some(e) => Err(e.to_string()),
+        None => Ok(answer["result"].clone()),
+    })
+}
+
 /// The helper is up and its driver answers, launched if it isn't; else why not.
 fn ready(data: &Path) -> Result<(), Fail> {
     // Turned off while a call waited: nothing more is sent [D912].
