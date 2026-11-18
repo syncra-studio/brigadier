@@ -129,6 +129,9 @@ pub fn rules(spec: &Spec) -> Value {
     let folder = (folder.iter()).flat_map(|f| {
         [("external_directory", "allow"), ("edit", "deny")].map(|(a, e)| rule(a, f, e))
     });
+    // The desktop app's synced computer-use skill, found by OpenCode in ~/.claude/skills, says
+    // computer use is missing; here it's `brigadier computer` [D922].
+    let folder = folder.chain([rule("skill", "computer-use", "deny")]);
     if spec.level.as_deref() == Some("full") {
         return [rule("*", "*", "allow")]
             .into_iter()
