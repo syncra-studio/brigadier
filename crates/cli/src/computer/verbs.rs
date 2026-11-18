@@ -11,12 +11,13 @@ mod window;
 use super::{Fail, HUB, lock, tool};
 use crate::agent::{cap, refuse};
 use act::{act, key, token};
-use open::press;
+use open::{apps, find, press};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
+use window::ours;
 use window::{drag, read, screenshot};
 
 pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them.
@@ -30,7 +31,8 @@ pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps o
   key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
   scroll <n> up|down [--pages N]
   drag <n> <m>                  drags control [n] onto control [m]
-  menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window
+  menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window;
+                                one name (menu Close) picks it from the menu open now, after a click --right
   screenshot                    a picture of the window, saved in your session's folder; only its path comes back
 
 Each action answers whether it worked and what changed in the window since your last read; read again when it
@@ -139,7 +141,12 @@ pub fn agent(
     if ["help", "--help"].contains(&w.verb) || w.flags.contains("--help") {
         return json!({"ok": true, "text": HELP});
     }
-    match verb(data, me, &w, rows, here) {
+    // What the launch watch saw since, said once.
+    let verb = verb(data, me, &w, rows, here).map(|text| match open::notes(me) {
+        n if n.is_empty() => text,
+        n => format!("{n}\n{text}"),
+    });
+    match verb {
         // JSON keeps the words under `result`: a reply with `text` prints as plain text.
         Ok(text) if w.flags.contains("--json") => json!({"ok": true, "result": cap(&text)}),
         Ok(text) => json!({"ok": true, "text": cap(&text)}),
@@ -216,16 +223,14 @@ fn verb(
         // background key events never reach a native app's menus, and its menu needs a window.
         "menu" => {
             let path = menu_path(w)?;
-            let cua = json!({"pid": s.pid, "window_id": s.window, "path": path});
-            press(
-                data,
-                me,
-                &mut s,
-                json!({"path": path}),
-                ("invoke_menu", cua),
-                w,
-                here,
-            )?
+            let (what, cua) = match path.len() {
+                1 => (json!({"path": path}), ("", Value::Null)),
+                _ => {
+                    let args = json!({"pid": s.pid, "window_id": s.window, "path": path});
+                    (json!({"path": path}), ("invoke_menu", args))
+                }
+            };
+            press(data, me, &mut s, what, cua, w, here)?
         }
         "key" => match key(&s, me, w.rest.first().copied().unwrap_or(""))? {
             ("hotkey", args) => {
@@ -360,7 +365,7 @@ fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
         .filter(|p| !p.is_empty())
         .collect();
     match path.len() {
-        0 | 1 => Err(refuse(
+        0 => Err(refuse(
             "Give the menu's path: brigadier computer menu \"File > Save As…\"",
         )),
         _ => Ok(path),
@@ -417,7 +422,7 @@ fn said(f: Fail) -> Value {
 fn call(data: &Path, name: &str, args: Value, here: &dyn Fn() -> bool) -> Result<Value, Value> {
     tool(data, name, args, &|| !here())
         .map_err(said)?
-        .map_err(|e| refuse(&cap(&e)))
+        .map_err(|e| refuse(&cap(&ours(&e))))
 }
 
 /// Brigadier itself and the system's security prompts are closed at every level [D903].
@@ -440,48 +445,4 @@ fn blocked(name: &str, bundle: &str) -> Result<(), Value> {
         return Err(refuse("That's a security prompt: ask the user."));
     }
     Ok(())
-}
-
-fn running(data: &Path, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
-    let found = call(data, "list_apps", json!({}), here)?;
-    Ok((found["apps"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter())
-    .filter(|a| a["running"] != false)
-    .collect())
-}
-
-fn apps(data: &Path, here: &dyn Fn() -> bool) -> Result<String, Value> {
-    let lines: Vec<String> = (running(data, here)?.iter())
-        .filter(|a| {
-            blocked(
-                a["name"].as_str().unwrap_or(""),
-                a["bundle_id"].as_str().unwrap_or(""),
-            )
-            .is_ok()
-        })
-        .map(|a| {
-            format!(
-                "{}{}",
-                a["name"].as_str().unwrap_or("?"),
-                if a["active"] == true { " (front)" } else { "" }
-            )
-        })
-        .collect();
-    Ok(format!("Running apps:\n{}", lines.join("\n")))
-}
-
-/// A running app by its name: exact first, else the one it starts.
-fn find(data: &Path, name: &str, here: &dyn Fn() -> bool) -> Result<(i64, String), Value> {
-    let all = running(data, here)?;
-    let named = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase();
-    let lower = name.to_lowercase();
-    let app = (all.iter().find(|a| named(a) == lower))
-        .or_else(|| all.iter().find(|a| named(a).starts_with(&lower)))
-        .ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
-    let found = app["name"].as_str().unwrap_or(name).to_string();
-    blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
-    Ok((app["pid"].as_i64().unwrap_or(0), found))
 }

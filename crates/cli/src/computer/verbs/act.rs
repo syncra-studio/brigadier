@@ -1,8 +1,9 @@
 //! An action: it waits while the user is in its app [D910], runs once, and says how it went and
 //! what changed.
 
+use super::open::front;
 use super::window::changes;
-use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, running, said, tool};
+use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, ours, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::thread;
@@ -26,7 +27,7 @@ pub(super) fn act(
             ));
         }
         Err(f) => return Err(said(f)),
-        Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {why}")))),
+        Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
         Ok(Ok(done)) => done,
     };
     let hint = done["hint"]
@@ -64,10 +65,7 @@ pub(super) fn idle() -> f64 {
 pub(super) fn wait_for_user(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<(), Value> {
     let start = Instant::now();
     while idle() < BUSY {
-        let front = running(data, here)?
-            .into_iter()
-            .find(|a| a["active"] == true);
-        if front.is_none_or(|a| a["pid"].as_i64() != Some(s.pid)) {
+        if front(data, here) != Some(s.pid) {
             return Ok(());
         }
         if start.elapsed() >= PAUSE_WAIT || !here() {

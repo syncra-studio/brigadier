@@ -187,7 +187,7 @@ pub(super) fn tidy(md: &str) -> String {
         rest = after.find(']').map_or("", |end| &after[end + 1..]);
     }
     out.push_str(rest);
-    out.replace(" []", "")
+    ours(&out.replace(" []", ""))
 }
 
 /// What changed in the window since the last read, from Cua's own `since` read.
@@ -323,4 +323,19 @@ fn not_captured(found: &Value) -> Value {
     refuse(&format!(
         "Couldn't capture the window: {why}. Read it again."
     ))
+}
+
+/// The driver's words for its own tools, said as this command's: an agent can't call those.
+pub(super) fn ours(text: &str) -> String {
+    [
+        ("take a fresh get_window_state snapshot and re-address it", "read again"),
+        ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS finds one)"),
+        ("get_window_state", "read"),
+        ("element_token", "number"),
+        ("invoke_menu", "menu"),
+        ("bring_to_front", "the user bringing it forward"),
+        ("delivery_mode:\"foreground\"", "the app in front"),
+    ]
+    .iter()
+    .fold(text.to_string(), |t, (a, b)| t.replace(a, b))
 }

@@ -153,8 +153,26 @@ fn same(a: &str, b: &str) -> bool {
 /// window needed: menus belong to the app.
 fn press(app: &CFType, p: &Value) -> Result<Value, String> {
     let bar = attr(app, "AXMenuBar").ok_or("This app has no menu bar.")?;
-    let (item, path) = match p["path"].as_array() {
-        Some(path) => {
+    let path_of = p["path"].as_array().filter(|p| p.len() > 1);
+    let (item, path) = match (path_of, p["path"][0].as_str()) {
+        // One name: an item of the menu open now (a context menu, a popup). Chromium hangs it
+        // under the control that opened it, in a window AXWindows drops while it's open; Cocoa's
+        // is the app's own child.
+        (None, Some(name)) => {
+            let found = (["AXFocusedWindow", "AXMainWindow"].iter())
+                .filter_map(|a| attr(app, a))
+                .chain(children(app))
+                .find_map(|e| open_item(&e, name, false, 0));
+            (
+                found.ok_or_else(|| {
+                    format!(
+                        "No open menu has \"{name}\": open it first (click --right on a control)."
+                    )
+                })?,
+                name.to_string(),
+            )
+        }
+        (Some(path), _) => {
             let mut at = bar;
             let mut item = None;
             for (i, name) in path.iter().filter_map(Value::as_str).enumerate() {
@@ -174,7 +192,7 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
                     .join(" > "),
             )
         }
-        None => {
+        (None, None) => {
             let keys: Vec<String> = (p["keys"].as_array().into_iter().flatten())
                 .filter_map(|k| k.as_str().map(str::to_lowercase))
                 .collect();
@@ -207,6 +225,21 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
         true => Ok(json!({"pressed": path})),
         false => Err(format!("{path} didn't take the press.")),
     }
+}
+
+/// An item named `name` in a menu open under `e`; web content and the menu bar hold none.
+fn open_item(e: &CFType, name: &str, in_menu: bool, depth: u8) -> Option<CFType> {
+    let role = text(e, "AXRole");
+    if in_menu && role == "AXMenuItem" && same(&text(e, "AXTitle"), name) {
+        return Some(e.clone());
+    }
+    if depth > 20 || ["AXWebArea", "AXMenuBar"].contains(&role.as_str()) {
+        return None;
+    }
+    let in_menu = in_menu || role == "AXMenu";
+    children(e)
+        .iter()
+        .find_map(|c| open_item(c, name, in_menu, depth + 1))
 }
 
 /// The item under `e` whose key equivalent is `key` with modifiers `mods`, and its path.

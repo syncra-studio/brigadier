@@ -2,16 +2,20 @@
 //! app with no window shows its menu bar, and its menus and key equivalents work by pid, through
 //! the helper's own calls (Cua's need a window, #8055).
 
-use super::act::{act, wait_for_user};
+use super::act::{act, idle, wait_for_user};
 use super::window::{changes, read};
-use super::{Fail, Sess, Words, blocked, call, refuse, said};
+use super::{Fail, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 /// How long `open`, or a menu item, may take to show a window.
 const WINDOW_WAIT: Duration = Duration::from_secs(3);
+/// How long `open` with a url waits for the page to show content.
+const PAGE_WAIT: Duration = Duration::from_secs(6);
 
 /// One of the helper's own calls, answered as a driver call is.
 pub(super) fn own(
@@ -56,6 +60,14 @@ pub(super) fn open(
     if let Some(t) = &target {
         args["urls"] = json!([t]);
     }
+    // What the user has in front, to keep there [D909].
+    let user = front(data, here);
+    let user_window = match user {
+        Some(pid) => windows(data, pid, here)?
+            .first()
+            .map(|w| w["window_id"].clone()),
+        None => None,
+    };
     let opened = call(data, "launch_app", args, here)?;
     let pid = opened["pid"].as_i64().ok_or_else(|| {
         refuse(&format!(
@@ -68,14 +80,95 @@ pub(super) fn open(
         app: opened["name"].as_str().unwrap_or(&name).to_string(),
         ..Sess::default()
     };
+    // Cua demotes an app that takes the front at launch, and says if it stayed.
+    if opened["self_activation_suppressed"] == false {
+        let note = format!(
+            "{} took the front as it started and stayed there: tell the user.",
+            s.app
+        );
+        lock(&SEEN).entry(me.to_string()).or_default().push(note);
+    }
+    if let (Some(user), Some(window)) = (user, user_window)
+        && user != pid
+    {
+        keep_behind(data, me, s.app.clone(), pid, user, window);
+    }
     // A window can come a moment after the launch.
     let start = Instant::now();
     while windows(data, s.pid, here)?.is_empty() && start.elapsed() < WINDOW_WAIT {
         thread::sleep(Duration::from_millis(250));
     }
-    let what = target.map(|t| format!(" with {t}")).unwrap_or_default();
-    let body = read(data, me, s, w, here)?;
-    Ok(format!("Opened {}{what} in the background.\n{body}", s.app))
+    let what = (target.as_ref())
+        .map(|t| format!(" with {t}"))
+        .unwrap_or_default();
+    let mut body = read(data, me, s, w, here)?;
+    // A page loads after its window shows: wait for its content.
+    while target.as_ref().is_some_and(|t| t.contains("://"))
+        && !body.contains("AXWebArea")
+        && start.elapsed() < PAGE_WAIT
+    {
+        thread::sleep(Duration::from_millis(400));
+        body = read(data, me, s, w, here)?;
+    }
+    let how = match notes(me) {
+        n if n.is_empty() => " in the background.".to_string(),
+        n => format!(". {n}"),
+    };
+    Ok(format!("Opened {}{what}{how}\n{body}", s.app))
+}
+
+/// How long a launched app is watched: Chromium activates itself each time it shows a window,
+/// later than Cua's 0.5 s guard on a plain launch; the old app's fork kept apps behind ~10 s.
+const KEEP: Duration = Duration::from_secs(10);
+/// What the watch saw, by session, said with that session's next reply.
+static SEEN: LazyLock<Mutex<HashMap<String, Vec<String>>>> = LazyLock::new(Mutex::default);
+
+/// The pid WindowServer has in front now; `list_apps`' `active` lags.
+pub(super) fn front(data: &Path, here: &dyn Fn() -> bool) -> Option<i64> {
+    own(data, "front", json!({}), here).ok()?["pid"].as_i64()
+}
+
+/// For 10 s after a launch, an app that takes the front is put back behind the user's window,
+/// unless the user gave input since (they may have switched to it). What happened is told, as
+/// measured.
+fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: Value) {
+    let (data, me) = (data.to_path_buf(), me.to_string());
+    let start = Instant::now();
+    thread::spawn(move || {
+        let never = || true;
+        while start.elapsed() < KEEP {
+            thread::sleep(Duration::from_millis(100));
+            if front(&data, &never) != Some(pid) {
+                continue;
+            }
+            let at = start.elapsed().as_secs_f64();
+            if idle() < at {
+                return;
+            }
+            let back = own(
+                &data,
+                "restore",
+                json!({"pid": user, "window": window}),
+                &never,
+            );
+            let note = match back.is_ok_and(|b| b["restored"] == true) {
+                true => format!(
+                    "{app} came to the front by itself after {at:.1} s and was put back behind your app."
+                ),
+                false => format!(
+                    "{app} came to the front by itself after {at:.1} s and couldn't be put back: tell the user."
+                ),
+            };
+            lock(&SEEN).entry(me.clone()).or_default().push(note);
+        }
+    });
+}
+
+/// What the watch saw for `me` since it last said.
+pub(super) fn notes(me: &str) -> String {
+    let mut seen = lock(&SEEN).remove(me).unwrap_or_default();
+    seen.dedup();
+    seen.join(" ")
 }
 
 /// The app's windows a person could see, its front one first: on this Space, then on others.
@@ -161,7 +254,14 @@ pub(super) fn press(
             ));
         }
         Err(f) => return Err(said(f)),
-        Ok(Err(_)) if s.window != 0 && !s.snapshot.is_empty() => {
+        // Greyed is greyed for the driver too.
+        Ok(Err(why)) if why.ends_with("greyed out now.") => {
+            return Err(refuse(&format!(
+                "{why} An app greys some items while it's behind the user's window or nothing is selected: use the same control in the window (`brigadier computer read {}`), or ask the user.",
+                s.app
+            )));
+        }
+        Ok(Err(_)) if !cua.0.is_empty() && s.window != 0 && !s.snapshot.is_empty() => {
             let line = match cua.0 {
                 "hotkey" => format!("Pressed {}", w.rest.join(" ")),
                 _ => format!("Chose {}", w.rest.join(" ")),
@@ -181,6 +281,11 @@ pub(super) fn press(
         let opened = now.first().is_some_and(|w| !before.contains(w));
         let closed = s.window != 0 && !now.contains(&s.window);
         if opened || closed {
+            let gone = closed && !running(data, here)?.iter().any(|a| a["pid"] == s.pid);
+            if gone {
+                *s = Sess::default();
+                return Ok(format!("Chose {chose}: done, the app quit."));
+            }
             let what = if opened {
                 "a window opened"
             } else {
@@ -204,4 +309,57 @@ pub(super) fn press(
         ));
     }
     Ok(format!("Chose {chose}.\n{}", changes(data, me, s, here)))
+}
+
+pub(super) fn running(data: &Path, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
+    let found = call(data, "list_apps", json!({}), here)?;
+    Ok((found["apps"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter())
+    .filter(|a| a["running"] != false)
+    .collect())
+}
+
+pub(super) fn apps(data: &Path, here: &dyn Fn() -> bool) -> Result<String, Value> {
+    let front = front(data, here);
+    let lines: Vec<String> = (running(data, here)?.iter())
+        .filter(|a| {
+            blocked(
+                a["name"].as_str().unwrap_or(""),
+                a["bundle_id"].as_str().unwrap_or(""),
+            )
+            .is_ok()
+        })
+        .map(|a| {
+            format!(
+                "{}{}",
+                a["name"].as_str().unwrap_or("?"),
+                if a["pid"].as_i64() == front {
+                    " (front)"
+                } else {
+                    ""
+                }
+            )
+        })
+        .collect();
+    Ok(format!("Running apps:\n{}", lines.join("\n")))
+}
+
+/// A running app by its name: exact first, else the one it starts.
+pub(super) fn find(
+    data: &Path,
+    name: &str,
+    here: &dyn Fn() -> bool,
+) -> Result<(i64, String), Value> {
+    let all = running(data, here)?;
+    let named = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase();
+    let lower = name.to_lowercase();
+    let app = (all.iter().find(|a| named(a) == lower))
+        .or_else(|| all.iter().find(|a| named(a).starts_with(&lower)))
+        .ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
+    let found = app["name"].as_str().unwrap_or(name).to_string();
+    blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
+    Ok((app["pid"].as_i64().unwrap_or(0), found))
 }
