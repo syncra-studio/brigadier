@@ -9,7 +9,7 @@ import { Segment, SegmentedRoot } from "../segmented";
 import { Switch } from "../switch";
 import { ComposerPill } from "./composer";
 import { fuzzyMatch, MatchedText } from "./menus";
-import { focusChoice, moveKeys, named, useClosesOnTyping } from "./model-keys";
+import { focusChoice, moveKeys, named, useClosesOnTyping, useModelKey } from "./model-keys";
 import { NotSetUp } from "./not-set-up";
 import { type Quota, QuotaLines } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
@@ -191,6 +191,10 @@ export function ModelPicker({
   });
 
   useClosesOnTyping(open, () => (setOpen(false), onClose?.(false)));
+  useModelKey(pill, !trigger && !anchor && !disabled, () => {
+    if (!open) opening();
+    setOpen(!open);
+  });
   // Another agent's model is a switch (Rust starts a new conversation with a hand-off): asked first.
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {

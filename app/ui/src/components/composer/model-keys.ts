@@ -1,4 +1,6 @@
-import { type KeyboardEvent, useEffect } from "react";
+import { type KeyboardEvent, type RefObject, useEffect, useRef } from "react";
+
+import { matches } from "../../shortcuts";
 
 const rowsOf = (list: Element | null) => [...(list?.querySelectorAll<HTMLElement>("[role=option], [data-picker-older]") ?? [])];
 const part = (root: Element, name: string) => root.querySelector<HTMLElement>(`[data-picker-part=${name}]`);
@@ -74,4 +76,20 @@ const NAMES = new Map<string, string>();
 export function named(groups: readonly { provider: string; models: readonly { id: string; name: string }[] }[], provider: string, id: string): string {
   for (const group of groups) for (const each of group.models) NAMES.set(`${group.provider}/${each.id}`, each.name);
   return NAMES.get(`${provider}/${id}`) ?? id;
+}
+
+/** ⌘. opens or closes the composer's pill: only the one on screen, while `on` (not offline or loading) [D651]. */
+export function useModelKey(pill: RefObject<HTMLElement | null>, on: boolean, toggle: () => void): void {
+  const latest = useRef(toggle);
+  latest.current = toggle;
+  useEffect(() => {
+    if (!on) return;
+    const press = (event: globalThis.KeyboardEvent) => {
+      if (!matches(event, "model") || !pill.current?.checkVisibility() || pill.current.closest("[inert]")) return;
+      event.preventDefault();
+      latest.current();
+    };
+    addEventListener("keydown", press);
+    return () => removeEventListener("keydown", press);
+  }, [on]);
 }

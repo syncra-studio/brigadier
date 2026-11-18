@@ -11,7 +11,6 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, Folder, FolderOpen, MagnifyingGlassSmSearch, Plus, Sidebar } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openSearch } from "../palette/palette";
 import { openFeedback } from "../feedback/dialog";
 import { newSessionIn, ProjectMenuItems } from "../projects/menu";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
@@ -21,6 +20,7 @@ import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
+import { askSearch, SearchField, SearchResults, SearchRoot, useSidebarSearch } from "./search";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, SessionRowItem } from "./row";
 import { type Grouping, useShowFilter, ViewMenu, ViewTrigger } from "./view";
@@ -98,6 +98,8 @@ export function AppSidebar({
   const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
+  // Typing searches in the list's place; Archived and the pill wait until the field is cleared [D37, D652].
+  const search = useSidebarSearch(rows, projects, offline, onOpen);
   const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
@@ -223,9 +225,6 @@ export function AppSidebar({
             <TooltipIconButton tooltip="Send Feedback" look="toolbar" side="bottom" onClick={() => openFeedback()}>
               <FeedbackGlyph />
             </TooltipIconButton>
-            <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
-              <MagnifyingGlassSmSearch />
-            </TooltipIconButton>
           </>
         }
       />
@@ -237,75 +236,84 @@ export function AppSidebar({
           </NavRow>
         </li>
       </NavList>
-      <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div ref={list} className={LIST}>
-            {rest === undefined ? (
-              <Loading />
-            ) : (
-              <>
-                {pinned.length > 0 && (
-                  <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
-                    <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
-                  </NavSection>
-                )}
-                {/* One section for both layouts: the View button in its header stays mounted, so an open menu keeps its place. */}
-                <NavSection
-                  title={grouping === "none" ? "Open" : "Projects"}
-                  open={isOpen(grouping === "none" ? "open" : "projects")}
-                  onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
-                  steadyEnd={view}
-                  actions={
-                    grouping === "project" && (
-                      <Tooltip>
-                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
-                          <Plus />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Add project</TooltipContent>
-                      </Tooltip>
-                    )
-                  }
-                >
-                  {grouping === "none" ? (
-                    <NavList className="gap-1">
-                      {rest.map((each) => row(each, { badged: true }))}
-                      {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
-                    </NavList>
-                  ) : (
-                    <NavList>
-                      {byName.map((project) => (
-                        <ProjectRow
-                          key={project.id}
-                          project={project}
-                          open={isOpen(project.id)}
-                          onOpenChange={(open) => setOpen(project.id, open)}
-                        >
-                          {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
-                        </ProjectRow>
-                      ))}
-                      {projects.length === 0 && (
-                        <EmptyState
-                          as="li"
-                          title={<NoProjects onAdd={() => openAddProject()} />}
-                        />
-                      )}
-                    </NavList>
-                  )}
-                </NavSection>
-                {/* Sessions with no project (made before projects were records) [D224]. */}
-                {grouping === "project" && homeless.length > 0 && (
-                  <NavSection title="Chats without a project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
-                    <NavList>{homeless.map((each) => row(each, {}))}</NavList>
-                  </NavSection>
-                )}
-              </>
-            )}
-          </div>
-          <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />
+      <SearchRoot search={search}>
+        {/* ⌘K's field, as the new sidebar's [D652]. */}
+        <div className="mx-2 mb-2 flex h-7.5 shrink-0 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1 field-focus:focus-ring">
+          <MagnifyingGlassSmSearch className="size-icon-sm shrink-0 text-placeholder" />
+          <SearchField search={search} label={`Search ${keysOf("search")[0]}`} />
         </div>
-      </ViewMenu>
+        <ViewMenu grouping={grouping} onGrouping={setGrouping} projects={projects} rows={shown ?? []} show={show}>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div ref={list} className={LIST}>
+              {search.query ? (
+                <SearchResults search={search} projects={projects} />
+              ) : rest === undefined ? (
+                <Loading />
+              ) : (
+                <>
+                  {pinned.length > 0 && (
+                    <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                      <NavList className="gap-1">{pinned.map((each) => row(each, { badged: true }))}</NavList>
+                    </NavSection>
+                  )}
+                  {/* One section for both layouts: the View button in its header stays mounted, so an open menu keeps its place. */}
+                  <NavSection
+                    title={grouping === "none" ? "Open" : "Projects"}
+                    open={isOpen(grouping === "none" ? "open" : "projects")}
+                    onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
+                    steadyEnd={view}
+                    actions={
+                      grouping === "project" && (
+                        <Tooltip>
+                          <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                            <Plus />
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Add project</TooltipContent>
+                        </Tooltip>
+                      )
+                    }
+                  >
+                    {grouping === "none" ? (
+                      <NavList className="gap-1">
+                        {rest.map((each) => row(each, { badged: true }))}
+                        {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
+                      </NavList>
+                    ) : (
+                      <NavList>
+                        {byName.map((project) => (
+                          <ProjectRow
+                            key={project.id}
+                            project={project}
+                            open={isOpen(project.id)}
+                            onOpenChange={(open) => setOpen(project.id, open)}
+                          >
+                            {rest.filter((each) => each.project === project.id).map((each) => row(each, { nested: true }))}
+                          </ProjectRow>
+                        ))}
+                        {projects.length === 0 && (
+                          <EmptyState
+                            as="li"
+                            title={<NoProjects onAdd={() => openAddProject()} />}
+                          />
+                        )}
+                      </NavList>
+                    )}
+                  </NavSection>
+                  {/* Sessions with no project (made before projects were records) [D224]. */}
+                  {grouping === "project" && homeless.length > 0 && (
+                    <NavSection title="Chats without a project" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                      <NavList>{homeless.map((each) => row(each, {}))}</NavList>
+                    </NavSection>
+                  )}
+                </>
+              )}
+            </div>
+            {!search.query && <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />}
+          </div>
+        </ViewMenu>
+      </SearchRoot>
       <ArchiveAsk />
-      <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />
+      {!search.query && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
     </SidebarPanel>
   );
@@ -394,7 +402,7 @@ function Strip({ onNewChat, children }: { onNewChat: () => void; children: React
       <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
         <ComposeEditSquare />
       </TooltipIconButton>
-      <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
+      <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={askSearch}>
         <MagnifyingGlassSmSearch />
       </TooltipIconButton>
       {children}

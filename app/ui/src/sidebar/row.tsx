@@ -1,5 +1,5 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
@@ -57,11 +57,36 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-/** A row's badge: its project's initials, in that project's colour. `tone` is the project's place in Rust's list. */
-export function ProjectBadge({ name, tone }: { name: string | null; tone: number | undefined }) {
+// Every badge's one square and corners, initials or logo, so none is wider than another [D62].
+const BADGE = "size-icon-md shrink-0 overflow-hidden rounded-xs";
+
+// Which projects have a logo, asked once a page load (main looks once a run).
+const logos = new Map<string, boolean>();
+
+/**
+ * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
+ * project's colour; `tone` is the project's place in Rust's list. Initials show while the logo is looked for [D505, D650].
+ */
+export function ProjectBadge({ id, name, tone }: { id?: string; name: string | null; tone: number | undefined }) {
+  const [, found] = useState(false);
+  const logo = id === undefined || name === null ? false : logos.get(id);
+  const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
+  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, "object-cover")} />;
   return (
-    <span aria-hidden data-tone={tone} className={cx("flex size-icon-md shrink-0 items-center justify-center rounded-xs text-badge font-semibold", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
+    <span aria-hidden data-tone={tone} className={cx(BADGE, "flex items-center justify-center text-badge font-semibold", name === null ? "bg-fill text-marker-foreground" : "project-tone")}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
+      {logo === undefined && (
+        <img
+          hidden
+          alt=""
+          src={src}
+          onLoad={() => {
+            logos.set(id!, true);
+            found(true);
+          }}
+          onError={() => logos.set(id!, false)}
+        />
+      )}
     </span>
   );
 }
@@ -150,7 +175,7 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && project && !sub && <ProjectBadge name={project.name} tone={tone} />}
+            {badged && project && !sub && <ProjectBadge id={project.id} name={project.name} tone={tone} />}
             {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
             {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
             {fold && (

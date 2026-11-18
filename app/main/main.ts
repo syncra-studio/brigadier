@@ -2,8 +2,8 @@
 // exceptions are what only a main process can do: the native folder picker, staging the window for the
 // first launch's intro (intro.ts), macOS notices and the Dock badge (notices.ts) and the menu bar's item (tray.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { copyFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -91,8 +91,52 @@ function attachmentFile(pathname: string): string | null {
   return null;
 }
 
+// A project's logo: the first of these names, then the shallowest, up to four folders down, so public/favicon/,
+// Next's src/app/ and a monorepo's apps/web/public/ count; dependencies, build output and hidden folders are skipped [new-design, D505].
+const ICON_NAMES = ["favicon.svg", "favicon.png", "favicon.ico", "logo.svg", "logo.png", "icon.svg", "icon.png"];
+const ICON_SKIP = new Set(["node_modules", "target", "dist", "build", "out", "vendor", "Pods"]);
+// Each project's logo, looked for once a run. shortcut: a logo added or removed shows after a restart, watch the folder if that bites.
+const projectIcons = new Map<string, Promise<string | null>>();
+
+async function findIcon(folder: string): Promise<string | null> {
+  let found: string | null = null;
+  let rank = ICON_NAMES.length;
+  // At most this many folders read, so a project at a huge folder (the home folder) still answers quickly.
+  let budget = 2000;
+  for (let depth = 0, level = [folder]; depth <= 4 && rank > 0 && level.length > 0; depth++) {
+    const next: string[] = [];
+    for (const dir of level) {
+      if (budget-- === 0) return found;
+      // Only plain files and folders, never links, so nothing outside the project's folder is read.
+      for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        const at = ICON_NAMES.indexOf(entry.name);
+        if (entry.isFile() && at !== -1 && at < rank) [rank, found] = [at, path.join(dir, entry.name)];
+        else if (entry.isDirectory() && !entry.name.startsWith(".") && !ICON_SKIP.has(entry.name)) next.push(path.join(dir, entry.name));
+      }
+    }
+    level = next;
+  }
+  return found;
+}
+
+/** A project's logo, by `/project-icon/<project id>`: its folder from projects.json, never from the page, and a file only inside it. */
+function projectIcon(pathname: string): Promise<string | null> {
+  const [, kind, id] = pathname.split("/");
+  if (kind !== "project-icon" || !PLAIN.test(id ?? "")) return Promise.resolve(null);
+  if (!projectIcons.has(id!)) {
+    try {
+      const projects: { id: string; folder: string }[] = JSON.parse(readFileSync(path.join(dataDir, "projects.json"), "utf8")).projects;
+      projectIcons.set(id!, findIcon(realpathSync(projects.find((project) => project.id === id)!.folder)));
+    } catch {
+      // No such project, or its folder is gone: asked again next time, as it may be added.
+      return Promise.resolve(null);
+    }
+  }
+  return projectIcons.get(id!)!;
+}
+
 function serveUi(): void {
-  protocol.handle("app", (request) => {
+  protocol.handle("app", async (request) => {
     const url = new URL(request.url);
     if (url.host === APP_ID && url.pathname.startsWith("/attachment/")) {
       const file = attachmentFile(url.pathname);
@@ -103,6 +147,10 @@ function serveUi(): void {
       const login = url.pathname.split("/")[2] ?? "";
       const file = path.join(dataDir, "avatars", `${login}.png`);
       return PLAIN.test(login) && existsSync(file) ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+    }
+    if (url.host === APP_ID && url.pathname.startsWith("/project-icon/")) {
+      const file = await projectIcon(url.pathname);
+      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
     const file = path.join(uiDist, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
     if (url.host !== APP_ID || !file.startsWith(uiDist + path.sep)) return new Response(null, { status: 403 });
