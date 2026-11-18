@@ -1281,6 +1281,9 @@
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
   }
+  &[data-collapse="hidden"] {
+    --sidebar-shown: 0px;
+  }
 }
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
