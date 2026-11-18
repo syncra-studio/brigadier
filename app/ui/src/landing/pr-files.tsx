@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { Button } from "../components/button";
 import { ConfirmForm } from "../components/confirm-dialog";
@@ -30,18 +31,42 @@ type File = Files["files"][number];
 type Event = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
 
 /** A review being written: its line comments and words, until it's submitted. */
-type Draft = { comments: readonly DiffComment[]; body: string };
+export type Draft = { comments: readonly DiffComment[]; body: string };
 // shortcut: kept while the app runs, not through a restart; keep it in the session's folder if that's missed.
-const drafts = new Map<string, Draft>();
+export const drafts = new Map<string, Draft>();
+const NO_COMMENTS: readonly DiffComment[] = [];
+// Files drawn at first and on each Load more, a page at a time [D657]: 524 diffs at once took 4 s to draw.
+const PAGE = 25;
 
 /**
  * A PR's Files changed, any PR's, as GitHub's page [D231, D262]: its file tree with a filter on the left, each file's
- * diff in a card, and Submit review. Read from its host through Rust: when the tab is first opened, its last read kept
- * beside the page's and painted at once on the next, read again when the head moved, when it's older than the watch's
- * pace, on Check again (`tick`) and on Refresh. A file's folded lines open from both its sides, read when first
- * opened. A line's + leaves a comment that goes with the review; a list the host cut says so, with the rest on the host.
+ * diff in a card, a page at a time with Load more at the end [D657]; Submit review sits in the tab's bar. Read from its
+ * host through Rust: when the tab is first opened, its last read kept beside the page's and painted at once on the
+ * next, read again when the head moved, when it's older than the watch's pace, on Check again (`tick`) and on Refresh.
+ * A file's folded lines open from both its sides, read when first opened. A line's + leaves a comment that goes with
+ * the review; a list the host cut says so, with the rest on the host.
  */
-export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner: string; target: string; pr: PullRequest; tick: number; onOpen: () => void; onReviewed: () => void }) {
+export function PrFiles({
+  owner,
+  target,
+  pr,
+  tick,
+  draft,
+  onDraft,
+  onHead,
+  onOpen,
+}: {
+  owner: string;
+  target: string;
+  pr: PullRequest;
+  tick: number;
+  draft: Draft;
+  /** Stable: the file cards keep it. */
+  onDraft: (next: SetStateAction<Draft>) => void;
+  /** The commit the diff was read at, which a review's line comments are pinned to. */
+  onHead: (head: string) => void;
+  onOpen: () => void;
+}) {
   const { daemon } = useDaemon();
   const host = useHost(owner);
   const [files, setFiles] = useState<Files | null>(null);
@@ -52,15 +77,11 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
   const list = useRef<HTMLDivElement>(null);
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
-  const key = `${host} ${target}`;
-  const [draft, setDraftState] = useState<Draft>(() => drafts.get(key) ?? { comments: [], body: "" });
-  const setDraft = (next: Draft) => {
-    drafts.set(key, next);
-    setDraftState(next);
-  };
+  const [limit, setLimit] = useState(PAGE);
   const land = (next: Files) => {
     shown.current = next;
     setFiles(next);
+    onHead(next.head);
   };
   const read = () => {
     const mine = ++at.current;
@@ -88,54 +109,60 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
     });
   }, [daemon, host, target, pr.head, tick]);
 
-  const sides = (path: string) =>
-    new Promise<Sides>((resolve, reject) =>
-      ask({ op: "run", args: ["host", host, "sides", target, path] }, (reply) => {
-        if (reply.ok) return resolve(reply.sides);
-        showToast(`Couldn't open ${path}'s other lines: ${String(reply.error)}`, { tone: "error" });
-        reject(new Error(String(reply.error)));
-      }),
-    );
+  // The same for every card, so a toggle draws only the card it changed.
+  const acts = useMemo<Acts>(
+    () => ({
+      toggle: (path) => setFolded((now) => (now.has(path) ? new Set([...now].filter((each) => each !== path)) : new Set(now).add(path))),
+      sides: (path) =>
+        new Promise<Sides>((resolve, reject) =>
+          ask({ op: "run", args: ["host", host, "sides", target, path] }, (reply) => {
+            if (reply.ok) return resolve(reply.sides);
+            showToast(`Couldn't open ${path}'s other lines: ${String(reply.error)}`, { tone: "error" });
+            reject(new Error(String(reply.error)));
+          }),
+        ),
+      comment: (comment) => onDraft((now) => ({ ...now, comments: [...now.comments, comment] })),
+      remove: (id) => onDraft((now) => ({ ...now, comments: now.comments.filter((comment) => comment.id !== id) })),
+    }),
+    [host, target, onDraft],
+  );
+  const byPath = useMemo(() => Map.groupBy(draft.comments, (comment) => comment.path), [draft.comments]);
+  // A file past the pages drawn so far brings the pages up to it, the ones it skips folded: one diff drawn, not hundreds.
   const go = (path: string) => {
-    setCurrent(path);
-    setFolded((now) => new Set([...now].filter((each) => each !== path)));
-    list.current?.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "start" });
+    const all = files?.files ?? [];
+    const at = all.findIndex((file) => file.path === path);
+    const to = at >= limit ? Math.ceil((at + 1) / PAGE) * PAGE : limit;
+    flushSync(() => {
+      setCurrent(path);
+      setFolded((now) => new Set([...now, ...all.slice(limit, to).map((file) => file.path)].filter((each) => each !== path)));
+      setLimit(to);
+    });
+    const card = () => list.current?.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "start" });
+    card();
+    // Again once the cards it passed have drawn, which moves it.
+    requestAnimationFrame(() => requestAnimationFrame(card));
   };
-  const toggle = (path: string) => setFolded((now) => (now.has(path) ? new Set([...now].filter((each) => each !== path)) : new Set(now).add(path)));
   const cut = files && files.total > files.files.length;
 
   return (
     <div data-slot="pr-files" className="flex min-h-0 flex-1 gap-4 px-5 pt-3">
       <FileTree files={files?.files ?? []} current={current} onPick={go} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-2 pb-3">
-          <ErrorLine size="sm" error={error} className="min-w-0 flex-1" />
-          <div className="flex-1" />
-          <SubmitReview owner={owner} target={target} pr={pr} head={files?.head ?? null} draft={draft} onDraft={setDraft} onReviewed={onReviewed} />
-        </div>
+        <ErrorLine size="sm" error={error} className="shrink-0 pb-3" />
         <div ref={list} data-slot="pr-diffs" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5">
           {!files ? (
             !error && <FilesLoading />
           ) : files.files.length === 0 ? (
             <p className="text-sm text-muted-foreground">No changes</p>
           ) : (
-            files.files.map((file) => (
-              <FileSection
-                key={file.path}
-                card
-                file={file}
-                contents={file}
-                look={LOOK}
-                collapsed={folded.has(file.path)}
-                onToggle={() => toggle(file.path)}
-                connected={Boolean(daemon)}
-                onRetry={NONE}
-                onSides={() => sides(file.path)}
-                comments={draft.comments.filter((comment) => comment.path === file.path)}
-                onComment={(comment) => setDraft({ ...draft, comments: [...draft.comments, comment] })}
-                onRemoveComment={(id) => setDraft({ ...draft, comments: draft.comments.filter((comment) => comment.id !== id) })}
-              />
-            ))
+            files.files
+              .slice(0, limit)
+              .map((file) => <PrFile key={file.path} file={file} collapsed={folded.has(file.path)} connected={Boolean(daemon)} comments={byPath.get(file.path) ?? NO_COMMENTS} acts={acts} />)
+          )}
+          {files && limit < files.files.length && (
+            <Button variant="soft" size="sm" className="self-start" onClick={() => setLimit((now) => now + PAGE)}>
+              Load more
+            </Button>
           )}
           {cut && (
             <p className="text-sm text-muted-foreground">
@@ -150,6 +177,28 @@ export function PrFiles({ owner, target, pr, tick, onOpen, onReviewed }: { owner
     </div>
   );
 }
+
+type Acts = { toggle: (path: string) => void; sides: (path: string) => Promise<Sides>; comment: (comment: DiffComment) => void; remove: (id: string) => void };
+
+/** One file's card, drawn again only when its own fold, comments or connection change. */
+const PrFile = memo(function PrFile({ file, collapsed, connected, comments, acts }: { file: File; collapsed: boolean; connected: boolean; comments: readonly DiffComment[]; acts: Acts }) {
+  return (
+    <FileSection
+      card
+      file={file}
+      contents={file}
+      look={LOOK}
+      collapsed={collapsed}
+      onToggle={() => acts.toggle(file.path)}
+      connected={connected}
+      onRetry={NONE}
+      onSides={() => acts.sides(file.path)}
+      comments={comments}
+      onComment={acts.comment}
+      onRemoveComment={acts.remove}
+    />
+  );
+});
 
 function FilesLoading() {
   return (
@@ -242,7 +291,7 @@ const EVENTS: { value: Event; label: string; open: string; landed: string }[] = 
  * comments left on the diff, sent together through the user's gh [D262]. The dialog stays while it's sent and says
  * why it wasn't; once sent, the page is read again.
  */
-function SubmitReview({
+export function SubmitReview({
   owner,
   target,
   pr,
@@ -254,7 +303,7 @@ function SubmitReview({
   owner: string;
   target: string;
   pr: PullRequest;
-  /** The commit the diff's lines were read at; null before the first read. */
+  /** The commit the review is pinned to: the diff's lines' when it has line comments; null until known. */
   head: string | null;
   draft: Draft;
   onDraft: (draft: Draft) => void;

@@ -1,11 +1,7 @@
-import { Tabs } from "@base-ui/react/tabs";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Badge } from "../components/badge";
-import { Button } from "../components/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
-import { cx } from "../components/cx";
-import { ErrorLine } from "../components/error-line";
 import { CheckCircle, ChevronRight, Minus } from "../icons";
 import { Markdown } from "../thread/markdown";
 import { Clock, XCircle } from "./icons";
@@ -158,9 +154,6 @@ const REVIEW_WORDS = {
   dismissed: "reviewed",
 };
 
-/** A comment the user posted from the Add a comment box: on screen at once, until the read that has it [D260]. */
-export type Posted = { key: string; body: string; id: string | null };
-
 const SECTION = "flex flex-col gap-2 border-b border-divider pb-4";
 const H3 = "text-sm font-medium text-foreground";
 const QUIET = "text-xs text-muted-foreground";
@@ -230,17 +223,12 @@ function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
 }
 
 /**
- * A pull request's Summary [D609, D613, D614]: its labels, reviewers and checks, the description, the
- * review comments by line; then its other comments, just as compact, with the user's own still on their way,
- * and Add a comment [D260, D1017].
+ * A pull request's Summary [D609, D613, D614]: its labels, reviewers and checks, the description and the
+ * review comments by line. No general comments or Add a comment [D656].
  */
-export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; posted: readonly Posted[]; sends: Sends; onComment: (body: string) => Promise<string | null> }) {
+export function Summary({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
-  const viewer = pr.viewer ?? "you";
-  const timeline = pr.timeline ?? [];
-  const reviews = timeline.filter((item) => item.kind === "review").filter((item) => item.said || item.threads.length);
-  const talk = timeline.flatMap((item) => (item.kind === "comment" ? (comments.get(item.id) ?? []) : []));
-  const waiting = posted.filter((post) => post.id === null || !comments.has(post.id));
+  const reviews = (pr.timeline ?? []).filter((item) => item.kind === "review").filter((item) => item.said || item.threads.length);
   const said = (comment: PrComment, box: ReactNode) => (
     <div key={comment.id} className="flex gap-3">
       <Avatar login={comment.author} at={pr.checkedAtMs} size="size-6" />
@@ -298,82 +286,6 @@ export function Summary({ pr, posted, sends, onComment }: { pr: PullRequest; pos
           <p className={QUIET}>No inline review comments.</p>
         )}
       </section>
-      <section className="flex flex-col gap-3">
-        <h3 className={H3}>Comments</h3>
-        {talk.map((comment) => said(comment, <CommentBox comment={comment} at={ago(comment.atMs, sends.now)} author={pr.openedBy} sends={sends} />))}
-        {waiting.map((post) => {
-          const mine: PrComment = { id: post.key, author: viewer, path: null, line: null, body: post.body, atMs: sends.now, url: null };
-          return said(mine, <CommentBox comment={mine} at={post.id ? "just now" : "· Posting…"} author={pr.openedBy} />);
-        })}
-        {!talk.length && !waiting.length && <p className={QUIET}>No comments yet.</p>}
-        <AddComment viewer={pr.viewer} at={pr.checkedAtMs} offline={sends.offline} onPost={onComment} />
-      </section>
-    </div>
-  );
-}
-
-const WRITE_TAB = cx("cursor-pointer rounded-control px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:focus-ring data-active:bg-fill-subtle data-active:text-foreground");
-
-/**
- * GitHub's Add a comment: Write or Preview, then Comment (⌘⏎), posted through the user's gh as a comment on the PR
- * [D260]. The box empties at once, the comment showing in the timeline; if the host refuses it, the words come back
- * with why.
- */
-export function AddComment({ viewer, at, offline, onPost }: { viewer: string | null | undefined; at: number | null; offline: boolean; onPost: (body: string) => Promise<string | null> }) {
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const post = async () => {
-    const body = text.trim();
-    if (!body || offline) return;
-    setText("");
-    setError(null);
-    const why = await onPost(body);
-    if (why) {
-      setText((now) => now || body);
-      setError(why);
-    }
-  };
-  return (
-    <div className="flex gap-3">
-      <Avatar login={viewer ?? "?"} at={at} size="size-6" />
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-sm font-medium text-foreground">Add a comment</span>
-        <Tabs.Root defaultValue="write" className="flex flex-col overflow-clip rounded-surface border border-border">
-          <Tabs.List className="flex gap-1 border-b border-border bg-fill-subtle px-2 py-1.5">
-            <Tabs.Tab value="write" className={WRITE_TAB}>
-              Write
-            </Tabs.Tab>
-            <Tabs.Tab value="preview" className={WRITE_TAB}>
-              Preview
-            </Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel value="write" className="p-2">
-            <textarea
-              value={text}
-              aria-label="Add a comment"
-              placeholder="Add your comment here..."
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  void post();
-                }
-              }}
-              className="block min-h-24 w-full resize-y rounded-control bg-fill px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:focus-ring"
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="preview" className="min-h-24 px-3 py-2 text-sm">
-            {text.trim() ? <Markdown text={text} keep="pr-preview" /> : <span className="text-muted-foreground">Nothing to preview</span>}
-          </Tabs.Panel>
-          <div className="flex items-center gap-3 border-t border-border px-3 py-2">
-            <span className="flex-1 text-xs text-muted-foreground">Markdown is supported</span>
-            <Button size="sm" disabled={!text.trim() || offline} onClick={() => void post()}>
-              Comment
-            </Button>
-          </div>
-        </Tabs.Root>
-        <ErrorLine error={error} />
-      </div>
     </div>
   );
 }

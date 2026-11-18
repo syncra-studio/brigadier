@@ -31,7 +31,7 @@ type Read = Result<(Vec<Value>, Option<String>), String>;
 /// What every PR read asks the host for: the list's row and the head commit's checks, read in one
 /// snapshot, so a PR's head and its checks always agree.
 // shortcut: a head's first 100 checks only, until a repository has more.
-pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision createdAt author { login } commented: comments { totalCount } headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
+pub(super) const FIELDS: &str = "number url title state isDraft mergeable reviewDecision createdAt author { login } commented: comments { totalCount } headRefName headRefOid baseRefName mergedAt updatedAt headRepository { nameWithOwner url } mergeCommit { oid } commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt completedAt detailsUrl checkSuite { workflowRun { event workflow { name } } } } ... on StatusContext { context state targetUrl createdAt } } } } } } }";
 
 impl Pr {
     /// The session's PRs, read now and kept; None when the host couldn't list them.

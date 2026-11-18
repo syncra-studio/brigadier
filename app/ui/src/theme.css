@@ -717,6 +717,12 @@
 
 /* A user's message cut 20 lines down, or further, to the end of a code block crossing that line (message.tsx
    measures it). */
+/* Not styled or painted while off screen, sized as last drawn: a PR's hundreds of open diff cards [D656]. */
+@utility drawn-when-seen {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20rem;
+}
+
 @utility user-message-cut {
   max-height: attr(data-cut px, var(--spacing-user-message));
   overflow-y: clip;

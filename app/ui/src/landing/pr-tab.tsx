@@ -1,5 +1,5 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { useState } from "react";
+import { type SetStateAction, useCallback, useState } from "react";
 
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -11,9 +11,10 @@ import { Skeleton } from "../components/skeleton";
 import { ArrowUpRight, Branch, Check, ChevronDown, Folder } from "../icons";
 import type { Pr } from "../panel/types";
 import { PullRequestOpen, Sparkles } from "./icons";
-import { PrFiles } from "./pr-files";
+import { type Draft, drafts, PrFiles, SubmitReview } from "./pr-files";
 import { Avatar, CheckAgain, type Sends, StateIcon } from "./pr-parts";
-import { type Posted, Summary } from "./pr-summary";
+import { useHost } from "./host";
+import { Summary } from "./pr-summary";
 import type { MergeStyle, PullRequest } from "./pull-requests";
 
 const TAB = cx(
@@ -22,14 +23,16 @@ const TAB = cx(
 );
 const COLUMN = "w-full px-5";
 
+const NO_DRAFT: Draft = { comments: [], body: "" };
+
 /**
  * A pull request in a main-area tab [D204, D609, D613]: its title, state and number, Open on the host and
- * Check again; who, which repository and which branches; then Summary (labels, reviewers, checks, the description,
- * review comments, comments and Add a comment) and Code, the PR's diff as its host has it with Submit review [D231,
- * D262]. Beside the tabs, its one action: Fix with agent when checks failed or changes were asked, else Merge while
- * it's open; then Review on the host. Every Send and Fix leaves a chip above the composer and sends nothing [D1019,
- * D1027]. It paints its last read at once; when a read fails, the last one stays with why
- * [D207, D208, D1009].
+ * Check again; who, which repository and which branches on one line, each opening its page, all of it selectable
+ * [D656]; then Summary (labels, reviewers, checks, the description and review comments) and Code, the PR's diff as
+ * its host has it [D231, D262], kept as it was between switches. Beside the tabs, its one action: Fix with agent when
+ * checks failed or changes were asked, a draft's too, else Merge while it's open; then Submit review and Review on the
+ * host. Every Send and Fix leaves a chip above the composer and sends nothing [D1019, D1027]. It paints its last read
+ * at once; when a read fails, the last one stays with why [D207, D208, D1009].
  */
 export function PrTab({
   owner,
@@ -43,8 +46,6 @@ export function PrTab({
   sends,
   onCheck,
   onMerge,
-  posted = [],
-  onComment,
 }: {
   owner: string;
   /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
@@ -64,10 +65,6 @@ export function PrTab({
   onCheck: () => void;
   /** `head`: the commit its confirm showed, which the merge is pinned to [D1077]. */
   onMerge: (style: MergeStyle, head: string) => void;
-  /** The user's comments from Add a comment still on their way, on screen at once [D260]. */
-  posted?: readonly Posted[];
-  /** Posts a comment; answers why the host refused it, or null. */
-  onComment: (body: string) => Promise<string | null>;
 }) {
   // Check again reads Code again too, when it's open [D231].
   const [tick, setTick] = useState(0);
@@ -75,6 +72,23 @@ export function PrTab({
     onCheck();
     setTick((n) => n + 1);
   };
+  // The review being written, Code's line comments and Submit review's words, kept while the app runs.
+  const key = `${useHost(owner)} ${target}`;
+  const [draft, setDraftState] = useState<Draft>(() => drafts.get(key) ?? NO_DRAFT);
+  const setDraft = useCallback(
+    (next: SetStateAction<Draft>) =>
+      setDraftState((now) => {
+        const draft = typeof next === "function" ? next(now) : next;
+        drafts.set(key, draft);
+        return draft;
+      }),
+    [key],
+  );
+  // The commit Code's lines were read at.
+  const [read, setRead] = useState<string | null>(null);
+  // Code is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
+  const [tab, setTab] = useState("summary");
+  const [coded, setCoded] = useState(false);
   const again = <CheckAgain busy={checking} offline={sends.offline} onClick={check} />;
   if (!pr) {
     return (
@@ -97,17 +111,25 @@ export function PrTab({
       </div>
     );
   }
-  const fix = pr.state === "open" && pr.blockers !== null && (pr.blockers.failedChecks > 0 || pr.blockers.changesBy.length > 0);
+  const fix = (pr.state === "open" || pr.state === "draft") && pr.blockers !== null && (pr.blockers.failedChecks > 0 || pr.blockers.changesBy.length > 0);
   const fixAdded = sends.added.has("fix");
   // Merge only on Rust's word, while the read is current and the daemon is here.
   const canMerge = pr.merge.allowed && !sends.offline && !pr.problem && !error;
   const repo = pr.repo ?? target.split("#")[0];
+  const links = pr.links;
   return (
     <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
-      <Tabs.Root defaultValue="summary" className="flex min-h-0 flex-1 flex-col">
+      <Tabs.Root
+        value={tab}
+        onValueChange={(next: string) => {
+          setTab(next);
+          if (next === "code") setCoded(true);
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <header className={cx(COLUMN, "flex flex-col gap-2.5 pt-4")}>
           <div className="flex items-start gap-2">
-            <h2 className="min-w-0 flex-1 font-display text-xl leading-snug font-medium tracking-tight break-words">{pr.title}</h2>
+            <h2 className="min-w-0 flex-1 select-text font-display text-xl leading-snug font-medium tracking-tight break-words">{pr.title}</h2>
             <span className="flex h-control-sm shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <StateIcon state={pr.state} />#{pr.number}
             </span>
@@ -116,23 +138,21 @@ export function PrTab({
             </TooltipIconButton>
             {again}
           </div>
-          <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-            <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="flex items-center gap-1.5 text-foreground">
-                <Avatar login={pr.openedBy} at={pr.checkedAtMs} />
-                {pr.openedBy}
-              </span>
-              {repo && (
-                <span className="flex items-center gap-1.5">
-                  <Folder className="size-icon-sm" />
-                  {repo}
-                </span>
-              )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground select-text">
+            <span className="flex items-center gap-1.5 text-foreground">
+              <Avatar login={pr.openedBy} at={pr.checkedAtMs} />
+              <Link href={links?.author}>{pr.openedBy}</Link>
             </span>
+            {repo && (
+              <span className="flex items-center gap-1.5">
+                <Folder className="size-icon-sm" />
+                <Link href={links?.repo}>{repo}</Link>
+              </span>
+            )}
             <span className="flex min-w-0 items-center gap-1.5">
               <Branch className="size-icon-sm shrink-0" />
-              <span className="truncate">
-                {pr.branch} → {pr.base}
+              <span className="min-w-0 break-all">
+                <Link href={links?.branch}>{pr.branch}</Link> → {pr.base}
               </span>
             </span>
           </div>
@@ -156,24 +176,47 @@ export function PrTab({
               ) : (
                 pr.state === "open" && <MergeButton pr={pr} enabled={canMerge} merging={merging} onMerge={onMerge} />
               )}
+              <SubmitReview
+                owner={owner}
+                target={target}
+                pr={pr}
+                head={read ?? (draft.comments.length ? null : pr.head)}
+                draft={draft}
+                onDraft={setDraft}
+                onReviewed={check}
+              />
               <TooltipIconButton tooltip={`Review on ${pr.host}`} size="icon-md" onClick={() => sends.onOpen({ url: `${pr.url}/files` })}>
                 <PullRequestOpen />
               </TooltipIconButton>
             </span>
           </div>
         </header>
-        <Tabs.Panel value="summary" className="min-h-0 flex-1 overflow-y-auto">
-          <div className={cx(COLUMN, "py-4")}>
-            <Summary pr={pr} posted={posted} sends={sends} onComment={onComment} />
-          </div>
-        </Tabs.Panel>
-        <Tabs.Panel value="code" className="flex min-h-0 flex-1 flex-col">
-          <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} onReviewed={check} />
-        </Tabs.Panel>
+        <div className="relative min-h-0 flex-1">
+          <Tabs.Panel value="summary" className="absolute inset-0 overflow-y-auto">
+            <div className={cx(COLUMN, "py-4")}>
+              <Summary pr={pr} sends={sends} />
+            </div>
+          </Tabs.Panel>
+          {coded && (
+            <div role="tabpanel" aria-label="Code" inert={tab !== "code"} className={cx("absolute inset-0 flex flex-col", tab !== "code" && "invisible")}>
+              <PrFiles owner={owner} target={target} pr={pr} tick={tick} draft={draft} onDraft={setDraft} onHead={setRead} onOpen={() => sends.onOpen("pr")} />
+            </div>
+          )}
+        </div>
       </Tabs.Root>
     </div>
   );
 }
+
+/** A header word that opens its page on the host, as every link does (Settings › Browser) [D656]; plain without one. */
+const Link = ({ href, children }: { href?: string | null; children: string }) =>
+  href ? (
+    <a href={href} draggable={false} className="hover:text-foreground hover:underline">
+      {children}
+    </a>
+  ) : (
+    children
+  );
 
 const SPLIT = "inline-flex h-control-sm items-center bg-muted text-sm font-medium text-foreground transition-all hover:bg-popover focus-visible:focus-ring disabled:opacity-disabled";
 

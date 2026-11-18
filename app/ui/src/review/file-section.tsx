@@ -79,7 +79,11 @@ export function FileSection(props: FileProps) {
   );
   return (
     // overflow-clip, not hidden: the header stays sticky in the list's scroll.
-    <section data-slot="review-file" data-path={file.path} className={card ? "overflow-clip rounded-surface border border-border" : undefined}>
+    <section
+      data-slot="review-file"
+      data-path={file.path}
+      className={card ? cx("overflow-clip rounded-surface border border-border", !collapsed && "drawn-when-seen") : undefined}
+    >
       <header className={cx("group/file sticky top-0 z-10 flex h-control-lg items-center gap-2 border-b border-border px-3 text-sm", card ? "bg-card" : "bg-background", card && collapsed && "border-b-0")}>
         {card ? fold : <FileIcon name={file.path} />}
         {/* The file list opens a file's diff: its name is the click (D1188). */}

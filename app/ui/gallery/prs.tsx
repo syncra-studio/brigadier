@@ -2,7 +2,6 @@ import { type ReactNode, useState } from "react";
 
 import { PrListView, type View } from "../src/landing/pr-list";
 import type { Sends } from "../src/landing/pr-parts";
-import type { Posted } from "../src/landing/pr-summary";
 import { PrTab } from "../src/landing/pr-tab";
 import type { PrCheck, PullRequest } from "../src/landing/pull-requests";
 import type { Pr } from "../src/panel/types";
@@ -189,7 +188,7 @@ function List({ list, closed = false, view = "all", busy = false }: { list: Foun
   );
 }
 
-const tab = (pr: PullRequest, posted: Posted[] = []) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onMerge={() => {}} posted={posted} onComment={async () => null} />;
+const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onMerge={() => {}} />;
 
 /** The Pull requests tab and a Pull request tab, on sample PRs [D609, D613]. */
 export function PrsGallery() {
@@ -217,7 +216,7 @@ export function PrsGallery() {
         {tab(DRAFT)}
       </Still>
       <Still name="pr-open-reviewed" height="h-275">
-        {tab(REVIEWED, [{ key: "p1", body: "Looks right; landing after the checks pass.", id: null }])}
+        {tab(REVIEWED)}
       </Still>
     </Section>
   );

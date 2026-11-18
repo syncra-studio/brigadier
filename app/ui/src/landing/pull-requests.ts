@@ -30,6 +30,8 @@ export type PullRequest = {
   branch: string;
   base: string;
   openedBy: string;
+  /** The author's, the repository's and the head branch's pages on the host; absent in a read kept before them [D656]. */
+  links?: { author: string | null; repo: string | null; branch: string | null };
   openedAtMs: number;
   /** When the watch last read it; null before the first read. */
   checkedAtMs: number | null;
@@ -52,8 +54,6 @@ export type PullRequest = {
   /** The Conversation under the description, oldest first, as Rust groups it from GitHub's [D260]; absent in a read
    * kept before it, until the next. */
   timeline?: PrItem[];
-  /** Who the user's gh reads as, for the Add a comment box. */
-  viewer?: string | null;
   /** GitHub's merge state, lower case: clean, blocked, behind, dirty, unstable, has_hooks, unknown. */
   mergeState: string | null;
   /** It's the session's own branch's: Files changed shows the Review tab's branch diff [D204]. */
