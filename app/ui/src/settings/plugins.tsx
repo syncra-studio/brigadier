@@ -133,8 +133,8 @@ export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, d
 export const inCategory = (entry: Entry, category: string) => (category === "Popular" ? Boolean(entry.popular) : entry.category === category);
 
 /**
- * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each card
- * with its mark, line, scope chip, status chip, agents and switch; an item's page.
+ * Settings › Plugins, the old app's [D2043, D2046]: the MCP servers and Skills tabs, search, Refresh and Add; each row
+ * Browse's, with its mark, scope, standing, line and switch [D734 D735]; an item's page.
  * Pure props: a change shows at once and settles on the page Rust answers with, or goes back with Rust's words [D30].
  * `value` null is loading; `detail` an item's page. `remote` offers remote servers in Add (4.13).
  */
@@ -349,7 +349,7 @@ export function PluginsPage({
           ) : tab === "browse" ? (
             <BrowseTab value={shown} onEntry={onEntry} onCategory={(name) => toCategory(name)()} />
           ) : (
-            <MyTab value={shown} kind={tab} marks={marks} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
+            <MyTab value={shown} kind={tab} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
         </div>
       </SettingsPage>

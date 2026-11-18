@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
+import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { RowText } from "../components/settings-card";
 import { Skeleton } from "../components/skeleton";
@@ -36,8 +37,8 @@ function firstOf({ form, mark, icon }: Found & { form: object }): AddFirst {
   return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values }, step: values.length ? "form" : "install", mark: { detail: mark, icon } };
 }
 
-/** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …). */
-export function Pick({ mark, name, line, end, onOpen }: { mark: ReactNode; name: string; line: string; end: ReactNode; onOpen?: () => void }) {
+/** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …); `dim` an off item's, its end not. */
+export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: ReactNode; name: string; line: ReactNode; end: ReactNode; onOpen?: () => void; dim?: boolean }) {
   const text = (
     <>
       {mark}
@@ -47,7 +48,7 @@ export function Pick({ mark, name, line, end, onOpen }: { mark: ReactNode; name:
   return (
     <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.5 hover:bg-fill-subtle">
       {onOpen ? (
-        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-start focus-visible:focus-ring">
+        <button type="button" onClick={onOpen} className={cx("flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-start focus-visible:focus-ring", dim && "opacity-disabled")}>
           {text}
         </button>
       ) : (
