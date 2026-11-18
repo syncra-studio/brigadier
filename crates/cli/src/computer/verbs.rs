@@ -382,18 +382,17 @@ fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
     }
 }
 
-/// Takes the computer for `me`, or names the session that has it [D907].
+/// Takes the computer for `me`, or names the session that has it [D907]. A holder waiting on the
+/// user (a question, an approval) has let it go: its turn goes on only once they answer.
 fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
     let mut holder = lock(&HOLDER);
     if let Some(id) = holder.as_deref().filter(|id| *id != me) {
         let row = rows().into_iter().find(|r| r["id"] == id);
-        if row.as_ref().is_some_and(|r| r["running"] == true) {
-            let title = row
-                .as_ref()
-                .and_then(|r| r["title"].as_str().map(String::from))
-                .unwrap_or_else(|| id.to_string());
+        if let Some(r) = row.filter(|r| r["running"] == true && r["state"] != "waiting_answer") {
             return Err(refuse(&format!(
-                "Computer use is in use by \"{title}\". Try again after it finishes, or do something else."
+                "Computer use is in use by {} in \"{}\" (session {id}). Try again after its turn, or do something else.",
+                r["backend"].as_str().unwrap_or("another agent"),
+                r["title"].as_str().unwrap_or(id)
             )));
         }
     }
