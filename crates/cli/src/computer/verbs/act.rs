@@ -21,6 +21,11 @@ pub(super) fn act(
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
+    let mut args = args;
+    // A run's step reads nothing after it, so it needn't wait for a window to show.
+    if s.batch && name != "drag" {
+        args["post_action_wait"] = "none".into();
+    }
     let done = match tool(data, name, args, &|| !here()) {
         Err(Fail::Unknown) => {
             return Ok(format!(
