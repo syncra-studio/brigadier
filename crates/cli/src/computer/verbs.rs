@@ -68,6 +68,8 @@ struct Sess {
     secure: HashSet<u64>,
     /// Each control's frame on screen, for a drag.
     frames: HashMap<u64, [f64; 4]>,
+    /// Menu items by number, by name: a menu open in its own window is out of the driver's reach.
+    items: HashMap<u64, String>,
     /// The rows were renumbered since the last whole read.
     moved: bool,
     query: Option<String>,
@@ -312,7 +314,7 @@ fn verb(
                 true => "double_click",
                 false => "click",
             };
-            act(
+            match act(
                 data,
                 me,
                 &mut s,
@@ -320,7 +322,24 @@ fn verb(
                 tool,
                 args,
                 here,
-            )?
+            ) {
+                Err(e)
+                    if e.to_string().contains("element_outside_target_window")
+                        && s.items.contains_key(&n) =>
+                {
+                    let name = s.items[&n].clone();
+                    press(
+                        data,
+                        me,
+                        &mut s,
+                        json!({"path": [name]}),
+                        ("", Value::Null),
+                        w,
+                        here,
+                    )?
+                }
+                r => r?,
+            }
         }
         "type" => {
             let n = n(0)?;

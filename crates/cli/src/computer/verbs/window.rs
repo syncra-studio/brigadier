@@ -67,6 +67,10 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             true => drop(s.secure.insert(n)),
             false => drop(s.secure.remove(&n)),
         }
+        match (e["role"].as_str(), e["label"].as_str()) {
+            (Some("AXMenuItem"), Some(name)) => drop(s.items.insert(n, name.to_string())),
+            _ => drop(s.items.remove(&n)),
+        }
         if let Some(f) = e["frame"].as_object() {
             s.frames.insert(
                 n,
