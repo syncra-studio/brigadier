@@ -31,6 +31,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
+  brigadier computer …        the apps on the user's Mac, in the background: read a window, click, type, keys, menus
   brigadier mockup \"<what>\"   before a big UI change, never a small fix: offer the user a mockup first
   brigadier repo <name>       in a chat on a folder of repos: your own copy of a repo, before your first edit there
   brigadier help [command]    this, or one command's help
@@ -221,14 +222,12 @@ pub fn run(
     rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Value {
-    if args.first().is_some_and(|a| a == "mcp") {
-        return crate::relay::mcp(data, me, args);
-    }
-    if args.first().is_some_and(|a| a == "browser") {
-        if args.iter().any(|a| a == "--help") {
-            return json!({"ok": true, "text": crate::browser::HELP});
-        }
-        return crate::browser::agent(data, me, args, here);
+    let help = args.iter().any(|a| a == "--help");
+    match args.first().map(String::as_str) {
+        Some("mcp") => return crate::relay::mcp(data, me, args),
+        Some("browser") if help => return json!({"ok": true, "text": crate::browser::HELP}),
+        Some("browser") => return crate::browser::agent(data, me, args, here),
+        _ => {}
     }
     let call = match parse(args) {
         Ok(c) => c,
@@ -239,6 +238,7 @@ pub fn run(
             Some("brigade") => include_str!("agent/brigade.txt"),
             Some("reviews") => include_str!("agent/reviews.txt"),
             Some("browser") => crate::browser::HELP,
+            Some("computer") => crate::computer::HELP,
             Some(c) => match spec(c) {
                 Some((h, ..)) => h,
                 None => return refuse(&format!("No command `{c}`. `brigadier help` lists yours.")),

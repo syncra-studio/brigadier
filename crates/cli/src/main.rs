@@ -46,6 +46,7 @@ fn main() {
     if args.first().is_some_and(|a| a == "mcp-server") {
         return brigadier::mcp::serve::run();
     }
+    let args = typed(args);
     let out = match agent_call(&data, &args) {
         None => brigadier::run(&data, &args)
             .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()})),
@@ -65,6 +66,26 @@ fn main() {
         println!("{out}");
     }
     process::exit(if out["ok"] == false { 1 } else { 0 });
+}
+
+/// `computer type` takes its text on stdin, never on the command line, where others could read it [D902].
+fn typed(mut args: Vec<String>) -> Vec<String> {
+    use std::io::{IsTerminal, Read};
+    let typing =
+        args.first().is_some_and(|a| a == "computer") && args.get(1).is_some_and(|a| a == "type");
+    let mut text = String::new();
+    if typing
+        && !std::io::stdin().is_terminal()
+        && std::io::stdin()
+            .take(64 << 10)
+            .read_to_string(&mut text)
+            .is_ok()
+    {
+        // `echo` ends its text with a newline the agent didn't mean to type; --submit presses Return.
+        let text = text.strip_suffix('\n').unwrap_or(&text).to_string();
+        args.extend(["--stdin".into(), text]);
+    }
+    args
 }
 
 fn host_child() -> bool {
@@ -90,7 +111,9 @@ fn agent_call(data: &Path, args: &[String]) -> Option<Value> {
         args.get(1).map(String::as_str),
         Some("signin" | "wait" | "cancel" | "signout")
     );
-    if who["app"] == true && args.first().is_some_and(|a| a == "plugins") && signing {
+    // So does computer use's helper connection [D913].
+    let held = args.first().is_some_and(|a| a == "computer");
+    if who["app"] == true && (held || args.first().is_some_and(|a| a == "plugins") && signing) {
         let _ = conn.set_timeout(Some(Duration::from_secs(660)));
         let reply = conn.call(&json!({"id": 2, "op": "run", "args": args}));
         return Some(reply.unwrap_or_else(

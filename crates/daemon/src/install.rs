@@ -26,6 +26,15 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
     let bin = data.join("bin");
     fs::create_dir_all(&bin)?;
     let mine = wire::build();
+    // The bundle's computer-use helper, which the daemon launches [D913]: Resources/bin/.. here.
+    let helper = (std::env::current_exe()?.parent().and_then(Path::parent))
+        .map(|resources| resources.join("Brigadier Computer Use.app"))
+        .filter(|app| app.is_dir());
+    let file = data.join(brigadier::computer::HELPER_FILE);
+    match helper {
+        Some(app) => fs::write(&file, app.as_os_str().as_encoded_bytes())?,
+        None => drop(fs::remove_file(&file)),
+    }
     {
         let _lock = wait_lock(&bin.join("install.lock"))?;
         let current = build_of(&bin.join("current"));

@@ -116,7 +116,10 @@ pub(super) fn serve(
             thread::spawn(move || {
                 let rows = || state.lock().unwrap().rows.values().cloned().collect();
                 let here = || here.load(Ordering::SeqCst);
-                let mut reply = brigadier::agent::run(&data, &id, &args, &rows, &here);
+                let mut reply = match args.first().map(String::as_str) {
+                    Some("computer") => brigadier::computer::agent(&data, &id, &args, &rows, &here),
+                    _ => brigadier::agent::run(&data, &id, &args, &rows, &here),
+                };
                 reply["re"] = re;
                 let _ = out.send(reply.to_string());
             });

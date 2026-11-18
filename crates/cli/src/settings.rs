@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 10] = [
+const KEYS: [(&str, &[&str]); 11] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -43,6 +43,8 @@ const KEYS: [(&str, &[&str]); 10] = [
     // Where a web link and a local dev URL open: Brigadier's browser or the default one [D507].
     ("web_links_in", &["system", "brigadier"]),
     ("local_links_in", &["brigadier", "system"]),
+    // Agents may use the apps on this Mac; off until the user turns it on [D911, D912].
+    ("computer_use", SWITCH_OFF),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.

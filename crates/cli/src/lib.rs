@@ -10,6 +10,7 @@ mod chips;
 mod command;
 mod commands;
 mod commit;
+pub mod computer;
 pub mod control;
 mod feedback;
 mod fork;
@@ -131,7 +132,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" | "routing" | "plugins" | "browser" => &[][..],
+        | "panel" | "routing" | "plugins" | "browser" | "computer" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
@@ -361,6 +362,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "side" => side::run(data, args),
         "tabs" => tabs::run(data, args),
         "browser" => browser::run(data, args),
+        "computer" => computer::run(data, args),
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
         "recover" => queue::recover(data, arg(args, 1)?, false),

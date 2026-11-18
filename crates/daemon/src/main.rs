@@ -159,6 +159,7 @@ fn main() -> io::Result<()> {
                     {
                         let _ = ended.send(id.into());
                         brigadier::browser::turn_ended(id);
+                        brigadier::computer::turn_ended(id);
                         check::turn_ended(&data, id);
                     }
                 }

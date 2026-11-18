@@ -21,7 +21,9 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 48] = [
+const ROUTED: [&str; 49] = [
+    // Computer use: the helper's connection lives here [D913].
+    "computer",
     "plugins",
     "browser",
     "mockup",
@@ -236,6 +238,9 @@ pub(super) fn serve(
                 brigadier::browser::page(conn, out.clone());
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
             }
+            // Brigadier Computer Use, connected out: the driver's calls go to it, its answers come back [D913].
+            "computer_helper" => brigadier::computer::helper(conn, out.clone(), peer),
+            "computer_reply" => brigadier::computer::reply(req["reply"].clone()),
             "git_refresh" => {
                 git::refresh(conn);
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
@@ -342,6 +347,7 @@ pub(super) fn serve(
     gitting.fetch_add(1, Ordering::SeqCst);
     git::leave(conn);
     brigadier::browser::leave(conn);
+    brigadier::computer::leave(conn);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
 }
