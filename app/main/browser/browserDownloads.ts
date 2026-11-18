@@ -36,6 +36,8 @@ export function watchDownloads(session: Session): void {
     const target = freePath(app.getPath("downloads"), path.basename(item.getFilename()) || "download");
     if (askFor.delete(item.getURL())) item.setSaveDialogOptions({ defaultPath: target });
     else item.setSavePath(target);
+    // Electron holds an interrupted item open to resume, and "done" never comes; nothing resumes one, so it ends.
+    item.on("updated", (_updated, state) => state === "interrupted" && item.cancel());
     item.once("done", (_done, state) => state === "completed" && quarantine(item.getSavePath()));
   });
 }
