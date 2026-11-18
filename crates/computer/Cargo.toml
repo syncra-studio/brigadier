@@ -8,3 +8,6 @@ publish = false
 brigadier-frames = { path = "../frames" }
 libc.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "=3.7.0"

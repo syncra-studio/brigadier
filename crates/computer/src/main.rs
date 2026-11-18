@@ -32,6 +32,11 @@ fn main() {
 
     let sock = Path::new(data).join("daemon.sock");
     let mut conn = wire::connect_daemon(&sock, Duration::from_secs(5)).unwrap_or_else(|e| fail(&e));
+    // Anyone can launch this app on a socket of their own: only Brigadier's daemon may drive it.
+    let peer = wire::peer_pid(&conn.stream).unwrap_or_else(|e| fail(&e));
+    if !mac::ours(peer) {
+        fail(&"the daemon isn't signed as this app is")
+    }
     conn.set_timeout(None).unwrap_or_else(|e| fail(&e));
     let mut daemon = conn.stream;
     write_frame(
@@ -134,6 +139,28 @@ mod mac {
         fn CGRequestScreenCaptureAccess() -> bool;
     }
 
+    /// Process `pid` is signed by this app's team. An app without a team (a dev build, ad hoc)
+    /// holds no lasting grant, so it takes any daemon.
+    // shortcut: the owner's Developer ID team [D493] is written here; read it from this app's
+    // own signature if another team ever signs Brigadier.
+    pub fn ours(pid: i32) -> bool {
+        use security_framework::os::macos::code_signing::{
+            Flags, GuestAttributes, SecCode, SecRequirement,
+        };
+        let Ok(team) = "anchor apple generic and certificate leaf[subject.OU] = \"7JQSPMWT79\""
+            .parse::<SecRequirement>()
+        else {
+            return false;
+        };
+        let signed = |code: SecCode| code.check_validity(Flags::NONE, &team).is_ok();
+        if !SecCode::for_self(Flags::NONE).is_ok_and(signed) {
+            return true;
+        }
+        let mut guest = GuestAttributes::new();
+        guest.set_pid(pid);
+        SecCode::copy_guest_with_attribues(None, &guest, Flags::NONE).is_ok_and(signed)
+    }
+
     /// Asks macOS for the grants `what` names, charged to this app: its own prompt or Settings.
     pub fn ask(what: &str) {
         unsafe {
@@ -158,4 +185,7 @@ mod mac {
 #[cfg(not(target_os = "macos"))]
 mod mac {
     pub fn ask(_: &str) {}
+    pub fn ours(_: i32) -> bool {
+        true
+    }
 }

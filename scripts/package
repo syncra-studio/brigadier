@@ -80,7 +80,12 @@ await packager({
     identityValidation: false,
     // Ad hoc code has no Team ID, so hardened runtime's library validation would refuse Electron's
     // own framework. A Developer ID build turns it on: notarization requires it.
-    optionsForFile: (file) => ({ timestamp: "none", hardenedRuntime: false, ...(file.endsWith("/Brigadier.app") && { entitlements }) }),
+    // Computer use's helper and its driver run hardened with Cua's own release entitlements, so no
+    // other process can load code into what holds the grants [D913].
+    optionsForFile: (file) =>
+      file.includes("/Brigadier Computer Use.app")
+        ? { timestamp: "none", hardenedRuntime: true, entitlements: ["com.apple.security.automation.apple-events", "com.apple.security.device.screen-capture"] }
+        : { timestamp: "none", hardenedRuntime: false, ...(file.endsWith("/Brigadier.app") && { entitlements }) },
   },
 });
 EOF
