@@ -107,7 +107,7 @@ pub fn read_cookies(
             let keys = chromium_password
                 .map(ChromiumKeys::from_macos_password)
                 .unwrap_or_default();
-            chromium::read_cookies(&profile.dir, &keys, now_unix).map(|cookies| cookies.read)
+            chromium::read_cookies(&profile.dir, &keys, now_unix)
         }
         Family::Safari => safari::read_cookies(profile, now_unix),
     }
@@ -120,13 +120,10 @@ pub fn read_cookies_with_keys(
     profile: &Profile,
     keys: &ChromiumKeys,
     now_unix: i64,
-) -> Result<ChromiumCookies, Error> {
+) -> Result<Cookies, Error> {
     match profile.family {
         Family::Chromium => chromium::read_cookies(&profile.dir, keys, now_unix),
-        Family::Safari => Ok(ChromiumCookies {
-            read: read_cookies(profile, None, now_unix)?,
-            app_bound_domains: Vec::new(),
-        }),
+        Family::Safari => read_cookies(profile, None, now_unix),
     }
 }
 

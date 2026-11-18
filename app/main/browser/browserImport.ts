@@ -69,13 +69,11 @@ const OPS: Record<string, (args: Args) => unknown> = {
     await target.clearStorageData({ storages: storages as never });
     target.flushStorageData();
   },
-  /** One batch; returns the cookies the store refused, as [domain, name]. */
+  /** One batch; a cookie the store refuses is left out. */
   cookies: async ({ profile, cookies }) => {
     const target = session.fromPartition(profilePartition(profile));
     const now = Math.floor(Date.now() / 1000);
-    const refused: [string, string][] = [];
-    await Promise.all(cookies.map((cookie) => target.cookies.set(cookieDetails(cookie, now)).catch(() => refused.push([cookie.domain, cookie.name]))));
-    return refused;
+    await Promise.allSettled(cookies.map((cookie) => target.cookies.set(cookieDetails(cookie, now))));
   },
   settled: async ({ profile, replaced }) => {
     const target = session.fromPartition(profilePartition(profile));

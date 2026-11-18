@@ -17,8 +17,7 @@ use sha2::{Digest, Sha256};
 
 use crate::sqlite::{columns, open_copy};
 use crate::{
-    ChromiumCookies, ChromiumKeys, Cookie, Error, PartitionedCookie, SameSite,
-    WEBKIT_EPOCH_OFFSET_SECS,
+    ChromiumKeys, Cookie, Cookies, Error, PartitionedCookie, SameSite, WEBKIT_EPOCH_OFFSET_SECS,
 };
 
 mod catalog;
@@ -75,8 +74,6 @@ fn plaintext_value(mut bytes: Vec<u8>, host: &str, version: i64) -> Option<Strin
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Opened {
     Value(String),
-    /// Chrome's `v20`: locked to the browser, so never tried.
-    AppBound,
     Unreadable,
 }
 
@@ -100,7 +97,8 @@ pub(crate) fn open_sealed(
             .find_map(|key| decode(decrypt_cbc(key, payload)?))
     };
     let value = match prefix {
-        b"v20" => return Opened::AppBound,
+        // Chrome's `v20`: locked to the browser, so never tried.
+        b"v20" => return Opened::Unreadable,
         b"v10" => match &keys.gcm_v10 {
             Some(key) => decrypt_gcm(key, payload).and_then(decode),
             None => cbc(keys.cbc_v10),
@@ -131,7 +129,7 @@ pub(crate) fn read_cookies(
     dir: &Path,
     keys: &ChromiumKeys,
     now_unix: i64,
-) -> Result<ChromiumCookies, Error> {
+) -> Result<Cookies, Error> {
     let conn = open_copy(&cookies_path(dir))?;
     let cols = columns(&conn, "cookies")?;
     if !cols.contains("host_key") || !cols.contains("name") {
@@ -160,8 +158,7 @@ pub(crate) fn read_cookies(
     );
     let version = meta_version(&conn);
 
-    let mut all = ChromiumCookies::default();
-    let out = &mut all.read;
+    let mut out = Cookies::default();
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -193,15 +190,8 @@ pub(crate) fn read_cookies(
             Opened::Value(value) => value,
             // A partitioned cookie is already counted as that.
             _ if top_frame.is_some() => continue,
-            Opened::AppBound => {
-                out.unreadable += 1;
-                out.unreadable_cookies.push((host.clone(), name));
-                all.app_bound_domains.push(host);
-                continue;
-            }
             Opened::Unreadable => {
                 out.unreadable += 1;
-                out.unreadable_cookies.push((host, name));
                 continue;
             }
         };
@@ -235,7 +225,7 @@ pub(crate) fn read_cookies(
             None => out.cookies.push(cookie),
         }
     }
-    Ok(all)
+    Ok(out)
 }
 
 /// How many cookies a profile's store holds, without decrypting any.

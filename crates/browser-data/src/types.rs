@@ -99,8 +99,6 @@ pub struct Cookies {
     /// Skipped because they could not be decrypted, failed their integrity check or were
     /// malformed.
     pub unreadable: usize,
-    /// The domain and name of each unreadable cookie whose domain could be read.
-    pub unreadable_cookies: Vec<(String, String)>,
     /// Chromium's partitioned cookies that could be opened, which a Chromium target can keep as
     /// they were. They are counted in `partitioned` too.
     pub partitioned_cookies: Vec<PartitionedCookie>,
@@ -114,16 +112,6 @@ pub struct PartitionedCookie {
     pub top_frame_site_key: String,
     /// The other half of Chromium's partition key.
     pub has_cross_site_ancestor: bool,
-}
-
-/// A Chromium profile's cookies when read with [`crate::read_cookies_with_keys`].
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChromiumCookies {
-    /// The cookies. App-Bound ones are among its unreadable ones, and in `unreadable_cookies`.
-    pub read: Cookies,
-    /// The domains of the `v20` App-Bound cookies, one per cookie: Chrome on Windows locks these
-    /// to itself, so the user has to sign in to these sites again.
-    pub app_bound_domains: Vec<String>,
 }
 
 /// Why a browser's cookie key couldn't be fetched, on any OS.

@@ -8,8 +8,7 @@
 //!
 //! Chrome's `v20` App-Bound cookies are locked to the browser itself. This crate never tries to
 //! open them, and never reads `os_crypt.app_bound_encrypted_key`: reaching that key means posing
-//! as the browser, which is how cookie-stealing malware works. They count as unreadable, with
-//! their domains named.
+//! as the browser, which is how cookie-stealing malware works. They count as unreadable.
 //!
 //! The Linux logic ([`ChromiumKeys::from_linux_secret`] and the empty-password fallback in
 //! `chromium.rs`) is ported from bb, `apps/desktop/src/browser-import/chromium-keys.ts` and

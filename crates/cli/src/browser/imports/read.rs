@@ -1,7 +1,7 @@
 //! Import's reading half: one source profile's cookies, read through `brigadier-browser-data` and handed straight
 //! to the page; nothing is held here but a browser's key, for its other profiles.
 
-use super::{Record, change_saved, distinct, lost_sign_ins, running, secrets};
+use super::{Record, change_saved, running, secrets};
 use brigadier_browser_data::{self as reader, ChromiumKeys, Error, Family, Profile, SecretError};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -123,24 +123,17 @@ pub(super) fn read(data: &Path, home: &Path, key: &str, id: &str) -> io::Result<
             return Ok(failure);
         }
     };
-    // Electron 45's cookies.set takes no partition key, and a copy without it would go where the site never meant.
-    // They are embeds' and bot checks' cookies, not sign-ins, so they're only counted.
-    let skipped = read.read.unreadable + read.read.partitioned;
-    let cookies = read.read.cookies;
+    // Partitioned cookies stay behind: Electron 45's cookies.set takes no partition key, and a copy without it would
+    // go where the site never meant. They are embeds' and bot checks' cookies, not sign-ins.
+    let cookies = read.cookies;
     if cookies.is_empty() && profile.family == Family::Safari {
         return Ok(failed(
             "readFailed",
             format!("There's nothing to bring from {}.", profile.name),
         ));
     }
-    let (skipped_domains, skipped_domain_count) = lost_sign_ins(read.read.unreadable_cookies);
     let record = Record {
         profiles: vec![profile.name.clone()],
-        imported: cookies.len(),
-        skipped,
-        skipped_domains,
-        skipped_domain_count,
-        app_bound_domains: distinct(read.app_bound_domains).0,
         ..Record::default()
     };
     Ok(json!({"ok": true, "type": "ready", "cookies": cookies, "record": record}))

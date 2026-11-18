@@ -1,6 +1,6 @@
 import { run } from "../onboarding/api";
 import { ago } from "../panel/words";
-import { openTab, setTabProfile } from "../shell/tab-store";
+import { openTab } from "../shell/tab-store";
 import { allProfiles, type BrowserProfile, createProfile, loadProfiles, nextHue, switchProfile } from "./profiles";
 
 /*
@@ -13,18 +13,8 @@ export type ImportState = "ready" | "running" | "needsFullDiskAccess" | "needsKe
 export type ImportFailure = "running" | "needsFullDiskAccess" | "needsKeychainAccess" | "noKeychainKey" | "gone" | "readFailed";
 export type ImportProgress = { type: "reading" } | { type: "cookies"; done: number; total: number };
 
-/** What one source profile's import brought. */
-export type ImportedRecord = {
-  atMs: number;
-  profiles: string[];
-  imported: number;
-  /** Cookies left out: partitioned, unreadable or refused. */
-  skipped: number;
-  /** The sites whose sign-in didn't come across: the first 20, and how many in all. */
-  skippedDomains: string[];
-  skippedDomainCount: number;
-  appBoundDomains: string[];
-};
+/** A source profile's last import: when, and its name; a browser's row has all its profiles' names. */
+export type ImportedRecord = { atMs: number; profiles: string[] };
 
 /** A browser as Rust lists it. */
 export type ListedSource = {
@@ -115,32 +105,23 @@ export async function importProfile(source: Pick<ListedSource, "key" | "name">, 
   const opened = (await shell("opened", { profile: target })) === true;
   const placed = (await run(["browser", "-", "imports", "place", source.key, choice.id, JSON.stringify(read.record), ...(opened ? ["--open"] : []), "--profile", target])) as Extract<ImportedOutcome, { type: "done" }>;
   if (replaced) await shell("clear", { profile: target, storageCopied: placed.siteStorage === "copied" });
-  const refused: [string, string][] = [];
   const total = read.cookies.length;
   onProgress({ type: "cookies", done: 0, total });
   for (let at = 0; at < total; at += COOKIES_AT_ONCE) {
-    refused.push(...((await shell("cookies", { profile: target, cookies: read.cookies.slice(at, at + COOKIES_AT_ONCE) })) as [string, string][]));
+    await shell("cookies", { profile: target, cookies: read.cookies.slice(at, at + COOKIES_AT_ONCE) });
     onProgress({ type: "cookies", done: Math.min(at + COOKIES_AT_ONCE, total), total });
   }
   await shell("settled", { profile: target, replaced });
-  // Rust keeps the cookies main's store refused as skipped, with their sites when they held a sign-in.
-  const record = refused.length === 0 ? placed.record : ((await imports(["refused", source.key, choice.id, JSON.stringify(refused)])).record as ImportedRecord);
   const profile = allProfiles().find((each) => each.id === target) ?? { id: target, name, hue: nextHue(profiles) };
-  return { choice, profile, replaced, outcome: { ...placed, record } };
+  return { choice, profile, replaced, outcome: placed };
 }
 
 /** Quits and opens Brigadier again, so site storage an import left for the next start goes in. */
 export const restartApp = (): void => void shell("restart");
 
-/** The session most lately active, where a site or a profile opens from Settings. */
+/** The session most lately active, where a profile opens from Settings. */
 export const latestSession = (rows: readonly { id: string; updated: number; archived?: number | null }[] | undefined): string | null =>
   (rows ?? []).filter((row) => !row.archived).toSorted((a, b) => b.updated - a.updated)[0]?.id ?? null;
-
-/** Opens `site` to sign in again, on `profile`, in `session`. */
-export function signInOn(session: string, profile: string, site: string): void {
-  setTabProfile(session, openTab(session, "browser", `https://${site}/`), profile);
-  window.location.hash = `#thread/${encodeURIComponent(session)}`;
-}
 
 /** Puts `session` on `profile`, in a New tab, in front. */
 export function openProfile(session: string, profile: string): void {
@@ -172,25 +153,6 @@ export function totalCookies(source: ListedSource): number | null {
   return total;
 }
 
-/** The skipped domains as a row names them: up to three, then how many more. */
-export function domainsText(domains: readonly string[], count: number): string {
-  const shown = domains.slice(0, 3);
-  if (shown.length === 0) return "";
-  if (count > 3) return `${shown.join(", ")} and ${number.format(count - 3)} more`;
-  if (shown.length === 1) return shown[0] ?? "";
-  return `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}`;
-}
-
-/** What the last import brought, as the row's details. */
-export function recordDetails(record: ImportedRecord): string[] {
-  const details = [`${record.profiles.join(", ")} · ${counted(record.imported, "cookie", "cookies")} imported`];
-  if (record.skipped > 0) {
-    const domains = domainsText(record.skippedDomains, record.skippedDomainCount);
-    details.push(`${number.format(record.skipped)} skipped${domains ? ` (${domains})` : ""}`);
-  }
-  return details;
-}
-
 /** A browser's row: its status, details and its one button. */
 export function rowView(source: ListedSource): RowView {
   switch (source.state) {
@@ -211,7 +173,7 @@ export function rowView(source: ListedSource): RowView {
   const total = totalCookies(source);
   const profileCount = counted(profiles, "profile", "profiles");
   if (profiles === 0) return { status: "Nothing to bring", tone: "idle", details: [], action: "none", label: "Import…" };
-  const details = source.record ? recordDetails(source.record) : [profileCount, ...(total === null ? [] : [counted(total, "cookie", "cookies")])];
+  const details = source.record ? [`${source.record.profiles.join(", ")} imported`] : [profileCount, ...(total === null ? [] : [counted(total, "cookie", "cookies")])];
   return { status: "Ready", tone: "ready", details, action: "import", label: "Import…" };
 }
 

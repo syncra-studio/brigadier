@@ -14,17 +14,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-/// What one source profile's import brought.
+/// One source profile's last import: when, and its name. Older records' cookie counts and site lists are ignored.
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct Record {
     at_ms: i64,
     profiles: Vec<String>,
-    imported: usize,
-    skipped: usize,
-    skipped_domains: Vec<String>,
-    skipped_domain_count: usize,
-    app_bound_domains: Vec<String>,
 }
 
 /// What's kept of imports: each browser's last per source profile, each source profile's place here, the notice seen.
@@ -69,66 +64,11 @@ fn change_saved(data: &Path, change: impl FnOnce(&mut Saved)) -> io::Result<()> 
     core::write_atomic(&saved_file(data), &serde_json::to_vec(&saved)?)
 }
 
-/// The distinct domains among `domains`, without a leading dot: the first 20, and how many in all.
-fn distinct(domains: impl IntoIterator<Item = String>) -> (Vec<String>, usize) {
-    let mut seen: Vec<String> = Vec::new();
-    for domain in domains {
-        let domain = domain.trim_start_matches('.').to_lowercase();
-        if !domain.is_empty() && !seen.contains(&domain) {
-            seen.push(domain);
-        }
-    }
-    let count = seen.len();
-    seen.truncate(20);
-    (seen, count)
-}
-
-/// Whether a cookie named `name` holds a sign-in, by the names sites give them: GitHub's `user_session`, Google's
-/// `SID`, Rails' `remember_user_token`, `PHPSESSID`. A name it doesn't know counts as not one: a site listed to sign in
-/// to again for nothing is worse than one missed.
-fn signs_in(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
-    let sid = name
-        .match_indices("sid")
-        .any(|(at, _)| !name[at + 3..].starts_with(|c: char| c.is_ascii_alphabetic()));
-    !name.contains("csrf")
-        && !name.contains("xsrf")
-        && (sid
-            || [
-                "sess", "auth", "token", "login", "logged", "remember", "jwt",
-            ]
-            .iter()
-            .any(|word| name.contains(word)))
-}
-
-/// The sites among `cookies` (domain, name) whose sign-in didn't come across, as `distinct` gives them.
-fn lost_sign_ins(cookies: impl IntoIterator<Item = (String, String)>) -> (Vec<String>, usize) {
-    distinct(
-        cookies
-            .into_iter()
-            .filter(|(_, name)| signs_in(name))
-            .map(|(domain, _)| domain),
-    )
-}
-
 /// A browser's row: its source profiles' last imports summed up, naming each. None with none.
 fn merged(records: &[&Record]) -> Option<Record> {
-    let sum = |field: fn(&Record) -> usize| records.iter().map(|r| field(r)).sum();
-    let (skipped_domains, count) = distinct(records.iter().flat_map(|r| r.skipped_domains.clone()));
     Some(Record {
         at_ms: records.iter().map(|r| r.at_ms).max()?,
         profiles: records.iter().flat_map(|r| r.profiles.clone()).collect(),
-        imported: sum(|r| r.imported),
-        skipped: sum(|r| r.skipped),
-        skipped_domains,
-        // Each record keeps only its first domains, so the same site may count once in each: at least this many.
-        skipped_domain_count: records
-            .iter()
-            .map(|r| r.skipped_domain_count)
-            .max()
-            .unwrap_or(0)
-            .max(count),
-        app_bound_domains: distinct(records.iter().flat_map(|r| r.app_bound_domains.clone())).0,
     })
 }
 
@@ -260,33 +200,7 @@ fn place(
     Ok(json!({"ok": true, "type": "done", "record": record, "siteStorage": site_storage}))
 }
 
-/// After `place`, the cookies main's store refused, as (domain, name): the kept record counts them as skipped, and
-/// lists their sites when they held a sign-in.
-fn refused(data: &Path, key: &str, id: &str, cookies: Vec<(String, String)>) -> io::Result<Value> {
-    let mut kept = None;
-    change_saved(data, |saved| {
-        let Some(record) = saved
-            .browsers
-            .get_mut(key)
-            .and_then(|b| b.records.get_mut(id))
-        else {
-            return;
-        };
-        record.imported = record.imported.saturating_sub(cookies.len());
-        record.skipped += cookies.len();
-        let listed = record.skipped_domains.len();
-        let (sites, _) = lost_sign_ins(cookies);
-        let (list, count) = distinct(record.skipped_domains.drain(..).chain(sites));
-        record.skipped_domain_count += count.saturating_sub(listed);
-        record.skipped_domains = list;
-        kept = Some(record.clone());
-    })?;
-    let record = kept.ok_or_else(|| io::Error::other("No import kept for that profile"))?;
-    Ok(json!({"ok": true, "record": record}))
-}
-
-/// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]
-/// | refused <browser> <profile> <cookies>`.
+/// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]`.
 pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
     let get = |i| crate::arg(args, i);
     // A hidden instance's throwaway HOME is where it looks, so it never reads the user's browsers.
@@ -331,7 +245,6 @@ pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Val
             args.iter().any(|a| a == "--open"),
             serde_json::from_str(get(3)?)?,
         ),
-        "refused" => refused(data, get(1)?, get(2)?, serde_json::from_str(get(3)?)?),
         _ => Err(io::Error::other("Unknown browser imports operation")),
     }
 }
