@@ -5,8 +5,7 @@ import { closeTab, driveTab, openTab, setTabProfile, tabsOf } from "../shell/tab
 import { stepZoom } from "./keys";
 import { closeFind, findState, forgetFind } from "./find";
 import { type BrowserBounds, closePage as closeInLayer, focusPage, navigatePage, openPage as openInLayer, zoom } from "./layer";
-import { saveCardAnswer, siteAsked } from "./data";
-import { defaultOf, known, pinTab } from "./profiles";
+import { pinTab } from "./profiles";
 
 /**
  * The Browser tabs' pages as the app knows them, one per tab: what each shows, heard from its
@@ -155,7 +154,6 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
       } else if (event.type === "permission") {
         const { request, origin, camera, microphone, location } = event;
         update(id, { asking: { request, origin, camera, microphone, ...(location ? { location } : {}) } });
-        void siteAsked(profileOf(owner, id), origin, camera ? "camera" : microphone ? "microphone" : "location");
       } else if (event.type === "permissionRefused") update(id, { osRefused: { origin: event.origin, refused: event.refused as OsRefused[] } });
       else if (event.type === "blocked") update(id, { blocked: event.url, loading: false });
       else if (event.type === "failed") update(id, { failed: event.url });
@@ -174,16 +172,11 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
   }
 }
 
-/** The profile tab `id`'s page is on, which pinTab gave it when the page was made. */
-const profileOf = (owner: string, id: string) => known(tabsOf(owner).tabs.find((tab) => tab.id === id)?.profile) ?? defaultOf().id;
-
 /** The tab answers its page's question, which goes. */
 export function answerPermission(id: string, answer: PermissionAnswer): void {
   const asking = pages.get(id)?.asking;
   if (!asking) return;
   update(id, { asking: null });
-  const owner = owners.get(id);
-  if (owner) void saveCardAnswer(profileOf(owner, id), asking.origin, asking, answer);
   window.brigadierShell.answerPermission(asking.request, answer).catch((error: unknown) => console.error("answering the page failed", error));
 }
 

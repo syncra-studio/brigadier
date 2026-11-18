@@ -57,40 +57,6 @@ pub struct Store {
     pub(super) db: Connection,
 }
 
-/// The camera or the microphone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Device {
-    Camera,
-    Microphone,
-    Location,
-}
-
-impl Device {
-    pub(super) fn column(self) -> &'static str {
-        match self {
-            Device::Camera => "camera",
-            Device::Microphone => "microphone",
-            Device::Location => "location",
-        }
-    }
-}
-
-pub(super) fn permission_text(permission: SitePermission) -> &'static str {
-    match permission {
-        SitePermission::Ask => "ask",
-        SitePermission::Allow => "allow",
-        SitePermission::Block => "block",
-    }
-}
-
-pub(super) fn permission(text: &str) -> SitePermission {
-    match text {
-        "allow" => SitePermission::Allow,
-        "block" => SitePermission::Block,
-        _ => SitePermission::Ask,
-    }
-}
-
 pub(super) fn state_text(state: DownloadState) -> &'static str {
     match state {
         DownloadState::Running => "running",

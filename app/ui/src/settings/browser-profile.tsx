@@ -89,11 +89,6 @@ export function ProfileDetailPage({ id }: { id: string }) {
               Manage
             </Button>
           </SettingsRow>
-          <SettingsRow label="Site settings" description="Which sites may use your camera, microphone and location in this profile.">
-            <Button variant="soft" size="sm" aria-label="Manage site settings" onClick={() => openBrowserSettings("sites", id)}>
-              Manage
-            </Button>
-          </SettingsRow>
           <SettingsRow
             label="Browsing data"
             description="Clear this profile's sign-ins, site data, cache and download history, by time range. Other profiles aren't touched."

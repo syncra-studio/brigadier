@@ -14,13 +14,13 @@ use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
-use store::{Device, Store};
-use types::{DownloadState, SitePermission};
+use store::Store;
+use types::DownloadState;
 
 pub(crate) use hub::{HELP, answered};
 pub use hub::{agent, leave, page, turn_ended};
 
-const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> downloads list|start|finish|finished|remove|clear|interrupt | sites list|asked|set|clear | imports sources|origins|read|place | certs trust|clear | dates record|since|clear [--profile ID] [--json]";
+const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> downloads list|start|finish|finished|remove|clear|interrupt | imports sources|origins|read|place | certs trust|clear | dates record|since|clear [--profile ID] [--json]";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
@@ -49,16 +49,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         core::check_id(session)?;
     }
     let area = crate::arg(args, 2)?;
-    if ![
-        "profiles",
-        "downloads",
-        "sites",
-        "imports",
-        "certs",
-        "dates",
-    ]
-    .contains(&area)
-    {
+    if !["profiles", "downloads", "imports", "certs", "dates"].contains(&area) {
         return Err(io::Error::other(USAGE));
     }
     let root = data.join("browser");
@@ -144,30 +135,6 @@ fn stored(store: &mut Store, area: &str, args: &[String]) -> io::Result<Value> {
             store.interrupt_downloads().map_err(sql)?;
             done()
         }
-        ("sites", "list") => Ok(json!({"ok": true, "sites": store.sites().map_err(sql)?})),
-        ("sites", "asked") => {
-            web_address(get(1)?)?;
-            let choice = store
-                .site_asked(get(1)?, device(get(2)?)?, at)
-                .map_err(sql)?;
-            Ok(json!({"ok": true, "choice": choice}))
-        }
-        ("sites", "set") => {
-            web_address(get(1)?)?;
-            let device = device(get(2)?)?;
-            let choice = match get(3)? {
-                "ask" => SitePermission::Ask,
-                "allow" => SitePermission::Allow,
-                "block" => SitePermission::Block,
-                _ => return Err(io::Error::other("Expected ask, allow or block")),
-            };
-            store.set_site(get(1)?, device, choice, at).map_err(sql)?;
-            done()
-        }
-        ("sites", "clear") => {
-            store.clear_sites(since, until).map_err(sql)?;
-            done()
-        }
         _ => Err(io::Error::other(USAGE)),
     }
 }
@@ -190,15 +157,6 @@ fn optional_number(args: &[String], flag: &str) -> io::Result<Option<i64>> {
     crate::flag(args, flag)
         .map(|s| s.parse().map_err(io::Error::other))
         .transpose()
-}
-
-fn device(value: &str) -> io::Result<Device> {
-    match value {
-        "camera" => Ok(Device::Camera),
-        "microphone" => Ok(Device::Microphone),
-        "location" => Ok(Device::Location),
-        _ => Err(io::Error::other("Unknown site device")),
-    }
 }
 
 fn web_address(url: &str) -> io::Result<()> {

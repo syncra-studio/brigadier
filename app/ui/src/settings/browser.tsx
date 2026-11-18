@@ -6,7 +6,6 @@ import { BrowserDownloads } from "./browser-downloads";
 import { type BrowserSettingsView, openBrowserSettings, setClearingBrowsingData as setClearing, useClearingBrowsingData } from "./browser-parts";
 import { ProfileDetailPage } from "./browser-profile";
 import { ProfilesSection } from "./browser-profiles";
-import { BrowserSiteSettings } from "./browser-sites";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { type Settings, setSetting, useSettings } from "./api";
@@ -24,7 +23,6 @@ export const BROWSER_ROWS = {
   askDownloads: { label: "Ask where to save downloads", description: "Choose the folder and name for each download", section: "Downloads" },
   downloads: { label: "Download history", description: "View the files you downloaded in the built-in browser", section: "Downloads" },
   profiles: { label: "Profiles", description: "Separate sign-ins for each part of your life, and which profile new sessions start on" },
-  sites: { label: "Site settings", description: "Which sites may use your camera, microphone and location, for each profile", section: "Browser permissions" },
 } as const;
 
 const PAGE_DESCRIPTION = "The built-in browser, where links open, and what it keeps.";
@@ -82,8 +80,8 @@ function ManageRow({ row, view }: { row: { label: string; description: string };
 }
 
 /**
- * Settings › Browser, the old app's page [D507, D516]. Its data pages are details of it: `downloads` and `sites`,
- * each with `/<profile>` when a profile's page opened it.
+ * Settings › Browser, the old app's page [D507, D516]. Its data page is a detail of it: `downloads`, with
+ * `/<profile>` when a profile's page opened it.
  */
 export function BrowserPage({ detail = "" }: { detail?: string }) {
   const view = detail.split("/")[0];
@@ -92,7 +90,6 @@ export function BrowserPage({ detail = "" }: { detail?: string }) {
   const ask = useSave();
   const clearing = useClearingBrowsingData();
   if (view === "profile" && profileId) return <ProfileDetailPage id={profileId} />;
-  if (view === "sites") return <BrowserSiteSettings profile={profileId} />;
   if (view === "downloads") return <BrowserDownloads profile={profileId} />;
   return (
     <SettingsPage title="Browser" description={PAGE_DESCRIPTION}>
@@ -115,11 +112,6 @@ export function BrowserPage({ detail = "" }: { detail?: string }) {
             <SwitchRow row={BROWSER_ROWS.askDownloads} checked={settings.browser_ask_downloads} save={ask} onChange={(on) => setSetting("browser_ask_downloads", on)} />
           )}
           <ManageRow row={BROWSER_ROWS.downloads} view="downloads" />
-        </SettingsCard>
-      </SettingsSection>
-      <SettingsSection title="Browser permissions">
-        <SettingsCard>
-          <ManageRow row={BROWSER_ROWS.sites} view="sites" />
         </SettingsCard>
       </SettingsSection>
       <ClearBrowsingDataDialog open={clearing} onOpenChange={setClearing} />

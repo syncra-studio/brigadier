@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
 
-import { sitesCleared } from "../browser/data";
 import { profileCounts, reloadProfileTabs, useDefaultProfile, useProfiles } from "../browser/profiles";
 import { Button } from "../components/button";
 import { Checkbox } from "../components/checkbox";
@@ -10,7 +9,7 @@ import { Segmented } from "../components/segmented";
 import { Select } from "../components/select";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
-import { Download, SettingsCog, Trash } from "../icons";
+import { Download, Trash } from "../icons";
 import { Images } from "../icons/browser";
 import { errorText, run } from "../onboarding/api";
 
@@ -38,21 +37,17 @@ const RANGES = [
 const HOUR = 60 * 60 * 1000;
 const SINCE: Record<ClearRange, number | null> = { hour: HOUR, day: 24 * HOUR, week: 7 * 24 * HOUR, month: 28 * 24 * HOUR, all: null };
 
-type Kind = "cookies" | "cache" | "downloads" | "sites";
+type Kind = "cookies" | "cache" | "downloads";
 type ClearRequest = { sinceMs: number | null } & Record<Kind, boolean>;
 
-/** Picked when the dialog opens: everything but the sites' camera, microphone and location choices. */
-const PICKED: Record<Kind, boolean> = { cookies: true, cache: true, downloads: true, sites: false };
+/** Picked when the dialog opens: everything. */
+const PICKED: Record<Kind, boolean> = { cookies: true, cache: true, downloads: true };
 
 /** Rust clears what it keeps; main clears Chromium's, with Rust's dates for a range (main's browser/browserClearData.ts). */
 async function clearBrowsingData(profile: string, clear: ClearRequest): Promise<void> {
   const data = (args: string[]) => run(["browser", "-", ...args, "--profile", profile]);
   const range = clear.sinceMs === null ? [] : ["--since-ms", String(clear.sinceMs)];
   if (clear.downloads) await data(["downloads", "clear", ...range]);
-  if (clear.sites) {
-    await data(["sites", "clear", ...range]);
-    sitesCleared(profile);
-  }
   // Local sites opened anyway ask again (main's browser/localCerts.ts forgets its copy with the cookies).
   if (clear.cookies) await data(["certs", "clear"]);
   if (!clear.cookies && !clear.cache) return;
@@ -109,7 +104,6 @@ function ClearForm({ opened, clearing, setClearing, onDone, onCancel }: { opened
     { kind: "cookies", icon: <Trash />, label: "Cookies and site data", detail: sitesLine(sites) },
     { kind: "cache", icon: <Images />, label: "Cached images and files", detail: "All of it, whatever the time range. Pages may load more slowly the next time." },
     { kind: "downloads", icon: <Download />, label: "Download history", detail: "The list only; downloaded files stay." },
-    { kind: "sites", icon: <SettingsCog />, label: "Site settings", detail: "Which sites may use your camera, microphone and location." },
   ];
   const clear = () => {
     const since = SINCE[range];

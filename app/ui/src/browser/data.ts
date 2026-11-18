@@ -118,45 +118,9 @@ export function byDay<T extends { atMs: number }>(items: readonly T[], nowMs: nu
   return days;
 }
 
-export type SitePermission = "ask" | "allow" | "block";
-export type BrowserSite = { origin: string; camera: SitePermission; microphone: SitePermission; location: SitePermission; askedMs: number };
-type SiteDevice = "camera" | "microphone" | "location";
-
-/** The sites that asked in `profile`: permissions are each profile's own. */
-export async function browserSites(profile: string): Promise<BrowserSite[]> {
-  return (await data(profile, ["sites", "list"])).sites as BrowserSite[];
-}
-
-/** Main's permission checks read a copy of the profile's choices, sent again after each change. */
-async function sendSites(profile: string): Promise<BrowserSite[]> {
-  const sites = await browserSites(profile);
-  await window.brigadierShell.sites(profile, sites);
-  return sites;
-}
-
-/** Sets what a site may use without asking: its camera, its microphone, its location. */
-export async function setSite(profile: string, origin: string, choice: Partial<Record<SiteDevice, SitePermission>>): Promise<void> {
-  for (const [device, permission] of Object.entries(choice)) await data(profile, ["sites", "set", origin, device, permission]);
-  await sendSites(profile);
-}
-
-/** A site asked in the tab: Site settings lists it from now. */
-export const siteAsked = (profile: string, origin: string, device: SiteDevice) => data(profile, ["sites", "asked", origin, device]);
-
-/** Allow while visiting the site and Never allow are saved for the site in its profile; the others aren't. */
-export function saveCardAnswer(profile: string, origin: string, asked: Partial<Record<SiteDevice, boolean>>, answer: string): Promise<void> | undefined {
-  const saved = answer === "visiting" ? "allow" : answer === "never" ? "block" : null;
-  if (!saved) return;
-  const devices = (["camera", "microphone", "location"] as const).filter((device) => asked[device]);
-  return setSite(profile, origin, Object.fromEntries(devices.map((device) => [device, saved])));
-}
-
-/** Clear browsing data's Site settings went: main forgets its copy too. */
-export const sitesCleared = (profile: string) => void sendSites(profile);
-
 /**
- * At launch, once per profile: a download the last run left going ended there (nothing resumes one), and main gets the
- * site choices. Then main's downloads come here, to be listed.
+ * At launch, once per profile: a download the last run left going ended there (nothing resumes one). Then main's
+ * downloads come here, to be listed.
  */
 export async function startBrowserData(): Promise<void> {
   // One at a time: a step waits for the one before, which may still be listing the download.
@@ -170,8 +134,5 @@ export async function startBrowserData(): Promise<void> {
   configure();
   await connected();
   await loadProfiles();
-  for (const { id } of allProfiles()) {
-    await data(id, ["downloads", "interrupt"]);
-    await sendSites(id);
-  }
+  for (const { id } of allProfiles()) await data(id, ["downloads", "interrupt"]);
 }

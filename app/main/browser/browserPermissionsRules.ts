@@ -23,7 +23,7 @@ export function decideRequest(request: {
   return siteAnswer(site, asked);
 }
 
-/** What the page's permission check reads: only a saved Allow, and never location where there is none. */
+/** What the page's permission check reads: only an Allow while visiting, and never location where there is none. */
 export function checkAllows(origin: string | null, asked: SiteAsk, site: SiteChoice | undefined, platform: NodeJS.Platform): boolean {
   if (asked.location && !locationAvailable(platform)) return false;
   return origin !== null && siteAnswer(site, asked) === "grant";

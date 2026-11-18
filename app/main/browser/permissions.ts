@@ -1,4 +1,4 @@
-// What a web page may have. The camera, microphone and location go by the profile's saved choice for the site, then
+// What a web page may have. The camera, microphone and location go by the site's answer earlier in this run, then
 // a question in the tab, then the system's; everything else not listed is refused: no handler at all would mean
 // Electron grants it.
 import type { Session, WebContents } from "electron";
@@ -10,15 +10,15 @@ import { profileOfStorage, type SiteAsk, type SiteChoice } from "./profiles";
 
 const ALLOWED = new Set<string>(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
 
-type Question = { guest: WebContents; origin: string; asked: SiteAsk; answer: (allowed: boolean) => void };
+type Question = { profileId: string; guest: WebContents; origin: string; asked: SiteAsk; answer: (allowed: boolean) => void };
 
 let nextQuestion = 1;
 const questions = new Map<number, Question>();
 const watched = new WeakSet<WebContents>();
 
-/** Each profile's saved site choices, Rust's, as the app's page last sent them; the page saves the card's answer (browser/data.ts). */
-const savedSites = new Map<string, Map<string, SiteChoice>>();
-const siteChoice = (profileId: string, origin: string): SiteChoice | undefined => savedSites.get(profileId)?.get(origin);
+/** Each profile's Allow while visiting the site and Don't allow, until Brigadier quits: nothing saves them, as Settings has no page for them [D731]. */
+const siteAnswers = new Map<string, Map<string, SiteChoice>>();
+const siteChoice = (profileId: string, origin: string): SiteChoice | undefined => siteAnswers.get(profileId)?.get(origin);
 
 function originOf(url: string): string | null {
   try {
@@ -84,7 +84,7 @@ function request(permission: string, profileId: string, guest: WebContents, requ
   }
   watchGuest(guest);
   const number = nextQuestion++;
-  questions.set(number, { guest, origin, asked, answer });
+  questions.set(number, { profileId, guest, origin, asked, answer });
   host.send("brigadier:guest-permission", { from: guest.id, request: number, origin, ...asked });
 }
 
@@ -93,12 +93,15 @@ export function installPermissionAnswers(): void {
     const question = questions.get(request);
     if (!question) return;
     questions.delete(request);
-    const { guest, origin, asked, answer } = question;
+    const { profileId, guest, origin, asked, answer } = question;
+    if (choice === "visiting" || choice === "never") {
+      const kept = siteAnswers.get(profileId) ?? new Map<string, SiteChoice>();
+      const devices = (["camera", "microphone", "location"] as const).filter((device) => asked[device]);
+      kept.set(origin, { ...kept.get(origin), ...Object.fromEntries(devices.map((device) => [device, choice === "visiting" ? "allow" : "block"])) });
+      siteAnswers.set(profileId, kept);
+    }
     if (cardAllows(choice)) grant(guest, origin, asked, answer);
     else answer(false);
-  });
-  handleFromApp("brigadier:sites", (_event, profileId: string, sites: ({ origin: string } & SiteChoice)[]) => {
-    savedSites.set(profileId, new Map(sites.map((site) => [site.origin, site])));
   });
   handleFromApp("brigadier:permission-open-settings", (_event, device: OsDevice) => openOsSettings(device));
 }

@@ -1,8 +1,6 @@
-//! Downloads, site choices and import receipts from the old browser store.
+//! Downloads and import receipts from the old browser store.
 
-use super::store::{
-    Device, PAGE_LIMIT, Store, like, permission, permission_text, state, state_text,
-};
+use super::store::{PAGE_LIMIT, Store, like, state, state_text};
 use super::types::*;
 use rusqlite::{OptionalExtension, params};
 
@@ -87,77 +85,6 @@ impl Store {
                 )?;
             }
         }
-        Ok(())
-    }
-
-    /// The site `origin` asked for `device`: it is listed from now on. Returns the choice.
-    pub fn site_asked(
-        &self,
-        origin: &str,
-        device: Device,
-        at_ms: i64,
-    ) -> rusqlite::Result<SitePermission> {
-        self.db.execute(
-            "INSERT INTO sites (origin, asked_ms) VALUES (?1, ?2)
-             ON CONFLICT (origin) DO UPDATE SET asked_ms = excluded.asked_ms",
-            params![origin, at_ms],
-        )?;
-        let text: String = self.db.query_row(
-            &format!("SELECT {} FROM sites WHERE origin = ?1", device.column()),
-            [origin],
-            |row| row.get(0),
-        )?;
-        Ok(permission(&text))
-    }
-
-    pub fn sites(&self) -> rusqlite::Result<Vec<BrowserSite>> {
-        let mut statement = self.db.prepare_cached(
-            "SELECT origin, camera, microphone, asked_ms, location FROM sites ORDER BY origin",
-        )?;
-        statement
-            .query_map([], |row| {
-                Ok(BrowserSite {
-                    origin: row.get(0)?,
-                    camera: permission(&row.get::<_, String>(1)?),
-                    microphone: permission(&row.get::<_, String>(2)?),
-                    location: permission(&row.get::<_, String>(4)?),
-                    asked_ms: row.get(3)?,
-                })
-            })?
-            .collect()
-    }
-
-    pub fn set_site(
-        &self,
-        origin: &str,
-        device: Device,
-        choice: SitePermission,
-        at_ms: i64,
-    ) -> rusqlite::Result<()> {
-        self.db.execute(
-            "INSERT INTO sites (origin, asked_ms) VALUES (?1, ?2) ON CONFLICT(origin) DO NOTHING",
-            params![origin, at_ms],
-        )?;
-        self.db.execute(
-            &format!(
-                "UPDATE sites SET {} = ?2 WHERE origin = ?1",
-                device.column()
-            ),
-            params![origin, permission_text(choice)],
-        )?;
-        Ok(())
-    }
-
-    /// Forgets sites in the time range, and their choices.
-    pub fn clear_sites(
-        &self,
-        since_ms: Option<i64>,
-        until_ms: Option<i64>,
-    ) -> rusqlite::Result<()> {
-        self.db.execute(
-            "DELETE FROM sites WHERE (?1 IS NULL OR asked_ms >= ?1) AND (?2 IS NULL OR asked_ms <= ?2)",
-            params![since_ms, until_ms],
-        )?;
         Ok(())
     }
 }

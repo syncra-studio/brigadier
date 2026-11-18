@@ -17,7 +17,7 @@ const keepOpen = (close: () => void) => (open: boolean, { reason }: { reason: st
 
 /**
  * The page's question for the camera, microphone or location, from the address field's start:
- * allow it on the site, this time only, or never. It stays until it is answered or closed (which
+ * allow it while visiting the site or this time only, or not; Brigadier forgets the answer when it quits. It stays until it is answered or closed (which
  * refuses this time), and leaves the page live around it.
  */
 export function PermissionPrompt({ id, asking, anchor }: { id: string; asking: BrowserAsking | null | undefined; anchor: RefObject<HTMLDivElement | null> }) {
@@ -71,7 +71,7 @@ export function PermissionPrompt({ id, asking, anchor }: { id: string; asking: B
         <div className="mt-3 flex flex-col gap-1.5">
           <Button size="sm" variant="secondary" disabled={!armed} onClick={() => answerPermission(id, "visiting")}>Allow while visiting the site</Button>
           <Button size="sm" variant="secondary" disabled={!armed} onClick={() => answerPermission(id, "once")}>Allow this time</Button>
-          <Button size="sm" variant="secondary" disabled={!armed} onClick={() => answerPermission(id, "never")}>Never allow</Button>
+          <Button size="sm" variant="secondary" disabled={!armed} onClick={() => answerPermission(id, "never")}>Don't allow</Button>
         </div>
       </PopoverContent>
     </Popover>

@@ -38,13 +38,13 @@ export function refusalToRemove(profileId: string, saved: SavedProfiles | null):
 
 export type SitePermission = "ask" | "allow" | "block";
 export type SiteDevice = "camera" | "microphone" | "location";
-/** `location` is absent from what was saved before sites could ask for it. */
-export type SiteChoice = { camera: SitePermission; microphone: SitePermission; location?: SitePermission; askedMs: number };
+/** A site's answers so far: what it may use without asking, or never. */
+export type SiteChoice = Partial<Record<SiteDevice, SitePermission>>;
 /** What a page asked for. */
 export type SiteAsk = Record<SiteDevice, boolean>;
 export type SiteAnswer = "grant" | "deny" | "ask";
 
-/** A request goes by the site's saved choices for what it asks: a block refuses, all allowed grants. */
+/** A request goes by the site's choices for what it asks: a block refuses, all allowed grants. */
 export function siteAnswer(site: SiteChoice | undefined, asked: SiteAsk): SiteAnswer {
   const devices = (["camera", "microphone", "location"] as const).filter((device) => asked[device]);
   if (devices.length === 0) return "deny";

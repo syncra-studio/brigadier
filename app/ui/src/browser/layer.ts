@@ -39,8 +39,6 @@ declare global {
       /** Downloads (main's browser/browserDownloads.ts): configure, cancel, open, reveal; and each one's steps. */
       downloads(op: string, args: Record<string, unknown>): Promise<unknown>;
       onDownload(listener: (details: unknown) => void): void;
-      /** A profile's saved site choices, for main's permission checks (main's browser/permissions.ts). */
-      sites(profile: string, sites: unknown[]): Promise<void>;
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       /** A local dev site's untrusted certificate opened anyway (main's browser/localCerts.ts), for Rust to keep. */
       onLocalCert(listener: (details: { profile: string; host: string }) => void): void;
