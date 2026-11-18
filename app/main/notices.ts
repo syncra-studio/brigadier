@@ -34,4 +34,9 @@ export function serveNotices(panel: () => { notifications?: () => string | null 
   // What macOS lets notices do now, asked of it each time [D611].
   ipcMain.handle("notification-state", () => panel()?.notifications?.() ?? null);
   ipcMain.on("open-notification-settings", () => void shell.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension"));
+  // Settings › Computer use's two panes, the old app's URLs; nothing else is opened.
+  ipcMain.on("open-privacy-settings", (_event, pane: unknown) => {
+    const name = pane === "accessibility" ? "Privacy_Accessibility" : pane === "screenRecording" ? "Privacy_ScreenCapture" : null;
+    if (name) void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${name}`);
+  });
 }

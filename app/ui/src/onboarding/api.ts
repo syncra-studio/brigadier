@@ -42,6 +42,8 @@ declare global {
       /** What macOS lets notices do now: not asked yet, off, allowed but on neither the desktop nor in Notification Center, or on; null where it can't be asked. */
       notificationState(): Promise<"unasked" | "blocked" | "hidden" | "sent" | null>;
       openNotificationSettings(): void;
+      /** System Settings › Privacy & Security at Accessibility or Screen Recording. */
+      openPrivacySettings(pane: "accessibility" | "screenRecording"): void;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;
