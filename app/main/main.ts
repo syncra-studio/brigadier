@@ -30,6 +30,8 @@ const [daemonPath, daemonArgs] = app.isPackaged
 
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
+// The window's own fill, the frame's grey round the page's dark panel [D830].
+const themeFrame = /--color-card:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
 // Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
@@ -179,14 +181,14 @@ function openWindow(): void {
     minWidth: 900,
     minHeight: 560,
     title: APP_NAME,
-    backgroundColor: hold ? introColours.clear : themeBackground,
+    backgroundColor: hold ? introColours.clear : themeFrame,
     ...(hold ? { transparent: true, show: false } : {}),
     titleBarStyle: "hidden",
     // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar). The
     // sidebar moves them onto the tab bar's line once it shows (traffic-lights).
     ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 } } : {}),
     // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
-    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
+    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeFrame, symbolColor: themeForeground } } : {}),
     webPreferences: {
       additionalArguments: [`--brigadier-platform=${platform}`],
       preload: path.join(__dirname, "preload.js"),

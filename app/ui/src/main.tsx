@@ -35,7 +35,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { CHAT, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
+import { CHAT, closeOthers, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -134,7 +134,7 @@ function App() {
 }
 
 // The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches. This shell
-// [D823]: the titlebar row on top, then one frame holding the sidebar and the page's rounded panel.
+// [D823]: the titlebar row on top, then one frame holding the sidebar and the page's rounded panel; all of it the frame's grey but that panel [D830].
 // Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
@@ -145,7 +145,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   useSeen(rows?.find((row) => row.id === active));
   return (
     <div
-      className="fixed inset-0 bg-chrome px-2 pt-tab-bar pb-2"
+      className="fixed inset-0 bg-card px-2 pt-tab-bar pb-2"
       // A session row under the pointer or focus: its rows are fetched before the click [D477].
       onPointerOver={(event) => peekRow(event.target, REST_MS)}
       onPointerDown={(event) => peekRow(event.target)}
@@ -188,15 +188,16 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
 function Home({ offline, page, children }: { offline: boolean; page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
   useLayoutEffect(() => setHomeTabs(page ?? project), [page, project]);
-  // Opening a project's page shows its Home tab in front; its tabs read the project as Home's do [D279].
+  // Opening a project's page shows its Home tab alone, the set's tabs left from before closed (⇧⌘T brings them back)
+  // [D824]; its tabs read the project as Home's do [D279].
   useLayoutEffect(() => {
     if (!page) return;
     setHomeDraft({ project: page, chat: false });
-    selectTab(HOME, CHAT);
+    closeOthers(HOME, CHAT);
   }, [page]);
   return (
     <>
-      <TabBar key={HOME} owner={HOME} offline={offline} />
+      <TabBar key={HOME} owner={HOME} offline={offline} home={page !== undefined} />
       <TabbedMain owner={HOME} archived={false}>
         {children}
       </TabbedMain>

@@ -1340,19 +1340,21 @@
   }
 }
 
-/* The sidebar's one open width [D804], narrower only where the content beside it would get less than its least room. */
+/* The sidebar's one open width [D804], narrower only where the content beside it would get less than its least room:
+   the window less the frame's 8px each side and the page panel's 12px at its end [D823]. */
 @utility sidebar-width-source {
   --sidebar-open-width: max(
     var(--spacing-sidebar-open-min),
-    min(var(--spacing-sidebar), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min))
+    min(var(--spacing-sidebar), 100vw - var(--spacing) * 7 - var(--spacing-sidebar-thread-min))
   );
   /* How wide the panel shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-sidebar-strip);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
   }
+  /* Hidden, the page panel's 12px start gap takes its place (page-panel). */
   &[data-state="collapsed"][data-collapse="hidden"] {
-    --sidebar-shown: 0px;
+    --sidebar-shown: calc(var(--spacing) * 3);
   }
 }
 /* The strip's squares end above the foot's icons rising over the strip: how far they rise, measured (flyout.tsx). */
@@ -1385,7 +1387,7 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing) * 7 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
     )
   );
 }
@@ -1556,7 +1558,7 @@
     overflow: hidden;
   }
   &[data-active]::after {
-    --flare: var(--radius-sm);
+    --flare: var(--radius-control);
     content: "";
     position: absolute;
     bottom: 0;

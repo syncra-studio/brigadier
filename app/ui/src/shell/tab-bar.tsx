@@ -15,7 +15,7 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { baseName } from "../files/tree";
-import { setHomeDraft } from "../home/start";
+import { newChat, setHomeDraft } from "../home/start";
 import { HOME_DRAFT } from "../session/draft";
 import { Archive, Chat, DotsHorizontal, House, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
@@ -28,6 +28,7 @@ import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { LiveMockupTabIcon } from "../mockup/live";
+import { openProject } from "../projects/page";
 import { useNoteTitle } from "./note-tab";
 import { useTabKeys } from "./tab-keys";
 import { CHAT, closeOthers, closeRight, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsRead } from "./tab-store";
@@ -39,7 +40,7 @@ const CLOSING_MS = 300;
 
 // The titlebar row: across the window's top from its start edge, its tabs on its foot where the frame starts [D48 D823].
 const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 pt-2 pe-2 win:pe-caption";
-const TAB = "session-tab @container/tab app-no-drag group/tab flex h-8 min-w-0 items-center gap-1 rounded-sm px-1 select-none";
+const TAB = "session-tab @container/tab app-no-drag group/tab flex h-8 min-w-0 items-center gap-1 rounded-control px-1 select-none";
 // The front tab's fill and edge are session-tab's, the frame's, opaque as it holds at the strip's edge.
 const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground hover:bg-fill");
 // Its icon and title from the start, a title too long cut with "…"; squeezed under 88px, the icon alone [D52].
@@ -49,6 +50,8 @@ const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 // × at the tab's end under the pointer, the front tab's too; none under 64px.
 const CLOSE = "invisible absolute end-1.5 top-1.5 flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close group-focus-within/tab:visible group-hover/tab:visible hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
+// A session's house tab: Home's (BlankChatTab) look, outside the tablist as it opens a page rather than a tab.
+const HOUSE = "app-no-drag -me-1.5 flex h-8 w-home-tab shrink-0 cursor-pointer items-center justify-center rounded-control text-toolbar-foreground hover:bg-fill focus-visible:focus-ring";
 /** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
 const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
@@ -138,9 +141,8 @@ function ChatTab({ owner, row, active, order }: { owner: string; row: SessionRow
   );
 }
 
-/** The Chat tab before there's a session to act on: a row not read yet; Home's, the draft's or a project's page's, is its house alone [D819 D823]. */
-function BlankChatTab({ owner, active }: { owner: string; active: boolean }) {
-  const home = owner === HOME;
+/** The Chat tab before there's a session to act on: Home's draft, or a row not read yet; a project's page's is its house alone [D819 D823 D831]. */
+function BlankChatTab({ owner, active, home }: { owner: string; active: boolean; home: boolean }) {
   const title = home ? "Home" : "Chat";
   return (
     <div data-tab-id={CHAT} data-home={home || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))}>
@@ -273,13 +275,16 @@ function useTabPresence(tabs: readonly Tab[]) {
  * opened, "+", and at the end the toolbar. Click shows, drag reorders, middle-click or Delete closes. It takes the
  * title bar's place, so the title, rename and ⋯ live on the Chat tab.
  */
-export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRow | undefined; offline: boolean }): ReactNode {
+export function TabBar({ owner, row, offline, home = false }: { owner: string; row?: SessionRow | undefined; offline: boolean; home?: boolean }): ReactNode {
   const now = useTabs(owner);
   const { tabs, active } = now;
   useTabsFromRust(owner);
   const archived = Boolean(row?.archived);
   useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
+  // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
+  // A project's page always shows its house [D819 D824]; the New chat page none [D831].
+  const bare = owner === HOME && tabs.length === 0 && !home;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
@@ -361,7 +366,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   };
 
   const newTab = (
-    <TooltipIconButton look="round" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
+    <TooltipIconButton look="pill" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
       <Plus />
     </TooltipIconButton>
   );
@@ -370,15 +375,30 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       Reconnecting…
     </Badge>
   );
-  // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823]; Home shows its house tab always.
+  // Home's draft with no tab of its own has no tabs, as the old app's untabbed draft: "+" leads the toolbar at the end [D39 D831].
+  if (bare)
+    return (
+      <header data-slot="session-tabs" className={cx(BAR, "justify-end")}>
+        {reconnecting}
+        {newTab}
+        <Toolbar owner={owner} />
+      </header>
+    );
+  // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
         {/* The tabs from the start, "+" right after them [D823]. */}
         <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+          {/* A session's house, fixed first: its project's page, or Home's new chat for a chat in none [D828 D829]. */}
+          {owner !== HOME && (
+            <button type="button" title="Home" aria-label="Home" onMouseDown={noAutoscroll} onClick={() => (row?.project ? openProject(row.project) : newChat())} className={HOUSE}>
+              <House className="size-icon-md" />
+            </button>
+          )}
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={owner === HOME || undefined} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center gap-0.5" onKeyDown={onKeys} onWheel={onWheel}>
-            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} />}
+          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={home || undefined} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center gap-0.5" onKeyDown={onKeys} onWheel={onWheel}>
+            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} home={home} />}
             {/* Its padding is the front tab's flares' room, which the scroller would otherwise cut. */}
             <div ref={strip} className="hide-scrollbar -mx-1.5 flex min-w-0 items-center gap-0.5 overflow-x-auto px-1.5 empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}

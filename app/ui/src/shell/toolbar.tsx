@@ -63,10 +63,9 @@ export function Toolbar({ owner }: { owner: string }) {
   const enter = fresh && "motion-safe:animate-fade-in";
   const panel = !home || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
   if (home && !panel) return null;
-  // One glass pill [new-design], a circle the New tab button's size round a lone toggle (the right panel's on Home); at
-  // the tab bar's end on every platform, on Windows just before the caption buttons [D60].
+  // Bare icons on the frame's grey [D828], at the tab bar's end on every platform, on Windows just before the caption buttons [D60].
   return (
-    <div className="app-no-drag flex h-7.5 shrink-0 items-center gap-0.5 rounded-capsule bg-control px-px ring-1 ring-glass-stroke ring-inset lone-toggle:w-7">
+    <div className="app-no-drag flex h-7.5 shrink-0 items-center gap-0.5">
       <TitlebarTips>
         {!home && <ContextButton owner={owner} className={enter} />}
         {/* The left toggle's icon, mirrored; the panel itself mounts in right-panel.tsx [D410, D56]. */}

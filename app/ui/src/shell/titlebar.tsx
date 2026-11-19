@@ -30,7 +30,7 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 const LIGHTS_X = 13;
 
 /**
- * The History pill: Back, Forward and the sidebar toggle, first in the tab bar, the same place in every sidebar mode
+ * The History controls, bare on the frame's grey as the shell's other icons [D828]: Back, Forward and the sidebar toggle, first in the tab bar, the same place in every sidebar mode
  * [D48]. The toggle steps open, strip, closed, and open again.
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
@@ -87,7 +87,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     };
   });
   return (
-    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 items-center rounded-capsule bg-card px-px ring-1 ring-glass-stroke ring-inset">
+    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 items-center px-px">
       <TitlebarTips>
         <TooltipIconButton look="pill" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />
