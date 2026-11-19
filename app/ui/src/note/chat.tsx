@@ -16,6 +16,8 @@ import { ChatCompose } from "../icons/tab";
 import { X } from "../icons";
 import { daemonRun, failure, SentBubbles, SessionComposer, useSending } from "../session/composer";
 import { newId } from "../session/store";
+import { putBack } from "../session/side";
+import type { Draft } from "../components/composer/draft";
 import { Thread, type Source } from "../thread/thread";
 import type { Session } from "../thread/item";
 
@@ -45,7 +47,7 @@ const peek = (id: string) =>
  * the chat in the half at the end. Folded, the chat is a strip at the tab's edge; hidden, a round button brings it
  * back [D281]. A note on Home has one too, on the new chat's picked agent, and it comes into the session with it [D287].
  */
-export function NoteWithChat({ owner, note, offline, onChat, children }: { owner: string; note: string; offline: boolean; onChat: (id: string) => void; children: ReactNode }) {
+export function NoteWithChat({ owner, note, offline, onChat, children }: { owner: string; note: string; offline: boolean; onChat: (id: string) => void; children: (ask: (draft: Draft) => void) => ReactNode }) {
   const [{ view, share }, setState] = useState(() => views.get(note) ?? { view: "hidden" as View, share: SHARE });
   const set = (next: Partial<{ view: View; share: number }>) =>
     setState((was) => {
@@ -59,10 +61,10 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
   const { model } = useHomeDraft();
   const project = useHomeProject();
   const pick = owner !== HOME ? [] : model ? ["--backend", model.provider, "--model", model.model, ...(model.effort ? ["--effort", model.effort] : []), ...(project ? ["--project", project.id] : [])] : null;
-  // `how`: a new chat, or an earlier one of the session's reopened here [D288].
-  const open = (how?: "--new" | { reopen: string }) => {
+  // `how`: a new chat, or an earlier one of the session's reopened here [D288]; `then`: given the chat's id once it's in.
+  const open = (how?: "--new" | { reopen: string }, then?: (chat: string) => void) => {
     set({ view: "split" });
-    if (chat && "id" in chat && !how) return;
+    if (chat && "id" in chat && !how) return then?.(chat.id);
     if (!pick) return setChat({ error: "Pick a model for the new chat first." });
     // A reopened chat replaces the one shown only once its thread is in, so it never shows empty.
     if (typeof how !== "object") setChat(null);
@@ -70,7 +72,7 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
     void daemonRun(["note", owner, "chat", note, ...args, ...pick]).then(async (reply) => {
       if (reply.ok && typeof how === "object" && !snapshots.has(reply.chat)) await peek(reply.chat);
       setChat(reply.ok ? { id: reply.chat } : { error: failure(reply) });
-      if (reply.ok) onChat(reply.chat);
+      if (reply.ok) (onChat(reply.chat), then?.(reply.chat));
     });
   };
   // Reopened, the chat it had comes back as it was.
@@ -84,7 +86,7 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
     <div ref={row} data-slot="note-with-chat" className="relative flex min-h-0 min-w-0 flex-1">
       {/* Only split does it take a share; otherwise it leaves the strip its room. */}
       <div data-slot="note-content" data-share={1 - share} className={cx(view === "split" ? "note-share" : "flex-1", "relative flex min-h-0 min-w-0 flex-col")}>
-        {children}
+        {children((draft) => open(undefined, (id) => putBack(id, "", true, draft)))}
         {view === "hidden" && (
           <div className="absolute end-4 bottom-4 z-20">
             <ChatButton id={id} onClick={() => open()} />

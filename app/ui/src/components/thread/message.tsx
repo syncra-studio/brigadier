@@ -18,6 +18,7 @@ import { TooltipIconButton } from "../icon-button";
 import { openChip } from "../../session/commands";
 import { urlOf } from "../../session/files";
 import { useSettings } from "../../settings/api";
+import { SaveAsNote } from "../../note/save";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -257,12 +258,13 @@ export function AssistantMessage({
   );
 }
 
-/** A finished answer's actions: copy, then fork where offered [D1069], the time only on hover or focus [D297]. */
+/** A finished answer's actions: copy, save as a note, then fork where offered [D1069], the time only on hover or focus [D297]. */
 export function AnswerMarks({ text, time, fork, older = false }: { text: string; time?: number; fork?: ReactNode; older?: boolean }) {
   return (
     // Only the latest answer keeps them in view; an older one's show on hover or focus [D82].
     <div className={cx("group/answer -ms-1 flex items-center gap-0.5 text-faint-foreground", older && "opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100")}>
       <CopyButton text={copiedReply(text)} tooltip="Copy response" size="icon-answer" />
+      <SaveAsNote text={text} />
       {fork}
       {time !== undefined && (
         <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>

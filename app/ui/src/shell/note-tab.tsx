@@ -12,7 +12,10 @@ import { useNoteChanges, useNoteRun } from "../note/run";
 import { NoteEditor, focusNoteStart } from "../note/editor";
 import { EmojiButton, headOf, NoteTopBar, splitHead } from "../note/top-bar";
 import "../note/page.css";
-import { closeTab, openTab, replaceTab } from "./tab-store";
+import { CHAT, closeTab, openTab, replaceTab, selectTab } from "./tab-store";
+import { quoted } from "../note/tools";
+import { putBack } from "../session/side";
+import type { Chip } from "../components/composer/draft";
 
 /** What a note with nothing written yet is called, by its tab and the New tab. */
 export const UNTITLED_NOTE = "Untitled note";
@@ -166,6 +169,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
   const show = (id: string) => (keep(), replaceTab(owner, tabId, "note", id));
   return (
     <NoteWithChat owner={owner} note={note} offline={offline} onChat={(chat) => setRead((was) => (was && "revision" in was ? { ...was, chat } : was))}>
+      {(ask) => (
       <div className="flex min-h-0 flex-1">
         {list && (
           <NotesColumn
@@ -205,11 +209,25 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
               <div className="note-heading">
                 <EmojiButton emoji={content.emoji} onChange={(emoji) => change({ emoji })} />
               </div>
-              <NoteEditor key={version} body={content.body} label={title} editorRef={editor} onChange={(body) => body !== latest.current.body && change({ body })} />
+              <NoteEditor
+                key={version}
+                body={content.body}
+                label={title}
+                editorRef={editor}
+                onChange={(body) => body !== latest.current.body && change({ body })}
+                // The note's own chat has the note already; the session's gets its chip with the quote [D913 D921].
+                onSend={(text, to) => {
+                  if (to === "note") return ask({ parts: [`${quoted(text)}\n`], attachmentIds: [] });
+                  const chip: Chip = { kind: "mention", type: "note", id: note, label: content.emoji ? `${content.emoji} ${title}` : title };
+                  putBack(owner, "", true, { parts: [chip, `\n${quoted(text)}\n`], attachmentIds: [] });
+                  selectTab(owner, CHAT);
+                }}
+              />
             </div>
           </div>
         </div>
       </div>
+      )}
     </NoteWithChat>
   );
 }

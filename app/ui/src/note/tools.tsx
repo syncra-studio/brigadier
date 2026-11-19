@@ -22,9 +22,9 @@ import { createPortal } from "react-dom";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, MenuRow } from "../components/menu";
-import { ChevronDown, Link } from "../icons";
+import { ArrowUpRight, ChevronDown, Link } from "../icons";
 import { DragDots } from "../icons/note";
-import { Code } from "../icons/thread";
+import { Chat, Code } from "../icons/thread";
 import { $currentBlock, applyBlock, type Block, BLOCKS, blockMatches, type BlockKind, TURN_INTO } from "./blocks";
 
 const MAC = /Mac/.test(navigator.platform);
@@ -83,7 +83,7 @@ export function SlashMenu() {
   return <LexicalTypeaheadMenuPlugin<BlockOption> onQueryChange={setQuery} onSelectOption={select} triggerFn={trigger} options={options} menuRenderFn={renderSlashMenu} />;
 }
 
-type Toolbar = { top: number; left: number; formats: Set<TextFormatType>; link: boolean; block: BlockKind | null };
+type Toolbar = { top: number; left: number; formats: Set<TextFormatType>; link: boolean; block: BlockKind | null; text: string };
 
 const FORMATS: { format: TextFormatType; label: string; shortcut: string; glyph: ReactNode }[] = [
   { format: "bold", label: "Bold", shortcut: "⌘B", glyph: <span className="note-glyph font-semibold">B</span> },
@@ -102,8 +102,14 @@ export function linkTarget(typed: string): string | null {
   return `https://${text}`;
 }
 
-/** Above a selection of text: B I U S, code, link, and the block's kind. */
-export function SelectionToolbar() {
+/** Where a selection goes from the toolbar: the note's own chat, or the session's [D913 D921]. */
+export type SendTo = "note" | "chat";
+
+/** The selection as a Markdown quote, for a composer. */
+export const quoted = (text: string) => text.trim().split("\n").map((line) => `> ${line}`).join("\n");
+
+/** Above a selection of text: B I U S, code, link, the block's kind, and with `onSend` Ask in chat and Send to chat. */
+export function SelectionToolbar({ onSend }: { onSend?: (text: string, to: SendTo) => void }) {
   const [editor] = useLexicalComposerContext();
   const [bar, setBar] = useState<Toolbar | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
@@ -117,7 +123,7 @@ export function SelectionToolbar() {
       if ($findMatchingParent(selection.anchor.getNode(), $isCodeNode)) return null;
       const formats = new Set(FORMATS.map((entry) => entry.format).filter((format) => selection.hasFormat(format)));
       const link = selection.getNodes().some((node) => $isLinkNode(node) || $isLinkNode(node.getParent()));
-      return { formats, link, block: $currentBlock() };
+      return { formats, link, block: $currentBlock(), text: selection.getTextContent() };
     });
     if (!found || !native || native.rangeCount === 0 || !root || !root.contains(native.anchorNode)) {
       // Focus moving into the toolbar itself keeps it.
@@ -230,6 +236,17 @@ export function SelectionToolbar() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {onSend && (
+            <>
+              <span aria-hidden className="note-toolbar-divider" />
+              <TooltipIconButton tooltip="Ask in this note's chat" side="top" size="icon-md" className="note-toolbar-button" onClick={() => onSend(bar.text, "note")}>
+                <Chat />
+              </TooltipIconButton>
+              <TooltipIconButton tooltip="Send to chat" side="top" size="icon-md" className="note-toolbar-button" onClick={() => onSend(bar.text, "chat")}>
+                <ArrowUpRight />
+              </TooltipIconButton>
+            </>
+          )}
         </>
       )}
     </div>,

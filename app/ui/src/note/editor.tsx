@@ -17,7 +17,7 @@ import { type RefObject, useState } from "react";
 
 import { openLink } from "../browser/links";
 import { $exportPage, $importPage, PAGE_NODES, PAGE_TRANSFORMERS } from "./markdown";
-import { DragHandles, SelectionToolbar, SlashMenu } from "./tools";
+import { DragHandles, SelectionToolbar, type SendTo, SlashMenu } from "./tools";
 
 const THEME: EditorThemeClasses = {
   paragraph: "note-p",
@@ -57,7 +57,7 @@ export function safeLink(url: string): boolean {
  * A note's body, the old app's page editor: Markdown in, Markdown out on every change. Remount it (a new `key`) to
  * load content that changed outside it [D281].
  */
-export function NoteEditor({ body, label, editorRef, onChange }: { body: string; label: string; editorRef: RefObject<LexicalEditor | null>; onChange: (markdown: string) => void }) {
+export function NoteEditor({ body, label, editorRef, onChange, onSend }: { body: string; label: string; editorRef: RefObject<LexicalEditor | null>; onChange: (markdown: string) => void; onSend?: (text: string, to: SendTo) => void }) {
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   return (
     <LexicalComposer
@@ -94,7 +94,7 @@ export function NoteEditor({ body, label, editorRef, onChange }: { body: string;
       <OnChangePlugin ignoreSelectionChange onChange={(state) => onChange(state.read(() => $exportPage()))} />
       <EditorRefPlugin editorRef={editorRef} />
       <SlashMenu />
-      <SelectionToolbar />
+      <SelectionToolbar onSend={onSend} />
       <DragHandles anchor={anchor} />
     </LexicalComposer>
   );
