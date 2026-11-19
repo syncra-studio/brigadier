@@ -9,7 +9,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, FolderPlusAdd, MagnifyingGlassSmSearch, Pin, Unpin } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
@@ -29,7 +29,7 @@ import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "
 import type { SessionRow } from "./words";
 
 /*
- * The app's sidebar [D173, D174], its search field, Add project and New chat on one row in both modes [D846], picked in View's Organize sidebar [D806]. By projects:
+ * The app's sidebar [D173, D174], its search field and New chat on one row in both modes [D846, D868], picked in View's Organize sidebar [D806]. By projects:
  * Pinned projects, Projects by name, each opening its page, and Chats, the sessions in no project; no other
  * session and nothing archived shows [D808, D809, D812]. By sessions: Pinned sessions, Open, every
  * project's and none, each with its project's badge, and Archived [D803]. Rows go by the user's last send,
@@ -245,7 +245,7 @@ export function AppSidebar({
       }
       foot={foot?.(pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
     >
-      {/* The card's top, under the tab bar [D48]: the name, room under it [D864], then the search field with View in it, Add project and New chat [D846]; ⌘K's palette stays. */}
+      {/* The card's top, under the tab bar [D48]: the name, room under it [D864], then the search field with View in it and New chat [D846, D868]; ⌘K's palette stays. */}
       <div className="flex shrink-0 px-2.5 pt-3 pb-4">
         <h1 className="flex h-7.5 min-w-0 flex-1 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
           <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
@@ -270,9 +270,6 @@ export function AppSidebar({
             />
             {view}
           </div>
-          <TooltipIconButton tooltip="Add project" look="strip" side="bottom" onClick={() => openAddProject()}>
-            <FolderPlusAdd />
-          </TooltipIconButton>
           <TooltipIconButton tooltip="New chat" look="strip" side="bottom" pressed={home} onClick={onNewChat}>
             <ComposeEditSquare />
           </TooltipIconButton>
@@ -294,6 +291,16 @@ export function AppSidebar({
                   title={grouping === "none" ? "Open" : "Projects"}
                   open={isOpen(grouping === "none" ? "open" : "projects")}
                   onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
+                  actions={
+                    grouping === "project" && (
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Add project</TooltipContent>
+                      </Tooltip>
+                    )
+                  }
                 >
                   {grouping === "none" ? (
                     <NavList className="gap-1">
@@ -314,7 +321,19 @@ export function AppSidebar({
                 </NavSection>
                 {/* Sessions with no project, the one place By projects lists sessions; shown while ticked in View, empty or not [D224, D655, D812]. */}
                 {grouping === "project" && !show.hideChats && (
-                  <NavSection title="Chats" open={isOpen("none")} onOpenChange={(open) => setOpen("none", open)}>
+                  <NavSection
+                    title="Chats"
+                    open={isOpen("none")}
+                    onOpenChange={(open) => setOpen("none", open)}
+                    actions={
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">New chat</TooltipContent>
+                      </Tooltip>
+                    }
+                  >
                     <NavList>
                       {homeless.map((each) => row(each, {}))}
                       {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
