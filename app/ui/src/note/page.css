@@ -12,10 +12,10 @@
 }
 
 .note-heading {
-  @apply relative mb-6;
+  @apply relative mb-2 -ms-2 flex;
 }
 .note-emoji-button {
-  @apply absolute -start-9 top-0.75 text-quiet-foreground opacity-80;
+  @apply text-quiet-foreground opacity-80;
 }
 .note-emoji-button[data-chosen] {
   @apply opacity-100;
@@ -25,9 +25,6 @@
 }
 .note-emoji {
   @apply text-xl leading-none;
-}
-.note-title {
-  @apply block w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-page-title font-semibold text-inherit outline-none field-sizing-content placeholder:text-quiet-foreground;
 }
 .note-emoji-grid {
   @apply mb-1 grid grid-cols-8 gap-0.5;
@@ -93,12 +90,46 @@
   @apply h-7 w-64 border-0 bg-transparent px-2.5 text-inherit outline-none;
 }
 
-/* Show notes. */
+/* The notes column beside the note [D913]. */
+.note-list-column {
+  @apply flex w-72 shrink-0 flex-col border-e border-border;
+}
+.note-list-search {
+  @apply flex shrink-0 items-center gap-1 p-2;
+}
 .note-list {
-  @apply m-0 flex max-h-80 list-none flex-col overflow-y-auto p-0;
+  @apply m-0 flex min-h-0 flex-1 list-none flex-col gap-0.5 overflow-y-auto px-2 pb-2;
+}
+.note-list-item {
+  @apply relative;
 }
 .note-list-row {
-  @apply flex h-9 w-full items-center gap-2 rounded-control px-2 text-start aria-current:bg-fill;
+  @apply flex w-full flex-col gap-0.5 rounded-control px-2.5 py-2 text-start text-label hover:bg-fill-faint aria-current:bg-fill;
+}
+.note-list-item[data-at] .note-list-row:not([aria-current]) {
+  @apply bg-fill-faint;
+}
+.note-list-line {
+  @apply flex items-center gap-2 pe-6;
+}
+.note-list-emoji {
+  @apply shrink-0 leading-none;
+}
+.note-list-ago {
+  @apply me-2 text-quiet-foreground;
+}
+.note-list-preview,
+.note-list-match {
+  @apply truncate text-muted-foreground;
+}
+.note-list-match {
+  @apply text-foreground;
+}
+.note-list-more {
+  @apply absolute end-1.5 top-1.5 opacity-0 focus-visible:opacity-100 aria-expanded:opacity-100;
+}
+.note-list-item:hover .note-list-more {
+  @apply opacity-100;
 }
 .note-list-empty {
   @apply px-2 py-3 text-muted-foreground;

@@ -3,9 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/dialog";
 import { TooltipIconButton } from "../components/icon-button";
-import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { ChevronDown, Copy } from "../icons";
@@ -13,9 +11,6 @@ import { SimpleSmile, SquarePlus } from "../icons/note";
 import { Download } from "../icons/sidebar";
 import { Document } from "../icons/tab";
 import { EditPencil, Trash } from "../icons/thread";
-import { ago } from "../panel/words";
-import { useNoteRun } from "./run";
-import { openTab } from "../shell/tab-store";
 import { applyBlock, BLOCKS } from "./blocks";
 import { BlockRow } from "./tools";
 
@@ -70,8 +65,7 @@ export function EmojiButton({ emoji, onChange }: { emoji: string | null; onChang
 }
 
 /** The note's bar, the old app's page bar: the File menu and Insert. */
-export function NoteTopBar({ owner, content, editor, onRename, onDelete }: { owner: string; content: Content; editor: () => LexicalEditor | null; onRename: () => void; onDelete: () => Promise<string | null> }) {
-  const [listing, setListing] = useState(false);
+export function NoteTopBar({ content, listing, editor, onList, onRename, onDelete }: { content: Content; listing: boolean; editor: () => LexicalEditor | null; onList: () => void; onRename: () => void; onDelete: () => Promise<string | null> }) {
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const renaming = useRef(false);
@@ -103,9 +97,9 @@ export function NoteTopBar({ owner, content, editor, onRename, onDelete }: { own
           // Rename moves into the title once the menu has let go of the focus.
           finalFocus={() => (renaming.current ? ((renaming.current = false), requestAnimationFrame(onRename), false) : true)}
         >
-          <DropdownMenuItem className={item} onClick={() => setListing(true)}>
+          <DropdownMenuItem className={item} onClick={onList}>
             <Document aria-hidden />
-            Show notes
+            {listing ? "Hide notes" : "Show notes"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem className={item} onClick={() => (renaming.current = true)}>
@@ -143,7 +137,6 @@ export function NoteTopBar({ owner, content, editor, onRename, onDelete }: { own
         </DropdownMenu>
       </div>
       {notice && <span role="status" className="note-notice">{notice}</span>}
-      <ShowNotes owner={owner} open={listing} onOpenChange={setListing} onPick={(id) => (setListing(false), openTab(owner, "note", id))} />
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
@@ -157,58 +150,5 @@ export function NoteTopBar({ owner, content, editor, onRename, onDelete }: { own
         }}
       />
     </div>
-  );
-}
-
-/** The session's notes, the most recent first, narrowed by what is typed, as the old app's Show pages. */
-function ShowNotes({ owner, open, onOpenChange, onPick }: { owner: string; open: boolean; onOpenChange: (open: boolean) => void; onPick: (id: string) => void }) {
-  const [notes, setNotes] = useState<{ id: string; title: string; at: number }[] | null>(null);
-  const [query, setQuery] = useState("");
-  const [at, setAt] = useState(0);
-  const run = useNoteRun(owner);
-  useEffect(() => {
-    if (!open) return;
-    let live = true;
-    void run(["list"]).then((reply) => live && setNotes(reply.ok ? reply.notes : []));
-    return () => {
-      live = false;
-      setQuery("");
-      setAt(0);
-      setNotes(null);
-    };
-  }, [open, run]);
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const shown = (notes ?? []).filter((note) => words.every((word) => (note.title || "Untitled note").toLowerCase().includes(word)));
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent frame="max-w-120 gap-3 p-5" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Notes</DialogTitle>
-        </DialogHeader>
-        <Input
-          aria-label="Search notes"
-          placeholder="Search notes"
-          value={query}
-          onChange={(event) => (setQuery(event.target.value), setAt(0))}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") (event.preventDefault(), setAt((index) => Math.min(index + 1, shown.length - 1)));
-            if (event.key === "ArrowUp") (event.preventDefault(), setAt((index) => Math.max(index - 1, 0)));
-            if (event.key === "Enter" && shown[at]) (event.preventDefault(), onPick(shown[at].id));
-          }}
-        />
-        <ul aria-label="Notes" className="note-list">
-          {notes && !shown.length && <li className="note-list-empty">{notes.length ? "No notes match." : "No notes yet."}</li>}
-          {shown.map((note, index) => (
-            <li key={note.id}>
-              <button type="button" tabIndex={-1} aria-current={index === at || undefined} className="note-list-row" onMouseEnter={() => setAt(index)} onClick={() => onPick(note.id)}>
-                <Document aria-hidden className="size-icon-sm" />
-                <span className="min-w-0 flex-1 truncate">{note.title || "Untitled note"}</span>
-                <span className="text-muted-foreground">{ago(note.at, Date.now())}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </DialogContent>
-    </Dialog>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { allProfiles, switchProfile } from "../browser/profiles";
 import { matches } from "../shortcuts";
+import { newId } from "../session/store";
 import { blocked } from "./titlebar";
 import { closeOthers, HOME, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
@@ -21,6 +22,7 @@ export function useTabKeys(home: string, archived: boolean, peek?: string): void
       else if (is("close-others")) run = () => closeOthers(owner, tabsOf(owner).active);
       else if (is("reopen")) run = () => reopenTab(owner);
       else if (is("new-tab")) run = () => openTab(owner, "new");
+      else if (is("new-note")) run = () => !archived && openTab(owner, "note", newId());
       else if (is("show-tab")) run = () => selectNumber(owner, Number(event.code.slice(-1)));
       else if (is("switch-profile") && window.brigadier) {
         const profile = allProfiles()[Number(event.code.slice(-1)) - 1];

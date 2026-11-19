@@ -2,7 +2,7 @@
 //! with its first line under its name; with words typed, the notes holding every one of them
 //! anywhere in their text, with the line around the first [D921].
 
-use super::{check_id, moved, split, title};
+use super::{check_id, moved, plain, split, title};
 use crate::remove;
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -41,8 +41,7 @@ pub(super) fn pin(dir: &Path, note: &str, on: bool) -> io::Result<Value> {
 /// The line under a note's name: its first line of text after the one that names it.
 fn preview<'a>(text: &'a str, name: &str) -> &'a str {
     let (head, body) = split(text);
-    let mut lines =
-        (body.lines().map(|l| l.trim_start_matches('#').trim())).filter(|l| !l.is_empty());
+    let mut lines = body.lines().map(plain).filter(|l| !l.is_empty());
     let first = lines.next().unwrap_or("");
     // An unnamed note is named by its first line: the line after it shows.
     match super::named(head).is_empty() && first == name {
@@ -58,10 +57,10 @@ fn matched(text: &str, words: &[String]) -> Option<String> {
         return None;
     }
     let first = words.first()?;
-    let line = text
-        .lines()
-        .find(|l| l.to_lowercase().contains(first.as_str()))?
-        .trim();
+    let line = plain(
+        text.lines()
+            .find(|l| l.to_lowercase().contains(first.as_str()))?,
+    );
     let at = line.to_lowercase().find(first.as_str()).unwrap_or(0);
     let chars: Vec<char> = line.chars().collect();
     let at = line[..at.min(line.len())].chars().count();
@@ -103,8 +102,16 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
             },
         };
         let (name, pin) = (title(&text), pinned.contains(&note));
+        let shown = preview(&text, name);
+        // A match already in sight, in the name or the line under it, isn't shown again.
+        let hit = hit.filter(|h| {
+            !name
+                .to_lowercase()
+                .contains(&h.trim_matches('…').to_lowercase())
+                && !shown.contains(h.trim_matches('…'))
+        });
         let head = split(&text).0;
-        notes.push((pin, at, json!({"id": note, "title": name, "head": head, "preview": preview(&text, name), "at": at, "pinned": pin, "match": hit})));
+        notes.push((pin, at, json!({"id": note, "title": name, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
     }
     notes.sort_by_key(|n| (!n.0, std::cmp::Reverse(n.1)));
     json!({"ok": true, "notes": notes.into_iter().map(|(.., n)| n).collect::<Vec<_>>()})

@@ -27,11 +27,26 @@ use std::{fs, io};
 fn title(text: &str) -> &str {
     let (head, body) = split(text);
     match named(head) {
-        "" => (body.lines().map(|line| line.trim_start_matches('#').trim()))
+        "" => (body.lines().map(plain))
             .find(|line| !line.is_empty())
             .unwrap_or(""),
         name => name,
     }
+}
+
+/// A line as words, its Markdown marks off: a heading's #s, a list's or checklist's, a quote's.
+fn plain(line: &str) -> &str {
+    let line = line.trim().trim_start_matches('#').trim_start();
+    let line = ["- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> "]
+        .iter()
+        .find_map(|mark| line.strip_prefix(mark))
+        .unwrap_or(line);
+    let digits = line.trim_start_matches(|c: char| c.is_ascii_digit());
+    (digits.len() < line.len())
+        .then(|| digits.strip_prefix(". "))
+        .flatten()
+        .unwrap_or(line)
+        .trim()
 }
 
 /// The name in a note's `# ` line, without the emoji that may lead it; empty: it was never renamed.

@@ -17,6 +17,7 @@
   { "id": "next-waiting", "keys": ["CmdOrCtrl+Alt+A"], "name": "Next waiting session", "line": "Open the next session waiting on you" },
 
   { "id": "new-tab", "keys": ["CmdOrCtrl+T"], "name": "New tab", "line": "Open a new tab in the session" },
+  { "id": "new-note", "keys": ["CmdOrCtrl+Shift+N"], "name": "New note", "line": "Write a new note in the project" },
   { "id": "close", "keys": ["CmdOrCtrl+W"], "name": "Close tab", "line": "Close the tab in front; from Chat, leave the session" },
   { "id": "close-others", "keys": ["CmdOrCtrl+Alt+W"], "name": "Close other tabs", "line": "Close every tab but Chat and the one in front" },
   { "id": "close-focused", "keys": ["Backspace"], "name": "Close focused tab", "line": "Close the tab that has the keyboard in the tab strip" },

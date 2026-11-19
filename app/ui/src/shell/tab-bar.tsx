@@ -60,7 +60,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, enter
   const { ref, handleRef } = useSortable({ id: tab.id, index, disabled: closing });
   // It grows in once: a node moved in the DOM (a drag, a drop) would otherwise replay it [D432].
   const [fresh, setFresh] = useState(() => justOpened(tab.id) || entering);
-  const note = useNoteTitle(owner, tab.kind === "note" ? (tab.target ?? "") : "");
+  const note = useNoteTitle(tab.kind === "note" ? (tab.target ?? "") : "");
   // A page is named by its title, else its site, as a browser's tab.
   const page = useBrowserPage(tab.kind === "browser" ? tab.id : "");
   const name = tab.kind === "note" ? note : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);

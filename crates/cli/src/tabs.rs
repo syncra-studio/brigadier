@@ -363,7 +363,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "replace" => {
             let (tab, kind) = (arg(args, 3)?, kind()?);
-            // A New tab becomes what was picked on it, or the page typed in it.
+            // A New tab becomes what was picked on it, or the page typed in it; a note's, another note.
             let target = args.get(5).cloned();
             check_target(&kind, target.as_deref())?;
             // One already open (a kind there's one of, a PR, a note) comes to the front and the New tab stays; a typed page
@@ -372,7 +372,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(same) = now.same(&kind, &key) {
                 now.active = same;
             } else if let Some(at) = now.at(tab)
-                && now.tabs[at].kind == NEW
+                // A note's tab shows another note picked in its list [D913].
+                && (now.tabs[at].kind == NEW || (now.tabs[at].kind == "note" && kind == "note"))
             {
                 now.tabs[at].kind = kind;
                 now.tabs[at].target = target;
