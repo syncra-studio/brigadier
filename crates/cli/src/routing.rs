@@ -41,6 +41,20 @@ fn read(path: &Path) -> Value {
         .unwrap_or_default()
 }
 
+/// The job a lead names to start computer use's worker [D941]: the one whose line covers it; None
+/// when the user has no job to start one on.
+pub(crate) fn computer_job(data: &Path) -> Option<String> {
+    let t = current(data);
+    let mut all = jobs::startable(t["jobs"].as_array().map_or(&[], Vec::as_slice)).peekable();
+    all.peek()?;
+    let covers = |j: &&Value| str_of(j, "for").to_lowercase().contains("computer");
+    Some(
+        all.find(covers)
+            .map_or("<the job that covers computer use>", |j| str_of(j, "name"))
+            .into(),
+    )
+}
+
 fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }

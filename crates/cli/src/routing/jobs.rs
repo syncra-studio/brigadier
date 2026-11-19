@@ -107,7 +107,7 @@ pub(super) fn named<'a>(jobs: &'a [Value], name: &str) -> Option<&'a Value> {
 }
 
 /// The jobs an agent names with `--job`: all but Review.
-fn startable(jobs: &[Value]) -> impl Iterator<Item = &Value> {
+pub(super) fn startable(jobs: &[Value]) -> impl Iterator<Item = &Value> {
     jobs.iter().filter(|j| j["name"] != REVIEW)
 }
 

@@ -8,7 +8,7 @@
 mod verbs;
 
 pub(crate) use verbs::HELP;
-pub use verbs::{agent, turn_ended};
+pub use verbs::turn_ended;
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -302,6 +302,25 @@ fn word(granted: Option<bool>) -> &'static str {
         Some(true) => "granted",
         Some(false) => "notGranted",
         None => "unknown",
+    }
+}
+
+/// An agent's `brigadier computer …`. A chat's lead hands it to a worker [D931]: refused here,
+/// as the words alone didn't hold [D941]; its help stays open.
+pub fn agent(
+    data: &Path,
+    me: &str,
+    args: &[String],
+    rows: &dyn Fn() -> Vec<Value>,
+    here: &dyn Fn() -> bool,
+) -> Value {
+    let help = args.get(1).is_none_or(|v| v == "help") || args.iter().any(|a| a == "--help");
+    let lead = !help && brigadier_core::load(data, me).is_ok_and(|s| !s.naked && s.boss.is_none());
+    match lead.then(|| crate::routing::computer_job(data)).flatten() {
+        Some(job) => crate::agent::refuse(&format!(
+            "Computer use runs in a worker: brigadier start --job \"{job}\" \"<brief>\""
+        )),
+        _ => verbs::agent(data, me, args, rows, here),
     }
 }
 

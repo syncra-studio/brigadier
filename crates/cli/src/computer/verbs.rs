@@ -18,10 +18,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
-use window::ours;
-use window::{drag, read, screenshot};
+use window::{drag, ours, read, screenshot};
 
-pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them.
+pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them, by a
+worker: a chat's lead starts one on the job whose line covers computer use (`brigadier start --job`).
 
 Use it when files, the shell or an app's own CLI can't do the job; a web page goes to `brigadier browser` unless the
 user names their own browser. Never drive apps with osascript, System Events, `open -a` or cliclick: they raise
