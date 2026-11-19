@@ -107,10 +107,10 @@ function App() {
   }
   const page = projectPageOf(hash);
   if (page !== null) {
-    // Under the titlebar, on the content's surface, as Settings [D780].
+    // Under the tab bar's row, on the content's surface, level with the sidebar card as Settings [D780 D799].
     return (
       <Shell hash={hash} active={null} rows={rows} page={page.id}>
-        <div className="app-drag h-titlebar shrink-0" />
+        <div className="app-drag h-page-top shrink-0" />
         <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
           <ProjectPage id={page.id} tab={page.tab} />
         </main>

@@ -375,7 +375,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   if (bare)
     return (
       <>
-        <div aria-hidden className="h-tab-bar shrink-0" />
+        <div aria-hidden className="h-page-top shrink-0" />
         <header data-slot="session-tabs" className={cx(BAR, "justify-end")}>
           {reconnecting}
           {newTab}
@@ -387,7 +387,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   return (
     <>
       {/* The bar's room in the column; the bar itself runs across the window's top, over the sidebar too [D48]. */}
-      <div aria-hidden className="h-tab-bar shrink-0" />
+      <div aria-hidden className="h-page-top shrink-0" />
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
         {/* The pill fills the room up to "+", the tabs sharing it as Safari's [D52]. */}
         <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">

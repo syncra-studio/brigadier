@@ -177,7 +177,7 @@ export function SidebarPanel({
           data-resizing={resizing || undefined}
           data-slide={slide || undefined}
           className={cx(
-            "sidebar-motion relative flex h-full flex-col sidebar-top px-1 pb-window-inset",
+            "sidebar-motion relative flex h-full flex-col pt-page-top px-1 pb-window-inset",
             drawn ? "sidebar-panel-width" : "w-sidebar-strip",
             hidden && "-translate-x-full rtl:translate-x-full",
           )}

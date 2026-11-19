@@ -206,10 +206,10 @@ export function SettingsView({ page }: { page: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  // Under the titlebar, the page on the content's own surface, where a session's tabs would be.
+  // Under the tab bar's row, the page on the content's own surface, level with the sidebar card [D799].
   return (
     <>
-      <div className="app-drag h-titlebar shrink-0" />
+      <div className="app-drag h-page-top shrink-0" />
       <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
         <Page key={page} detail={detail} />
       </main>

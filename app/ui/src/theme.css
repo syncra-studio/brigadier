@@ -322,6 +322,8 @@
   --spacing-titlebar: 2.5rem;
   /* The new design's tab bar: 56px, its controls 30px tall on the traffic lights' centre line (35px down). */
   --spacing-tab-bar: 3.5rem;
+  /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
+  --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
   /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
   --spacing-history: 6.6875rem;
   /* Its start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge. */
@@ -1372,10 +1374,6 @@
 @utility sidebar-clip {
   overflow: clip;
   overflow-clip-margin: var(--spacing-surface-inset);
-}
-/* The panel's top above its card: the right panel's, 6px under the tab bar, in every mode [D48]. */
-@utility sidebar-top {
-  padding-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
 }
 /* The floating card inside it, the panel's 4px inset off each side. */
 @utility sidebar-card-width {
