@@ -91,10 +91,33 @@ struct State {
 type Shared = Arc<Mutex<State>>;
 
 fn main() -> io::Result<()> {
+    // Before the data folder: an ignored argument started a daemon replacing the live one [D950].
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let usage = "usage: brigadierd [--install | --version | --help]";
+    let install = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        [] => false,
+        ["--install"] => true,
+        ["--version" | "-V"] => {
+            println!(
+                "brigadierd {} (build {})",
+                env!("CARGO_PKG_VERSION"),
+                wire::build()
+            );
+            return Ok(());
+        }
+        ["--help" | "-h"] => {
+            println!("{usage}");
+            return Ok(());
+        }
+        _ => {
+            eprintln!("{usage}");
+            std::process::exit(2);
+        }
+    };
     let data = data_dir();
     fs::create_dir_all(&data)?;
     fs::set_permissions(&data, Permissions::from_mode(0o700))?;
-    if std::env::args().nth(1).as_deref() == Some("--install") {
+    if install {
         return install::install_and_exec(&data);
     }
     // The kernel frees this lock however a daemon dies, so whoever holds it owns the socket and the
