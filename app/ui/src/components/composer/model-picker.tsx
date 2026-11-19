@@ -159,6 +159,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   };
 
   const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
+  /** Whether it applied: another agent's model waits on the switch's confirm. */
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
     const same = provider === value.provider;
     // A new model keeps the effort within the agent when it has that level, else takes its own default; fast carries
@@ -168,6 +169,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
     const choice = { provider, model: next.id, effort: also?.effort ?? kept, ...(fast ? { fast } : {}) };
     if (same || !asksSwitch) onChange(choice);
     else setSwitching(choice);
+    return same || !asksSwitch;
   };
 
   const models = group && !group.unavailable ? [...group.models.filter((each) => !each.legacy), ...group.models.filter((each) => each.legacy)] : [];
@@ -295,8 +297,8 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" || !needle || !listed[0]) return;
                   event.preventDefault();
-                  pick(group.provider, listed[0]);
-                  onEnter?.();
+                  // Folding now would unmount the switch's confirm with the shelf.
+                  if (pick(group.provider, listed[0])) onEnter?.();
                 }}
                 placeholder={`Search ${group.short ?? group.label}`}
                 aria-label={`Search ${group.short ?? group.label}`}

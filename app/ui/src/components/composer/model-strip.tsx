@@ -25,7 +25,7 @@ export function useModelStrip({ disabled, asked = 0 }: { disabled?: boolean; ask
   useEffect(() => {
     const press = (event: KeyboardEvent) => {
       // Only the composer on screen; offline or loading it doesn't open.
-      if (!matches(event, "model") || !pill.current?.checkVisibility() || pill.current.disabled) return;
+      if (!matches(event, "model") || !pill.current?.checkVisibility() || pill.current.disabled || pill.current.closest("[inert]")) return;
       event.preventDefault();
       setOpen((now) => !now);
     };

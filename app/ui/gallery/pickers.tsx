@@ -75,7 +75,7 @@ const QUOTA: ModelGroup[] = FAKE_GROUPS.map((group, index) =>
 /** The picker with each account's quota under the browsed agent's models, on fake data. */
 function QuotaPicker() {
   const [value, setValue] = useState<ModelChoice>({ provider: "cloud", model: "medium", effort: "medium" });
-  return <ModelPicker groups={QUOTA} value={value} onChange={setValue} />;
+  return <ModelPicker groups={QUOTA} value={value} onChange={setValue} trigger={({ children, ...props }) => <SelectTrigger {...props} label="Model">{children}</SelectTrigger>} />;
 }
 
 const PROJECTS: DraftProject[] = [
