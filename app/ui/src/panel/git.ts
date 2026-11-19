@@ -303,7 +303,9 @@ const files = new Map<string, FileRead>();
 
 /** A checkout file as the viewer shows it, read again on each watch read that changed something [D1002]. */
 export function useFileRead(path: string): FileRead {
-  const { target, version } = useSyncExternalStore(subscribe, () => git);
+  const { target: watched, version, error } = useSyncExternalStore(subscribe, () => git);
+  // A folder chat's files are read from the chat, `<repo>/<path>`, whichever repo its watch follows [D776].
+  const target = watched && "session" in watched ? { session: watched.session.split("@")[0]! } : watched;
   const key = target && `${JSON.stringify(target)}\0${path}`;
   const [read, setRead] = useState<FileRead>(() => (key && files.get(key)) || { state: "loading" });
   // Another file in the same view: its own last read, not the one before's [D1310].
@@ -317,11 +319,13 @@ export function useFileRead(path: string): FileRead {
   // window shows; a watch of the file itself would be instant.
   // Kept once seen, so a file a build deletes and writes again is still followed.
   const [ignored, setIgnored] = useState(false);
+  // A folder chat's watch follows one repo, or none (it fails): its tabs look again themselves too [D776].
+  const unwatched = ignored || (watched !== null && "session" in watched && (watched.session.includes("@") || error !== null));
   useEffect(() => {
-    if (!ignored) return;
+    if (!unwatched) return;
     const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), 3000);
     return () => clearInterval(timer);
-  }, [ignored]);
+  }, [unwatched]);
   useEffect(() => {
     if (!target) return;
     let live = true;
@@ -335,6 +339,6 @@ export function useFileRead(path: string): FileRead {
       setRead((last) => (JSON.stringify(last) === JSON.stringify(next) ? last : next));
     });
     return () => void (live = false);
-  }, [target, path, version, tick]);
+  }, [key, version, tick]);
   return read;
 }

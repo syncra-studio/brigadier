@@ -373,3 +373,72 @@ pub fn git_dirs(spec: &Spec) -> Vec<String> {
         })
         .collect()
 }
+
+/// A folder chat's repos as its Files lists them [D776]: those it claimed first, then the folder's
+/// others.
+pub fn seen(data: &Path, id: &str) -> io::Result<Vec<String>> {
+    let spec = crate::load(data, id)?;
+    let project =
+        of(&spec).ok_or_else(|| io::Error::other("This chat isn't on a folder of repos."))?;
+    let claimed: Vec<String> = claims(&spec.dir).into_iter().map(|(n, _)| n).collect();
+    let rest = repos(Path::new(&project.folder))
+        .into_iter()
+        .filter(|n| !claimed.contains(n));
+    Ok(claimed.iter().cloned().chain(rest).collect())
+}
+
+/// The checkout Files reads `repo` in: the chat's claimed copy, else the repo itself in the folder,
+/// only ever read [D776].
+pub fn checkout_of(data: &Path, id: &str, repo: &str) -> io::Result<git::Checkout> {
+    if record_of(data, id, repo).is_ok() {
+        return git::checkout(data, &git::Target::Repo(id, repo));
+    }
+    let home = PathBuf::from(
+        of(&crate::load(data, id)?)
+            .map(|p| p.folder)
+            .unwrap_or_default(),
+    );
+    match repos(&home).iter().any(|n| n == repo) {
+        true => git::at(data, &home.join(repo)),
+        false => err(format!("No repo {repo:?} in this chat's folder.")),
+    }
+}
+
+/// `path` as `<repo>/<rest>`, the way the chat's own folder lays its copies out: the repo it's in,
+/// the longest name that fits, and the rest ("" for the repo itself).
+pub fn split<'a>(names: &'a [String], path: &'a str) -> io::Result<(&'a str, &'a str)> {
+    (names.iter())
+        .filter_map(|n| match path.strip_prefix(n.as_str())? {
+            "" => Some((n.as_str(), "")),
+            rest => Some((n.as_str(), rest.strip_prefix('/')?)),
+        })
+        .max_by_key(|(n, _)| n.len())
+        .ok_or_else(|| io::Error::other(format!("{path} isn't in one of this chat's repos.")))
+}
+
+/// A folder chat's Files tree [D776]: its repos, as `repos`, and the files of those in `open` as
+/// `files::list` gives them, each path under its repo's name.
+pub fn files(data: &Path, id: &str, open: &[String], stop: &AtomicBool) -> io::Result<Value> {
+    let names = seen(data, id)?;
+    let (mut files, mut ignored, mut truncated) = (vec![], vec![], false);
+    let (mut marks, mut folders) = (serde_json::Map::new(), serde_json::Map::new());
+    for name in open.iter().filter(|n| names.contains(n)) {
+        // One that can't be read (its copy gone) opens empty: the others still list.
+        let Ok(one) = checkout_of(data, id, name).and_then(|c| git::files::list(&c, stop)) else {
+            continue;
+        };
+        let under = |v: &Value| format!("{name}/{}", v.as_str().unwrap_or_default());
+        files.extend(one["files"].as_array().into_iter().flatten().map(under));
+        ignored.extend(one["ignored"].as_array().into_iter().flatten().map(under));
+        truncated |= one["truncated"] == true;
+        for (into, from) in [(&mut marks, "files"), (&mut folders, "folders")] {
+            for (path, mark) in one["marks"][from].as_object().into_iter().flatten() {
+                into.insert(format!("{name}/{path}"), mark.clone());
+            }
+        }
+    }
+    Ok(
+        json!({"repos": names, "files": files, "ignored": ignored, "truncated": truncated,
+              "marks": {"files": marks, "folders": folders}}),
+    )
+}

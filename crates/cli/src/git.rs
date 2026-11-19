@@ -3,6 +3,7 @@
 //! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
 
 use super::{arg, flag, has};
+use brigadier_core::folder;
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{self, Checkout, Status, Target, branch, files, watch::Watch};
 use serde_json::{Value, json};
@@ -114,8 +115,42 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         })?;
         return Ok(json!({"ok": true}));
     }
-    let checkout = git::checkout(data, &target)?;
     let stop = AtomicBool::new(false);
+    // A folder chat's Files: its repos, each path under its repo's name [D776].
+    let mut owned;
+    let (checkout, args) = match &target {
+        Target::Session(id)
+            if matches!(
+                arg(args, at)?,
+                "files" | "find" | "folder" | "file" | "reveal"
+            ) && folder::chat(&brigadier_core::load(data, id)?) =>
+        {
+            let names = folder::seen(data, id)?;
+            let opened = &args[at + 1..];
+            match arg(args, at)? {
+                "files" => {
+                    return Ok(
+                        json!({"ok": true, "list": folder::files(data, id, opened, &stop)?}),
+                    );
+                }
+                "find" => {
+                    // shortcut: every repo is listed on each search; keep a listing if a big folder is slow.
+                    let all: Vec<_> = (names.iter())
+                        .filter_map(|n| Some((n.clone(), folder::checkout_of(data, id, n).ok()?)))
+                        .collect();
+                    let found = files::find_in(&all, arg(args, at + 1)?, &stop)?;
+                    return Ok(json!({"ok": true, "found": found}));
+                }
+                _ => {
+                    let (name, rest) = folder::split(&names, arg(args, at + 1)?)?;
+                    owned = args.to_vec();
+                    owned[at + 1] = rest.to_string();
+                    (folder::checkout_of(data, id, name)?, &owned[..])
+                }
+            }
+        }
+        _ => (git::checkout(data, &target)?, args),
+    };
     let word = |i: usize| arg(args, at + i);
     let from = |i: usize| args.get(at + i).map(String::as_str).filter(|w| *w != "-");
     let done = json!({"ok": true});
@@ -152,7 +187,11 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         "find" => json!({"ok": true, "found": files::find(&checkout, word(1)?, &stop)?}),
         // A Files row's Reveal in Finder, kept inside the checkout [D1226] (proposed).
         "reveal" => {
-            let path = git::inside(&checkout, word(1)?)?;
+            // "": the checkout itself, a folder chat's repo row [D776].
+            let path = match word(1)? {
+                "" => checkout.root.clone(),
+                rel => git::inside(&checkout, rel)?,
+            };
             if !std::process::Command::new("open")
                 .arg("-R")
                 .arg(&path)

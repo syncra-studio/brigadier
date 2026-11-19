@@ -175,9 +175,26 @@ pub fn mention(
 /// The filename search over every listed file, not only the tree's first ones: those whose name
 /// (first) or path holds `query`, best first, then shortest.
 pub fn find(checkout: &Checkout, query: &str, stop: &AtomicBool) -> io::Result<Value> {
+    find_in(&[(String::new(), checkout.clone())], query, stop)
+}
+
+/// `find` over several checkouts, each one's paths under its name (none: as they are) [D776].
+pub fn find_in(
+    checkouts: &[(String, Checkout)],
+    query: &str,
+    stop: &AtomicBool,
+) -> io::Result<Value> {
     let query = query.to_lowercase();
-    let _shared = lock(checkout, false, stop)?;
-    let mut found: Vec<(u8, String)> = (listed(checkout, stop)?.into_iter())
+    let mut all = vec![];
+    for (name, checkout) in checkouts {
+        let _shared = lock(checkout, false, stop)?;
+        let under = |p: String| match name.as_str() {
+            "" => p,
+            n => format!("{n}/{p}"),
+        };
+        all.extend(listed(checkout, stop)?.into_iter().map(under));
+    }
+    let mut found: Vec<(u8, String)> = (all.into_iter())
         .filter_map(|path| {
             let name = path.rsplit('/').next().unwrap_or(&path);
             let by_name = rank(name, &query);

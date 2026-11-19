@@ -79,7 +79,11 @@ pub fn base_of(data: &Path, target: &Target) -> Option<String> {
 /// session's own worktree, else its folder (Local checkout), or a project's folder [D160, D1039].
 /// An archived session's worktree is gone until restore, so it's not found [D180].
 pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
-    let folder = folder(data, target)?;
+    at(data, &folder(data, target)?)
+}
+
+/// The checkout in `folder`, as `checkout` finds it.
+pub fn at(data: &Path, folder: &Path) -> io::Result<Checkout> {
     if !folder.is_dir() {
         // Its kind is what callers read; the words are what a person sees, not "entity not found".
         return Err(io::Error::new(
@@ -89,7 +93,7 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
     }
     let never = AtomicBool::new(false);
     let out = read(
-        &folder,
+        folder,
         &["rev-parse", "--show-toplevel", "--absolute-git-dir"],
         &never,
     )?;

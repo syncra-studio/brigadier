@@ -123,7 +123,8 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
         const file = review?.files.find((each) => each.path === path);
         if (file) load(file, read.current);
       }}
-      onOpenIn={(path) => openFile(owner, path, { preview: false })}
+      // A folder chat's file tab names its repo: `<repo>/<path>` [D776].
+      onOpenIn={(path) => openFile(owner, repo ? `${repo.slice(repo.indexOf("@") + 1)}/${path}` : path, { preview: false })}
       comments={chips.flatMap((chip) => (chip.kind === "comment" && chip.on === "review" ? [chip.comment] : []))}
       // Home's composer starts a session and carries no chips, so its diff takes no comments.
       onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}

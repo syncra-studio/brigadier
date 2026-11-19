@@ -49,11 +49,14 @@ type Row =
   | { kind: "file"; path: string; name: string; depth: number; ignored: boolean; status: FileStatus | undefined };
 
 type Folder = { folders: Map<string, Folder>; files: string[]; ignored: boolean };
-type Tree = { root: Folder; ignoredFiles: ReadonlySet<string> };
+type Tree = { root: Folder; ignoredFiles: ReadonlySet<string>; /** A folder chat's: its repos top, in Rust's order. */ repos: boolean };
 
-function folderAt(root: Folder, path: string): Folder {
+/** `path`'s folder; a folder chat's repo is one folder however deep, its whole name a top row [D776]. */
+function folderIn(root: Folder, path: string, repos: readonly string[] = []): Folder {
   let folder = root;
-  for (const part of path.split("/")) {
+  const repo = repos.find((each) => path === each || path.startsWith(`${each}/`));
+  const parts = repo ? [repo, ...path.slice(repo.length + 1).split("/").filter(Boolean)] : path.split("/");
+  for (const part of parts) {
     let next = folder.folders.get(part);
     if (!next) folder.folders.set(part, (next = { folders: new Map(), files: [], ignored: false }));
     folder = next;
@@ -64,16 +67,18 @@ function folderAt(root: Folder, path: string): Folder {
 /** The tree of the listed files, the ones deleted from the index too, and what the opened ignored folders hold. */
 function buildTree(list: FileList, marks: ChangeMarks, loaded: Readonly<Record<string, FolderEntry[]>>): Tree {
   const root: Folder = { folders: new Map(), files: [], ignored: false };
+  const folderAt = (path: string) => folderIn(root, path, list.repos);
   const listed = new Set(list.files);
   const add = (path: string) => {
     const slash = path.lastIndexOf("/");
-    (slash < 0 ? root : folderAt(root, path.slice(0, slash))).files.push(path);
+    (slash < 0 ? root : folderAt(path.slice(0, slash))).files.push(path);
   };
+  for (const repo of list.repos ?? []) folderAt(repo);
   for (const path of list.files) add(path);
   for (const [path, status] of Object.entries(marks.files)) if (status === "deleted" && !listed.has(path)) add(path);
   const ignoredFiles = new Set<string>();
   for (const entry of list.ignored) {
-    if (entry.endsWith("/")) folderAt(root, entry.slice(0, -1)).ignored = true;
+    if (entry.endsWith("/")) folderAt(entry.slice(0, -1)).ignored = true;
     else {
       ignoredFiles.add(entry);
       add(entry);
@@ -81,24 +86,25 @@ function buildTree(list: FileList, marks: ChangeMarks, loaded: Readonly<Record<s
   }
   // In order, so a folder is there before what it holds.
   for (const [path, entries] of Object.entries(loaded).toSorted(([a], [b]) => a.length - b.length)) {
-    const node = folderAt(root, path);
+    const node = folderAt(path);
     for (const entry of entries) {
       const child = `${path}/${entry.name}`;
-      if (entry.folder) folderAt(root, child).ignored = true;
+      if (entry.folder) folderAt(child).ignored = true;
       else if (!node.files.includes(child)) {
         ignoredFiles.add(child);
         node.files.push(child);
       }
     }
   }
-  return { root, ignoredFiles };
+  return { root, ignoredFiles, repos: Boolean(list.repos) };
 }
 
 /** The visible rows: folders first, then files, each by name; open folders expanded. An ignored folder's contents are ignored too. */
-function visibleRows({ root, ignoredFiles }: Tree, open: ReadonlySet<string>, marks: ChangeMarks): Row[] {
+function visibleRows({ root, ignoredFiles, repos }: Tree, open: ReadonlySet<string>, marks: ChangeMarks): Row[] {
   const rows: Row[] = [];
   const walk = (folder: Folder, prefix: string, depth: number, ignoredAbove: boolean) => {
-    for (const name of [...folder.folders.keys()].toSorted((a, b) => a.localeCompare(b))) {
+    const names = [...folder.folders.keys()];
+    for (const name of repos && depth === 0 ? names : names.toSorted((a, b) => a.localeCompare(b))) {
       const path = prefix ? `${prefix}/${name}` : name;
       const child = folder.folders.get(name)!;
       const ignored = ignoredAbove || child.ignored;
@@ -123,6 +129,7 @@ export function FileTree({
   marks,
   loaded = NO_FOLDERS,
   onReadIgnored,
+  onOpenRepos,
   shown = null,
   results,
   onQuery,
@@ -138,6 +145,8 @@ export function FileTree({
   loaded?: Readonly<Record<string, FolderEntry[]>>;
   /** Asks for the open ignored folders' contents (git doesn't list them). */
   onReadIgnored?: (paths: string[]) => void;
+  /** A folder chat's open repos, whose files it lists [D776]. */
+  onOpenRepos?: (repos: string[]) => void;
   /** The file the tab in front shows: its row lights up. */
   shown?: string | null;
   /** The files matching the query, best first; null with no query. */
@@ -162,6 +171,8 @@ export function FileTree({
   useEffect(() => {
     if (openIgnored) onReadIgnored?.(openIgnored.split("\n"));
   }, [openIgnored, onReadIgnored]);
+  const openRepos = (list?.repos ?? []).filter((repo) => open.has(repo)).join("\n");
+  useEffect(() => void onOpenRepos?.(openRepos ? openRepos.split("\n") : []), [openRepos, onOpenRepos]);
   const found = query.trim() ? results : null;
 
   const toggle = (path: string) => {

@@ -21,8 +21,8 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const { target: watched, version } = useGit();
   const { daemon } = useDaemon();
   // Mounted on a switch, this view renders once before the watch moves to its owner: another checkout's, never read here [D1258].
-  // A folder chat's is one of its repos, `<owner>@<repo>` [D494].
-  const target = watched && ("session" in watched ? watched.session.split("@")[0] === owner : owner === HOME) ? watched : null;
+  // A folder chat's watch is one of its repos, `<owner>@<repo>` [D494]; its Files are all its repos, the chat's own [D776].
+  const target = watched && ("session" in watched ? (watched.session.split("@")[0] === owner ? { session: owner } : null) : owner === HOME ? watched : null);
   const key = target && JSON.stringify(target);
   const [listing, setListing] = useState<Listing>(() => (key && kept.get(key)?.listing) || { state: "loading" });
   const [marks, setMarks] = useState<ChangeMarks>(() => (key && kept.get(key)?.marks) || NO_MARKS);
@@ -39,6 +39,9 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
   const [tick, setTick] = useState(0);
+  const [repos, setRepos] = useState<string[]>([]);
+  const opened = repos.join("\n");
+  const openRepos = useCallback((next: string[]) => setRepos((last) => (last.join("\n") === next.join("\n") ? last : next)), []);
   // A new session's checkout isn't made until its start answers: the listing waits, loading, as the watch does [D1259].
   const starting = useStart(owner)?.asking === true;
 
@@ -46,7 +49,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   useEffect(() => {
     if (!target || !daemon || starting) return;
     let live = true;
-    ask({ op: "run", args: sourceArgs(target, "files") }, (reply) => {
+    ask({ op: "run", args: sourceArgs(target, "files", ...repos) }, (reply) => {
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setListing({ state: "failed", error: String(reply.error) });
       const { marks: next, ...list } = reply.list;
@@ -62,7 +65,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       });
     });
     return () => void (live = false);
-  }, [key, daemon, version, tick, starting]);
+  }, [key, daemon, version, tick, starting, opened]);
 
   const readIgnored = useCallback(
     (paths: string[]) => {
@@ -81,15 +84,15 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   );
   // shortcut: the listing (for a new ignored folder, which changes no status) and opened ignored folders are read again
   // every few seconds while shown; a watch of their own would be instant.
-  const opened = Object.keys(loaded).join("\n");
+  const openFolders = Object.keys(loaded).join("\n");
   useEffect(() => {
     if (!daemon) return;
     const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), IGNORED_MS);
     return () => clearInterval(timer);
   }, [daemon]);
   useEffect(() => {
-    if (opened && daemon) readIgnored(opened.split("\n"));
-  }, [opened, daemon, version, tick, readIgnored]);
+    if (openFolders && daemon) readIgnored(openFolders.split("\n"));
+  }, [openFolders, daemon, version, tick, readIgnored]);
 
   // The filename search, in Rust over every listed file; an answer to an older query is dropped.
   useEffect(() => {
@@ -117,6 +120,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       marks={marks}
       loaded={loaded}
       onReadIgnored={readIgnored}
+      onOpenRepos={openRepos}
       shown={shown}
       results={query ? results : null}
       onQuery={setQuery}
