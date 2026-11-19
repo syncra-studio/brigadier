@@ -108,7 +108,7 @@ function App() {
   }
   const page = projectPageOf(hash);
   if (page !== null) {
-    // Its Home tab under the project's Home tab bar, level with the sidebar card [D780 D799 D819 D820].
+    // Its Home tab under the project's Home tab bar [D780 D819 D820].
     return (
       <Shell hash={hash} active={null} rows={rows} page={page.id}>
         <Home offline={daemon === null} page={page.id}>
@@ -133,7 +133,8 @@ function App() {
   );
 }
 
-// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches.
+// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches. This shell
+// [D823]: the titlebar row on top, then one frame holding the sidebar and the page's rounded panel.
 // Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
@@ -144,13 +145,13 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   useSeen(rows?.find((row) => row.id === active));
   return (
     <div
-      className="fixed inset-0 bg-chrome"
+      className="fixed inset-0 bg-chrome px-2 pt-tab-bar pb-2"
       // A session row under the pointer or focus: its rows are fetched before the click [D477].
       onPointerOver={(event) => peekRow(event.target, REST_MS)}
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="rounded-surface bg-card ring-1 ring-glass-stroke">
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />
@@ -170,7 +171,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         )}
-        <div className="flex min-w-0 flex-1 flex-col pe-window-inset pb-window-inset">{children}</div>
+        <div className="page-panel flex min-w-0 flex-1 flex-col overflow-clip rounded-surface bg-background ring-1 ring-glass-stroke">{children}</div>
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
@@ -195,7 +196,7 @@ function Home({ offline, page, children }: { offline: boolean; page?: string; ch
   }, [page]);
   return (
     <>
-      <TabBar key={HOME} owner={HOME} offline={offline} home={page !== undefined} />
+      <TabBar key={HOME} owner={HOME} offline={offline} />
       <TabbedMain owner={HOME} archived={false}>
         {children}
       </TabbedMain>

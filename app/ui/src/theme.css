@@ -319,8 +319,9 @@
   /* Brigadier's mark, one size in the strip and by the open sidebar's title (the board's strip mark) [D64, D18]. */
   --spacing-icon-mark: 1.5rem;
   --spacing-titlebar: 2.5rem;
-  /* The new design's tab bar: 56px, its controls 30px tall on the traffic lights' centre line (35px down). */
-  --spacing-tab-bar: 3.5rem;
+  /* The titlebar row [D823]: 40px, its tabs 32px tall on its foot, where the frame starts, and its
+     controls on their centre line with the traffic lights' (24px down). */
+  --spacing-tab-bar: 2.5rem;
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
   /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
@@ -330,14 +331,14 @@
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
-  /* Safari's tabs [D52]: crowded, the front tab and Chat keep 12rem [D53], the others shrink to 33px then scroll;
-     below 88px a tab shows its icon alone, below 64px no × either. The rule between two tabs in back. */
-  --spacing-session-tab-active: 12rem;
+  /* The tabs [D823]: 10rem each, left after the History pill; crowded, the front tab and Chat keep it [D53],
+     the others shrink to 33px then scroll; below 88px a tab shows its icon alone, below 64px no × either. Home's
+     tab is its house alone. */
+  --spacing-session-tab-active: 10rem;
   --spacing-session-tab-icon: 2.0625rem;
+  --spacing-home-tab: 3rem;
   --container-tab-icon: 5.5rem;
   --container-tab-close: 4rem;
-  --spacing-session-tab-rule: 1px;
-  --spacing-session-tab-rule-height: 1rem;
   --container-new-tab: 28rem;
   /* The Pull requests tab's bar below this folds its chips into menus [D609]. */
   --container-pr-bar: 64rem;
@@ -563,7 +564,6 @@
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
   --duration-session-tab: 300ms;
-  --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
   /* Behind a menu or the hover card (the new design's). */
@@ -1420,6 +1420,20 @@
   }
 }
 
+/* The page's rounded panel in the window's frame [D823]: inset from the frame but beside the sidebar; with
+   the sidebar hidden, the same gap at its start, easing as the sidebar folds. */
+@utility page-panel {
+  margin: calc(var(--spacing) * 3);
+  margin-inline-start: 0;
+  transition: margin var(--duration-fold) var(--ease-sidebar);
+  [data-collapse="hidden"] > & {
+    margin-inline-start: calc(var(--spacing) * 3);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
 /* Full screen takes the traffic lights away, and Back moves to the titlebar's start. */
 :root[data-fullscreen] {
   --spacing-titlebar-start: calc(var(--spacing) * 2);
@@ -1436,7 +1450,7 @@
 /* The History pill, first in the tab bar across the window's top: on the sidebar card's start edge, or with traffic
    lights 4px past them. It never moves with the sidebar [D48]. */
 @utility history-pill {
-  top: calc(var(--spacing) * 5);
+  top: calc(var(--spacing) * 2.25);
   inset-inline-start: var(--spacing-history-start);
 }
 
@@ -1462,16 +1476,22 @@
   }
 }
 
-/* The tabs fill the pill, which fills the bar's room, all one width as Safari's [D52]; crowded, Chat and the front tab
-   keep 12rem [D53] and the others share what they leave down to their icon, then the strip scrolls. */
+/* The tabs take their 10rem each from the left, "+" right after them [D823]; crowded, the row is the bar's
+   room and Chat and the front tab keep 10rem [D53] while the others share what they leave down to their icon, then
+   the strip scrolls. */
 @utility session-tab-list {
   container-type: inline-size;
-  flex: 1 1 0;
+  /* Home's tab is narrower than the others: the row's want is that much less. */
+  --session-tab-home: 0rem;
+  &[data-home] {
+    --session-tab-home: calc(var(--spacing-session-tab-active) - var(--spacing-home-tab));
+  }
+  flex: 0 1 calc(var(--session-tab-count) * var(--spacing-session-tab-active) + (var(--session-tab-count) - 1) * var(--spacing) / 2 + var(--session-tab-groups) - var(--session-tab-home));
   --session-tab-count: attr(data-count type(<number>), 1);
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  /* The pill's room less the gaps between its tabs and the agents' group labels. */
-  --session-tab-room: calc(100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--session-tab-groups));
+  /* The row's room less the gaps between its tabs and the agents' group labels, Home's tab counted as a whole one. */
+  --session-tab-room: calc(100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--session-tab-groups) + var(--session-tab-home));
   --session-tab-share: calc(var(--session-tab-room) / var(--session-tab-count));
   /* The tabs kept at 12rem: Chat and the front tab, or Chat alone while it's in front. */
   --session-tab-kept: 2;
@@ -1479,10 +1499,6 @@
     --session-tab-kept: 1;
   }
   --session-tab-behind: calc((var(--session-tab-room) - var(--session-tab-kept) * var(--spacing-session-tab-active)) / max(var(--session-tab-count) - var(--session-tab-kept), 1));
-  /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
-  &:has(> * > .session-tab:first-child:hover) > .session-tab::after {
-    opacity: 0;
-  }
 }
 
 @utility session-tab {
@@ -1501,13 +1517,23 @@
   &[data-tab-id="chat"] {
     flex-basis: max(var(--spacing-session-tab-active), var(--session-tab-share));
   }
-  /* The front tab stays in view as Safari's: scrolled past, it holds at the strip's edge and the others pass under it,
-     so its fill is the sidebar card's, nothing showing through. */
+  &[data-home] {
+    flex-basis: var(--spacing-home-tab);
+  }
+  /* The front tab is the frame's: the frame's fill and edge, open at its foot into the frame below, its
+     foot's corners flaring out to the frame's edge (::after). It stays in view: scrolled past, it holds at the strip's
+     edge and the others pass under it. */
   &[data-active] {
     position: sticky;
     inset-inline: 0;
     z-index: 1;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
     background-color: var(--color-card);
+    box-shadow:
+      inset 1px 0 var(--color-glass-stroke),
+      inset -1px 0 var(--color-glass-stroke),
+      inset 0 1px var(--color-glass-stroke);
     /* Brought into view (tab-bar.tsx), it's measured at its own place. */
     &[data-measuring] {
       position: relative;
@@ -1529,35 +1555,20 @@
     opacity: 0;
     overflow: hidden;
   }
-  &::after {
+  &[data-active]::after {
+    --flare: var(--radius-sm);
     content: "";
     position: absolute;
-    inset-inline-end: calc(var(--spacing) * -0.25 - var(--spacing-session-tab-rule) / 2);
-    height: var(--spacing-session-tab-rule-height);
-    width: var(--spacing-session-tab-rule);
-    background: var(--color-fill);
-    opacity: 0;
-    transition: opacity var(--duration-session-tab-rule);
+    bottom: 0;
+    inset-inline: calc(var(--flare) * -1);
+    height: var(--flare);
     pointer-events: none;
-  }
-  /* A rule between two tabs in back; none beside the front tab (no data-separator) or a hovered one, either side,
-     as Safari's; it only fades, so nothing moves [D437]. */
-  &[data-separator]::after {
-    opacity: 1;
-  }
-  &:hover::after,
-  &:has(+ .session-tab:hover)::after {
-    opacity: 0;
-  }
-  /* The last tab never shows its rule, and the rule would poke past the list and make the bar scroll [D431]. */
-  &:last-child::after {
-    content: none;
+    background:
+      radial-gradient(circle at 0 0, transparent calc(var(--flare) - 1px), var(--color-glass-stroke) calc(var(--flare) - 1px) var(--flare), var(--color-card) var(--flare)) left / var(--flare) 100% no-repeat,
+      radial-gradient(circle at 100% 0, transparent calc(var(--flare) - 1px), var(--color-glass-stroke) calc(var(--flare) - 1px) var(--flare), var(--color-card) var(--flare)) right / var(--flare) 100% no-repeat;
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
-    &::after {
-      transition: none;
-    }
   }
 }
 

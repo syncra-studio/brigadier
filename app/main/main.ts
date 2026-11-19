@@ -33,9 +33,9 @@ const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
 // Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
-// The tab bar's height and the traffic lights' top: their centre on its controls' line, 35px down [new-design].
-const TAB_BAR = 56;
-const LIGHTS_Y = 29;
+// The titlebar row's height and the traffic lights' top: their centre on its controls' line, 24px down [D823].
+const TAB_BAR = 40;
+const LIGHTS_Y = 17;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
 // The menu's keys, from the one list of shortcuts the page shows and matches too (app/ui/src/shortcuts.ts) [D2013].

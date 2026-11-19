@@ -147,7 +147,7 @@ export function SidebarProvider({
 }
 
 /**
- * The panel: a floating card inset from the window [new-design], its top row dragging the window. The expanded
+ * The panel: on the window's frame, a sidebar [D823]. The expanded
  * contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is shared by both, below them.
  */
 export function SidebarPanel({
@@ -168,13 +168,12 @@ export function SidebarPanel({
         <div
           data-slide={slide || undefined}
           className={cx(
-            "sidebar-motion relative flex h-full flex-col pt-page-top px-1 pb-window-inset",
+            "sidebar-motion relative flex h-full flex-col p-1",
             drawn ? "sidebar-panel-width" : "w-sidebar-strip",
             hidden && "-translate-x-full rtl:translate-x-full",
           )}
         >
-          <div aria-hidden className="app-drag absolute inset-x-0 top-0 h-tab-bar" />
-          <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip rounded-panel bg-card text-foreground ring-1 ring-glass-stroke ring-inset", className)} {...props}>
+          <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip text-foreground", className)} {...props}>
             <div className="relative min-h-0 flex-1">
               <div
                 inert={!open}

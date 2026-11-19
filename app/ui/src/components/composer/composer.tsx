@@ -12,10 +12,10 @@ import { ComposerRail } from "./rail";
 
 /**
  * The composer's column under the thread (below its scroller, not over it): the reading width, its card's
- * bottom on the window's inset, with the sidebar's and the right panel's [D55]. What sits above the card (the rail, a decision) stacks in it too.
+ * bottom as far up the page's panel as the panel is in the frame [D55 D823]. What sits above the card (the rail, a decision) stacks in it too.
  */
 export function Composer({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="composer" className={cx("mx-auto flex w-full max-w-reading shrink-0 flex-col px-4", className)} {...props} />;
+  return <div data-slot="composer" className={cx("mx-auto flex w-full max-w-reading shrink-0 flex-col px-4 pb-3", className)} {...props} />;
 }
 
 /** A click in the card's empty space puts the cursor in its field, as a click in the text would. */

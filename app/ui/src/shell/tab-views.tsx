@@ -170,7 +170,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
   const home = useHomeProject();
   const host = owner === HOME ? (home?.id ?? null) : null;
   return (
-    <main className="flex min-h-0 flex-1 overflow-clip rounded-e-surface bg-background">
+    <main className="flex min-h-0 flex-1 overflow-clip bg-background">
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div inert={active !== CHAT} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SummarySlot owner={owner}>{children}</SummarySlot>
