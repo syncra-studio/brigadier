@@ -48,6 +48,10 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
+## Codicons
+
+`FilesGlyph` in `app/ui/src/icons/index.tsx` is the SVG path of an icon from Codicons (https://github.com/microsoft/vscode-codicons), Copyright (c) Microsoft Corporation, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); the path is unchanged, wrapped as a React component, as the old app had it.
+
 ## Seti UI
 
 The file-type icons in `app/ui/src/icons/file-types.tsx` are a subset of the icons of Seti UI (https://github.com/jesseweed/seti-ui), their paths kept and their fills replaced by the theme's file colours, under the MIT License:

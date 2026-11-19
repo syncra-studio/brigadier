@@ -5,7 +5,7 @@ import { TooltipIconButton, type TooltipIconButtonProps } from "../components/ic
 import { useDaemon } from "../daemon";
 import { FilesView } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
-import { Folders } from "../icons";
+import { FilesGlyph } from "../icons";
 import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
@@ -30,11 +30,11 @@ export function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** The toggle as drawn. */
+/** The toggle as drawn: the Files icon [D594] in the toolbar's glass pill, always white and lit, open or closed (owner). */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="toolbar" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
-      <Folders />
+    <TooltipIconButton look="pill" className="drop-shadow-toggle-glow" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
+      <FilesGlyph />
     </TooltipIconButton>
   );
 }
