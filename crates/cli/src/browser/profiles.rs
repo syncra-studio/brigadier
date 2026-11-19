@@ -96,6 +96,8 @@ impl Places {
         }
         let mut seen = HashSet::new();
         let mut at = Some(session.to_string());
+        // The nearest session's project pick, used when no session on the way picked [D769].
+        let mut of_project = None;
         while let Some(id) = at.filter(|id| id != "-") {
             if id != crate::HOME_DRAFT {
                 core::check_id(&id)?;
@@ -110,13 +112,20 @@ impl Places {
                     self.default_id.clone()
                 });
             }
-            at = if id == crate::HOME_DRAFT {
-                None
-            } else {
-                parent(data, &id)?
-            };
+            if id == crate::HOME_DRAFT {
+                break;
+            }
+            if of_project.is_none() {
+                of_project = core::load(data, &id)
+                    .ok()
+                    .and_then(|spec| core::projects::get(data, &spec.project?).ok())
+                    .and_then(|project| project.browser_profile)
+                    .filter(|picked| self.known(picked).is_ok());
+            }
+            at = parent(data, &id)?;
         }
-        Ok(self.default_id.clone())
+        // A deleted profile is Automatic again.
+        Ok(of_project.unwrap_or_else(|| self.default_id.clone()))
     }
 
     pub fn run(&mut self, data: &Path, session: &str, args: &[String]) -> io::Result<Value> {

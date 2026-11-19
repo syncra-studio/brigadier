@@ -39,8 +39,9 @@ pub struct Project {
     pub branch_prefix: Option<String>,
     /// The GitHub login its PRs and sessions use; None: the one that can see it [D631].
     pub github_account: Option<String>,
-    /// "folder": a folder of repositories, added as is, no repository itself [D494]; empty: one
-    /// repository.
+    /// The browser profile its sessions' tabs open on; None: the default one [D769].
+    pub browser_profile: Option<String>,
+    /// "folder": a folder of repositories, added as is [D494]; empty: one repository.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub kind: String,
 }
@@ -301,6 +302,7 @@ pub struct Change {
     pub setup: Option<String>,
     pub include: Option<Vec<String>>,
     pub github_account: Option<Option<String>>,
+    pub browser_profile: Option<Option<String>>,
 }
 
 /// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
@@ -311,11 +313,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
     if let Some(prefix) = &new.branch_prefix {
         crate::worktrees::names::check_prefix(prefix)?;
     }
+    let bad = |c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if let Some(Some(login)) = &new.github_account
-        && (login.starts_with('-')
-            || !login
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+        && (login.starts_with('-') || login.contains(bad))
     {
         return err(format!("\"{login}\" isn't a GitHub login."));
     }
@@ -329,11 +329,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
                 .collect::<io::Result<Vec<_>>>()
         })
         .transpose()?;
-    let count = if folder.is_some() {
-        sessions(data, id)?.len()
-    } else {
-        0
-    };
+    let count = folder
+        .as_ref()
+        .map_or(Ok(0), |_| sessions(data, id).map(|s| s.len()))?;
     let (_, project) = change(data, |list| {
         let now = find(list, id)?.folder.clone();
         if let Some(folder) = folder.filter(|f| Path::new(&now) != f) {
@@ -368,6 +366,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
         }
         if let Some(account) = new.github_account {
             p.github_account = account;
+        }
+        if let Some(profile) = new.browser_profile {
+            p.browser_profile = profile;
         }
         Ok(p.clone())
     })?;

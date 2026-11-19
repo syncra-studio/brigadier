@@ -10,7 +10,7 @@ import { closeBrowserPage, pageReady, reopenPage } from "./pages";
  * The browser's profiles, the old app's browserProfiles [D515]: the list, the default, and which profile each
  * session is on. Rust keeps them (crates/cli/src/browser/profiles.rs); this shows a change at once and takes
  * Rust's answer. A session's new tabs open on its profile, else its parent's (a worker's, a fork's, a side chat's),
- * else the default; a tab stays on the profile it opened on until the user moves it.
+ * else its project's (Project settings), else the default; a tab stays on the profile it opened on until the user moves it.
  */
 
 /** A profile: its own partition, a colour (`--glyph-1` to `--glyph-8`) and a name whose first letter marks it. */

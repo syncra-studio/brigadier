@@ -126,6 +126,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         // Empty: Automatic [D631].
                         github_account: flag(args, "--github-account")
                             .map(|v| Some(v.to_string()).filter(|v| !v.is_empty())),
+                        // Empty: Automatic, the browser's default [D769].
+                        browser_profile: match flag(args, "--browser-profile") {
+                            Some("") => Some(None),
+                            Some(id) => {
+                                crate::browser::profiles::check_id(id)?;
+                                Some(Some(id.into()))
+                            }
+                            None => None,
+                        },
                     };
                     let project = projects::set(data, arg(2), change)?;
                     // The answer stays saved when a CLI's own entry can't be written [D166].

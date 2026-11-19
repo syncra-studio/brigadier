@@ -7,6 +7,8 @@ import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { Select } from "../components/select";
 import { Avatar } from "../landing/pr-parts";
+import { ProfileDisc } from "../browser/profile-mark";
+import { useDefaultProfile, useProfiles } from "../browser/profiles";
 import { Switch } from "../components/switch";
 import { Plus, Trash } from "../icons";
 import { useDaemon } from "../daemon";
@@ -128,6 +130,38 @@ function AccountRow({ github, checking, value, onChange }: { github: GithubAccou
   );
 }
 
+const Profile = ({ name, hue, before = "" }: { name: string; hue: number; before?: string }) => (
+  <span className="flex min-w-0 items-center gap-2">
+    <ProfileDisc profile={{ name, hue }} size="sm" />
+    <span className="truncate">
+      {before}
+      {name}
+    </span>
+  </span>
+);
+
+/** The browser profile its sessions' tabs open on: Automatic (the default profile) or one picked [D769]. */
+function ProfileRow({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const profiles = useProfiles();
+  const fallback = useDefaultProfile();
+  return (
+    <Field label="Browser profile" aside="Its sessions' browser tabs open on it">
+      <Select
+        label="Browser profile"
+        // A deleted profile is Automatic, as Rust resolves it.
+        value={profiles.some((each) => each.id === value) ? value : ""}
+        align="start"
+        className="w-full"
+        onChange={onChange}
+        options={[
+          { value: "", label: "Automatic", shown: <Profile {...fallback} before="Automatic · " />, hint: `${fallback.name}, the default profile` },
+          ...profiles.map((each) => ({ value: each.id, label: <Profile {...each} /> })),
+        ]}
+      />
+    </Field>
+  );
+}
+
 /** A labelled part of the form, its aside beside the label. */
 function Field({ label, aside, htmlFor, children }: { label: string; aside?: string; htmlFor?: string; children: ReactNode }) {
   return (
@@ -172,6 +206,7 @@ export function ProjectSettings({
   const [error, setError] = useState<string | null>(refused && !prefixRefused ? refused.error : null);
   const [prefixError, setPrefixError] = useState<string | null>(prefixRefused);
   const [account, setAccount] = useState((typed.github_account !== undefined ? typed.github_account : project.github_account) ?? "");
+  const [profile, setProfile] = useState((typed.browser_profile !== undefined ? typed.browser_profile : project.browser_profile) ?? "");
   const [github, setGithub] = useState<GithubAccounts | null>(null);
   const [checking, setChecking] = useState(true);
   // The row draws from the local read at once; the probed one fills in which accounts can see the repository.
@@ -212,6 +247,7 @@ export function ProjectSettings({
     if (setup !== project.setup) changed.setup = setup;
     if (prefix !== (project.branch_prefix ?? "brigadier/")) changed.branch_prefix = prefix;
     if (account !== (project.github_account ?? "")) changed.github_account = account || null;
+    if (profile !== (project.browser_profile ?? "")) changed.browser_profile = profile || null;
     const args = [
       ...(changed.name === undefined ? [] : ["--name", changed.name]),
       ...(changed.folder === undefined ? [] : ["--folder", changed.folder]),
@@ -219,6 +255,7 @@ export function ProjectSettings({
       ...(changed.setup === undefined ? [] : ["--setup", changed.setup]),
       ...(changed.branch_prefix === undefined ? [] : ["--branch-prefix", changed.branch_prefix ?? ""]),
       ...(changed.github_account === undefined ? [] : ["--github-account", changed.github_account ?? ""]),
+      ...(changed.browser_profile === undefined ? [] : ["--browser-profile", changed.browser_profile ?? ""]),
     ];
     onClose();
     if (args.length) source.save(project, changed, args).catch((cause) => onRefused?.({ change: changed, error: errorText(cause) }));
@@ -246,6 +283,7 @@ export function ProjectSettings({
         </Field>
         {folder === project.folder && <TrustRow project={project} source={source} />}
         {github?.github && <AccountRow github={github} checking={checking} value={account} onChange={setAccount} />}
+        <ProfileRow value={profile} onChange={setProfile} />
         <Field label="Branch prefix" aside="Starts new session branch names; leave empty for no prefix" htmlFor={`${id}-prefix`}>
           <Input
             id={`${id}-prefix`}
