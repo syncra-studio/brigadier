@@ -63,7 +63,7 @@ export const daemonSettings: SettingsSource = {
  * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
  * the repository, and the one Automatic uses (the first that can). Not on GitHub: no row.
  */
-export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; url?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 const GROUPS = [
   { value: "general", label: "General" },

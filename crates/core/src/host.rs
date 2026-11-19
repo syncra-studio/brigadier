@@ -89,6 +89,11 @@ pub struct Repo {
 }
 
 impl Repo {
+    /// The repository's page on its own server.
+    fn url(&self) -> String {
+        format!("https://{}/{}", self.host, self.path)
+    }
+
     /// The host's own name, for the UI to show.
     pub fn name(&self) -> &'static str {
         match self.kind {

@@ -100,7 +100,7 @@ export function ProjectPageView({
         </Tabs.List>
         <span className="flex shrink-0 items-center gap-2 py-2">
           {repo && (
-            <TooltipIconButton tooltip="Open on GitHub" size="icon-sm" onClick={() => window.open(`https://github.com/${repo}`)}>
+            <TooltipIconButton tooltip="Open on GitHub" size="icon-sm" onClick={() => window.open(repo)}>
               <ArrowUpRight />
             </TooltipIconButton>
           )}
@@ -284,7 +284,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
   // Rust's local read of its GitHub repository, no network [D631].
   useEffect(() => {
     setRepo(null);
-    if (daemon) void daemonSettings.accounts(id, true).then((reply) => setRepo(reply.github ? (reply.repo ?? null) : null), () => {});
+    if (daemon) void daemonSettings.accounts(id, true).then((reply) => setRepo(reply.github ? (reply.url ?? null) : null), () => {});
   }, [daemon, id, project?.folder]);
   if (!project) {
     return projects === undefined ? null : <EmptyState variant="centered" icon={Folder} title="This project isn’t available" detail="Brigadier has no project by this name. Pick another in the sidebar." className="m-auto" />;
