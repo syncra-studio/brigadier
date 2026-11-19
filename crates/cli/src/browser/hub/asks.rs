@@ -62,7 +62,7 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
     let (asks, always) = (level != "full", level == "ask");
     Ok(match w.action {
         "open" => {
-            json!({"op": "open", "url": web_address(&one("a web address")?)?, "keep": w.flags.contains("--keep")})
+            json!({"op": "open", "url": web_address(&one("a web address")?)?})
         }
         "navigate" => match (w.rest.as_slice(), w.values.get("--go").copied()) {
             ([url], None) => json!({"op": "navigate", "tab": tab()?, "url": web_address(url)?}),

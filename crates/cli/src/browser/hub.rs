@@ -46,8 +46,6 @@ struct Hub {
     /// The session whose tabs each agent worked in this turn, so its turn's end lets go of them all,
     /// a tab the user gave it too.
     owners: Mutex<HashMap<String, String>>,
-    /// The tabs agents opened, by tab: the agent, its session's tabs and whether `--keep` kept it.
-    opened: Mutex<HashMap<String, (String, String, bool)>>,
 }
 
 static HUB: LazyLock<Hub> = LazyLock::new(Hub::default);
@@ -190,6 +188,7 @@ const VALUES: [&str; 9] = [
     "--tab", "--go", "--since", "--kinds", "--asks", "--ref", "--text", "--gone", "--ms",
 ];
 const FLAGS: [&str; 6] = [
+    // Every tab stays after the turn now; still taken, as briefs and scripts pass it [D901].
     "--keep",
     "--dev-url",
     "--submit",
@@ -318,12 +317,6 @@ fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool)
             .filter(|_| result["result"] != "closed")
         {
             lock(&HUB.tabs).insert(me.to_string(), t.to_string());
-            if op["op"] == "open" {
-                let keep = op["keep"] == true;
-                let mut opened = lock(&HUB.opened);
-                let kept = opened.get(t).is_some_and(|o| o.2);
-                opened.insert(t.into(), (me.into(), owner.into(), keep || kept));
-            }
         }
         return result;
     }
@@ -339,32 +332,18 @@ fn tab_of(w: &Words, me: &str) -> Result<String, Value> {
     }
 }
 
-/// Session `me`'s turn ended: the tabs its agent opened without `--keep` close in the app, except
-/// the one in front and those the user took over, and it lets go of the rest (agent.ts).
+/// Session `me`'s turn ended: it lets go of the tabs it worked in (agent.ts), which stay open in
+/// its group, as Claude in Chrome's do [D894 D901].
 pub fn turn_ended(me: &str) {
-    let mut gone: HashMap<String, Vec<String>> = HashMap::new();
-    lock(&HUB.opened).retain(|tab, (driver, owner, keep)| {
-        if driver != me {
-            return true;
-        }
-        let close = gone.entry(owner.clone()).or_default();
-        if !*keep {
-            close.push(tab.clone());
-        }
-        *keep
-    });
-    if let Some(owner) = lock(&HUB.owners).remove(me) {
-        gone.entry(owner).or_default();
-    }
+    let Some(owner) = lock(&HUB.owners).remove(me) else {
+        return;
+    };
     let Some((_, out)) = lock(&HUB.pages).last().cloned() else {
         return;
     };
-    for (owner, tabs) in gone {
-        let op = json!({"op": "end", "tabs": tabs});
-        let push =
-            json!({"browser": {"id": "", "owner": owner, "driver": me, "label": "", "op": op}});
-        let _ = out.send(push.to_string());
-    }
+    let op = json!({"op": "end"});
+    let push = json!({"browser": {"id": "", "owner": owner, "driver": me, "label": "", "op": op}});
+    let _ = out.send(push.to_string());
 }
 
 /// The tab closed, or its page moved on: its last read goes.

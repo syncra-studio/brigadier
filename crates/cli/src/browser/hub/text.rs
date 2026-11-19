@@ -10,7 +10,8 @@ use std::path::Path;
 pub(crate) const HELP: &str = "brigadier browser <command> [--tab T] [--json]: Brigadier's browser, in tabs the user can watch and take over.
 
   tabs                         the session's tabs: id, title, address, whose, and who has it now
-  open <url> [--keep]          a page in a tab of yours, behind the user's; --keep leaves it open for them after your turn
+  open <url>                   a page in a tab of yours, behind the user's; your tabs stay open in your group
+                               after your turn: close those you're done with
   snapshot                     the page as text, each control as [ref] role \"name\"
   click <ref> [--asks A] [--confirm]
                                clicks a control by its ref from the last snapshot; --confirm answers OK if the
@@ -184,7 +185,6 @@ pub(super) fn reply(data: &Path, me: &str, w: &Words, op: &Value, result: Value)
         "closed" => {
             forget(&tab);
             lock(&HUB.tabs).retain(|_, t| *t != tab);
-            lock(&HUB.opened).remove(&tab);
             format!("Closed {tab}.")
         }
         "paused" => {

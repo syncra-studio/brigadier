@@ -7,7 +7,7 @@ import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as 
 import { Badge } from "../components/badge";
 import { useDaemon } from "../daemon";
 import { shownAddress } from "../browser/address";
-import { giveTab, giveTabToChat, takeBackTab } from "../browser/give";
+import { giveTab, giveTabToChat, takeBackTab, ungroup } from "../browser/give";
 import { useBrowserPage } from "../browser/pages";
 import { TabProfileDot } from "../browser/profile-mark";
 import { BrowserTabGroupLabel, BrowserTabIcon, BrowserYourTurn } from "../browser/tab-icon";
@@ -369,7 +369,18 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                   const group = leads ? presence.tabs.slice(at, end < 0 ? undefined : end) : [];
                   return (
                     <Fragment key={tab.id}>
-                      {leads && <BrowserTabGroupLabel tabs={group} driver={driver} folded={folded(driver)} onFold={() => fold(driver, group)} />}
+                      {leads && (
+                        <ContextMenu>
+                          <ContextMenuTrigger render={<span className="contents" />}>
+                            <BrowserTabGroupLabel tabs={group} driver={driver} folded={folded(driver)} onFold={() => fold(driver, group)} />
+                          </ContextMenuTrigger>
+                          {/* As Chrome's group menu: its tabs stay open as the user's, or all close [D901]. */}
+                          <ContextMenuContent>
+                            <DropdownMenuItem onClick={() => ungroup(shown, driver)}>Ungroup</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => group.forEach((each) => closeHere(each.id))}>Close group</DropdownMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )}
                       <OtherTab owner={shown} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && tabs[index + 1]?.id !== front} closing={closing || folded(driver)} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeHere(tab.id)} />
                     </Fragment>
                   );

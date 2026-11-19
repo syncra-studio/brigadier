@@ -314,6 +314,11 @@ export function userTab(owner: string, id: string): void {
   act(owner, { args: ["user", id], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, driver: undefined } : tab)) }) });
 }
 
+/** Every tab `driver` works is the user's again, open where it is: its group goes (tabs.rs's `ungroup`) [D901]. */
+export function ungroupTabs(owner: string, driver: string): void {
+  act(owner, { args: ["ungroup", driver], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.driver === driver ? { ...tab, driver: undefined } : tab)) }) });
+}
+
 /** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
 export const tabOpenAnywhere = (id: string): boolean => tabAnywhere(id) !== null;
 

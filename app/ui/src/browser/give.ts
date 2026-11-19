@@ -2,7 +2,7 @@ import type { Chip } from "../components/composer/draft";
 import { showToast } from "../components/toast";
 import { HOME_DRAFT } from "../session/draft";
 import { putBack } from "../session/side";
-import { driveTab, selectTab, tabsOf, userTab } from "../shell/tab-store";
+import { driveTab, selectTab, tabsOf, ungroupTabs, userTab } from "../shell/tab-store";
 import { browserPage } from "./pages";
 import { handBack, isPaused } from "./pause";
 import { takenBack } from "./agent";
@@ -55,4 +55,14 @@ export function takeBackTab(owner: string, id: string): void {
   userTab(owner, id);
   takenBack(id);
   if (isPaused(id)) handBack(id);
+}
+
+/** Ungroup, from the group label's menu: all of `driver`'s tabs are the user's now, as Take back on each [D901]. */
+export function ungroup(owner: string, driver: string): void {
+  const held = tabsOf(owner).tabs.filter((tab) => tab.driver === driver);
+  ungroupTabs(owner, driver);
+  for (const tab of held) {
+    takenBack(tab.id);
+    if (isPaused(tab.id)) handBack(tab.id);
+  }
 }

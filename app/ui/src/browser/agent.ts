@@ -44,17 +44,14 @@ export function installBrowserAgent(): void {
 }
 
 /**
- * The agent's turn ended (crates/cli/src/browser/hub.rs): the tabs it opened for it close, except those kept for the
- * user, the one in front and those the user took over; it lets go of what stays open, which is the user's to use.
+ * The agent's turn ended (crates/cli/src/browser/hub.rs): it lets go of its tabs, which stay open in its group, the
+ * user's to use until its next turn, as Claude in Chrome's [D894 D901].
  */
-async function endTurn({ owner, driver, op }: Call): Promise<void> {
+async function endTurn({ owner, driver }: Call): Promise<void> {
   await tabsRead(owner);
-  const current = tabsOf(owner);
-  // Only those still its own: one the user took back is theirs to keep.
-  const gone = (op.tabs as string[]).filter((tab) => tab !== current.active && !isPaused(tab) && current.tabs.some((each) => each.id === tab && each.driver === driver));
-  for (const tab of gone) closeAgentTab(owner, tab);
   for (const tab of browserTabs(owner)) {
-    if (tab.driver === driver && !gone.includes(tab.id)) agentDrive(tab.id, false).catch(holdChangeFailed);
+    // A tab with no driver now was ungrouped as it ended, as an archive does: its hold goes too.
+    if (tab.driver === driver || !tab.driver) agentDrive(tab.id, false).catch(holdChangeFailed);
   }
 }
 

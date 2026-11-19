@@ -213,7 +213,7 @@ impl Tabs {
     }
 }
 
-/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | file <tab> <path> <line|-> <keep|preview> |
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -404,6 +404,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .filter(|&at| now.tabs[at].kind == "browser")
             {
                 now.tabs[at].driver = None;
+            }
+        }
+        // Its group goes: every tab `driver` works is the user's again, open where it is [D901].
+        "ungroup" => {
+            let driver = arg(args, 3)?;
+            for tab in now
+                .tabs
+                .iter_mut()
+                .filter(|t| t.driver.as_deref() == Some(driver))
+            {
+                tab.driver = None;
             }
         }
         "select" => {

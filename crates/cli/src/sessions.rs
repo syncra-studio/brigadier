@@ -42,6 +42,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 crate::rewind::settled(data, &spec)
                     .and_then(|()| core::git::recover::settled(data, id))
                     .and_then(|()| session::archive(&spec, || stop(data, id, "archive")))?;
+                // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].
+                let parent = crate::workers::link(data, id).map(|l| l.parent);
+                for owner in [Some(id.to_string()), parent].into_iter().flatten() {
+                    let args = ["tabs", &owner, "ungroup", id].map(String::from);
+                    crate::tabs::run(data, &args)?;
+                }
             }
         }
         "restore" => session::restore(data, &spec)?,
