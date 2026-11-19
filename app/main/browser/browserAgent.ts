@@ -93,7 +93,7 @@ const FOCUSED_SECRET = `(() => {
   let at = document.activeElement;
   while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
   if (!at || !at.getAttribute) return false;
-  return at.type === "password" || /\b(current|new)-password\b/i.test(at.getAttribute("autocomplete") || "") || (getComputedStyle(at).webkitTextSecurity || "none") !== "none";
+  return at.type === "password" || /\\b(current|new)-password\\b/i.test(at.getAttribute("autocomplete") || "") || (getComputedStyle(at).webkitTextSecurity || "none") !== "none";
 })()`;
 
 const mouse = (type: string, x: number, y: number, buttons: number) => ({

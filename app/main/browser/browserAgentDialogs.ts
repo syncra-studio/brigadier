@@ -7,7 +7,8 @@ import type { WebContents } from "electron";
 
 /** Runs in the page's own world, as the page's alert etc. are its own. The page can see it; it only ever answers. */
 const ANSWER = `(() => {
-  if (window.__brigadierDialogs) return;
+  // A frame the page loads while held gets this script too; frames aren't the agent's, and their undo never runs.
+  if (window !== window.top || window.__brigadierDialogs) return;
   const state = { said: [], keep: { alert: window.alert, confirm: window.confirm, prompt: window.prompt }, yes: false };
   Object.defineProperty(window, "__brigadierDialogs", { value: state, configurable: true });
   const text = (message) => String(message ?? "").slice(0, 500);
