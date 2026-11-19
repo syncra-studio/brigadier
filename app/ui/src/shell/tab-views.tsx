@@ -4,9 +4,8 @@ import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ChatCompose, ChevronDown, Dock, Document, Grid, PlayCircle, Search } from "../icons";
+import { Dock, Document } from "../icons";
 import { FileViewer } from "../files/viewer";
 import { useHomeProject } from "../home/start";
 import { Actions } from "../landing/actions";
@@ -32,7 +31,7 @@ import { SummarySlot } from "./summary-card";
 import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint not-has-disabled:hover:bg-fill has-data-popup-open:bg-fill";
-/** A tile [D438]: its icon and key or chevron along the top, its name under them. */
+/** A tile [D438]: its icon and key along the top, its name under them. */
 const TOOL = "flex w-full min-w-0 flex-1 cursor-pointer flex-col items-start gap-3 rounded-session-tab p-3 text-start focus-visible:focus-ring disabled:cursor-not-allowed disabled:opacity-disabled";
 const TOP = "flex min-h-4.5 w-full items-center justify-between gap-2"; // a key's height, so every tile is as tall
 const ICON = "size-icon-md shrink-0 text-muted-foreground";
@@ -50,27 +49,17 @@ function Card({ why, children }: { why: string | null; children: ReactNode }) {
   );
 }
 
-/** The old app's New tab, under the browser's toolbar: what's picked replaces it; Side chat and Find file aren't built yet [D361, D388, D240, D244, D508]. */
+/** The old app's New tab, under the browser's toolbar: what's picked replaces it [D361, D388, D244, D508]. */
 function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; archived: boolean; active: boolean }) {
   // Before the first message they read the picked project's repository; a chat with no project has none [D279].
   const home = useHomeProject();
   const noRepo = owner === HOME && home === null;
   const shut = archived ? "This session is archived." : null;
-  const repoTile = (Icon: typeof PullRequestOpen, label: string, what: string, open: () => void) => (
-    <Card why={noRepo ? `Choose a project to see its ${what}.` : null}>
-      <button type="button" disabled={noRepo} onClick={open} className={TOOL}>
-        <span className={TOP}>
-          <Icon className={ICON} />
-        </span>
-        <span className={LABEL}>{label}</span>
-      </button>
-    </Card>
-  );
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
       <div className="mx-auto flex w-full max-w-192 flex-col gap-4">
         <h2 className="font-medium">Tools</h2>
-        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 @new-tab:grid-cols-3">
           <Card why={shut}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "terminal")} className={TOOL}>
               <span className={TOP}>
@@ -88,33 +77,14 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               <span className={LABEL}>New note</span>
             </button>
           </Card>
-          {repoTile(PullRequestOpen, "Pull requests", "pull requests", () => replaceTab(owner, tab.id, "pr", "list"))}
-          {/* The session repository's workflow runs, beside its pull requests [D264, D265]. */}
-          {repoTile(PlayCircle, "Actions", "workflow runs", () => replaceTab(owner, tab.id, "actions"))}
-          <div className={CARD}>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" className={TOOL} />}>
-                <span className={TOP}>
-                  <Grid className={ICON} />
-                  <ChevronDown className={ICON} />
-                </span>
-                <span className={LABEL}>More tools…</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {/* Not built yet, as the old app's ⌥⌘S chat beside the session [D240]. */}
-                <DropdownMenuItem disabled>
-                  <ChatCompose />
-                  Side chat
-                  <DropdownMenuShortcut>⌥⌘S</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <Search />
-                  Find file
-                  <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <Card why={noRepo ? "Choose a project to see its pull requests." : null}>
+            <button type="button" disabled={noRepo} onClick={() => replaceTab(owner, tab.id, "pr", "list")} className={TOOL}>
+              <span className={TOP}>
+                <PullRequestOpen className={ICON} />
+              </span>
+              <span className={LABEL}>Pull requests</span>
+            </button>
+          </Card>
         </div>
         <LocalServers owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
         <NoteList owner={owner} active={active} onOpen={(note) => replaceTab(owner, tab.id, "note", note)} />
