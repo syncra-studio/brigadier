@@ -971,7 +971,7 @@ function facts(sd, id, repo, st) {
     cardLast: items.findLastIndex((i) => i.kind === 'question') > items.findLastIndex((i) => i.kind === 'message' && i.role === 'assistant'),
     prose: /"block"/.test(judged.stdout ?? ''),
     drafts,
-    worker: tools.some((t) => /brigadier\s+start\b/.test(t)),
+    worker: tools.some((t) => /brigadier\s+start\b/.test(t) && !/\s(--help|-h)\b/.test(t)),
     mockup: tools.some((t) => /brigadier\s+mockup\b/.test(t)),
     sent: rules.sent_back ?? 0,
     outbox: fs.existsSync(`${repo}/.outbox.log`) ? fs.readFileSync(`${repo}/.outbox.log`, 'utf8') : '',
