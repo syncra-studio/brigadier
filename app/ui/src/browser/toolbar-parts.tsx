@@ -1,8 +1,10 @@
-import type { ReactNode, RefObject } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
+import { Button } from "../components/button";
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner, X } from "../icons";
 import { findInPage, findLabel, useBrowserFind } from "./find";
+import { stopDriving, takeOver, useAgentDoing, useAgentHoldsAny, useAgentLit } from "./overlay";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
 const NAV_BUTTON = "rounded-capsule";
@@ -117,6 +119,34 @@ export function Banner({ text, children, onDismiss, slot }: { text: ReactNode; c
           <X />
         </TooltipIconButton>
       )}
+    </div>
+  );
+}
+
+/**
+ * The slim notice under the toolbar while an agent drives tab `id`, as Chrome's "started debugging this browser" bar:
+ * who drives and what it does, with Take over and Stop. The user's click on the page lights Take over [D779 D794].
+ */
+export function DrivingBar({ id, driver }: { id: string; driver: string }) {
+  const holds = useAgentHoldsAny([id]);
+  const doing = useAgentDoing(id);
+  const lit = useAgentLit(id);
+  const take = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (lit) take.current?.focus();
+  }, [lit]);
+  if (!holds) return null;
+  return (
+    <div role="status" data-slot="browser-driving" className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-fill-subtle px-4 py-1 text-sm text-muted-foreground">
+      <span className="min-w-0 truncate">
+        <span className="font-medium text-foreground">{driver}</span> is using this tab{doing && ` · ${doing}`}
+      </span>
+      <Button ref={take} size="xs" variant={lit ? "default" : "outline"} onClick={() => takeOver(id)}>
+        Take over
+      </Button>
+      <Button size="xs" variant="soft-destructive" onClick={() => stopDriving(id)}>
+        Stop
+      </Button>
     </div>
   );
 }

@@ -138,11 +138,11 @@ async function runCall(call: Call): Promise<Result> {
     return failed(messageOf(error));
   } finally {
     if (tab !== null) underWay.get(tab)?.delete(end);
-    if (tab !== null) agentDoing(tab, call.label, null);
+    if (tab !== null) agentDoing(tab, null);
   }
 }
 
-/** What the pill over a driven tab says its agent does during each call. */
+/** What a driven tab's notice bar says its agent does during each call. */
 const DOING: Record<string, string> = {
   open: "Opening a page",
   navigate: "Opening a page",
@@ -182,7 +182,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     const there = browserTabs(owner).find((tab) => Boolean(tab.driver) && sameAddress(tab.target, op.url) && !isPaused(tab.id));
     const tab = there?.id ?? `t-${newId()}`;
     driveTab(owner, tab, op.url, driver);
-    agentDoing(tab, label, DOING.open);
+    agentDoing(tab, DOING.open);
     try {
       if (!there || !browserPage(tab)) {
         await openPage(owner, tab, op.url, backgroundBounds());
@@ -193,7 +193,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
       }
       return await page(tab, owner);
     } finally {
-      agentDoing(tab, label, null);
+      agentDoing(tab, null);
     }
   }
   if (op.op === "tabs") {
@@ -227,7 +227,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     if (!users && isPaused(tab.id)) return { result: "paused", tab: tab.id };
   }
   if (!users) {
-    agentDoing(tab.id, label, DOING[op.op] ?? null);
+    agentDoing(tab.id, DOING[op.op] ?? null);
     await agentDrive(tab.id, true);
   }
   const result = await act(tab.id, op, owner, label);

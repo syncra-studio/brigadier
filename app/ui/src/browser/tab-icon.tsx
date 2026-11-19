@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useDaemon } from "../daemon";
 import { Globe, Spinner } from "../icons";
+import { BrigadierMark } from "../onboarding/mark";
 import { useAgentHoldsAny } from "./overlay";
 import { useBrowserPage } from "./pages";
 import { useAgentPause } from "./pause";
@@ -15,15 +16,17 @@ export function useDriverName(driver: string | undefined): string | null {
 
 /**
  * The tab bar's group label before an agent's tabs, as Chrome's tab group that Claude in Chrome drives: the group's
- * colour, who drives (Brigadier or the worker), turning while it holds one of them. Its tabs carry the colour beneath.
+ * colour, the mark and who drives (Brigadier or the worker), turning while it holds one of them; one line runs beneath its tabs.
  */
 export function BrowserTabGroupLabel({ tabIds, driver }: { tabIds: readonly string[]; driver: string }) {
   const name = useDriverName(driver);
   const holds = useAgentHoldsAny(tabIds);
   return (
     <span aria-hidden data-slot="browser-tab-group" className="browser-tab-group">
-      {holds && <Spinner className="animate-spin" />}
-      <span className="truncate">{name}</span>
+      <span>
+        {holds ? <Spinner className="animate-spin" /> : <BrigadierMark pixels={12} />}
+        <span className="truncate">{name}</span>
+      </span>
     </span>
   );
 }
@@ -31,7 +34,7 @@ export function BrowserTabGroupLabel({ tabIds, driver }: { tabIds: readonly stri
 /** Your turn, inside the group, on the agent's tab that waits for the user. */
 export function BrowserYourTurn({ tabId }: { tabId: string }) {
   if (!(tabId in useAgentPause().paused)) return null;
-  return <span data-slot="browser-your-turn" className="inline-flex h-5 shrink-0 items-center rounded-capsule bg-warning-wash px-1.5 text-xs font-medium whitespace-nowrap text-warning">Your turn</span>;
+  return <span data-slot="browser-your-turn" className="shrink-0 text-xs font-medium whitespace-nowrap text-warning">Your turn</span>;
 }
 
 /** The tab's icon: a spinner, a loaded favicon small inside its ring, then the whole favicon (the old app's FaviconGlyph). */

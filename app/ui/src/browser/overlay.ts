@@ -1,10 +1,10 @@
-// What shows over a tab an agent drives: its named cursor, the take-over shield, its glow and the pill naming who
-// drives, with Take over and Stop. Drawn in the app, never in the page: the page can't see it, and a picture of the
-// page doesn't have it.
+// What shows over a tab an agent drives: its named cursor, the take-over shield and its glow. Who drives, with Take
+// over and Stop, is the tab's notice bar (tab.tsx), fed from here. Drawn in the app, never in the page: the page
+// can't see it, and a picture of the page doesn't have it.
 //
 // The shield is the only way the user's input is told from the agent's. Debugger input is trusted to the page and
 // runs through the same paths as a real click, so nothing can tell them apart after the fact. A plain element above
-// the page takes the user's click or key and lights the pill, Take over focused, so nothing is taken silently
+// the page takes the user's click or key and lights the notice bar's Take over, so nothing is taken silently
 // [D779]; the wheel still scrolls the page. The agent's input goes under it. The layer lies under #root like the
 // pages, so the app's own menus stay above it, and it is a sibling of the tab layer so the page layer's children
 // stay exactly the pages. Where each part shows is in data attributes the theme reads (theme.css's
@@ -20,7 +20,6 @@ type Overlay = {
   at: { x: number; y: number } | null;
   placed: BrowserBounds | null;
   shielded: boolean;
-  pill: HTMLDivElement;
   onUsed: () => void;
   onStop: () => void;
   onWheel: (at: { x: number; y: number; deltaX: number; deltaY: number }) => void;
@@ -29,58 +28,36 @@ type Overlay = {
 const overlays = new Map<string, Overlay>();
 let layer: HTMLDivElement | null = null;
 
-/** Who drives each tab and what it does now (agent.ts), for its pill. */
-const doings = new Map<string, { label: string; action: string | null }>();
-/** Which tabs have a shield up, for the tab bar's mark. */
+/**
+ * What the app shows of a driven tab outside the page (tab.tsx's notice bar, the tab bar's group): which tabs an agent
+ * holds, what it does in each now, and how often the user's click on its page asked for Take over.
+ */
+const doings = new Map<string, string | null>();
+const lit = new Map<string, number>();
 let held = new Set<string>();
-const heldListeners = new Set<() => void>();
-function heldChanged(): void {
+const listeners = new Set<() => void>();
+function changed(): void {
   held = new Set(overlays.keys());
-  for (const listener of heldListeners) listener();
+  for (const listener of listeners) listener();
 }
-const subscribeHeld = (listener: () => void) => (heldListeners.add(listener), () => void heldListeners.delete(listener));
+const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
 /** Whether an agent holds any of tabs `ids` now: a shield is up over it. */
-export const useAgentHoldsAny = (ids: readonly string[]): boolean => useSyncExternalStore(subscribeHeld, () => ids.some((id) => held.has(id)));
+export const useAgentHoldsAny = (ids: readonly string[]): boolean => useSyncExternalStore(subscribe, () => ids.some((id) => held.has(id)));
+/** What the agent holding tab `id` does now, as the notice bar says it; null between its calls. */
+export const useAgentDoing = (id: string): string | null => useSyncExternalStore(subscribe, () => doings.get(id) ?? null);
+/** How many times the user's click or key on tab `id`'s page asked for Take over: each one focuses it. */
+export const useAgentLit = (id: string): number => useSyncExternalStore(subscribe, () => lit.get(id) ?? 0);
 
-/** The pill's words: who drives the tab, and what it does now if it's acting. */
-function sayDoing(id: string): void {
-  const pill = overlays.get(id)?.pill;
-  const words = pill?.querySelector(".brigadier-agent-pill-words");
-  if (!words) return;
-  const doing = doings.get(id);
-  const who = document.createElement("b");
-  who.textContent = doing?.label || "Brigadier";
-  words.replaceChildren(who, ` is using this tab${doing?.action ? ` · ${doing.action}` : ""}`);
+/** The agent does `action` in tab `id` now, or nothing (null). */
+export function agentDoing(id: string, action: string | null): void {
+  doings.set(id, action);
+  changed();
 }
 
-/** Agent `label` does `action` in tab `id` now, or nothing (null): its pill says so. */
-export function agentDoing(id: string, label: string, action: string | null): void {
-  doings.set(id, { label, action });
-  sayDoing(id);
-}
-
-function pillOf(overlay: () => Overlay): HTMLDivElement {
-  const pill = document.createElement("div");
-  pill.className = "brigadier-agent-pill";
-  const spinner = document.createElement("span");
-  spinner.className = "brigadier-agent-spinner";
-  spinner.setAttribute("aria-hidden", "true");
-  const words = document.createElement("span");
-  words.className = "brigadier-agent-pill-words";
-  const button = (text: string, onClick: () => void) => {
-    const each = document.createElement("button");
-    each.type = "button";
-    each.textContent = text;
-    each.addEventListener("click", onClick);
-    return each;
-  };
-  const take = button("Take over", () => overlay().onUsed());
-  take.dataset.take = "";
-  const stop = button("Stop", () => overlay().onStop());
-  stop.dataset.stop = "";
-  pill.append(spinner, words, take, stop);
-  return pill;
-}
+/** Take over, from the notice bar: the tab is the user's until they hand it back. */
+export const takeOver = (id: string) => overlays.get(id)?.onUsed();
+/** Stop, from the notice bar: the tab is the user's for good, as Take back. */
+export const stopDriving = (id: string) => overlays.get(id)?.onStop();
 
 export function installAgentOverlays(): void {
   layer = document.createElement("div");
@@ -118,18 +95,16 @@ export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds
     frame.className = "brigadier-agent-frame";
     frame.tabIndex = -1;
     frame.dataset.agentTab = id;
-    const pill = pillOf(() => own);
-    frame.append(pill);
-    overlay = { frame, cursor: null, name: null, at: null, placed: bounds, shielded: false, pill, onUsed, onWheel, onStop };
+    overlay = { frame, cursor: null, name: null, at: null, placed: bounds, shielded: false, onUsed, onWheel, onStop };
     overlays.set(id, overlay);
     const own = overlay;
-    // The user's click or key on the page lights the pill instead of reaching the page: Take over is one more press.
+    // The user's click or key on the page doesn't reach it: the notice bar's Take over lights, one more press away.
     const take = (event: Event) => {
-      if (!own.shielded || (event.target instanceof Node && pill.contains(event.target))) return;
+      if (!own.shielded) return;
       event.preventDefault();
       event.stopPropagation();
-      pill.toggleAttribute("data-lit", true);
-      pill.querySelector<HTMLButtonElement>("[data-take]")?.focus({ preventScroll: true });
+      lit.set(id, (lit.get(id) ?? 0) + 1);
+      changed();
     };
     frame.addEventListener("pointerdown", take);
     frame.addEventListener("keydown", take);
@@ -139,8 +114,7 @@ export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds
       own.onWheel({ x: event.clientX - rect.left, y: event.clientY - rect.top, deltaX: event.deltaX, deltaY: event.deltaY });
     }, { passive: true });
     layer?.append(frame);
-    sayDoing(id);
-    heldChanged();
+    changed();
   }
   overlay.onUsed = onUsed;
   overlay.onWheel = onWheel;
@@ -159,7 +133,8 @@ export function dropOverlay(id: string): void {
   if (!overlay) return;
   overlay.frame.remove();
   overlays.delete(id);
-  heldChanged();
+  lit.delete(id);
+  changed();
 }
 
 export function placeOverlay(id: string, bounds: BrowserBounds | null): void {
