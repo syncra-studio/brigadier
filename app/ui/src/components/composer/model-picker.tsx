@@ -137,6 +137,8 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
   const [underKeys, setUnderKeys] = useState<{ provider: string; model: Model } | null>(null);
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
+  // A pick waiting on the switch's confirm: Enter then keeps the strip open, or folding would unmount the confirm.
+  const waits = useRef(false);
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const side = useRef<HTMLDivElement>(null);
@@ -159,7 +161,6 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   };
 
   const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
-  /** Whether it applied: another agent's model waits on the switch's confirm. */
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
     const same = provider === value.provider;
     // A new model keeps the effort within the agent when it has that level, else takes its own default; fast carries
@@ -169,7 +170,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
     const choice = { provider, model: next.id, effort: also?.effort ?? kept, ...(fast ? { fast } : {}) };
     if (same || !asksSwitch) onChange(choice);
     else setSwitching(choice);
-    return same || !asksSwitch;
+    waits.current = !(same || !asksSwitch);
   };
 
   const models = group && !group.unavailable ? [...group.models.filter((each) => !each.legacy), ...group.models.filter((each) => each.legacy)] : [];
@@ -239,7 +240,11 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
     if (event.key === "Escape" && onEscape) {
       event.preventDefault();
       onEscape();
-    } else if (event.key === "Enter" && onEnter && (event.target as HTMLElement).closest("[data-picker-part]")) onEnter();
+    } else if (event.key === "Enter" && onEnter && (event.target as HTMLElement).closest("[data-picker-part]")) {
+      // After the chip's own click has picked.
+      waits.current = false;
+      setTimeout(() => waits.current || onEnter());
+    }
   };
   const anyChip = (auto && !needle) || listed.some((each) => isChecked(group!.provider, each));
   const chip = (key: string, label: ReactNode, pressed: boolean, first: boolean, onClick: () => void, entry?: Model) => (
@@ -297,8 +302,8 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" || !needle || !listed[0]) return;
                   event.preventDefault();
-                  // Folding now would unmount the switch's confirm with the shelf.
-                  if (pick(group.provider, listed[0])) onEnter?.();
+                  pick(group.provider, listed[0]);
+                  if (!waits.current) onEnter?.();
                 }}
                 placeholder={`Search ${group.short ?? group.label}`}
                 aria-label={`Search ${group.short ?? group.label}`}
