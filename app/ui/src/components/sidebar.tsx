@@ -110,7 +110,13 @@ export function SidebarProvider({
     },
     [keepOpen, narrow, onOpenChange],
   );
-  const toggleSidebar = useCallback(() => setOpen(!open), [setOpen, open]);
+  // Every path (the History pill's toggle, ⌘B, View › Toggle Sidebar) steps open → strip → hidden → open [D800].
+  const toggleSidebar = useCallback(() => {
+    if (keepOpen) return;
+    if (open) onCollapseChange("strip");
+    else if (collapse === "strip") onCollapseChange("hidden");
+    setOpen(!open && collapse === "hidden");
+  }, [keepOpen, open, collapse, onCollapseChange, setOpen]);
   const [resizing, setResizing] = useState(false);
 
   useEffect(() => {

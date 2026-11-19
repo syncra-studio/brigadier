@@ -34,14 +34,9 @@ const LIGHTS_X = 13;
  * [D48]. The toggle steps open, strip, closed, and open again.
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
-  const { open, setOpen, collapse, setCollapse, canToggle } = useSidebar();
+  const { open, collapse, toggleSidebar, canToggle } = useSidebar();
   const mode = open ? "open" : collapse === "hidden" ? "hidden" : "strip";
   useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
-  const toggleSidebar = () => {
-    if (mode === "open") setCollapse("strip");
-    if (mode === "strip") setCollapse("hidden");
-    setOpen(mode === "hidden");
-  };
   const forward = ahead.use();
   const page = settingsPageOf(hash);
   const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
@@ -77,7 +72,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       if (event.type === "mouseup") step(event.button === MOUSE_BACK ? -1 : 1);
     };
     const offMenu = window.brigadier?.onMenu((command) => {
-      if (command === "toggle-sidebar") setOpen(!open);
+      if (command === "toggle-sidebar") toggleSidebar();
       if (command === "back") step(-1);
       if (command === "forward") step(1);
     });
