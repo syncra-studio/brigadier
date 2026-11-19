@@ -1,14 +1,18 @@
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useId, useRef } from "react";
 
 import { cx } from "../components/cx";
+import { TooltipIconButton } from "../components/icon-button";
 import { ScrollFade } from "../components/scroll-fade";
-import { ChevronRight } from "../icons";
+import { ArrowLeft, ChevronRight } from "../icons";
 
 /*
  * The parts every Settings page is built from, the old app's: a page (its title, an optional line and
  * actions, then its sections in a centred column) and a section (a heading over its cards). Cards and
  * rows are the kit's SettingsCard and SettingsRow.
  */
+
+/** What ← does on a page with nothing above it but Settings: leave Settings (SettingsView gives it). */
+export const LeaveSettings = createContext<() => void>(() => {});
 
 /** One step of a Settings page's breadcrumb: a page to go back to (`go` or `href`), else plain words. */
 export type Crumb = { label: string; go?: () => void; href?: string };
@@ -41,9 +45,9 @@ function Trail({ parts }: { parts: Crumb[] }) {
 }
 
 /**
- * A Settings page: its breadcrumb, title, then its sections. A page that scrolls its own list passes `scrollable={false}`.
- * `mark` sits before the title (an agent's). The breadcrumb is `trail`, else `back` (the page this one is inside) or
- * Settings, then the title [D659].
+ * A Settings page: its header (← and the breadcrumb), title, then its sections. A page that scrolls its own list passes
+ * `scrollable={false}`. `mark` sits before the title (an agent's). The breadcrumb is the full path from Settings: Settings,
+ * then `trail`, else `back` (the page this one is inside) and the title [D659 D898].
  */
 export function SettingsPage({
   title,
@@ -65,6 +69,11 @@ export function SettingsPage({
   children: ReactNode;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
+  const leave = useContext(LeaveSettings);
+  const parts: Crumb[] = [{ label: "Settings", href: "#settings/general" }, ...(trail ?? [...(back ? [back] : []), { label: typeof title === "string" ? title : "" }])];
+  // ← goes up one step of the path; from a page right under Settings, out of Settings.
+  const parent = parts.length > 2 ? parts[parts.length - 2] : undefined;
+  const goBack = () => (parent?.go ? parent.go() : parent?.href ? (window.location.hash = parent.href) : leave());
   // A page opened from the nav takes focus on its title, unless something else kept it.
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -74,9 +83,12 @@ export function SettingsPage({
   }, []);
   return (
     <div data-slot="settings-page" className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      {/* The band under the titlebar drags the window and holds the breadcrumb, above the scroll and its fade. */}
-      <div className="app-drag h-settings-band shrink-0 px-5 pt-3">
-        <Trail parts={trail ?? [back ?? { label: "Settings" }, { label: typeof title === "string" ? title : "" }]} />
+      {/* The panel header every panel has, its height and bottom line [D842]: ← and the breadcrumb, above the scroll and its fade [D899]. */}
+      <div className="app-drag flex h-panel-header shrink-0 items-center gap-1.5 border-b border-divider ps-3 pe-5">
+        <TooltipIconButton tooltip={parent ? `Back to ${parent.label}` : "Leave Settings"} side="bottom" className="app-no-drag" onClick={goBack}>
+          <ArrowLeft />
+        </TooltipIconButton>
+        <Trail parts={parts} />
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>

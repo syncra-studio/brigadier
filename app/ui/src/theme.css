@@ -409,9 +409,8 @@
   /* Every panel's top bar, its bottom edge included: the project page's, Files', a worker's, the browser's toolbar, a
      file's and Review's, so side by side their bottom edges are one line [D839 D842]. */
   --spacing-panel-header: 3rem;
-  /* Settings: its search, and the band atop a page under the titlebar (the old app's). */
+  /* Settings: its search. */
   --spacing-nav-search: 2.25rem;
-  --spacing-settings-band: 2.875rem;
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
   /* The sidebar panel: its open width, the right panels' range, the content's least room beside it. */
@@ -1440,6 +1439,11 @@
 
 /* The page's rounded panel in the window's frame [D823]: inset from the frame but beside the sidebar; with
    the sidebar hidden, the same gap at its start, easing as the sidebar folds. */
+/* Settings' page, on the nav's colour [D898]: what draws on the page's background (its fades, sticky heads) draws on it. */
+@utility settings-surface {
+  --color-background: var(--color-card);
+}
+
 @utility page-panel {
   margin: calc(var(--spacing) * 3);
   margin-inline-start: 0;

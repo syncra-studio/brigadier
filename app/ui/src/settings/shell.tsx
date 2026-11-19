@@ -6,6 +6,7 @@ import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { matches } from "../shortcuts";
 import { useRoutingDot } from "./routing";
+import { LeaveSettings } from "./parts";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
 
 /*
@@ -206,10 +207,12 @@ export function SettingsView({ page }: { page: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  // The page's panel, under the titlebar row [D823].
+  // The page beside the nav, on the nav's colour, no dark panel (settings-surface) [D898].
   return (
-    <main className="flex min-h-0 flex-1 overflow-clip bg-background">
-      <Page key={page} detail={detail} />
+    <main className="flex min-h-0 flex-1 overflow-clip settings-surface">
+      <LeaveSettings.Provider value={closeSettings}>
+        <Page key={page} detail={detail} />
+      </LeaveSettings.Provider>
     </main>
   );
 }

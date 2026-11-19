@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
+import { cx } from "./components/cx";
 import { type SidebarCollapse, SidebarPanel, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
@@ -174,7 +175,8 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         )}
-        <div className="page-panel flex min-w-0 flex-1 flex-col overflow-clip rounded-surface bg-background ring-1 ring-glass-stroke">{children}</div>
+        {/* Settings' page is on the nav's colour, one line between them [D898]. */}
+        <div className={cx("flex min-w-0 flex-1 flex-col overflow-clip", settings === undefined ? "page-panel rounded-surface bg-background ring-1 ring-glass-stroke" : "border-s border-divider")}>{children}</div>
         {settings === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} home={page !== undefined} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
