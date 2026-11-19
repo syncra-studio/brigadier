@@ -5,9 +5,12 @@ import { matches } from "../shortcuts";
 import { blocked } from "./titlebar";
 import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
-/** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here. */
-export function useTabKeys(owner: string, archived: boolean): void {
+/** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here.
+ *  On a project's page the row is `peek`'s, the session current there: they act on it and open it, as a click does,
+ *  never on the project's draft behind the page [D849 D859]. */
+export function useTabKeys(home: string, archived: boolean, peek?: string): void {
   useEffect(() => {
+    const owner = peek ?? home;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || blocked()) return;
       const is = (id: string) => matches(event, id);
@@ -28,8 +31,9 @@ export function useTabKeys(owner: string, archived: boolean): void {
       event.preventDefault();
       event.stopPropagation();
       run();
+      if (peek) window.location.hash = `#thread/${encodeURIComponent(peek)}`;
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [owner, archived]);
+  }, [home, archived, peek]);
 }

@@ -10,11 +10,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../compo
 import { RowAction } from "../components/row-action";
 import { Segment, SegmentedRoot } from "../components/segmented";
 import { useDaemon } from "../daemon";
-import { newSession } from "../home/start";
+import { newSession, setHomeDraft } from "../home/start";
 import { ArrowUpRight, BranchAlt, ChevronDown, DotsHorizontal, Folder, Plus } from "../icons";
 import { HostOf } from "../landing/host";
 import { openPr } from "../panel/open";
-import { HOME } from "../shell/tab-store";
+import { HOME, placeOf } from "../shell/tab-store";
 import { rename, useShown } from "../sidebar/actions";
 import { useSecond } from "../thread/words";
 import { CHIP, PrList } from "../landing/pr-list";
@@ -318,6 +318,19 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
 
 /** Opens a project's page on Sessions, or the tab it was on. */
 export const openProject = (id: string, tab?: ProjectTab) => (window.location.hash = `#project/${encodeURIComponent(id)}${tab ? `/${tab}` : ""}`);
+
+/** A project's row or strip square: back to the last place used in it, its page when there's none or you're there [D865]. */
+export function useOpenPlace(): (id: string) => void {
+  const { rows } = useDaemon();
+  return (id) => {
+    const at = placeOf(id, (each) => Boolean(rows?.some((row) => row.id === each && !row.archived)), window.location.hash);
+    if (at === HOME) {
+      setHomeDraft({ project: id, chat: false, locked: true });
+      window.location.hash = "";
+    } else if (at) window.location.hash = `#thread/${encodeURIComponent(at)}`;
+    else openProject(id);
+  };
+}
 
 /** `#project/<id>[/<tab>]`'s project and tab, or null. */
 export function projectPageOf(hash: string): { id: string; tab: ProjectTab } | null {

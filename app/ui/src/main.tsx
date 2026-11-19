@@ -11,7 +11,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, setHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -191,12 +191,14 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
 // Home is a new session's draft [D161], or a project's page, whose Home tab it is: the same project's tabs [D706 D819 D820].
 function Home({ page, children }: { page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
-  useLayoutEffect(() => setHomeTabs(page ?? project), [page, project]);
+  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
+  const locked = useHomeDraft().locked === true;
+  useLayoutEffect(() => setHomeTabs(page ?? (locked ? project : null)), [page, project, locked]);
   // Opening a project's page shows its Home tab in front, the project's other tabs kept beside it as left [D836 D837];
   // its tabs read the project as Home's do [D279].
   useLayoutEffect(() => {
     if (!page) return;
-    setHomeDraft({ project: page, chat: false });
+    setHomeDraft({ project: page, chat: false, locked: true });
     selectTab(HOME, CHAT);
   }, [page]);
   return (

@@ -1,0 +1,73 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import { moduleRunnerTransform, transformWithOxc } from "vite";
+
+// Loads one module with its imports replaced: `stubs` by path, the rest inert.
+const stub = () => new Proxy(function () {}, { get: (_, name) => (name === "then" ? undefined : stub()), apply: () => stub() });
+async function load(file, stubs = {}) {
+  const source = readFileSync(new URL(file, import.meta.url), "utf8");
+  const { code } = await moduleRunnerTransform((await transformWithOxc(source, file)).code, null, file, source);
+  const exports = {};
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  await new AsyncFunction("__vite_ssr_import__", "__vite_ssr_exportName__", code)((path) => stubs[path] ?? stub(), (name, get) => Object.defineProperty(exports, name, { get }));
+  return exports;
+}
+
+const asked = [];
+const store = await load("./tab-store.ts", {
+  react: { useEffect: () => {}, useSyncExternalStore: (_, get) => get() },
+  "../session/draft": { HOME_DRAFT: "@home" },
+  "../daemon": { ask: (request) => asked.push(request.args), useDaemon: () => ({}) },
+  "../session/store": { newId: () => String(asked.length) },
+});
+const { HOME, openTab, tabsOf, setHomeTabs, carryHome, setPlace, placeOf } = store;
+
+test("New chat and a project's New session keep their own tabs [D859 D863]", () => {
+  setHomeTabs("p");
+  openTab(HOME, "new");
+  setHomeTabs(null);
+  assert.equal(tabsOf(HOME).tabs.length, 0, "New chat doesn't show the project draft's tab");
+  openTab(HOME, "terminal");
+  openTab("s1", "new");
+  setHomeTabs("p");
+  assert.deepEqual(tabsOf(HOME).tabs.map((tab) => tab.kind), ["new"], "nor the project's draft New chat's or a session's");
+  carryHome("s2", () => {});
+  assert.deepEqual(tabsOf("s2").tabs.map((tab) => tab.kind), ["new"]);
+  assert.equal(tabsOf(HOME).tabs.length, 0, "sent, the draft is empty again");
+  assert.ok(asked.some((args) => args[1] === "@home:p") && asked.some((args) => args[1] === "@home"));
+});
+
+test("a project's click goes back to its last place [D865]", () => {
+  const live = (id) => id === "s1";
+  assert.equal(placeOf("q", live, ""), null, "nothing used there yet: its page");
+  setPlace("q", "s1");
+  assert.equal(placeOf("q", live, "#project/q"), "s1");
+  assert.equal(placeOf("q", live, "#thread/s1"), null, "already there: its page");
+  setPlace("q", "gone");
+  assert.equal(placeOf("q", live, ""), null, "a session no longer listed: its page");
+  setPlace("q", HOME);
+  assert.equal(placeOf("q", live, "#project/q"), HOME, "its draft");
+  setPlace("q", "");
+  assert.equal(placeOf("q", live, "#thread/s1"), null, "the house last: its page");
+});
+
+test("on a project's page the keys act on the session its row shows, and open it [D859]", async () => {
+  let handler;
+  const calls = [];
+  globalThis.window = { addEventListener: (_, f) => (handler = f), removeEventListener() {}, location: { hash: "#project/p" } };
+  const { useTabKeys } = await load("./tab-keys.ts", {
+    react: { useEffect: (f) => f() },
+    "../shortcuts": { matches: (event, id) => event.id === id },
+    "./titlebar": { blocked: () => false },
+    "./tab-store": { openTab: (...args) => calls.push(args) },
+  });
+  const press = (id) => handler({ id, preventDefault() {}, stopPropagation() {} });
+  useTabKeys(HOME, false, "s1");
+  press("new-tab");
+  assert.deepEqual(calls.pop(), ["s1", "new"]);
+  assert.equal(window.location.hash, "#thread/s1");
+  useTabKeys(HOME, false);
+  press("new-tab");
+  assert.deepEqual(calls.pop(), [HOME, "new"], "with nothing current, the project's draft");
+});

@@ -47,10 +47,11 @@ pub(super) fn drop_closed_notes(data: &Path) {
 
 /// A session made from Home takes its project's Home tabs, in order, with the one in front, as the
 /// old app's did. The session's file is written first: a crash between the two leaves tabs in both
-/// places rather than in neither.
-pub fn carry(data: &Path, to: &str) -> io::Result<()> {
+/// places rather than in neither. `chat`: from New chat's draft (`@home`), whichever project it picked [D863].
+pub fn carry(data: &Path, to: &str, chat: bool) -> io::Result<()> {
     let spec = core::load(data, to)?;
-    let key = (spec.project.as_ref()).map_or(HOME_DRAFT.into(), |p| format!("@home:{p}"));
+    let key = (spec.project.as_ref().filter(|_| !chat))
+        .map_or(HOME_DRAFT.into(), |p| format!("@home:{p}"));
     let _home = lock(data, &key)?;
     let _one = lock(data, to)?;
     let from = file(data, &key);

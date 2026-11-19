@@ -10,7 +10,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeRight, closeTab, rereadHome, selectTab, setCurrent, tabsOf } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -41,6 +41,9 @@ export type HomeDraft = {
   /** Brigade picked here, for the next session only: a session is one from its first message or never [D209]. */
   brigade?: boolean;
   text?: Draft;
+  /** Opened with New session in a project (its page, its row, ⌘N in one of its sessions): the project is fixed and the
+   *  tabs are that project's draft's; New chat's draft is another, with its own tabs whatever project it picks [D863]. */
+  locked?: boolean;
   /** Bumped to put the cursor in the field. */
   focus: number;
   /** A PR sent to the agent, while Home is in its project in a new worktree [D699]. */
@@ -52,16 +55,25 @@ export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft
 
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
-  setHomeDraft({ ...(project && { project, chat: false }), focus: draft.get().focus + 1 });
+  setHomeDraft({ ...(project ? { project, chat: false, locked: true } : { locked: false }), focus: draft.get().focus + 1 });
   selectTab(HOME_DRAFT, CHAT);
   window.location.hash = "";
 }
 
 /** Home in no project, from the sidebar's New chat [D421]. */
 export function newChat(): void {
-  setHomeDraft({ chat: true, focus: draft.get().focus + 1 });
+  setHomeDraft({ chat: true, locked: false, focus: draft.get().focus + 1 });
   selectTab(HOME_DRAFT, CHAT);
   window.location.hash = "";
+}
+
+/** A project's draft closed with its Chat tab's ×: its tabs and words go, and its page shows [D865 D866]. */
+export function dropDraft(project: string): void {
+  closeRight(HOME_DRAFT, CHAT);
+  setHomeDraft({ text: undefined });
+  keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
+  setCurrent(project, null);
+  window.location.hash = `#project/${encodeURIComponent(project)}`;
 }
 
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */
@@ -153,7 +165,7 @@ const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
   const id = sessionId();
   const cid = newId();
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, ...(place.pr ? [] : ["--carry-tabs"])];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, ...(place.pr ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);

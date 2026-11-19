@@ -51,14 +51,27 @@ export function setHomeTabs(project: string | null): void {
   homeKey = project ? `${HOME}:${project}` : HOME;
   for (const listener of listeners) listener();
 }
-/** The project Home's tabs are, or null for a chat in none. */
-export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, () => (homeKey === HOME ? null : homeKey.slice(HOME.length + 1)));
-/** What a project's page shows after its house: the session last shown in that project, or its draft (HOME) [D849 D850]. */
+/** The project Home's tabs are, or null for New chat's own [D863]. */
+export const homeProject = (): string | null => (homeKey === HOME ? null : homeKey.slice(HOME.length + 1));
+export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, homeProject);
+/** What a project's page shows after its house: the session last shown in that project, or its draft (HOME) [D849 D850];
+ *  none once its draft is dropped. */
 const currents = new Map<string, string>();
-export function setCurrent(project: string, owner: string): void {
-  if (currents.get(project) === owner) return;
-  currents.set(project, owner);
+export function setCurrent(project: string, owner: string | null): void {
+  if (currents.get(project) === (owner ?? undefined)) return;
+  if (owner) currents.set(project, owner);
+  else currents.delete(project);
   for (const listener of listeners) listener();
+}
+/** The last place used in each project: a session, its draft (HOME) or its page (""), where a click on it goes back to [D865]. */
+const places = new Map<string, string>();
+export const setPlace = (project: string, at: string): void => void places.set(project, at);
+/** Where a click on `project` goes: its last place, a session `live` still holds or its draft, else its page (null);
+ *  its page too when that place is where `hash` already is. */
+export function placeOf(project: string, live: (id: string) => boolean, hash: string): string | null {
+  const at = places.get(project);
+  if (at === HOME) return hash === "" && homeProject() === project ? null : HOME;
+  return at && live(at) && hash !== `#thread/${encodeURIComponent(at)}` ? at : null;
 }
 export const useCurrent = (project: string | null): string | undefined => useSyncExternalStore(subscribe, () => (project ? currents.get(project) : undefined));
 const opened = new Set<string>();

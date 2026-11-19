@@ -129,6 +129,7 @@ export function HomeDraft() {
         name={name}
         projects={projects}
         project={project}
+        locked={draft.locked}
         onProject={(id) => setHomeDraft({ project: id, chat: false })}
         onNoProject={() => setHomeDraft({ chat: true })}
         onAddProject={(path) => {

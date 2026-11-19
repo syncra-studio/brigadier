@@ -8,7 +8,7 @@ import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
 import { Archive, ArrowUpRight, Chats } from "../icons";
-import { openProject } from "../projects/page";
+import { useOpenPlace } from "../projects/page";
 import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
 import { ProjectBadge, RowMark } from "./row";
@@ -88,10 +88,11 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
  */
 export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
 
-/** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its page [D811]. */
+/** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click goes back to the last place used in it [D811 D865]. */
 export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: boolean }) {
+  const open = useOpenPlace();
   return (
-    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => openProject(project.id)}>
+    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => open(project.id)}>
       <ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />
     </TooltipIconButton>
   );

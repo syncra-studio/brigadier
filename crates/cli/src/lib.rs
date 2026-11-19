@@ -50,7 +50,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs | --carry-chat-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -215,8 +215,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let parts = parts(args)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             // The tabs are extras: a failure here never stops the session from starting.
-            if fresh && has(args, "--carry-tabs") {
-                let _ = tabs::carry(data, id);
+            // New chat's tabs are its own, whichever project it picked; a project's New session's are that project's [D863].
+            if fresh && (has(args, "--carry-tabs") || has(args, "--carry-chat-tabs")) {
+                let _ = tabs::carry(data, id, has(args, "--carry-chat-tabs"));
             }
             if let Some(dir) = &scratch {
                 fs::create_dir_all(dir)?;

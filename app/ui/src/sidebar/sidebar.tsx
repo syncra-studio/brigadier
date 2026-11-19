@@ -13,7 +13,7 @@ import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Pin, Plus, 
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
-import { openProject } from "../projects/page";
+import { useOpenPlace } from "../projects/page";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { pinProject, type Project } from "../projects/projects";
@@ -369,6 +369,7 @@ function Loading() {
  * it, as a right-click does. Its count and blue mark are its sessions' [D171, D212, D780, D808, D844].
  */
 function ProjectRow({ project, tone, current, attention, count }: { project: Project; tone: number; current: boolean; attention: boolean; count: number }) {
+  const open = useOpenPlace();
   const label = useRef<HTMLSpanElement>(null);
   // Its name in a tip only when the row cuts it.
   const [cut, setCut] = useState(false);
@@ -385,7 +386,7 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
         <Tooltip>
           <TooltipTrigger
             delay={CARD_DELAY_MS}
-            render={<NavRow aria-current={current ? "page" : undefined} className="pe-1.5 group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => openProject(project.id)} />}
+            render={<NavRow aria-current={current ? "page" : undefined} className="pe-1.5 group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => open(project.id)} />}
           >
             {/* Its logo, else its initials, as View's menu shows it [D650]. */}
             <ProjectBadge id={project.id} name={project.name} tone={tone} />
