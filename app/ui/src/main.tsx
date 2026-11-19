@@ -131,12 +131,11 @@ function App() {
   );
 }
 
-// The sidebar beside every screen after onboarding [D173, D174]; open and width kept across launches.
+// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches.
 // Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon, projects } = useDaemon();
   const [open, setOpen] = useStored("sidebar.open", true);
-  const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   const [collapse, setCollapse] = useStored<SidebarCollapse>("sidebar.collapse", "strip");
   useSeen(rows?.find((row) => row.id === active));
   return (
@@ -147,7 +146,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset">
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />

@@ -91,11 +91,10 @@ function ToggleButton() {
 /** The kit's sidebar frame in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
 function SidebarDemo() {
   const [open, setOpen] = useState(true);
-  const [width, setWidth] = useState<number | null>(null);
   const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse}>
+      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse}>
         <SidebarPanel strip={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
@@ -104,9 +103,7 @@ function SidebarDemo() {
           <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
             Collapses to: {collapse}
           </Button>
-          <span>Drag the panel's edge to resize; below half its least width it collapses.</span>
           <span>The frame only: its rows are samples.</span>
-          {width !== null && <span>Width {width}px</span>}
         </div>
       </SidebarProvider>
     </div>

@@ -21,7 +21,6 @@
   --color-glass-stroke: #ffffff14;
   --color-selection: #ffffff1c;
   /* A card's edge while its resize handle is hovered or dragged [D16]. */
-  --color-resize-edge: #ffffff47;
   /* Context and Files at rest; on, they glow (--drop-shadow-toggle-glow) [new-design]. */
   --color-toggle-off: #ffffff59;
   /* A user's message bubble: control-fill with the glass edge. */
@@ -409,7 +408,7 @@
   --spacing-settings-band: 2.875rem;
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
-  /* The sidebar panel: its default width, how far it resizes, the content's least room beside it. */
+  /* The sidebar panel: its open width, the right panels' range, the content's least room beside it. */
   --spacing-sidebar: 18rem;
   --spacing-sidebar-min: 11.75rem;
   /* The open sidebar's least [new-design]: its top row holds the real traffic lights (24 to 84) and the History pill
@@ -520,9 +519,6 @@
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
-  /* A card's own edge lit on its resize handle's side, an inset line that curves into its corners [D16]. */
-  --inset-shadow-resize-start: inset 1px 0 0 var(--color-resize-edge);
-  --inset-shadow-resize-end: inset -1px 0 0 var(--color-resize-edge);
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The summary card's lift (the new design's Context card; its edge is the glass stroke). */
@@ -962,8 +958,6 @@
 /* The toolbar pill's button while it is the only one there. */
 @custom-variant lone-toggle (& > :only-child > button);
 /* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
-/* A card whose resize handle, its panel's direct child, is hovered or dragged [D16]. */
-@custom-variant resize-lit (:where(:has(> [data-slot="resize-handle"]:is(:hover, [data-resizing]))) &);
 
 @custom-variant win (:where([data-platform="win32"]) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. aria-expanded, not data-popup-open:
@@ -1346,17 +1340,11 @@
   }
 }
 
-/* The sidebar's width: where it was dragged (data-width on the sidebar, sidebar.tsx) or the default,
-   kept in its range and leaving the content beside it room. */
+/* The sidebar's one open width [D804], narrower only where the content beside it would get less than its least room. */
 @utility sidebar-width-source {
-  --sidebar-width: attr(data-width px, var(--spacing-sidebar));
-  --sidebar-open-width: clamp(
+  --sidebar-open-width: max(
     var(--spacing-sidebar-open-min),
-    var(--sidebar-width, var(--spacing-sidebar)),
-    max(
-      var(--spacing-sidebar-open-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min))
-    )
+    min(var(--spacing-sidebar), 100vw - var(--spacing-surface-inset) - var(--spacing-window-inset) - var(--spacing-sidebar-thread-min))
   );
   /* How wide the panel shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-sidebar-strip);

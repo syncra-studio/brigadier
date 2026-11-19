@@ -225,6 +225,9 @@ export function AppSidebar({
             </button>
             <span className="min-w-0 truncate">Brigadier</span>
           </h1>
+          <TooltipIconButton tooltip="New chat" look="toolbar" side="bottom" onClick={onNewChat}>
+            <Plus />
+          </TooltipIconButton>
           <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
             <MagnifyingGlassSmSearch />
           </TooltipIconButton>

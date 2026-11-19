@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, MenuRow } from "../components/menu";
 import { RowAction } from "../components/row-action";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ArrowDownUp, Bolt, Check, ChevronRight, Comment, Eye, Folder, ListBullets, ListFilter, Plus, Sidebar } from "../icons";
+import { ArrowDownUp, Bolt, Check, ChevronRight, Comment, Eye, Folder, ListBullets, Plus, SettingsSlider, Sidebar } from "../icons";
 import { openAddProject } from "../projects/store";
 import { ProjectBadge } from "./row";
 import { useStored } from "./sidebar";
@@ -63,7 +63,7 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, on the Projects row beside + [D663]; before it, how many projects show while anything is left out. */
+/** The View button, SettingsSlider [D803], on the section's row beside + [D663]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (
@@ -71,7 +71,7 @@ export function ViewTrigger({ projects, show }: { projects: Project[]; show: Sho
       {!show.all && <span className="me-1 text-xs whitespace-nowrap text-marker-foreground">{shown === 1 ? "1 project" : `${shown} projects`}</span>}
       <Tooltip>
         <TooltipTrigger render={<PopoverTrigger render={<RowAction header aria-label="View" data-filtered={!show.all || undefined} className="aria-expanded:bg-fill data-filtered:bg-fill data-filtered:text-foreground" />} />}>
-          <ListFilter />
+          <SettingsSlider />
         </TooltipTrigger>
         <TooltipContent side="bottom">View</TooltipContent>
       </Tooltip>
