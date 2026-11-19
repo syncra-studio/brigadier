@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 30;
+pub const VERSION: u32 = 31;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -222,8 +222,16 @@ impl Norm {
                     json!({"kind": "text", "text": format!("{DRAFT}{args}\n```")})
                 }
                 Event::ToolEnd(d) if self.drafts.contains(&d.id) => continue,
-                Event::ToolStart(t) => json!({"kind": "tool", "id": t.id, "name": t.name,
-                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server.as_deref().map(crate::library::plain), "description": t.description}),
+                Event::ToolStart(mut t) => {
+                    // A worker's plugin call through the relay is that plugin's step [D567, D768].
+                    if t.step == "run"
+                        && let Some((server, tool, args)) = adapters::relay_call(&t.input)
+                    {
+                        (t.step, t.name, t.server, t.input) = ("other", tool, Some(server), args);
+                    }
+                    json!({"kind": "tool", "id": t.id, "name": t.name,
+                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server.as_deref().map(crate::library::plain), "description": t.description})
+                }
                 Event::Background(task, label) => {
                     json!({"kind": "background", "task": task, "label": label})
                 }

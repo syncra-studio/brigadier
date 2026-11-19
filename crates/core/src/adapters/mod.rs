@@ -17,7 +17,7 @@ pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stop
 pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::version;
-pub use shell::{shell_step, unwrap_shell};
+pub use shell::{relay_call, shell_step, unwrap_shell};
 
 use crate::Spec;
 use serde_json::{Value, json};

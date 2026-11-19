@@ -66,6 +66,30 @@ pub fn shell_step(command: &str) -> (&'static str, String) {
     }
 }
 
+/// A call through the relay, `brigadier mcp call <server> <tool> ['<json>']`, as its server, tool
+/// and arguments, so a worker's plugin call reads as the lead's own does [D567, D768]. Its output's
+/// redirects and pipes (`2>&1 | head`) are left out; a line that runs anything else isn't one.
+pub fn relay_call(command: &str) -> Option<(String, String, String)> {
+    let words = words(&unwrap_shell(command));
+    let chained = |w: &String| matches!(w.as_str(), "&&" | "||" | ";" | "&") || w.ends_with(';');
+    if command.contains('\n') || words.iter().any(chained) {
+        return None;
+    }
+    let mut w = (words.iter().map(String::as_str)).take_while(|w| {
+        let redirect = w
+            .trim_start_matches(|c: char| c.is_ascii_digit())
+            .starts_with('>');
+        *w != "|" && !redirect
+    });
+    let head = [w.next()?, w.next()?, w.next()?];
+    if basename(head[0]) != "brigadier" || head[1..] != ["mcp", "call"] {
+        return None;
+    }
+    let (server, tool) = (w.next()?, w.next()?);
+    let args = w.next().filter(|a| !a.starts_with('-')).unwrap_or("{}");
+    Some((server.into(), tool.into(), args.into()))
+}
+
 /// A search's pattern: its `-e` value, else its first word that is neither an option nor an
 /// option's value.
 fn pattern(args: &[String]) -> Option<&str> {

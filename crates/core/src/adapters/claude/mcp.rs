@@ -126,6 +126,28 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
     if spec.naked {
         return super::control::naked(argv, slack(cwd));
     }
+    let mut off = library(spec, cwd, argv, env);
+    // Claude Code drops its Slack plugin's server for a claude.ai Slack connector at the same
+    // address, even one not signed in; the plugin is the Slack Brigadier uses [D586, D768].
+    if !slack(cwd).is_empty() {
+        off.push("claude.ai Slack".into());
+    }
+    let denied: Vec<Value> = (off.iter()).map(|n| json!({ "serverName": n })).collect();
+    let at = argv.iter().rposition(|a| a == "--settings");
+    if let (false, Some(at)) = (denied.is_empty(), at) {
+        let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
+        settings["deniedMcpServers"] = denied.into();
+        argv[at + 1] = settings.to_string();
+    }
+}
+
+/// The library at launch; the names of the user's own servers it turns off.
+fn library(
+    spec: &Spec,
+    cwd: &Path,
+    argv: &mut Vec<String>,
+    env: &mut Vec<(String, String)>,
+) -> Vec<String> {
     // Its own skill of a library skill's name wins, and no flag turns only that one off: the
     // library's isn't linked [D415].
     let own: Vec<String> = (super::commands::fixed(Some(cwd), Some(spec)).into_iter())
@@ -133,7 +155,7 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
         .filter_map(|k| k["name"].as_str().map(String::from))
         .collect();
     let Some(kit) = library::kit(spec, &own) else {
-        return;
+        return vec![];
     };
     argv.extend(["--add-dir".into(), kit.dir.display().to_string()]);
     // Its own copy of each goes off for this session by name, the user's others untouched [D407].
@@ -165,14 +187,8 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
     let file = kit.dir.join("mcp.json");
     let wrote = std::fs::write(&file, json!({ "mcpServers": servers }).to_string());
     if servers.is_empty() || wrote.is_err() {
-        return;
+        return vec![];
     }
     argv.extend(["--mcp-config".into(), file.display().to_string()]);
-    let denied: Vec<Value> = (off.iter()).map(|n| json!({ "serverName": n })).collect();
-    let at = argv.iter().rposition(|a| a == "--settings");
-    if let (false, Some(at)) = (denied.is_empty(), at) {
-        let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
-        settings["deniedMcpServers"] = denied.into();
-        argv[at + 1] = settings.to_string();
-    }
+    off
 }
