@@ -4,6 +4,7 @@ import { newId } from "../session/store";
 import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } from "../shell/tab-store";
 import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun } from "./hands";
 import { agentPage, go } from "./layer";
+import { agentDoing } from "./overlay";
 import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
 import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged, pausedFor } from "./pause";
 import { onProfileChanged } from "./profiles";
@@ -135,8 +136,25 @@ async function runCall(call: Call): Promise<Result> {
     return failed(messageOf(error));
   } finally {
     if (tab !== null) underWay.get(tab)?.delete(end);
+    if (tab !== null) agentDoing(tab, call.label, null);
   }
 }
+
+/** What the pill over a driven tab says its agent does during each call. */
+const DOING: Record<string, string> = {
+  open: "Opening a page",
+  navigate: "Opening a page",
+  go: "Going back or on",
+  read: "Reading the page",
+  click: "Clicking",
+  type: "Typing",
+  press: "Pressing a key",
+  hover: "Pointing",
+  scroll: "Scrolling",
+  wait: "Waiting for the page",
+  screenshot: "Looking at the page",
+  eval: "Running a script",
+};
 
 const browserTabs = (owner: string) => tabsOf(owner).tabs.filter((tab) => tab.kind === "browser");
 
@@ -162,14 +180,19 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     const there = browserTabs(owner).find((tab) => Boolean(tab.driver) && sameAddress(tab.target, op.url) && !isPaused(tab.id));
     const tab = there?.id ?? `t-${newId()}`;
     driveTab(owner, tab, op.url, driver);
-    if (!there || !browserPage(tab)) {
-      await openPage(owner, tab, op.url, backgroundBounds());
-      await agentDrive(tab, true);
-      await loaded(tab);
-    } else {
-      await agentDrive(tab, true);
+    agentDoing(tab, label, DOING.open);
+    try {
+      if (!there || !browserPage(tab)) {
+        await openPage(owner, tab, op.url, backgroundBounds());
+        await agentDrive(tab, true);
+        await loaded(tab);
+      } else {
+        await agentDrive(tab, true);
+      }
+      return await page(tab, owner);
+    } finally {
+      agentDoing(tab, label, null);
     }
-    return page(tab, owner);
   }
   if (op.op === "tabs") {
     const { active } = tabsOf(owner);
@@ -201,7 +224,10 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     await loaded(tab.id);
     if (!users && isPaused(tab.id)) return { result: "paused", tab: tab.id };
   }
-  if (!users) await agentDrive(tab.id, true);
+  if (!users) {
+    agentDoing(tab.id, label, DOING[op.op] ?? null);
+    await agentDrive(tab.id, true);
+  }
   const result = await act(tab.id, op, owner, label);
   return !tab.driver && result.result === "page" ? { ...result, user: true } : result;
 }

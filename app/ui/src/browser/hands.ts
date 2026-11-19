@@ -3,7 +3,8 @@
 import { guardFocus, userComposing } from "./focus-guard";
 import { agentPage, focusPage, loadPage, pageBounds, whilePainting } from "./layer";
 import { dropOverlay, glideTo, pressAt, raiseShield } from "./overlay";
-import { isPaused, userUsed } from "./pause";
+import { takeBackTab } from "./give";
+import { driverOf, isPaused, userUsed } from "./pause";
 
 type Answer = Record<string, unknown>;
 const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(call);
@@ -99,11 +100,15 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
   const page = maybePage(id);
   if (!page) return;
   raiseShield(id, page.element, pageBounds(id), () => {
-    // The user's own first click or key: the tab is theirs, and so is the keyboard.
+    // Take over: the tab is the user's until they hand it back, and so is the keyboard.
     dropOverlay(id);
     userUsed(id);
     page.element.focus();
-  }, ({ x, y, deltaX, deltaY }) => void agent({ call: "wheel", guest: page.guest, x, y, deltaX, deltaY }));
+  }, ({ x, y, deltaX, deltaY }) => void agent({ call: "wheel", guest: page.guest, x, y, deltaX, deltaY }), () => {
+    // Stop: as the tab menu's Take back, the tab is the user's for good.
+    const owner = driverOf(id);
+    if (owner) takeBackTab(owner.session, id);
+  });
   if (!resumed) return;
   // Continue: the hold comes back as it was, and refs from before the user's turn mean nothing now.
   await agent({ call: "attach", guest: page.guest });

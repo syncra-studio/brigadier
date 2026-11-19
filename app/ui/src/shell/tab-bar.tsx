@@ -9,7 +9,7 @@ import { shownAddress } from "../browser/address";
 import { giveTabToChat, takeBackTab } from "../browser/give";
 import { useBrowserPage } from "../browser/pages";
 import { TabProfileDot } from "../browser/profile-mark";
-import { BrowserTabIcon } from "../browser/tab-icon";
+import { BrowserDriverChip, BrowserTabIcon } from "../browser/tab-icon";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -207,6 +207,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
         >
           <TabIcon owner={owner} tab={tab} />
           <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
+          {tab.kind === "browser" && <BrowserDriverChip tabId={tab.id} driver={tab.driver} />}
         </button>
         <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>
           <X className="size-icon-xs" />

@@ -5,7 +5,6 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { ArrowUpRight, Globe } from "../icons";
-import { useDaemon } from "../daemon";
 import { selectTab, setTabUrl, type Tab, tabOpenAnywhere } from "../shell/tab-store";
 import { browserAddress, shownAddress, webAddress } from "./address";
 import { closeFind, findInPage, findState, openFind, useBrowserFind } from "./find";
@@ -18,6 +17,7 @@ import { handBack, pageShows, type SignInStop, useAgentPause, userUsed } from ".
 import { dismissSignInRejected, useSignInRejected } from "./sign-in";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
+import { useDriverName } from "./tab-icon";
 import { BrowserOptions } from "./options";
 import { ProfileButton } from "./profile-button";
 import { Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
@@ -77,10 +77,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   const devtoolsOpen = id in pause.devtools;
   const signInStop = pause.asked[id];
   const signInRejected = useSignInRejected(id);
-  // Who works the tab [D778]: a worker by its name, the session's own agent as Brigadier.
-  const { rows } = useDaemon();
-  const driverRow = rows?.find((row) => row.id === tab.driver);
-  const driver = tab.driver ? (driverRow?.worker ? driverRow.title || "A worker" : "Brigadier") : null;
+  const driver = useDriverName(tab.driver);
 
   useEffect(() => {
     if (!active || !initialUrl || made || !area.current) return;

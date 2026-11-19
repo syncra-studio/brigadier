@@ -1,12 +1,16 @@
-// What shows over a tab an agent drives: its named cursor and the take-over shield. Drawn in the app, never in the
-// page: the page can't see it, and a picture of the page doesn't have it.
+// What shows over a tab an agent drives: its named cursor, the take-over shield, its glow and the pill naming who
+// drives, with Take over and Stop. Drawn in the app, never in the page: the page can't see it, and a picture of the
+// page doesn't have it.
 //
 // The shield is the only way the user's input is told from the agent's. Debugger input is trusted to the page and
 // runs through the same paths as a real click, so nothing can tell them apart after the fact. A plain element above
-// the page takes the user's first click or key, says so, and goes; the agent's input goes under it. The layer lies
-// under #root like the pages, so the app's own menus stay above it, and it is a sibling of the tab layer so the
-// page layer's children stay exactly the pages. Where each part shows is in data attributes the theme reads
-// (theme.css's #brigadier-agent-layer), with the cursor's fixed colours: it lies over any site.
+// the page takes the user's click or key and lights the pill, Take over focused, so nothing is taken silently
+// [D779]; the wheel still scrolls the page. The agent's input goes under it. The layer lies under #root like the
+// pages, so the app's own menus stay above it, and it is a sibling of the tab layer so the page layer's children
+// stay exactly the pages. Where each part shows is in data attributes the theme reads (theme.css's
+// #brigadier-agent-layer), with the cursor's fixed colours: it lies over any site.
+import { useSyncExternalStore } from "react";
+
 import type { BrowserBounds } from "./layer";
 
 type Overlay = {
@@ -16,12 +20,67 @@ type Overlay = {
   at: { x: number; y: number } | null;
   placed: BrowserBounds | null;
   shielded: boolean;
+  pill: HTMLDivElement;
   onUsed: () => void;
+  onStop: () => void;
   onWheel: (at: { x: number; y: number; deltaX: number; deltaY: number }) => void;
 };
 
 const overlays = new Map<string, Overlay>();
 let layer: HTMLDivElement | null = null;
+
+/** Who drives each tab and what it does now (agent.ts), for its pill. */
+const doings = new Map<string, { label: string; action: string | null }>();
+/** Which tabs have a shield up, for the tab bar's mark. */
+let held = new Set<string>();
+const heldListeners = new Set<() => void>();
+function heldChanged(): void {
+  held = new Set(overlays.keys());
+  for (const listener of heldListeners) listener();
+}
+const subscribeHeld = (listener: () => void) => (heldListeners.add(listener), () => void heldListeners.delete(listener));
+/** Whether an agent holds tab `id` now: its shield is up. */
+export const useAgentHolds = (id: string): boolean => useSyncExternalStore(subscribeHeld, () => held.has(id));
+
+/** The pill's words: who drives the tab, and what it does now if it's acting. */
+function sayDoing(id: string): void {
+  const pill = overlays.get(id)?.pill;
+  const words = pill?.querySelector(".brigadier-agent-pill-words");
+  if (!words) return;
+  const doing = doings.get(id);
+  const who = document.createElement("b");
+  who.textContent = doing?.label || "Brigadier";
+  words.replaceChildren(who, ` is using this tab${doing?.action ? ` · ${doing.action}` : ""}`);
+}
+
+/** Agent `label` does `action` in tab `id` now, or nothing (null): its pill says so. */
+export function agentDoing(id: string, label: string, action: string | null): void {
+  doings.set(id, { label, action });
+  sayDoing(id);
+}
+
+function pillOf(overlay: () => Overlay): HTMLDivElement {
+  const pill = document.createElement("div");
+  pill.className = "brigadier-agent-pill";
+  const spinner = document.createElement("span");
+  spinner.className = "brigadier-agent-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const words = document.createElement("span");
+  words.className = "brigadier-agent-pill-words";
+  const button = (text: string, onClick: () => void) => {
+    const each = document.createElement("button");
+    each.type = "button";
+    each.textContent = text;
+    each.addEventListener("click", onClick);
+    return each;
+  };
+  const take = button("Take over", () => overlay().onUsed());
+  take.dataset.take = "";
+  const stop = button("Stop", () => overlay().onStop());
+  stop.dataset.stop = "";
+  pill.append(spinner, words, take, stop);
+  return pill;
+}
 
 export function installAgentOverlays(): void {
   layer = document.createElement("div");
@@ -51,22 +110,26 @@ function placeFrame({ frame, placed }: Overlay): void {
   frame.dataset.height = String(placed.height);
 }
 
-/** A driven tab's overlay: `onUsed` hears the user's first click or key, `onWheel` their scrolling. */
-export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds | null, onUsed: () => void, onWheel: Overlay["onWheel"]): void {
+/** A driven tab's overlay: `onUsed` hears Take over, `onStop` Stop, `onWheel` the user's scrolling. */
+export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds | null, onUsed: () => void, onWheel: Overlay["onWheel"], onStop: () => void): void {
   let overlay = overlays.get(id);
   if (!overlay) {
     const frame = document.createElement("div");
     frame.className = "brigadier-agent-frame";
     frame.tabIndex = -1;
     frame.dataset.agentTab = id;
-    overlay = { frame, cursor: null, name: null, at: null, placed: bounds, shielded: false, onUsed, onWheel };
+    const pill = pillOf(() => own);
+    frame.append(pill);
+    overlay = { frame, cursor: null, name: null, at: null, placed: bounds, shielded: false, pill, onUsed, onWheel, onStop };
     overlays.set(id, overlay);
     const own = overlay;
+    // The user's click or key on the page lights the pill instead of reaching the page: Take over is one more press.
     const take = (event: Event) => {
-      if (!own.shielded) return;
+      if (!own.shielded || (event.target instanceof Node && pill.contains(event.target))) return;
       event.preventDefault();
       event.stopPropagation();
-      own.onUsed();
+      pill.toggleAttribute("data-lit", true);
+      pill.querySelector<HTMLButtonElement>("[data-take]")?.focus({ preventScroll: true });
     };
     frame.addEventListener("pointerdown", take);
     frame.addEventListener("keydown", take);
@@ -76,9 +139,12 @@ export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds
       own.onWheel({ x: event.clientX - rect.left, y: event.clientY - rect.top, deltaX: event.deltaX, deltaY: event.deltaY });
     }, { passive: true });
     layer?.append(frame);
+    sayDoing(id);
+    heldChanged();
   }
   overlay.onUsed = onUsed;
   overlay.onWheel = onWheel;
+  overlay.onStop = onStop;
   overlay.placed = bounds;
   placeFrame(overlay);
   overlay.shielded = true;
@@ -93,6 +159,7 @@ export function dropOverlay(id: string): void {
   if (!overlay) return;
   overlay.frame.remove();
   overlays.delete(id);
+  heldChanged();
 }
 
 export function placeOverlay(id: string, bounds: BrowserBounds | null): void {

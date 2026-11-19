@@ -1903,8 +1903,72 @@
   &[data-shown] {
     display: block;
   }
+  /* The glow says an agent has the page [D777]. */
   &[data-shielded] {
     pointer-events: auto;
+    box-shadow: inset 0 0 0 2px var(--color-toggle-on), inset 0 0 28px color-mix(in oklab, var(--color-toggle-on) 35%, transparent);
+  }
+}
+/* Who drives, floating at the page's foot with Take over and Stop [D779 D781]; lit by the user's click on the page. */
+.brigadier-agent-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 5px 5px 5px 14px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-capsule);
+  background: var(--color-card);
+  color: var(--color-muted-foreground);
+  box-shadow: 0 0 0 1px var(--color-glass-stroke), 0 6px 20px rgb(0 0 0 / 0.35);
+  font: 400 13px/18px system-ui, sans-serif;
+  white-space: nowrap;
+  transition: box-shadow 150ms;
+  & b {
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
+  &[data-lit] {
+    box-shadow: 0 0 0 2px var(--color-toggle-on), 0 6px 20px rgb(0 0 0 / 0.35);
+    & [data-take] {
+      background: var(--color-toggle-on);
+    }
+  }
+  & button {
+    padding: 3px 12px;
+    border-radius: var(--radius-capsule);
+    background: var(--color-control);
+    color: var(--color-foreground);
+    font-weight: 500;
+    outline: none;
+    &:hover {
+      background: var(--color-muted);
+    }
+    &:focus-visible {
+      box-shadow: 0 0 0 2px var(--color-toggle-on);
+    }
+    &[data-stop] {
+      color: var(--color-destructive);
+    }
+  }
+}
+.brigadier-agent-pill-words {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brigadier-agent-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 }
 /* A menu of the app is open or a drag crosses the page: the click is the app's, as it is over a page. */
