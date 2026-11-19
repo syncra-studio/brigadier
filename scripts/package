@@ -94,7 +94,8 @@ await packager({
       file.includes("/Brigadier Computer Use.app")
         ? { timestamp: "none", hardenedRuntime: true, entitlements: ["com.apple.security.automation.apple-events", "com.apple.security.device.screen-capture"] }
         : { timestamp: "none", hardenedRuntime,
-            ...(file.endsWith("/Brigadier.app") && { entitlements }),
+            // Hardened, the app gets only the resources it declares: every one the daemon does too [D951].
+            ...(file.endsWith("/Brigadier.app") && { entitlements: hardenedRuntime ? [...new Set([...entitlements, ...daemon])] : entitlements }),
             ...(file.includes("(Plugin).app") && { entitlements: ["com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"] }),
             ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") ? daemon : [] }) },
   },
