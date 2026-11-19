@@ -253,12 +253,15 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
             <RowMark mark={row.mark} label={words} />
             {/* The short age: 4m, 2h, 3d. */}
             <span className="w-8 text-end whitespace-nowrap">{ago(row.updated ?? row.sent, now).replace(/ (s|min|h|d) ago/, (_, unit: string) => unit[0]!)}</span>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${title}`} onClick={(event) => event.stopPropagation()} />}>
-                <DotsHorizontal />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">{items}</DropdownMenuContent>
-            </DropdownMenu>
+            {/* Its menu's clicks and keys bubble through the portal to the row: they stop here. */}
+            <span className="contents" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${title}`} />}>
+                  <DotsHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">{items}</DropdownMenuContent>
+              </DropdownMenu>
+            </span>
           </span>
         </div>
       </ContextMenuTrigger>
@@ -282,7 +285,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
   useEffect(() => {
     setRepo(null);
     if (daemon) void daemonSettings.accounts(id, true).then((reply) => setRepo(reply.github ? (reply.repo ?? null) : null), () => {});
-  }, [daemon, id]);
+  }, [daemon, id, project?.folder]);
   if (!project) {
     return projects === undefined ? null : <EmptyState variant="centered" icon={Folder} title="This project isn’t available" detail="Brigadier has no project by this name. Pick another in the sidebar." className="m-auto" />;
   }

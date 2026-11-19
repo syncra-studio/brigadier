@@ -143,22 +143,28 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   useEffect(() => setFiles(project.include), [project.include.join("\n")]);
   useEffect(() => setSetup(project.setup), [project.setup]);
   // Rust refuses a new folder while the project has sessions (D234 P11): don't lead there.
-  const sessions = useDaemon().rows?.filter((row) => row.project === project.id).length ?? 0;
+  const { daemon, rows: all } = useDaemon();
+  const sessions = all?.filter((row) => row.project === project.id).length ?? 0;
   const folderKind = project.kind === "folder";
   // The account row draws from the local read at once; the probed one fills in which accounts can see the repository.
+  // Read again for a new folder, and on reconnecting after a failed read.
   useEffect(() => {
     let live = true;
+    setGithub(null);
+    setRepos(null);
+    setErrors((now) => ({ ...now, repos: null, plugins: null }));
+    const failed = (field: string) => (cause: unknown) => live && setErrors((now) => ({ ...now, [field]: errorText(cause) }));
     void source.accounts(project.id, true).then((reply) => live && setGithub((now) => now ?? reply), () => {});
     void source
       .accounts(project.id, false)
       .then((reply) => live && setGithub(reply), () => {})
       .finally(() => live && setChecking(false));
-    if (folderKind) void source.repos(project.folder).then((list) => live && setRepos(list), () => {});
-    void source.plugins().then((page) => live && setPlugins(page), () => {});
+    if (folderKind) void source.repos(project.folder).then((list) => live && setRepos(list), failed("repos"));
+    void source.plugins().then((page) => live && setPlugins(page), failed("plugins"));
     return () => {
       live = false;
     };
-  }, [project.id]);
+  }, [project.id, project.folder, folderKind, daemon]);
 
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
@@ -166,6 +172,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
     source.save(project, change, args).catch((cause) => setErrors((now) => ({ ...now, [field]: errorText(cause) })));
   };
   const saveFiles = (next: string[]) => {
+    setFiles(next);
     const include = next.map((each) => each.trim()).filter(Boolean);
     if (include.join("\n") !== project.include.join("\n")) save("include", { include }, ["--include", include.join("\n")]);
   };
@@ -233,9 +240,9 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
             [
               "repositories",
               "Repositories",
-              <Row label="Repositories" line="The repositories in this folder; a session works on its own copies of the ones it needs">
+              <Row label="Repositories" line="The repositories in this folder; a session works on its own copies of the ones it needs" error={errors.repos}>
                 <span className="min-w-0 truncate text-end text-xs text-muted-foreground" title={repos?.join(", ")}>
-                  {repos === null ? "Reading…" : repos.length === 0 ? "None yet" : `${plural(repos.length, "repository", "repositories")} · ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ` + ${repos.length - 3}` : ""}`}
+                  {repos === null ? (errors.repos ? "" : "Reading…") : repos.length === 0 ? "None yet" : `${plural(repos.length, "repository", "repositories")} · ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ` + ${repos.length - 3}` : ""}`}
                 </span>
               </Row>,
             ] as [string, string, ReactNode],
@@ -381,6 +388,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
             {key === "plugins" && (
               <li className="flex min-h-12 items-center gap-3 px-2 text-xs text-muted-foreground">
                 {plugins !== null && library.length === 0 && <span>No MCP servers or skills yet.</span>}
+                <ErrorLine error={errors.plugins} />
                 <Button variant="ghost" size="sm" className="ms-auto" onClick={() => openSettings("plugins")}>
                   Add or manage in Settings › Plugins
                   <ArrowUpRight />
