@@ -9,6 +9,7 @@ import { SetupRow } from "../components/thread/setup";
 import { WorkHeader, WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
+import { useOpenPlace } from "../projects/page";
 import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
@@ -52,6 +53,7 @@ export function HomeDraft() {
     setHomeDraft({ project: added.id, chat: false });
   }, [added]);
   const project = useHomeProject();
+  const openPlace = useOpenPlace();
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -132,7 +134,8 @@ export function HomeDraft() {
         projects={projects}
         project={project}
         locked={draft.locked}
-        onProject={(id) => setHomeDraft({ project: id, chat: false })}
+        // Picking a project is switching to it: its last place, as its sidebar row or strip square [D886 D891]; only an unlocked picker opens.
+        onProject={openPlace}
         onNoProject={() => setHomeDraft({ chat: true })}
         onAddProject={(path) => {
           before.current = new Set(projects?.map((each) => each.id));

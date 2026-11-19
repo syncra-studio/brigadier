@@ -111,3 +111,25 @@ test("New chat and a project's New session keep their own words [D863]", async (
   dropDraft("p");
   assert.deepEqual(kept.map(([id]) => id), ["@home:p"], "the project draft's × clears its own words only");
 });
+
+test("from New chat a project picked or clicked opens its last place, never New chat in that project [D886 D891]", async () => {
+  const drafts = [];
+  globalThis.window = { location: { hash: "" } };
+  const { useOpenPlace } = await load("../projects/page.tsx", {
+    "../daemon": { useDaemon: () => ({ rows: [{ id: "s9", archived: false }] }) },
+    "../shell/tab-store": store,
+    "../home/start": { setHomeDraft: (change) => drafts.push(change) },
+  });
+  const open = useOpenPlace();
+  setHomeTabs(null);
+  open("n");
+  assert.equal(window.location.hash, "#project/n", "nothing used there yet: its page");
+  window.location.hash = "";
+  setPlace("n", "s9");
+  open("n");
+  assert.equal(window.location.hash, "#thread/s9", "its last session");
+  window.location.hash = "";
+  setPlace("n", HOME);
+  open("n");
+  assert.deepEqual(drafts, [{ project: "n", chat: false, locked: true }], "its own draft, locked, not New chat's");
+});
