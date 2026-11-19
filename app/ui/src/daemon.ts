@@ -31,6 +31,7 @@ export type Row = {
   updated: number;
   items: number;
   error: string | null;
+  /** It uses the computer now, holding its lock: the menu bar item says so [D907, D957]. */ computer?: boolean;
   /** An agent is working in it now: what keeps the computer awake "while agents work". */
   works?: boolean;
   /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */

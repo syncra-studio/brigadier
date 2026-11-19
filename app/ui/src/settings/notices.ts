@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { type Row, useDaemon } from "../daemon";
+import { errorText, run } from "../onboarding/api";
 import { getSettings, setSetting } from "./api";
 
 /*
@@ -53,7 +54,8 @@ function deliver(row: Row, notice: Notice, open: string | null): void {
 
 /** Delivers Rust's notices, keeps the Dock's badge at the count of sessions that need you and the menu bar's Running list. */
 export function useNotices(open: string | null): void {
-  const rows = useDaemon().rows?.filter((row) => !row.noteChat);
+  const all = useDaemon().rows;
+  const rows = all?.filter((row) => !row.noteChat);
   useEffect(() => {
     if (!rows) return;
     for (const row of rows) {
@@ -72,6 +74,20 @@ export function useNotices(open: string | null): void {
   // The menu bar item's Running list, as the old app's: sessions an agent works in now, not workers or archived ones.
   const running = JSON.stringify(rows?.filter((row) => row.works && !row.archived && (!row.worker || row.boss)).map((row) => ({ id: row.id, title: titleOf(row) })) ?? []);
   useEffect(() => window.brigadier?.running(JSON.parse(running)), [running]);
+  // Who uses the computer now, named by the chat it's in (a worker's lead chat), for the menu bar item [D957].
+  const holder = all?.find((row) => row.computer);
+  const chat = holder && (all?.find((row) => row.id === holder.worker?.root) ?? holder);
+  const using = JSON.stringify(holder && chat ? { id: holder.id, chat: chat.id, title: titleOf(chat) } : null);
+  useEffect(() => window.brigadier?.usingComputer(JSON.parse(using)), [using]);
+  // Its Stop is the composer's: the turn ends, and the computer with it [D907].
+  // A Stop that fails says so in a notice, as the window may be hidden.
+  const stop = (id: string) =>
+    run(["stop", id])
+      .then((reply) => {
+        if (reply.ok !== true) throw new Error(typeof reply.error === "string" ? reply.error : "The daemon refused.");
+      })
+      .catch((cause: unknown) => sendNotice({ title: "Couldn't stop computer use", body: errorText(cause), session: id }).catch((error: unknown) => console.error(error)));
+  useEffect(() => window.brigadier?.onComputerStop((id) => void stop(id)), []);
   // A click on a notice opens its session.
   useEffect(() => window.brigadier?.onNoticeClick((id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)), []);
 }

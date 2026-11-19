@@ -37,6 +37,8 @@ declare global {
       badge(count: number): void;
       /** The menu bar item's Running list: the sessions an agent works in now. */
       running(sessions: { id: string; title: string }[]): void;
+      usingComputer(using: { id: string; chat: string; title: string } | null): void;
+      onComputerStop(heard: (id: string) => void): () => void;
       /** A click on a notice, with its session. */
       onNoticeClick(listener: (session: string) => void): () => void;
       /** What macOS lets notices do now: not asked yet, off, allowed but on neither the desktop nor in Notification Center, or on; null where it can't be asked. */

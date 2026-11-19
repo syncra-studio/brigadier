@@ -38,6 +38,14 @@ contextBridge.exposeInMainWorld("brigadier", {
   notify: (notice: { title: string; body: string; silent: boolean; session?: string }) => ipcRenderer.invoke("notify", notice),
   badge: (count: number) => ipcRenderer.send("badge", count),
   running: (sessions: { id: string; title: string }[]) => ipcRenderer.send("running", sessions),
+  /** The session using the computer now, and the chat it's in, for the menu bar item [D957]. */
+  usingComputer: (using: { id: string; chat: string; title: string } | null) => ipcRenderer.send("using-computer", using),
+  /** The menu bar item's Stop, for the session using the computer. */
+  onComputerStop: (heard: (id: string) => void) => {
+    const listener = (_event: unknown, id: string) => heard(id);
+    ipcRenderer.on("computer-stop", listener);
+    return () => void ipcRenderer.off("computer-stop", listener);
+  },
   onNoticeClick: (listener: (session: string) => void) => {
     const heard = (_event: unknown, session: string) => listener(session);
     ipcRenderer.on("notice-click", heard);

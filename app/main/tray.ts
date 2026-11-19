@@ -1,6 +1,7 @@
 // The menu bar's Brigadier item, as the old app had it (its electron/main/tray.ts): Open Brigadier, the sessions
 // running now (the page says which), Quit Brigadier. It is there from the start, which is what lets closing the
 // window keep the app running, out of the Dock until the window shows again. macOS only, as the build is.
+// While an agent uses the computer, the icon wears a dot and the menu says who, with Stop and Open chat [D957].
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -15,6 +16,9 @@ const TITLE_CHARS = 48;
 let tray: Tray | null = null;
 let main: BrowserWindow | null = null;
 let quitting = false;
+let icons: { idle: Electron.NativeImage; using: Electron.NativeImage } | null = null;
+let running: { id: string; title: string }[] = [];
+let using: { id: string; chat: string; title: string } | null = null;
 
 const cut = (text: string) => {
   const characters = [...text];
@@ -28,9 +32,26 @@ function showMain(): void {
   main.focus();
 }
 
-function setMenu(running: { id: string; title: string }[]): void {
+/** Opens a session in the window, as a notice's click does (notices.ts). */
+function openSession(id: string): void {
+  showMain();
+  main?.webContents.send("notice-click", id);
+}
+
+function setMenu(): void {
+  if (icons) tray?.setImage(using ? icons.using : icons.idle);
+  const computer = using;
   tray?.setContextMenu(
     Menu.buildFromTemplate([
+      ...(computer
+        ? [
+            { label: cut(`Using your computer · ${computer.title}`), enabled: false },
+            // The page stops it, as the composer's Stop: the turn ends and lets the computer go [D907].
+            { label: "Stop", click: () => main?.webContents.send("computer-stop", computer.id) },
+            { label: "Open chat", click: () => openSession(computer.chat) },
+            { type: "separator" as const },
+          ]
+        : []),
       { label: "Open Brigadier", click: showMain },
       { type: "separator" },
       ...(running.length === 0
@@ -39,11 +60,7 @@ function setMenu(running: { id: string; title: string }[]): void {
             { label: "Running", enabled: false },
             ...running.map(({ id, title }) => ({
               label: cut(title),
-              // The page opens a session by id on this, as for a notice's click (notices.ts).
-              click: () => {
-                showMain();
-                main?.webContents.send("notice-click", id);
-              },
+              click: () => openSession(id),
             })),
             { type: "separator" as const },
           ]),
@@ -57,14 +74,19 @@ export function serveTray(): void {
   if (process.platform !== "darwin") return;
   app.on("before-quit", () => (quitting = true));
   app.on("activate", showMain);
-  ipcMain.on("running", (_event, running: { id: string; title: string }[]) => setMenu(running));
+  ipcMain.on("running", (_event, sessions: typeof running) => ((running = sessions), setMenu()));
+  ipcMain.on("using-computer", (_event, holder: typeof using) => ((using = holder), setMenu()));
   try {
-    const png = readFileSync(path.join(__dirname, "../icons/tray.png"));
-    const image = nativeImage.createFromBuffer(png, { scaleFactor: nativeImage.createFromBuffer(png).getSize().height / ICON_POINTS });
-    image.setTemplateImage(true);
-    tray = new Tray(image);
+    const icon = (name: string) => {
+      const png = readFileSync(path.join(__dirname, `../icons/${name}`));
+      const image = nativeImage.createFromBuffer(png, { scaleFactor: nativeImage.createFromBuffer(png).getSize().height / ICON_POINTS });
+      image.setTemplateImage(true);
+      return image;
+    };
+    icons = { idle: icon("tray.png"), using: icon("tray-active.png") };
+    tray = new Tray(icons.idle);
     tray.setToolTip(app.getName());
-    setMenu([]);
+    setMenu();
   } catch (error) {
     console.warn("menu-bar item unavailable", error);
   }

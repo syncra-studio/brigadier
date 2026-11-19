@@ -312,6 +312,10 @@ impl Index {
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
+            // Using the computer now: holding its lock, its turn running, not waiting on the user [D907, D957].
+            row["computer"] = json!(
+                row["running"] == true && state != "waiting_answer" && crate::computer::holds(id)
+            );
             row["holding"] = holds.into(); // answered, its block open on its subagents or workers: a message waits or steers [D521]
             row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
             fold::background_row(&mut row, &dir, &live.left);
