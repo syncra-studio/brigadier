@@ -1,15 +1,16 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
+import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
+import { DropdownMenuItem } from "../components/menu";
 import { NavList, NavRow, NavSection } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
+import { ComposeEditSquare, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
@@ -365,8 +366,8 @@ function Loading() {
 }
 
 /**
- * A project: a click opens its page, where its sessions and settings are; hovered, New session starts one and ⋯ pins
- * it, as a right-click does. Its count and blue mark are its sessions' [D171, D212, D780, D808, D844].
+ * A project: a click opens its page; hovered, New session starts one and Pin toggles its pin, as a right-click does.
+ * Unpin stays visible on pinned rows. Its count and blue mark are its sessions' [D808, D844, D872, D873].
  */
 function ProjectRow({ project, tone, current, attention, count }: { project: Project; tone: number; current: boolean; attention: boolean; count: number }) {
   const open = useOpenPlace();
@@ -386,7 +387,7 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
         <Tooltip>
           <TooltipTrigger
             delay={CARD_DELAY_MS}
-            render={<NavRow aria-current={current ? "page" : undefined} className="pe-1.5 group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => open(project.id)} />}
+            render={<NavRow aria-current={current ? "page" : undefined} className={cx(project.pinned ? "pe-7" : "pe-1.5", "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16")} onPointerEnter={measure} onFocus={measure} onClick={() => open(project.id)} />}
           >
             {/* Its logo, else its initials, as View's menu shows it [D650]. */}
             <ProjectBadge id={project.id} name={project.name} tone={tone} />
@@ -399,19 +400,21 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
           </TooltipTrigger>
           {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
         </Tooltip>
-        <RowActionsSlot>
+        <RowActionsSlot className="end-8.5">
           <Tooltip>
             <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSession(project.id)} />}>
               <ComposeEditSquare />
             </TooltipTrigger>
             <TooltipContent side="bottom">New session</TooltipContent>
           </Tooltip>
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${project.name}`} />}>
-              <DotsHorizontal />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">{items}</DropdownMenuContent>
-          </DropdownMenu>
+        </RowActionsSlot>
+        <RowActionsSlot className={project.pinned ? "pointer-events-auto opacity-100" : undefined}>
+          <Tooltip>
+            <TooltipTrigger render={<RowAction aria-label={`${project.pinned ? "Unpin" : "Pin"} ${project.name}`} onClick={() => pinProject(project, !project.pinned)} />}>
+              {project.pinned ? <Unpin /> : <Pin />}
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{project.pinned ? "Unpin" : "Pin"}</TooltipContent>
+          </Tooltip>
         </RowActionsSlot>
       </ContextMenuTrigger>
       <ContextMenuContent>{items}</ContextMenuContent>
