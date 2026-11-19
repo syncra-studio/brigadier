@@ -287,13 +287,24 @@ export function setTabProfile(owner: string, id: string, profile: string): void 
 /** Every open tab of every chat and session the app has read, with where it is. */
 export const allTabs = (): { owner: string; tab: Tab }[] => [...slots].flatMap(([owner, slot]) => slot.shown.tabs.map((tab) => ({ owner, tab })));
 
-/** An agent's browser tab `id`, opened at the end with the front left as it is, or one it goes on in, as Rust does. */
+/**
+ * An agent's browser tab `id`: opened at the end of its group, else of the strip, with the front left as it is; or one
+ * it goes on in, or is given, moved to its group's end, so a driver's tabs stay one group, as Rust does [D894 D909].
+ */
 export function driveTab(owner: string, id: string, url: string, driver: string): void {
   act(owner, {
     args: ["drive", id, url, driver],
     change: (now) => {
-      if (now.tabs.some((tab) => tab.id === id)) return { ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, driver } : tab)) };
-      return { ...now, tabs: [...now.tabs, { id, kind: "browser", opener: now.active, target: url, driver }] };
+      const at = now.tabs.findIndex((tab) => tab.id === id);
+      const was = now.tabs[at];
+      if (was && (was.kind !== "browser" || was.driver === driver)) return now;
+      if (!was && id === CHAT) return now;
+      // Dropped inside or beside its group, it stays where it was let go, as Chrome's.
+      if (was && [now.tabs[at - 1], now.tabs[at + 1]].some((tab) => tab?.driver === driver)) return { ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, driver } : tab)) };
+      const rest = was ? now.tabs.toSpliced(at, 1) : now.tabs;
+      const last = rest.findLastIndex((tab) => tab.driver === driver);
+      const made: Tab = was ? { ...was, driver } : { id, kind: "browser", opener: now.active, target: url, driver };
+      return { ...now, tabs: rest.toSpliced(last < 0 ? (was ? at : rest.length) : last + 1, 0, made) };
     },
   });
 }

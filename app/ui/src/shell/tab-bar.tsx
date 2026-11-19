@@ -7,7 +7,7 @@ import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as 
 import { Badge } from "../components/badge";
 import { useDaemon } from "../daemon";
 import { shownAddress } from "../browser/address";
-import { giveTabToChat, takeBackTab } from "../browser/give";
+import { giveTab, giveTabToChat, takeBackTab } from "../browser/give";
 import { useBrowserPage } from "../browser/pages";
 import { TabProfileDot } from "../browser/profile-mark";
 import { BrowserTabGroupLabel, BrowserTabIcon, BrowserYourTurn } from "../browser/tab-icon";
@@ -301,6 +301,17 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
     list.scrollLeft += sideways ? event.deltaX : event.deltaY;
   };
 
+  // A folded group shows its label alone, as Chrome's; its tab in front keeps it open. Folding the one in front opens
+  // a New tab after the strip's last, as Chrome does [D894 D909].
+  const [folds, setFolds] = useState<ReadonlySet<string>>(new Set());
+  const frontDriver = tabs.find((tab) => tab.id === front)?.driver;
+  const folded = (driver: string | undefined) => Boolean(driver) && driver !== frontDriver && folds.has(`${shown}:${driver}`);
+  const fold = (driver: string, group: readonly Tab[]) => {
+    const key = `${shown}:${driver}`;
+    setFolds((now) => (now.has(key) ? new Set([...now].filter((each) => each !== key)) : new Set([...now, key])));
+    if (folds.has(key) || !group.some((tab) => tab.id === front)) return;
+    moveTab(shown, openTab(shown, "new"), tabs.length);
+  };
   const newTab = (
     <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag session-tab-new" onClick={() => {
         openTab(shown, "new");
@@ -321,7 +332,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + (chatGone ? 0 : 1)} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1)} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
             {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && tabs[0]?.id !== front} order={order} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
             <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">
@@ -337,7 +348,14 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                   if (!canceled && dropped?.kind === "browser" && !dropped.driver && document.elementsFromPoint(x, y).some((each) => each.closest('[data-slot="composer-card"]'))) {
                     return giveTabToChat(shown, dropped.id);
                   }
-                  if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(shown, String(source.id), source.index);
+                  if (canceled || !isSortable(source) || source.index === source.initialIndex) return;
+                  moveTab(shown, String(source.id), source.index);
+                  // Let go between two of Brigadier's, a tab of the user's joins its group; let go away from its group, an agent's is the user's again [D894 D909].
+                  const after = tabsOf(shown).tabs;
+                  const at = after.findIndex((each) => each.id === String(source.id));
+                  const [moved, near] = [after[at], [after[at - 1], after[at + 1]]];
+                  if (moved?.kind === "browser" && !moved.driver && near.every((each) => each?.driver === shown)) giveTab(shown, moved.id);
+                  else if (moved?.driver && !near.some((each) => each?.driver === moved.driver) && after.some((each) => each !== moved && each.driver === moved.driver)) takeBackTab(shown, moved.id);
                 }}
               >
                 {presence.tabs.map((tab, at) => {
@@ -348,11 +366,11 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                   const driver = tab.driver;
                   const leads = driver && leadsGroup(presence.tabs, at);
                   const end = leads ? presence.tabs.findIndex((each, from) => from > at && each.driver !== driver) : -1;
-                  const group = leads ? presence.tabs.slice(at, end < 0 ? undefined : end).map((each) => each.id) : [];
+                  const group = leads ? presence.tabs.slice(at, end < 0 ? undefined : end) : [];
                   return (
                     <Fragment key={tab.id}>
-                      {leads && <BrowserTabGroupLabel tabIds={group} driver={driver} />}
-                      <OtherTab owner={shown} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && tabs[index + 1]?.id !== front} closing={closing} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeHere(tab.id)} />
+                      {leads && <BrowserTabGroupLabel tabs={group} driver={driver} folded={folded(driver)} onFold={() => fold(driver, group)} />}
+                      <OtherTab owner={shown} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && tabs[index + 1]?.id !== front} closing={closing || folded(driver)} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeHere(tab.id)} />
                     </Fragment>
                   );
                 })}

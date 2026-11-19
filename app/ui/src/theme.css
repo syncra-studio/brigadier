@@ -1773,6 +1773,10 @@
     pointer-events: none;
   }
 }
+/* Folded, the label stands alone, as Chrome's. */
+.browser-tab-group[aria-expanded="false"]::after {
+  display: none;
+}
 .session-tab[data-agent-group]:not([data-active]) {
   background: linear-gradient(var(--color-agent-group) 0 0) bottom / 100% 2px no-repeat;
 }
