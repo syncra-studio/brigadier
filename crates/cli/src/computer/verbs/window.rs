@@ -388,13 +388,25 @@ pub(super) fn screenshot(
             "Couldn't cut that region: it must lie inside the picture{size}."
         )));
     }
-    // sips reads a `0 0` offset as none and cuts the centre; `0.0 0.0` is the corner [D930].
-    let cut = std::process::Command::new("sips")
-        .args(["--cropToHeightWidth", &h.to_string(), &w.to_string()])
-        .args(["--cropOffset", &format!("{y}.0"), &format!("{x}.0")])
-        .arg(&file)
-        .output();
-    if !cut.is_ok_and(|o| o.status.success()) {
+    let sips = |args: &str| {
+        let cut = std::process::Command::new("sips")
+            .args(args.split(' '))
+            .arg(&file)
+            .output();
+        cut.is_ok_and(|o| o.status.success())
+    };
+    let crop = |y: u64, x: u64| format!("--cropToHeightWidth {h} {w} --cropOffset {y} {x}");
+    // sips reads a `0 0` offset as none and cuts the centre, and `0.0` as -1 [D930, D936]: the
+    // top-left corner is cut as the bottom-right one of the picture turned round.
+    let cut = match (x, y, full) {
+        (0, 0, (Some(fw), Some(fh))) if (fw, fh) == (w, h) => true,
+        (0, 0, (Some(fw), Some(fh))) => {
+            sips(&format!("-r 180 {}", crop(fh - h, fw - w))) && sips("-r 180")
+        }
+        (0, 0, _) => false,
+        _ => sips(&crop(y, x)),
+    };
+    if !cut {
         return Err(refuse("Couldn't cut that region."));
     }
     Ok(format!(
