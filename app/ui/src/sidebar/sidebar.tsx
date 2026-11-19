@@ -85,7 +85,7 @@ export function AppSidebar({
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
-  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "none");
+  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "project");
   const [sort, setSort] = useStored<Sort>(`${storeKey}.sort`, "sent");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
