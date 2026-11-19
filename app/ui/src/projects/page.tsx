@@ -110,13 +110,14 @@ export function ProjectPageView({
           </Button>
         </span>
       </header>
-      <Tabs.Panel value="sessions" className="flex min-h-0 flex-1 flex-col">
+      {/* Kept, hidden, so a switch back paints what each tab already read, never a remount's skeleton [D867]. */}
+      <Tabs.Panel value="sessions" keepMounted className="flex min-h-0 flex-1 flex-col">
         <Sessions rows={rows} now={now} onOpen={onOpen} onNewSession={onNewSession} onRename={onRename} />
       </Tabs.Panel>
-      <Tabs.Panel value="prs" className="flex min-h-0 flex-1 flex-col">
+      <Tabs.Panel value="prs" keepMounted className="flex min-h-0 flex-1 flex-col">
         {prs}
       </Tabs.Panel>
-      <Tabs.Panel value="settings" className="flex min-h-0 flex-1 flex-col">
+      <Tabs.Panel value="settings" keepMounted className="flex min-h-0 flex-1 flex-col">
         {settings}
       </Tabs.Panel>
     </Tabs.Root>
@@ -291,7 +292,9 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
   }
   return (
     <>
+      {/* A new project's page starts fresh: its kept tabs (D867) hold this project's reads. */}
       <ProjectPageView
+        key={id}
         tab={tab}
         rows={rows}
         now={now}
