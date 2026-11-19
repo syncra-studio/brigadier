@@ -120,7 +120,8 @@ export function AppSidebar({
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   const pinnedProjects = byName.filter((project) => project.pinned).toSorted((a, b) => b.pinned! - a.pinned!);
   const unpinnedProjects = byName.filter((project) => !project.pinned);
-  const attentionIn = (project: string) => attentionOf(rest?.filter((each) => each.project === project) ?? [], active);
+  // From every live session, a folded Brigade's too.
+  const attentionIn = (project: string) => attentionOf(kept?.filter((each) => each.project === project) ?? [], active);
   // Each section's rows top to bottom, keyed by what folds them: the order a picked range and the pill count.
   const sections: [string[], SessionRow[]][] =
     grouping === "none"
