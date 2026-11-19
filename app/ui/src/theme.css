@@ -713,6 +713,16 @@
   [data-base-ui-portal] * {
     -webkit-app-region: no-drag;
   }
+  /* A modal menu's, popover's or select's full-window catcher (Base UI's backdrop, its trigger cut out by a clip-path)
+     on a layer of its own: otherwise the app is drawn into that clipped layer, and on screen the page panel's rounded
+     corner turns square while it's open [D878]. */
+  [data-base-ui-inert][role="presentation"] {
+    will-change: transform;
+  }
+  /* A menu's, popover's or select's bare trigger points like every Button [D879]. */
+  button[aria-haspopup]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* Thin scrollbars that appear on hover. The track stops short of its view's ends, so a thumb stays
