@@ -2,7 +2,7 @@
 //! app with no window shows its menu bar, and its menus and key equivalents work by pid, through
 //! the helper's own calls (Cua's need a window, #8055).
 
-use super::act::{CLICK, act, idle, wait_for_user};
+use super::act::{CLICK, MODIFIER, act, idle, wait_for_user};
 use super::window::{NO_CHANGE, changes, read};
 use super::{Fail, SESSIONS, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
@@ -157,8 +157,9 @@ pub(super) fn front(data: &Path, here: &dyn Fn() -> bool) -> Option<i64> {
 }
 
 /// For 10 s after a launch, an app that takes the front is put back behind the user's window,
-/// unless the user clicked as it came forward (they switched to it): typing or clicking in their
-/// own app before then doesn't count (D930). What happened is told, as measured.
+/// unless the user clicked or let go of ⌘-Tab as it came forward (they switched to it): typing or
+/// clicking in their own app before then doesn't count (D930). One failed put-back ends the watch.
+/// What happened is told, as measured.
 fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: Value) {
     let (data, me) = (data.to_path_buf(), me.to_string());
     let start = Instant::now();
@@ -173,7 +174,7 @@ fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: 
                 behind = at;
                 continue;
             }
-            if idle(CLICK) < at - behind {
+            if idle(CLICK).min(idle(MODIFIER)) < at - behind {
                 return;
             }
             let back = own(
@@ -182,7 +183,8 @@ fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: 
                 json!({"pid": user, "window": window}),
                 &never,
             );
-            let note = match back.is_ok_and(|b| b["restored"] == true) {
+            let restored = back.is_ok_and(|b| b["restored"] == true);
+            let note = match restored {
                 true => format!(
                     "{app} came to the front by itself after {at:.1} s and was put back behind your app."
                 ),
@@ -191,6 +193,9 @@ fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: 
                 ),
             };
             lock(&SEEN).entry(me.clone()).or_default().push(note);
+            if !restored {
+                return;
+            }
         }
     });
 }

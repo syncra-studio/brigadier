@@ -81,7 +81,7 @@ pub(super) fn act(
 }
 
 /// Seconds since the user last gave input of `kind` (`ANY`: moved the mouse, clicked or typed;
-/// `CLICK`: a left click) anywhere; no grant needed.
+/// `CLICK`: a left click; `MODIFIER`: pressed or let go of ⌘, ⇧, ⌥ or ⌃) anywhere; no grant needed.
 #[cfg(target_os = "macos")]
 pub(super) fn idle(kind: u32) -> f64 {
     #[link(name = "CoreGraphics", kind = "framework")]
@@ -91,9 +91,10 @@ pub(super) fn idle(kind: u32) -> f64 {
     // kCGEventSourceStateHIDSystemState.
     unsafe { CGEventSourceSecondsSinceLastEventType(1, kind) }
 }
-/// kCGAnyInputEventType, kCGEventLeftMouseDown.
+/// kCGAnyInputEventType, kCGEventLeftMouseDown, kCGEventFlagsChanged.
 pub(super) const ANY: u32 = u32::MAX;
 pub(super) const CLICK: u32 = 1;
+pub(super) const MODIFIER: u32 = 12;
 
 #[cfg(not(target_os = "macos"))]
 pub(super) fn idle(_: u32) -> f64 {
