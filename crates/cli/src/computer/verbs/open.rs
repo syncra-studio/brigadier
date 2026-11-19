@@ -106,18 +106,18 @@ pub(super) fn open(
         app: opened["name"].as_str().unwrap_or(&name).to_string(),
         ..Sess::default()
     };
-    // Cua demotes an app that takes the front at launch, and says if it stayed.
-    if opened["self_activation_suppressed"] == false {
+    // Cua demotes an app that takes the front at launch, and says if it stayed; the watch, where
+    // there is one, tells what finally happened instead.
+    if let (Some(user), Some(window)) = (user, user_window)
+        && user != pid
+    {
+        keep_behind(data, me, s.app.clone(), pid, user, window);
+    } else if opened["self_activation_suppressed"] == false {
         let note = format!(
             "{} took the front as it started and stayed there: tell the user.",
             s.app
         );
         lock(&SEEN).entry(me.to_string()).or_default().push(note);
-    }
-    if let (Some(user), Some(window)) = (user, user_window)
-        && user != pid
-    {
-        keep_behind(data, me, s.app.clone(), pid, user, window);
     }
     // A window can come a moment after the launch.
     let start = Instant::now();
