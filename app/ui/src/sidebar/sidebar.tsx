@@ -9,7 +9,7 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
+import { ComposeEditSquare, DotsHorizontal, FolderPlusAdd, MagnifyingGlassSmSearch, Pin, Unpin } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
@@ -269,7 +269,7 @@ export function AppSidebar({
             {view}
           </div>
           <TooltipIconButton tooltip="Add project" look="strip" side="bottom" onClick={() => openAddProject()}>
-            <Plus />
+            <FolderPlusAdd />
           </TooltipIconButton>
           <TooltipIconButton tooltip="New chat" look="strip" side="bottom" pressed={home} onClick={onNewChat}>
             <ComposeEditSquare />
@@ -371,7 +371,7 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
             <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
             {/* One blue mark for every kind, then how many sessions it holds [D844]. */}
             <span className="flex shrink-0 items-center gap-1.5 group-hover/row:hidden group-has-focus-visible/row:hidden group-has-aria-expanded/row:hidden">
-              {attention && <RowMark mark="needs" label="A session needs your attention" />}
+              {attention && <RowMark mark="unread" label="A session needs your attention" />}
               <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
             </span>
           </TooltipTrigger>
