@@ -98,15 +98,12 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             "at most {MAX_FILES} attachments per message"
         )));
     }
-    let mut from_home = false;
     for id in ids {
         if file_in(&sent(dir), &id).is_some() {
             continue;
         }
         let to = sent(dir).join(&id);
-        let homes = file_in(&home(data), &id);
-        from_home |= homes.is_some();
-        if let Some(file) = file_in(&draft(dir), &id).or(homes) {
+        if let Some(file) = file_in(&draft(dir), &id).or_else(|| file_in(&home(data), &id)) {
             fs::create_dir_all(sent(dir))?;
             fs::rename(file.parent().unwrap(), &to)?;
         } else if let Some(file) = from.and_then(|s| {
@@ -117,13 +114,8 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             fs::copy(&file, to.join(file.file_name().unwrap()))?;
         }
     }
-    // Home's draft became this session: what it held and didn't send goes with it [D2022 #18].
-    // A draft emptied without a send keeps its files until a session's delete finds them a day old (cli
-    // attach.rs `sweep_home`); a tile's ✕ removes its own at once.
-    if from_home {
-        let _ = fs::remove_file(data.join("home-draft"));
-        let _ = fs::remove_dir_all(home(data));
-    }
+    // Home's other draft shares its folder, so what this send left there waits for cli attach.rs
+    // `sweep_home` (a day old, named by no Home draft); the UI empties the sent draft's words [D863].
     Ok(())
 }
 

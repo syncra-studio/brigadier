@@ -138,7 +138,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
     let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT);
     for id in ids.iter().filter(checked) {
-        core::check_id((id.strip_prefix("@home:").filter(|_| cmd == "tabs")).unwrap_or(id))?;
+        let bare = id
+            .strip_prefix("@home:")
+            .filter(|_| matches!(cmd, "tabs" | "draft"));
+        core::check_id(bare.unwrap_or(id))?;
     }
     match cmd {
         "start" => {

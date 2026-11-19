@@ -1,6 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import type { Draft } from "../components/composer/draft";
 import { daemonRun } from "../session/composer";
 import { EMPTY_DRAFT } from "../components/composer/draft";
 import { HOME_DRAFT, keepDraft } from "../session/draft";
@@ -40,7 +39,6 @@ export type HomeDraft = {
   level?: PermissionLevel;
   /** Brigade picked here, for the next session only: a session is one from its first message or never [D209]. */
   brigade?: boolean;
-  text?: Draft;
   /** Opened with New session in a project (its page, its row, ⌘N in one of its sessions): the project is fixed and the
    *  tabs are that project's draft's; New chat's draft is another, with its own tabs whatever project it picks [D863]. */
   locked?: boolean;
@@ -52,6 +50,8 @@ export type HomeDraft = {
 const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
 export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft.get(), ...change });
+/** Where the draft's words are kept: a project's New session has its own, apart from New chat's [D863]. */
+export const draftKey = (d: Pick<HomeDraft, "locked" | "project"> = draft.get()) => (d.locked && d.project ? `${HOME_DRAFT}:${d.project}` : HOME_DRAFT);
 
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
@@ -70,8 +70,7 @@ export function newChat(): void {
 /** A project's draft closed with its Chat tab's ×: its tabs and words go, and its page shows [D865 D866]. */
 export function dropDraft(project: string): void {
   closeRight(HOME_DRAFT, CHAT);
-  setHomeDraft({ text: undefined });
-  keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
+  keepDraft(daemonRun, draftKey({ locked: true, project }), EMPTY_DRAFT);
   setCurrent(project, null);
   window.location.hash = `#project/${encodeURIComponent(project)}`;
 }
@@ -92,6 +91,8 @@ export type Starting = {
   /** The link dropped before an answer: asked again on reconnect. */
   unknown?: boolean;
   error?: string;
+  /** The Home draft it was sent from, which Discard puts the words back in. */
+  draft?: string;
   /** A fork of session `source` [D1063]: no message; `cid` is the answer's, whose turn its thread starts with. */
   fork?: { source: string; where: string };
   /** Starting in a new worktree from `base`, so its setup shows before Rust's first word on it [D77]. */
@@ -165,6 +166,7 @@ const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
   const id = sessionId();
   const cid = newId();
+  const key = draftKey();
   const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, ...(place.pr ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
@@ -172,16 +174,16 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }) };
+  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ text: undefined, level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
+  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
   // Its PR tab closes on Home: the session has the PR's page instead [D699].
   const tab = place.pr && tabsOf(HOME_DRAFT).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
   if (tab) closeTab(HOME_DRAFT, tab.id);
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
-  keepDraft(daemonRun, HOME_DRAFT, EMPTY_DRAFT);
+  keepDraft(daemonRun, key, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   // A PR's session has Chat and the PR's page only: Home's tabs stay on Home [D706].
   if (place.pr) runStart(entry);
@@ -223,8 +225,9 @@ export function discard(id: string): void {
       if (isOpen(id)) window.location.hash = `#thread/${encodeURIComponent(entry.fork.source)}`;
       return;
     }
-    setHomeDraft({ ...(entry.project ? { project: entry.project, chat: false } : { chat: true }), text: { parts: [entry.text], attachmentIds: [] } });
-    keepDraft(daemonRun, HOME_DRAFT, { parts: [entry.text], attachmentIds: [] });
+    const key = entry.draft ?? HOME_DRAFT;
+    keepDraft(daemonRun, key, { parts: [entry.text], attachmentIds: [] });
+    setHomeDraft({ ...(entry.project ? { project: entry.project, chat: false } : { chat: true }), locked: key !== HOME_DRAFT });
     if (isOpen(id)) window.location.hash = "";
   });
 }

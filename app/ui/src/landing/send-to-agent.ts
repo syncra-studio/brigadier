@@ -8,7 +8,7 @@ import { putBack } from "../session/side";
 import { base64, stored } from "../session/files";
 import { prPasteLabel } from "../shell/attachment-tab";
 import { CHAT, openTab, selectTab } from "../shell/tab-store";
-import { newSession, setHomeDraft } from "../home/start";
+import { draftKey, newSession, setHomeDraft } from "../home/start";
 import type { PullRequest } from "./pull-requests";
 
 /** The PR as the agent reads it [D675]: the PR, its failing checks and its review comments. */
@@ -26,17 +26,17 @@ export function prText(pr: PullRequest): string {
 }
 
 /** The PR in `owner`'s composer, once, as an inline chip named "Pull request #n" whose text is `prText` [D692]: the composer's own pasted-text chip, so a click opens that text in its tab. */
-async function withChip(owner: string, pr: PullRequest): Promise<Draft> {
+async function withChip(owner: string, pr: PullRequest, key = owner): Promise<Draft> {
   const name = prPasteLabel(pr.number);
-  await loadDraft(run, owner);
-  const draft = draftOf(owner) ?? EMPTY_DRAFT;
+  await loadDraft(run, key);
+  const draft = draftOf(key) ?? EMPTY_DRAFT;
   if (draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) return draft;
   const id = crypto.randomUUID();
   await run(["attach", owner, "add", id, `${name}.txt`, "--data", base64(new TextEncoder().encode(prText(pr)).buffer)]);
   stored(owner, id, `${name}.txt`);
   const chip: Chip = { kind: "paste", attachmentId: id, preview: name };
   const next = { parts: [...draft.parts, chip, " "], attachmentIds: draft.attachmentIds };
-  keepDraft(run, owner, next);
+  keepDraft(run, key, next);
   return next;
 }
 
@@ -81,7 +81,8 @@ export async function sendToAgent(pr: PullRequest, owner: string, target: string
   // A session already on the branch that the watch hasn't linked to the PR yet.
   const held = (await run(["host", project, "session", pr.fork ? `pr-${pr.number}` : pr.branch])).session as string | null;
   if (held) return open(held, pr);
-  const text = await withChip(HOME_DRAFT, pr);
-  setHomeDraft({ chat: false, workIn: "worktree", text, pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
+  // Home's files, its project draft's words [D863].
+  await withChip(HOME_DRAFT, pr, draftKey({ locked: true, project }));
+  setHomeDraft({ chat: false, workIn: "worktree", pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
   newSession(project);
 }

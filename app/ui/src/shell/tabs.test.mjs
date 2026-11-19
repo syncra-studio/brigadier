@@ -71,3 +71,21 @@ test("on a project's page the keys act on the session its row shows, and open it
   press("new-tab");
   assert.deepEqual(calls.pop(), [HOME, "new"], "with nothing current, the project's draft");
 });
+
+test("New chat and a project's New session keep their own words [D863]", async () => {
+  const kept = [];
+  globalThis.window = { location: { hash: "" } };
+  const store = (value) => ({ get: () => value, set: (next) => (value = next), use: () => value });
+  const { draftKey, setHomeDraft, newSession, newChat, dropDraft } = await load("../home/start.ts", {
+    "../session/draft": { HOME_DRAFT: "@home", keepDraft: (_, id, draft) => kept.push([id, draft]) },
+    "../onboarding/api": { store },
+  });
+  newSession("p");
+  assert.equal(draftKey(), "@home:p");
+  newChat();
+  assert.equal(draftKey(), "@home");
+  setHomeDraft({ project: "p", chat: false });
+  assert.equal(draftKey(), "@home", "New chat picking a project stays New chat's draft");
+  dropDraft("p");
+  assert.deepEqual(kept.map(([id]) => id), ["@home:p"], "the project draft's × clears its own words only");
+});

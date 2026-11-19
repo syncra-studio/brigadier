@@ -14,13 +14,13 @@ import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
 import { daemonRun } from "../session/composer";
 import type { Draft } from "../components/composer/draft";
-import { HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
+import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
-import { discard, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
+import { discard, draftKey, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 
@@ -40,6 +40,7 @@ export function HomeDraft() {
   const name = useProfile().value?.name ?? "";
   const projects = useProjects()?.filter((each) => !each.pending);
   const draft = useHomeDraft();
+  const key = draftKey(draft);
   const ran = (rows ?? []) as Ran[];
   const latest = (project?: string) => ran.filter((row) => (project ? row.project === project : row.project)).toSorted((a, b) => b.sent - a.sent)[0];
   // A project added from here becomes the draft's once Rust has it (the old app opened its draft).
@@ -125,7 +126,8 @@ export function HomeDraft() {
     <>
       <HomeView
         // Drawn again as a PR is sent to the agent, so its field shows the draft with the PR's chip [D699].
-        key={draft.pr ? draft.focus : 0}
+        // and again on another draft's words: the composer reads `initial` as it mounts [D863].
+        key={`${key}:${draft.pr ? draft.focus : 0}`}
         name={name}
         projects={projects}
         project={project}
@@ -159,12 +161,9 @@ export function HomeDraft() {
         }
         modelError={listError}
         offline={!daemon}
-        initial={draft.text}
-        onDraft={(text) => {
-          setHomeDraft({ text });
-          keepDraft(daemonRun, HOME_DRAFT, text);
-        }}
-        loadDraft={() => loadDraft(daemonRun, HOME_DRAFT)}
+        initial={draftOf(key)}
+        onDraft={(text) => keepDraft(daemonRun, key, text)}
+        loadDraft={() => loadDraft(daemonRun, key)}
         focus={draft.focus}
         onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />

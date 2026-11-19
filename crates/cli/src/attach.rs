@@ -200,8 +200,11 @@ fn refused(a: &dyn adapters::Adapter, bytes: &[u8]) -> Option<String> {
 /// What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
 pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
+    // A project's New session keeps its words apart from New chat's [D863]; `p` was checked in lib.rs.
     let path = if id == HOME_DRAFT {
         data.join("home-draft")
+    } else if let Some(p) = id.strip_prefix("@home:") {
+        data.join(format!("home-draft-{p}"))
     } else {
         core::load(data, id)?;
         core::session_dir(data, id).join("draft")
@@ -214,13 +217,19 @@ pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true}))
 }
 
-/// Home's files its saved draft doesn't name, once a day old, as the old app's cleanup of files nothing refers to,
+/// Home's files none of its saved drafts names, once a day old, as the old app's cleanup of files nothing refers to,
 /// run as it did when a session is deleted; the day leaves undo and a send still on its way alone [D2098].
 pub fn sweep_home(data: &Path) {
-    let saved: Value = (fs::read_to_string(data.join("home-draft")).ok())
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default();
-    let named = message::ids(&saved);
+    let draft = |e: &fs::DirEntry| e.file_name().to_string_lossy().starts_with("home-draft");
+    let drafts = fs::read_dir(data)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(draft);
+    let named: Vec<String> = (drafts.filter_map(|e| fs::read_to_string(e.path()).ok()))
+        .filter_map(|t| serde_json::from_str::<Value>(&t).ok())
+        .flat_map(|saved| message::ids(&saved))
+        .collect();
     let day = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 60 * 60);
     let Ok(home) = draft_of(data, HOME_DRAFT) else {
         return;
