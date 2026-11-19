@@ -57,6 +57,12 @@ import checksums from "electron/checksums.json" with { type: "json" };
 const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "device.camera", "device.print", "device.usb",
   "personal-information.location", "personal-information.photos-library", "automation.apple-events"]
   .map((e) => `com.apple.security.${e.startsWith("allow") ? "cs." : ""}${e}`);
+// Hardened runtime needs a Team ID: ad hoc and self-signed code fail its library validation on Electron's
+// own framework. A Developer ID build runs every part hardened, so no dylib can be injected into one [O300].
+const hardenedRuntime = (process.env.BRIGADIER_SIGN_IDENTITY ?? "").startsWith("Developer ID");
+// The daemon is the responsible process for its agents: hardened, macOS asks for these on their behalf
+// only if it declares them, as its Info.plist's reasons do [D606].
+const daemon = ["automation.apple-events", "device.audio-input", "device.camera"].map((e) => `com.apple.security.${e}`);
 await packager({
   dir: ".",
   name: "Brigadier",
@@ -78,14 +84,17 @@ await packager({
     identity: process.env.BRIGADIER_SIGN_IDENTITY || "-",
     keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || undefined,
     identityValidation: false,
-    // Ad hoc code has no Team ID, so hardened runtime's library validation would refuse Electron's
-    // own framework. A Developer ID build turns it on: notarization requires it.
     // Computer use's helper and its driver run hardened with Cua's own release entitlements, so no
-    // other process can load code into what holds the grants [D913].
+    // other process can load code into what holds the grants [D913]. Electron's helpers keep osx-sign's
+    // per-helper defaults, but for the Plugin helper's disable-library-validation: nothing loads plugins.
+    // Our Rust binaries need nothing more than brigadierd's.
     optionsForFile: (file) =>
       file.includes("/Brigadier Computer Use.app")
         ? { timestamp: "none", hardenedRuntime: true, entitlements: ["com.apple.security.automation.apple-events", "com.apple.security.device.screen-capture"] }
-        : { timestamp: "none", hardenedRuntime: false, ...(file.endsWith("/Brigadier.app") && { entitlements }) },
+        : { timestamp: "none", hardenedRuntime,
+            ...(file.endsWith("/Brigadier.app") && { entitlements }),
+            ...(file.includes("(Plugin).app") && { entitlements: ["com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"] }),
+            ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") ? daemon : [] }) },
   },
 });
 EOF
