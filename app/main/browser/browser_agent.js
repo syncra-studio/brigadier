@@ -356,6 +356,40 @@
     return { done: true };
   };
 
+  /**
+   * Where a press's key goes, looked at first: never a password field or a frame we can't see into, and Enter or
+   * Space on a sensitive control asks as its click or submit would. With a ref, that control takes the focus.
+   */
+  const press = () => {
+    let element;
+    if (op.target) {
+      const found = target();
+      if (found.error) return found;
+      element = found.element;
+    } else element = deepFocused() || document.body;
+    if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
+    if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
+    const role = roleOf(element);
+    const activates = op.key === "Enter" || op.key === "Space";
+    let kind = null;
+    let named = null;
+    if (activates && (role === "button" || role === "link")) {
+      kind = role === "button" ? filledKind(scopeOf(element)) : null;
+      named = namedKind(nameOf(element));
+    } else if (op.key === "Enter" && element !== document.body) {
+      kind = fieldKind(element) || filledKind(scopeOf(element), element);
+    }
+    const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (named && ask(named, element)) || (op.always && ask("action", element));
+    if (asked) return asked;
+    if (op.target) {
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      element.focus?.({ preventScroll: true });
+      const focused = deepFocused();
+      if (!focused || !within(element, focused)) return { error: `${op.target} can't take the keyboard: click it, or press without --ref.` };
+    }
+    return { done: true };
+  };
+
   const setValue = (element, value) => {
     const proto = element.localName === "textarea" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
@@ -500,6 +534,23 @@
           for (const rect of element.getClientRects()) answer.fields.push(plain(rect));
         }
         return answer;
+      }
+      case "press": return press();
+      case "hover": {
+        const found = target();
+        if (found.error) return found;
+        found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+        return placeOf(found.element) ?? { error: `${op.target} has no place to hover now.` };
+      }
+      case "scroll": {
+        if (op.target) {
+          const found = target();
+          if (found.error) return found;
+          found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+          return { done: true };
+        }
+        const step = Math.round(innerHeight * 0.8) * (op.way === "up" ? -1 : 1);
+        return { point: { x: innerWidth / 2, y: innerHeight / 2 }, scroll: step };
       }
       case "evalAnswer": return evalAnswer(op.value);
       case "describe": return describe(op.element);

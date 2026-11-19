@@ -76,9 +76,10 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   const devtoolsOpen = id in pause.devtools;
   const signInStop = pause.asked[id];
   const signInRejected = useSignInRejected(id);
-  // The agent working the tab, as the user knows it.
+  // Who works the tab [D778]: a worker by its name, the session's own agent as Brigadier.
   const { rows } = useDaemon();
-  const driver = tab.driver ? (rows?.find((row) => row.id === tab.driver)?.title ?? "The agent") : null;
+  const driverRow = rows?.find((row) => row.id === tab.driver);
+  const driver = tab.driver ? (driverRow?.worker ? driverRow.title || "A worker" : "Brigadier") : null;
 
   useEffect(() => {
     if (!active || !initialUrl || made || !area.current) return;

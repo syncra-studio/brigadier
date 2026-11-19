@@ -10,9 +10,33 @@ const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(cal
 
 const script = (guest: number, op: Answer) => agent({ call: "script", guest, op }) as Promise<Answer | null>;
 
+/** How long a scroll gets to move the page. */
+const SCROLL_MS = 350;
+
+const pointOf = (answer: unknown) => (answer as { point?: { x: number; y: number } } | null)?.point;
+
 /** Reads a page, or acts on one of its controls. */
 export async function agentRun(id: string, op: Answer): Promise<unknown> {
   const { guest, element } = agentPage(id);
+  if (op.kind === "press") return press(id, op);
+  if (op.kind === "hover" || op.kind === "scroll") {
+    const answer = await script(guest, op);
+    const point = pointOf(answer);
+    if (!point) return answer;
+    const zoom = element.getZoomFactor();
+    const at = { x: point.x * zoom, y: point.y * zoom };
+    if (op.kind === "hover") await glideTo(id, String(op.label ?? "Brigadier"), at);
+    if (isPaused(id)) return { paused: "user" };
+    const scrolled = Number((answer as { scroll?: unknown }).scroll ?? 0) * zoom;
+    // A scroll is the page's own wheel under its middle, as a person's: it reaches the list there, not only the window.
+    if (op.kind === "hover") return await whilePainting(id, () => agent({ call: "hover", guest, ...at }));
+    // A page behind its tab paints only meanwhile, and its scroll moves only while it paints.
+    return await whilePainting(id, async () => {
+      const answer = await agent({ call: "scroll", guest, ...at, deltaY: scrolled });
+      await new Promise((resolve) => setTimeout(resolve, SCROLL_MS));
+      return answer;
+    });
+  }
   if (op.kind !== "click" && op.kind !== "type") return script(guest, op);
   const answer = await script(guest, { ...op, trusted: true });
   const point = (answer as { point?: { x: number; y: number } } | null)?.point;
@@ -22,6 +46,11 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
   await glideTo(id, String(op.label ?? "Brigadier"), { x: point.x * zoom, y: point.y * zoom });
   if (isPaused(id)) return { paused: "user" };
 
+  // The real pointer goes there first, so a menu that opened on hover closes and the page settles before the check.
+  if (op.kind === "click") {
+    await whilePainting(id, () => agent({ call: "hover", guest, x: point.x * zoom, y: point.y * zoom }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   // The page may have moved while the cursor went; a field must still be the one with the focus.
   const place = await script(guest, { kind: "place", target: op.target, typing: op.kind === "type" });
   if (place && "error" in place) return place;
@@ -39,6 +68,21 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
     pressAt(id);
     // A page behind its tab is visibility:hidden, and input sent to it reaches nothing though the call succeeds.
     return await whilePainting(id, () => agent({ call: "click", guest, x: there.x * zoom, y: there.y * zoom }));
+  } finally {
+    release();
+  }
+}
+
+/** A key, once the page's script has looked at where it goes: never a password field, and a sensitive Enter asks first. */
+async function press(id: string, op: Answer): Promise<unknown> {
+  const { guest, element } = agentPage(id);
+  const ready = await script(guest, { ...op, kind: "press" });
+  if (!ready || "error" in ready || "ask" in ready) return ready;
+  if (isPaused(id)) return { paused: "user" };
+  if (userComposing()) return { error: "The user is typing with an input method in Brigadier, so no key was sent, to keep their unfinished text. Try again in a moment." };
+  const release = guardFocus(element, () => focusPage(null));
+  try {
+    return await whilePainting(id, () => agent({ call: "key", guest, key: op.key, modifiers: op.modifiers }));
   } finally {
     release();
   }

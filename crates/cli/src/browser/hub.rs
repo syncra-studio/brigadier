@@ -4,6 +4,7 @@
 //! the user took over holds its calls; an action that asks the user first waits on its card.
 
 mod asks;
+mod keys;
 mod text;
 
 use crate::agent::refuse;
@@ -167,8 +168,19 @@ struct Words<'a> {
     flags: HashSet<&'a str>,
 }
 
-const VALUES: [&str; 5] = ["--tab", "--go", "--since", "--kinds", "--asks"];
+const VALUES: [&str; 9] = [
+    "--tab", "--go", "--since", "--kinds", "--asks", "--ref", "--text", "--gone", "--ms",
+];
 const FLAGS: [&str; 5] = ["--keep", "--dev-url", "--submit", "--json", "--help"];
+
+/// Who the user sees drive a tab [D778]: a worker by its name, the session's own agent as
+/// Brigadier, never the agent CLI's name.
+pub(crate) fn who(data: &Path, session: &str) -> String {
+    crate::workers::link(data, session)
+        .map(|l| l.title)
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| "Brigadier".into())
+}
 
 fn words(args: &[String]) -> Result<Words<'_>, Value> {
     let mut w = Words {
@@ -226,7 +238,7 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
             return refuse("Local links open in the default browser (Settings › Browser).");
         }
     }
-    let label = core::share::title(&spec);
+    let label = who(data, me);
     let tab = op["tab"].as_str().unwrap_or("").to_string();
     let key = asks::fingerprint(&op).map(|f| (me.to_string(), tab.clone(), f));
     // Asked first, the call goes on once the user says yes; the page may have moved by then, and

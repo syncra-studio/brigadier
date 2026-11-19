@@ -4,6 +4,7 @@
 //! beside a password; Auto also before a script; Full runs them all. Password fields stay closed
 //! at every level (the page's script).
 
+use super::keys::{key_of, keys};
 use super::{HUB, Words, lock, tab_of};
 use crate::agent::refuse;
 use crate::owner;
@@ -87,6 +88,43 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
                 ));
             }
         },
+        "press" => {
+            let (key, modifiers) =
+                key_of(&one("a key, such as Escape, Tab, ArrowDown or Meta+K")?)?;
+            json!({"op": "press", "tab": tab()?, "key": key, "modifiers": modifiers,
+                "target": w.values.get("--ref"), "declared": declared, "asks": asks, "always": always})
+        }
+        "hover" => {
+            json!({"op": "hover", "tab": tab()?, "target": one("a ref, as a snapshot gave it")?})
+        }
+        "scroll" => match w.rest.as_slice() {
+            [way @ ("down" | "up")] => json!({"op": "scroll", "tab": tab()?, "way": way}),
+            [target] => json!({"op": "scroll", "tab": tab()?, "target": target}),
+            _ => {
+                return Err(refuse(
+                    "`brigadier browser scroll` takes down, up or a ref.",
+                ));
+            }
+        },
+        "wait" => {
+            none()?;
+            let ms = match w.values.get("--ms").map(|s| s.parse::<u64>()) {
+                None => Value::Null,
+                Some(Ok(n)) if n <= 20_000 => n.into(),
+                Some(_) => return Err(refuse("--ms takes milliseconds, 20000 at most.")),
+            };
+            match (w.values.get("--text"), w.values.get("--gone")) {
+                (Some(_), Some(_)) => {
+                    return Err(refuse(
+                        "`brigadier browser wait` takes --text or --gone, not both.",
+                    ));
+                }
+                (text, gone) => {
+                    json!({"op": "wait", "tab": tab()?, "text": text, "gone": gone, "ms": ms})
+                }
+            }
+        }
+        "tabs" => none().map(|()| json!({"op": "tabs"}))?,
         "screenshot" => none().and_then(|()| Ok(json!({"op": "screenshot", "tab": tab()?})))?,
         "eval" => {
             json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": level == "auto"})
@@ -175,6 +213,12 @@ pub(super) fn fingerprint(op: &Value) -> Option<String> {
             op["submit"],
             s("text")
         )),
+        "press" => Some(format!(
+            "press\u{1f}{}\u{1f}{}\u{1f}{}",
+            s("target"),
+            s("key"),
+            op["modifiers"]
+        )),
         "eval" => Some(format!("eval\u{1f}{}", s("script"))),
         _ => None,
     }
@@ -199,6 +243,18 @@ fn question(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
         op["op"] == "click",
         op["op"] == "type" && op["submit"] == true,
     );
+    if op["op"] == "press" {
+        let key = keys(op);
+        return match sensitive {
+            "credentials" => format!("Press {key} beside your password on {site}?"),
+            "action" if named => format!("Press {key} in {name} on {site}?"),
+            "action" => format!("Press {key} on {site}?"),
+            _ => format!(
+                "{} (pressing {key})",
+                question(&json!({"op": "click"}), sensitive, what, url)
+            ),
+        };
+    }
     match sensitive {
         "pay" => format!("Pay on {site}?"),
         "send" => format!("Send something in your name on {site}?"),
@@ -231,6 +287,7 @@ fn details(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
             );
         }
         Some("click") => format!("Clicks {what}."),
+        Some("press") => format!("Presses {} in {what}.", keys(op)),
         Some("type") => {
             let then = if op["submit"] == true {
                 ", then presses Enter"

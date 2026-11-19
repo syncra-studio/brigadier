@@ -162,6 +162,14 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     }
     return page(tab, owner);
   }
+  if (op.op === "tabs") {
+    const { active } = tabsOf(owner);
+    const tabs = browserTabs(owner).map((each) => {
+      const shown = browserPage(each.id);
+      return { id: each.id, title: shown?.title ?? "", url: shown?.url || each.target || "", driver: each.driver ?? "", paused: isPaused(each.id), asked: Boolean(askedOf(each.id)), front: active === each.id };
+    });
+    return { result: "tabs", tabs };
+  }
   const tab: Tab | undefined = browserTabs(owner).find((each) => each.id === op.tab);
   if (!tab) return failed(`There is no tab ${op.tab} in this session now: open one with \`brigadier browser open <url>\`.`);
   // Showing never moves the window or the session: only which tab the session has in front.
@@ -171,7 +179,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
   }
   // Worked only by its own agent, which the user's input in the tab pauses.
   const users = tab.driver !== driver;
-  if (users && op.op !== "read" && op.op !== "screenshot" && op.op !== "events")
+  if (users && !READ_ONLY.has(op.op))
     return failed(tab.driver
       ? `Tab ${tab.id} was opened by another agent: you may read it. To work in it, \`brigadier browser open\` its address; that goes on in this tab.`
       : `Tab ${tab.id} is the user's: you may read it, not click, type, navigate or close it. Open your own with \`brigadier browser open <url>\`.`);
@@ -187,6 +195,35 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
   if (!users) await agentDrive(tab.id, true);
   const result = await act(tab.id, op, owner, label);
   return !tab.driver && result.result === "page" ? { ...result, user: true } : result;
+}
+
+/** The calls that only look, which work on any tab of the session. */
+const READ_ONLY = new Set(["read", "screenshot", "events", "wait"]);
+/** The longest an agent's `wait` waits. */
+const WAIT_MOST_MS = 20_000;
+
+/** The page after a `wait` for `op.text` to show, or `op.gone` to go; said so when it didn't. */
+async function waited(tab: string, op: Op, owner: string): Promise<Result> {
+  const ms = Math.min(Number(op.ms) || WAIT_MOST_MS, WAIT_MOST_MS);
+  const wanted = String(op.text ?? op.gone ?? "");
+  if (!wanted) {
+    if (op.ms) await wait(ms);
+    else await loaded(tab);
+    return page(tab, owner);
+  }
+  const deadline = Date.now() + ms;
+  const needle = wanted.toLowerCase();
+  for (;;) {
+    if (isPaused(tab)) return { result: "paused", tab };
+    const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
+    const there = String((answer as { text?: unknown } | null)?.text ?? "").toLowerCase().includes(needle);
+    if (there === Boolean(op.text)) return page(tab, owner);
+    if (Date.now() >= deadline) {
+      const note = `Waited ${Math.round(ms / 1000)} s: ${JSON.stringify(wanted)} ${op.text ? "didn't show" : "is still there"}.`;
+      return { ...(await page(tab, owner)), note };
+    }
+    await wait(250);
+  }
 }
 
 async function act(tab: string, op: Op, owner: string, label: string): Promise<Result> {
@@ -206,14 +243,28 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       return page(tab, owner);
     case "read":
       return page(tab, owner);
+    case "wait":
+      return waited(tab, op, owner);
+    case "hover":
+    case "scroll": {
+      const answer = await agentRun(tab, { kind: op.op, label, target: op.target, way: op.way });
+      const overtaken = pausedAnswer(answer, tab);
+      if (overtaken) return overtaken;
+      const error = errorOf(answer);
+      if (error) return failed(error);
+      await settled(tab);
+      return page(tab, owner);
+    }
     case "click":
-    case "type": {
+    case "type":
+    case "press": {
       const before = new Set(browserTabs(owner).map((each) => each.id));
       const ask = (approved: string | null) => agentRun(tab, {
         kind: op.op,
         label,
         target: op.target,
         ...(op.op === "type" ? { text: op.text, submit: op.submit } : {}),
+        ...(op.op === "press" ? { key: op.key, modifiers: op.modifiers } : {}),
         declared: op.declared,
         always: op.always,
         approved,

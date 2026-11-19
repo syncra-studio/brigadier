@@ -84,6 +84,27 @@ const mouse = (type: string, x: number, y: number, buttons: number) => ({
   clickCount: type === "mouseMoved" ? 0 : 1,
 });
 
+/** The keys an agent's press names (crates/cli/src/browser/hub/asks.rs), as Electron's key codes. */
+const KEY_CODES: Record<string, string> = {
+  Enter: "Return", Escape: "Escape", Tab: "Tab", Backspace: "Backspace", Delete: "Delete", Space: "Space",
+  ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
+};
+const MODIFIERS = new Set(["shift", "control", "alt", "meta"]);
+
+/** A key as widget events: down, its character where it types one, up. Only a named key or one character. */
+function keyEvents(key: string, modifiers: string[]): Electron.KeyboardInputEvent[] {
+  const named = KEY_CODES[key] ?? (/^F([1-9]|1[0-2])$/.test(key) || [...key].length === 1 ? key : null);
+  if (!named || !Array.isArray(modifiers) || !modifiers.every((each) => MODIFIERS.has(each))) throw new Error("Unknown key");
+  const mods = modifiers as Electron.KeyboardInputEvent["modifiers"];
+  const typing = !modifiers.includes("meta") && !modifiers.includes("control") && ([...key].length === 1 || key === "Enter" || key === "Space");
+  const char = key === "Space" ? " " : named;
+  return [
+    { type: "keyDown", keyCode: named, modifiers: mods },
+    ...(typing ? [{ type: "char" as const, keyCode: char, modifiers: mods }] : []),
+    { type: "keyUp", keyCode: named, modifiers: mods },
+  ];
+}
+
 /** DevTools ends a debugger session (electron.d.ts, Debugger's `detach`), so opening it counts as take-over. */
 function watchDevTools(guest: WebContents): void {
   guest.on("devtools-opened", () => {
@@ -134,6 +155,9 @@ type Call =
   | { call: "release"; guest: number }
   | { call: "click"; guest: number; x: number; y: number }
   | { call: "enter"; guest: number }
+  | { call: "key"; guest: number; key: string; modifiers: string[] }
+  | { call: "hover"; guest: number; x: number; y: number }
+  | { call: "scroll"; guest: number; x: number; y: number; deltaY: number }
   | { call: "wheel"; guest: number; x: number; y: number; deltaX: number; deltaY: number }
   | { call: "events"; guest: number; since: number; kinds: string[] }
   | { call: "capture"; guest: number }
@@ -165,6 +189,22 @@ export function installBrowserAgent(): void {
           guest.sendInputEvent({ type: "keyDown", keyCode: "Return" });
           guest.sendInputEvent({ type: "char", keyCode: "Return" });
           guest.sendInputEvent({ type: "keyUp", keyCode: "Return" });
+        });
+      case "key": {
+        const events = keyEvents(call.key, call.modifiers);
+        // Widget events, as Enter's.
+        return acting(guest, async () => {
+          for (const each of events) guest.sendInputEvent(each);
+        });
+      }
+      case "hover":
+        return acting(guest, async (send) => {
+          await send("Input.dispatchMouseEvent", mouse("mouseMoved", call.x, call.y, 0));
+        });
+      case "scroll":
+        // The agent's scroll: the page's own wheel under the point, as a person's, so it reaches the list there.
+        return acting(guest, async (send) => {
+          await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: call.x, y: call.y, deltaX: 0, deltaY: call.deltaY });
         });
       case "wheel":
         // The user's own scroll, which the shield over a driven tab passes on: no debugger, and it pauses nothing.
