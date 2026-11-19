@@ -3,7 +3,7 @@ import { type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } f
 import { cx } from "../components/cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
 import { useDaemon } from "../daemon";
-import { FilesView } from "../files/views";
+import { FilesView, useFilesAhead } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
 import { Folders } from "../icons/sidebar";
 import { useGitWatch } from "../panel/git";
@@ -71,6 +71,7 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
   const open = has && memory.open;
   usePanelFromRust();
   useGitWatch(has ? owner : null);
+  useFilesAhead(owner, !has || open);
   const [resizing, setResizing] = useState(false);
   // Its contents stay through the closing slide, then go, so a closed panel reads nothing.
   const [shown, setShown] = useState(open);

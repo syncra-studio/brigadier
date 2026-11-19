@@ -422,9 +422,21 @@ pub fn files(data: &Path, id: &str, open: &[String], stop: &AtomicBool) -> io::R
     let names = seen(data, id)?;
     let (mut files, mut ignored, mut truncated) = (vec![], vec![], false);
     let (mut marks, mut folders) = (serde_json::Map::new(), serde_json::Map::new());
-    for name in open.iter().filter(|n| names.contains(n)) {
+    let open: Vec<&String> = open.iter().filter(|n| names.contains(n)).collect();
+    // Each repo at once: the listing takes its slowest repo's time, not their sum [D881].
+    let lists: Vec<io::Result<Value>> = std::thread::scope(|s| {
+        let each: Vec<_> = (open.iter())
+            .map(|name| {
+                s.spawn(|| checkout_of(data, id, name).and_then(|c| git::files::list(&c, stop)))
+            })
+            .collect();
+        (each.into_iter())
+            .map(|h| h.join().unwrap_or_else(|_| err("listing failed")))
+            .collect()
+    });
+    for (name, one) in open.into_iter().zip(lists) {
         // One that can't be read (its copy gone) opens empty: the others still list.
-        let Ok(one) = checkout_of(data, id, name).and_then(|c| git::files::list(&c, stop)) else {
+        let Ok(one) = one else {
             continue;
         };
         let under = |v: &Value| format!("{name}/{}", v.as_str().unwrap_or_default());

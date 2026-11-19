@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
-import { keep, sourceArgs, useGit } from "../panel/git";
+import { keep, sourceArgs, type Target, useGit } from "../panel/git";
 import { HOME } from "../shell/tab-store";
 import { FileTree, type OnOpen } from "./tree";
 import type { ChangeMarks, FolderEntry, Listing } from "./types";
@@ -17,12 +17,36 @@ const NO_MARKS: ChangeMarks = { files: {}, folders: {} };
 // Each checkout's last listing, shown at once on coming back to it while it's listed again, as the checkout's git read is (panel/git.ts) [D1258].
 const kept = new Map<string, { listing: Listing; marks: ChangeMarks }>();
 
+/** Whose files `owner`'s Files reads: none until the watch is on it [D1258]. A folder chat's watch is one of its repos, `<owner>@<repo>` [D494]; its Files are all its repos, the chat's own [D776]. */
+function filesTarget(watched: Target | null, owner: string): Target | null {
+  return watched && ("session" in watched ? (watched.session.split("@")[0] === owner ? { session: owner } : null) : owner === HOME ? watched : null);
+}
+
+/** Reads `owner`'s listing ahead while Files is closed, so it opens on it at once; a folder chat's every repo too [D881]. */
+export function useFilesAhead(owner: string, skip: boolean): void {
+  const { target: watched } = useGit();
+  const { daemon } = useDaemon();
+  const target = filesTarget(watched, owner);
+  const key = target && JSON.stringify(target);
+  const starting = useStart(owner)?.asking === true;
+  useEffect(() => {
+    if (skip || !target || !key || !daemon || starting || kept.has(key)) return;
+    const read = (repos: string[]) =>
+      ask({ op: "run", args: sourceArgs(target, "files", ...repos) }, (reply) => {
+        if (!reply.ok) return;
+        const { marks, ...list } = reply.list;
+        keep(kept, key, { listing: { state: "listed", list }, marks });
+        if (list.repos?.length && !repos.length) read(list.repos);
+      });
+    read([]);
+  }, [key, daemon, starting, skip]);
+}
+
 export function FilesView({ owner, shown = null, onOpen }: { owner: string; shown?: string | null; onOpen: OnOpen }) {
   const { target: watched, version } = useGit();
   const { daemon } = useDaemon();
   // Mounted on a switch, this view renders once before the watch moves to its owner: another checkout's, never read here [D1258].
-  // A folder chat's watch is one of its repos, `<owner>@<repo>` [D494]; its Files are all its repos, the chat's own [D776].
-  const target = watched && ("session" in watched ? (watched.session.split("@")[0] === owner ? { session: owner } : null) : owner === HOME ? watched : null);
+  const target = filesTarget(watched, owner);
   const key = target && JSON.stringify(target);
   const [listing, setListing] = useState<Listing>(() => (key && kept.get(key)?.listing) || { state: "loading" });
   const [marks, setMarks] = useState<ChangeMarks>(() => (key && kept.get(key)?.marks) || NO_MARKS);
@@ -39,9 +63,9 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
   const [tick, setTick] = useState(0);
-  const [repos, setRepos] = useState<string[]>([]);
-  const opened = repos.join("\n");
-  const openRepos = useCallback((next: string[]) => setRepos((last) => (last.join("\n") === next.join("\n") ? last : next)), []);
+  // shortcut: a folder chat lists every repo on each read (Rust reads them at once), so opening one draws what's
+  // already here [D881]; list only the open ones and keep the rest if a folder of many repos is slow.
+  const repos = (listing.state === "listed" && listing.list.repos?.join("\n")) || "";
   // A new session's checkout isn't made until its start answers: the listing waits, loading, as the watch does [D1259].
   const starting = useStart(owner)?.asking === true;
 
@@ -49,7 +73,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   useEffect(() => {
     if (!target || !daemon || starting) return;
     let live = true;
-    ask({ op: "run", args: sourceArgs(target, "files", ...repos) }, (reply) => {
+    ask({ op: "run", args: sourceArgs(target, "files", ...(repos ? repos.split("\n") : [])) }, (reply) => {
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setListing({ state: "failed", error: String(reply.error) });
       const { marks: next, ...list } = reply.list;
@@ -65,7 +89,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       });
     });
     return () => void (live = false);
-  }, [key, daemon, version, tick, starting, opened]);
+  }, [key, daemon, version, tick, starting, repos]);
 
   const readIgnored = useCallback(
     (paths: string[]) => {
@@ -120,7 +144,6 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       marks={marks}
       loaded={loaded}
       onReadIgnored={readIgnored}
-      onOpenRepos={openRepos}
       shown={shown}
       results={query ? results : null}
       onQuery={setQuery}

@@ -2,7 +2,7 @@
 import type { FileStatus } from "../panel/status";
 
 /** A checkout's files as git lists them, capped; what it ignores ("dist/" a folder) is listed apart. */
-export type FileList = { files: string[]; truncated: boolean; ignored: string[]; /** A folder chat's repos, its top folders: only open ones' files are listed [D776]. */ repos?: string[] };
+export type FileList = { files: string[]; truncated: boolean; ignored: string[]; /** A folder chat's repos, its top folders, each one's files under its name [D776]. */ repos?: string[] };
 
 /** The tree's listing: still coming, failed, or listed [D30]. */
 export type Listing = { state: "loading" } | { state: "failed"; error: string } | { state: "listed"; list: FileList };
