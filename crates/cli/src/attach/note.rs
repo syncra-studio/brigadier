@@ -12,6 +12,7 @@
 //! go with the note or the project [D281, D282, D288]. Home's note has one too, on the new chat's
 //! picked agent [D287].
 
+mod list;
 mod moved;
 
 use crate::{HOME_DRAFT, arg, flag, has, models, remove};
@@ -19,15 +20,24 @@ use brigadier_core::{self as core, check_id, message::MAX_BYTES, projects};
 use serde_json::{Value, json};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 use std::{fs, io};
 
-/// A note's name, as its tab and the New tab show it: its first line, without a heading's #s.
+/// A note's name, as its tab and lists show it: the one it was renamed to, else its first line of
+/// text, without a heading's #s [D913].
 fn title(text: &str) -> &str {
-    text.lines()
-        .map(|line| line.trim_start_matches('#').trim())
-        .find(|line| !line.is_empty())
-        .unwrap_or("")
+    let (head, body) = split(text);
+    match named(head) {
+        "" => (body.lines().map(|line| line.trim_start_matches('#').trim()))
+            .find(|line| !line.is_empty())
+            .unwrap_or(""),
+        name => name,
+    }
+}
+
+/// The name in a note's `# ` line, without the emoji that may lead it; empty: it was never renamed.
+fn named(head: &str) -> &str {
+    head.trim_start_matches(|c: char| !c.is_ascii() && !c.is_alphanumeric())
+        .trim()
 }
 
 /// A project's notes folder, removed with it [D920], or the one chats in no project share [D921].
@@ -226,26 +236,25 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "chats": chats}))
         }
         // The newest first, as the old New tab's Recents.
-        "list" => {
-            let mut notes: Vec<(u64, Value)> = vec![];
-            let paths = (fs::read_dir(&dir).into_iter().flatten().flatten()).map(|e| e.path());
-            for path in paths.chain(moved::waiting_into(data, &dir)) {
-                let Some(note) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                if path.extension().is_none_or(|e| e != "md") || check_id(note).is_err() {
-                    continue;
-                }
-                let at = fs::metadata(&path)
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map_or(0, |d| d.as_millis() as u64);
-                let text = fs::read_to_string(&path).unwrap_or_default();
-                notes.push((at, json!({"id": note, "title": title(&text), "at": at})));
+        "list" => Ok(list::run(data, &dir, flag(args, "--q"))),
+        "pin" => {
+            let note = arg(args, 3)?;
+            let (home, _) = at(note)?;
+            list::pin(&home, note, arg(args, 4)? == "on")
+        }
+        // A new name in its `# ` line, its emoji kept; an empty one names it by its text again.
+        "rename" => {
+            let (note, name) = (arg(args, 3)?, arg(args, 4)?.replace('\n', " "));
+            let (_, path) = at(note)?;
+            let now = read_text(&path)?;
+            let (head, body) = split(&now);
+            let emoji = head[..head.len() - named(head).len()].trim();
+            let text = join(&format!("{emoji} {}", name.trim()), body);
+            if text.trim().is_empty() {
+                return Ok(json!({"ok": false, "error": "There's nothing in this note to name."}));
             }
-            notes.sort_by_key(|n| std::cmp::Reverse(n.0));
-            Ok(json!({"ok": true, "notes": notes.into_iter().map(|(_, n)| n).collect::<Vec<_>>()}))
+            core::write_atomic(&path, text.as_bytes())?;
+            Ok(json!({"ok": true, "title": title(&text), "revision": revision(&text)}))
         }
         _ => Err(io::Error::other(crate::USAGE)),
     }

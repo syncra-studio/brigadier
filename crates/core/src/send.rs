@@ -26,7 +26,7 @@ fn note_lead(note: &str, reads: Option<&str>) -> String {
         format!(" To build it from the project, read the session's checkout at {r}; change nothing there.")
     });
     format!(
-        "[This chat is beside the user's note {note}, in the same window. When the user asks, write or change that note by editing the file in place: its first line `# ` is the note's title (an emoji may lead it), then a blank line, then its body in Markdown (headings, lists, `- [ ]` checklists, tables, quotes, code). Change no other file.{checkout}]"
+        "[This chat is beside the user's note {note}, in the same window. When the user asks, write or change that note by editing the file in place: a first line `# ` names it if the user renamed it (an emoji may lead it; keep that line as it is), then a blank line, then its body; without that line its first line of text names it. The body is Markdown (headings, lists, `- [ ]` checklists, tables, quotes, code). Change no other file.{checkout}]"
     )
 }
 
