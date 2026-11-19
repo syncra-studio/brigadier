@@ -147,15 +147,9 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
+      {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
+      <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
       <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset pb-surface-inset">
-        {/* The page the sidebar and the content sit on, and its corners kept round over them, as in the old app [D745]. */}
-        <div aria-hidden data-slot="page-surface" className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface bg-background shadow-raised" />
-        <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset z-20">
-          <span className="page-corner page-corner-top-start" />
-          <span className="page-corner page-corner-top-end" />
-          <span className="page-corner page-corner-bottom-start" />
-          <span className="page-corner page-corner-bottom-end" />
-        </div>
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />

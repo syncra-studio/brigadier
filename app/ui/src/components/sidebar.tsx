@@ -165,8 +165,11 @@ export function SidebarPanel({
   const { open, hidden, resizing } = useSidebar();
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
-      {/* Only its width moves, on the old app's spring; the title bar's padding follows on the same one [D745]. */}
-      <div inert={hidden} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}>
+      <div
+        inert={hidden}
+        data-resizing={resizing || undefined}
+        className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
+      >
         <div className="flex h-full flex-col">
           <div className="app-drag h-titlebar shrink-0" />
           <div data-sidebar="sidebar" className={cx("flex min-h-0 flex-1 flex-col rounded-s-surface bg-background text-foreground", className)} {...props}>
