@@ -329,7 +329,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
           ) : (
             <div className="shrink-0 text-2xs font-semibold text-placeholder">{group ? (group.short ?? group.label) : "Models"}</div>
           )}
-          {group?.unavailable ? (
+          {group?.unavailable && (
             <div data-slot="model-picker-not-set-up" className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-label text-muted-foreground">
               <span>
                 {group.label} {group.unavailable === "install" ? "isn't installed. Install it and its models show here." : "isn't signed in. Sign in and its models show here."}
@@ -348,19 +348,18 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
                 </button>
               )}
             </div>
-          ) : (
-            <div role="group" aria-label={group ? `${group.label} models` : "Models"} data-picker-part="models" className="-m-1 flex min-h-0 flex-wrap content-start gap-x-1.5 gap-y-2 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
-              {automatic && !needle && (
-                <Tip tip={automatic.hint}>{chip("automatic", automatic.label, auto, true, automatic.onChoose)}</Tip>
-              )}
-              {group &&
-                listed.map((entry, index) =>
-                  chip(entry.id, needle ? <span><MatchedText text={entry.name} query={needle} hit="font-semibold text-foreground" /></span> : entry.name, isChecked(group.provider, entry), (!automatic || Boolean(needle)) && index === 0, () => pick(group.provider, entry), entry),
-                )}
-              {group && models.length === 0 && <p className="text-xs text-muted-foreground">No models listed yet</p>}
-              {needle && listed.length === 0 && <p className="text-xs text-placeholder">No models match “{needle}”</p>}
-            </div>
           )}
+          <div role="group" aria-label={group ? `${group.label} models` : "Models"} data-picker-part="models" className="-m-1 flex min-h-0 flex-wrap content-start gap-x-1.5 gap-y-2 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
+            {automatic && !needle && (
+              <Tip tip={automatic.hint}>{chip("automatic", automatic.label, auto, true, automatic.onChoose)}</Tip>
+            )}
+            {group &&
+              listed.map((entry, index) =>
+                chip(entry.id, needle ? <span><MatchedText text={entry.name} query={needle} hit="font-semibold text-foreground" /></span> : entry.name, isChecked(group.provider, entry), (!automatic || Boolean(needle)) && index === 0, () => pick(group.provider, entry), entry),
+              )}
+            {group && !group.unavailable && models.length === 0 && <p className="text-xs text-muted-foreground">No models listed yet</p>}
+            {needle && listed.length === 0 && <p className="text-xs text-placeholder">No models match “{needle}”</p>}
+          </div>
           {!group?.unavailable && !needle && quota && <QuotaLines usage={quota} />}
         </div>
         {efforts && RULE}

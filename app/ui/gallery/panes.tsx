@@ -94,7 +94,7 @@ function SidebarDemo() {
   const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse}>
+      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse}>
         <SidebarPanel strip={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
