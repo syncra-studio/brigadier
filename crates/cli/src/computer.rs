@@ -118,12 +118,20 @@ pub fn reply(conn: u64, answer: Value) {
     }
 }
 
-/// Connection `conn` went: if it was the helper's, what waits on it fails at once.
-pub fn leave(conn: u64) {
+/// Connection `conn` went: if it was the helper's, what waits on it fails at once, and while
+/// computer use is on it starts again now, as macOS's Quit & Reopen copy has no daemon [D963].
+pub fn leave(data: &Path, conn: u64) {
     let mut link = lock(&HUB.link);
     if link.conn == conn && link.out.is_some() {
         *link = Link::default();
         HUB.changed.notify_all();
+        drop(link);
+        // One that dies as it starts waits for the next call, so a crash can't loop.
+        let old = lock(&HUB.launched).is_none_or(|at| at.elapsed() > RECHECK);
+        if old && on(data) {
+            let data = data.to_path_buf();
+            std::thread::spawn(move || launch(&data, None));
+        }
     }
 }
 

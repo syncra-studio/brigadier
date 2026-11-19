@@ -347,7 +347,7 @@ pub(super) fn serve(
     gitting.fetch_add(1, Ordering::SeqCst);
     git::leave(conn);
     brigadier::browser::leave(conn);
-    brigadier::computer::leave(conn);
+    brigadier::computer::leave(data, conn);
     state.lock().unwrap().subs.remove(&conn);
     Ok(())
 }
