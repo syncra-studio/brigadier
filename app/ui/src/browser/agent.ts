@@ -85,6 +85,15 @@ function profileChanged(tab: string): void {
   calls.clear();
 }
 
+const TAKEN_BACK = "taken_back: the user took this tab back, so it's theirs now and nothing more was done. You may read it, not act in it.";
+
+/** The user took tab `tab` back from its agent [D775]: the hold goes, and what was under way there ends now. */
+export function takenBack(tab: string): void {
+  agentDrive(tab, false).catch(() => {});
+  for (const end of underWay.get(tab) ?? []) end(failed(TAKEN_BACK));
+  underWay.get(tab)?.clear();
+}
+
 /** An in-flight call the user's take-over or DevTools overtook. */
 function pausedAnswer(answer: unknown, tab: string): Result | null {
   if (typeof answer !== "object" || !answer || !("paused" in answer)) return null;

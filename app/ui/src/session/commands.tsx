@@ -8,7 +8,7 @@ import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
 import { isPasteLabel, PASTE_LABEL } from "../shell/attachment-tab";
-import { openAttachment, openFile } from "../shell/tab-store";
+import { openAttachment, openFile, selectTab } from "../shell/tab-store";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 import { urlOf } from "./files";
@@ -87,6 +87,7 @@ export const useListedCommands = (owner: string | undefined) => useSyncExternalS
 export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner, name?: string) {
   const home = owner === HOME_DRAFT;
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
+  if (kind === "tab") return selectTab(owner, id);
   if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].

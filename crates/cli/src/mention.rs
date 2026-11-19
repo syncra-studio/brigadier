@@ -1,5 +1,5 @@
 //! The `@` menu's search, as the old app's: with nothing typed, its sections (Workers, Message
-//! directly, Files, the top folders, the newest chats); typed, one list ranked across workers,
+//! directly, Files, the top folders, the newest chats, the session's browser tabs); typed, one list ranked across workers,
 //! files, folders and other sessions, capped. Rust searches; the UI only marks the matched letters. Each reply echoes its
 //! query, so an older one drops [D71, D127, D2010, D2021].
 
@@ -64,6 +64,16 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .map_or((None, p.as_str()), |(d, n)| (Some(d), n));
         json!({"id": p, "type": if *folder { "folder" } else { "file" }, "label": p, "name": name, "detail": detail})
     };
+    // The session's browser tabs, which a message can hand to its agent [D775]: by address, as Rust knows them.
+    let tabs: Vec<Value> = (crate::tabs::browser(data, owner).into_iter())
+        .filter(|(_, _, driver)| driver.as_deref().is_none_or(|d| d == owner))
+        .map(|(id, url, driver)| {
+            let shown = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
+            let label: String = shown.trim_end_matches('/').chars().take(80).collect();
+            let hint = driver.map(|_| "Brigadier has it");
+            json!({"id": id, "type": "tab", "label": label, "hint": hint})
+        })
+        .collect();
     let groups = if q.is_empty() {
         let top = found
             .iter()
@@ -75,6 +85,7 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             {"title": "Files", "items": [], "note": "Type to search for files"},
             {"title": "Folders", "items": top.map(path).collect::<Vec<_>>()},
             {"title": "Chats", "items": chats.iter().take(SECTION_ROWS).map(|r| chat(r)).collect::<Vec<_>>()},
+            {"title": "Tabs", "items": tabs.iter().take(SECTION_ROWS).collect::<Vec<_>>()},
         ])
     } else {
         let query = q.to_lowercase();
@@ -100,6 +111,11 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             let title = chat(r);
             if let Some(rank) = files::rank(title["label"].as_str().unwrap_or(""), &query) {
                 all.push((rank, 3, 0, title));
+            }
+        }
+        for t in tabs {
+            if let Some(rank) = files::rank(t["label"].as_str().unwrap_or(""), &query) {
+                all.push((rank, 4, 0, t));
             }
         }
         all.sort_by_key(|a| (a.0, a.1, a.2));

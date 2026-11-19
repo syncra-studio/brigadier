@@ -267,6 +267,11 @@ export function driveTab(owner: string, id: string, url: string, driver: string)
   });
 }
 
+/** Browser tab `id` is the user's again: no agent works it (tabs.rs's `user`) [D775]. */
+export function userTab(owner: string, id: string): void {
+  act(owner, { args: ["user", id], change: (now) => ({ ...now, tabs: now.tabs.map((tab) => (tab.id === id && tab.kind === "browser" ? { ...tab, driver: undefined } : tab)) }) });
+}
+
 /** Whether any chat's or session's tabs have `id`: Home's move to the session its first message makes. */
 export const tabOpenAnywhere = (id: string): boolean => tabAnywhere(id) !== null;
 

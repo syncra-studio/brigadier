@@ -1,4 +1,4 @@
-import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Mcp, ToolsSkills } from "../../icons";
+import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
 import { WorkerGlyph } from "../../icons/worker-glyphs";
 import { ProviderMark } from "./model-picker";
@@ -42,7 +42,8 @@ export function FileBadge({ name, className }: { name: string; className?: strin
 export const fileTone = (name: string) => GLYPHS.find(([pattern]) => pattern.test(extensionOf(name)))?.[2];
 
 /** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat, a worker's glyph. `className` sizes it (a menu row's own size otherwise). */
-export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct"; id?: string; label: string; className?: string }) {
+export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct" | "tab"; id?: string; label: string; className?: string }) {
+  if (type === "tab") return <Globe aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "worker" || type === "direct") return <WorkerGlyph id={id ?? label} className={className} />;
   if (type === "chat") return <Chat aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "folder") return <Folder aria-hidden className={cx("text-muted-foreground", className)} />;

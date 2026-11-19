@@ -6,6 +6,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouse
 
 import { Badge } from "../components/badge";
 import { shownAddress } from "../browser/address";
+import { giveTabToChat, takeBackTab } from "../browser/give";
 import { useBrowserPage } from "../browser/pages";
 import { TabProfileDot } from "../browser/profile-mark";
 import { BrowserTabIcon } from "../browser/tab-icon";
@@ -218,6 +219,13 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             <DropdownMenuSeparator />
           </>
         )}
+        {tab.kind === "browser" && (
+          <>
+            {/* The session's own agent is Brigadier to the user, whichever CLI it runs [D778]. */}
+            {tab.driver ? <DropdownMenuItem onClick={() => takeBackTab(owner, tab.id)}>Take back</DropdownMenuItem> : <DropdownMenuItem onClick={() => giveTabToChat(owner, tab.id)}>Give to Brigadier</DropdownMenuItem>}
+            <DropdownMenuSeparator />
+          </>
+        )}
         <TabMenuItems owner={owner} id={tab.id} order={order} onClose={onClose} />
       </ContextMenuContent>
     </ContextMenu>
@@ -371,6 +379,12 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
               modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
               onDragEnd={({ operation, canceled }) => {
                 const { source } = operation;
+                // A browser tab let go over the composer goes to the session's agent, as its menu's Give does [D775].
+                const { x, y } = operation.position.current;
+                const dropped = tabs.find((each) => each.id === String(source?.id));
+                if (!canceled && dropped?.kind === "browser" && !dropped.driver && document.elementsFromPoint(x, y).some((each) => each.closest('[data-slot="composer-card"]'))) {
+                  return giveTabToChat(owner, dropped.id);
+                }
                 if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
               }}
             >

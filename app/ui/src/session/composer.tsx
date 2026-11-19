@@ -244,7 +244,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const parts = field.current?.parts() ?? [];
     const tiles = files.tileIds;
     const pulled = take();
-    files.sent();
+    files.sent(parts);
     const back = carry(sent, msg);
     handOff(id, sent, msg, () => go(pulled, back), (reply) => {
       restoreChips(id, msg, sent);

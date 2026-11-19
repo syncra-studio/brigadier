@@ -9,6 +9,7 @@ import { ask } from "../daemon";
 import { Paperclip } from "../icons";
 import { daemonSource, openFolders } from "../projects/store";
 import { openAttachment } from "../shell/tab-store";
+import { giveChipTabs } from "../browser/give";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 
@@ -101,8 +102,11 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
     change(owner, (now) => ({ ...now, tiles: now.tiles.filter((each) => each !== id) }));
     void run(["attach", owner, "remove", id]);
   };
-  /** After a send: the tiles leave with the message; its files are the session's now. */
-  const sent = () => change(owner, (now) => ({ ...now, tiles: [] }));
+  /** After a send: the tiles leave with the message; its files are the session's now, and each tab its chips name is its agent's [D775]. */
+  const sent = (parts: Draft["parts"] = []) => {
+    change(owner, (now) => ({ ...now, tiles: [] }));
+    if (owner !== HOME_DRAFT) giveChipTabs(owner, parts);
+  };
   /** Tiles back with what's there now, anything added meanwhile kept; files this view hasn't listed yet are read again. */
   const restore = (tiles: readonly string[]) => {
     change(owner, (now) => ({ ...now, tiles: [...new Set([...tiles, ...now.tiles])] }));

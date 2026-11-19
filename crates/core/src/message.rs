@@ -155,6 +155,12 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                 let id = part["id"].as_str().unwrap_or("");
                 notes.push(format!("[mentions worker {id}: {label}]"));
             }
+            // Handed to the agent with the message: the app gave it the tab as it sent [D775].
+            (Some("mention"), Some("tab")) => {
+                agent += label;
+                let id = part["id"].as_str().unwrap_or("");
+                notes.push(format!("[gives you browser tab {id} ({label}): it's yours to use now, with the user's sign-ins. `brigadier browser snapshot --tab {id}` reads it.]"));
+            }
             (Some("mention"), Some(kind)) => {
                 agent += label;
                 notes.push(format!("[mentions the {kind} {label}]"));

@@ -213,7 +213,7 @@ impl Tabs {
     }
 }
 
-/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | file <tab> <path> <line|-> <keep|preview> |
+/// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -397,6 +397,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             now.tabs[at].profile = Some(profile.into());
         }
         "drive" => now.drive(arg(args, 3)?, arg(args, 4)?, arg(args, 5)?)?,
+        // The user takes a tab back from the agent working it: theirs again [D775].
+        "user" => {
+            if let Some(at) = now
+                .at(arg(args, 3)?)
+                .filter(|&at| now.tabs[at].kind == "browser")
+            {
+                now.tabs[at].driver = None;
+            }
+        }
         "select" => {
             let tab = arg(args, 3)?;
             if now.exists(tab) {
@@ -446,6 +455,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         home::drop_closed_notes(data);
     }
     Ok(state(&now))
+}
+
+/// Session `session`'s browser tabs on a web page, for the `@` menu: id, address and who works it.
+pub(crate) fn browser(data: &Path, session: &str) -> Vec<(String, String, Option<String>)> {
+    (read(&file(data, session)).tabs.into_iter())
+        .filter(|t| t.kind == "browser")
+        .filter_map(|t| Some((t.id, t.target.filter(|u| u.starts_with("http"))?, t.driver)))
+        .collect()
 }
 
 /// A browser tab's saved pin; the registry decides whether it is still live.

@@ -10,7 +10,7 @@ import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon } from "./kin
 import type { SlashCommand } from "./menus";
 
 /** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
-export type OpenKind = "file" | "folder" | "chat" | "worker" | "command" | "skill" | "mcp" | "image" | "paste";
+export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "command" | "skill" | "mcp" | "image" | "paste";
 
 /** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
 export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string, name?: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
@@ -48,7 +48,7 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
   ) : (
     <>
       <MentionKindIcon type={chip.type} id={chip.id} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
-      {chip.type === "chat" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
+      {chip.type === "chat" || chip.type === "tab" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
     </>
   );
   const tone = command ? COMMAND_TONES[chip.type] : ((chip.type === "file" && fileTone(chip.label)) || "text-link");
