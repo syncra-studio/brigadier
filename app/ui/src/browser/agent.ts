@@ -5,7 +5,7 @@ import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } 
 import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun } from "./hands";
 import { agentPage, go } from "./layer";
 import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
-import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged } from "./pause";
+import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged, pausedFor } from "./pause";
 import { onProfileChanged } from "./profiles";
 import { signInCleared, signInStopOf, stopAgent, stoppedWords } from "./sign-in";
 
@@ -308,6 +308,12 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "screenshot": {
       const png = await agentCapture(tab);
       return { result: "shot", tab, url: browserPage(tab)?.url ?? "", png: base64(png) };
+    }
+    case "ask": {
+      // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
+      pausedFor(tab, { kind: "ask", what: String(op.what), site: "", key: `ask:${Date.now()}` });
+      selectTab(owner, tab);
+      return { result: "asked", tab };
     }
     case "close":
       closeAgentTab(owner, tab);

@@ -33,8 +33,8 @@ struct Hub {
     /// The app's connections that run calls; the newest runs them.
     pages: Mutex<Vec<(u64, Sender<String>)>>,
     calls: Mutex<HashMap<String, Waiting>>,
-    /// The tabs the user took over: calls on them wait for Continue.
-    paused: Mutex<HashSet<String>>,
+    /// The tabs the user took over, with how many calls wait on each for Continue.
+    paused: Mutex<HashMap<String, usize>>,
     pause_changed: Condvar,
     /// The user's yes to one call until it goes through, by agent, tab and the call itself. In
     /// memory only, so nothing typed is ever written down.
@@ -85,38 +85,49 @@ pub(super) fn run(args: &[String]) -> std::io::Result<Value> {
         }
         (session, "paused") => {
             core::check_id(session)?;
-            set_paused(arg(3), arg(4) == "true");
+            // How many calls the hand-back lets go on: with none, the app tells the agent (pause.ts).
+            let waiting = set_paused(arg(3), arg(4) == "true");
+            return Ok(json!({"ok": true, "waiting": waiting}));
         }
         _ => return Err(std::io::Error::other(super::USAGE)),
     }
     Ok(json!({"ok": true}))
 }
 
-fn set_paused(tab: &str, paused: bool) {
+/// Pauses `tab` or lets it go on; how many calls waited on it.
+fn set_paused(tab: &str, paused: bool) -> usize {
     let mut set = lock(&HUB.paused);
-    let changed = match paused {
-        true => set.insert(tab.to_string()),
-        false => set.remove(tab),
+    let (changed, waiting) = match paused {
+        true => (
+            !set.contains_key(tab),
+            *set.entry(tab.to_string()).or_insert(0),
+        ),
+        false => set.remove(tab).map_or((false, 0), |n| (true, n)),
     };
     if changed {
         HUB.pause_changed.notify_all();
     }
+    waiting
 }
 
 /// Waits until `tab` isn't paused, `until` at the latest, or the agent went; false if it still is.
 fn unpaused(tab: &str, until: Instant, here: &dyn Fn() -> bool) -> bool {
     let mut set = lock(&HUB.paused);
-    while set.contains(tab) {
+    while let Some(n) = set.get_mut(tab) {
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() || !here() {
             return false;
         }
+        *n += 1;
         let step = left.min(Duration::from_secs(1));
         set = HUB
             .pause_changed
             .wait_timeout(set, step)
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .0;
+        if let Some(n) = set.get_mut(tab) {
+            *n = n.saturating_sub(1);
+        }
     }
     true
 }

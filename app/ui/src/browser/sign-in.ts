@@ -53,7 +53,8 @@ export function signInSeen(tab: string, { look, stop, rejected: refused }: SignI
 
 /** What the agent hears in place of a page it stopped at: not the page, since the tab is the user's now. */
 export function stoppedWords(stop: SignInStop, tab: string): string {
-  const after = `The user has this tab now and nothing more was done here. Tell them what you need. Your next call on ${tab} waits until they press Continue.`;
+  const after = `The user has this tab now and nothing more was done here. Tell them what you need. Your next call on ${tab} waits until they press Done, hand it back.`;
+  if (stop.kind === "ask") return `Asked the user: ${stop.what ?? ""}. ${after}`;
   if (stop.kind === "rejected") return `Stopped: Google refused this sign-in for this browser (${stop.site}). Agents can't help with that: only the user can decide what to do next. ${after}`;
   if (stop.kind === "captcha") return `Stopped: ${stop.site} shows a captcha. Agents never answer these, and only the user can. ${after}`;
   if (stop.window) return `Stopped: this page opened a separate sign-in window at ${stop.site}. You can't see or use that window, and agents don't sign in. ${after}`;

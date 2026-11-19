@@ -49,10 +49,11 @@ const openOutside = (url: string) => window.brigadier?.openLink(url);
 /** Why a tab's agent stopped for the user at a page only they can go through. */
 function SignInStopWords({ stop, driver }: { stop: SignInStop; driver: string }) {
   const who = <span className="font-medium">{driver}</span>;
-  if (stop.kind === "rejected") return <>Google refused this sign-in, so {who} stopped. Press Continue to hand the page back.</>;
-  if (stop.kind === "captcha") return <>This page shows a captcha, so {who} stopped. Solve it, then press Continue.</>;
-  if (stop.window) return <>A sign-in window opened, so {who} stopped. Finish in that window, then press Continue.</>;
-  return <>This page asks you to sign in, so {who} stopped. Agents don't sign in: do it here, then press Continue.</>;
+  if (stop.kind === "ask") return <>{who} asks you: {stop.what}</>;
+  if (stop.kind === "rejected") return <>Google refused this sign-in, so {who} stopped. Hand the page back when you're done here.</>;
+  if (stop.kind === "captcha") return <>This page shows a captcha, so {who} stopped. Solve it, then hand it back.</>;
+  if (stop.window) return <>A sign-in window opened, so {who} stopped. Finish in that window, then hand it back.</>;
+  return <>This page asks you to sign in, so {who} stopped. Agents don't sign in: do it here, then hand it back.</>;
 }
 
 /** `children` show until a page is made; `onNavigate` takes the first address instead (the New tab, which becomes a page). */
@@ -395,8 +396,8 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
               ? <SignInStopWords stop={signInStop} driver={driver} />
               : <>You're using this page, so <span className="font-medium">{driver}</span> is waiting.</>}
         >
-          <Button size="sm" disabled={devtoolsOpen} onClick={() => handBack(id)}>
-            Continue
+          <Button size="sm" disabled={devtoolsOpen} onClick={() => handBack(id, true)}>
+            {signInStop && !devtoolsOpen ? "Done, hand it back" : "Continue"}
           </Button>
         </Banner>
       )}

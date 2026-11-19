@@ -131,6 +131,14 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
             }
         }
         "tabs" => none().map(|()| json!({"op": "tabs"}))?,
+        // Hands the agent's tab to the user for what only they do; their Done hands it back [D781].
+        "ask" => {
+            let what: String = one("what the user should do there, in quotes")?
+                .chars()
+                .take(300)
+                .collect();
+            json!({"op": "ask", "tab": tab()?, "what": what})
+        }
         "screenshot" => none().and_then(|()| Ok(json!({"op": "screenshot", "tab": tab()?})))?,
         "eval" => {
             json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": level == "auto"})
