@@ -28,9 +28,9 @@ import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "
 import type { SessionRow } from "./words";
 
 /*
- * The app's sidebar [D173, D174], in one of two modes picked in View's Organize sidebar [D806]. By projects:
+ * The app's sidebar [D173, D174], with New chat in both modes [D817], picked in View's Organize sidebar [D806]. By projects:
  * Pinned projects, Projects by name, each opening its page, and Chats, the sessions in no project; no other
- * session and nothing archived shows [D808, D809, D812]. By sessions: New chat, Pinned sessions, Open, every
+ * session and nothing archived shows [D808, D809, D812]. By sessions: Pinned sessions, Open, every
  * project's and none, each with its project's badge, and Archived [D803]. Rows go by the user's last send,
  * newest first, so a row never moves while it works; or, picked in View, by anyone's last activity [D810].
  * Mode, order and folds are this window's view, kept in localStorage; a pin is Rust's.
@@ -249,20 +249,14 @@ export function AppSidebar({
             </button>
             <span className="min-w-0 truncate">Brigadier</span>
           </h1>
-          <TooltipIconButton tooltip="New chat" look="toolbar" side="bottom" onClick={onNewChat}>
-            <Plus />
-          </TooltipIconButton>
           <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
             <MagnifyingGlassSmSearch />
           </TooltipIconButton>
         </div>
-        {/* By sessions only; By projects has the + above [D803]. */}
-        {pinsSessions && (
-          <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
-            <ComposeEditSquare />
-            New chat
-          </NavRow>
-        )}
+        <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
+          <ComposeEditSquare />
+          New chat
+        </NavRow>
       </div>
       <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
         <div className="relative flex min-h-0 flex-1 flex-col">

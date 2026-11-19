@@ -138,7 +138,7 @@ export function ViewMenu({
       {children}
       <PopoverContent side="bottom" align="end" className="w-52">
         <SubMenu icon={<Sidebar />} title="Organize sidebar">
-          <DropdownMenuRadioGroup value={grouping} onValueChange={(next) => onGrouping(next as Grouping)}>
+          <DropdownMenuRadioGroup value={grouping} onValueChange={(next) => onGrouping(next as Grouping)} onClick={() => setOpen(false)}>
             <DropdownMenuRadioItem value="project" indicator={CHECK}>
               <MenuRow icon={<Folder />} title="By projects" />
             </DropdownMenuRadioItem>
