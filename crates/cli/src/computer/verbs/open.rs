@@ -56,10 +56,6 @@ pub(super) fn open(
         ));
     }
     blocked(&name, "")?;
-    let mut args = json!({"name": name});
-    if let Some(t) = &target {
-        args["urls"] = json!([t]);
-    }
     // What the user has in front, to keep there [D909].
     let user = front(data, here);
     let user_window = match user {
@@ -68,61 +64,63 @@ pub(super) fn open(
             .map(|w| w["window_id"].clone()),
         None => None,
     };
-    // A path, or a url for a running app, goes through LaunchServices in the background: Cua's
-    // handoff timed out on a Finder folder (5 s) and took 8 s to give Dia a url (0.5 s here). A
-    // cold start stays Cua's, for its focus guard.
-    let handoff =
-        (target.as_ref()).filter(|t| t.starts_with('/') || find(data, &name, here).is_ok());
-    let opened = match handoff {
-        Some(path) => {
-            let sent = std::process::Command::new("open")
-                .args(["-g", "-a", &name, path])
-                .output();
-            if !sent.as_ref().is_ok_and(|o| o.status.success()) {
-                let why = sent.map(|o| {
-                    String::from_utf8_lossy(&o.stderr)
-                        .trim()
-                        .trim_end_matches('.')
-                        .to_string()
-                });
-                return Err(refuse(&format!(
-                    "{name} couldn't open {path}: {}. `brigadier computer apps` lists what runs.",
-                    why.unwrap_or_else(|e| e.to_string())
-                )));
-            }
-            let (pid, app) = find(data, &name, here)?;
-            json!({"pid": pid, "name": app})
+    // Through LaunchServices in the background, a cold start too: Cua's launch_app brought a cold
+    // Calculator to the front, and macOS left the user's full-screen Space for it; `open -g`
+    // didn't (D946). Cua's handoff timed out on a Finder folder and took 8 s to give Dia a url.
+    let installed = call(data, "list_apps", json!({}), here)?;
+    let listed = named(installed["apps"].as_array().map_or(&[][..], |a| a), &name);
+    let bundle = listed.and_then(|a| a["bundle_id"].as_str()).unwrap_or("");
+    blocked(&name, bundle)?;
+    let mut launch = std::process::Command::new("open");
+    let app_path = listed.and_then(|a| a["launch_path"].as_str());
+    launch.args(["-g", "-a", app_path.unwrap_or(&name)]);
+    launch.args(&target);
+    if listed.is_none_or(|a| a["running"] == false) {
+        launch.arg("--args").args(windowed(bundle));
+    }
+    let sent = launch.output();
+    if !sent.as_ref().is_ok_and(|o| o.status.success()) {
+        let why = sent.map(|o| {
+            String::from_utf8_lossy(&o.stderr)
+                .trim()
+                .trim_end_matches('.')
+                .to_string()
+        });
+        let with = target.as_ref().map(|t| format!(" {t}")).unwrap_or_default();
+        return Err(refuse(&format!(
+            "{name} couldn't open{with}: {}. `brigadier computer apps` lists what runs.",
+            why.unwrap_or_else(|e| e.to_string())
+        )));
+    }
+    // A cold start can take a moment to show up as running.
+    let launched = Instant::now();
+    let (pid, app) = loop {
+        match find(data, &name, here) {
+            Err(_) if launched.elapsed() < WINDOW_WAIT => thread::sleep(Duration::from_millis(250)),
+            found => break found?,
         }
-        None => call(data, "launch_app", args, here)?,
     };
-    let pid = opened["pid"].as_i64().ok_or_else(|| {
-        refuse(&format!(
-            "{name} didn't start. `brigadier computer apps` lists what runs."
-        ))
-    })?;
-    blocked(&name, opened["bundle_id"].as_str().unwrap_or(""))?;
     *s = Sess {
         pid,
-        app: opened["name"].as_str().unwrap_or(&name).to_string(),
+        app,
         ..Sess::default()
     };
-    // Cua demotes an app that takes the front at launch, and says if it stayed; the watch, where
-    // there is one, tells what finally happened instead.
-    if let (Some(user), Some(window)) = (user, user_window)
-        && user != pid
-    {
+    // The watch, where there is one, tells what finally happened.
+    let watch = user.zip(user_window).filter(|(user, _)| *user != pid);
+    if let Some((user, window)) = watch.clone() {
         keep_behind(data, me, s.app.clone(), pid, user, window);
-    } else if opened["self_activation_suppressed"] == false {
-        let note = format!(
-            "{} took the front as it started and stayed there: tell the user.",
-            s.app
-        );
-        lock(&SEEN).entry(me.to_string()).or_default().push(note);
     }
     // A window can come a moment after the launch.
     let start = Instant::now();
     while windows(data, s.pid, here)?.is_empty() && start.elapsed() < WINDOW_WAIT {
         thread::sleep(Duration::from_millis(250));
+    }
+    if watch.is_none() && front(data, here) == Some(pid) {
+        let note = format!(
+            "{} took the front as it started and stayed there: tell the user.",
+            s.app
+        );
+        lock(&SEEN).entry(me.to_string()).or_default().push(note);
     }
     let what = (target.as_ref())
         .map(|t| format!(" with {t}"))
@@ -414,14 +412,51 @@ pub(super) fn find(
     here: &dyn Fn() -> bool,
 ) -> Result<(i64, String), Value> {
     let all = running(data, here)?;
-    let named = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase();
-    let lower = name.to_lowercase();
-    let app = (all.iter().find(|a| named(a) == lower))
-        .or_else(|| all.iter().find(|a| named(a).starts_with(&lower)))
-        .ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
+    let app = named(&all, name).ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
     let found = app["name"].as_str().unwrap_or(name).to_string();
     blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
     Ok((app["pid"].as_i64().unwrap_or(0), found))
+}
+
+/// An app by its name in `list_apps`: exact first, else the one it starts.
+fn named<'a>(all: &'a [Value], name: &str) -> Option<&'a Value> {
+    let lower = name.to_lowercase();
+    let of = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase();
+    (all.iter().find(|a| of(a) == lower)).or_else(|| all.iter().find(|a| of(a).starts_with(&lower)))
+}
+
+/// Launch arguments that start an app's saved windows out of full screen, for this launch only
+/// (D946): an app that keeps its windows in its own settings (Dia's `persistedWindowData`) brings a
+/// full-screen one back on a new Space, and macOS goes there whatever `open -g` says. The value is
+/// handed back with `"isFullScreen":false`; nothing is written.
+fn windowed(bundle: &str) -> Vec<String> {
+    let read = |key: &[&str]| {
+        let out = std::process::Command::new("defaults")
+            .arg("read")
+            .arg(bundle)
+            .args(key)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())?;
+        Some(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+    };
+    if bundle.is_empty() {
+        return vec![];
+    }
+    // `defaults read` writes each setting as `key = "value";`, the value's quotes escaped.
+    let all = read(&[]).unwrap_or_default();
+    (all.lines())
+        .filter(|l| l.contains(r#"\"isFullScreen\":true"#))
+        .filter_map(|l| l.trim().split_once(" = "))
+        .filter_map(|(key, _)| {
+            let key = key.trim_matches('"');
+            let value = read(&[key])?.replace(r#""isFullScreen":true"#, r#""isFullScreen":false"#);
+            // Quoted, or the argument domain reads the JSON as a broken plist and drops it.
+            let quoted = value.replace('\\', r"\\").replace('"', r#"\""#);
+            Some([format!("-{key}"), format!("\"{quoted}\"")])
+        })
+        .flatten()
+        .collect()
 }
 
 /// A menu's path from `menu "File > Save As…"`.
