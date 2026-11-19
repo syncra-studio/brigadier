@@ -2,7 +2,7 @@ import { useThread } from "../../daemon";
 import { Lightbulb, Mcp } from "../../icons";
 import type { Item, Turn, Work } from "../../thread/item";
 import { type Group, workKey } from "../../thread/lines";
-import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
+import { plainWords, duration, groupWords, ORDER, useSecond, useWording, workWords } from "../../thread/words";
 import { cx } from "../cx";
 import { Markdown } from "../../thread/markdown";
 import { Chevron, OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
@@ -73,11 +73,12 @@ const QUIET_MS = 30 * 60_000;
  */
 export function GroupRow({ item, members, open, onToggle }: { item: Group; members: readonly Item[]; open: boolean; onToggle: (id: string) => void }) {
   const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k));
+  const plain = useWording() === "plain";
   return (
     <button type="button" aria-expanded={open} onClick={() => onToggle(item.id)} className={cx(ROW, TOGGLE)}>
       {/* Only MCP tools: the MCP glyph, as their own rows [D666]; only thoughts, the thought's. */}
       <StepIcon kind={kind} icon={!kind ? Lightbulb : kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
-      <Words verb={groupWords(members)} />
+      <Words verb={plain ? plainWords(members) : groupWords(members)} />
       <Chevron />
     </button>
   );

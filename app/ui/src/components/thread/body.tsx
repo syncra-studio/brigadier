@@ -8,7 +8,7 @@ import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
 import { tidy } from "../../thread/tidy";
-import { duration } from "../../thread/words";
+import { duration, useWording } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
@@ -58,7 +58,10 @@ type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "
  */
 export function GroupLine({ item, turn, open, steps, live, members, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: readonly Item[]; onToggle: (id: string) => void }) {
   const going = turn?.status === "running" || turn?.held === true;
-  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live ? <Body item={live} turn={turn} step={false} /> : item.run && going && <ThinkingLine />;
+  // The live words name the tool and what it acts on, not the agent's description [D765].
+  const plain = useWording() === "plain";
+  const said = live?.kind === "tool" && plain ? { ...live, description: undefined } : live;
+  const now = said?.kind === "reasoning" ? <ThinkingLine heading={said.heading} /> : said ? <Body item={said} turn={turn} step={false} /> : item.run && going && <ThinkingLine />;
   if (now) return now;
   const ended = members.filter((member) => !running(member) && !(member.kind === "reasoning" && member.streaming));
   if (!ended.length) return null;

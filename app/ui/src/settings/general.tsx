@@ -9,6 +9,7 @@ import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
+import { setWording, useWording } from "../thread/words";
 import { type Settings, setSetting, useSettings } from "./api";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -22,6 +23,7 @@ export const GENERAL_ROWS = {
   systemSettings: { label: "macOS notifications", description: "Allow, banners and Focus are set in System Settings", section: "Notifications" },
   keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open", section: "Power" },
   lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake", section: "Power" },
+  workLines: { label: "Work lines", description: "Words a run of steps says, live and once done (temporary, D765)", section: "Thread" },
   version: { label: "Version", description: "The Brigadier you're running", section: "About" },
   build: { label: "Build", description: "The build this Brigadier was made as", section: "About" },
 } as const;
@@ -82,6 +84,7 @@ export function GeneralPage() {
           <ComposerSection settings={settings} />
           <NotificationsSection settings={settings} notices={live.state ?? settings.notices} reload={live.load} />
           <PowerSection settings={settings} />
+          <WorkLinesSection />
         </div>
       )}
       <SettingsSection title="About">
@@ -107,6 +110,24 @@ function ComposerSection({ settings }: { settings: Settings }) {
       <SettingsCard>
         <SettingsRow label={GENERAL_ROWS.followUp.label} description={`${GENERAL_ROWS.followUp.description}; ⌘Enter does the other for one message`} error={save.error}>
           <Segmented label={GENERAL_ROWS.followUp.label} value={settings.follow_up} options={FOLLOW_UPS} onChange={(value) => save.run(() => setSetting("follow_up", value))} />
+        </SettingsRow>
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+// temporary (D765): remove once the owner picks.
+const WORDINGS = [
+  { value: "plain", label: "Plain words" },
+  { value: "steps", label: "Step descriptions" },
+] as const;
+
+function WorkLinesSection() {
+  return (
+    <SettingsSection title={GENERAL_ROWS.workLines.section}>
+      <SettingsCard>
+        <SettingsRow label={GENERAL_ROWS.workLines.label} description={GENERAL_ROWS.workLines.description}>
+          <Segmented label={GENERAL_ROWS.workLines.label} value={useWording()} options={WORDINGS} onChange={setWording} />
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>

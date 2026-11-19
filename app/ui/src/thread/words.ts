@@ -124,6 +124,52 @@ export function groupWords(steps: readonly Item[]): string {
   return parts.map((part, at) => (at === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))).join(", ");
 }
 
+// temporary (D765): remove once the owner picks. Which words work lines use, flipped live in Settings › General.
+export type Wording = "steps" | "plain";
+let wording: Wording = globalThis.localStorage?.getItem("work-lines") === "plain" ? "plain" : "steps";
+const worded = new Set<() => void>();
+export function setWording(next: Wording) {
+  wording = next;
+  localStorage.setItem("work-lines", next);
+  for (const each of worded) each();
+}
+export const useWording = (): Wording =>
+  useSyncExternalStore(
+    (listener) => (worded.add(listener), () => worded.delete(listener)),
+    () => wording,
+  );
+
+/** The ended line: fixed kind phrases in this order, commas only [D762]: "Used Slack, read files, ran a command, searched the web". */
+export function plainWords(steps: readonly Item[]): string {
+  const used: string[] = [];
+  const count = { edit: 0, read: 0, run: 0, web: 0, agent: 0 };
+  for (const step of steps) {
+    if (step.kind === "fileChange") count.edit++;
+    else if (step.kind === "childAgent") count.agent++;
+    else if (step.kind !== "tool") continue;
+    else if (step.step === "edit") count.edit++;
+    else if (step.step === "read" || step.step === "list" || step.step === "search") count.read++;
+    else if (step.step === "run") count.run++;
+    else if (step.step === "web") count.web++;
+    else if (step.step === "agent") count.agent++;
+    else {
+      const name = step.server ? connectorName(step.server) : step.name;
+      if (!used.includes(name)) used.push(name);
+    }
+  }
+  const one = (n: number, a: string, many: string) => (n === 1 ? a : many);
+  const parts = [
+    used.length ? `used ${joined(used)}` : "",
+    count.edit ? `edited ${one(count.edit, "a file", "files")}` : "",
+    count.read ? `read ${one(count.read, "a file", "files")}` : "",
+    count.run ? `ran ${one(count.run, "a command", "commands")}` : "",
+    count.web ? "searched the web" : "",
+    count.agent ? `ran ${one(count.agent, "a subagent", "subagents")}` : "",
+  ].filter(Boolean);
+  const line = parts.join(", ") || "thought";
+  return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
 const ENDED: Record<Turn["status"], string> = {
   running: "Working for",
   done: "Worked for",
