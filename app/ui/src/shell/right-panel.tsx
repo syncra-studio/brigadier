@@ -30,10 +30,10 @@ export function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** The toggle as drawn: the Files icon [D594] in the toolbar's glass pill, always white and lit, open or closed (owner). */
+/** The toggle as drawn: the Files icon [D594], a titlebar control as the sidebar foot's [D833], always lit, open or closed (owner). */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="pill" className="drop-shadow-toggle-glow" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
+    <TooltipIconButton look="strip" className="drop-shadow-toggle-glow" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
       <FilesGlyph />
     </TooltipIconButton>
   );

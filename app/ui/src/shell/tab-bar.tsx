@@ -38,11 +38,13 @@ import { Toolbar } from "./toolbar";
 /** The closing slide, --duration-session-tab: as long as the others take to grow, as Safari's. The tab itself is gone at once. */
 const CLOSING_MS = 300;
 
-// The titlebar row: across the window's top from its start edge, its tabs on its foot where the frame starts [D48 D823].
-const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 pt-2 pe-2 win:pe-caption";
-const TAB = "session-tab @container/tab app-no-drag group/tab flex h-8 min-w-0 items-center gap-1 rounded-control px-1 select-none";
-// The front tab's fill and edge are session-tab's, the frame's, opaque as it holds at the strip's edge.
-const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground hover:bg-fill");
+// The titlebar row: across the window's top from its start edge, everything on its middle line, the front
+// tab down to its foot where the frame starts [D48 D823 D832].
+const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 pe-2 win:pe-caption";
+const TAB = "session-tab @container/tab app-no-drag group/tab flex min-w-0 items-center gap-1 rounded-control px-1 select-none";
+// Tabs in back are 32px on the row's line; the front one reaches the frame, its content on the line (--spacing-tab-front),
+// its fill and edge session-tab's, the frame's, opaque as it holds at the strip's edge.
+const LOOK = (active: boolean) => (active ? "h-tab-front pb-1 text-foreground" : "mb-1 h-8 text-toolbar-foreground hover:bg-fill");
 // Its icon and title from the start, a title too long cut with "…"; squeezed under 88px, the icon alone [D52].
 const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm ps-2 pe-1 focus-visible:focus-ring @max-tab-icon/tab:justify-center @max-tab-icon/tab:px-0";
 const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
@@ -50,8 +52,6 @@ const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 // × at the tab's end under the pointer, the front tab's too; none under 64px.
 const CLOSE = "invisible absolute end-1.5 top-1.5 flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close group-focus-within/tab:visible group-hover/tab:visible hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
-// A session's house tab: Home's (BlankChatTab) look, outside the tablist as it opens a page rather than a tab.
-const HOUSE = "app-no-drag -me-1.5 flex h-8 w-home-tab shrink-0 cursor-pointer items-center justify-center rounded-control text-toolbar-foreground hover:bg-fill focus-visible:focus-ring";
 /** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
 const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
@@ -366,7 +366,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   };
 
   const newTab = (
-    <TooltipIconButton look="pill" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
+    <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => openTab(owner, "new")}>
       <Plus />
     </TooltipIconButton>
   );
@@ -390,17 +390,18 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
         {/* The tabs from the start, "+" right after them [D823]. */}
         <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
-          {/* A session's house, fixed first: its project's page, or Home's new chat for a chat in none [D828 D829]. */}
+          {/* A session's house, fixed first: its project's page, or Home's new chat for a chat in none [D828 D829]; a
+              titlebar control as the others, outside the tablist as it opens a page rather than a tab [D833]. */}
           {owner !== HOME && (
-            <button type="button" title="Home" aria-label="Home" onMouseDown={noAutoscroll} onClick={() => (row?.project ? openProject(row.project) : newChat())} className={HOUSE}>
+            <TooltipIconButton look="strip" tooltip="Home" className="app-no-drag shrink-0" onMouseDown={noAutoscroll} onClick={() => (row?.project ? openProject(row.project) : newChat())}>
               <House className="size-icon-md" />
-            </button>
+            </TooltipIconButton>
           )}
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={home || undefined} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center gap-0.5" onKeyDown={onKeys} onWheel={onWheel}>
+          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={home || undefined} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end gap-0.5 self-end" onKeyDown={onKeys} onWheel={onWheel}>
             {row ? <ChatTab owner={owner} row={row} active={active === CHAT} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} home={home} />}
             {/* Its padding is the front tab's flares' room, which the scroller would otherwise cut. */}
-            <div ref={strip} className="hide-scrollbar -mx-1.5 flex min-w-0 items-center gap-0.5 overflow-x-auto px-1.5 empty:hidden">
+            <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end gap-0.5 self-stretch overflow-x-auto px-2 empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider
                 sensors={SENSORS}
