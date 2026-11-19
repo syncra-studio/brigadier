@@ -17,8 +17,8 @@ import { PASTE_LABEL } from "../../shell/attachment-tab";
 import { openAttachment } from "../../shell/tab-store";
 import { ApprovalRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
-import { ShieldExclamation } from "../../icons";
-import { ChangeLine, InlineStatus } from "./line";
+import { Plug, ShieldExclamation } from "../../icons";
+import { ChangeLine, InlineStatus, ThreadLine } from "./line";
 import { AssistantMessage, ThinkingLine, UserBubble } from "./message";
 import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
@@ -215,19 +215,24 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         return <ErrorState summary={words} details={item.text} action={again} />;
       }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
-      // An agent's sign-in lives on Settings › Providers [D347, D381, D2054]; a library server's is its Sign in (`again`).
+      // A library server's, beside the tool call it refused, is a quiet line with its Sign in (`again`) [D761].
+      if (item.plugin) {
+        return (
+          <ThreadLine icon={Plug}>
+            {item.text}
+            <span className="ms-1.5 whitespace-nowrap">{again}</span>
+          </ThreadLine>
+        );
+      }
+      // An agent's sign-in lives on Settings › Providers [D347, D381, D2054].
       return (
         <NoticeRow
           level="error"
           text={item.text}
           link={
-            item.plugin ? (
-              <span className="ms-1.5 whitespace-nowrap">{again}</span>
-            ) : (
-              <a href="#settings/providers" className="ms-1.5 whitespace-nowrap text-link hover:underline">
-                Open Providers
-              </a>
-            )
+            <a href="#settings/providers" className="ms-1.5 whitespace-nowrap text-link hover:underline">
+              Open Providers
+            </a>
           }
         />
       );
