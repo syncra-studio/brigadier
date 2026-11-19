@@ -3,8 +3,9 @@
 //! own agent, on its account and its cheapest model, that reads what the block is doing and the
 //! message, and answers FITS or WAITS. The session's turn is never asked.
 //!
-//! - FITS: it is steered into the open block, as the user's Steer does.
-//! - WAITS, a late answer or none: it stays queued, no longer Deciding, for its own turn.
+//! - FITS, a late answer or none: it is steered into the open block, as the user's Steer does.
+//!   When unsure it steers (proposed; the old app waited) [D771].
+//! - WAITS: it stays queued, no longer Deciding, for its own turn.
 //! - The user moved, edited, steered or deleted it meanwhile: the answer is dropped.
 //!
 //! Deciding is only a label: the row's actions stay usable and it never holds the queue. A paused
@@ -21,7 +22,7 @@ use std::sync::{Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 
-/// How long the judge may take before the message just waits (the old app's).
+/// How long the judge may take before the message just steers (the old app's 5 s) [D771].
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// What the judge is told it does (the old app's words).
@@ -53,7 +54,7 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
         }
         let (data, id, qid) = (data.to_path_buf(), id.to_string(), qid.to_string());
         thread::spawn(move || {
-            let fits = busy && judge(&data, &id, &qid) == Some(true);
+            let fits = busy && judge(&data, &id, &qid) != Some(false);
             if let Err(e) = settle(&data, &id, &qid, fits) {
                 eprintln!("brigadierd: judge {id}: {e}");
             }
@@ -107,15 +108,16 @@ fn settle(data: &Path, id: &str, qid: &str, fits: bool) -> std::io::Result<()> {
 }
 
 /// What the open block is doing: what the user asked in it (its message, then each steered into
-/// it), and each worker of its that still works.
+/// it), and each worker of its that still works. An answer to a card, a Stop or a retune has no
+/// words and asks nothing: it once blanked the ask the judge read [D771].
 fn work(data: &Path, spec: &core::Spec) -> String {
     let mut asked: Vec<String> = vec![];
     let _ = core::read(&spec.dir, |item| {
-        if item["kind"] == "input" && item["origin"] == "user" {
+        let text = item["text"].as_str().unwrap_or("");
+        if item["kind"] == "input" && item["origin"] == "user" && !text.trim().is_empty() {
             if item["steer"] != true {
                 asked.clear();
             }
-            let text = item["text"].as_str().unwrap_or("");
             asked.push(format!("- asked: {}", preview(text)));
         }
     });
@@ -138,13 +140,15 @@ fn preview(text: &str) -> String {
     }
 }
 
-/// What the judge reads (the old app's words): what the open block is doing, then the message.
+/// What the judge reads: what the open block is doing, then the message. Unlike the old app's
+/// words, a short reply about the work fits and doubt fits [D771].
 fn prompt(work: &str, words: &str) -> String {
     format!(
         "{JUDGE}\n\nWork in progress:\n{work}\n\nNew message from the user:\n{words}\n\nFITS \
-         when the new message is part of the work in progress: a change to it, a fix in it, a \
-         question or a note about it. WAITS when it is other work, even a quick question or a \
-         one-line reply: it then goes once the work in progress is done. Reply FITS or WAITS."
+         when the new message relates to the work in progress: a change, fix, answer, go-ahead, \
+         link, question or note about the same task, thing or thread, even a one-line reply. \
+         WAITS only when it is clearly other, separate work: it then goes once the work in \
+         progress is done. When unsure, FITS. Reply FITS or WAITS."
     )
 }
 
