@@ -157,7 +157,7 @@ const GROUP_STEPS: Item[] = [
   tool("g1-1", "run", "shell", "brigadier computer read Calculator", "done", { description: "Read Calculator's window" }),
   tool("g1-2", "run", "shell", "brigadier sessions", "done", { description: "List Brigadier sessions to find who holds the computer" }),
 ];
-// The running step a live group draws in its line's place, a new one each second [D227].
+// The running step a live group draws as its line, a new one each second [D227, D762].
 const LIVE_STEPS: Item[] = [
   tool("live-1", "read", "read", "src/thread/blocks.ts", "running"),
   tool("live-2", "run", "shell", "pnpm typecheck", "running", { description: "Check the types" }),
@@ -199,7 +199,7 @@ export function ThreadGallery() {
           <State label="done">
             <Toggled>{(open, onToggle) => <GroupRow item={GROUP} members={GROUP_STEPS} open={open} onToggle={onToggle} />}</Toggled>
           </State>
-          <State label="live: its running step under it">
+          <State label="live: its running step in its place">
             <Toggled>{(open, onToggle) => <GroupLine item={GROUP} turn={RUNNING} open={open} steps={[]} members={GROUP_STEPS} live={LIVE_STEPS[tick % LIVE_STEPS.length]} onToggle={onToggle} />}</Toggled>
           </State>
           <State label="MCP server">

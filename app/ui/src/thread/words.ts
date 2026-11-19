@@ -25,6 +25,9 @@ const PAST = new Set(Object.values(IRREGULAR));
 
 /** A verb in the past: "List" is "Listed", "Stop" "Stopped", "Copy" "Copied", "Read" "Read". Already past, as it is. */
 export function past(verb: string): string {
+  // A joined verb by its last part: "Re-verify" is "Re-verified", "Squash-merge" "Squash-merged".
+  const dash = verb.lastIndexOf("-");
+  if (dash > 0 && /^[a-z]+(-[a-z]+)+$/i.test(verb)) return verb.slice(0, dash + 1) + past(verb.slice(dash + 1));
   const word = verb.toLowerCase();
   let done: string;
   if (IRREGULAR[word]) done = IRREGULAR[word];
@@ -45,9 +48,9 @@ export function said(text: string): string {
     (word, at) =>
       at >= 2 &&
       (/^(to|so|as|because|then)$/i.test(word) ||
-        (word === "and" && !/^(the|its|their|a|an|all|each|every|any|some|[\d"'`])/i.test(words[at + 1] ?? "")) ||
+        (word === "and" && !/^((the|its|their|a|an|all|each|every|any|some)\b|[\d"'`])/i.test(words[at + 1] ?? "")) ||
         // A new clause after a comma: "List apps, reopen TextEdit" is "Listed apps".
-        (words[at - 1]!.endsWith(",") && /^[a-z]+$/.test(word) && !/^(the|its|their|a|an|all|each|every|any|some|and|or)$/.test(word))),
+        (words[at - 1]!.endsWith(",") && /^[a-z]+,?$/.test(word) && !/^(the|its|their|a|an|all|each|every|any|some|and|or)$/.test(word))),
   );
   const kept = (cut > 0 ? words.slice(0, cut) : words).join(" ").replace(/[,;]$/, "").split(" ");
   // Its verbs: the first, and each after a leading list of them ("Clear, click 128 × 37" is "Cleared, clicked 128 × 37").
@@ -97,13 +100,14 @@ function done(item: Item): [string, string?] | null {
   }
 }
 
-/** "A", "A and B", "A, B and C". */
+/** "A", "A and B", "A, B and C": what one clause acted on, as in "Used Slack and GitHub". */
 const joined = (parts: readonly string[]) => (parts.length < 3 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`);
 
 /**
  * A group's one line, the gallery's, saying what its steps did from their own words, never a count [D697, D755, D758]:
- * "Ran brigadier computer, listed Brigadier sessions and searched the web". Steps said with the same verb share a
- * clause ("Read lines.ts, words.ts"); every step is said, a long line ending in its row's ellipsis.
+ * "Ran brigadier computer, listed Brigadier sessions, searched the web", its clauses joined by commas alone
+ * [D762]. Steps said with the same verb share a clause ("Read lines.ts and words.ts"); every step is said, a long line
+ * ending in its row's ellipsis.
  * Thoughts say nothing; a group of only thoughts is "Thought".
  */
 export function groupWords(steps: readonly Item[]): string {
@@ -116,8 +120,8 @@ export function groupWords(steps: readonly Item[]): string {
     clauses.set(verb, objects);
   }
   if (!clauses.size) return "Thought";
-  const parts = [...clauses].map(([verb, objects]) => (objects.length ? `${verb} ${objects.join(", ")}` : verb));
-  return joined(parts.map((part, at) => (at === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))));
+  const parts = [...clauses].map(([verb, objects]) => (objects.length ? `${verb} ${joined(objects)}` : verb));
+  return parts.map((part, at) => (at === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))).join(", ");
 }
 
 const ENDED: Record<Turn["status"], string> = {

@@ -24,8 +24,6 @@ import { ErrorState } from "./error-state";
 import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
-import { DETAIL } from "./activity-row";
-import { cx } from "../cx";
 import { GroupRow, ThoughtRow } from "./work";
 import { TodoRow } from "./todo";
 import { BrigadeMessagePill } from "../../sessions/brigade";
@@ -54,20 +52,23 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
 type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
 
 /**
- * The group line, the gallery's, for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. One line
- * saying what its ended steps did; live, what it does now (its running step, its thought, or Thinking while it is the
- * turn's latest run) under it, or in its place before any step ended.
+ * The group line, the gallery's, for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. Live,
+ * it is one line saying what it does now: its running step, its thought, or Thinking while it is the running
+ * turn's latest run. Once the run ends, the line says what its steps did [D755, D762].
  */
 export function GroupLine({ item, turn, open, steps, live, members, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: readonly Item[]; onToggle: (id: string) => void }) {
-  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live ? <Body item={live} turn={turn} step={false} /> : item.run && <ThinkingLine />;
+  const going = turn?.status === "running" || turn?.held === true;
+  const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live ? <Body item={live} turn={turn} step={false} /> : item.run && going && <ThinkingLine />;
+  if (now) return now;
   const ended = members.filter((member) => !running(member) && !(member.kind === "reasoning" && member.streaming));
-  if (!ended.length) return now || null;
+  if (!ended.length) return null;
   return (
     <>
       <GroupRow item={item} members={ended} open={open} onToggle={onToggle} />
-      {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's). */}
+      {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's),
+          indented on a guide line under the line's icon [D762]. */}
       {open && steps.length > 0 && (
-        <div className="flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto pt-1 *:shrink-0">
+        <div className="ms-2 mt-1 flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto border-s border-divider ps-3 *:shrink-0">
           {/* Each step marked, for find to go to a match in it. */}
           {steps.map((step) => (
             <div key={step.id} data-step={step.id}>
@@ -76,7 +77,6 @@ export function GroupLine({ item, turn, open, steps, live, members, onToggle }: 
           ))}
         </div>
       )}
-      {now && <div className={cx(DETAIL, "ps-5.5")}>{now}</div>}
     </>
   );
 }

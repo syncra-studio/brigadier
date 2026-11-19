@@ -156,6 +156,9 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       // ended, stopped, resumed or reloaded: one line saying what its steps did [D697, D755].
       const members: Item[] = [];
       for (let next = at + 1; next < items.length && within(items[next]!.n, item.span); next++) if (!items[next]!.hidden) members.push(items[next]!);
+      // A run that ended with one step is that step's own row: nothing to sum up [D762].
+      const [only] = members;
+      if (members.length === 1 && only!.kind !== "reasoning" && !running(only!) && !(live && item.run)) continue;
       const line: GroupLine = { type: "group", id: item.id, gap: gap(item, false), item, turn, open: open.has(item.id), steps: [], members };
       push(line);
       group = { span: item.span, line };
