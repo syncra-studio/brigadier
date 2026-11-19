@@ -9,6 +9,7 @@ import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { forgetSecrets, pictureForAgent, runScript, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
+import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { stopOf } from "./browserSignIn";
 
 export { watchNetwork };
@@ -42,6 +43,7 @@ async function attach(guest: WebContents): Promise<void> {
   // A page behind its tab takes input and keeps its timers, and the user's focus going back blurs nothing. The same
   // use as Orca's enablePageFocusEmulation (MIT, stablyai/orca). What this changes goes with the session.
   await guest.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
+  await answerDialogs(guest);
 }
 
 /** Lets go of the tab, after what is under way. Ending the session clears any input state and the emulation. */
@@ -50,11 +52,16 @@ async function release(guest: WebContents): Promise<void> {
   if (!hold) return;
   held.delete(guest.id);
   await hold.queue.catch(() => {});
-  if (!guest.isDestroyed() && guest.debugger.isAttached()) guest.debugger.detach();
+  if (guest.isDestroyed() || !guest.debugger.isAttached()) return;
+  await showDialogs(guest);
+  guest.debugger.detach();
 }
 
-/** Runs `input` in the tab's order; an answer the user's take-over overtook is `paused`. */
-async function acting(guest: WebContents, input: (send: (method: string, params: object) => Promise<unknown>) => Promise<void>): Promise<unknown> {
+/**
+ * Runs `input` in the tab's order; an answer the user's take-over overtook is `paused`. It answers what the page asked
+ * in a box meanwhile; `confirm` answers OK to a confirm box, for this input only.
+ */
+async function acting(guest: WebContents, input: (send: (method: string, params: object) => Promise<unknown>) => Promise<void>, confirm = false): Promise<unknown> {
   if (devToolsOpen(guest)) return { paused: "devtools" };
   await attach(guest);
   const hold = held.get(guest.id);
@@ -62,8 +69,13 @@ async function acting(guest: WebContents, input: (send: (method: string, params:
   const run = hold.queue.then(async () => {
     const stillHeld = () => held.get(guest.id) === hold;
     if (!stillHeld()) return { paused: devToolsOpen(guest) ? "devtools" : "user" };
-    await input((method, params) => guest.debugger.sendCommand(method, params));
-    return { done: true };
+    if (confirm) await setConfirm(guest, true);
+    try {
+      await input((method, params) => guest.debugger.sendCommand(method, params));
+    } finally {
+      if (confirm) await setConfirm(guest, false);
+    }
+    return { done: true, dialogs: await dialogsSaid(guest) };
   });
   hold.queue = run.catch(() => {});
   try {
@@ -116,6 +128,7 @@ function watchDevTools(guest: WebContents): void {
   guest.debugger.on("detach", () => {
     // Ours forgets the hold first, so a hold still here was ended from outside: nothing resumes by itself.
     if (!held.delete(guest.id) || guest.isDestroyed()) return;
+    void showDialogs(guest);
     tellHost(guest, devToolsOpen(guest) ? "devtools-opened" : "detached");
   });
 }
@@ -153,7 +166,7 @@ type Call =
   | { call: "script"; guest: number; op: Record<string, unknown> }
   | { call: "attach"; guest: number }
   | { call: "release"; guest: number }
-  | { call: "click"; guest: number; x: number; y: number }
+  | { call: "click"; guest: number; x: number; y: number; confirm?: boolean }
   | { call: "enter"; guest: number }
   | { call: "key"; guest: number; key: string; modifiers: string[] }
   | { call: "hover"; guest: number; x: number; y: number }
@@ -182,7 +195,7 @@ export function installBrowserAgent(): void {
           await send("Input.dispatchMouseEvent", mouse("mouseMoved", call.x, call.y, 0));
           await send("Input.dispatchMouseEvent", mouse("mousePressed", call.x, call.y, 1));
           await send("Input.dispatchMouseEvent", mouse("mouseReleased", call.x, call.y, 0));
-        });
+        }, call.confirm === true);
       case "enter":
         // Widget events, not the debugger's keys, which follow the window's focus (as Orca found, its #20595).
         return acting(guest, async () => {

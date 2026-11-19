@@ -67,7 +67,7 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
     if (Math.abs(there.x - point.x) > 0.5 || Math.abs(there.y - point.y) > 0.5) await glideTo(id, String(op.label ?? "Brigadier"), { x: there.x * zoom, y: there.y * zoom });
     pressAt(id);
     // A page behind its tab is visibility:hidden, and input sent to it reaches nothing though the call succeeds.
-    return await whilePainting(id, () => agent({ call: "click", guest, x: there.x * zoom, y: there.y * zoom }));
+    return await whilePainting(id, () => agent({ call: "click", guest, x: there.x * zoom, y: there.y * zoom, confirm: op.confirm === true }));
   } finally {
     release();
   }

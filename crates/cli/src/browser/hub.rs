@@ -171,7 +171,14 @@ struct Words<'a> {
 const VALUES: [&str; 9] = [
     "--tab", "--go", "--since", "--kinds", "--asks", "--ref", "--text", "--gone", "--ms",
 ];
-const FLAGS: [&str; 5] = ["--keep", "--dev-url", "--submit", "--json", "--help"];
+const FLAGS: [&str; 6] = [
+    "--keep",
+    "--dev-url",
+    "--submit",
+    "--json",
+    "--help",
+    "--confirm",
+];
 
 /// Who the user sees drive a tab [D778]: a worker by its name, the session's own agent as
 /// Brigadier, never the agent CLI's name.

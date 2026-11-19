@@ -253,7 +253,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return failed(error);
       await settled(tab);
-      return page(tab, owner);
+      return withDialogs(await page(tab, owner), answer);
     }
     case "click":
     case "type":
@@ -265,6 +265,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         target: op.target,
         ...(op.op === "type" ? { text: op.text, submit: op.submit } : {}),
         ...(op.op === "press" ? { key: op.key, modifiers: op.modifiers } : {}),
+        confirm: op.confirm,
         declared: op.declared,
         always: op.always,
         approved,
@@ -282,7 +283,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return failed(error);
       await settled(tab);
-      return withPopups(await page(tab, owner), owner, before);
+      return withDialogs(withPopups(await page(tab, owner), owner, before), answer);
     }
     case "eval": {
       // At Auto a run asks: a yes goes with one call, on the page it was given on.
@@ -314,6 +315,19 @@ function withPopups(result: Result, owner: string, before: Set<string>): Result 
   const read = result.page as { text: string };
   const lines = opened.map((each) => `(This opened a new tab: ${each.id} at ${each.target}. Use it with --tab.)`);
   return { ...result, page: { ...read, text: `${read.text}\n\n${lines.join("\n")}` } };
+}
+
+/** What the page asked in a box while the agent acted (main's browserAgentDialogs.ts), as a note above the page [D781]. */
+function withDialogs(result: Result, answer: unknown): Result {
+  const said = (answer as { dialogs?: { kind: string; message: string; yes?: boolean }[] } | null)?.dialogs;
+  if (result.result !== "page" || !Array.isArray(said) || !said.length) return result;
+  const lines = said.map(({ kind, message, yes }) => {
+    const words = JSON.stringify(message);
+    if (kind === "alert") return `The page showed an alert, answered OK: ${words}.`;
+    if (kind === "prompt") return `The page asked for text and got none: ${words}.`;
+    return yes ? `The page asked to confirm, answered OK: ${words}.` : `The page asked to confirm, answered Cancel, so what it guards wasn't done: ${words}. To answer OK, do it again with --confirm.`;
+  });
+  return { ...result, note: [result.note, ...lines].filter(Boolean).join(" ") };
 }
 
 /** The address of the user's yes, while the tab is still on the page it was given on. */

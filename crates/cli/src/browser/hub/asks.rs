@@ -77,7 +77,13 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         },
         "snapshot" => none().and_then(|()| Ok(json!({"op": "read", "tab": tab()?})))?,
         "click" => {
-            json!({"op": "click", "tab": tab()?, "target": one("a ref, as a snapshot gave it")?, "declared": declared, "asks": asks, "always": always})
+            // OK to the page's confirm box asks as a delete would, unless the agent said what it is [D781].
+            let confirm = w.flags.contains("--confirm");
+            let declared = match (&declared, confirm) {
+                (Value::Null, true) => "delete".into(),
+                _ => declared,
+            };
+            json!({"op": "click", "tab": tab()?, "target": one("a ref, as a snapshot gave it")?, "declared": declared, "asks": asks, "always": always, "confirm": confirm})
         }
         "type" => match w.rest.as_slice() {
             [target, text] => json!({"op": "type", "tab": tab()?, "target": target, "text": text,
@@ -206,7 +212,7 @@ fn shown_script(script: &str) -> Result<String, Value> {
 pub(super) fn fingerprint(op: &Value) -> Option<String> {
     let s = |k: &str| op[k].as_str().unwrap_or("").to_string();
     match op["op"].as_str()? {
-        "click" => Some(format!("click\u{1f}{}", s("target"))),
+        "click" => Some(format!("click\u{1f}{}\u{1f}{}", s("target"), op["confirm"])),
         "type" => Some(format!(
             "type\u{1f}{}\u{1f}{}\u{1f}{}",
             s("target"),
@@ -285,6 +291,9 @@ fn details(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
                 "On {url}. It can do anything this page can, including read what its fields hold and send it elsewhere. Passwords are scrubbed from its answer only as written.\n\n{}",
                 s("script")
             );
+        }
+        Some("click") if op["confirm"] == true => {
+            format!("Clicks {what}, and answers OK when the page asks to confirm.")
         }
         Some("click") => format!("Clicks {what}."),
         Some("press") => format!("Presses {} in {what}.", keys(op)),
