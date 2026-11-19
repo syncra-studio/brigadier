@@ -32,33 +32,35 @@ function togglePicker(id: string): void {
 export function BrowserDevButton({ id, ready }: { id: string; ready: boolean }) {
   const dev = useBrowserDev(id);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={!ready}
-        render={
-          <TooltipIconButton
-            tooltip="Developer tools"
-            size="icon-md"
-            className={cx("shrink-0 rounded-capsule @max-md/browser-toolbar:hidden", (dev.devtools || dev.picking || dev.device) && "text-primary")}
-          />
-        }
-      >
-        <Terminal />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" data-slot="browser-dev-menu">
-        <DropdownMenuItem onClick={() => togglePicker(id)}>{dev.picking ? "Stop picking" : "Pick an element"}</DropdownMenuItem>
-        <DropdownMenuCheckboxItem checked={dev.devtools} onCheckedChange={() => changeDev(id, { devtools: !dev.devtools })}>DevTools</DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem checked={dev.device !== null} onCheckedChange={() => toggleDevice(id)}>Device sizes</DropdownMenuCheckboxItem>
-        {dev.devtools && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => changeDev(id, { dock: dev.dock === "right" ? "bottom" : "right" })}>
-              {dev.dock === "right" ? "Dock DevTools below" : "Dock DevTools beside"}
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <span inert={!ready} data-gone={!ready || undefined} className={cx("makes-way flex shrink-0 @max-md/browser-toolbar:hidden", ready ? "w-auto" : "-ms-1.5 w-0")}>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={!ready}
+          render={
+            <TooltipIconButton
+              tooltip="Developer tools"
+              size="icon-md"
+              className={cx("shrink-0 rounded-capsule", (dev.devtools || dev.picking || dev.device) && "text-primary")}
+            />
+          }
+        >
+          <Terminal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" data-slot="browser-dev-menu">
+          <DropdownMenuItem onClick={() => togglePicker(id)}>{dev.picking ? "Stop picking" : "Pick an element"}</DropdownMenuItem>
+          <DropdownMenuCheckboxItem checked={dev.devtools} onCheckedChange={() => changeDev(id, { devtools: !dev.devtools })}>DevTools</DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem checked={dev.device !== null} onCheckedChange={() => toggleDevice(id)}>Device sizes</DropdownMenuCheckboxItem>
+          {dev.devtools && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => changeDev(id, { dock: dev.dock === "right" ? "bottom" : "right" })}>
+                {dev.dock === "right" ? "Dock DevTools below" : "Dock DevTools beside"}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }
 

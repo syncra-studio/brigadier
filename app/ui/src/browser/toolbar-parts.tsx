@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
 import { Button } from "../components/button";
+import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner, X } from "../icons";
 import { findInPage, findLabel, useBrowserFind } from "./find";
@@ -20,25 +21,27 @@ export function NavigationCapsule({ disabled, canGoBack, canGoForward, loading, 
   onAct: (action: NavAction) => void;
 }) {
   return (
-    <div role="group" aria-label="Navigation" data-slot="browser-navigation" className="flex h-control-md shrink-0 items-center rounded-capsule bg-control p-0.5 ring-1 ring-glass-stroke ring-inset">
-      <TooltipIconButton tooltip="Back" size="icon-md" className={NAV_BUTTON} disabled={disabled || !canGoBack} onClick={() => onAct("back")}>
-        <ArrowLeft />
-      </TooltipIconButton>
-      <TooltipIconButton tooltip="Forward" size="icon-md" className={NAV_BUTTON} disabled={disabled || !canGoForward} onClick={() => onAct("forward")}>
-        <ArrowRight />
-      </TooltipIconButton>
-      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
-      {/* While the page loads the spinner stands in for Reload, and stops the load. */}
-      <TooltipIconButton
-        tooltip={loading ? "Stop loading" : "Reload"}
-        size="icon-md"
-        className={NAV_BUTTON}
-        aria-busy={loading}
-        disabled={disabled}
-        onClick={() => onAct(loading ? "stop" : "reload")}
-      >
-        {loading ? <Spinner className="animate-spin" /> : <Reload />}
-      </TooltipIconButton>
+    <div inert={disabled} data-gone={disabled || undefined} className={cx("makes-way flex shrink-0", disabled ? "-me-1.5 w-0" : "w-auto")}>
+      <div role="group" aria-label="Navigation" data-slot="browser-navigation" className="flex h-control-md shrink-0 items-center rounded-capsule bg-control p-0.5 ring-1 ring-glass-stroke ring-inset">
+        <TooltipIconButton tooltip="Back" size="icon-md" className={NAV_BUTTON} disabled={disabled || !canGoBack} onClick={() => onAct("back")}>
+          <ArrowLeft />
+        </TooltipIconButton>
+        <TooltipIconButton tooltip="Forward" size="icon-md" className={NAV_BUTTON} disabled={disabled || !canGoForward} onClick={() => onAct("forward")}>
+          <ArrowRight />
+        </TooltipIconButton>
+        <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+        {/* While the page loads the spinner stands in for Reload, and stops the load. */}
+        <TooltipIconButton
+          tooltip={loading ? "Stop loading" : "Reload"}
+          size="icon-md"
+          className={NAV_BUTTON}
+          aria-busy={loading}
+          disabled={disabled}
+          onClick={() => onAct(loading ? "stop" : "reload")}
+        >
+          {loading ? <Spinner className="animate-spin" /> : <Reload />}
+        </TooltipIconButton>
+      </div>
     </div>
   );
 }
