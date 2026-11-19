@@ -101,30 +101,36 @@ fn main() {
     });
 
     // Only frames with an `rpc` go to the driver: the hello and the daemon's replies don't.
-    while let Ok(text) = read_frame(&mut daemon) {
-        let Ok(frame) = serde_json::from_str::<Value>(&text) else {
-            continue;
-        };
-        let Some(rpc) = frame.get("rpc") else {
-            continue;
-        };
-        if let Some(method) = rpc["method"]
-            .as_str()
-            .filter(|m| m.starts_with("brigadier/"))
-        {
-            let (method, rpc, send) = (method.to_string(), rpc.clone(), send.clone());
-            thread::spawn(move || {
-                let id = &rpc["id"];
-                send(match ax::handle(&method, &rpc["params"]) {
-                    Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
-                    Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"message": e}}),
+    let calls = thread::spawn(move || {
+        while let Ok(text) = read_frame(&mut daemon) {
+            let Ok(frame) = serde_json::from_str::<Value>(&text) else {
+                continue;
+            };
+            let Some(rpc) = frame.get("rpc") else {
+                continue;
+            };
+            if let Some(method) = rpc["method"]
+                .as_str()
+                .filter(|m| m.starts_with("brigadier/"))
+            {
+                let (method, rpc, send) = (method.to_string(), rpc.clone(), send.clone());
+                thread::spawn(move || {
+                    let id = &rpc["id"];
+                    send(match ax::handle(&method, &rpc["params"]) {
+                        Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}),
+                        Err(e) => json!({"jsonrpc": "2.0", "id": id, "error": {"message": e}}),
+                    });
                 });
-            });
-        } else if writeln!(stdin, "{rpc}").is_err() {
-            break;
+            } else if writeln!(stdin, "{rpc}").is_err() {
+                break;
+            }
         }
-    }
-    end()
+        end()
+    });
+    // macOS's "Quit & Reopen" after a grant quits this app by Apple Event, which only AppKit's
+    // loop answers; the daemon starts it again with its arguments [D935].
+    mac::serve();
+    let _ = calls.join();
 }
 
 fn fail(error: &dyn std::fmt::Display) -> ! {
@@ -185,6 +191,28 @@ mod mac {
         SecCode::copy_guest_with_attribues(None, &guest, Flags::NONE).is_ok_and(signed)
     }
 
+    #[link(name = "AppKit", kind = "framework")]
+    unsafe extern "C" {}
+
+    unsafe extern "C" {
+        fn objc_getClass(name: *const std::ffi::c_char) -> *mut c_void;
+        fn sel_registerName(name: *const std::ffi::c_char) -> *mut c_void;
+        fn objc_msgSend();
+    }
+
+    /// Runs NSApplication on this, the main, thread: a Quit from macOS ends the process.
+    pub fn serve() {
+        unsafe {
+            let send: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let app = send(
+                objc_getClass(c"NSApplication".as_ptr()),
+                sel_registerName(c"sharedApplication".as_ptr()),
+            );
+            send(app, sel_registerName(c"run".as_ptr()));
+        }
+    }
+
     /// Asks macOS for the grants `what` names, charged to this app: its own prompt or Settings.
     pub fn ask(what: &str) {
         unsafe {
@@ -216,6 +244,7 @@ mod ax {
 #[cfg(not(target_os = "macos"))]
 mod mac {
     pub fn ask(_: &str) {}
+    pub fn serve() {}
     pub fn ours(_: i32) -> bool {
         true
     }
