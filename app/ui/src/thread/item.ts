@@ -288,16 +288,11 @@ export type Item = Base &
         why: string | null;
         waited?: "replied" | "timeout";
       }
-    /** The agent's to-do list, one row a turn that each update changes in place, kept out of its work fold [D180]. */
-    | { kind: "todo"; steps: TodoStep[] }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );
 
 export type Kind = Item["kind"];
-
-/** A to-do step, its status in every CLI's spelling (Rust's adapters); `cancelled` is OpenCode's. */
-export type TodoStep = { text: string; status: "pending" | "in_progress" | "completed" | "cancelled" };
 
 /** Whether a finished worker merged its branch back into its parent's, by Rust's result [D97]. */
 export type Merge = { into: string; ok: boolean };

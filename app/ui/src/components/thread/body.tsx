@@ -25,7 +25,6 @@ import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 import { GroupRow, ThoughtRow } from "./work";
-import { TodoRow } from "./todo";
 import { BrigadeMessagePill } from "../../sessions/brigade";
 
 function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigade?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
@@ -192,11 +191,6 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && (turn?.status === "running" || turn?.held === true || (item.held === true && item.answer === null))} toParent={item.to === "parent"} />;
     case "childAgent":
       return <SubagentRow item={item} />;
-    case "todo": {
-      const live = turn?.status === "running";
-      // Open while its turn runs, closed once it ends, unless the user opened or closed it.
-      return <TodoRow key={String(live)} keep={item.id} steps={item.steps} live={live} />;
-    }
     case "compaction":
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;

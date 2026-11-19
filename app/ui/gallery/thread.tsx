@@ -93,7 +93,6 @@ const agent = (id: string, progress: Progress): Extract<Item, { kind: "childAgen
   answer: "The parser lives in src/thread/lines.ts: `toLines` folds items into lines, and `workKey` names a turn's fold.",
 });
 
-const TODO = ["Trace where the archived count comes from", "Send the change in Rust's row update", "Draw the count from that update", "Run the checks"];
 
 const USER = "Can you make the thread rows match the old app, and check the shell box against a failing test?";
 const MD_USER = "Two things:\n1. Make **the bubble** render `inline code`\n2. Keep each line\nas typed";
@@ -383,12 +382,6 @@ export function ThreadGallery() {
               {item({ ...agent("c-fail", "failed"), endedAt: NOW - 51_000, answer: null })}
               {item({ ...agent("c-stop", "cancelled"), endedAt: NOW - 40_000, answer: null })}
             </div>
-          </Wide>
-        </Row>
-        <Row name="To-do list [D180]">
-          <Wide label="its turn running, open">{item({ ...base("td1", RUNNING), kind: "todo", steps: TODO.map((text, i) => ({ text, status: i < 2 ? "completed" : i === 2 ? "in_progress" : "pending" })) }, RUNNING)}</Wide>
-          <Wide label="done (kept after the fold), one step dropped">
-            {item({ ...base("td2"), kind: "todo", steps: TODO.map((text, i) => ({ text, status: i === 3 ? "cancelled" : "completed" })) })}
           </Wide>
         </Row>
         <Row name="Conversation optimizing and notices">
