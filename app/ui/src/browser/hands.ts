@@ -95,7 +95,7 @@ async function press(id: string, op: Answer): Promise<unknown> {
 /** An agent has the tab now (the shield goes up), or doesn't (it comes down, and the debugger goes). */
 export async function agentDrive(id: string, on: boolean, resumed = false): Promise<void> {
   if (!on) {
-    dropOverlay(id);
+    dropOverlay(id, true);
     const page = maybePage(id);
     if (page) await agent({ call: "release", guest: page.guest });
     return;

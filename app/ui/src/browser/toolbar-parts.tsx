@@ -1,11 +1,11 @@
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
-import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner, X } from "../icons";
 import { findInPage, findLabel, useBrowserFind } from "./find";
-import { stopDriving, takeOver, useAgentDoing, useAgentHoldsAny, useAgentLit } from "./overlay";
+import { stopDriving, takeOver, useAgentLit, useAgentPillSlot } from "./overlay";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
 const NAV_BUTTON = "rounded-capsule";
@@ -127,29 +127,32 @@ export function Banner({ text, children, onDismiss, slot }: { text: ReactNode; c
 }
 
 /**
- * The slim notice under the toolbar while an agent drives tab `id`, as Chrome's "started debugging this browser" bar:
- * who drives and what it does, with Take over and Stop. The user's click on the page lights Take over [D779 D794].
+ * The pill hanging from the page's top while an agent holds tab `id`, as Claude in Chrome's: who works here, and Stop.
+ * The user's click on the page adds Take over, focused [D779 D902]. Drawn in the app's agent layer (overlay.ts), over
+ * any site, so its colours are fixed (theme.css's .brigadier-agent-pill).
  */
-export function DrivingBar({ id, driver }: { id: string; driver: string }) {
-  const holds = useAgentHoldsAny([id]);
-  const doing = useAgentDoing(id);
+export function AgentPill({ id, driver }: { id: string; driver: string }) {
+  const slot = useAgentPillSlot(id);
   const lit = useAgentLit(id);
   const take = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (lit) take.current?.focus();
   }, [lit]);
-  if (!holds) return null;
-  return (
-    <div role="status" data-slot="browser-driving" className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-fill-subtle px-4 py-1 text-sm text-muted-foreground">
-      <span className="min-w-0 truncate">
-        <span className="font-medium text-foreground">{driver}</span> is using this tab{doing && ` · ${doing}`}
-      </span>
-      <Button ref={take} size="xs" variant={lit ? "default" : "outline"} onClick={() => takeOver(id)}>
-        Take over
-      </Button>
-      <Button size="xs" variant="soft-destructive" onClick={() => stopDriving(id)}>
+  if (!slot) return null;
+  return createPortal(
+    <div role="status" data-slot="browser-agent-pill">
+      <span aria-hidden>✳</span>
+      <span className="min-w-0 truncate">{driver} is working here</span>
+      {lit > 0 && (
+        <button ref={take} type="button" onClick={() => takeOver(id)}>
+          Take over
+        </button>
+      )}
+      <button type="button" data-stop onClick={() => stopDriving(id)}>
+        <span aria-hidden data-square />
         Stop
-      </Button>
-    </div>
+      </button>
+    </div>,
+    slot,
   );
 }

@@ -70,15 +70,28 @@ export function BrowserYourTurn({ tabId }: { tabId: string }) {
   return <span data-slot="browser-your-turn" className="shrink-0 text-xs font-medium whitespace-nowrap text-warning">Your turn</span>;
 }
 
-/** The tab's icon: a spinner, a loaded favicon small inside its ring, then the whole favicon (the old app's FaviconGlyph). */
+/**
+ * The tab's icon: a spinner, a loaded favicon small inside its ring, then the whole favicon (the old app's
+ * FaviconGlyph). While an agent holds the tab, its orange cursor instead, as Claude in Chrome's [D894].
+ */
 export function BrowserTabIcon({ tabId }: { tabId: string }) {
   const page = useBrowserPage(tabId);
+  const held = useAgentHoldsAny([tabId]);
   const favicon = page?.favicon ?? null;
   const loading = page?.loading ?? false;
   const [loaded, setLoaded] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const usable = !!favicon && favicon !== failed && favicon === loaded;
   const phase = loading ? (usable ? "loading-favicon" : "spinner-only") : "settled";
+  if (held) {
+    return (
+      <span data-slot="browser-tab-icon" data-agent aria-hidden="true" className="browser-tab-icon">
+        <svg viewBox="0 0 20 22">
+          <path d="M2 1.5 L2 17.5 L6.4 13.6 L9.3 20 L12.2 18.7 L9.4 12.4 L15.4 12.2 Z" />
+        </svg>
+      </span>
+    );
+  }
   return (
     <span data-slot="browser-tab-icon" data-phase={phase} aria-hidden="true" aria-busy={loading} className="browser-tab-icon">
       <span className="browser-tab-favicon" data-visible={usable || !loading}>

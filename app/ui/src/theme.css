@@ -2238,10 +2238,72 @@
   &[data-shown] {
     display: block;
   }
-  /* A soft warm glow on the page's edges says an agent has it, as Claude in Chrome's [D777 D794]. */
+  /* A 2px orange edge and a peach glow fading in ~40px say an agent has it, as Claude in Chrome's [D777 D894]. */
   &[data-shielded] {
     pointer-events: auto;
-    box-shadow: inset 0 0 36px rgb(255 140 70 / 0.4), inset 0 0 0 1px rgb(255 150 90 / 0.3);
+    box-shadow: inset 0 0 0 2px #bc5433, inset 0 0 40px rgb(188 84 51 / 0.8);
+  }
+  /* The agent let go: a still copy fades out (overlay.ts's dropOverlay) [D909]. */
+  &[data-fading] {
+    pointer-events: none;
+    animation: brigadier-agent-fade 500ms ease-out forwards;
+  }
+}
+@keyframes brigadier-agent-fade {
+  to {
+    opacity: 0;
+  }
+}
+/* Who works here, with Stop (and Take over once the user clicks the page), hanging from the page's top as Chrome's. */
+.brigadier-agent-pill {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  max-width: calc(100% - 32px);
+  pointer-events: auto;
+  & [data-slot="browser-agent-pill"] {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 6px 6px 14px;
+    border-radius: 0 0 12px 12px;
+    background: #bc5433;
+    color: #fff;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+    font: 600 13px/18px system-ui, sans-serif;
+    white-space: nowrap;
+  }
+  & button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 7px;
+    background: rgb(255 255 255 / 0.18);
+    color: #fff;
+    font: inherit;
+    font-weight: 500;
+    cursor: default;
+    &:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 1px;
+    }
+  }
+  /* Take over shows only once the user clicks the page: the one to press. */
+  & button:not([data-stop]) {
+    background: #fff;
+    color: #bc5433;
+  }
+  & button[data-stop] {
+    background: #1a1a1a;
+  }
+  & [data-square] {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    background: #fff;
   }
 }
 /* A menu of the app is open or a drag crosses the page: the click is the app's, as it is over a page. */
@@ -2271,7 +2333,7 @@
   padding: 2px 7px;
   overflow: hidden;
   border-radius: 9px;
-  background: #1a1a1a;
+  background: #bc5433;
   color: #fff;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.5);
   font: 500 11px/15px system-ui, sans-serif;
@@ -2314,6 +2376,12 @@
   flex-shrink: 0;
   width: var(--spacing-icon-sm);
   height: var(--spacing-icon-sm);
+}
+/* An agent holds the tab: its orange cursor stands for the favicon, as Claude in Chrome's [D894]. */
+.browser-tab-icon[data-agent] svg {
+  width: 16px;
+  height: 16px;
+  fill: #bc5433;
 }
 .browser-tab-favicon {
   position: absolute;

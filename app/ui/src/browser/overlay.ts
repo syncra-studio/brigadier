@@ -1,10 +1,11 @@
-// What shows over a tab an agent drives: its named cursor, the take-over shield and its glow. Who drives, with Take
-// over and Stop, is the tab's notice bar (tab.tsx), fed from here. Drawn in the app, never in the page: the page
+// What shows over a tab an agent drives: its cursor named by what it does, the take-over shield and its glow, and the
+// slot at the page's top for the pill that says who works here, with Stop and Take over (toolbar-parts.tsx's
+// AgentPill), as Claude in Chrome's [D894 D902]. Drawn in the app, never in the page: the page
 // can't see it, and a picture of the page doesn't have it.
 //
 // The shield is the only way the user's input is told from the agent's. Debugger input is trusted to the page and
 // runs through the same paths as a real click, so nothing can tell them apart after the fact. A plain element above
-// the page takes the user's click or key and lights the notice bar's Take over, so nothing is taken silently
+// the page takes the user's click or key and adds the pill's Take over, so nothing is taken silently
 // [D779]; the wheel still scrolls the page. The agent's input goes under it. The layer lies under #root like the
 // pages, so the app's own menus stay above it, and it is a sibling of the tab layer so the page layer's children
 // stay exactly the pages. Where each part shows is in data attributes the theme reads (theme.css's
@@ -15,6 +16,7 @@ import type { BrowserBounds } from "./layer";
 
 type Overlay = {
   frame: HTMLDivElement;
+  pill: HTMLDivElement;
   cursor: HTMLDivElement | null;
   name: HTMLSpanElement | null;
   at: { x: number; y: number } | null;
@@ -29,8 +31,8 @@ const overlays = new Map<string, Overlay>();
 let layer: HTMLDivElement | null = null;
 
 /**
- * What the app shows of a driven tab outside the page (tab.tsx's notice bar, the tab bar's group): which tabs an agent
- * holds, what it does in each now, and how often the user's click on its page asked for Take over.
+ * What the app shows of a driven tab (its pill, the tab bar's group, its cursor's words): which tabs an agent holds,
+ * what it does in each now, and how often the user's click on its page asked for Take over.
  */
 const doings = new Map<string, string | null>();
 const lit = new Map<string, number>();
@@ -43,20 +45,26 @@ function changed(): void {
 const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
 /** Whether an agent holds any of tabs `ids` now: a shield is up over it. */
 export const useAgentHoldsAny = (ids: readonly string[]): boolean => useSyncExternalStore(subscribe, () => ids.some((id) => held.has(id)));
-/** What the agent holding tab `id` does now, as the notice bar says it; null between its calls. */
-export const useAgentDoing = (id: string): string | null => useSyncExternalStore(subscribe, () => doings.get(id) ?? null);
 /** How many times the user's click or key on tab `id`'s page asked for Take over: each one focuses it. */
 export const useAgentLit = (id: string): number => useSyncExternalStore(subscribe, () => lit.get(id) ?? 0);
+/** Where tab `id`'s pill goes while an agent holds it: a slot at its page's top, in the app; null when no one holds it. */
+export const useAgentPillSlot = (id: string): HTMLDivElement | null => useSyncExternalStore(subscribe, () => overlays.get(id)?.pill ?? null);
 
 /** The agent does `action` in tab `id` now, or nothing (null). */
 export function agentDoing(id: string, action: string | null): void {
   doings.set(id, action);
+  // The cursor says it, as Chrome's; before its first move it waits at the page's bottom left.
+  const overlay = overlays.get(id);
+  if (overlay && action) {
+    const cursor = cursorOf(overlay, action);
+    if (!overlay.at && overlay.placed) at(cursor, (overlay.at = { x: 24, y: overlay.placed.height - 48 }));
+  }
   changed();
 }
 
-/** Take over, from the notice bar: the tab is the user's until they hand it back. */
+/** Take over, from the pill: the tab is the user's until they hand it back. */
 export const takeOver = (id: string) => overlays.get(id)?.onUsed();
-/** Stop, from the notice bar: the tab is the user's for good, as Take back. */
+/** Stop, from the pill: the tab is the user's for good, as Take back. */
 export const stopDriving = (id: string) => overlays.get(id)?.onStop();
 
 export function installAgentOverlays(): void {
@@ -95,12 +103,15 @@ export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds
     frame.className = "brigadier-agent-frame";
     frame.tabIndex = -1;
     frame.dataset.agentTab = id;
-    overlay = { frame, cursor: null, name: null, at: null, placed: bounds, shielded: false, onUsed, onWheel, onStop };
+    const pill = document.createElement("div");
+    pill.className = "brigadier-agent-pill";
+    frame.append(pill);
+    overlay = { frame, pill, cursor: null, name: null, at: null, placed: bounds, shielded: false, onUsed, onWheel, onStop };
     overlays.set(id, overlay);
     const own = overlay;
-    // The user's click or key on the page doesn't reach it: the notice bar's Take over lights, one more press away.
+    // The user's click or key on the page doesn't reach it: the pill's Take over shows, one more press away.
     const take = (event: Event) => {
-      if (!own.shielded) return;
+      if (!own.shielded || pill.contains(event.target as Node)) return;
       event.preventDefault();
       event.stopPropagation();
       lit.set(id, (lit.get(id) ?? 0) + 1);
@@ -127,10 +138,19 @@ export function raiseShield(id: string, page: HTMLElement, bounds: BrowserBounds
   if (document.activeElement === page) overlay.frame.focus({ preventScroll: true });
 }
 
-/** The shield goes and the cursor with it: the tab is the user's now, or no one drives it. */
-export function dropOverlay(id: string): void {
+/**
+ * The shield goes and the cursor with it: the tab is the user's now, or no one drives it. When the agent lets go,
+ * `fade` keeps a still copy of the pill and the glow fading out for half a second, as Chrome's [D909].
+ */
+export function dropOverlay(id: string, fade = false): void {
   const overlay = overlays.get(id);
   if (!overlay) return;
+  if (fade && overlay.frame.hasAttribute("data-shown") && !stillMotion()) {
+    const ghost = overlay.frame.cloneNode(true) as HTMLDivElement;
+    ghost.toggleAttribute("data-fading", true);
+    overlay.frame.after(ghost);
+    setTimeout(() => ghost.remove(), 500);
+  }
   overlay.frame.remove();
   overlays.delete(id);
   lit.delete(id);
@@ -174,7 +194,7 @@ const transformAt = ({ x, y }: { x: number; y: number }) => `translate(${x - 2}p
 export function glideTo(id: string, label: string, to: { x: number; y: number }): Promise<void> {
   const overlay = overlays.get(id);
   if (!overlay) return Promise.resolve();
-  const cursor = cursorOf(overlay, label);
+  const cursor = cursorOf(overlay, doings.get(id) ?? label);
   const from = overlay.at ?? { x: (overlay.placed?.width ?? 0) / 2, y: (overlay.placed?.height ?? 0) * 0.15 };
   overlay.at = to;
   at(cursor, to);
