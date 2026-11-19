@@ -1355,6 +1355,10 @@
     --sidebar-shown: 0px;
   }
 }
+/* The strip's squares end above the foot's icons rising over the strip: how far they rise, measured (flyout.tsx). */
+@utility strip-squares {
+  margin-bottom: attr(data-foot px, 0px);
+}
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }

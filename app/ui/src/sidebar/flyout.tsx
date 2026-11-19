@@ -1,4 +1,4 @@
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -7,17 +7,16 @@ import { DropdownMenuLabel } from "../components/menu";
 import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
-import { Archive, ArrowUpRight, Chats, Folder, Folders, Pin } from "../icons";
+import { Archive, ArrowUpRight, Chats } from "../icons";
 import { openProject } from "../projects/page";
-import { openAddProject } from "../projects/store";
 import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
-import { RowMark } from "./row";
+import { ProjectBadge, RowMark } from "./row";
 import { type Project, type SessionRow, useStatusWords } from "./words";
 
 /*
- * The strip's lists, each opening beside it to pick from without expanding the sidebar: Projects and Chats as
- * in the old app, and Archived [D211].
+ * The strip's squares, a project's or a session's [D805, D811], and its lists, each opening beside it to pick from
+ * without expanding the sidebar: Chats, which stands for the Chats section [D813], and Archived [D211].
  */
 
 type Choose = (choice: () => void) => void;
@@ -55,13 +54,13 @@ function Flyout({ label, icon, lit = false, children }: { label: string; icon: R
 }
 
 /** A session in a list: its title and mark; picking it opens it. */
-function Line({ row, nested = false, pick, active, offline, onOpen }: Rows & { row: SessionRow; nested?: boolean; pick: Choose }) {
+function Line({ row, pick, active, offline, onOpen }: Rows & { row: SessionRow; pick: Choose }) {
   const here = row.id === active;
   const words = useStatusWords(row);
   const mark = useMark(row, here);
   return (
     <li>
-      <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className={cx("pe-1.5", nested && "ps-8")} onClick={() => pick(() => onOpen(row.id))}>
+      <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className="pe-1.5" onClick={() => pick(() => onOpen(row.id))}>
         <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
         <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
           <RowMark mark={mark} label={words ?? ""} />
@@ -83,51 +82,54 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-/** Each project, picked to open its page [D780], with its sessions. */
-export function ProjectsFlyout({ projects, sessions, ...rows }: Rows & { projects: Project[]; sessions: SessionRow[] }) {
+/** What the strip's square and a project row draw for the rows under it: needs you before failed, the open session left out. */
+export function attentionOf(rows: SessionRow[], active: string | null): "needs" | "amber" | null {
+  const marks = rows.filter((row) => row.id !== active).map((row) => row.mark);
+  return marks.includes("needs") ? "needs" : marks.includes("amber") ? "amber" : null;
+}
+
+const DOT = { needs: "bg-link", amber: "bg-warning" };
+
+/** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its page [D811]. */
+export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: "needs" | "amber" | null }) {
   return (
-    <Flyout label="Projects" icon={<Folders />} lit={sessions.some((row) => markOf(row, rows.active) && projects.some((project) => project.id === row.project))}>
-      {(pick) =>
-        projects.length === 0 ? (
-          <p className="px-2 py-1 text-sm text-muted-foreground">
-            <NoProjects onAdd={() => pick(() => openAddProject())} />
-          </p>
-        ) : (
-          <NavList>
-            {projects.map((project) => (
-              <li key={project.id} className="flex flex-col">
-                <NavRow onClick={() => pick(() => openProject(project.id))}>
-                  <Folder />
-                  <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                </NavRow>
-                <NavList className="pt-px pb-1">
-                  {sessions
-                    .filter((row) => row.project === project.id)
-                    .map((row) => (
-                      <Line key={row.id} row={row} nested pick={pick} {...rows} />
-                    ))}
-                </NavList>
-              </li>
-            ))}
-          </NavList>
-        )
-      }
-    </Flyout>
+    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? DOT[attention] : undefined} onClick={() => openProject(project.id)}>
+      <ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />
+    </TooltipIconButton>
   );
 }
 
-/** The pinned sessions, the rail's own button above Projects [new-design]. */
-export function PinnedFlyout({ pinned, ...rows }: Rows & { pinned: SessionRow[] }) {
+/** A session's square in the strip, smaller than a project's: its project's logo or initials, its title on hover [D805]. */
+export function SessionSquare({ row, project, tone, active, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; onOpen: (id: string) => void }) {
+  const attention = attentionOf([row], active ? row.id : null);
   return (
-    <Flyout label="Pinned" icon={<Pin />} lit={pinned.some((row) => markOf(row, rows.active))}>
-      {(pick) => (
-        <NavList>
-          {pinned.map((row) => (
-            <Line key={row.id} row={row} pick={pick} {...rows} />
-          ))}
-        </NavList>
-      )}
-    </Flyout>
+    <TooltipIconButton look="strip" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? DOT[attention] : undefined} onClick={() => onOpen(row.id)}>
+      <ProjectBadge id={project?.id} name={project?.name ?? null} tone={tone} size="size-4.5 text-badge" />
+    </TooltipIconButton>
+  );
+}
+
+/**
+ * The strip's squares, scrolling under a fade (the sidebar list's) and ending above the foot's icons, which rise over
+ * the strip from the card's bottom: their height is measured into `data-foot` [D803].
+ */
+export function Squares({ children }: { children: ReactNode }) {
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const foot = list.current?.closest("[data-sidebar]")?.querySelector("[data-slot=sidebar-foot]");
+    if (!foot) return;
+    const measure = () => {
+      const below = list.current!.parentElement!.getBoundingClientRect().bottom - foot.getBoundingClientRect().top;
+      list.current!.setAttribute("data-foot", String(Math.max(0, Math.round(below))));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(foot);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={list} className="strip-squares scroll-edge-fade edge-fade-sidebar hide-scrollbar flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto pb-2">
+      {children}
+    </div>
   );
 }
 

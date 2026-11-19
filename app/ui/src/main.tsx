@@ -22,6 +22,7 @@ import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
 import { FolderDrop } from "./shell/folder-drop";
 import { ProjectPage, projectPageOf } from "./projects/page";
+import { useProjects } from "./projects/projects";
 import { RemoveProjectHost } from "./projects/remove";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
@@ -134,7 +135,9 @@ function App() {
 // The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches.
 // Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
-  const { daemon, projects } = useDaemon();
+  const { daemon } = useDaemon();
+  // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
+  const projects = useProjects();
   const [open, setOpen] = useStored("sidebar.open", true);
   const [collapse, setCollapse] = useStored<SidebarCollapse>("sidebar.collapse", "strip");
   useSeen(rows?.find((row) => row.id === active));
@@ -154,7 +157,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         ) : (
         <AppSidebar
           rows={rows}
-          projects={projects?.toSorted((a, b) => a.added - b.added) ?? []}
+          projects={projects ?? []}
           active={active}
           page={page}
           home={active === null && page === undefined}

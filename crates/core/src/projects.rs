@@ -44,6 +44,8 @@ pub struct Project {
     /// "folder": a folder of repositories, added as is [D494]; empty: one repository.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub kind: String,
+    /// When it was pinned (ms), shown in the sidebar's Pinned by projects [D808]; None: not pinned.
+    pub pinned: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -75,13 +77,7 @@ pub fn list(data: &Path) -> io::Result<Vec<Project>> {
 /// Holds `projects.lock` with the current records, migrating once if needed. A session start
 /// holds it through project validation and writing its record, never through starting the host.
 pub fn locked(data: &Path) -> io::Result<(fs::File, Vec<Project>)> {
-    fs::create_dir_all(data)?;
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(data.join("projects.lock"))?;
-    lock.lock()?;
+    let lock = lock(data, "projects.lock")?;
     let list = match read(data)? {
         Some(list) => list,
         None => {
@@ -303,6 +299,7 @@ pub struct Change {
     pub include: Option<Vec<String>>,
     pub github_account: Option<Option<String>>,
     pub browser_profile: Option<Option<String>>,
+    pub pinned: Option<Option<u64>>,
 }
 
 /// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
@@ -369,6 +366,9 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
         }
         if let Some(profile) = new.browser_profile {
             p.browser_profile = profile;
+        }
+        if let Some(pinned) = new.pinned {
+            p.pinned = pinned;
         }
         Ok(p.clone())
     })?;

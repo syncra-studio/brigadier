@@ -104,6 +104,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let project = projects::set(data, arg(2), change)?;
                     return Ok(json!({"ok": true, "project": project}));
                 }
+                // Not through set: a pin leaves the CLIs' trust entries alone [D808].
+                "pin" => {
+                    let off = args.iter().any(|a| a == "--off");
+                    let change = projects::Change {
+                        pinned: Some((!off).then(log::now_ms)),
+                        ..Default::default()
+                    };
+                    let project = projects::set(data, arg(2), change)?;
+                    return Ok(json!({"ok": true, "project": project}));
+                }
                 "set" => {
                     let trusted = flag(args, "--trusted")
                         .map(|value| match value {
@@ -135,6 +145,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                             }
                             None => None,
                         },
+                        pinned: None,
                     };
                     let project = projects::set(data, arg(2), change)?;
                     // The answer stays saved when a CLI's own entry can't be written [D166].

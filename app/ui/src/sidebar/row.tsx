@@ -69,7 +69,7 @@ const TAGS = [
 ];
 
 // Every badge's one square and corners, initials or logo, so none is wider than another [D62].
-const BADGE = "size-icon-md shrink-0 overflow-hidden rounded-badge";
+const BADGE = "shrink-0 overflow-hidden rounded-badge";
 
 // Which projects have a logo, asked once a page load (main looks once a run).
 const logos = new Map<string, boolean>();
@@ -77,15 +77,15 @@ const logos = new Map<string, boolean>();
 /**
  * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
  * project's colour. `tone` is the project's place in the order projects were added, so it keeps its colour as
- * others are added. Initials show while the logo is looked for.
+ * others are added. Initials show while the logo is looked for. `size` is its square and its initials' size, larger in the strip [D811].
  */
-export function ProjectBadge({ id, name, tone = 0 }: { id?: string; name: string | null; tone: number | undefined }) {
+export function ProjectBadge({ id, name, tone = 0, size = "size-icon-md text-badge" }: { id?: string; name: string | null; tone: number | undefined; size?: string }) {
   const [, found] = useState(false);
   const logo = id === undefined || name === null ? false : logos.get(id);
   const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
-  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, "object-cover")} />;
+  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, size, "object-cover")} />;
   return (
-    <span aria-hidden className={cx(BADGE, "flex items-center justify-center text-badge font-bold", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
+    <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
       {logo === undefined && (
         <img

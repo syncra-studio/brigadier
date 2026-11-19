@@ -259,7 +259,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   // The row is its final width from the start, or it would wrap while the panel widens.
   return (
     <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} className={cx("flex px-2 pt-2", open ? "sidebar-card-width relative flex-row flex-wrap items-center gap-0.5 pb-2" : "absolute inset-x-0 bottom-0 flex-col items-center gap-0.5 pb-2.5")}>
+      <div ref={foot} data-slot="sidebar-foot" className={cx("flex px-2 pt-2", open ? "sidebar-card-width relative flex-row flex-wrap items-center gap-0.5 pb-2" : "absolute inset-x-0 bottom-0 flex-col items-center gap-0.5 pb-2.5")}>
         {open ? icons : icons.toReversed()}
       </div>
     </div>

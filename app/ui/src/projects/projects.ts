@@ -72,3 +72,16 @@ export async function setProject(project: Project, change: Partial<Project>, arg
     if (overlay.get().get(project.id) === shown) hold(project.id);
   }
 }
+
+/** Pins a project to the sidebar's Pinned by projects, or unpins it: shown at once, taken back with Rust's reason [D30, D808]. */
+export async function pinProject(project: Project, on: boolean): Promise<void> {
+  const shown = { ...project, pinned: on ? Date.now() : null };
+  hold(project.id, shown);
+  try {
+    await run(["projects", "pin", project.id, ...(on ? [] : ["--off"])]);
+  } catch (cause) {
+    showToast(`Couldn't ${on ? "pin" : "unpin"} ${project.name}: ${errorText(cause)}`, { tone: "error" });
+  } finally {
+    if (overlay.get().get(project.id) === shown) hold(project.id);
+  }
+}

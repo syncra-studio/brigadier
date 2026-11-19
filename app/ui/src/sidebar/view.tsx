@@ -13,6 +13,7 @@ import { ProjectBadge } from "./row";
 import { useStored } from "./sidebar";
 import type { Project, SessionRow } from "./words";
 
+/** The sidebar's mode [D806]: "project" By projects, "none" By sessions (kept under their old names, so the pick carries over). */
 export type Grouping = "none" | "project";
 
 /** What the View control leaves out of the list, kept like the grouping as this window's view. */
@@ -98,7 +99,7 @@ function SubMenu({ icon, title, wide = false, children }: { icon: ReactNode; tit
 const CHECK = <Check className="size-icon-md" />;
 
 /**
- * Around the search field and the lists: Organize sidebar (by project or in one list), Sort by (your last
+ * Around the search field and the lists: Organize sidebar (By projects or By sessions [D806]), Sort by (your last
  * message, or anyone's last activity) and Show (each project, then chats without one, ticked, with counts, and
  * Show all while any is unticked [D440, D50]), each its own menu beside the row, then Add project [D655].
  */
@@ -139,10 +140,10 @@ export function ViewMenu({
         <SubMenu icon={<Sidebar />} title="Organize sidebar">
           <DropdownMenuRadioGroup value={grouping} onValueChange={(next) => onGrouping(next as Grouping)}>
             <DropdownMenuRadioItem value="project" indicator={CHECK}>
-              <MenuRow icon={<Folder />} title="By project" />
+              <MenuRow icon={<Folder />} title="By projects" />
             </DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="none" indicator={CHECK}>
-              <MenuRow icon={<ListBullets />} title="In one list" />
+              <MenuRow icon={<ListBullets />} title="By sessions" />
             </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
         </SubMenu>
