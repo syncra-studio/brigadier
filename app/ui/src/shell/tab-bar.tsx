@@ -16,6 +16,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { baseName } from "../files/tree";
 import { setHomeDraft } from "../home/start";
+import { HOME_DRAFT } from "../session/draft";
 import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { BossCrumb, BrigadeGlyph } from "../sessions/brigade";
@@ -220,7 +221,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             <DropdownMenuSeparator />
           </>
         )}
-        {tab.kind === "browser" && (
+        {tab.kind === "browser" && owner !== HOME_DRAFT && (
           <>
             {/* The session's own agent is Brigadier to the user, whichever CLI it runs [D778]. */}
             {tab.driver ? <DropdownMenuItem onClick={() => takeBackTab(owner, tab.id)}>Take back</DropdownMenuItem> : <DropdownMenuItem onClick={() => giveTabToChat(owner, tab.id)}>Give to Brigadier</DropdownMenuItem>}

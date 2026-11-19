@@ -155,11 +155,20 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                 let id = part["id"].as_str().unwrap_or("");
                 notes.push(format!("[mentions worker {id}: {label}]"));
             }
-            // Handed to the agent with the message: the app gave it the tab as it sent [D775].
+            // Handed to the agent with the message: the app gave it the tab as it sent [D775]. Only a
+            // tab of this session's own is given; to another (a worker, a new session) it's named.
             (Some("mention"), Some("tab")) => {
                 agent += label;
                 let id = part["id"].as_str().unwrap_or("");
-                notes.push(format!("[gives you browser tab {id} ({label}): it's yours to use now, with the user's sign-ins. `brigadier browser snapshot --tab {id}` reads it.]"));
+                let tabs: Value = fs::read(spec.dir.join("tabs.json"))
+                    .ok()
+                    .and_then(|b| serde_json::from_slice(&b).ok())
+                    .unwrap_or_default();
+                let mut own = tabs["tabs"].as_array().into_iter().flatten();
+                match own.any(|t| t["id"] == id) {
+                    true => notes.push(format!("[gives you browser tab {id} ({label}): it's yours to use now, with the user's sign-ins. `brigadier browser snapshot --tab {id}` reads it.]")),
+                    false => notes.push(format!("[mentions the browser page {label}]")),
+                }
             }
             (Some("mention"), Some(kind)) => {
                 agent += label;

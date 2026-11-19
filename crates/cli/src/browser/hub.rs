@@ -33,8 +33,8 @@ struct Hub {
     /// The app's connections that run calls; the newest runs them.
     pages: Mutex<Vec<(u64, Sender<String>)>>,
     calls: Mutex<HashMap<String, Waiting>>,
-    /// The tabs the user took over, with how many calls wait on each for Continue.
-    paused: Mutex<HashMap<String, usize>>,
+    /// The tabs the user took over, with the agents whose calls wait on each for Continue.
+    paused: Mutex<HashMap<String, Vec<String>>>,
     pause_changed: Condvar,
     /// The user's yes to one call until it goes through, by agent, tab and the call itself. In
     /// memory only, so nothing typed is ever written down.
@@ -43,6 +43,9 @@ struct Hub {
     reads: Mutex<HashMap<String, (u64, String)>>,
     /// The tab each agent works in now.
     tabs: Mutex<HashMap<String, String>>,
+    /// The session whose tabs each agent worked in this turn, so its turn's end lets go of them all,
+    /// a tab the user gave it too.
+    owners: Mutex<HashMap<String, String>>,
     /// The tabs agents opened, by tab: the agent, its session's tabs and whether `--keep` kept it.
     opened: Mutex<HashMap<String, (String, String, bool)>>,
 }
@@ -85,24 +88,26 @@ pub(super) fn run(args: &[String]) -> std::io::Result<Value> {
         }
         (session, "paused") => {
             core::check_id(session)?;
-            // How many calls the hand-back lets go on: with none, the app tells the agent (pause.ts).
+            // How many of the tab's agent's (arg 5) calls the hand-back lets go on: with none, the
+            // app tells it (pause.ts).
             let waiting = set_paused(arg(3), arg(4) == "true");
-            return Ok(json!({"ok": true, "waiting": waiting}));
+            let mine = waiting.iter().filter(|w| arg(5).is_empty() || *w == arg(5));
+            return Ok(json!({"ok": true, "waiting": mine.count()}));
         }
         _ => return Err(std::io::Error::other(super::USAGE)),
     }
     Ok(json!({"ok": true}))
 }
 
-/// Pauses `tab` or lets it go on; how many calls waited on it.
-fn set_paused(tab: &str, paused: bool) -> usize {
+/// Pauses `tab` or lets it go on; whose calls waited on it.
+fn set_paused(tab: &str, paused: bool) -> Vec<String> {
     let mut set = lock(&HUB.paused);
     let (changed, waiting) = match paused {
         true => (
             !set.contains_key(tab),
-            *set.entry(tab.to_string()).or_insert(0),
+            set.entry(tab.to_string()).or_default().clone(),
         ),
-        false => set.remove(tab).map_or((false, 0), |n| (true, n)),
+        false => set.remove(tab).map_or((false, vec![]), |w| (true, w)),
     };
     if changed {
         HUB.pause_changed.notify_all();
@@ -110,23 +115,25 @@ fn set_paused(tab: &str, paused: bool) -> usize {
     waiting
 }
 
-/// Waits until `tab` isn't paused, `until` at the latest, or the agent went; false if it still is.
-fn unpaused(tab: &str, until: Instant, here: &dyn Fn() -> bool) -> bool {
+/// Waits until `tab` isn't paused, `until` at the latest, or agent `me` went; false if it still is.
+fn unpaused(tab: &str, me: &str, until: Instant, here: &dyn Fn() -> bool) -> bool {
     let mut set = lock(&HUB.paused);
-    while let Some(n) = set.get_mut(tab) {
+    while let Some(waiting) = set.get_mut(tab) {
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() || !here() {
             return false;
         }
-        *n += 1;
+        waiting.push(me.to_string());
         let step = left.min(Duration::from_secs(1));
         set = HUB
             .pause_changed
             .wait_timeout(set, step)
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .0;
-        if let Some(n) = set.get_mut(tab) {
-            *n = n.saturating_sub(1);
+        if let Some(waiting) = set.get_mut(tab)
+            && let Some(at) = waiting.iter().position(|w| w == me)
+        {
+            waiting.remove(at);
         }
     }
     true
@@ -295,8 +302,9 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
 fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool) -> Value {
     let until = Instant::now() + PAUSE_WAIT;
     let tab = op["tab"].as_str().unwrap_or("");
+    lock(&HUB.owners).insert(me.to_string(), owner.to_string());
     loop {
-        if !tab.is_empty() && !unpaused(tab, until, here) {
+        if !tab.is_empty() && !unpaused(tab, me, until, here) {
             return json!({"result": "paused", "tab": tab});
         }
         let result = call(owner, me, label, op, here);
@@ -345,6 +353,9 @@ pub fn turn_ended(me: &str) {
         }
         *keep
     });
+    if let Some(owner) = lock(&HUB.owners).remove(me) {
+        gone.entry(owner).or_default();
+    }
     let Some((_, out)) = lock(&HUB.pages).last().cloned() else {
         return;
     };

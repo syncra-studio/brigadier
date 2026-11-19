@@ -50,7 +50,8 @@ export function installBrowserAgent(): void {
 async function endTurn({ owner, driver, op }: Call): Promise<void> {
   await tabsRead(owner);
   const current = tabsOf(owner);
-  const gone = (op.tabs as string[]).filter((tab) => tab !== current.active && !isPaused(tab) && current.tabs.some((each) => each.id === tab));
+  // Only those still its own: one the user took back is theirs to keep.
+  const gone = (op.tabs as string[]).filter((tab) => tab !== current.active && !isPaused(tab) && current.tabs.some((each) => each.id === tab && each.driver === driver));
   for (const tab of gone) closeAgentTab(owner, tab);
   for (const tab of browserTabs(owner)) {
     if (tab.driver === driver && !gone.includes(tab.id)) agentDrive(tab.id, false).catch(holdChangeFailed);
@@ -114,7 +115,8 @@ const READ_MOST = 15_000;
 const failed = (message: string): Result => ({ result: "failed", message });
 
 function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  // A refusal thrown in main comes wrapped by IPC: the agent hears only its words.
+  if (error instanceof Error) return error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
   if (typeof error === "object" && error && "message" in error) return String(error.message);
   return String(error);
 }

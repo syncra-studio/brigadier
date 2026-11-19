@@ -75,7 +75,8 @@ async function acting(guest: WebContents, input: (send: (method: string, params:
     } finally {
       if (confirm) await setConfirm(guest, false);
     }
-    return { done: true, dialogs: await dialogsSaid(guest) };
+    // A box's words may quote a field's value: password values come out as any page text's do.
+    return sweptAndScrubbed(guest, async () => ({ done: true, dialogs: await dialogsSaid(guest) }));
   });
   hold.queue = run.catch(() => {});
   try {
@@ -86,6 +87,14 @@ async function acting(guest: WebContents, input: (send: (method: string, params:
     throw error;
   }
 }
+
+/** Whether the page's focused element, through open shadow roots, is a password field or one that looks like it. */
+const FOCUSED_SECRET = `(() => {
+  let at = document.activeElement;
+  while (at?.shadowRoot?.activeElement) at = at.shadowRoot.activeElement;
+  if (!at || !at.getAttribute) return false;
+  return at.type === "password" || /\b(current|new)-password\b/i.test(at.getAttribute("autocomplete") || "") || (getComputedStyle(at).webkitTextSecurity || "none") !== "none";
+})()`;
 
 const mouse = (type: string, x: number, y: number, buttons: number) => ({
   type,
@@ -205,8 +214,12 @@ export function installBrowserAgent(): void {
         });
       case "key": {
         const events = keyEvents(call.key, call.modifiers);
-        // Widget events, as Enter's.
-        return acting(guest, async () => {
+        // Widget events, as Enter's. The page gets its focus first, so a focus handler that makes the field a
+        // password field has run, and then the last look: keys never go into one [D518 D725].
+        return acting(guest, async (send) => {
+          guest.focus();
+          const looked = await send("Runtime.evaluate", { expression: FOCUSED_SECRET, returnByValue: true }) as { result?: { value?: unknown } };
+          if (looked.result?.value !== false) throw new Error("That is a password field, and only the user fills those in, so no key was sent. Ask them to sign in in this tab, and go on when they say so.");
           for (const each of events) guest.sendInputEvent(each);
         });
       }

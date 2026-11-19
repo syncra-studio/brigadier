@@ -378,6 +378,9 @@
       named = namedKind(nameOf(element));
     } else if (op.key === "Enter" && element !== document.body) {
       kind = fieldKind(element) || filledKind(scopeOf(element), element);
+    } else if (op.key !== "Tab" && op.key !== "Escape") {
+      // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
+      kind = fieldKind(element);
     }
     const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (named && ask(named, element)) || (op.always && ask("action", element));
     if (asked) return asked;
@@ -386,6 +389,8 @@
       element.focus?.({ preventScroll: true });
       const focused = deepFocused();
       if (!focused || !within(element, focused)) return { error: `${op.target} can't take the keyboard: click it, or press without --ref.` };
+      // Its focus handler may have made it a password field meanwhile.
+      if (isPassword(element) || isPassword(focused)) return { error: HANDS_OFF };
     }
     return { done: true };
   };

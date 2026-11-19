@@ -11,6 +11,9 @@ const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(cal
 
 const script = (guest: number, op: Answer) => agent({ call: "script", guest, op }) as Promise<Answer | null>;
 
+/** The user has the tab now: they took it over, or took it back (Stop), so nothing more goes into the page. */
+const overtaken = (id: string) => isPaused(id) || !driverOf(id);
+
 /** How long a scroll gets to move the page. */
 const SCROLL_MS = 350;
 
@@ -27,7 +30,7 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
     const zoom = element.getZoomFactor();
     const at = { x: point.x * zoom, y: point.y * zoom };
     if (op.kind === "hover") await glideTo(id, String(op.label ?? "Brigadier"), at);
-    if (isPaused(id)) return { paused: "user" };
+    if (overtaken(id)) return { paused: "user" };
     const scrolled = Number((answer as { scroll?: unknown }).scroll ?? 0) * zoom;
     // A scroll is the page's own wheel under its middle, as a person's: it reaches the list there, not only the window.
     if (op.kind === "hover") return await whilePainting(id, () => agent({ call: "hover", guest, ...at }));
@@ -45,7 +48,7 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
 
   const zoom = element.getZoomFactor();
   await glideTo(id, String(op.label ?? "Brigadier"), { x: point.x * zoom, y: point.y * zoom });
-  if (isPaused(id)) return { paused: "user" };
+  if (overtaken(id)) return { paused: "user" };
 
   // The real pointer goes there first, so a menu that opened on hover closes and the page settles before the check.
   if (op.kind === "click") {
@@ -57,7 +60,7 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
   if (place && "error" in place) return place;
   const there = (place as { point?: { x: number; y: number } } | null)?.point ?? point;
 
-  if (isPaused(id)) return { paused: "user" };
+  if (overtaken(id)) return { paused: "user" };
   if (userComposing()) return { error: "The user is typing with an input method in Brigadier, so nothing was sent, to keep their unfinished text. Try again in a moment." };
   const release = guardFocus(element, () => focusPage(null));
   try {
@@ -79,7 +82,7 @@ async function press(id: string, op: Answer): Promise<unknown> {
   const { guest, element } = agentPage(id);
   const ready = await script(guest, { ...op, kind: "press" });
   if (!ready || "error" in ready || "ask" in ready) return ready;
-  if (isPaused(id)) return { paused: "user" };
+  if (overtaken(id)) return { paused: "user" };
   if (userComposing()) return { error: "The user is typing with an input method in Brigadier, so no key was sent, to keep their unfinished text. Try again in a moment." };
   const release = guardFocus(element, () => focusPage(null));
   try {
@@ -98,7 +101,7 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
     return;
   }
   const page = maybePage(id);
-  if (!page) return;
+  if (!page || !driverOf(id)) return;
   raiseShield(id, page.element, pageBounds(id), () => {
     // Take over: the tab is the user's until they hand it back, and so is the keyboard.
     dropOverlay(id);

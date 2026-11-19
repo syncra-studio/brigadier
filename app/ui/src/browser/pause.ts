@@ -51,8 +51,8 @@ export const devToolsOpen = (id: string): boolean => id in state.devtools;
 
 const tellFailed = (error: unknown) => console.error("telling the daemon about a paused tab failed", error);
 
-/** Tells the daemon; it answers how many of the agent's calls waited on the tab. */
-const tell = (session: string, tab: string, paused: boolean) => run(["browser", session, "paused", tab, String(paused)]);
+/** Tells the daemon; it answers how many calls of `driver`'s waited on the tab. */
+const tell = (session: string, tab: string, paused: boolean, driver = "") => run(["browser", session, "paused", tab, String(paused), driver]);
 
 /** The user clicked, typed or scrolled in tab `id`, or used its toolbar: an agent's tab pauses. */
 export function userUsed(id: string): void {
@@ -129,7 +129,7 @@ export function handBack(id: string, done = false): void {
     const { [id]: _stop, ...others } = asked;
     return { paused: rest, devtools: shut, asked: others };
   });
-  tell(session, id, false).then((reply) => {
+  tell(session, id, false, driver).then((reply) => {
     if (!told || !driver || Number(reply.waiting) > 0) return;
     const qid = newId();
     return run(driver === session ? ["queue", session, "add", told, "--qid", qid] : toArgs(session, driver, told, { qid }, false));

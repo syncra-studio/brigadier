@@ -1,5 +1,6 @@
 import type { Chip } from "../components/composer/draft";
 import { showToast } from "../components/toast";
+import { HOME_DRAFT } from "../session/draft";
 import { putBack } from "../session/side";
 import { driveTab, selectTab, tabsOf, userTab } from "../shell/tab-store";
 import { browserPage } from "./pages";
@@ -22,7 +23,8 @@ const tabOf = (owner: string, id: string) => tabsOf(owner).tabs.find((tab) => ta
 export function giveTab(owner: string, id: string): boolean {
   const tab = tabOf(owner, id);
   const url = browserPage(id)?.url || tab?.target || "";
-  if (!tab || !/^https?:/i.test(url) || (tab.driver && tab.driver !== owner)) return false;
+  // Home has no agent yet to give it to.
+  if (owner === HOME_DRAFT || !tab || !/^https?:/i.test(url) || (tab.driver && tab.driver !== owner)) return false;
   if (tab.driver !== owner) driveTab(owner, id, url, owner);
   return true;
 }
