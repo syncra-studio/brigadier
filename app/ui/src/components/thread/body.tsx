@@ -59,12 +59,11 @@ type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "
 export function GroupLine({ item, turn, open, steps, live, members, onToggle }: { item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: readonly Item[]; onToggle: (id: string) => void }) {
   const going = turn?.status === "running" || turn?.held === true;
   const now = live?.kind === "reasoning" ? <ThinkingLine heading={live.heading} /> : live ? <Body item={live} turn={turn} step={false} /> : item.run && going && <ThinkingLine />;
-  if (now) return now;
   const ended = members.filter((member) => !running(member) && !(member.kind === "reasoning" && member.streaming));
-  if (!ended.length) return null;
+  if (!now && !ended.length) return null;
   return (
     <>
-      <GroupRow item={item} members={ended} open={open} onToggle={onToggle} />
+      {now || <GroupRow item={item} members={ended} open={open} onToggle={onToggle} />}
       {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's),
           indented on a guide line under the line's icon [D762]. */}
       {open && steps.length > 0 && (
