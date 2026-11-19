@@ -26,6 +26,7 @@ import { LiveMockupTabIcon } from "../mockup/live";
 import { openProject } from "../projects/page";
 import { BlankChatTab, BUTTON, ChatTab, CLOSE, HouseTab, leave, LOOK, noAutoscroll, Shape, TAB, TabMenuItems, TITLE } from "./chat-tab";
 import { useNoteTitle } from "./note-tab";
+import { HOUSE, useTabGlide } from "./tab-glide";
 import { useTabKeys } from "./tab-keys";
 import { CHAT, closeTab, HOME, homeProject, justOpened, keepTab, moveTab, openTab, selectTab, setCurrent, setPlace, type Tab, TAB_KINDS, tabOrder, tabsOf, useCurrent, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
@@ -224,6 +225,9 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   }, [read]);
   const order = tabOrder(now);
   const strip = useRef<HTMLDivElement>(null);
+  const header = useRef<HTMLElement>(null);
+  const ghost = useRef<HTMLSpanElement>(null);
+  useTabGlide(header, ghost, houseActive ? HOUSE : front);
   const list = useRef<HTMLDivElement>(null);
   // Chrome's: a tab closed with the pointer leaves the others their width until the pointer leaves the row, so the
   // next tab's × comes under it [D848].
@@ -302,7 +306,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   };
 
   const newTab = (
-    <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag" onClick={() => {
+    <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag session-tab-new" onClick={() => {
         openTab(shown, "new");
         if (peek) openThread(peek);
       }}>
@@ -313,8 +317,11 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
-      <header data-slot="session-tabs" data-settled={settled || undefined} onPointerLeave={() => setFrozen(undefined)} className={cx(BAR, "session-tab-bar")}>
-        {house && <HouseTab active={houseActive} separator={!houseActive && !chatGone && !(front === CHAT && !home)} onOpen={openHouse} />}
+      <header ref={header} data-slot="session-tabs" data-settled={settled || undefined} onPointerLeave={() => setFrozen(undefined)} className={cx(BAR, "session-tab-bar")}>
+        <span ref={ghost} aria-hidden hidden data-active className="session-tab-glide">
+          <span className="session-tab-shape" />
+        </span>
+        {house && <HouseTab active={houseActive} separator={!houseActive && (chatGone || !(front === CHAT && !home))} onOpen={openHouse} />}
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
@@ -349,7 +356,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                   return (
                     <Fragment key={tab.id}>
                       {leads && <BrowserTabGroupLabel tabIds={group} driver={driver} />}
-                      <OtherTab owner={shown} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== front} closing={closing} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeHere(tab.id)} />
+                      <OtherTab owner={shown} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && tabs[index + 1]?.id !== front} closing={closing} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeHere(tab.id)} />
                     </Fragment>
                   );
                 })}

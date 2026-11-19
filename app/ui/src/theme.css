@@ -335,8 +335,9 @@
   --spacing-home-tab: 2.5rem;
   /* Under its content, the foot where the front tab meets the frame: the content on the row's middle line, as Chrome's. */
   --spacing-session-tab-foot: 0.375rem;
-  /* A hovered tab's fill in from its edges, clear of a front neighbour's flares. */
-  --spacing-session-tab-hover-inset: 0.125rem;
+  /* A hovered tab's fill and the front tab's shape in from its sides alike, so a separator is as far from either; the
+     fill as far in from its top as from its content's foot, on the row's middle line, as "+" is [D857 D858]. */
+  --spacing-session-tab-inset: 0.125rem;
   /* Chrome's separator between two tabs in back, as the floating design's (Safari's) [D437 D840 D848]. */
   --spacing-session-tab-rule: 1px;
   --spacing-session-tab-rule-height: 1rem;
@@ -1491,6 +1492,23 @@
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
     transition: none;
   }
+  /* The house's rule sits beside Chat, which isn't its sibling either [D840 D857]. */
+  &:has([role="tablist"] > .session-tab:first-child:hover) [data-home]::before {
+    opacity: 0;
+  }
+}
+
+/* The front tab's shape on its way from the last front tab to this one, placed each frame (tab-glide.ts) [D834 D856]. */
+@utility session-tab-glide {
+  position: absolute;
+  left: attr(data-x px);
+  top: attr(data-y px);
+  width: attr(data-w px);
+  height: attr(data-h px);
+  pointer-events: none;
+  &[hidden] {
+    display: none;
+  }
 }
 
 /* Chrome's widths [D848]: every tab but the house as wide as the others, 240px down to an even share of the tab area
@@ -1549,7 +1567,7 @@
   &::after {
     content: "";
     position: absolute;
-    inset: var(--spacing-session-tab-hover-inset) var(--spacing-session-tab-hover-inset) var(--spacing-session-tab-foot);
+    inset: var(--spacing-session-tab-inset) var(--spacing-session-tab-inset) calc(var(--spacing-session-tab-foot) + var(--spacing-session-tab-inset));
     z-index: -1;
     border-radius: var(--radius-control);
     background-color: var(--color-fill);
@@ -1559,6 +1577,10 @@
   }
   &:hover:not([data-active], [data-closing])::after {
     opacity: 1;
+  }
+  /* Chosen, its fill goes at once: none shows over the front shape gliding in [D856]. */
+  &[data-active]::after {
+    transition: none;
   }
   &[data-fresh] {
     @starting-style {
@@ -1604,6 +1626,16 @@
   }
 }
 
+/* "+": a hovered tab's fill in size and place, as far past the last tab's separator as that fill is from one [D857 D858
+   D860]. Unlayered, so it outweighs the strip look's own size and corners. */
+.session-tab-new {
+  width: calc(var(--spacing-tab-front) - var(--spacing-session-tab-foot) - var(--spacing-session-tab-inset) * 2);
+  min-width: 0;
+  height: calc(var(--spacing-tab-front) - var(--spacing-session-tab-foot) - var(--spacing-session-tab-inset) * 2);
+  margin-inline-start: calc(var(--spacing-session-tab-inset) - var(--spacing) * 2);
+  border-radius: var(--radius-control);
+}
+
 /* Between the tabs and "+", its gap taken back: nothing, or with no tabs (New chat) all the room, so "+" slides to the
    row's end and back [D831 D836]. */
 @utility session-tab-spacer {
@@ -1624,7 +1656,8 @@
 @utility session-tab-shape {
   --flare: var(--radius-control);
   position: absolute;
-  inset: 0;
+  inset-block: 0;
+  inset-inline: var(--spacing-session-tab-inset);
   z-index: -1;
   display: none;
   border-start-start-radius: var(--radius-session-tab-top);
@@ -1633,6 +1666,10 @@
   pointer-events: none;
   [data-active] > & {
     display: block;
+  }
+  /* While the one shape glides to it (tab-glide.ts), the front tab's own waits [D856]. */
+  [data-gliding] .session-tab[data-active] > & {
+    display: none;
   }
   /* Its edge: down its sides to where the flares take over, so each side meets the frame in the one curve [D832]. */
   &::before {
