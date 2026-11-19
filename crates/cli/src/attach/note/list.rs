@@ -61,9 +61,13 @@ fn matched(text: &str, words: &[String]) -> Option<String> {
         text.lines()
             .find(|l| l.to_lowercase().contains(first.as_str()))?,
     );
-    let at = line.to_lowercase().find(first.as_str()).unwrap_or(0);
     let chars: Vec<char> = line.chars().collect();
-    let at = line[..at.min(line.len())].chars().count();
+    // Counted in the lowercased line, never cut from `line` by its byte: lowercasing can add chars.
+    let lower = line.to_lowercase();
+    let at = lower[..lower.find(first.as_str()).unwrap_or(0)]
+        .chars()
+        .count()
+        .min(chars.len());
     let (from, to) = (
         at.saturating_sub(AROUND),
         (at + first.chars().count() + AROUND).min(chars.len()),

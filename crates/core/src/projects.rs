@@ -488,13 +488,13 @@ pub fn held(data: &Path, spec: &Spec) -> bool {
         .any(|p| Some(&p.id) == id.as_ref() && p.trusted != Some(true))
 }
 
-/// Whether the session's project is being removed: no new work starts in it then [D172].
+/// Whether the session's project is being removed: no new work starts in it then [D172]. A note's
+/// side chat is in it by its notes folder, which no project's root holds [D913 D922].
 pub fn removing(data: &Path, spec: &Spec) -> bool {
     let Ok(projects) = list(data) else {
         return false;
     };
     let id = of(spec, &projects, &mut Roots::default());
-    projects
-        .iter()
-        .any(|p| Some(&p.id) == id.as_ref() && p.removing)
+    let notes = |p: &Project| Path::new(&spec.cwd) == dir(data, &p.id).join("notes");
+    (projects.iter()).any(|p| p.removing && (Some(&p.id) == id.as_ref() || notes(p)))
 }

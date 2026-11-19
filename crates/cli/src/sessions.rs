@@ -209,7 +209,9 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     // Its notes go with it, their side chats first; a working chat holds it as a session does [D920 D922].
     let notes = crate::attach::note::folder(data, Some(id));
     let chats = crate::attach::note::chats_in(&notes);
-    let chats_working = chats.iter().filter(|c| busy(data, c, &all)).count();
+    let chats_busy = |all: &[procs::Proc]| -> Vec<&String> {
+        chats.iter().filter(|c| busy(data, c, all)).collect()
+    };
     if has(args, "--check") {
         // Each read is a few git processes: run side by side (16 at a time), the preview takes about
         // one session's time instead of their sum, so the dialog can open with it [D463].
@@ -253,6 +255,8 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
                 working.push(s);
             }
         }
+        // A working note chat holds it too, so the dialog says so as Remove would [D922].
+        working.extend(chats_busy(all));
         let count = (fs::read_dir(&notes).into_iter().flatten().flatten())
             .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
             .count();
@@ -271,7 +275,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     // New work in it is refused from here on; busy is checked again under that [D172].
     projects::set_removing(data, id, true)?;
     let all = procs::all();
-    let working = ids.iter().filter(|s| busy(data, s, &all)).count() + chats_working;
+    let working = ids.iter().filter(|s| busy(data, s, &all)).count() + chats_busy(&all).len();
     if working > 0 {
         projects::set_removing(data, id, false)?;
         return Err(io::Error::other(format!(

@@ -209,24 +209,30 @@ fn carry(data: &Path, m: &Move) -> io::Result<()> {
         resave(&spec)?;
     }
     if m.new != m.id {
-        retarget(data, &m.id, &m.new)?;
+        retarget(data, &m.from, &m.id, &m.new)?;
     }
     Ok(())
 }
 
-/// Saved note tabs that named `old` name `new`: every session's and every Home's.
-fn retarget(data: &Path, old: &str, new: &str) -> io::Result<()> {
-    let homes = (fs::read_dir(data).into_iter().flatten().flatten())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .is_some_and(|n| n.to_string_lossy().starts_with("home-tabs"))
-        });
-    let sessions = core::ids(data)
+/// Saved note tabs that named `old` name `new`: only those of the owner it came from, its session's
+/// or each Home's, as another's tab of that id was another note.
+fn retarget(data: &Path, from: &Path, old: &str, new: &str) -> io::Result<()> {
+    let owners: Vec<PathBuf> = match from == data.join("home-notes") {
+        true => (fs::read_dir(data).into_iter().flatten().flatten())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("home-tabs"))
+            })
+            .collect(),
+        false => from
+            .parent()
+            .map(|s| s.join("tabs.json"))
+            .into_iter()
+            .collect(),
+    };
+    for path in owners
         .into_iter()
-        .map(|s| core::session_dir(data, &s).join("tabs.json"));
-    for path in homes
-        .chain(sessions)
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
     {
         let Some(mut tabs) = fs::read(&path)
@@ -249,6 +255,8 @@ fn retarget(data: &Path, old: &str, new: &str) -> io::Result<()> {
             fix(t);
         }
         if changed {
+            // A new revision, so an app that read these tabs takes the new targets [ARCHITECTURE].
+            tabs["rev"] = (tabs["rev"].as_u64().unwrap_or(0) + 1).into();
             core::write_atomic(&path, &serde_json::to_vec_pretty(&tabs)?)?;
         }
     }
