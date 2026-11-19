@@ -45,7 +45,17 @@ impl Pr {
         let Some(gh) = gh(repo, self.account.as_deref()) else {
             return err(NO_GH);
         };
-        let scope = format!("repo:{} is:pr", repo.path);
+        // A folder project's several repositories in one search, each row saying whose it is [D780].
+        let many = self.scope.len() > 1;
+        let repos = if many {
+            &self.scope[..]
+        } else {
+            std::slice::from_ref(repo)
+        };
+        let repos: Vec<String> = repos.iter().map(|r| format!("repo:{}", r.path)).collect();
+        let scope = format!("{} is:pr", repos.join(" "));
+        // No repository is "home" then, so `mark` names every row's.
+        let home = if many { repo.at("") } else { repo.clone() };
         let from = after
             .map(|a| format!(", after: {}", json!(a)))
             .unwrap_or_default();
@@ -79,7 +89,7 @@ impl Pr {
                         let list = &data[format!("l{i}")];
                         let page = (list["nodes"].as_array().into_iter().flatten())
                             .filter(|p| p["number"].is_u64())
-                            .map(|p| mark(row(p), repo));
+                            .map(|p| mark(row(p), &home));
                         // A next page joins what's kept; a first page starts it again.
                         let prs: Vec<Value> = match after {
                             Some(_) => (was["prs"].as_array().into_iter().flatten().cloned())

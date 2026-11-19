@@ -353,6 +353,8 @@ pub struct Pr {
     base_ref: String,
     pub base: String,
     pub repo: Option<Repo>,
+    /// A folder project's repositories on `repo`'s server, its Pull requests searching them all [D780].
+    scope: Vec<Repo>,
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
     dir: std::path::PathBuf,
@@ -360,6 +362,21 @@ pub struct Pr {
     avatars: std::path::PathBuf,
     /// Its project's GitHub account, read as [D631]; None: whichever can see the repository.
     account: Option<String>,
+}
+
+/// A checkout and the repository its branch pushes to, git picking the remote; None with no
+/// known host.
+fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
+    let never = AtomicBool::new(false);
+    let head = git::read(
+        &checkout.root,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+        &never,
+    );
+    let branch = head.map(|out| String::from_utf8_lossy(&out).trim().to_string());
+    let remote = push::remote(&checkout, &branch.unwrap_or_default()).ok()?;
+    let repo = repo(&push::url(&checkout, &remote).ok()?)?;
+    Some((checkout, repo))
 }
 
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
@@ -384,7 +401,21 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         true => Target::Project(id),
         false => Target::session(id),
     };
-    let checkout = git::checkout(data, &target)?;
+    // A folder project reads through its first repository and searches them all [D780].
+    let folder = (crate::projects::get(data, id).ok()).filter(|p| p.kind == crate::folder::KIND);
+    let homes: Vec<(Checkout, Repo)> = (folder.iter())
+        .flat_map(|p| {
+            let home = Path::new(&p.folder);
+            let found = crate::folder::repos(home).into_iter();
+            found.filter_map(move |r| hosted(git::at(data, &home.join(r)).ok()?))
+        })
+        .collect();
+    // One on GitHub first, as only GitHub's are searched; a repository with no host is passed over.
+    let first = (homes.iter().find(|(_, r)| r.kind == Kind::GitHub)).or(homes.first());
+    let checkout = match first {
+        Some((first, _)) => first.clone(),
+        None => git::checkout(data, &target)?,
+    };
     // A "here" fork's is its folder's holder's [D1082]. A Local session has none: its PRs are
     // still read.
     let base = match target {
@@ -413,6 +444,13 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
+    let scope = (homes.into_iter().map(|(_, r)| r))
+        .filter(|r| {
+            repo.as_ref()
+                .is_some_and(|o| o.kind == r.kind && o.host == r.host)
+                && slug(&r.path)
+        })
+        .collect();
     Ok(Pr {
         id: id.to_string(),
         checkout,
@@ -421,6 +459,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         base_ref: base,
         base: host_base,
         repo,
+        scope,
         record: match target {
             Target::Project(_) => None,
             Target::Repo(sid, repo) => Some(crate::folder::record_of(data, sid, repo)?),
