@@ -3,7 +3,9 @@
 //! commands, so one approval covers them all.
 
 use crate::Spec;
+use serde_json::Value;
 use std::fs::OpenOptions;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{Read, Seek, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -47,6 +49,28 @@ pub fn standing(spec: &Spec) -> String {
         COMMITS,
         LINE.trim()
     )
+}
+
+/// A turn's setup with the lead's job list as told, by its fingerprint: a running lead's launch
+/// text keeps the list it started with [D932].
+pub fn with_jobs(spec: &Spec, mut setup: Value) -> Value {
+    if let Some(jobs) = &spec.jobs {
+        let mut hash = DefaultHasher::new();
+        jobs.hash(&mut hash);
+        setup["jobs"] = format!("{:016x}", hash.finish()).into();
+    }
+    setup
+}
+
+/// A message to a running lead, after the user's jobs as they are now where they changed since
+/// it was last told, so a renamed or edited job is right on its next turn [D932].
+pub fn retold(spec: &Spec, f: &crate::fold::Fold, setup: &Value, text: &str) -> String {
+    match &spec.jobs {
+        Some(jobs) if f.given.as_ref().is_some_and(|g| g["jobs"] != setup["jobs"]) => {
+            format!("{jobs}\n\n{text}")
+        }
+        _ => text.into(),
+    }
 }
 
 /// The grant for this launch (proposed lifecycle): one token per owner generation, the host that

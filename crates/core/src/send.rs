@@ -243,7 +243,7 @@ pub fn send(
                 cid: Some(cid.into()),
                 ..run.clone()
             };
-            bytes += &a.encode(&run, text);
+            bytes += &a.encode(&run, &crate::agent::retold(spec, f, &req["setup"], text));
             req["bytes"] = bytes.into();
             if let Some(spawn) = child.filter(|spawn| *spawn > 0) {
                 req["spawn"] = spawn.into();

@@ -238,7 +238,7 @@ pub fn setup(spec: &Spec) -> Value {
     if let Some(models) = &spec.ruled.models {
         setup["allowed"] = models.clone().into();
     }
-    setup
+    crate::agent::with_jobs(spec, setup)
 }
 
 pub trait Adapter: Sync {
