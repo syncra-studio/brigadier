@@ -31,8 +31,11 @@ const [daemonPath, daemonArgs] = app.isPackaged
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
-// Dev only: BRIGADIER_FAKE_PLATFORM=win32 stands in for Windows on a Mac (the browser's shortcuts read it).
+// Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
+// The tab bar's height and the traffic lights' top: their centre on its controls' line, 35px down [new-design].
+const TAB_BAR = 56;
+const LIGHTS_Y = 29;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
 // The menu's keys, from the one list of shortcuts the page shows and matches too (app/ui/src/shortcuts.ts) [D2013].
@@ -179,10 +182,11 @@ function openWindow(): void {
     backgroundColor: hold ? introColours.clear : themeBackground,
     ...(hold ? { transparent: true, show: false } : {}),
     titleBarStyle: "hidden",
-    // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar).
-    trafficLightPosition: { x: 16, y: 13 },
-    // Windows draws its own caption buttons over the titlebar's end (theme's --spacing-titlebar, 40px).
-    ...(process.platform === "win32" ? { titleBarOverlay: { height: 40, color: themeBackground, symbolColor: themeForeground } } : {}),
+    // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar). The
+    // sidebar moves them onto the tab bar's line once it shows (traffic-lights).
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 } } : {}),
+    // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
+    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
     webPreferences: {
       additionalArguments: [`--brigadier-platform=${platform}`],
       preload: path.join(__dirname, "preload.js"),
@@ -243,6 +247,8 @@ function openWindow(): void {
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, themeBackground, introColours);
+  // The Windows stand-in on a Mac has no traffic lights; the page draws its caption buttons.
+  if (process.platform === "darwin" && platform !== "darwin") window.setWindowButtonVisibility(false);
   keepOnClose(window);
   void window.loadURL(`${ORIGIN}/`);
 }
@@ -292,6 +298,10 @@ ipcMain.handle("save-attachment", async (event, at: string, name: string) => {
   if (picked.canceled || !picked.filePath) return false;
   await copyFile(file, picked.filePath);
   return true;
+});
+// The page puts the traffic lights at its x, on the tab bar's line [new-design, D48].
+ipcMain.on("traffic-lights", (event, x: number) => {
+  if (process.platform === "darwin" && platform === "darwin") BrowserWindow.fromWebContents(event.sender)?.setWindowButtonPosition({ x, y: LIGHTS_Y });
 });
 // The windows whose ⌘W closes a tab (the tab bar says so) [D360].
 const closesTab = new WeakSet<Electron.WebContents>();

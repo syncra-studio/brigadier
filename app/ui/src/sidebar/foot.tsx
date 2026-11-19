@@ -13,7 +13,8 @@ import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
-import { BarChart, ChevronRight, Lightbulb, Settings } from "../icons";
+import { BarChart, ChevronRight, FeedbackGlyph, Lightbulb, Settings } from "../icons";
+import { openFeedback } from "../feedback/dialog";
 import { keysOf } from "../shortcuts";
 import { UpdatesRow } from "./updates";
 import { type Limit, type SwitchAgent, loadAccounts, useAccounts } from "../accounts/api";
@@ -33,7 +34,7 @@ export const footPlacement = (expanded: boolean) =>
  * With the lid closed too stays away, as the old app's did where it wasn't supported: nothing here can do it yet.
  */
 function KeepAwakeMenu() {
-  const { open: expanded } = useSidebar();
+  const { drawn: expanded } = useSidebar();
   const { rows } = useDaemon();
   // The same value as Settings › General's row [D2016].
   const mode = useSettings().value?.awake;
@@ -102,7 +103,7 @@ function usageEntries(accounts: readonly SwitchAgent[], agents: readonly Agent[]
  * row opens its agent's page; one that needs signing in says so with Sign in.
  */
 function UsageMenu() {
-  const { open: expanded } = useSidebar();
+  const { drawn: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
   const accounts = useAccounts().agents;
   const agents = useAgents().list;
@@ -187,7 +188,7 @@ function UsageMenu() {
 const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item px-2 text-sm";
 
 /** Glides the foot's icons between the row and the stack with the sidebar's own motion, the same elements throughout. */
-function useGlide(open: boolean) {
+function useGlide(open: boolean, slide: boolean) {
   const foot = useRef<HTMLDivElement>(null);
   const seen = useRef(open);
   const from = useRef(new Map<Element, [number, number]>());
@@ -210,7 +211,8 @@ function useGlide(open: boolean) {
     const box = foot.current!;
     const css = getComputedStyle(box);
     const glide = { duration: tokenMs("--duration-fold"), easing: css.getPropertyValue("--ease-sidebar") };
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // A card sliding off or onto the window changes layout out of sight, and slides with its icons set [D63].
+    if (slide || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const item of box.children as HTMLCollectionOf<HTMLElement>) {
       const was = from.current.get(item);
       // From the bottom: that edge stays put while the box changes height.
@@ -228,8 +230,8 @@ function useGlide(open: boolean) {
  * either way. `archived` is the strip's Archived icon.
  */
 export function SidebarFoot({ archived }: { archived?: ReactNode }) {
-  const { open } = useSidebar();
-  const foot = useGlide(open);
+  const { drawn: open, slide } = useSidebar();
+  const foot = useGlide(open, slide);
   // An offer on a job is open [D386].
   const offered = useRoutingDot();
   // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
@@ -237,15 +239,19 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
     <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
       <Settings />
     </TooltipIconButton>,
+    // Feedback sits in the foot now, after Settings [new-design].
+    <TooltipIconButton key="feedback" look="strip" side={open ? "top" : "right"} tooltip="Send Feedback" onClick={() => openFeedback()}>
+      <FeedbackGlyph />
+    </TooltipIconButton>,
     <KeepAwakeMenu key="awake" />,
     <UsageMenu key="usage" />,
     <UpdatesRow key="updates" />,
     // Always here, fading as the strip's own contents do; out of the row's way when expanded.
     archived && (
-      <div key="archived" inert={open} className={cx("flex flex-col items-center transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
+      <div key="archived" inert={open} className={cx("flex flex-col items-center", !slide && "transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
         {archived}
         {/* Set apart from the icons under it by the titlebar's rule, laid flat [D426]. */}
-        <span aria-hidden className="strip-rule my-1.5" />
+        <span aria-hidden className="strip-rule my-2.5" />
       </div>
     ),
   ];
@@ -253,7 +259,7 @@ export function SidebarFoot({ archived }: { archived?: ReactNode }) {
   // The row is its final width from the start, or it would wrap while the panel widens.
   return (
     <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} className={cx("flex px-2 py-2", open ? "sidebar-panel-width relative flex-row flex-wrap items-center gap-1" : "absolute inset-x-0 bottom-0 flex-col gap-px")}>
+      <div ref={foot} className={cx("flex px-2 pt-2", open ? "sidebar-card-width relative flex-row flex-wrap items-center gap-0.5 pb-2" : "absolute inset-x-0 bottom-0 flex-col items-center gap-0.5 pb-2.5")}>
         {open ? icons : icons.toReversed()}
       </div>
     </div>

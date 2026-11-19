@@ -28,8 +28,10 @@ import { CHAT, HOME, openAttachment, openTab, useTabs } from "./tab-store";
 
 type Layout = "beside" | "shift" | "float";
 
-// The old theme's --spacing-summary-gutter-from and --spacing-summary-beside-from, in rem.
-const GUTTER_FROM = 50.25;
+// In rem. Below GUTTER_FROM the card floats over the thread rather than push it [D51]: the column it pushes keeps
+// 37.5rem (600px) beside the card's room (--spacing-summary-room's 76 spacings: the w-75 card and its 4px inset) and
+// the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's --spacing-summary-beside-from.
+const GUTTER_FROM = 19 + 1.25 + 37.5;
 const BESIDE_FROM = 25;
 
 function layoutOf(width: number): Layout {
@@ -38,6 +40,26 @@ function layoutOf(width: number): Layout {
   const column = Number.parseFloat(root.getPropertyValue("--container-reading")) * rem;
   if (width < GUTTER_FROM * rem) return "float";
   return (width - column) / 2 < BESIDE_FROM * rem ? "shift" : "beside";
+}
+
+/**
+ * The side panels easing beside the pane (sidebar-motion): how much room they'll still give it (`left`) and when their
+ * easing began. A fold lays the card out for where it ends from its start, and what that moves starts with the panel,
+ * so the column and the card move with it as one, never jump midway or trail it [D45, D49, D51].
+ */
+function fold(pane: Element) {
+  let left = 0;
+  let start: CSSNumberish | null = null;
+  for (const panel of document.querySelectorAll(".sidebar-motion")) {
+    // A panel's own inner card eases inside it, clipped: only the outermost one takes the pane's room.
+    if (panel.contains(pane) || panel.parentElement?.closest(".sidebar-motion")) continue;
+    const easing = panel.getAnimations().find((each) => each instanceof CSSTransition && each.transitionProperty === "width");
+    const to = easing?.effect instanceof KeyframeEffect ? easing.effect.getKeyframes().at(-1)?.width : undefined;
+    if (typeof to !== "string") continue;
+    left += panel.getBoundingClientRect().width - Number.parseFloat(to);
+    start = easing?.startTime ?? start;
+  }
+  return { left, start };
 }
 
 /** Per owner: `pinned`, the user's show or hide, which holds at every width; `floating`, shown over the thread where it floats. */
@@ -66,9 +88,10 @@ export function useCardToggle(owner: string) {
 }
 
 // The card itself, pinned or floating.
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-overlay bg-popover py-2.5 shadow-summary";
+// The new design's floating card: the card colour, the panel's corners, the glass edge; the old card's 18.75rem (300px) wide [D592].
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-card py-2.5 shadow-summary ring-1 ring-glass-stroke ring-inset";
 
-/** The card's surface, eased in from the pane's end and out again, as the old one; `shown` is all it's told. */
+/** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
@@ -77,9 +100,10 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-label="Context"
         aria-hidden={!shown || undefined}
         className={cx(
-          "pointer-events-none flex max-h-full min-h-0 w-81 max-w-full origin-top-right flex-col overflow-y-auto p-3",
-          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's).
-          shown ? "summary-floats:invisible summary-floats:translate-x-full summary-floats:scale-80 summary-floats:opacity-0" : "invisible translate-x-full scale-80 opacity-0",
+          "pointer-events-none flex max-h-full min-h-0 w-76 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pt-1.5",
+          // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). Shown or
+          // hidden, it shrinks and fades toward its top corner, never out past the pane's end, where a right panel cut it [D63, D67].
+          shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" : "invisible scale-80 opacity-0",
           settled && "summary-card-motion",
         )}
       >
@@ -92,9 +116,9 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
 }
 
 /**
- * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, under the top bar, at
- * most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the Context button or
- * Escape closes it, so `open` is all it follows.
+ * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, its top on the side
+ * panels' [D55], at most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the
+ * Context button or Escape closes it, so `open` is all it follows.
  */
 function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
   // The pane's whole width, so the card follows the pane's end as the pane narrows.
@@ -114,7 +138,8 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               // opened before it floated keeps it.
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
-              className="pointer-events-none flex max-h-available w-81 max-w-available flex-col overflow-y-auto p-3 outline-none menu-motion"
+              // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel [D59]; below, room for its shadow.
+              className="pointer-events-none flex max-h-available w-76 max-w-available flex-col overflow-y-auto ps-1 pt-1.5 pb-3 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
@@ -133,8 +158,11 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
 export function SummaryPane({ owner, card, room = card !== null, children }: { owner: string; card: ReactNode | null; room?: boolean; children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
   const state = useCard(owner);
-  // The first layout lands before anything eases, so a thread opens already in place.
-  const [settled, setSettled] = useState(false);
+  // The first layout lands before anything eases, so a thread opens already in place. Kept per owner, so the render
+  // that switches sessions already has the easing off: the old session's room going doesn't start easing the shared
+  // pane's column out and back before the next session's lands [D423].
+  const [settledFor, setSettledFor] = useState<string | null>(null);
+  const settled = settledFor === owner;
   const has = room;
 
   useLayoutEffect(() => {
@@ -151,24 +179,29 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       const resized = innerWidth !== windowWidth;
       windowWidth = innerWidth;
       const before = cardOf(owner);
-      const layout = layoutOf(width);
+      const sliding = fold(element);
+      const layout = layoutOf(width + sliding.left);
+      const changed = element.dataset.summary !== layout;
       // On the element at once, for CSS: the column's move and the card's hiding land in this frame, not the next.
       element.dataset.summary = layout;
+      // Seen a frame or two into a fold: the easings that starts (just made, not begun) run from the panel's start.
+      if (changed && sliding.start !== null) {
+        for (const each of element.getAnimations({ subtree: true })) if (each instanceof CSSTransition && each.startTime === null) each.startTime = sliding.start;
+      }
       // A shown card stays shown as the window narrows, floating; a side panel narrowing the pane is moving on to
       // it, so the card waits behind the Context button rather than cover the thread.
       if (layout === "float") {
         const floating = before.layout === "float" ? before.floating && resized : before.layout !== null && resized && before.pinned;
         if (layout !== before.layout || floating !== before.floating) setCard(owner, { layout, floating });
       } else if (layout !== before.layout) setCard(owner, { layout, floating: false });
-      if (!frame) frame = requestAnimationFrame(() => setSettled(true));
+      if (!frame) frame = requestAnimationFrame(() => setSettledFor(owner));
     });
     observer.observe(element, { box: "border-box" });
     return () => {
       observer.disconnect();
       cancelAnimationFrame(frame);
       delete element.dataset.summary;
-      // The next session's first layout lands in place too, not eased in [D423].
-      setSettled(false);
+      setSettledFor(null);
       setCard(owner, { layout: null, floating: false });
     };
   }, [has, owner]);
@@ -230,10 +263,9 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       className={cx(
         // Its own stacking context, so the card stays under the tabs drawn over the chat; the card leaving is cut at its end.
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
-        // As the old app: the reading column glides aside and takes its narrower width at once. Back, it widens as it
-        // glides home, so it never runs under the sidebar meanwhile (a side panel opening).
-        "summary-shift:reading-column:-translate-x-summary-shift summary-shift:reading-column:max-w-reading-beside-summary",
-        settled && "motion-safe:reading-column:transition-all motion-safe:reading-column:duration-350 motion-safe:reading-column:ease-summary-shift motion-safe:summary-shift:reading-column:transition-transform",
+        // As the old app: the reading column glides aside, narrowing, and back, with the card and a fold as one.
+        "reading-column:summary-column summary-shift:summary-room",
+        settled && "summary-shift-motion",
       )}
     >
       {children}

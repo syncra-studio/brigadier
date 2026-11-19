@@ -21,6 +21,7 @@ const platform = process.argv.find((arg) => arg.startsWith("--brigadier-platform
 
 contextBridge.exposeInMainWorld("brigadier", {
   platform,
+  trafficLights: (x: number) => ipcRenderer.send("traffic-lights", x),
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFolders: (options?: { at?: string; multi?: boolean }) => ipcRenderer.invoke("pick-folders", options),
   pickFile: (title: string, at?: string) => ipcRenderer.invoke("pick-file", { title, at }),

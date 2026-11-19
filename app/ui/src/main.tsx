@@ -36,7 +36,7 @@ import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
 import { HOME, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
-import { TitlebarNav } from "./shell/titlebar";
+import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
 import { useNotices } from "./settings/notices";
 import { readRouting } from "./settings/routing";
@@ -147,9 +147,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      {/* The page's soft edge, around the sidebar and the content, which paint their own rounded halves. */}
-      <div aria-hidden className="pointer-events-none absolute start-surface-inset end-surface-inset top-titlebar bottom-surface-inset rounded-surface shadow-raised" />
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset pb-surface-inset">
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="ps-surface-inset">
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />
@@ -157,7 +155,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         ) : (
         <AppSidebar
           rows={rows}
-          projects={projects ?? []}
+          projects={projects?.toSorted((a, b) => a.added - b.added) ?? []}
           active={active}
           page={page}
           home={active === null && page === undefined}
@@ -169,8 +167,9 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           foot={(archived) => <SidebarFoot archived={archived} />}
         />
         )}
-        <div className="body-divider flex min-w-0 flex-1 flex-col pe-surface-inset">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col pe-window-inset pb-window-inset">{children}</div>
         <TitlebarNav hash={hash} rows={rows} />
+        <FakeCaption />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
@@ -306,7 +305,7 @@ const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../galle
 const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
 const Screen = Gallery ?? ThreadDemo;
 
-// The platform the window is drawn for, which the theme reads for Windows' caption buttons.
+// The platform the window is drawn for, which the `win:` styles read [new-design].
 if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;
 // The browser's pages, under the app, and the agents' calls on them.
 if (window.brigadier) {

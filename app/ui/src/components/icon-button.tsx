@@ -28,7 +28,7 @@ export type TooltipIconButtonProps = ButtonProps & {
    * (the strip's look, outlined and round-ended, for the foot's update pill) and `chip-tall` (the same,
    * standing up) take their tip timing from the provider around them (TitlebarTips, the sidebar).
    */
-  look?: "ghost" | "toolbar" | "strip" | "chip" | "chip-tall";
+  look?: "ghost" | "toolbar" | "strip" | "chip" | "chip-tall" | "pill" | "round" | "toggle";
   /** Switched on (aria-pressed). */
   pressed?: boolean;
   /** A small dot on the icon, in this background class ("bg-warning"). */
@@ -52,7 +52,7 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   const ghost = look === "ghost";
-  const flat = look === "strip" || look === "chip" || look === "chip-tall";
+  const flat = look === "strip" || look === "chip" || look === "chip-tall" || look === "pill" || look === "round" || look === "toggle";
   const button = (
     <Button
       variant={flat ? null : (variant ?? "ghost")}
@@ -62,8 +62,15 @@ export function TooltipIconButton({
       className={cx(
         ghost && (variant ?? "ghost") === "ghost" && "aria-expanded:bg-fill",
         look === "toolbar" && TOOLBAR,
-        flat && STRIP,
+        flat && !["round", "pill", "toggle"].includes(look) && STRIP,
+        // A round glass button on its own (New tab): 30px, control-fill with the glass edge [new-design].
+        look === "round" && "flex size-7.5 items-center justify-center rounded-capsule bg-control text-foreground ring-1 ring-glass-stroke ring-inset hover:bg-fill-hover svg:size-icon-md motion-safe:active:scale-press",
         look === "strip" && "h-7.5 rounded-icon-button",
+        // A segment of a glass pill (History, the toolbar): 32 by 28, the pill's height inside its 1px edge, so its hover
+        // fills the segment and, at either end, rounds as the pill does [new-design].
+        look === "pill" && "flex h-7 w-8 items-center justify-center rounded-capsule text-foreground transition-all hover:bg-fill disabled:opacity-disabled svg:size-icon-md motion-safe:active:scale-press",
+        // Context and Files in their pill: a segment as above, dim at rest, white with a glow while on [new-design].
+        look === "toggle" && "flex h-7 w-8 items-center justify-center rounded-capsule text-toggle-off transition-all hover:bg-fill hover:text-foreground aria-pressed:text-foreground aria-pressed:drop-shadow-toggle-glow disabled:opacity-disabled svg:size-icon-md",
         look === "chip" && "h-7.5 rounded-capsule border border-border px-2",
         look === "chip-tall" && "flex-col rounded-capsule border border-border py-2",
         className,

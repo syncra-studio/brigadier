@@ -63,10 +63,10 @@ function WriterRow() {
           onChange={(choice) => save({ backend: choice.provider, model: choice.model })}
           asksSwitch={false}
           efforts={false}
-          automatic={{ chosen: saved === null, label: "Automatic", hint: AUTOMATIC_HINT, onChoose: () => save(null), onTurnOff: () => save({ backend: value.provider, model: value.model }) }}
-          trigger={(props) => (
+          automatic={{ chosen: saved === null, label: "Automatic", hint: AUTOMATIC_HINT, onChoose: () => save(null) }}
+          trigger={({ children, ...props }) => (
             <SelectTrigger {...props} label={GIT_ROWS.writer.label}>
-              {name}
+              {children}
             </SelectTrigger>
           )}
         />

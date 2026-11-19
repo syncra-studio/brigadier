@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
-import { type ModelChoice, type ModelGroup, ModelPicker } from "../components/composer/model-picker";
+import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
+import { ModelPill, ModelStrip, useModelStrip } from "../components/composer/model-strip";
 import type { Quota } from "../components/composer/quota-lines";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
@@ -108,12 +109,12 @@ export const useRetiring = (id: string): Retiring | undefined =>
   );
 
 /**
- * The session's model pill [D129, D190]: the list from each agent's last check at once, then fresh [D128]. A pick shows
- * at once as pending and goes to Rust with its op id; the row's `setup_op` reaching that id settles it, and a refusal
- * puts the last value back with Rust's words [D30, D40]. Another agent's model asks "Switch to {name}?" first, and the
- * next message goes to it [D90]. Offline it can't be opened.
+ * The session's model pill and its strip on the rail [D129, D190, D83]: the list from each agent's last check at once,
+ * then fresh [D128]. A pick shows at once as pending and goes to Rust with its op id; the row's `setup_op` reaching that
+ * id settles it, and a refusal puts the last value back with Rust's words [D30, D40]. Another agent's model asks
+ * "Switch to {name}?" first, and the next message goes to it [D90]. Offline it can't be opened.
  */
-export function SessionModel({ id, row, offline }: { id: string; row: ModelRow | undefined; offline: boolean }) {
+export function useSessionModel(id: string, row: ModelRow | undefined, offline: boolean): { pill: ReactNode; strip: ReactNode } {
   const [chooseAsked, setChooseAsked] = useState(0);
   useEffect(() => {
     const ask = () => setChooseAsked((n) => n + 1);
@@ -204,21 +205,26 @@ export function SessionModel({ id, row, offline }: { id: string; row: ModelRow |
     });
   };
 
-  if (!value) return null;
-  return (
-    <div className="flex min-w-0 items-center justify-end gap-2">
-      <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
-      {picked && row?.running ? <SwitchAfter key={row.setup_op ?? ""} id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} /> : null}
-      <ModelPicker groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} disabled={offline || starting || groups === null} asked={chooseAsked} />
-      <SetUpAgentDialog
-        name={setUp}
-        onClose={() => {
-          setSetUp(null);
-          load();
-        }}
-      />
-    </div>
-  );
+  const disabled = offline || starting || groups === null;
+  const strip = useModelStrip({ disabled, asked: chooseAsked });
+  if (!value) return { pill: null, strip: null };
+  return {
+    pill: (
+      <div className="flex min-w-0 items-center justify-end gap-2">
+        <ErrorLine error={error ?? listError} className="min-w-0 truncate" />
+        {picked && row?.running ? <SwitchAfter key={row.setup_op ?? ""} id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} /> : null}
+        <ModelPill strip={strip} groups={groups ?? []} value={value} disabled={disabled} />
+        <SetUpAgentDialog
+          name={setUp}
+          onClose={() => {
+            setSetUp(null);
+            load();
+          }}
+        />
+      </div>
+    ),
+    strip: <ModelStrip strip={strip} groups={groups ?? []} value={value} onChange={change} onSetUp={setSetUp} />,
+  };
 }
 
 /**

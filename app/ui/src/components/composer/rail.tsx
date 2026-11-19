@@ -1,4 +1,4 @@
-import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useLayoutEffect, useRef, useState } from "react";
+import { type ComponentProps, createContext, type Key, type KeyboardEvent, type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ChevronDown, ChevronRight, ExclamationMarkCircle, Info, QuestionMarkCircle, Warning, X } from "../../icons";
 import { Button } from "../button";
@@ -36,35 +36,56 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
 }
 
 /**
- * One item of the rail, each on the project strip's fill [D480] and framed, so the frame runs unbroken down a rail
- * of several [D684]. `card` holds notices, the queue and the project strip; `decision` a card waiting for the user,
- * which at the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items
- * open to their height as they come, except those the rail had as it appeared and those that came while the window
- * was hidden.
+ * One item of the rail, each on the project strip's fill [D480] and framed, so the frame runs unbroken down a rail of
+ * several [D684]. `card` holds notices, the queue and the project strip; `model` the model picker's strip [D85]; `decision` a card waiting for the user, which at
+ * the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items open to their
+ * height as they come, except those the rail had as it appeared and those that came while the window was hidden.
+ * One turned not `shown` folds back to nothing first, then is gone (`onGone`).
  */
 export function RailItem({
   variant = "card",
   label,
+  shown = true,
+  onGone,
   className,
   children,
 }: {
-  variant?: "card" | "decision";
+  variant?: "card" | "decision" | "model";
   label: string;
+  shown?: boolean;
+  onGone?: () => void;
   className?: string;
   children: ReactNode;
 }) {
   const railShown = useContext(RailShown);
-  const [opens] = useState(
+  const [opens, setOpens] = useState(
     () => document.visibilityState === "visible" && (railShown === null || performance.now() - railShown > SETTLE_MS),
   );
+  const [present, setPresent] = useState(shown);
+  if (shown && !present) {
+    setPresent(true);
+    setOpens(true);
+  }
+  // Without motion there is no fold to wait for.
+  useEffect(() => {
+    if (shown || !present || !matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setPresent(false);
+    onGone?.();
+  }, [shown]);
+  if (!present) return null;
   return (
     <section
       data-slot="composer-rail-item"
       data-variant={variant}
       aria-label={label}
+      onAnimationEnd={(event) => {
+        if (shown || event.target !== event.currentTarget) return;
+        setPresent(false);
+        onGone?.();
+      }}
       className={cx(
         "grid grid-rows-1 first:rounded-t-overlay",
-        opens && "motion-safe:animate-rail-open",
+        !shown ? "motion-safe:animate-rail-close" : opens && "motion-safe:animate-rail-open",
         // The tuck under the card is padding, so the last item's content never hides behind it.
         variant !== "decision" && "last:pb-rail-tuck",
         // Every strip has the project strip's fill [D480].

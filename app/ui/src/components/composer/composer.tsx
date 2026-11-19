@@ -11,11 +11,11 @@ import { ComposerField, type ComposerFieldHandle } from "./field";
 import { ComposerRail } from "./rail";
 
 /**
- * The composer's column under the thread (below its scroller, not over it): the reading width, 16px from
- * the window's bottom. What sits above the card (the rail, a decision) stacks in it too.
+ * The composer's column under the thread (below its scroller, not over it): the reading width, its card's
+ * bottom on the window's inset, with the sidebar's and the right panel's [D55]. What sits above the card (the rail, a decision) stacks in it too.
  */
 export function Composer({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="composer" className={cx("mx-auto flex w-full max-w-reading shrink-0 flex-col px-4 pb-4", className)} {...props} />;
+  return <div data-slot="composer" className={cx("mx-auto flex w-full max-w-reading shrink-0 flex-col px-4", className)} {...props} />;
 }
 
 /** A click in the card's empty space puts the cursor in its field, as a click in the text would. */
@@ -32,7 +32,7 @@ export function ComposerCard({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="composer-card"
       onMouseDown={focusField}
-      className={cx("relative flex w-full cursor-text flex-col gap-1 rounded-composer bg-composer p-2 shadow-hairline", className)}
+      className={cx("relative flex w-full cursor-text flex-col gap-1 rounded-composer bg-composer p-2 shadow-composer", className)}
       {...props}
     />
   );

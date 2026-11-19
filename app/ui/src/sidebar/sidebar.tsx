@@ -2,15 +2,14 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
+import { NavFold, NavList, NavRow, NavSection } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ChevronRight, ComposeEditSquare, FeedbackGlyph, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { ChevronRight, ComposeEditSquare, MagnifyingGlassSmSearch, Plus } from "../icons";
 import { cx } from "../components/cx";
 import { BrigadierMark } from "../onboarding/mark";
-import { openFeedback } from "../feedback/dialog";
 import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
 import { openProject } from "../projects/page";
@@ -19,7 +18,7 @@ import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
 import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
-import { ArchivedFlyout, ChatsFlyout, NoProjects, ProjectsFlyout } from "./flyout";
+import { ArchivedFlyout, ChatsFlyout, NoProjects, PinnedFlyout, ProjectsFlyout } from "./flyout";
 import { RenameDialog } from "./menu";
 import { NeedYouPill } from "./pill";
 import { CARD_DELAY_MS, ProjectBadge, SessionRowItem } from "./row";
@@ -68,6 +67,7 @@ export function AppSidebar({
 }: {
   /** undefined until the first list arrives. */
   rows: SessionRow[] | undefined;
+  /** Oldest first: a project's place here picks its badge's colour. */
   projects: Project[];
   /** The open session's id. */
   active: string | null;
@@ -209,41 +209,31 @@ export function AppSidebar({
     <SidebarPanel
       strip={
         <Strip onNewChat={onNewChat}>
+          {pinned.length > 0 && <PinnedFlyout pinned={pinned} {...listed} />}
           <ProjectsFlyout projects={byName} sessions={rest ?? []} {...listed} />
-          <ChatsFlyout pinned={pinned} chats={homeless} {...listed} />
+          <ChatsFlyout chats={homeless} {...listed} />
         </Strip>
       }
       foot={foot?.(archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
-      mark={<BrigadierMark className="size-5" />}
     >
-      <NavHeader
-        title={
-          <span className="-ms-0.5 flex items-center gap-2">
-            {/* The panel draws the logo over this space. */}
-            <span className="size-5 shrink-0" />
-            Brigadier
-          </span>
-        }
-        actions={
-          <>
-            <TooltipIconButton tooltip="Send Feedback" look="toolbar" side="bottom" onClick={() => openFeedback()}>
-              <FeedbackGlyph />
-            </TooltipIconButton>
-            {/* Search where the old app had it, opening ⌘K's palette [D663]. */}
-            <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
-              <MagnifyingGlassSmSearch />
-            </TooltipIconButton>
-          </>
-        }
-      />
-      <NavList className="mb-2 px-2">
-        <li>
-          <NavRow data-active={home || undefined} onClick={onNewChat}>
-            <ComposeEditSquare />
-            New chat
-          </NavRow>
-        </li>
-      </NavList>
+      {/* The card's top, under the tab bar [D48]: the name, then New chat; search is an icon opening ⌘K's palette [D663, D789]. */}
+      <div className="flex shrink-0 flex-col gap-3 px-2.5 pt-3 pb-2.5">
+        <div className="flex h-7.5 min-w-0 items-center gap-1">
+          <h1 className="flex min-w-0 flex-1 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
+            <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
+              <BrigadierMark className="block size-icon-mark" />
+            </button>
+            <span className="min-w-0 truncate">Brigadier</span>
+          </h1>
+          <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="toolbar" side="bottom" onClick={openSearch}>
+            <MagnifyingGlassSmSearch />
+          </TooltipIconButton>
+        </div>
+        <NavRow data-active={home || undefined} className="ps-1.5" onClick={onNewChat}>
+          <ComposeEditSquare />
+          New chat
+        </NavRow>
+      </div>
       <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={list} className={LIST}>
@@ -395,19 +385,26 @@ function ProjectRow({
   );
 }
 
-/** The collapsed strip: room for the mark, New chat, Search and the lists (`children`). */
+/**
+ * The collapsed rail [new-design]: the logo, New chat and Search, a rule, then the lists (`children`). The sidebar
+ * toggle is the History pill's. A click on the logo goes Home [D66, D69].
+ */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-1 pt-2.75">
-      {/* The panel draws the logo over this space. */}
-      <div aria-hidden className="h-7.5" />
-      <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
-        <ComposeEditSquare />
+    <div className="flex flex-col items-center gap-3 pt-2.75">
+      <TooltipIconButton tooltip="Home" tip={false} look="strip" onClick={onNewChat}>
+        <BrigadierMark className="size-icon-mark" />
       </TooltipIconButton>
-      <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
-        <MagnifyingGlassSmSearch />
-      </TooltipIconButton>
-      {children}
+      <div className="flex flex-col items-center gap-0.5">
+        <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
+          <ComposeEditSquare />
+        </TooltipIconButton>
+        <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
+          <MagnifyingGlassSmSearch />
+        </TooltipIconButton>
+      </div>
+      <span aria-hidden className="h-px w-6 bg-divider" />
+      <div className="flex flex-col items-center gap-0.5">{children}</div>
     </div>
   );
 }

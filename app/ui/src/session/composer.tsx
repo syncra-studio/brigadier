@@ -20,7 +20,7 @@ import type { Source } from "../thread/thread";
 import { sendFailed } from "../thread/follow";
 import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting } from "./decisions";
 import { SessionLevel } from "./level";
-import { SessionModel, takesImages } from "./model";
+import { takesImages, useSessionModel } from "./model";
 import { SessionNotices } from "./notices";
 import { draftOf, keepDraft, loadDraft } from "./draft";
 import { useComposerCommands } from "./commands";
@@ -145,6 +145,7 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
 export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source }) {
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
+  const model = useSessionModel(id, row, offline);
   // An approval takes the composer's place [D199, D317].
   const approval = useApprovalWaiting(id, source);
   const [initial] = useState(() => draftOf(id));
@@ -409,7 +410,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} />
+          <SessionQuestions id={id} run={run} source={source} />{model.strip}
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}
@@ -442,7 +443,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       }
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
-      model={<SessionModel id={id} row={row} offline={offline} />}
+      model={model.pill}
       send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
       after={
         <PausedSendDialog
