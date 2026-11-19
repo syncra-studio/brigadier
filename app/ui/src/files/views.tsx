@@ -8,7 +8,7 @@ import { useStart } from "../home/start";
 import { keep, sourceArgs, type Target, useGit } from "../panel/git";
 import { HOME } from "../shell/tab-store";
 import { FileTree, type OnOpen } from "./tree";
-import type { ChangeMarks, FolderEntry, Listing } from "./types";
+import type { ChangeMarks, FileList, FolderEntry, Listing } from "./types";
 
 /** How often the listing and opened ignored folders are read again while shown: the watch leaves ignored files out [D1002]. */
 const IGNORED_MS = 3000;
@@ -16,6 +16,24 @@ const NO_MARKS: ChangeMarks = { files: {}, folders: {} };
 
 // Each checkout's last listing, shown at once on coming back to it while it's listed again, as the checkout's git read is (panel/git.ts) [D1258].
 const kept = new Map<string, { listing: Listing; marks: ChangeMarks }>();
+
+type Read = { list: FileList; marks: ChangeMarks };
+
+/**
+ * Rust's read of the repos in `asked` over `last`: a folder chat's other repos keep their last read until they're
+ * opened [D892]; a changed set of repos drops them. Anything else is the read itself.
+ */
+export function over(last: Read | undefined, next: Read, asked: readonly string[]): Read {
+  if (!last || !next.list.repos || last.list.repos?.join("\n") !== next.list.repos.join("\n")) return next;
+  const stale = (path: string) => !asked.some((repo) => path.startsWith(`${repo}/`));
+  const paths = (old: string[], add: string[]) => [...old.filter(stale), ...add];
+  const marks = <T,>(old: Record<string, T>, add: Record<string, T>) => ({ ...Object.fromEntries(Object.entries(old).filter(([path]) => stale(path))), ...add });
+  return {
+    // Which repo was cut short isn't kept: a cut stays noted until the repos change.
+    list: { ...next.list, files: paths(last.list.files, next.list.files), ignored: paths(last.list.ignored, next.list.ignored), truncated: next.list.truncated || last.list.truncated },
+    marks: { files: marks(last.marks.files, next.marks.files), folders: marks(last.marks.folders, next.marks.folders) },
+  };
+}
 
 /** Whose files `owner`'s Files reads: none until the watch is on it [D1258]. A folder chat's watch is one of its repos, `<owner>@<repo>` [D494]; its Files are all its repos, the chat's own [D776]. */
 function filesTarget(watched: Target | null, owner: string): Target | null {
@@ -63,9 +81,9 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   const [results, setResults] = useState<string[] | null>(null);
   const asked = useRef(0);
   const [tick, setTick] = useState(0);
-  // shortcut: a folder chat lists every repo on each read (Rust reads them at once), so opening one draws what's
-  // already here [D881]; list only the open ones and keep the rest if a folder of many repos is slow.
-  const repos = (listing.state === "listed" && listing.list.repos?.join("\n")) || "";
+  // A folder chat's open repos: each read lists only them, the others keep the read ahead's until opened [D881, D892].
+  const [repos, setRepos] = useState("");
+  const openRepos = useCallback((next: string[]) => setRepos(next.join("\n")), []);
   // A new session's checkout isn't made until its start answers: the listing waits, loading, as the watch does [D1259].
   const starting = useStart(owner)?.asking === true;
 
@@ -73,10 +91,13 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
   useEffect(() => {
     if (!target || !daemon || starting) return;
     let live = true;
-    ask({ op: "run", args: sourceArgs(target, "files", ...(repos ? repos.split("\n") : [])) }, (reply) => {
+    const asked = repos ? repos.split("\n") : [];
+    ask({ op: "run", args: sourceArgs(target, "files", ...asked) }, (reply) => {
       if (!live || reply.error === "disconnected") return;
       if (!reply.ok) return setListing({ state: "failed", error: String(reply.error) });
-      const { marks: next, ...list } = reply.list;
+      const { marks: read, ...fresh } = reply.list;
+      const last = key ? kept.get(key) : undefined;
+      const { list, marks: next } = over(last?.listing.state === "listed" ? { list: last.listing.list, marks: last.marks } : undefined, { list: fresh, marks: read }, asked);
       if (key) keep(kept, key, { listing: { state: "listed", list }, marks: next });
       // The same listing keeps its objects, so the tree isn't built again.
       setListing((last) => (last.state === "listed" && JSON.stringify(last.list) === JSON.stringify(list) ? last : { state: "listed", list }));
@@ -144,6 +165,7 @@ export function FilesView({ owner, shown = null, onOpen }: { owner: string; show
       marks={marks}
       loaded={loaded}
       onReadIgnored={readIgnored}
+      onOpenRepos={openRepos}
       shown={shown}
       results={query ? results : null}
       onQuery={setQuery}

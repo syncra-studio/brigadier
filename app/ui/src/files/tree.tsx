@@ -129,6 +129,7 @@ export function FileTree({
   marks,
   loaded = NO_FOLDERS,
   onReadIgnored,
+  onOpenRepos,
   shown = null,
   results,
   onQuery,
@@ -144,6 +145,8 @@ export function FileTree({
   loaded?: Readonly<Record<string, FolderEntry[]>>;
   /** Asks for the open ignored folders' contents (git doesn't list them). */
   onReadIgnored?: (paths: string[]) => void;
+  /** A folder chat's open repos, the ones its reads list [D892]. */
+  onOpenRepos?: (repos: string[]) => void;
   /** The file the tab in front shows: its row lights up. */
   shown?: string | null;
   /** The files matching the query, best first; null with no query. */
@@ -168,6 +171,8 @@ export function FileTree({
   useEffect(() => {
     if (openIgnored) onReadIgnored?.(openIgnored.split("\n"));
   }, [openIgnored, onReadIgnored]);
+  const openRepos = (list?.repos ?? []).filter((repo) => open.has(repo)).join("\n");
+  useEffect(() => void onOpenRepos?.(openRepos ? openRepos.split("\n") : []), [openRepos, onOpenRepos]);
   const found = query.trim() ? results : null;
 
   const toggle = (path: string) => {
