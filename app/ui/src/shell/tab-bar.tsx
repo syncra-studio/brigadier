@@ -2,14 +2,14 @@ import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
 import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { shownAddress } from "../browser/address";
 import { giveTabToChat, takeBackTab } from "../browser/give";
 import { useBrowserPage } from "../browser/pages";
 import { TabProfileDot } from "../browser/profile-mark";
-import { BrowserDriverChip, BrowserTabIcon } from "../browser/tab-icon";
+import { BrowserTabGroupLabel, BrowserTabIcon, BrowserYourTurn } from "../browser/tab-icon";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -44,6 +44,8 @@ const TITLE = "session-tab-title min-w-0 flex-1 overflow-clip text-start whitesp
 // A press is a click until it moves: a drag that started on the press would take the click.
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 const CLOSE = (active: boolean) => cx("flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring", !active && "invisible group-focus-within/tab:visible group-hover/tab:visible");
+/** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
+const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
 const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
@@ -179,6 +181,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
             inert={closing}
             data-separator={separator || undefined}
             data-active={selected || undefined}
+            data-agent-group={(tab.kind === "browser" && tab.driver) || undefined}
             className={cx(TAB, LOOK(selected))}
           />
         }
@@ -208,7 +211,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, order
         >
           <TabIcon owner={owner} tab={tab} />
           <span className={cx(TITLE, tab.preview && "italic")}>{name}</span>
-          {tab.kind === "browser" && <BrowserDriverChip tabId={tab.id} driver={tab.driver} />}
+          {tab.kind === "browser" && tab.driver && <BrowserYourTurn tabId={tab.id} />}
         </button>
         <button type="button" aria-label={`Close ${name} tab`} onClick={onClose} className={CLOSE(selected)}>
           <X className="size-icon-xs" />
@@ -372,7 +375,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     <header data-slot="session-tabs" data-settled={settled || undefined} className="app-drag titlebar-clear session-tab-bar flex h-titlebar shrink-0 items-center gap-1 pe-1">
       {/* The tabs size by this room, so the list takes their own width and "+" follows their edge as they grow or shrink. */}
       <div className="session-tab-room flex min-w-0 flex-1 items-center gap-1 self-stretch">
-        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} className="session-tab-list flex min-w-0 items-center gap-0.5" onKeyDown={onKeys}>
+        <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} className="session-tab-list flex min-w-0 items-center gap-0.5" onKeyDown={onKeys}>
           {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
           <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto">
             {/* Held inside the strip, which is a tab high: it moves along the row only. */}
@@ -390,11 +393,21 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
                 if (!canceled && isSortable(source) && source.index !== source.initialIndex) moveTab(owner, String(source.id), source.index);
               }}
             >
-              {presence.tabs.map((tab) => {
+              {presence.tabs.map((tab, at) => {
                 const index = tabs.findIndex((each) => each.id === tab.id);
                 const selected = tab.id === active;
                 const closing = presence.closing.has(tab.id);
-                return <OtherTab key={tab.id} owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />;
+                // An agent's tabs side by side are its group, led by its label, as Chrome's tab groups [D793].
+                const driver = tab.driver;
+                const leads = driver && leadsGroup(presence.tabs, at);
+                const end = leads ? presence.tabs.findIndex((each, from) => from > at && each.driver !== driver) : -1;
+                const group = leads ? presence.tabs.slice(at, end < 0 ? undefined : end).map((each) => each.id) : [];
+                return (
+                  <Fragment key={tab.id}>
+                    {leads && <BrowserTabGroupLabel tabIds={group} driver={driver} />}
+                    <OtherTab owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />
+                  </Fragment>
+                );
               })}
             </DragDropProvider>
           </div>

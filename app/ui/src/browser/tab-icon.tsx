@@ -1,9 +1,8 @@
 import { useState } from "react";
 
-import { cx } from "../components/cx";
 import { useDaemon } from "../daemon";
 import { Globe, Spinner } from "../icons";
-import { useAgentHolds } from "./overlay";
+import { useAgentHoldsAny } from "./overlay";
 import { useBrowserPage } from "./pages";
 import { useAgentPause } from "./pause";
 
@@ -15,21 +14,24 @@ export function useDriverName(driver: string | undefined): string | null {
 }
 
 /**
- * The tab bar's mark of an agent's tab: who drives it while it holds the page, Your turn while it waits for the user;
- * nothing between turns. It gives way to the tab's title in a narrow tab.
+ * The tab bar's group label before an agent's tabs, as Chrome's tab group that Claude in Chrome drives: the group's
+ * colour, who drives (Brigadier or the worker), turning while it holds one of them. Its tabs carry the colour beneath.
  */
-export function BrowserDriverChip({ tabId, driver }: { tabId: string; driver: string | undefined }) {
+export function BrowserTabGroupLabel({ tabIds, driver }: { tabIds: readonly string[]; driver: string }) {
   const name = useDriverName(driver);
-  const holds = useAgentHolds(tabId);
-  const yours = tabId in useAgentPause().paused;
-  if (!name || (!holds && !yours)) return null;
+  const holds = useAgentHoldsAny(tabIds);
   return (
-    // Badge's look, but it may shrink (Badge is shrink-0, and cx doesn't merge classes).
-    <span data-slot="browser-driver" className={cx("inline-flex h-5 max-w-24 min-w-5 items-center gap-1 overflow-hidden rounded-capsule px-1.5 text-xs font-medium whitespace-nowrap svg:size-icon-xs svg:shrink-0", yours ? "bg-warning-wash text-warning" : "bg-muted text-foreground")}>
-      {!yours && <Spinner className="animate-spin" />}
-      <span className="truncate">{yours ? "Your turn" : name}</span>
+    <span aria-hidden data-slot="browser-tab-group" className="browser-tab-group">
+      {holds && <Spinner className="animate-spin" />}
+      <span className="truncate">{name}</span>
     </span>
   );
+}
+
+/** Your turn, inside the group, on the agent's tab that waits for the user. */
+export function BrowserYourTurn({ tabId }: { tabId: string }) {
+  if (!(tabId in useAgentPause().paused)) return null;
+  return <span data-slot="browser-your-turn" className="inline-flex h-5 shrink-0 items-center rounded-capsule bg-warning-wash px-1.5 text-xs font-medium whitespace-nowrap text-warning">Your turn</span>;
 }
 
 /** The tab's icon: a spinner, a loaded favicon small inside its ring, then the whole favicon (the old app's FaviconGlyph). */

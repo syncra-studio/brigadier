@@ -1453,6 +1453,8 @@
 /* The tabs share the bar's room, then scroll once they reach their least width. */
 @utility session-tab-list {
   --session-tab-count: attr(data-count type(<number>), 1);
+  /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
+  --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
   flex: 0 1 auto;
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::after {
@@ -1465,7 +1467,7 @@
   line-height: var(--text-label--line-height);
   font-weight: 430;
   /* The room less "+" (its size, its margin and the gaps either side of it) and the gaps between the tabs. */
-  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2) / var(--session-tab-count)), var(--spacing-session-tab-max));
+  flex: 0 0 clamp(var(--spacing-session-tab-min), calc((100cqw - var(--spacing-control-sm) - var(--spacing) * 2.5 - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--session-tab-groups, 0px)) / var(--session-tab-count)), var(--spacing-session-tab-max));
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
@@ -1512,6 +1514,40 @@
       transition: none;
     }
   }
+}
+
+/* An agent's tab group, as Chrome's tab groups that Claude in Chrome drives [D793]: a label in the group's colour
+   before its tabs, and the colour beneath each of them. */
+.browser-tab-group {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 7rem;
+  height: 20px;
+  margin-inline: 2px;
+  padding-inline: 8px;
+  border-radius: var(--radius-capsule);
+  background: var(--color-toggle-on);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  & svg {
+    flex: none;
+    width: var(--spacing-icon-xs);
+    height: var(--spacing-icon-xs);
+  }
+}
+.session-tab[data-agent-group]::before {
+  content: "";
+  position: absolute;
+  inset-inline: 6px;
+  bottom: 1px;
+  height: 2px;
+  border-radius: var(--radius-capsule);
+  background: var(--color-toggle-on);
+  pointer-events: none;
 }
 
 @utility session-tab-title {

@@ -39,8 +39,8 @@ function heldChanged(): void {
   for (const listener of heldListeners) listener();
 }
 const subscribeHeld = (listener: () => void) => (heldListeners.add(listener), () => void heldListeners.delete(listener));
-/** Whether an agent holds tab `id` now: its shield is up. */
-export const useAgentHolds = (id: string): boolean => useSyncExternalStore(subscribeHeld, () => held.has(id));
+/** Whether an agent holds any of tabs `ids` now: a shield is up over it. */
+export const useAgentHoldsAny = (ids: readonly string[]): boolean => useSyncExternalStore(subscribeHeld, () => ids.some((id) => held.has(id)));
 
 /** The pill's words: who drives the tab, and what it does now if it's acting. */
 function sayDoing(id: string): void {
