@@ -21,24 +21,24 @@
   --color-glass-stroke: #ffffff14;
   --color-selection: #ffffff1c;
   /* A card's edge while its resize handle is hovered or dragged [D16]. */
-  --color-muted: oklch(0.315 0.004 106);
+  --color-muted: oklch(0.315 0.004 286);
   /* The new design's label and label-2; label-3 is --color-placeholder (label-2 at 60%). */
   --color-foreground: #f5f5f7;
   --color-muted-foreground: #ebebf599;
-  --color-primary: oklch(0.922 0.002 106);
-  --color-primary-fg: oklch(0.255 0.003 106);
+  --color-primary: oklch(0.922 0.002 286);
+  --color-primary-fg: oklch(0.255 0.003 286);
   /* Apple's system red (HIG, dark), the owner's pick. */
   --color-destructive: rgb(255 66 69);
   --color-warning: oklch(0.769 0.165 62);
   --color-success: oklch(0.765 0.15 155);
-  --color-border: oklch(0.985 0.002 106 / 10%);
+  --color-border: oklch(0.985 0.002 286 / 10%);
   /* The new design's separator. */
   --color-divider: #ffffff14;
   /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
   --color-find-match: oklch(0.86 0.17 95 / 38%);
   --color-find-match-active: oklch(0.66 0.18 50 / 85%);
-  --color-input: oklch(0.985 0.002 106 / 15%);
-  --color-ring: oklch(0.556 0.004 106);
+  --color-input: oklch(0.985 0.002 286 / 15%);
+  --color-ring: oklch(0.556 0.004 286);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
   --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
