@@ -21,9 +21,6 @@
   --color-glass-stroke: #ffffff14;
   --color-selection: #ffffff1c;
   /* A card's edge while its resize handle is hovered or dragged [D16]. */
-  /* A user's message bubble: control-fill with the glass edge. */
-  --color-bubble: var(--color-control);
-  --color-bubble-edge: var(--color-glass-stroke);
   --color-muted: oklch(0.315 0.004 106);
   /* The new design's label and label-2; label-3 is --color-placeholder (label-2 at 60%). */
   --color-foreground: #f5f5f7;
@@ -528,8 +525,6 @@
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
-  /* The summary card's lift (the new design's Context card; its edge is the glass stroke). */
-  --shadow-summary: 0 8px 24px #00000040;
   /* The new design's menu shadow. */
   --shadow-overlay: 0 10px 32px #00000080;
   --drop-shadow-toggle-glow: 0 0 8px #ffffffa6;
