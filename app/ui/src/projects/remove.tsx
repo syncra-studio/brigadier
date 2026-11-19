@@ -19,7 +19,7 @@ import { type Project, useProjects } from "./projects";
 /*
  * Remove project… [D172, D179, D181], the old app's dialog: Rust's preview of what goes, one question per
  * branch with work that never landed, refused while a session works. Each session goes through 1v's
- * delete; the repository itself stays. Mounted inside ProjectSettingsHost (PROPOSED), so main.tsx is untouched.
+ * delete; the repository itself stays. Mounted beside the sidebar in main.tsx, opened from Settings on the project page.
  */
 
 /** `projects remove <id> --check`'s answer (PROPOSED shape). */

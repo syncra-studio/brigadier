@@ -1,10 +1,9 @@
-// A project's GitHub account in Project settings [D631], on Fake replies: opened on press.
+// A project's GitHub account in its page's Settings tab [D631, D780], on Fake replies: shown on press.
 import { useState } from "react";
 
 import { Button } from "../src/components/button";
-import { Dialog, DialogContent } from "../src/components/dialog";
 import type { Project } from "../src/daemon";
-import { type GithubAccounts, ProjectSettings, SETTINGS_FRAME, type SettingsSource } from "../src/projects/settings";
+import { type GithubAccounts, ProjectSettings, type SettingsSource } from "../src/projects/settings";
 import { Row, Section } from "./parts";
 
 const PROJECT: Project = { id: "p1", name: "billing", folder: "/Users/sam/Development/work/billing", trusted: true, setup: "pnpm install", include: [".env.local"], added: 0, branch_prefix: "brigadier/" };
@@ -23,6 +22,9 @@ const fake = (reply: GithubAccounts): SettingsSource => ({
   pick: async () => null,
   check: async () => ({ kind: "invalid", reason: "" }),
   save: async () => {},
+  repos: async () => [],
+  plugins: async () => ({ items: [], projects: [] }),
+  setScope: async () => ({ items: [], projects: [] }),
   // The local read at once, the probed one a moment later, as Rust answers.
   accounts: (_, local) => (local ? Promise.resolve({ ...reply, auto: null, logins: reply.logins.map((each) => ({ ...each, sees: null })) }) : new Promise((done) => setTimeout(() => done(reply), 800))),
 });
@@ -38,9 +40,11 @@ export function AccountGallery() {
           </Button>
         ))}
       </Row>
-      <Dialog open={open !== null} onOpenChange={(next) => !next && setOpen(null)}>
-        <DialogContent frame={SETTINGS_FRAME}>{open && <ProjectSettings project={PROJECT} source={fake(open)} onClose={() => setOpen(null)} />}</DialogContent>
-      </Dialog>
+      {open && (
+        <div className="rounded-surface bg-background">
+          <ProjectSettings key={open.logins.length + String(open.auto)} project={PROJECT} source={fake(open)} />
+        </div>
+      )}
     </Section>
   );
 }

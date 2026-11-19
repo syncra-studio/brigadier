@@ -28,7 +28,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   const { open, hidden, toggleSidebar, canToggle } = useSidebar();
   const forward = ahead.use();
   const page = settingsPageOf(hash);
-  const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") ? "" : null;
+  const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
   // A session deleted since shows Home instead.
   const go = (place: string) => {
     const gone = place.startsWith("#thread/") && rows && !rows.some((row) => row.id === decodeURIComponent(place.slice("#thread/".length)));

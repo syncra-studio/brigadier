@@ -8,7 +8,7 @@ import { ComposeEditSquare, Copy, FolderOpen, SettingsCog, Trash } from "../icon
 import { errorText, run } from "../onboarding/api";
 import type { Project } from "./projects";
 import { openRemoveProject, readRemoval } from "./remove";
-import { openProjectSettings } from "./settings";
+import { openProject } from "./page";
 
 /**
  * A project's menu, the core four as the old app had them [D171, D212]: New session, Project settings…,
@@ -23,7 +23,7 @@ export function ProjectMenuItems({ project }: { project: Pick<Project, "id" | "n
         <ComposeEditSquare />
         New session
       </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => openProjectSettings(project.id)}>
+      <DropdownMenuItem onClick={() => openProject(project.id, "settings")}>
         <SettingsCog />
         Project settings
       </DropdownMenuItem>

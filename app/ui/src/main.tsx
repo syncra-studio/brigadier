@@ -21,7 +21,8 @@ import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
 import { FolderDrop } from "./shell/folder-drop";
-import { ProjectSettingsHost } from "./projects/settings";
+import { ProjectPage, projectPageOf } from "./projects/page";
+import { RemoveProjectHost } from "./projects/remove";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
 import { Demo } from "./session/Demo";
@@ -104,6 +105,18 @@ function App() {
       </Shell>
     );
   }
+  const page = projectPageOf(hash);
+  if (page !== null) {
+    // Under the titlebar, on the content's surface, as Settings [D780].
+    return (
+      <Shell hash={hash} active={null} rows={rows} page={page.id}>
+        <div className="app-drag h-titlebar shrink-0" />
+        <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
+          <ProjectPage id={page.id} tab={page.tab} />
+        </main>
+      </Shell>
+    );
+  }
   if (open !== null) {
     return (
       <Shell hash={hash} active={open} rows={rows}>
@@ -120,7 +133,7 @@ function App() {
 
 // The sidebar beside every screen after onboarding [D173, D174]; open and width kept across launches.
 // Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
-function Shell({ hash, active, rows, settings, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; children: ReactNode }) {
+function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon, projects } = useDaemon();
   const [open, setOpen] = useStored("sidebar.open", true);
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
@@ -152,7 +165,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
           rows={rows}
           projects={projects ?? []}
           active={active}
-          home={active === null}
+          home={active === null && page === undefined}
           offline={daemon === null}
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
           // ⌘N's too: Home in the open session's project [D184].
@@ -166,7 +179,7 @@ function Shell({ hash, active, rows, settings, children }: { hash: string; activ
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
-      <ProjectSettingsHost />
+      <RemoveProjectHost />
       <FeedbackDialog />
       <FolderDrop />
     </div>

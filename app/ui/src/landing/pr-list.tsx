@@ -37,7 +37,7 @@ export type FoundPr = Pr & { additions?: number | null; deletions?: number | nul
 /** What a found read is: `host <id> search`'s, kept per query, `next` its next page's cursor [D258, D613]. */
 type Found = { query: string; okAt: number | null; error: string | null; prs: FoundPr[]; next?: string | null };
 
-const CHIP = "h-6 shrink-0 cursor-pointer rounded-capsule px-2.5 text-label whitespace-nowrap text-faint-foreground hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground";
+export const CHIP = "h-6 shrink-0 cursor-pointer rounded-capsule px-2.5 text-label whitespace-nowrap text-faint-foreground hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground";
 const TRACK = "hidden shrink-0 items-center gap-0.5 rounded-capsule bg-fill-subtle p-0.5 @pr-bar:flex";
 
 /** A narrow list's chips as one menu [D609]. */
@@ -260,7 +260,7 @@ export function PrListView({
 const queryOf = (view: View, closed: boolean, text: string) => [`state:${closed ? "closed" : "open"}`, VIEWS.find((v) => v.value === view)!.words, text.trim()].filter(Boolean).join(" ");
 
 /** The Pull requests tab: Rust's search of the session's repository, drawn in this layout [D258, D609, D613]. */
-export function PrList({ owner }: { owner: string }) {
+export function PrList({ owner, onOpen = (pr) => openPr(owner, pr) }: { owner: string; onOpen?: (pr: Pr) => void }) {
   const host = useHost(owner);
   const { daemon, rows } = useDaemon();
   const now = useSecond(true);
@@ -337,7 +337,7 @@ export function PrList({ owner }: { owner: string }) {
       onText={setText}
       onRefresh={daemon ? () => read(query) : undefined}
       onMore={more}
-      onOpen={(pr) => openPr(owner, pr)}
+      onOpen={onOpen}
     />
   );
 }
