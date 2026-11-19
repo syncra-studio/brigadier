@@ -8,11 +8,18 @@ import { useAgentHoldsAny } from "./overlay";
 import { useBrowserPage } from "./pages";
 import { useAgentPause } from "./pause";
 
-/** Who works a tab [D778]: a worker by its name, the session's own agent as Brigadier; null for the user's own. */
-export function useDriverName(driver: string | undefined): string | null {
+/** Who works tabs [D778]: a worker by its name, the session's own agent as Brigadier. */
+export function useDriverNames(drivers: readonly string[]): string[] {
   const { rows } = useDaemon();
-  const row = rows?.find((each) => each.id === driver);
-  return driver ? (row?.worker ? row.title || "A worker" : "Brigadier") : null;
+  return drivers.map((driver) => {
+    const row = rows?.find((each) => each.id === driver);
+    return row?.worker ? row.title || "A worker" : "Brigadier";
+  });
+}
+
+/** Who works a tab: as useDriverNames; null for the user's own. */
+export function useDriverName(driver: string | undefined): string | null {
+  return useDriverNames(driver ? [driver] : [])[0] ?? null;
 }
 
 /** A group's tab as its hover card lists it: the page's title, else its address. */

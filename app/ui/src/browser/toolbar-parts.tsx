@@ -1,11 +1,15 @@
-import { type ReactNode, type RefObject, useEffect, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 import { cx } from "../components/cx";
+import { Button } from "../components/button";
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner, X } from "../icons";
 import { findInPage, findLabel, useBrowserFind } from "./find";
+import { useTabs } from "../shell/tab-store";
+import { ungroup } from "./give";
 import { stopDriving, takeOver, useAgentLit, useAgentPillSlot } from "./overlay";
+import { useDriverNames } from "./tab-icon";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
 const NAV_BUTTON = "rounded-capsule";
@@ -123,6 +127,36 @@ export function Banner({ text, children, onDismiss, slot }: { text: ReactNode; c
         </TooltipIconButton>
       )}
     </div>
+  );
+}
+
+/** Each session's bar the user closed with ×, by the first tab of its agents' groups then: a new drive shows it again. */
+const closedBars = new Map<string, string>();
+const barListeners = new Set<() => void>();
+function closeBar(owner: string, first: string): void {
+  closedBars.set(owner, first);
+  for (const listener of barListeners) listener();
+}
+const subscribeBars = (listener: () => void) => (barListeners.add(listener), () => void barListeners.delete(listener));
+
+/**
+ * The bar under the toolbar of every Browser tab of session `owner` while an agent has tabs there, as Chrome's
+ * '"Claude" started debugging this browser': from its first drive until no group of its is left, working or not.
+ * Cancel takes every agent's tabs back, as Ungroup; × closes the bar for the session [D894 D909].
+ */
+export function AgentSessionBar({ owner }: { owner: string }) {
+  const driven = useTabs(owner).tabs.filter((tab) => tab.kind === "browser" && tab.driver);
+  const drivers = [...new Set(driven.map((tab) => tab.driver ?? ""))];
+  const names = useDriverNames(drivers);
+  const first = driven[0]?.id;
+  const closed = useSyncExternalStore(subscribeBars, () => closedBars.get(owner) === first);
+  if (!first || closed) return null;
+  return (
+    <Banner slot="browser-agent-bar" text={`${[...new Set(names)].map((name) => `"${name}"`).join(" and ")} started using this browser`} onDismiss={() => closeBar(owner, first)}>
+      <Button size="sm" onClick={() => drivers.forEach((driver) => ungroup(owner, driver))}>
+        Cancel
+      </Button>
+    </Banner>
   );
 }
 

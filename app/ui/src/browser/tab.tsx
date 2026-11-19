@@ -20,7 +20,7 @@ import { SiteInfo } from "./site-info";
 import { useDriverName } from "./tab-icon";
 import { BrowserOptions } from "./options";
 import { ProfileButton } from "./profile-button";
-import { AgentPill, Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
+import { AgentPill, AgentSessionBar, Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
 import { BrowserDevButton, BrowserDevFrame, BrowserPickerBar } from "./devtools";
 import { BrowserDeviceBar } from "./device-sizes";
 import { AddressSuggestions, stepSuggestion, type Suggestion, useAddressSuggestions } from "./suggestions";
@@ -384,6 +384,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
         <BrowserOptions ready={ready} zoom={zoom} onFind={showFind} onPrint={print} onZoom={zoomTo} />
       </div>
       {finding && ready && <FindBar id={id} input={findInput} onClose={hideFind} />}
+      <AgentSessionBar owner={owner} />
       {!paused && driver !== null && <AgentPill id={id} driver={driver} />}
       {paused && driver !== null && (
         <Banner
