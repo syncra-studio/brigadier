@@ -356,10 +356,11 @@ pub(super) fn screenshot(
     if found["screenshot_file_path"].is_null() {
         return Err(not_captured(&found));
     }
-    let size = match (
+    let full = (
         found["screenshot_width"].as_u64(),
         found["screenshot_height"].as_u64(),
-    ) {
+    );
+    let size = match full {
         (Some(w), Some(h)) => format!(" ({w}×{h})"),
         _ => String::new(),
     };
@@ -378,15 +379,23 @@ pub(super) fn screenshot(
             "--region takes X,Y,W,H in the picture's pixels: --region 0,0,640,400",
         ));
     };
+    // sips pads past an edge with black and still succeeds [D930].
+    let out = |at: u64, len: u64, of: Option<u64>| {
+        len == 0 || of.is_some_and(|of| at.saturating_add(len) > of)
+    };
+    if out(x, w, full.0) || out(y, h, full.1) {
+        return Err(refuse(&format!(
+            "Couldn't cut that region: it must lie inside the picture{size}."
+        )));
+    }
+    // sips reads a `0 0` offset as none and cuts the centre; `0.0 0.0` is the corner [D930].
     let cut = std::process::Command::new("sips")
         .args(["--cropToHeightWidth", &h.to_string(), &w.to_string()])
-        .args(["--cropOffset", &y.to_string(), &x.to_string()])
+        .args(["--cropOffset", &format!("{y}.0"), &format!("{x}.0")])
         .arg(&file)
         .output();
     if !cut.is_ok_and(|o| o.status.success()) {
-        return Err(refuse(
-            "Couldn't cut that region: check it lies inside the picture.",
-        ));
+        return Err(refuse("Couldn't cut that region."));
     }
     Ok(format!(
         "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.",
