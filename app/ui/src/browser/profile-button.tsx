@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "../components/menu";
 import { useDaemon } from "../daemon";
 import { Check } from "../icons";
@@ -27,12 +28,16 @@ export function ProfileButton({ owner, tab }: { owner: string; tab: Tab }) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label={`Profile: ${current.name}`}
-          data-slot="browser-profile-button"
-          className="flex h-control-md max-w-36 shrink-0 items-center gap-1.5 rounded-capsule bg-control ps-1.25 pe-3 text-label ring-1 ring-glass-stroke ring-inset hover:bg-fill data-popup-open:bg-fill @max-lg/browser-toolbar:pe-1.25"
+          render={
+            <TooltipIconButton
+              tooltip={`Profile: ${current.name}`}
+              size="icon-md"
+              data-slot="browser-profile-button"
+              className="shrink-0 rounded-full! bg-control ring-1 ring-glass-stroke ring-inset data-popup-open:bg-fill"
+            />
+          }
         >
           <ProfileDisc profile={current} size="lg" />
-          <span className="min-w-0 truncate @max-lg/browser-toolbar:hidden">{current.name}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" data-slot="browser-profiles" className="w-browser-profiles">
           <div className="flex flex-col gap-0.5 px-2 pt-1.5 pb-2">
