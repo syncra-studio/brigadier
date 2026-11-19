@@ -82,27 +82,25 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-/** What the strip's square and a project row draw for the rows under it: needs you before failed, the open session left out. */
-export function attentionOf(rows: SessionRow[], active: string | null): "needs" | "amber" | null {
-  const marks = rows.filter((row) => row.id !== active).map((row) => row.mark);
-  return marks.includes("needs") ? "needs" : marks.includes("amber") ? "amber" : null;
-}
-
-const DOT = { needs: "bg-link", amber: "bg-warning" };
+/**
+ * Whether a project row or strip square shows its one blue mark: a session under it needs you, failed, warned or
+ * finished unseen, every kind the same mark [D844]; the open session left out.
+ */
+export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
 
 /** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its page [D811]. */
-export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: "needs" | "amber" | null }) {
+export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: boolean }) {
   return (
-    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? DOT[attention] : undefined} onClick={() => openProject(project.id)}>
+    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => openProject(project.id)}>
       <ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />
     </TooltipIconButton>
   );
 }
 
 /** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
-export function SessionSquare({ row, project, tone, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; attention: "needs" | "amber" | null; onOpen: (id: string) => void }) {
+export function SessionSquare({ row, project, tone, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
   return (
-    <TooltipIconButton look="strip" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? DOT[attention] : undefined} onClick={() => onOpen(row.id)}>
+    <TooltipIconButton look="strip" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
       <ProjectBadge id={project?.id} name={project?.name ?? null} tone={tone} size="size-4.5 text-badge" />
     </TooltipIconButton>
   );

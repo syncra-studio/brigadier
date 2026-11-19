@@ -52,7 +52,7 @@ export function wordStarts(text: string, query: string): [number, number][] | nu
 }
 
 /** `text` with the parts at `at` in semibold. */
-function Marked({ text, at }: { text: string; at: [number, number][] }) {
+export function Marked({ text, at }: { text: string; at: [number, number][] }) {
   const parts: ReactNode[] = [];
   let from = 0;
   for (const [start, end] of at.toSorted((a, b) => a[0] - b[0])) {
@@ -115,7 +115,7 @@ type Answer = { q: string; hits?: Hit[]; error?: string };
  * The text search for `query`: the latest answer only, asked again when the daemon comes back. A slow answer
  * shows "Searching…" after SLOW_MS; a fast one swaps in place.
  */
-function useTextSearch(query: string, search: TextSearch, offline: boolean) {
+export function useTextSearch(query: string, search: TextSearch, offline: boolean) {
   const [answer, setAnswer] = useState<Answer>({ q: "" });
   const [slowFor, setSlowFor] = useState("");
   useEffect(() => {

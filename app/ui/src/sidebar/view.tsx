@@ -64,7 +64,7 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, SettingsSlider [D803], on the section's row beside + [D663]; before it, how many projects show while anything is left out. */
+/** The View button, SettingsSlider [D803], in the sidebar's search field [D846]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (

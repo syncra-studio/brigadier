@@ -50,6 +50,8 @@ export type FindProps = {
 
 /** Each session's bar while open, by id, with its text: going back to the session opens it and searches again [D508]. */
 const remembered = new Map<string, string>();
+/** Opens the session's bar on `text` the next time it shows: the sidebar's message matches [D846]. */
+export const findOnOpen = (id: string, text: string) => remembered.set(id, text);
 
 /** The bar, over the thread's top right. */
 export function Find(props: FindProps) {
