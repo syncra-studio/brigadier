@@ -41,10 +41,10 @@ const CLOSING_MS = 300;
 // The titlebar row: across the window's top from its start edge, everything on its middle line, the front
 // tab down to its foot where the frame starts [D48 D823 D832].
 const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 pe-2 win:pe-caption";
-const TAB = "session-tab @container/tab app-no-drag group/tab flex min-w-0 items-center gap-1 rounded-control px-1 select-none";
-// Tabs in back are 32px on the row's line; the front one reaches the frame, its content on the line (--spacing-tab-front),
-// its fill and edge session-tab's, the frame's, opaque as it holds at the strip's edge.
-const LOOK = (active: boolean) => (active ? "h-tab-front pb-1 text-foreground" : "mb-1 h-8 text-toolbar-foreground hover:bg-fill");
+// Every tab 32px on the row's line, in front or not, so choosing one moves nothing; the front one's shape, down to the
+// frame, glides under it (session-tab-front) [D832 D834].
+const TAB = "session-tab @container/tab app-no-drag group/tab mb-1 flex h-8 min-w-0 items-center gap-1 rounded-control px-1 select-none";
+const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground hover:bg-fill");
 // Its icon and title from the start, a title too long cut with "…"; squeezed under 88px, the icon alone [D52].
 const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm ps-2 pe-1 focus-visible:focus-ring @max-tab-icon/tab:justify-center @max-tab-icon/tab:px-0";
 const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
@@ -78,7 +78,7 @@ function TabMenuItems({ owner, id, order, onClose }: { owner: string; id: string
 }
 
 /** A chat or session's first tab, never moved: its title, its state and its ⋯. It has no × [D427]; ⌘W, middle-click and Close leave it. */
-function ChatTab({ owner, row, active, order }: { owner: string; row: SessionRow; active: boolean; order: string[] }) {
+function ChatTab({ owner, row, active, separator, order }: { owner: string; row: SessionRow; active: boolean; separator: boolean; order: string[] }) {
   const [renaming, setRenaming] = useState(false);
   const words = useStatusWords(row);
   const archived = Boolean(row.archived);
@@ -88,7 +88,7 @@ function ChatTab({ owner, row, active, order }: { owner: string; row: SessionRow
   const startRename = archived ? undefined : () => setRenaming(true);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-active={active || undefined} className={cx(TAB, LOOK(active))} />}>
+      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))} />}>
         <BossCrumb boss={row.boss} />
         <button
           type="button"
@@ -141,11 +141,12 @@ function ChatTab({ owner, row, active, order }: { owner: string; row: SessionRow
   );
 }
 
-/** The Chat tab before there's a session to act on: Home's draft, or a row not read yet; a project's page's is its house alone [D819 D823 D831]. */
-function BlankChatTab({ owner, active, home }: { owner: string; active: boolean; home: boolean }) {
+/** The Chat tab before there's a session to act on: Home's draft, or a row not read yet; a project's page's is its house alone [D819 D823 D831].
+ *  New chat with no tabs has none: it shrinks out as the others do and grows back with them [D831 D836]. */
+function BlankChatTab({ owner, active, home, closing, separator }: { owner: string; active: boolean; home: boolean; closing: boolean; separator: boolean }) {
   const title = home ? "Home" : "Chat";
   return (
-    <div data-tab-id={CHAT} data-home={home || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))}>
+    <div data-tab-id={CHAT} data-home={home || undefined} data-separator={separator || undefined} data-active={active || undefined} data-closing={closing || undefined} aria-hidden={closing || undefined} inert={closing} className={cx(TAB, LOOK(active))}>
       <button type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} title={title} aria-label={title} onMouseDown={noAutoscroll} onClick={() => selectTab(owner, CHAT)} className={home ? "flex h-full w-full cursor-pointer items-center justify-center rounded-sm focus-visible:focus-ring" : BUTTON}>
         {home ? <House className="size-icon-md shrink-0" /> : <Chat className="size-icon-sm shrink-0" />}
         {!home && <span className={TITLE}>{title}</span>}
@@ -167,10 +168,10 @@ function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {
 }
 
 /** A tab it opened: the kind's icon, its name and ×. Its button is the drag handle, as a button inside a sortable won't start one otherwise; Alt+←/→ moves it from the keyboard. */
-function OtherTab({ owner, tab, index, last, selected, closing, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; closing: boolean; order: string[]; onClose: () => void }) {
+function OtherTab({ owner, tab, index, last, selected, separator, closing, entering, order, onClose }: { owner: string; tab: Tab; index: number; last: number; selected: boolean; separator: boolean; closing: boolean; entering: boolean; order: string[]; onClose: () => void }) {
   const { ref, handleRef } = useSortable({ id: tab.id, index, disabled: closing });
   // It grows in once: a node moved in the DOM (a drag, a drop) would otherwise replay it [D432].
-  const [fresh, setFresh] = useState(() => justOpened(tab.id));
+  const [fresh, setFresh] = useState(() => justOpened(tab.id) || entering);
   const note = useNoteTitle(owner, tab.kind === "note" ? (tab.target ?? "") : "");
   // A page is named by its title, else its site, as a browser's tab.
   const page = useBrowserPage(tab.kind === "browser" ? tab.id : "");
@@ -185,6 +186,7 @@ function OtherTab({ owner, tab, index, last, selected, closing, order, onClose }
             data-tab-id={tab.id}
             data-fresh={fresh || undefined}
             onTransitionEnd={(event) => event.target === event.currentTarget && setFresh(false)}
+            data-separator={separator || undefined}
             data-closing={closing || undefined}
             aria-hidden={closing || undefined}
             inert={closing}
@@ -245,13 +247,15 @@ function OtherTab({ owner, tab, index, last, selected, closing, order, onClose }
   );
 }
 
-/** Keeps a removed tab only for its closing slide. */
+/** Keeps a removed tab only for its closing slide; one that wasn't there before grows in, as another set's tabs do
+ *  when Home changes project [D836]. */
 function useTabPresence(tabs: readonly Tab[]) {
-  const [state, setState] = useState({ source: tabs, tabs, closing: new Set<string>() });
+  const [state, setState] = useState({ source: tabs, tabs, closing: new Set<string>(), entering: new Set<string>() });
   if (state.source !== tabs) {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const shown = [...tabs];
     const closing = new Set<string>();
+    const entering = new Set(tabs.filter((tab) => !state.tabs.some((before) => before.id === tab.id)).map((tab) => tab.id));
     if (!reduced) {
       state.tabs.forEach((tab, index) => {
         if (!tabs.some((current) => current.id === tab.id)) {
@@ -260,11 +264,11 @@ function useTabPresence(tabs: readonly Tab[]) {
         }
       });
     }
-    setState({ source: tabs, tabs: shown, closing });
+    setState({ source: tabs, tabs: shown, closing, entering });
   }
   useEffect(() => {
     if (!state.closing.size) return;
-    const timer = setTimeout(() => setState((now) => ({ source: now.source, tabs: now.source, closing: new Set<string>() })), CLOSING_MS);
+    const timer = setTimeout(() => setState((now) => ({ ...now, tabs: now.source, closing: new Set<string>() })), CLOSING_MS);
     return () => clearTimeout(timer);
   }, [state]);
   return state;
@@ -295,6 +299,47 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   }, [read]);
   const order = tabOrder(now);
   const strip = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const shape = useRef<HTMLSpanElement>(null);
+  const follow = useRef<() => void>(undefined);
+
+  // The front tab's shape under its tab: gliding there as it's chosen or the tabs change (closed, moved), riding along
+  // while they slide, then following at once as they resize, scroll or are dragged; a tab growing in carries it, as
+  // the floating design's front tab grew with its fill [D834 D835].
+  useLayoutEffect(() => {
+    const host = list.current;
+    const front = shape.current;
+    if (!host || !front) return;
+    const glideEnds = performance.now() + CLOSING_MS;
+    const place = (gliding: boolean) => {
+      const tab = host.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(active)}"]`);
+      front.hidden = !tab;
+      if (!tab) return;
+      // It fades with a front tab shrinking out (New chat's Chat tab), and back as it grows in.
+      front.toggleAttribute("data-gone", tab.hasAttribute("data-closing"));
+      const still = !gliding || tab.hasAttribute("data-fresh");
+      front.toggleAttribute("data-still", still);
+      const at = tab.getBoundingClientRect();
+      front.dataset.x = String(at.left - host.getBoundingClientRect().left);
+      front.dataset.width = String(at.width);
+      if (!still) return;
+      front.getBoundingClientRect();
+      front.toggleAttribute("data-still", false);
+    };
+    const now = () => place(performance.now() < glideEnds);
+    follow.current = () => place(false);
+    place(true);
+    const observer = new ResizeObserver(now);
+    observer.observe(host);
+    host.querySelectorAll(".session-tab").forEach((tab) => observer.observe(tab));
+    const scroller = strip.current;
+    const scrolled = () => place(false);
+    scroller?.addEventListener("scroll", scrolled);
+    return () => {
+      observer.disconnect();
+      scroller?.removeEventListener("scroll", scrolled);
+    };
+  }, [active, presence.tabs]);
 
   // ⌘W closes the tab in front, or leaves the session from its Chat tab. Home's Chat tab has nothing to close, so main closes the window.
   const closes = !(owner === HOME && active === CHAT);
@@ -375,36 +420,30 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
       Reconnecting…
     </Badge>
   );
-  // Home's draft with no tab of its own has no tabs, as the old app's untabbed draft: "+" leads the toolbar at the end [D39 D831].
-  if (bare)
-    return (
-      <header data-slot="session-tabs" className={cx(BAR, "justify-end")}>
-        {reconnecting}
-        {newTab}
-        <Toolbar owner={owner} />
-      </header>
-    );
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
-        {/* The tabs from the start, "+" right after them [D823]. */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
-          {/* A session's house, fixed first: its project's page, or Home's new chat for a chat in none [D828 D829]; a
-              titlebar control as the others, outside the tablist as it opens a page rather than a tab [D833]. */}
-          {owner !== HOME && (
-            <TooltipIconButton look="strip" tooltip="Home" className="app-no-drag shrink-0" onMouseDown={noAutoscroll} onClick={() => (row?.project ? openProject(row.project) : newChat())}>
-              <House className="size-icon-md" />
-            </TooltipIconButton>
-          )}
+        {/* A session's house, fixed first: its project's page, or Home's new chat for a chat in none [D828 D829]; a
+            titlebar control as the others, outside the tablist as it opens a page rather than a tab [D833]. Where the
+            project page's house tab is, as wide [D834]; 4px more past it, so its hover clears the front tab's flare. */}
+        {owner !== HOME && (
+          <TooltipIconButton look="strip" tooltip="Home" className="app-no-drag me-1 shrink-0" onMouseDown={noAutoscroll} onClick={() => (row?.project ? openProject(row.project) : newChat())}>
+            <House className="size-icon-md" />
+          </TooltipIconButton>
+        )}
+        {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
+        <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={home || undefined} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end gap-0.5 self-end" onKeyDown={onKeys} onWheel={onWheel}>
-            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} home={home} />}
-            {/* Its padding is the front tab's flares' room, which the scroller would otherwise cut. */}
-            <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end gap-0.5 self-stretch overflow-x-auto px-2 empty:hidden">
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-home={home || undefined} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end gap-0.5 self-end" onKeyDown={onKeys} onWheel={onWheel}>
+            <span ref={shape} aria-hidden className="session-tab-front" />
+            {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
+            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} home={home} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} />}
+            <div ref={strip} className="hide-scrollbar flex min-w-0 items-end gap-0.5 self-stretch overflow-x-auto empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider
                 sensors={SENSORS}
+                onDragMove={() => follow.current?.()}
                 modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
                 onDragEnd={({ operation, canceled }) => {
                   const { source } = operation;
@@ -429,13 +468,15 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                   return (
                     <Fragment key={tab.id}>
                       {leads && <BrowserTabGroupLabel tabIds={group} driver={driver} />}
-                      <OtherTab owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} closing={closing} order={order} onClose={() => closeTab(owner, tab.id)} />
+                      <OtherTab owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing} entering={presence.entering.has(tab.id)} order={order} onClose={() => closeTab(owner, tab.id)} />
                     </Fragment>
                   );
                 })}
               </DragDropProvider>
             </div>
           </div>
+          {/* Home's draft with no tab of its own has no tabs, as the old app's untabbed draft: "+" slides to the end, before the toolbar [D39 D831 D836]. */}
+          <span aria-hidden data-bare={bare || undefined} className="session-tab-spacer" />
           {newTab}
           {reconnecting}
         </div>

@@ -263,7 +263,7 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
 
   return (
     <div data-pane="browser" data-active={active || undefined} className="flex min-h-0 flex-1 flex-col">
-      <div data-slot="browser-toolbar" className="@container/browser-toolbar flex h-12 shrink-0 items-center gap-1.5 border-b border-border p-2">
+      <div data-slot="browser-toolbar" className="@container/browser-toolbar flex h-panel-header shrink-0 items-center gap-1.5 border-b border-border px-2">
         <NavigationCapsule
           disabled={!made}
           canGoBack={page?.canGoBack === true}

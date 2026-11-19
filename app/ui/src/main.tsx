@@ -35,7 +35,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { CHAT, closeOthers, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
+import { CHAT, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -188,12 +188,12 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
 function Home({ offline, page, children }: { offline: boolean; page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
   useLayoutEffect(() => setHomeTabs(page ?? project), [page, project]);
-  // Opening a project's page shows its Home tab alone, the set's tabs left from before closed (⇧⌘T brings them back)
-  // [D824]; its tabs read the project as Home's do [D279].
+  // Opening a project's page shows its Home tab in front, the project's other tabs kept beside it as left [D836 D837];
+  // its tabs read the project as Home's do [D279].
   useLayoutEffect(() => {
     if (!page) return;
     setHomeDraft({ project: page, chat: false });
-    closeOthers(HOME, CHAT);
+    selectTab(HOME, CHAT);
   }, [page]);
   return (
     <>

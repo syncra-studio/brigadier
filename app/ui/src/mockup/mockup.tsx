@@ -179,7 +179,7 @@ export function MockupView({
       : shown.map((v) => ({ variant: v, label: v.name ? `${v.letter} · ${v.name}` : v.letter, why: v.why }));
   return (
     <section data-slot="mockup" aria-label={`Mockup: ${mockup.title}`} className="flex min-h-0 flex-1 flex-col bg-mockup-stage">
-      <header className="flex shrink-0 items-center gap-2 border-b border-divider bg-background px-3 py-1.5 text-sm">
+      <header className="flex h-panel-header shrink-0 items-center gap-2 border-b border-divider bg-background px-3 text-sm">
         <b className="min-w-0 truncate">{mockup.title}</b>
         <Segmented
           label="Rounds"

@@ -333,10 +333,13 @@
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
   /* The tabs [D823]: 10rem each, left after the History pill; crowded, the front tab and Chat keep it [D53],
      the others shrink to 33px then scroll; below 88px a tab shows its icon alone, below 64px no × either. Home's
-     tab is its house alone. */
+     tab is its house alone, as wide as a session's house so it holds its place between the two [D834]. */
   --spacing-session-tab-active: 10rem;
   --spacing-session-tab-icon: 2.0625rem;
-  --spacing-home-tab: 3rem;
+  --spacing-home-tab: 2rem;
+  /* The rule between two tabs in back, as the floating design's (Safari's) [D437 D840]. */
+  --spacing-session-tab-rule: 1px;
+  --spacing-session-tab-rule-height: 1rem;
   --container-tab-icon: 5.5rem;
   --container-tab-close: 4rem;
   --container-new-tab: 28rem;
@@ -404,6 +407,9 @@
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
   --spacing-nav-header: 3.25rem;
+  /* Every panel's top bar, its bottom edge included: the project page's, Files', a worker's, the browser's toolbar, a
+     file's and Review's, so side by side their bottom edges are one line [D839 D842]. */
+  --spacing-panel-header: 3rem;
   /* Settings: its search, and the band atop a page under the titlebar (the old app's). */
   --spacing-nav-search: 2.25rem;
   --spacing-settings-band: 2.875rem;
@@ -564,6 +570,7 @@
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
   --duration-session-tab: 300ms;
+  --duration-session-tab-rule: 150ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
   /* Behind a menu or the hover card (the new design's). */
@@ -1456,9 +1463,14 @@
   inset-inline-start: var(--spacing-history-start);
 }
 
-/* The tab bar runs from the window's start: its tabs 8px past the History pill [D48]. */
+/* The tab bar runs from the window's start: its tabs from the page panel's start edge (the frame's 8px and the sidebar's
+   room, sidebar-width-source), or 8px past the History pill where that's further, easing with the sidebar [D48 D838]. */
 @utility titlebar-clear {
-  padding-inline-start: calc(var(--spacing-history-start) + var(--spacing-history) + var(--spacing) * 2);
+  padding-inline-start: max(calc(var(--spacing-history-start) + var(--spacing-history) + var(--spacing) * 2), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
+  transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 /* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
@@ -1471,73 +1483,90 @@
 /* The tab bar [D360]: the old app's. It starts after a short rule, at the sidebar's edge or, with the sidebar folded,
    after Back, Forward and the toggle. */
 @utility session-tab-bar {
-  /* Until the tabs read on opening have drawn, they don't slide in [D423]. */
-  &:not([data-settled]) .session-tab,
+  /* Until the tabs read on opening have drawn, they don't slide in, nor does the front tab's shape glide to its place [D423]. */
+  &:not([data-settled]) :is(.session-tab, .session-tab-front, .session-tab-spacer),
   &:not([data-settled]) .session-tab::after {
     transition: none;
   }
 }
 
-/* The tabs take their 10rem each from the left, "+" right after them [D823]; crowded, the row is the bar's
-   room and Chat and the front tab keep 10rem [D53] while the others share what they leave down to their icon, then
-   the strip scrolls. */
+/* The tabs take their 10rem each from the left, "+" right after them [D823]. The row is as wide as its tabs,
+   so one growing in or shrinking out slides "+" with it [D835]. Crowded, the tab area (its container) less "+" is the
+   room: Chat and the front tab keep 10rem [D53] while the others share what they leave down to their icon, then the
+   strip scrolls. */
 @utility session-tab-list {
-  container-type: inline-size;
-  /* Home's tab is narrower than the others: the row's want is that much less. */
+  position: relative;
+  /* Home's tab is narrower than the others: counted as a whole one, the room is that much more. */
   --session-tab-home: 0rem;
   &[data-home] {
     --session-tab-home: calc(var(--spacing-session-tab-active) - var(--spacing-home-tab));
   }
-  flex: 0 1 calc(var(--session-tab-count) * var(--spacing-session-tab-active) + (var(--session-tab-count) - 1) * var(--spacing) / 2 + var(--session-tab-groups) - var(--session-tab-home));
   --session-tab-count: attr(data-count type(<number>), 1);
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  /* The row's room less the gaps between its tabs and the agents' group labels, Home's tab counted as a whole one. */
-  --session-tab-room: calc(100cqw - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--session-tab-groups) + var(--session-tab-home));
-  --session-tab-share: calc(var(--session-tab-room) / var(--session-tab-count));
-  /* The tabs kept at 12rem: Chat and the front tab, or Chat alone while it's in front. */
+  /* The tab area less "+" and its gap, the gaps between tabs and the agents' group labels. */
+  --session-tab-room: calc(100cqw - var(--spacing) * 10 - (var(--session-tab-count) - 1) * var(--spacing) / 2 - var(--session-tab-groups) + var(--session-tab-home));
+  /* The tabs kept at 10rem: Chat and the front tab, or Chat alone while it's in front. */
   --session-tab-kept: 2;
   &:has(> [data-tab-id="chat"] [aria-selected="true"]) {
     --session-tab-kept: 1;
   }
   --session-tab-behind: calc((var(--session-tab-room) - var(--session-tab-kept) * var(--spacing-session-tab-active)) / max(var(--session-tab-count) - var(--session-tab-kept), 1));
+  /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
+  &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
+    opacity: 0;
+  }
 }
 
+/* Every tab is the same box, in front or not, so choosing one moves nothing; the front one's look is the shape gliding
+   under it (session-tab-front) [D834]. */
 @utility session-tab {
   position: relative;
   font-size: var(--text-label);
   line-height: var(--text-label--line-height);
   font-weight: 430;
-  /* The even share while it's more than what the kept tabs leave, which it is once they'd go under 12rem. */
-  flex: 0 0 max(var(--spacing-session-tab-icon), min(var(--session-tab-share), var(--session-tab-behind)));
+  /* 10rem, or crowded what the kept tabs leave, down to its icon. */
+  flex: 0 0 max(var(--spacing-session-tab-icon), min(var(--spacing-session-tab-active), var(--session-tab-behind)));
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
     margin var(--duration-session-tab) var(--ease-session-tab),
-    opacity var(--duration-session-tab) var(--ease-session-tab);
+    opacity var(--duration-session-tab) var(--ease-session-tab),
+    color var(--duration-session-tab) var(--ease-session-tab);
   &[data-active],
   &[data-tab-id="chat"] {
-    flex-basis: max(var(--spacing-session-tab-active), var(--session-tab-share));
+    flex-basis: var(--spacing-session-tab-active);
   }
   &[data-home] {
     flex-basis: var(--spacing-home-tab);
   }
-  /* The front tab is the frame's: the frame's fill and edge, open at its foot into the frame below, its
-     foot's corners flaring out to the frame's edge (::after). It stays in view: scrolled past, it holds at the strip's
-     edge and the others pass under it. */
+  /* The front tab stays in view: scrolled past, it holds at the strip's edge and the others pass under it. At its own
+     place it stays put: held off the edge, the first or last tab would shift as it's chosen [D834]. */
   &[data-active] {
-    --flare: var(--radius-control);
     position: sticky;
-    /* Held its flare's room in from the strip's edge, so the scroller doesn't cut it. */
-    inset-inline: var(--flare);
+    inset-inline: 0;
     z-index: 1;
-    border-end-start-radius: 0;
-    border-end-end-radius: 0;
-    background-color: var(--color-card);
     /* Brought into view (tab-bar.tsx), it's measured at its own place. */
     &[data-measuring] {
       position: relative;
     }
+  }
+  /* Its fill inside the shape's edge, over the tabs passing under it; it shows once the shape has glided in, so nothing
+     shows at the new tab before the shape does. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 1px 1px 0;
+    z-index: -1;
+    border-start-start-radius: calc(var(--radius-control) - 1px);
+    border-start-end-radius: calc(var(--radius-control) - 1px);
+    background-color: var(--color-card);
+    opacity: 0;
+    pointer-events: none;
+  }
+  &[data-active]::after {
+    opacity: 1;
+    transition: opacity 0s var(--duration-session-tab);
   }
   /* Growing in and closing, it takes its gap with it, so the tabs fill the pill exactly all the way. */
   &[data-fresh] {
@@ -1555,8 +1584,90 @@
     opacity: 0;
     overflow: hidden;
   }
+  /* A rule between two tabs in back, as the floating design's; none beside the front tab (no data-separator) or a
+     hovered one, either side, as Safari's; it only fades, so nothing moves [D437 D840]. An agent's tab has its group's
+     line there instead. */
+  &:not([data-agent-group])::before {
+    content: "";
+    position: absolute;
+    inset-inline-end: calc(var(--spacing) * -0.25 - var(--spacing-session-tab-rule) / 2);
+    height: var(--spacing-session-tab-rule-height);
+    width: var(--spacing-session-tab-rule);
+    background: var(--color-fill);
+    opacity: 0;
+    transition: opacity var(--duration-session-tab-rule);
+    pointer-events: none;
+  }
+  &[data-separator]::before {
+    opacity: 1;
+  }
+  &:hover::before,
+  &:has(+ .session-tab:hover)::before {
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &::before,
+    &[data-active]::after {
+      transition: none;
+    }
+  }
+}
+
+/* A tab in back beside the front one hovers clear of the front tab's flare on that side: its fill stops where the flare's
+   reach past the 2px gap begins, so the join always shows [D835].
+   shortcut: physical sides, so right-to-left clips the wrong side; mirror under :dir(rtl) if Brigadier ships RTL. */
+.session-tab:hover:has(+ [data-active]),
+.session-tab-list:has(> div > .session-tab:first-child[data-active]) > .session-tab:hover {
+  clip-path: inset(0 calc(var(--radius-control) - 2px) 0 0 round var(--radius-control));
+}
+[data-active] + .session-tab:hover,
+.session-tab-list > [data-tab-id="chat"][data-active] + div > .session-tab:first-child:hover {
+  clip-path: inset(0 0 0 calc(var(--radius-control) - 2px) round var(--radius-control));
+}
+
+/* Between the tabs and "+", its gap taken back: nothing, or with no tabs (New chat) all the room, so "+" slides to the
+   row's end and back [D831 D836]. */
+@utility session-tab-spacer {
+  flex: 0 0 0;
+  margin-inline-start: calc(var(--spacing) * -2);
+  transition: flex-grow var(--duration-session-tab) var(--ease-session-tab);
+  &[data-bare] {
+    flex-grow: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/* The front tab's shape: the frame's fill and edge, open at its foot into the frame below, its foot's
+   corners flaring out to the frame's edge (::after). One for the row, under the tabs: it glides from tab to tab with
+   the tabs' own motion and follows its tab as they grow, shrink and scroll (tab-bar.tsx) [D832 D834 D835]. */
+@utility session-tab-front {
+  --flare: var(--radius-control);
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: var(--spacing-tab-front);
+  /* Its tab's place in the row, measured (tab-bar.tsx); still while it follows at once. */
+  translate: attr(data-x px, 0px);
+  width: attr(data-width px, 0px);
+  border-start-start-radius: var(--flare);
+  border-start-end-radius: var(--flare);
+  background-color: var(--color-card);
+  pointer-events: none;
+  transition:
+    translate var(--duration-session-tab) var(--ease-session-tab),
+    width var(--duration-session-tab) var(--ease-session-tab),
+    opacity var(--duration-session-tab) var(--ease-session-tab);
+  &[data-gone] {
+    opacity: 0;
+  }
+  &[data-still] {
+    transition: none;
+  }
   /* Its edge: down its sides to where the flares take over, so each side meets the frame in the one curve [D832]. */
-  &[data-active]::before {
+  &::before {
     content: "";
     position: absolute;
     inset: 0 0 var(--flare);
@@ -1564,16 +1675,14 @@
     border-bottom: 0;
     border-start-start-radius: inherit;
     border-start-end-radius: inherit;
-    pointer-events: none;
   }
   /* The flares, the same quarter circle mirrored: tangent to the side's 1px edge, ending on the frame's 1px top edge. */
-  &[data-active]::after {
+  &::after {
     content: "";
     position: absolute;
     bottom: 0;
     inset-inline: calc(1px - var(--flare));
     height: var(--flare);
-    pointer-events: none;
     /* The stroke over the fill, as the frame's edge is over the frame: where the two meet they're one colour. */
     background:
       radial-gradient(circle at 0 0, transparent calc(var(--flare) - 1px), var(--color-glass-stroke) 0 var(--flare), transparent 0) left / var(--flare) 100% no-repeat,

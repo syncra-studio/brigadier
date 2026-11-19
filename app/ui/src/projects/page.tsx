@@ -42,7 +42,7 @@ export const PROJECT_TABS: { value: ProjectTab; label: string }[] = [
 ];
 
 const TAB = cx(
-  "relative flex h-12 cursor-pointer items-center text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring",
+  "relative flex h-full cursor-pointer items-center text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring",
   "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full data-active:text-foreground data-active:after:bg-foreground",
 );
 
@@ -90,7 +90,7 @@ export function ProjectPageView({
 }) {
   return (
     <Tabs.Root value={tab} onValueChange={(next: ProjectTab) => onTab(next)} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-center gap-6 border-b border-divider px-6">
+      <header className="flex h-panel-header shrink-0 items-center gap-6 border-b border-divider px-6">
         <Tabs.List className="flex min-w-0 flex-1 gap-5">
           {PROJECT_TABS.map((each) => (
             <Tabs.Tab key={each.value} value={each.value} className={TAB}>
