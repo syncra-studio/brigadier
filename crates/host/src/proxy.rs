@@ -7,8 +7,9 @@
 //!
 //! It binds 127.0.0.1 only, checks Host, refuses any Origin, and needs the bearer (the old app's
 //! CVE lessons, w07 §3). An upstream 401 gets one refresh from the daemon and one retry, then a
-//! plain JSON-RPC error and a note in the session's log, so the thread shows Sign in.
+//! plain JSON-RPC error, and on a tool call a note in the session's log: the thread's Sign in.
 
+mod tool_call;
 use brigadier_frames::wire;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -322,7 +323,7 @@ impl Proxy {
     }
 
     /// Answers a request the server can't take now with `why`: a JSON-RPC error for each request
-    /// in a POST, so the agent reads the plain line, and no stream for a GET. Notes it once.
+    /// in a POST, so the agent reads the plain line, and no stream for a GET. Notes a tool call once.
     fn refuse(
         &self,
         out: &mut TcpStream,
@@ -331,7 +332,7 @@ impl Proxy {
         name: &str,
         why: &str,
     ) -> io::Result<()> {
-        if self.told.lock().unwrap().insert(name.into()) {
+        if tool_call::calls_tool(body) && self.told.lock().unwrap().insert(name.into()) {
             let title = self
                 .known
                 .lock()
