@@ -1,4 +1,4 @@
-import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, ToolsSkills } from "../../icons";
+import { Chat, CodeSquareSlash, Document, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
 import { WorkerGlyph } from "../../icons/worker-glyphs";
 import { ProviderMark } from "./model-picker";
@@ -41,8 +41,22 @@ export function FileBadge({ name, className }: { name: string; className?: strin
 /** A file's colour, where its kind's glyph has one: for its chip's name, as a command's chip takes its kind's. */
 export const fileTone = (name: string) => GLYPHS.find(([pattern]) => pattern.test(extensionOf(name)))?.[2];
 
-/** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat, a worker's glyph. `className` sizes it (a menu row's own size otherwise). */
-export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct" | "tab"; id?: string; label: string; className?: string }) {
+/** A note's chip label as its emoji, if it has one, and its name [D921]. */
+export function noteName(label: string): { emoji: string | null; name: string } {
+  const emoji = /^(\p{Extended_Pictographic}\uFE0F?)\s+/u.exec(label);
+  return emoji ? { emoji: emoji[1]!, name: label.slice(emoji[0].length) } : { emoji: null, name: label };
+}
+
+/** A note's colour, for its icon and its chip's name, as a skill's is magenta [D921]. */
+export const NOTE_TONE = "text-warning";
+
+/** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat, a worker's glyph, a note's emoji or page. `className` sizes it (a menu row's own size otherwise). */
+export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct" | "tab" | "note"; id?: string; label: string; className?: string }) {
+  if (type === "note") {
+    const { emoji } = noteName(label);
+    if (emoji) return <span aria-hidden className={cx("inline-flex items-center justify-center leading-none", className ?? "size-icon-md")}>{emoji}</span>;
+    return <Document aria-hidden className={cx(NOTE_TONE, className)} />;
+  }
   if (type === "tab") return <Globe aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "worker" || type === "direct") return <WorkerGlyph id={id ?? label} className={className} />;
   if (type === "chat") return <Chat aria-hidden className={cx("text-muted-foreground", className)} />;

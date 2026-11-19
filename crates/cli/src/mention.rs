@@ -1,4 +1,4 @@
-//! The `@` menu's search, as the old app's: with nothing typed, its sections (Workers, Message
+//! The `@` menu's search, as the old app's: with nothing typed, its sections (Workers, Notes, Message
 //! directly, Files, the top folders, the newest chats, the session's browser tabs); typed, one list ranked across workers,
 //! files, folders and other sessions, capped. Rust searches; the UI only marks the matched letters. Each reply echoes its
 //! query, so an older one drops [D71, D127, D2010, D2021].
@@ -74,6 +74,15 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             json!({"id": id, "type": "tab", "label": label, "hint": hint})
         })
         .collect();
+    // The project's notes, which a message can hand to its agent whole [D913].
+    let notes: Vec<Value> = crate::attach::note::listed(data, owner, req["project"].as_str())
+        .unwrap_or_default()
+        .iter()
+        .map(|n| {
+            let label = crate::attach::note::shown_name(n);
+            json!({"id": n["id"], "type": "note", "name": n["title"], "label": label})
+        })
+        .collect();
     let groups = if q.is_empty() {
         let top = found
             .iter()
@@ -81,6 +90,7 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .take(SECTION_ROWS);
         json!([
             {"title": "Workers", "items": workers.iter().map(|r| worker(r)).collect::<Vec<_>>()},
+            {"title": "Notes", "items": notes.iter().take(SECTION_ROWS).collect::<Vec<_>>()},
             {"title": "Message directly", "items": workers.iter().filter(|r| !ended(r)).map(|r| direct(r, None)).collect::<Vec<_>>()},
             {"title": "Files", "items": [], "note": "Type to search for files"},
             {"title": "Folders", "items": top.map(path).collect::<Vec<_>>()},
@@ -111,6 +121,11 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             let title = chat(r);
             if let Some(rank) = files::rank(title["label"].as_str().unwrap_or(""), &query) {
                 all.push((rank, 3, 0, title));
+            }
+        }
+        for n in notes {
+            if let Some(rank) = files::rank(n["label"].as_str().unwrap_or(""), &query) {
+                all.push((rank, 0, 1, n));
             }
         }
         for t in tabs {

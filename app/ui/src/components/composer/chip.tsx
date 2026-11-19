@@ -6,11 +6,11 @@ import { cx } from "../cx";
 import { MentionedWorker } from "../../workers/live";
 import { InlineAttachment } from "./attachments";
 import type { Chip } from "./draft";
-import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon } from "./kind-icons";
+import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon, NOTE_TONE, noteName } from "./kind-icons";
 import type { SlashCommand } from "./menus";
 
 /** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
-export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "command" | "skill" | "mcp" | "image" | "paste";
+export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "note" | "command" | "skill" | "mcp" | "image" | "paste";
 
 /** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
 export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string, name?: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
@@ -48,10 +48,10 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
   ) : (
     <>
       <MentionKindIcon type={chip.type} id={chip.id} label={chip.label} className="mr-0.5 inline-block size-icon-sm align-icon" />
-      {chip.type === "chat" || chip.type === "tab" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
+      {chip.type === "note" ? noteName(chip.label).name : chip.type === "chat" || chip.type === "tab" ? chip.label : chip.label.slice(chip.label.lastIndexOf("/") + 1)}
     </>
   );
-  const tone = command ? COMMAND_TONES[chip.type] : ((chip.type === "file" && fileTone(chip.label)) || "text-link");
+  const tone = command ? COMMAND_TONES[chip.type] : chip.type === "note" ? NOTE_TONE : (chip.type === "file" && fileTone(chip.label)) || "text-link";
   // A button where it opens, so Tab reaches it and Enter or Space opens it (the field leaves those to buttons).
   return open ? (
     <button type="button" data-slot="composer-chip" onClick={open} className={cx("inline cursor-pointer rounded-xs focus-visible:focus-ring", tone)}>

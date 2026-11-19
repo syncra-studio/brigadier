@@ -4,7 +4,6 @@
 //! prints a secret. Every wait has a timeout, and every reply is capped with a hint to read less.
 
 mod wait;
-
 use crate::{models, peers, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
 use serde_json::{Value, json};
@@ -27,6 +26,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier stop <id>         stop a worker you started
   brigadier models            the agents, models and efforts you may use
   brigadier skill [name]      the user's skills, or one whole
+  brigadier notes [id]        the user's notes in your project, or one whole
   brigadier search \"…\"        every session's past: messages, tool calls, errors holding these words
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one

@@ -98,6 +98,44 @@ fn locate(data: &Path, dir: &Path, note: &str) -> io::Result<PathBuf> {
         .unwrap_or_else(|| dir.join(name)))
 }
 
+/// The project's notes as the notes column lists them, for the `@` menu and the agent's `notes`.
+pub(crate) fn listed(data: &Path, owner: &str, project: Option<&str>) -> io::Result<Vec<Value>> {
+    settle(data);
+    let args: Vec<String> = project
+        .map(|p| vec!["--project".into(), p.into()])
+        .unwrap_or_default();
+    let dir = folder_of(data, owner, &args)?;
+    Ok(list::run(data, &dir, None)["notes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// A note of `owner`'s project by its id: its file and text; None if it has none.
+pub(crate) fn text_of(
+    data: &Path,
+    owner: &str,
+    note: &str,
+) -> io::Result<Option<(PathBuf, String)>> {
+    let path = locate(data, &folder_of(data, owner, &[])?, note)?;
+    Ok(fs::read_to_string(&path).ok().map(|text| (path, text)))
+}
+
+/// A note's emoji and name, as its chip and menu row show it.
+pub(crate) fn shown_name(note: &Value) -> String {
+    let (head, title) = (
+        note["head"].as_str().unwrap_or(""),
+        note["title"].as_str().unwrap_or(""),
+    );
+    let emoji = head[..head.len() - named(head).len()].trim();
+    let title = if title.is_empty() {
+        "Untitled note"
+    } else {
+        title
+    };
+    format!("{emoji} {title}").trim().to_string()
+}
+
 /// Moves notes still in their sessions to their projects, as far as they can go now [D916].
 pub(crate) fn settle(data: &Path) {
     let _ = moved::settle(data);

@@ -19,7 +19,7 @@ import { PlusButton } from "./composer";
  */
 export type Mention = {
   id: string;
-  type: "file" | "folder" | "chat" | "worker" | "direct" | "tab";
+  type: "file" | "folder" | "chat" | "worker" | "direct" | "tab" | "note";
   label: string;
   /** The row's name, when it isn't the label (a file's name for its path). */
   name?: string;

@@ -141,6 +141,11 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                     label,
                 ));
             }
+            // Its text whole, so an agent kept to its own folders needs no read of the app's [D913 D922].
+            (Some("mention"), Some("note")) => {
+                agent += label;
+                notes.push(note(&data, part["id"].as_str().unwrap_or(""), label));
+            }
             // By its id, which its `brigadier` commands take, as the old app's `[mentions task-N: title]`.
             (Some("mention"), Some("worker")) => {
                 agent += label;
@@ -257,6 +262,37 @@ fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
 
 /// A mentioned session's latest messages, as the old app's: newest first until 30 or 24 kB, then
 /// back in order [D2021].
+/// A mentioned note's text, from its project's notes or the shared ones, cut to a chat's length.
+fn note(data: &Path, id: &str, title: &str) -> String {
+    let projects = (fs::read_dir(data.join("projects"))
+        .into_iter()
+        .flatten()
+        .flatten())
+    .map(|e| e.path().join("notes"));
+    let found = (check_id(id).is_ok())
+        .then(|| {
+            (projects.chain([data.join("notes")]))
+                .map(|dir| dir.join(format!("{id}.md")))
+                .find_map(|path| fs::read_to_string(&path).ok().map(|text| (path, text)))
+        })
+        .flatten();
+    let Some((path, mut text)) = found else {
+        return format!("[mentions the note \"{title}\", which is gone]");
+    };
+    if text.len() > CHAT_BYTES {
+        let mut at = CHAT_BYTES;
+        while !text.is_char_boundary(at) {
+            at -= 1;
+        }
+        text.truncate(at);
+        text += "\n[…cut; read the rest in the file]";
+    }
+    format!(
+        "[mentions the note \"{title}\" ({}; change it there only if asked); its text follows]\n{text}\n[/note]",
+        path.display()
+    )
+}
+
 fn conversation(data: &Path, id: &str, title: &str) -> String {
     let mut said: Vec<String> = vec![];
     if check_id(id).is_ok() {

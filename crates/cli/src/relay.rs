@@ -18,6 +18,11 @@ type Spec = (
 /// Each relay command's help, its value flags and its plain flags.
 pub fn spec(cmd: &str) -> Option<Spec> {
     Some(match cmd {
+        "notes" => (
+            "brigadier notes [<id>] [--json]\n\nThe user's notes in your project, pinned first, then the newest: id, name and first line. With an id, prints that note whole and its file. Read only: change a note only when the user asks, by editing its file.",
+            &[],
+            &[],
+        ),
         "skill" => (
             "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
             &[],
@@ -119,6 +124,7 @@ pub fn run(
     match cmd {
         "mockup" => Some(mockup::run(data, me, arg, value, here)),
         "skill" => Some(skill(data, me, arg)),
+        "notes" => Some(notes(data, me, arg)),
         "search" => Some(search(data, arg.unwrap_or(""), value, rows)),
         "show" => Some(show::show(data, me, arg.unwrap_or(""))),
         "repo" => Some(
@@ -130,6 +136,39 @@ pub fn run(
                 ),
         ),
         _ => None,
+    }
+}
+
+/// The caller's project's notes, or one whole, read only [D913 D921].
+fn notes(data: &Path, me: &str, id: Option<&str>) -> Value {
+    use crate::attach::note;
+    let Some(id) = id else {
+        let list = note::listed(data, me, None).unwrap_or_default();
+        let text: String = (list.iter())
+            .map(|n| {
+                format!(
+                    "{}  {}  {}\n",
+                    n["id"].as_str().unwrap_or(""),
+                    note::shown_name(n),
+                    n["preview"].as_str().unwrap_or("")
+                )
+            })
+            .collect();
+        let text = if text.is_empty() {
+            "No notes.\n".into()
+        } else {
+            text
+        };
+        return json!({"ok": true, "notes": list, "text": text + "`brigadier notes <id>` prints one."});
+    };
+    match note::text_of(data, me, id) {
+        Ok(Some((path, text))) => {
+            json!({"ok": true, "path": path, "text": format!("{}\n\n{text}", path.display())})
+        }
+        Ok(None) => {
+            json!({"ok": false, "error": format!("No note {id:?}. `brigadier notes` lists them.")})
+        }
+        Err(e) => json!({"ok": false, "error": e.to_string()}),
     }
 }
 
