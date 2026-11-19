@@ -17,6 +17,7 @@ import { type SidebarCollapse, SidebarPanel, SidebarProvider, useSidebar } from 
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
+import { TitlebarNav } from "../src/shell/titlebar";
 import { Row, Section, State } from "./parts";
 
 function Rows({ current = "a" }: { current?: string }) {
@@ -92,13 +93,24 @@ function ToggleButton() {
 function SidebarDemo() {
   const [open, setOpen] = useState(true);
   const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
+  const [tab, setTab] = useState("chat");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
       <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse}>
+        <TitlebarNav hash="" rows={[]} />
+        <header className="titlebar-clear session-tab-bar fixed start-0 end-surface-inset top-0 flex h-tab-bar items-center pt-3.5" data-settled>
+          <div role="tablist" aria-label="Sample tabs" data-count={2} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule p-px ring-1 ring-glass-stroke ring-inset">
+            {[["chat", "Home"], ["new", "New tab"]].map(([id, title]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} data-tab-id={id} data-active={tab === id || undefined} onClick={() => setTab(id)} className={`session-tab flex h-7 min-w-0 items-center justify-center rounded-capsule px-1 focus-visible:focus-ring ${tab === id ? "shadow-session-tab text-foreground" : "text-toolbar-foreground hover:bg-fill"}`}>
+                {title}
+              </button>
+            ))}
+          </div>
+        </header>
         <SidebarPanel strip={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
-        <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-titlebar text-sm text-muted-foreground">
+        <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-page-top text-sm text-muted-foreground">
           <ToggleButton />
           <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
             Collapses to: {collapse}
@@ -137,7 +149,7 @@ const STEPS = { title: "Downloading the model", done: 3, total: 8, meta: "until 
 export function Panes() {
   return (
     <>
-      <Section title="Sidebar frame and nav rows">
+      <Section title="Sidebar frame, tab bar and nav rows">
         <SidebarDemo />
       </Section>
       <Section title="Error line">

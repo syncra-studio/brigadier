@@ -393,9 +393,8 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
       <header data-slot="session-tabs" data-settled={settled || undefined} className={cx(BAR, "session-tab-bar")}>
         {/* The pill fills the room up to "+", the tabs sharing it as Safari's [D52]. */}
         <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
-          {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge.
-              The whole pill is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
+          {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
+          <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
             {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} home={home} />}
             <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}

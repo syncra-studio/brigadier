@@ -87,7 +87,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     };
   });
   return (
-    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 win:top-3.25 items-center rounded-capsule bg-control px-px ring-1 ring-glass-stroke ring-inset">
+    <div className="titlebar-nav history-pill app-no-drag absolute z-20 flex h-7.5 win:top-3.25 items-center rounded-capsule bg-card px-px ring-1 ring-glass-stroke ring-inset">
       <TitlebarTips>
         <TooltipIconButton look="pill" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={stepBack}>
           <ArrowLeft />

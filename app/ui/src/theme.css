@@ -1502,13 +1502,12 @@
     flex-basis: max(var(--spacing-session-tab-active), var(--session-tab-share));
   }
   /* The front tab stays in view as Safari's: scrolled past, it holds at the strip's edge and the others pass under it,
-     so its fill is the pill's and its own over the page, nothing showing through. */
+     so its fill is the sidebar card's, nothing showing through. */
   &[data-active] {
     position: sticky;
     inset-inline: 0;
     z-index: 1;
-    background-color: var(--color-background);
-    background-image: linear-gradient(var(--color-selection) 0 0), linear-gradient(var(--color-control) 0 0);
+    background-color: var(--color-card);
     /* Brought into view (tab-bar.tsx), it's measured at its own place. */
     &[data-measuring] {
       position: relative;
