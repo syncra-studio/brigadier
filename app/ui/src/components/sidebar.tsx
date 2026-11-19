@@ -31,7 +31,7 @@ type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
   collapse: SidebarCollapse;
-  /** Picks strip or hidden for when it collapses (the History pill's toggle steps through them). */
+  /** Picks strip or hidden for when it collapses (the sidebar toggle steps through them). */
   setCollapse: (collapse: SidebarCollapse) => void;
   hidden: boolean;
   /** Whether the card draws its open layout: open, or hidden from open (it slides off and back at the width it had). */
@@ -99,7 +99,7 @@ export function SidebarProvider({
     },
     [keepOpen, narrow, onOpenChange],
   );
-  // Every path (the History pill's toggle, ⌘B, View › Toggle Sidebar) steps open → strip → hidden → open [D800].
+  // Every path (the sidebar toggle, ⌘B, View › Toggle Sidebar) steps open → strip → hidden → open [D800].
   const toggleSidebar = useCallback(() => {
     if (keepOpen) return;
     if (open) onCollapseChange("strip");

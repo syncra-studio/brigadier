@@ -321,10 +321,9 @@
   --spacing-tab-front: calc(var(--spacing-tab-bar) - var(--spacing) * 1.5);
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
-  /* The History pill: Back, Forward and the sidebar toggle (32 each), its rule (9), inside its 1px edge. */
-  --spacing-history: 6.6875rem;
-  /* Its start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge. */
-  --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
+  /* The sidebar toggle's start while the sidebar is hidden: 4px past the traffic lights; with none (Windows, macOS full
+     screen) the sidebar card's start edge [D861]. */
+  --spacing-toggle-start: calc(var(--spacing-traffic-lights) + 0.25rem);
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
@@ -352,9 +351,6 @@
   --ease-session-tab: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
-  /* Back, Forward and the sidebar toggle: Back's centre 26px past the traffic lights, 6px apart. */
-  --spacing-titlebar-start: calc(var(--spacing-traffic-lights) + 1.625rem - var(--spacing-control-sm) / 2);
-  --spacing-titlebar-nav-end: calc(var(--spacing-titlebar-start) + var(--spacing-control-sm) * 3 + var(--spacing) * 3);
   --container-reading: 46rem;
   /* The room the pinned summary card takes from the reading column where it moves it aside (the old app's
      --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-75 card and its 4px inset. */
@@ -679,8 +675,6 @@
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
   --opacity-tab-close: 60%;
-  /* Back and Forward with nowhere to go. */
-  --opacity-titlebar-nowhere: 40%;
   --opacity-switch-disabled: 60%;
   --opacity-spinner-track: 25%;
   --opacity-dialog-close: 70%;
@@ -1364,6 +1358,8 @@
   /* Hidden, the page panel's 12px start gap takes its place (page-panel). */
   &[data-state="collapsed"][data-collapse="hidden"] {
     --sidebar-shown: calc(var(--spacing) * 3);
+    /* The titlebar's sidebar toggle and 8px past it (titlebar-clear). */
+    --toggle-room: calc(var(--spacing) * 10);
   }
 }
 /* The strip's squares end above the foot's icons rising over the strip: how far they rise, measured (flyout.tsx). */
@@ -1445,30 +1441,37 @@
   }
 }
 
-/* Full screen takes the traffic lights away, and Back moves to the titlebar's start. */
-:root[data-fullscreen] {
-  --spacing-titlebar-start: calc(var(--spacing) * 2);
-}
+/* Full screen takes the traffic lights away, and the hidden sidebar's toggle moves to the titlebar's start. */
 :root:is([data-fullscreen], [data-platform="win32"]) {
-  --spacing-history-start: var(--spacing-window-inset);
+  --spacing-toggle-start: var(--spacing-window-inset);
 }
 
-/* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
-@utility titlebar-nav {
-  --opacity-disabled: var(--opacity-titlebar-nowhere);
-}
-
-/* The History pill, first in the tab bar across the window's top: on the sidebar card's start edge, or with traffic
-   lights 4px past them. It never moves with the sidebar [D48]. */
-@utility history-pill {
-  top: calc((var(--spacing-tab-bar) - var(--spacing) * 7.5) / 2);
-  inset-inline-start: var(--spacing-history-start);
+/* The sidebar toggle [D861], its 32px gliding with the sidebar's fold: at the end of the open sidebar's name row (the
+   frame's 8px, the card's 4px and its row's 10px in from the panel's end), above the strip's logo (centred on the
+   strip), and after the traffic lights on the titlebar's middle line while the sidebar is hidden. */
+@utility sidebar-toggle {
+  top: calc(var(--spacing-tab-bar) + var(--spacing) * 4);
+  inset-inline-start: calc(var(--sidebar-open-width) - var(--spacing) * 9.5);
+  transition-property: top, inset-inline-start;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
+  &[data-mode="strip"] {
+    inset-inline-start: calc(var(--spacing) * 2 + (var(--spacing-sidebar-strip) - var(--spacing) * 8) / 2);
+  }
+  &[data-mode="hidden"] {
+    top: calc((var(--spacing-tab-bar) - var(--spacing) * 7.5) / 2);
+    inset-inline-start: var(--spacing-toggle-start);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 /* The tab bar runs from the window's start: its tabs from the page panel's start edge (the frame's 8px and the sidebar's
-   room, sidebar-width-source), or 8px past the History pill where that's further, easing with the sidebar [D48 D838]. */
+   room, sidebar-width-source), or past the traffic lights, and the toggle with 8px while the sidebar is hidden, where
+   that's further, easing with the sidebar [D48 D838 D862]. */
 @utility titlebar-clear {
-  padding-inline-start: max(calc(var(--spacing-history-start) + var(--spacing-history) + var(--spacing) * 2), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
+  padding-inline-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room, 0px)), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
   transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;
