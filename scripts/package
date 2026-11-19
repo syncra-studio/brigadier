@@ -61,8 +61,10 @@ const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "de
 // own framework. A Developer ID build runs every part hardened, so no dylib can be injected into one [O300].
 const hardenedRuntime = (process.env.BRIGADIER_SIGN_IDENTITY ?? "").startsWith("Developer ID");
 // The daemon is the responsible process for its agents: hardened, macOS asks for these on their behalf
-// only if it declares them, as its Info.plist's reasons do [D606].
-const daemon = ["automation.apple-events", "device.audio-input", "device.camera"].map((e) => `com.apple.security.${e}`);
+// only if it declares them, so it declares every resource Apple lists for hardened runtime [D606].
+const daemon = ["automation.apple-events", "device.audio-input", "device.camera", "personal-information.location",
+  "personal-information.photos-library", "personal-information.addressbook", "personal-information.calendars"]
+  .map((e) => `com.apple.security.${e}`);
 await packager({
   dir: ".",
   name: "Brigadier",
