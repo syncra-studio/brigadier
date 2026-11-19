@@ -17,6 +17,8 @@ export type Settings = {
   /** Where web links and local dev URLs open: Brigadier's browser or the default one (Settings › Browser) [D507]. */
   web_links_in: "brigadier" | "system";
   local_links_in: "brigadier" | "system";
+  /** An agent cursor shows where computer use acts; on unless turned off [D956]. */
+  computer_cursor: boolean;
   /** The models starred in the model picker, as `<agent>/<id>`. */
   models_starred: string[];
 };

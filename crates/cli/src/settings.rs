@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 11] = [
+const KEYS: [(&str, &[&str]); 12] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -45,6 +45,8 @@ const KEYS: [(&str, &[&str]); 11] = [
     ("local_links_in", &["brigadier", "system"]),
     // Agents may use the apps on this Mac; off until the user turns it on [D911, D912].
     ("computer_use", SWITCH_OFF),
+    // An agent cursor shows where computer use acts; on unless turned off [D956].
+    (crate::computer::CURSOR, SWITCH),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.
@@ -192,6 +194,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             saved[key.as_str()] = value.as_str().into();
             save(data, saved)?;
+            if key == crate::computer::CURSOR {
+                crate::computer::cursor_switched(data);
+            }
         }
         [_, agent, name, on] if agent == "agent" && adapters::get(name).is_some() => {
             let off = saved["agents_off"].as_array_mut().unwrap();

@@ -278,7 +278,27 @@ pub(super) fn press(
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
     let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
-    let before: Vec<u64> = windows(data, s.pid, here)?.iter().map(id).collect();
+    let listed = windows(data, s.pid, here)?;
+    let before: Vec<u64> = listed.iter().map(id).collect();
+    // A menu is pressed by pid, past Cua [D928]: its cursor glides to the window's title bar, in
+    // screen points, which moves only the cursor [D956].
+    if let Some(b) = listed
+        .iter()
+        .find(|w| id(w) == s.window)
+        .map(|w| &w["bounds"])
+    {
+        let x = b["x"].as_f64().unwrap_or(0.0) + b["width"].as_f64().unwrap_or(0.0) / 2.0;
+        let y = b["y"].as_f64().unwrap_or(0.0) + 14.0;
+        let _ = call(
+            data,
+            "move_cursor",
+            json!({"x": x, "y": y, "session": me}),
+            here,
+        );
+        if !here() {
+            return Err(refuse("Stopped."));
+        }
+    }
     what["pid"] = s.pid.into();
     what["no_paste"] = (!s.secure.is_empty()).into();
     let read_again = format!("`brigadier computer read {}` shows its menus.", s.app);

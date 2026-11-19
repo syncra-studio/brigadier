@@ -96,8 +96,8 @@ pub fn turn_ended(id: &str) {
     }
 }
 
-pub(super) fn held() -> bool {
-    lock(&HOLDER).is_some()
+pub(super) fn holder() -> Option<String> {
+    lock(&HOLDER).clone()
 }
 
 pub(super) fn release_all() {

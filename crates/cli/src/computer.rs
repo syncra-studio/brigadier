@@ -28,6 +28,8 @@ const CALL_WAIT: Duration = Duration::from_secs(20);
 const RECHECK: Duration = Duration::from_secs(4);
 /// The setting, off until the user turns it on [D911, D912].
 const SETTING: &str = "computer_use";
+/// The agent cursor's setting, on unless the user turns it off [D956].
+pub const CURSOR: &str = "computer_cursor";
 /// Where `brigadierd --install` writes the path of the bundle's helper (install.rs).
 pub const HELPER_FILE: &str = "computer-helper";
 
@@ -41,6 +43,8 @@ struct Link {
     waiting: HashMap<u64, Sender<Value>>,
     /// The driver answered `initialize`.
     ready: bool,
+    /// Why this helper runs with no agent cursor, when it said so [D956].
+    no_cursor: Option<String>,
 }
 
 #[derive(Default)]
@@ -51,6 +55,8 @@ struct Hub {
     launched: Mutex<Option<Instant>>,
     /// The grants as the driver last said: Accessibility, Screen Recording.
     grants: Mutex<Option<(bool, bool)>>,
+    /// The sessions whose agent cursor was last told to hide [D956].
+    hidden: Mutex<std::collections::HashSet<String>>,
 }
 
 static HUB: LazyLock<Hub> = LazyLock::new(Hub::default);
@@ -93,13 +99,20 @@ pub fn helper(conn: u64, out: Sender<String>, pid: i32) {
 
 /// A line the driver answered, through the helper on `conn`; a replaced helper's late answers go.
 pub fn reply(conn: u64, answer: Value) {
-    let Some(id) = answer["id"].as_u64() else {
-        return;
-    };
     let mut link = lock(&HUB.link);
     if link.conn != conn {
         return;
     }
+    // Its one notice: Cua's private worker didn't start, so no cursor shows [D956].
+    if answer["method"] == "brigadier/cursor" {
+        let why = answer["params"]["error"].as_str().unwrap_or("").to_string();
+        eprintln!("brigadierd: computer use runs without its agent cursor: {why}");
+        link.no_cursor = Some(why);
+        return;
+    }
+    let Some(id) = answer["id"].as_u64() else {
+        return;
+    };
     if let Some(to) = link.waiting.remove(&id) {
         let _ = to.send(answer);
     }
@@ -162,6 +175,13 @@ pub(crate) fn tool(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Result<Value, String>, Fail> {
     ready(data)?;
+    if let Some(session) = args.get("session").filter(|_| name != SHOW_CURSOR) {
+        sync_cursor(data, session, cancel);
+        // The caller went while it waited: the action isn't sent.
+        if cancel() {
+            return Err(Fail::NotSent("Stopped.".into()));
+        }
+    }
     let answer = send(
         "tools/call",
         json!({"name": name, "arguments": args}),
@@ -280,6 +300,53 @@ pub(crate) fn on(data: &Path) -> bool {
     crate::settings::get(data, SETTING) == "true"
 }
 
+/// Cua's switch for one session's agent cursor.
+const SHOW_CURSOR: &str = "set_agent_cursor_enabled";
+
+fn cursor(data: &Path) -> bool {
+    crate::settings::get(data, CURSOR) == "true"
+}
+
+/// Show cursor was switched: the session using the computer now sees it at once [D956]. Never
+/// starts the helper for it.
+pub(crate) fn cursor_switched(data: &Path) {
+    let Some(me) = verbs::holder() else { return };
+    if !on(data) || !lock(&HUB.link).ready {
+        return;
+    }
+    let data = data.to_path_buf();
+    std::thread::spawn(move || sync_cursor(&data, &json!(me), &|| false));
+}
+
+/// Cua's cursor for `session` as Show cursor says [D956]. Cua's sessions forget a hidden cursor
+/// after 5 minutes idle, so a hide goes with each call; a show goes once, after a hide.
+fn sync_cursor(data: &Path, session: &Value, cancel: &dyn Fn() -> bool) {
+    let show = cursor(data);
+    let key = session.as_str().unwrap_or("").to_string();
+    {
+        let mut hidden = lock(&HUB.hidden);
+        match show {
+            true if !hidden.remove(&key) => return,
+            true => {}
+            false => {
+                hidden.insert(key);
+            }
+        }
+    }
+    let args = json!({"session": session, "enabled": show});
+    let _ = send(
+        "tools/call",
+        json!({"name": SHOW_CURSOR, "arguments": args}),
+        CALL_WAIT,
+        cancel,
+    );
+}
+
+/// Session `id` is using the computer now: it holds the lock [D907].
+pub fn holds(id: &str) -> bool {
+    verbs::holder().as_deref() == Some(id)
+}
+
 /// The grants as the driver says now: Accessibility, Screen Recording. A missing one starts the
 /// helper afresh now and then, as macOS answers each process once.
 pub(crate) fn grants(data: &Path) -> Result<(bool, bool), Fail> {
@@ -291,7 +358,7 @@ pub(crate) fn grants(data: &Path) -> Result<(bool, bool), Fail> {
     *lock(&HUB.grants) = Some(both);
     let stale = lock(&HUB.launched).is_none_or(|at| at.elapsed() > RECHECK);
     // A restart drops the driver's reads, so never under a session that holds the computer.
-    if !(both.0 && both.1) && stale && !verbs::held() {
+    if !(both.0 && both.1) && stale && verbs::holder().is_none() {
         let _ = launch(data, None);
     }
     Ok(both)
@@ -369,8 +436,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 fn status(data: &Path) -> Value {
     let last = *lock(&HUB.grants);
+    let no_cursor = lock(&HUB.link).no_cursor.clone();
     let reply = |helper: &str, grants: Option<(bool, bool)>, error: Option<String>| {
-        let mut r = json!({"ok": true, "on": on(data), "helper": helper, "accessibility": word(grants.map(|g| g.0)), "screenRecording": word(grants.map(|g| g.1))});
+        let mut r = json!({"ok": true, "on": on(data), "helper": helper, "accessibility": word(grants.map(|g| g.0)), "screenRecording": word(grants.map(|g| g.1)), "noCursor": no_cursor});
         if let Some(e) = error {
             r["error"] = e.into();
         }
