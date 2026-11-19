@@ -40,6 +40,7 @@ import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments"
 import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
+import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
@@ -468,6 +469,7 @@ function Keys({
   useEffect(
     () =>
       mergeRegister(
+        registerArrowKeys(editor),
         editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
           if (dirtyElements.size > 0 || dirtyLeaves.size > 0) changed(editorState.read($read));
         }),
