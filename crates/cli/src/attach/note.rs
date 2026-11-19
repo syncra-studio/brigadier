@@ -66,6 +66,10 @@ fn folder_of(data: &Path, owner: &str, args: &[String]) -> io::Result<PathBuf> {
         flag(args, "--project").map(String::from)
     } else {
         let spec = core::load(data, owner)?;
+        // A note's side chat: its note's folder, which no project's root holds [D922].
+        if let Some(dir) = spec.opts.get("note").and_then(|n| Path::new(n).parent()) {
+            return Ok(dir.to_path_buf());
+        }
         projects::of(
             &spec,
             &projects::list(data)?,

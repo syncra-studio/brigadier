@@ -260,8 +260,6 @@ fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
         .collect())
 }
 
-/// A mentioned session's latest messages, as the old app's: newest first until 30 or 24 kB, then
-/// back in order [D2021].
 /// A mentioned note's text, from its project's notes or the shared ones, cut to a chat's length.
 fn note(data: &Path, id: &str, title: &str) -> String {
     let projects = (fs::read_dir(data.join("projects"))
@@ -271,7 +269,11 @@ fn note(data: &Path, id: &str, title: &str) -> String {
     .map(|e| e.path().join("notes"));
     let found = (check_id(id).is_ok())
         .then(|| {
-            (projects.chain([data.join("notes")]))
+            // Then where one still waits to move, as its list shows it [D922].
+            let waiting = (crate::ids(data).into_iter())
+                .map(|s| session_dir(data, &s).join("notes"))
+                .chain([data.join("home-notes")]);
+            (projects.chain([data.join("notes")]).chain(waiting))
                 .map(|dir| dir.join(format!("{id}.md")))
                 .find_map(|path| fs::read_to_string(&path).ok().map(|text| (path, text)))
         })
@@ -293,6 +295,8 @@ fn note(data: &Path, id: &str, title: &str) -> String {
     )
 }
 
+/// A mentioned session's latest messages, as the old app's: newest first until 30 or 24 kB, then
+/// back in order [D2021].
 fn conversation(data: &Path, id: &str, title: &str) -> String {
     let mut said: Vec<String> = vec![];
     if check_id(id).is_ok() {

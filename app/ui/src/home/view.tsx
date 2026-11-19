@@ -14,6 +14,7 @@ import { openThread } from "../daemon";
 import { BrigadierMark } from "../onboarding/mark";
 import { daemonRun } from "../session/composer";
 import { HOME_DRAFT } from "../session/draft";
+import { usePutBack } from "../session/side";
 import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
 import { BranchPicker, type RepoState } from "./branch";
@@ -105,6 +106,15 @@ export function HomeView(props: HomeProps) {
   const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   // Asked once the project and model are known, and again once the project is trusted, whose folder it then reads [D178].
   const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: !projects ? undefined : noModel ? null : props.model?.provider, project: project?.id, fresh: project?.trusted, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
+  // Put in from elsewhere (a note's selection), above what's typed, as a session's composer takes it.
+  usePutBack(HOME_DRAFT, (message, above, draft) => {
+    const now = above ? (field.current?.parts() ?? []) : [];
+    const back = draft?.parts ?? [message];
+    field.current?.set(isEmpty({ parts: now, attachmentIds: [] }) ? back : [...back, "\n\n", ...now]);
+    if (draft) files.restore(draft.attachmentIds);
+    setEmpty(isEmpty({ parts: back, attachmentIds: draft?.attachmentIds ?? [] }));
+    field.current?.focus();
+  });
   const send = (parts: Draft["parts"]) => {
     const tiles = files.tiles();
     if (isEmpty({ parts, attachmentIds: tiles })) return;

@@ -165,8 +165,9 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
       return null;
     });
   const showList = (on: boolean) => ((listing = on), setList(on));
-  // A note picked or made in the column takes this tab's place, as Apple Notes' list does.
-  const show = (id: string) => (keep(), replaceTab(owner, tabId, "note", id));
+  // A note picked or made in the column takes this tab's place, as Apple Notes' list does, once this one's edit is kept:
+  // one not kept stays here with its banner.
+  const show = (id: string) => (keep(), void writes.current.then(() => pending.current === null && replaceTab(owner, tabId, "note", id)));
   return (
     <NoteWithChat owner={owner} note={note} offline={offline} onChat={(chat) => setRead((was) => (was && "revision" in was ? { ...was, chat } : was))}>
       {(ask) => (
