@@ -48,6 +48,21 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
         true => naked(spec),
         false => library(spec, &mut open),
     };
+    // The ChatGPT app's computer-use plugins (`<plugin>@<marketplace>` in its plugin cache) go
+    // around `brigadier computer` and its worker hand-off: off for this thread only [D943].
+    let cache = super::super::cli_home(spec, ".codex", "plugins/cache");
+    for market in (std::fs::read_dir(cache).into_iter()).flatten().flatten() {
+        let plugins = (std::fs::read_dir(market.path()).into_iter())
+            .flatten()
+            .flatten();
+        let market = market.file_name();
+        for name in plugins.map(|p| p.file_name()) {
+            let (name, market) = (name.to_string_lossy(), market.to_string_lossy());
+            if name.contains("computer-use") {
+                open["config"][format!("plugins.{name}@{market}.enabled")] = false.into();
+            }
+        }
+    }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
     let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
     open["config"]["mcp_servers.brigadier.command"] = me.display().to_string().into();
