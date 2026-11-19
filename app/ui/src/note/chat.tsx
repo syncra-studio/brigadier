@@ -90,26 +90,25 @@ export function NoteWithChat({ owner, note, offline, onChat, children }: { owner
           </div>
         )}
       </div>
-      {view === "split" && (
-        <>
-          <Divider share={share} row={row} onShare={(next) => set({ share: Math.min(MAX_SHARE, Math.max(MIN_SHARE, next)) })} />
-          <div data-slot="note-chat" className="flex min-h-0 min-w-0 flex-1 flex-col border-s border-border">
-            <div data-slot="note-chat-header" className="flex h-titlebar shrink-0 items-center gap-1 px-2">
-              <ChatTitle id={id} />
-              <ChatHistory owner={owner} id={id} onOpen={(reopen) => open({ reopen })} />
-              <TooltipIconButton tooltip="New chat" onClick={() => open("--new")}>
-                <ChatCompose />
-              </TooltipIconButton>
-              <TooltipIconButton tooltip="Minimize" onClick={() => set({ view: "minimized" })}>
-                <MinimizeRight />
-              </TooltipIconButton>
-              <TooltipIconButton tooltip="Hide chat" onClick={() => set({ view: "hidden" })}>
-                <X />
-              </TooltipIconButton>
-            </div>
-            {chat && "error" in chat ? <ErrorLine size="sm" error={chat.error} className="p-4" /> : id && <ChatThread key={id} id={id} offline={offline} />}
+      {view === "split" && <Divider share={share} row={row} onShare={(next) => set({ share: Math.min(MAX_SHARE, Math.max(MIN_SHARE, next)) })} />}
+      {/* Folded or hidden, a made chat stays drawn out of sight at its width, following its thread, so it shows with the split at once [D912]. */}
+      {(view === "split" || id) && (
+        <div data-slot="note-chat" data-share={share} inert={view !== "split"} className={cx("flex min-h-0 min-w-0 flex-col border-s border-border", view === "split" ? "flex-1" : "note-share-width invisible absolute inset-y-0 end-0")}>
+          <div data-slot="note-chat-header" className="flex h-titlebar shrink-0 items-center gap-1 px-2">
+            <ChatTitle id={id} />
+            <ChatHistory owner={owner} id={id} onOpen={(reopen) => open({ reopen })} />
+            <TooltipIconButton tooltip="New chat" onClick={() => open("--new")}>
+              <ChatCompose />
+            </TooltipIconButton>
+            <TooltipIconButton tooltip="Minimize" onClick={() => set({ view: "minimized" })}>
+              <MinimizeRight />
+            </TooltipIconButton>
+            <TooltipIconButton tooltip="Hide chat" onClick={() => set({ view: "hidden" })}>
+              <X />
+            </TooltipIconButton>
           </div>
-        </>
+          {chat && "error" in chat ? <ErrorLine size="sm" error={chat.error} className="p-4" /> : id && <ChatThread key={id} id={id} offline={offline} />}
+        </div>
       )}
       {view === "minimized" && <ChatStrip id={id} onClick={() => open()} />}
     </div>
@@ -167,7 +166,7 @@ function ChatStrip({ id, onClick }: { id: string | null; onClick: () => void }) 
   const row = useChatRow(id);
   const title = row?.title || "Chat";
   return (
-    <button type="button" data-slot="note-chat-strip" aria-label={`Show chat: ${title}${row?.works ? ", working" : ""}`} onClick={onClick} className="flex w-9 shrink-0 flex-col items-center gap-2 border-s border-border py-3 text-xs text-muted-foreground hover:bg-fill">
+    <button type="button" data-slot="note-chat-strip" aria-label={`Show chat: ${title}${row?.works ? ", working" : ""}`} onClick={onClick} className="flex w-9 shrink-0 cursor-pointer flex-col items-center gap-2 border-s border-border py-3 text-xs text-muted-foreground hover:bg-fill">
       <Chat className="size-4" />
       <span className="min-h-0 truncate note-vertical">{title}</span>
       {row?.works && <span className="note-vertical">Working…</span>}

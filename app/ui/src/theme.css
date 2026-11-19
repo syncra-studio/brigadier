@@ -1143,6 +1143,11 @@
 @utility note-share {
   flex: 0 0 calc(attr(data-share type(<number>), 1) * 100%);
 }
+/* A note's folded chat, kept drawn out of sight at the width it opens to: its share less the divider's (w-resize-handle,
+   -mx-1), so its thread wraps the same and shows unmoved [D912]. */
+@utility note-share-width {
+  width: calc(attr(data-share type(<number>), 0.5) * 100% - var(--spacing-resize-handle) + var(--spacing) * 2);
+}
 
 /* A Browser tab's page laid out as a device, at the size it shows (browser/devtools.tsx); and DevTools' share beside
    or below it, along its frame's direction. */
