@@ -18,7 +18,7 @@ export function Line({ icon, end, onClick, className, children }: { icon?: React
       {...(onClick && { type: "button" as const, onClick })}
       className={cx(
         "relative isolate flex min-h-7 w-full min-w-0 items-center gap-2 py-0.5 text-start text-label font-prose",
-        onClick && "cursor-pointer before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-muted focus-visible:focus-ring",
+        onClick && "cursor-pointer before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-fill focus-visible:focus-ring",
         className,
       )}
     >

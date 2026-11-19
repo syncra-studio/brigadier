@@ -112,7 +112,7 @@ export function QuickPick({ place, placeholder, items, off = null, search = true
               onClick={() => choose(item)}
               className={cx(
                 "mt-1 flex cursor-pointer flex-col rounded-control px-2 py-1 aria-disabled:cursor-not-allowed aria-disabled:opacity-disabled",
-                index === picked && "bg-muted",
+                index === picked && "bg-fill",
               )}
             >
               <span className="flex min-w-0 items-center gap-1.5 text-sm">

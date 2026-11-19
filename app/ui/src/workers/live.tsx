@@ -412,7 +412,7 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
       <Line
         onClick={() => open(worker.id)}
         // The pointer on its controls is still on the row: the wash stays.
-        className={cx(controls && "group-hover/row:before:bg-muted group-has-focus-visible/row:before:bg-muted")}
+        className={cx(controls && "group-hover/row:before:bg-fill group-has-focus-visible/row:before:bg-fill")}
         icon={<WorkerGlyph id={worker.id} className="size-4" />}
         end={
           (changed || Boolean(worker.repos?.length)) && (
