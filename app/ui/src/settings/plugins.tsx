@@ -48,6 +48,8 @@ export type Item = {
   with?: string | null;
   /** Found on this machine [D721]: where ("In Claude Code's settings"), and the skillset of its source [D720]. */
   from?: string | null;
+  /** Project ids where it was found; "" means at home, independent of where it is switched on. */
+  found?: string[] | null;
   set?: string | null;
 };
 /** One of Browse's catalog, shipped with Brigadier [D566, D569]: a service (its server, and the skills that come with it) or a skill from a GitHub repo; `installed` the library's key for it. */

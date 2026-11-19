@@ -14,7 +14,7 @@ import { showToast } from "../components/toast";
 import { ProfileDisc } from "../browser/profile-mark";
 import { useDefaultProfile, useProfiles } from "../browser/profiles";
 import { useDaemon } from "../daemon";
-import { ArrowUpRight, Copy, FolderOpen, Plus, Trash } from "../icons";
+import { Copy, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
 import { openSettings } from "../settings/shell";
@@ -46,7 +46,7 @@ export type SettingsSource = {
   repos(folder: string): Promise<string[]>;
   /** The Plugins library, and a change to where one is on [D2043]. */
   plugins(): Promise<Plugins>;
-  setScope(key: string, scope: Scope): Promise<Plugins>;
+  setScope(key: string, scope: Scope, on: boolean): Promise<Plugins>;
 };
 
 export const daemonSettings: SettingsSource = {
@@ -56,7 +56,7 @@ export const daemonSettings: SettingsSource = {
   accounts: (id, local) => run(["projects", "accounts", id, ...(local ? ["--local"] : [])]) as Promise<GithubAccounts>,
   repos: async (folder) => ((await run(["projects", "inspect", folder])).check?.repos ?? []) as string[],
   plugins: () => run(["plugins"]) as Promise<Plugins>,
-  setScope: (key, scope) => run(["plugins", "set", key, JSON.stringify({ scope })]) as Promise<Plugins>,
+  setScope: (key, scope, on) => run(["plugins", "set", key, JSON.stringify({ scope, on })]) as Promise<Plugins>,
 };
 
 /**
@@ -67,8 +67,7 @@ export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; ur
 
 const GROUPS = [
   { value: "general", label: "General" },
-  { value: "sessions", label: "New sessions" },
-  { value: "accounts", label: "Accounts" },
+  { value: "config", label: "Config" },
   { value: "plugins", label: "Plugins" },
 ] as const;
 type GroupKey = (typeof GROUPS)[number]["value"];
@@ -138,6 +137,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   const [checking, setChecking] = useState(true);
   const [repos, setRepos] = useState<string[] | null>(null);
   const [plugins, setPlugins] = useState<Plugins | null>(null);
+  const [keptPlugins, setKeptPlugins] = useState<Set<string>>(() => new Set());
   const [files, setFiles] = useState(project.include);
   const [setup, setSetup] = useState(project.setup);
   useEffect(() => setFiles(project.include), [project.include.join("\n")]);
@@ -192,11 +192,13 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   // On here or not: from everywhere, it stays on in every other project.
   const scopeHere = (item: Item, on: boolean) => {
     const others = plugins!.projects.map((each) => each.id).filter((each) => each !== project.id);
-    const now = "all" in item.scope ? [...others, project.id] : item.scope.projects;
+    const now = !item.on ? [] : "all" in item.scope ? [...others, project.id] : item.scope.projects;
     const scope: Scope = on ? { projects: [...now.filter((each) => each !== project.id), project.id] } : { projects: now.filter((each) => each !== project.id) };
-    setPlugins({ ...plugins!, items: plugins!.items.map((each) => (each.key === item.key ? { ...each, scope } : each)) });
+    // A switch never removes its row until this project page is left [D871].
+    setKeptPlugins((kept) => new Set(kept).add(item.key));
+    setPlugins({ ...plugins!, items: plugins!.items.map((each) => (each.key === item.key ? { ...each, scope, on: item.on || on } : each)) });
     setErrors((was) => ({ ...was, [item.key]: null }));
-    source.setScope(item.key, scope).then(setPlugins, (cause) => {
+    source.setScope(item.key, scope, item.on || on).then(setPlugins, (cause) => {
       setPlugins({ ...plugins! });
       setErrors((was) => ({ ...was, [item.key]: errorText(cause) }));
     });
@@ -206,7 +208,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   const fallback = useDefaultProfile();
   const account = project.github_account ?? "";
   const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : known ? "Can see this repository" : "Can't see this repository");
-  const library = plugins?.items.filter((item) => item.on) ?? [];
+  const library = plugins?.items.filter((item) => onHere(item, project.id) || ("projects" in item.scope && item.scope.projects.includes(project.id)) || item.found?.includes(project.id) || keptPlugins.has(item.key)) ?? [];
 
   // Each group's rows: [key, label, words searched, row].
   const rows: Record<GroupKey, [string, string, ReactNode][]> = {
@@ -248,8 +250,54 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
             ] as [string, string, ReactNode],
           ]
         : []),
+      ...(github?.github
+        ? [
+            [
+              "github account",
+              "GitHub account",
+              <Row label="GitHub account" line={github.ssh && account ? `Its pull requests and sessions use it; pushes over SSH use your SSH key` : "Its pull requests and sessions use it"} error={errors.github_account}>
+                <Select
+                  label="GitHub account"
+                  value={account}
+                  align="end"
+                  className="w-full"
+                  onChange={(login) => save("github_account", { github_account: login || null }, ["--github-account", login])}
+                  options={[
+                    {
+                      value: "",
+                      label: "Automatic",
+                      shown: github.auto ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
+                      hint: github.auto ? `@${github.auto}, the account that can see ${github.repo}` : checking ? "Checking…" : `None of your accounts can see ${github.repo}`,
+                    },
+                    ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
+                    // A pick gh has since signed out of stays shown, so it can be seen and changed.
+                    ...(account && !github.logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: "Not signed in to gh" }] : []),
+                  ]}
+                />
+              </Row>,
+            ] as [string, string, ReactNode],
+          ]
+        : []),
+      [
+        "browser profile",
+        "Browser profile",
+        <Row label="Browser profile" line="Its sessions' browser tabs open signed in as this profile; a tab can still switch" error={errors.browser_profile}>
+          <Select
+            label="Browser profile"
+            // A deleted profile is Automatic, as Rust resolves it [D769].
+            value={profiles.some((each) => each.id === project.browser_profile) ? project.browser_profile! : ""}
+            align="end"
+            className="w-full"
+            onChange={(id) => save("browser_profile", { browser_profile: id || null }, ["--browser-profile", id])}
+            options={[
+              { value: "", label: "Automatic", shown: <Profile {...fallback} before="Automatic · " />, hint: `${fallback.name}, the default profile` },
+              ...profiles.map((each) => ({ value: each.id, label: <Profile {...each} /> })),
+            ]}
+          />
+        </Row>,
+      ],
     ],
-    sessions: [
+    config: [
       [
         "trust",
         "Trust this folder",
@@ -302,54 +350,6 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
         </Row>,
       ],
     ],
-    accounts: [
-      ...(github?.github
-        ? [
-            [
-              "github account",
-              "GitHub account",
-              <Row label="GitHub account" line={github.ssh && account ? `Its pull requests and sessions use it; pushes over SSH use your SSH key` : "Its pull requests and sessions use it"} error={errors.github_account}>
-                <Select
-                  label="GitHub account"
-                  value={account}
-                  align="end"
-                  className="w-full"
-                  onChange={(login) => save("github_account", { github_account: login || null }, ["--github-account", login])}
-                  options={[
-                    {
-                      value: "",
-                      label: "Automatic",
-                      shown: github.auto ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
-                      hint: github.auto ? `@${github.auto}, the account that can see ${github.repo}` : checking ? "Checking…" : `None of your accounts can see ${github.repo}`,
-                    },
-                    ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
-                    // A pick gh has since signed out of stays shown, so it can be seen and changed.
-                    ...(account && !github.logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: "Not signed in to gh" }] : []),
-                  ]}
-                />
-              </Row>,
-            ] as [string, string, ReactNode],
-          ]
-        : []),
-      [
-        "browser profile",
-        "Browser profile",
-        <Row label="Browser profile" line="Its sessions' browser tabs open signed in as this profile; a tab can still switch" error={errors.browser_profile}>
-          <Select
-            label="Browser profile"
-            // A deleted profile is Automatic, as Rust resolves it [D769].
-            value={profiles.some((each) => each.id === project.browser_profile) ? project.browser_profile! : ""}
-            align="end"
-            className="w-full"
-            onChange={(id) => save("browser_profile", { browser_profile: id || null }, ["--browser-profile", id])}
-            options={[
-              { value: "", label: "Automatic", shown: <Profile {...fallback} before="Automatic · " />, hint: `${fallback.name}, the default profile` },
-              ...profiles.map((each) => ({ value: each.id, label: <Profile {...each} /> })),
-            ]}
-          />
-        </Row>,
-      ],
-    ],
     plugins: library.map((item): [string, string, ReactNode] => [
       item.key,
       `${item.name} ${item.description}`,
@@ -387,11 +387,10 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
             ))}
             {key === "plugins" && (
               <li className="flex min-h-12 items-center gap-3 px-2 text-xs text-muted-foreground">
-                {plugins !== null && library.length === 0 && <span>No MCP servers or skills yet.</span>}
+                {plugins !== null && library.length === 0 && <span>No plugins for this project yet.</span>}
                 <ErrorLine error={errors.plugins} />
-                <Button variant="ghost" size="sm" className="ms-auto" onClick={() => openSettings("plugins")}>
-                  Add or manage in Settings › Plugins
-                  <ArrowUpRight />
+                <Button variant="link" size="inline" className="ms-auto" onClick={() => openSettings("plugins")}>
+                  Manage all plugins in Settings › Plugins
                 </Button>
               </li>
             )}
