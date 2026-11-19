@@ -4,10 +4,11 @@
 
 use super::prs::mark;
 use super::view::{keep, read_kept};
-use super::{Kind, NO_GH, Pr, err, gh, graphql};
+use super::{Kind, NO_GH, Pr, Repo, err, gh, graphql};
 use crate::adapters::iso_ms;
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -42,43 +43,12 @@ impl Pr {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be searched.");
         };
-        let Some(gh) = gh(repo, self.account.as_deref()) else {
-            return err(NO_GH);
-        };
-        // A folder project's several repositories in one search, each row saying whose it is [D780].
-        let many = self.scope.len() > 1;
-        let repos = if many {
-            &self.scope[..]
+        let read = self.search_hosts(repo, queries, after);
+        let home = if self.scope.len() > 1 {
+            repo.at("")
         } else {
-            std::slice::from_ref(repo)
+            repo.clone()
         };
-        let repos: Vec<String> = repos.iter().map(|r| format!("repo:{}", r.path)).collect();
-        let scope = format!("{} is:pr", repos.join(" "));
-        // No repository is "home" then, so `mark` names every row's.
-        let home = if many { repo.at("") } else { repo.clone() };
-        let from = after
-            .map(|a| format!(", after: {}", json!(a)))
-            .unwrap_or_default();
-        let (mut vars, mut declared, mut asks) = (Vec::new(), Vec::new(), String::new());
-        for (i, query) in queries.iter().enumerate() {
-            let sort = if query.contains("sort:") {
-                ""
-            } else {
-                " sort:updated-desc"
-            };
-            vars.push((format!("q{i}"), format!("{scope} {query}{sort}")));
-            declared.push(format!("$q{i}: String!"));
-            asks.push_str(&format!(" l{i}: search(query: $q{i}, type: ISSUE, first: {PAGE}{from}) {{ pageInfo {{ endCursor hasNextPage }} nodes {{ ...R }} }}"));
-        }
-        let ask = format!(
-            "query({}) {{{asks} }} fragment R on PullRequest {{ {ROW} }}",
-            declared.join(", ")
-        );
-        let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let read = graphql(&gh, repo, &ask, &pairs);
-        if let Ok((data, _)) = &read {
-            super::avatars::keep(&self.avatars, data);
-        }
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let found: Vec<Value> = (queries.iter().enumerate())
@@ -120,6 +90,203 @@ impl Pr {
         let kept: Vec<Value> = found.iter().cloned().chain(older).take(KEPT).collect();
         keep(&path(&self.dir), &json!({"queries": kept}));
         Ok(found)
+    }
+
+    /// The existing single-server search, with that server's account [D631, D792].
+    fn search_host(
+        &self,
+        repos: &[&Repo],
+        queries: &[&str],
+        after: Option<&str>,
+        many_hosts: bool,
+    ) -> Result<(Value, Option<String>), String> {
+        let repo = repos[0];
+        let gh = gh(repo, self.account.as_deref()).ok_or(NO_GH)?;
+        let repos: Vec<String> = repos.iter().map(|r| format!("repo:{}", r.path)).collect();
+        let scope = format!("{} is:pr", repos.join(" "));
+        let from = after
+            .map(|a| format!(", after: {}", json!(a)))
+            .unwrap_or_default();
+        let (mut vars, mut declared, mut asks) = (Vec::new(), Vec::new(), String::new());
+        let cursors = if many_hosts { "edges { cursor }" } else { "" };
+        for (i, query) in queries.iter().enumerate() {
+            let sort = if query.contains("sort:") {
+                ""
+            } else {
+                " sort:updated-desc"
+            };
+            vars.push((format!("q{i}"), format!("{scope} {query}{sort}")));
+            declared.push(format!("$q{i}: String!"));
+            asks.push_str(&format!(" l{i}: search(query: $q{i}, type: ISSUE, first: {PAGE}{from}) {{ pageInfo {{ endCursor hasNextPage }} {cursors} nodes {{ ...R }} }}"));
+        }
+        let counts = if many_hosts {
+            "comments { totalCount } reactions { totalCount } reactionGroups { content users { totalCount } }"
+        } else {
+            ""
+        };
+        let ask = format!(
+            "query({}) {{{asks} }} fragment R on PullRequest {{ {ROW} {counts} }}",
+            declared.join(", ")
+        );
+        let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        let read = graphql(&gh, repo, &ask, &pairs);
+        if let Ok((data, _)) = &read {
+            super::avatars::keep(&self.avatars, data);
+        }
+        read
+    }
+
+    fn search_hosts(
+        &self,
+        repo: &Repo,
+        queries: &[&str],
+        after: Option<&str>,
+    ) -> Result<(Value, Option<String>), String> {
+        let mut hosts: BTreeMap<&str, Vec<&Repo>> = BTreeMap::new();
+        for repo in self
+            .scope
+            .iter()
+            .chain(self.scope.is_empty().then_some(repo))
+        {
+            hosts.entry(&repo.host).or_default().push(repo);
+        }
+        if hosts.len() == 1 {
+            return self.search_host(hosts.values().next().unwrap(), queries, after, false);
+        }
+        let cursors: Value = after
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|_| "Refresh pull requests to search every host.".to_string())?
+            .unwrap_or_else(|| {
+                hosts
+                    .keys()
+                    .map(|host| (host.to_string(), Value::Null))
+                    .collect()
+            });
+        if !cursors.as_object().is_some_and(|map| {
+            !map.is_empty()
+                && map.iter().all(|(host, cursor)| {
+                    hosts.contains_key(host.as_str()) && (cursor.is_null() || cursor.is_string())
+                })
+        }) {
+            return Err("Refresh pull requests to search every host.".into());
+        }
+        let mut reads = Vec::new();
+        for (host, repos) in &hosts {
+            let Some(cursor) = cursors.get(*host) else {
+                continue;
+            };
+            reads.push((
+                *host,
+                self.search_host(repos, queries, cursor.as_str(), true),
+            ));
+        }
+        // Keep the previous complete page on failure; never advance another host past missing rows.
+        let mut data = json!({});
+        let mut errors = Vec::new();
+        for (i, query) in queries.iter().enumerate() {
+            let mut lists = Vec::new();
+            for (host, read) in &reads {
+                let (read, partial) = read.as_ref().map_err(|why| format!("{host}: {why}"))?;
+                if let Some(why) = partial {
+                    errors.push(format!("{host}: {why}"));
+                }
+                lists.push((*host, &read[format!("l{i}")]));
+            }
+            data[format!("l{i}")] = merge(&lists, query, &cursors);
+        }
+        errors.sort();
+        errors.dedup();
+        Ok((data, (!errors.is_empty()).then(|| errors.join("\n"))))
+    }
+}
+
+/// Merge at most one page, remembering only the last consumed cursor on each host.
+fn merge(lists: &[(&str, &Value)], query: &str, cursors: &Value) -> Value {
+    let mut rows: Vec<_> = lists
+        .iter()
+        .flat_map(|(host, list)| {
+            list["nodes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .filter(|(_, pr)| pr["number"].is_u64())
+                .map(move |(i, pr)| (*host, i, pr, &list["edges"][i]["cursor"]))
+        })
+        .collect();
+    let sort = query
+        .split_whitespace()
+        .find_map(|word| word.strip_prefix("sort:"))
+        .unwrap_or("updated-desc");
+    let ascending = sort.ends_with("-asc");
+    let by = sort
+        .strip_suffix("-asc")
+        .or_else(|| sort.strip_suffix("-desc"))
+        .unwrap_or(sort);
+    rows.sort_by(|a, b| {
+        let order = sort_key(a.2, by, a.1).cmp(&sort_key(b.2, by, b.1));
+        if ascending { order } else { order.reverse() }
+    });
+    let mut next = cursors.clone();
+    let mut used = BTreeMap::new();
+    let nodes: Vec<Value> = rows
+        .into_iter()
+        .take(PAGE as usize)
+        .map(|(host, _, pr, cursor)| {
+            next[host] = cursor.clone();
+            *used.entry(host).or_insert(0) += 1;
+            pr.clone()
+        })
+        .collect();
+    for (host, list) in lists {
+        let count = list["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|pr| pr["number"].is_u64())
+            .count();
+        if used.get(host).copied().unwrap_or(0) == count {
+            if list["pageInfo"]["hasNextPage"] == true {
+                next[*host] = list["pageInfo"]["endCursor"].clone();
+            } else {
+                next.as_object_mut().unwrap().remove(*host);
+            }
+        }
+    }
+    let more = next.as_object().is_some_and(|n| !n.is_empty());
+    json!({"nodes": nodes, "pageInfo": {"hasNextPage": more, "endCursor": more.then(|| next.to_string())}})
+}
+
+fn sort_key(pr: &Value, by: &str, rank: usize) -> u64 {
+    let comments = pr["comments"]["totalCount"].as_u64().unwrap_or(0);
+    let reactions = pr["reactions"]["totalCount"].as_u64().unwrap_or(0);
+    match by {
+        "created" => pr["createdAt"].as_str().and_then(iso_ms).unwrap_or(0),
+        "comments" => comments,
+        "reactions" => reactions,
+        "interactions" => comments + reactions,
+        // shortcut: relevance ranks are local to each server, until GitHub exposes comparable scores.
+        "relevance" => u64::MAX - rank as u64,
+        by if by.starts_with("reactions-") => {
+            let content = match by.trim_start_matches("reactions-") {
+                "+1" => "THUMBS_UP",
+                "-1" => "THUMBS_DOWN",
+                "smile" => "LAUGH",
+                "thinking_face" => "CONFUSED",
+                "heart" => "HEART",
+                "tada" => "HOORAY",
+                _ => "",
+            };
+            pr["reactionGroups"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|g| g["content"] == content)
+                .and_then(|g| g["users"]["totalCount"].as_u64())
+                .unwrap_or(0)
+        }
+        _ => pr["updatedAt"].as_str().and_then(iso_ms).unwrap_or(0),
     }
 }
 

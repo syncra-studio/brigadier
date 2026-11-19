@@ -316,14 +316,21 @@ fn key(row: &Value) -> Key {
 
 /// A row from a repository other than the session's names it, `owner/name` from its URL [D213].
 pub(super) fn mark(mut row: Value, repo: &Repo) -> Value {
-    let path = (row["url"].as_str())
+    let at = (row["url"].as_str())
         .and_then(|u| u.split_once("://"))
         .and_then(|(_, rest)| {
-            let mut parts = rest.split('/').skip(1);
-            Some(format!("{}/{}", parts.next()?, parts.next()?))
+            let mut parts = rest.split('/');
+            Some((
+                parts.next()?,
+                format!("{}/{}", parts.next()?, parts.next()?),
+            ))
         });
-    if let Some(path) = path.filter(|p| !p.eq_ignore_ascii_case(&repo.path)) {
-        row["repo"] = path.into();
+    if let Some((host, path)) = at {
+        if !host.eq_ignore_ascii_case(&repo.host) {
+            row["repo"] = format!("{host}/{path}").into();
+        } else if !path.eq_ignore_ascii_case(&repo.path) {
+            row["repo"] = path.into();
+        }
     }
     row
 }

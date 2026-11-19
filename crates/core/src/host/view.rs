@@ -68,9 +68,13 @@ pub fn tabbed(dir: &Path) -> Vec<(Option<String>, u64)> {
 }
 
 impl Pr {
-    /// The session's repository, or `other` on its server [D213], and gh as an account that reads it.
+    /// The session's repository, or `other` (optionally host-qualified), and its reading account.
     pub(super) fn gh_repo(&self, other: Option<&str>) -> io::Result<(Repo, Gh)> {
         let repo = (self.repo.as_ref()).map(|r| other.map_or_else(|| r.clone(), |o| r.at(o)));
+        let repo = match other.filter(|o| super::hosted_slug(o)) {
+            Some(other) => super::repo(&format!("https://{other}")),
+            None => repo,
+        };
         match repo
             .and_then(|r| Some((gh(&r, self.account.as_deref())?, r)))
             .map(|(gh, r)| (r, gh))

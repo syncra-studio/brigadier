@@ -134,21 +134,30 @@ pub fn project_of(data: &Path, path: &str) -> Option<String> {
 }
 
 /// A PR tab's target [D213]: `n` for the session's own repository's PR `n`, `owner/name#n` for
-/// another's on the same server.
+/// another's on the same server, or `host/owner/name#n` across servers [D792].
 pub fn pr_ref(target: &str) -> Option<(Option<String>, u64)> {
     let (repo, n) = match target.rsplit_once('#') {
         Some((repo, n)) => (Some(repo), n),
         None => (None, target),
     };
-    if repo.is_some_and(|r| !slug(r)) {
+    if repo.is_some_and(|r| !slug(r) && !hosted_slug(r)) {
         return None;
     }
     let number: u64 = n.parse().ok()?;
     (number.to_string() == n).then(|| (repo.map(String::from), number))
 }
 
+/// A cross-host PR target includes its server, keeping identical owner/name paths distinct.
+fn hosted_slug(path: &str) -> bool {
+    path.split_once('/').is_some_and(|(host, path)| {
+        host.split('.').all(|label| {
+            !label.is_empty() && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        }) && slug(path)
+    })
+}
+
 /// The host of a remote URL (https, ssh or scp-like), or None for a server it can't name.
-// shortcut: only the public services are known (proposed); a self-hosted GitLab, Gitea or
+// shortcut: public services and GitHub servers signed in through gh are known; a self-hosted GitLab, Gitea or
 // Forgejo reads as unknown and gets Push branch only, until a setting names its kind.
 pub fn repo(url: &str) -> Option<Repo> {
     let url = url.trim();
@@ -170,6 +179,7 @@ pub fn repo(url: &str) -> Option<Repo> {
         "bitbucket.org" => Some(Kind::Bitbucket),
         "gitea.com" => Some(Kind::Gitea),
         "codeberg.org" => Some(Kind::Forgejo),
+        _ if !accounts::logins(&accounts::GH, host).is_empty() => Some(Kind::GitHub),
         _ => None,
     };
     let mut host = host.to_ascii_lowercase();
@@ -212,7 +222,9 @@ impl Gh {
     fn command(&self) -> std::process::Command {
         let mut command = tool(&self.path);
         if let Some(token) = &self.token {
-            command.env("GH_TOKEN", token);
+            command
+                .env("GH_TOKEN", token)
+                .env("GH_ENTERPRISE_TOKEN", token);
         }
         command
     }
@@ -353,7 +365,7 @@ pub struct Pr {
     base_ref: String,
     pub base: String,
     pub repo: Option<Repo>,
-    /// A folder project's repositories on `repo`'s server, its Pull requests searching them all [D780].
+    /// A folder project's GitHub repositories, searched once per server [D780, D792].
     scope: Vec<Repo>,
     record: Option<std::path::PathBuf>,
     /// The session's own folder, where its PRs are kept (`prs.json`).
@@ -445,11 +457,7 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
     let scope = (homes.into_iter().map(|(_, r)| r))
-        .filter(|r| {
-            repo.as_ref()
-                .is_some_and(|o| o.kind == r.kind && o.host == r.host)
-                && slug(&r.path)
-        })
+        .filter(|r| r.kind == Kind::GitHub && slug(&r.path))
         .collect();
     Ok(Pr {
         id: id.to_string(),
