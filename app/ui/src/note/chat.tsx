@@ -10,6 +10,7 @@ import { useHomeDraft, useHomeProject } from "../home/start";
 import { History, MinimizeRight } from "../icons/note";
 import { ago } from "../panel/words";
 import { HOME } from "../shell/tab-store";
+import { useNoteRun } from "./run";
 import { Chat } from "../icons/thread";
 import { ChatCompose } from "../icons/tab";
 import { X } from "../icons";
@@ -121,13 +122,14 @@ const useChatRow = (id: string | null) => useDaemon().rows?.find((row) => row.id
 function ChatHistory({ owner, id, onOpen }: { owner: string; id: string | null; onOpen: (chat: string) => void }) {
   const rows = useDaemon().rows;
   const [kept, setKept] = useState<string[]>([]);
+  const run = useNoteRun(owner);
   useEffect(() => {
     let live = true;
-    void daemonRun(["note", owner, "chats"]).then((reply) => live && reply.ok && setKept(reply.chats));
+    void run(["chats"]).then((reply) => live && reply.ok && setKept(reply.chats));
     return () => {
       live = false;
     };
-  }, [owner, id]);
+  }, [run, id]);
   const earlier = (rows ?? []).filter((row) => row.id !== id && kept.includes(row.id)).toSorted((a, b) => b.updated - a.updated);
   if (earlier.length === 0) return null;
   return (

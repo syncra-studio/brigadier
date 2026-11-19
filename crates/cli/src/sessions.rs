@@ -140,9 +140,14 @@ pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<
     crate::rewind::settled(data, &spec)?;
     // A Replace all cut short too: its record goes with the folder.
     core::git::recover::settled(data, id)?;
+    // Its notes are its project's: one still waiting to move keeps the session until it has [D916].
+    crate::attach::note::settle(data);
+    if crate::attach::note::holds(&spec.dir) {
+        return Err(io::Error::other(
+            "a note of this session waits for its chat to stop before it moves to the project; try again then",
+        ));
+    }
     stop(data, id, by)?;
-    // Its notes' side chats are sessions of their own: they go first [D281].
-    crate::attach::note::drop_chats(data, &spec.dir)?;
     let f = core::fold(&spec.dir, false)?;
     crate::attach::sweep_home(data);
     Ok(session::delete(&spec, &f.fold, drop))
@@ -201,6 +206,10 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     let project = projects::get(data, id)?;
     let ids = projects::sessions(data, id)?;
     let all = procs::all();
+    // Its notes go with it, their side chats first; a working chat holds it as a session does [D920 D922].
+    let notes = crate::attach::note::folder(data, Some(id));
+    let chats = crate::attach::note::chats_in(&notes);
+    let chats_working = chats.iter().filter(|c| busy(data, c, &all)).count();
     if has(args, "--check") {
         // Each read is a few git processes: run side by side (16 at a time), the preview takes about
         // one session's time instead of their sum, so the dialog can open with it [D463].
@@ -244,9 +253,14 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
                 working.push(s);
             }
         }
-        return Ok(json!({"ok": true, "sessions": ids, "working": working,
+        let count = (fs::read_dir(&notes).into_iter().flatten().flatten())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+            .count();
+        return Ok(
+            json!({"ok": true, "sessions": ids, "working": working, "notes": count,
             "worktrees": worktrees, "bytes": bytes, "merged": merged, "branches": branches,
-            "removing": project.removing, "lost": lost}));
+            "removing": project.removing, "lost": lost}),
+        );
     }
     // Settling needs a host, which is refused once the project is marked as being removed.
     for s in &ids {
@@ -257,7 +271,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     // New work in it is refused from here on; busy is checked again under that [D172].
     projects::set_removing(data, id, true)?;
     let all = procs::all();
-    let working = ids.iter().filter(|s| busy(data, s, &all)).count();
+    let working = ids.iter().filter(|s| busy(data, s, &all)).count() + chats_working;
     if working > 0 {
         projects::set_removing(data, id, false)?;
         return Err(io::Error::other(format!(
@@ -284,6 +298,11 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
             // Nothing recorded yet, so nothing retries on its own.
             Err(e) => left.push(format!("{s}: {e}. Run Remove again.").into()),
         }
+    }
+    if left.is_empty()
+        && let Err(e) = crate::attach::note::drop_chats(data, &notes)
+    {
+        left.push(format!("a note's chat: {e}. Run Remove again.").into());
     }
     if left.is_empty() {
         // The CLIs' own trust entries go back first; a failed one keeps its record and the

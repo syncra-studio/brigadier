@@ -1,15 +1,18 @@
 //! `note <id> read <note> | write <note> <head> <body> --base <rev> | list | delete <note> |
-//! chat <note> <chat-id> [--new | --open] | chats`: the session's notes, one Markdown file each
-//! under `notes/` in its folder, so they go with it [D244], as the old app's pages: `# <head>`,
+//! chat <note> <chat-id> [--new | --open] | chats`, `--project <p>` on Home's: the project's notes,
+//! one Markdown file each in its notes folder, so they outlive its sessions; chats in no project
+//! share one [D244, D913, D921]. As the old app's pages: `# <head>`,
 //! then the body. The app names a note; it's kept once written, and emptied it goes, so no blank
 //! note is ever listed. A note's revision is a hash of its file, and a write based on an older one
 //! is refused, so the note's side chat and the user's typing never overwrite each other [D281].
 //!
 //! Its side chat is a session of its own, hidden from the sidebar, on the session's agent at Auto,
-//! working in `notes/` and reading the checkout. Its chats' ids are kept in `notes/<note>.chat`, one
-//! a line, the last the one it shows; they stay when its tab closes, for the History menu, and go
-//! with the note or the session [D281, D282, D288]. Home's note has one too, on the new chat's
-//! picked agent, and it comes into the session with the note [D287].
+//! working in the notes folder and reading the project's. Its chats' ids are kept in `<note>.chat`,
+//! one a line, the last the one it shows; they stay when its tab closes, for the History menu, and
+//! go with the note or the project [D281, D282, D288]. Home's note has one too, on the new chat's
+//! picked agent [D287].
+
+mod moved;
 
 use crate::{HOME_DRAFT, arg, flag, has, models, remove};
 use brigadier_core::{self as core, check_id, message::MAX_BYTES, projects};
@@ -27,11 +30,56 @@ fn title(text: &str) -> &str {
         .unwrap_or("")
 }
 
-/// Home's notes, before the first message makes its session: they go to it then, and one whose
-/// tab is closed first goes (`tabs.rs`) [D280].
-pub fn home(data: &Path) -> PathBuf {
-    data.join("home-notes")
+/// A project's notes folder, removed with it [D920], or the one chats in no project share [D921].
+pub(crate) fn folder(data: &Path, project: Option<&str>) -> PathBuf {
+    project.map_or(data.join("notes"), |p| projects::dir(data, p).join("notes"))
 }
+
+/// The notes folder of a session's project, or Home's picked one (`--project`).
+fn folder_of(data: &Path, owner: &str, args: &[String]) -> io::Result<PathBuf> {
+    let project = if owner == HOME_DRAFT {
+        flag(args, "--project").map(String::from)
+    } else {
+        let spec = core::load(data, owner)?;
+        projects::of(
+            &spec,
+            &projects::list(data)?,
+            &mut projects::Roots::default(),
+        )
+    };
+    if let Some(p) = &project {
+        check_id(p)?;
+    }
+    Ok(folder(data, project.as_deref()))
+}
+
+/// Where a note's file is: in `dir`, still in its session waiting to move, or in another project's
+/// folder (a Home note whose project was changed after); one not written yet, in `dir`.
+fn locate(data: &Path, dir: &Path, note: &str) -> io::Result<PathBuf> {
+    check_id(note)?;
+    let name = format!("{note}.md");
+    if dir.join(&name).exists() {
+        return Ok(dir.join(name));
+    }
+    let others = (fs::read_dir(data.join("projects"))
+        .into_iter()
+        .flatten()
+        .flatten())
+    .map(|e| e.path().join("notes"))
+    .chain([data.join("notes")]);
+    Ok((moved::waiting(data, note).into_iter())
+        .chain(others.map(|d| d.join(&name)))
+        .find(|p| p.exists())
+        .unwrap_or_else(|| dir.join(name)))
+}
+
+/// Moves notes still in their sessions to their projects, as far as they can go now [D916].
+pub(crate) fn settle(data: &Path) {
+    let _ = moved::settle(data);
+}
+
+/// Whether a session still holds a note waiting to move.
+pub(crate) use moved::holds;
 
 /// A note's file as its head (the `# ` line: the emoji and title) and its body; a file that
 /// doesn't start with one is all body.
@@ -75,25 +123,29 @@ fn shown(text: &str) -> Value {
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
+    settle(data);
+    let dir = folder_of(data, id, args)?;
     // Home's notes have no session yet: their side chat takes the new chat's pick [D287].
-    let (dir, spec) = if id == HOME_DRAFT {
-        (home(data), None)
-    } else {
-        let spec = core::load(data, id)?;
-        (core::session_dir(data, id).join("notes"), Some(spec))
+    let spec = (id != HOME_DRAFT)
+        .then(|| core::load(data, id))
+        .transpose()?;
+    // A note's file, and the folder it and its chats' record are in.
+    let at = |note: &str| -> io::Result<(PathBuf, PathBuf)> {
+        let path = locate(data, &dir, note)?;
+        Ok((path.parent().unwrap_or(&dir).to_path_buf(), path))
     };
-    let file = |note: &str| check_id(note).map(|()| dir.join(format!("{note}.md")));
     match arg(args, 2)? {
         // One not written yet reads empty: a new note's tab.
         "read" => {
             let note = arg(args, 3)?;
-            let mut reply = shown(&read_text(&file(note)?)?);
+            let (home, path) = at(note)?;
+            let mut reply = shown(&read_text(&path)?);
             reply["ok"] = true.into();
-            reply["chat"] = chat_of(&dir, note).into();
+            reply["chat"] = chat_of(&home, note).into();
             Ok(reply)
         }
         "write" => {
-            let (path, head, body) = (file(arg(args, 3)?)?, arg(args, 4)?, arg(args, 5)?);
+            let ((home, path), head, body) = (at(arg(args, 3)?)?, arg(args, 4)?, arg(args, 5)?);
             let text = join(head, body);
             if text.len() as u64 > MAX_BYTES {
                 return Ok(json!({"ok": false, "error": "This note is too long to keep."}));
@@ -109,27 +161,28 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if text.trim().is_empty() {
                 remove(&path)?;
             } else {
-                fs::create_dir_all(&dir)?;
+                fs::create_dir_all(&home)?;
                 core::write_atomic(&path, text.as_bytes())?;
             }
             Ok(json!({"ok": true, "title": title(&text), "revision": revision(&text)}))
         }
         "delete" => {
             let note = arg(args, 3)?;
-            drop_chat(data, &dir, note)?;
-            remove(&file(note)?)?;
+            let (home, path) = at(note)?;
+            drop_chat(data, &home, note)?;
+            remove(&path)?;
             Ok(json!({"ok": true}))
         }
         // The note's side chat, made on first use under the app's id, anew with --new, or one of
-        // the session's earlier ones reopened here with --open [D288].
+        // the project's earlier ones reopened here with --open [D288].
         "chat" => {
             let (note, chat) = (arg(args, 3)?, arg(args, 4)?);
-            let path = file(note)?;
+            let (dir, path) = at(note)?;
             check_id(chat)?;
             let mut mine = chats_of(&dir, note);
             if has(args, "--open") {
                 let Some((was, _)) = all_chats(&dir).into_iter().find(|(_, c)| c == chat) else {
-                    return Err(io::Error::other("not one of this session's side chats"));
+                    return Err(io::Error::other("not one of this project's side chats"));
                 };
                 let mut theirs = chats_of(&dir, &was);
                 theirs.retain(|c| c != chat);
@@ -148,7 +201,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 return Ok(json!({"ok": true, "chat": kept}));
             }
             let pick = match &spec {
-                Some(spec) => session_pick(spec)?,
+                Some(spec) => session_pick(data, spec)?,
                 None => home_pick(data, args)?,
             };
             // A model a rule bars is refused before anything is made, as Send as new's [D388 Q10].
@@ -175,16 +228,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         // The newest first, as the old New tab's Recents.
         "list" => {
             let mut notes: Vec<(u64, Value)> = vec![];
-            for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
-                let path = entry.path();
+            let paths = (fs::read_dir(&dir).into_iter().flatten().flatten()).map(|e| e.path());
+            for path in paths.chain(moved::waiting_into(data, &dir)) {
                 let Some(note) = path.file_stem().and_then(|s| s.to_str()) else {
                     continue;
                 };
                 if path.extension().is_none_or(|e| e != "md") || check_id(note).is_err() {
                     continue;
                 }
-                let at = entry
-                    .metadata()
+                let at = fs::metadata(&path)
                     .and_then(|m| m.modified())
                     .ok()
                     .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -221,7 +273,7 @@ fn set_chats(dir: &Path, note: &str, chats: &[String]) -> io::Result<()> {
     }
 }
 
-/// Every side chat of the session's notes, by note.
+/// Every side chat of a notes folder's notes, by note.
 fn all_chats(dir: &Path) -> Vec<(String, String)> {
     let mut all = vec![];
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
@@ -257,28 +309,15 @@ pub(crate) fn drop_chat(data: &Path, dir: &Path, note: &str) -> io::Result<()> {
     remove(&dir.join(format!("{note}.chat")))
 }
 
-/// Every side chat of a session's notes, for its delete.
-pub(crate) fn drop_chats(data: &Path, session: &Path) -> io::Result<()> {
-    let dir = session.join("notes");
-    for (note, _) in all_chats(&dir) {
-        drop_chat(data, &dir, &note)?;
-    }
-    Ok(())
+/// Every side chat of a notes folder's notes: Remove project checks and deletes them [D922].
+pub(crate) fn chats_in(dir: &Path) -> Vec<String> {
+    all_chats(dir).into_iter().map(|(_, c)| c).collect()
 }
 
-/// Home's side chats, come into session `to` with their notes: each works in its notes folder now
-/// and reads its checkout, as one made there would [D287].
-pub(crate) fn carried(data: &Path, to: &core::Spec) -> io::Result<()> {
-    let dir = to.dir.join("notes");
-    for (note, chat) in all_chats(&dir) {
-        let Ok(mut spec) = core::load(data, &chat) else {
-            continue;
-        };
-        spec.cwd = dir.display().to_string();
-        let path = dir.join(format!("{note}.md")).display().to_string();
-        spec.opts.insert("note".into(), path);
-        spec.opts.insert("reads".into(), to.cwd.clone());
-        resave(&spec)?;
+/// Every side chat of a notes folder's notes, for its project's removal.
+pub(crate) fn drop_chats(data: &Path, dir: &Path) -> io::Result<()> {
+    for (note, _) in all_chats(dir) {
+        drop_chat(data, dir, &note)?;
     }
     Ok(())
 }
@@ -286,8 +325,9 @@ pub(crate) fn carried(data: &Path, to: &core::Spec) -> io::Result<()> {
 /// What a side chat runs on: an agent, its model and effort, and the checkout it may read.
 type Pick = (String, Option<String>, Option<String>, Option<PathBuf>);
 
-/// A session's: its next agent, model and effort, as Send as new takes them [D281, D282].
-fn session_pick(src: &core::Spec) -> io::Result<Pick> {
+/// A session's: its next agent, model and effort, as Send as new takes them, reading its project's
+/// folder, which outlives the session as the note does [D281, D282, D913].
+fn session_pick(data: &Path, src: &core::Spec) -> io::Result<Pick> {
     let f = core::fold(&src.dir, true)?.fold;
     let backend = models::next_agent(src, &f).to_string();
     let run = core::as_run(src, &f, &backend, None);
@@ -295,7 +335,11 @@ fn session_pick(src: &core::Spec) -> io::Result<Pick> {
         Some(p) => (Some(p.model.clone()), p.effort.clone()),
         None => (run.model, run.effort),
     };
-    Ok((backend, model, effort, Some(src.cwd.clone().into())))
+    let list = projects::list(data)?;
+    let reads = projects::of(src, &list, &mut projects::Roots::default())
+        .and_then(|p| list.into_iter().find(|x| x.id == p))
+        .map(|p| p.folder.into());
+    Ok((backend, model, effort, reads))
 }
 
 /// Home's: what the new chat has picked, and its project's folder, if one is [D287].

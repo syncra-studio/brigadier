@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { useDaemon } from "../daemon";
-import { daemonRun, failure } from "../session/composer";
+import { failure } from "../session/composer";
 import { newId } from "../session/store";
 import { NoteWithChat } from "../note/chat";
+import { useNoteRun } from "../note/run";
 import { NoteEditor, focusNoteStart } from "../note/editor";
 import { EmojiButton, headOf, NoteTopBar, splitHead } from "../note/top-bar";
 import "../note/page.css";
@@ -39,6 +40,7 @@ const readOf = (reply: Record<string, any>): Read => ({ ...splitHead(reply.head)
  */
 export function NoteTab({ owner, note, tabId, active }: { owner: string; note: string; tabId: string; active: boolean }) {
   const offline = useDaemon().daemon === null;
+  const run = useNoteRun(owner);
   const [read, setRead] = useState<Read | { error: string } | null>(null);
   // Bumped to load content that changed outside the editor.
   const [version, setVersion] = useState(0);
@@ -64,7 +66,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
   useEffect(() => {
     if (!active && read !== null) return;
     let live = true;
-    void daemonRun(["note", owner, "read", note]).then((reply) => {
+    void run(["read", note]).then((reply) => {
       if (!live) return;
       if (!reply.ok) return setRead((was) => was ?? { error: failure(reply) });
       setNoteTitle(owner, note, reply.title);
@@ -78,7 +80,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
       live = false;
     };
     // `read` only says whether it was read yet.
-  }, [owner, note, active, chatMoved, take]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [owner, note, active, chatMoved, take, run]); // eslint-disable-line react-hooks/exhaustive-deps
   // One write after another, each on the revision the last left, so nothing is ever overwritten unseen.
   const keep = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -86,7 +88,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
     if (next === null) return;
     pending.current = null;
     writes.current = writes.current.then(() =>
-      daemonRun(["note", owner, "write", note, headOf(next), next.body, ...(base.current === null ? [] : ["--base", base.current])]).then((reply) => {
+      run(["write", note, headOf(next), next.body, ...(base.current === null ? [] : ["--base", base.current])]).then((reply) => {
         if (reply.ok) {
           base.current = reply.revision;
           setNoteTitle(owner, note, reply.title);
@@ -98,7 +100,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
         setError(String(reply.error ?? "Couldn't keep this edit."));
       }),
     );
-  }, [owner, note]);
+  }, [note, run]);
   // Leaving the tab keeps the edit at once.
   useEffect(() => {
     if (!active) keep();
@@ -139,7 +141,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
     if (!conflict) return;
     const copy = newId();
     const mine = { ...latest.current, title: latest.current.title ? `${latest.current.title} (copy)` : "" };
-    void daemonRun(["note", owner, "write", copy, headOf(mine), mine.body]).then((reply) => (reply.ok ? openTab(owner, "note", copy) : setError(failure(reply))));
+    void run(["write", copy, headOf(mine), mine.body]).then((reply) => (reply.ok ? openTab(owner, "note", copy) : setError(failure(reply))));
     useTheirs();
   };
   return (
@@ -154,7 +156,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
             titleField.current?.select();
           }}
           onDelete={() =>
-            daemonRun(["note", owner, "delete", note]).then((reply) => {
+            run(["delete", note]).then((reply) => {
               if (!reply.ok) return failure(reply);
               pending.current = null;
               closeTab(owner, tabId);

@@ -10,7 +10,7 @@ import { Radio, RadioGroup } from "../components/radio";
 import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Branch, Chats, ChevronRightAlt, Folder, Spinner } from "../icons";
+import { Branch, Chats, ChevronRightAlt, Document, Folder, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { ArchiveCheck } from "../sessions/archive";
 import { shortPath } from "./add-project";
@@ -31,6 +31,8 @@ export type Preview = {
   merged: number;
   branches: { id: string; branch: string }[];
   removing?: boolean;
+  /** Its notes, which go with it [D920]. */
+  notes?: number;
   /** Per worktree it frees, the ignored files deleted for good, as archive's [D179, D1197]. */
   lost?: ArchiveCheck["lost"];
 };
@@ -145,7 +147,8 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
   // One view from the start: the facts open into it, and Remove waits for them [D391].
   const preview = look.state === "ready" ? look.preview : null;
   const sessions = preview?.sessions.length ?? 0;
-  const anything = sessions > 0 || (preview?.worktrees ?? 0) > 0 || (preview?.merged ?? 0) > 0;
+  const notes = preview?.notes ?? 0;
+  const anything = sessions > 0 || notes > 0 || (preview?.worktrees ?? 0) > 0 || (preview?.merged ?? 0) > 0;
   const working = (preview?.working ?? []).map((id) => `“${titleOf(id)}”`);
   const one = working.length === 1;
   const blocked = working.length ? `${working.join(", ")} ${one ? "is" : "are"} working. Stop ${one ? "it" : "them"} or let ${one ? "it" : "them"} finish first.` : null;
@@ -174,6 +177,7 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
         {preview && anything && (
           <ul aria-label="What is deleted" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
             {sessions > 0 && <SummaryRow icon={<Chats />} label={plural(sessions, "session", "sessions")} detail="Can't be undone" />}
+            {notes > 0 && <SummaryRow icon={<Document />} label={plural(notes, "note", "notes")} detail="With their chats" />}
             {preview.worktrees > 0 && <SummaryRow icon={<Folder />} label={plural(preview.worktrees, "worktree", "worktrees")} detail={formatBytes(preview.bytes)} />}
             {preview.merged > 0 && (
               <SummaryRow

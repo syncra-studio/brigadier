@@ -14,7 +14,7 @@ import { Download } from "../icons/sidebar";
 import { Document } from "../icons/tab";
 import { EditPencil, Trash } from "../icons/thread";
 import { ago } from "../panel/words";
-import { daemonRun } from "../session/composer";
+import { useNoteRun } from "./run";
 import { openTab } from "../shell/tab-store";
 import { applyBlock, BLOCKS } from "./blocks";
 import { BlockRow } from "./tools";
@@ -165,17 +165,18 @@ function ShowNotes({ owner, open, onOpenChange, onPick }: { owner: string; open:
   const [notes, setNotes] = useState<{ id: string; title: string; at: number }[] | null>(null);
   const [query, setQuery] = useState("");
   const [at, setAt] = useState(0);
+  const run = useNoteRun(owner);
   useEffect(() => {
     if (!open) return;
     let live = true;
-    void daemonRun(["note", owner, "list"]).then((reply) => live && setNotes(reply.ok ? reply.notes : []));
+    void run(["list"]).then((reply) => live && setNotes(reply.ok ? reply.notes : []));
     return () => {
       live = false;
       setQuery("");
       setAt(0);
       setNotes(null);
     };
-  }, [open, owner]);
+  }, [open, run]);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = (notes ?? []).filter((note) => words.every((word) => (note.title || "Untitled note").toLowerCase().includes(word)));
   return (

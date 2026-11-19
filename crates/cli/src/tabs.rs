@@ -461,10 +461,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         now.rev = was.rev + 1;
         write(&path, &now)?;
     }
-    // A note closed before the first message goes with its tab: there's no session to list it [D280].
-    if home {
-        home::drop_closed_notes(data);
-    }
     Ok(state(&now))
 }
 

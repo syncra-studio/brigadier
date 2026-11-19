@@ -17,7 +17,7 @@ import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
 import { ago } from "../panel/words";
 import { ReviewView } from "../review/view";
-import { daemonRun } from "../session/composer";
+import { useNoteRun } from "../note/run";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
 import { LocalServers } from "../browser/new-tab";
@@ -93,17 +93,18 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
   );
 }
 
-/** The session's notes, newest first, as the old New tab's Recents listed pages; read again each time it shows [D244]. */
+/** The project's notes, newest first, as the old New tab's Recents listed pages; read again each time it shows [D244]. */
 function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; onOpen: (note: string) => void }) {
   const [notes, setNotes] = useState<{ id: string; title: string; at: number }[]>([]);
+  const run = useNoteRun(owner);
   useEffect(() => {
-    if (!active || owner === HOME) return;
+    if (!active) return;
     let live = true;
-    void daemonRun(["note", owner, "list"]).then((reply) => live && reply.ok && setNotes(reply.notes.slice(0, 20)));
+    void run(["list"]).then((reply) => live && reply.ok && setNotes(reply.notes.slice(0, 20)));
     return () => {
       live = false;
     };
-  }, [owner, active]);
+  }, [run, active]);
   if (notes.length === 0) return null;
   return (
     <section aria-label="Notes" className="flex flex-col gap-2">
