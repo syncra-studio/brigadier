@@ -80,19 +80,23 @@ pub(super) fn act(
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
-/// Seconds since the user last moved the mouse, clicked or typed anywhere; no grant needed.
+/// Seconds since the user last gave input of `kind` (`ANY`: moved the mouse, clicked or typed;
+/// `CLICK`: a left click) anywhere; no grant needed.
 #[cfg(target_os = "macos")]
-pub(super) fn idle() -> f64 {
+pub(super) fn idle(kind: u32) -> f64 {
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGEventSourceSecondsSinceLastEventType(state: i32, kind: u32) -> f64;
     }
-    // kCGEventSourceStateHIDSystemState, kCGAnyInputEventType.
-    unsafe { CGEventSourceSecondsSinceLastEventType(1, u32::MAX) }
+    // kCGEventSourceStateHIDSystemState.
+    unsafe { CGEventSourceSecondsSinceLastEventType(1, kind) }
 }
+/// kCGAnyInputEventType, kCGEventLeftMouseDown.
+pub(super) const ANY: u32 = u32::MAX;
+pub(super) const CLICK: u32 = 1;
 
 #[cfg(not(target_os = "macos"))]
-pub(super) fn idle() -> f64 {
+pub(super) fn idle(_: u32) -> f64 {
     f64::MAX
 }
 
@@ -100,7 +104,7 @@ pub(super) fn idle() -> f64 {
 /// itself once they stop, and after 50 s nothing is done [D910].
 pub(super) fn wait_for_user(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<(), Value> {
     let start = Instant::now();
-    while idle() < BUSY {
+    while idle(ANY) < BUSY {
         if front(data, here) != Some(s.pid) {
             return Ok(());
         }

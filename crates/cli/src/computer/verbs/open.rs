@@ -2,7 +2,7 @@
 //! app with no window shows its menu bar, and its menus and key equivalents work by pid, through
 //! the helper's own calls (Cua's need a window, #8055).
 
-use super::act::{act, idle, wait_for_user};
+use super::act::{CLICK, act, idle, wait_for_user};
 use super::window::{NO_CHANGE, changes, read};
 use super::{Fail, SESSIONS, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
@@ -157,20 +157,23 @@ pub(super) fn front(data: &Path, here: &dyn Fn() -> bool) -> Option<i64> {
 }
 
 /// For 10 s after a launch, an app that takes the front is put back behind the user's window,
-/// unless the user gave input since (they may have switched to it). What happened is told, as
-/// measured.
+/// unless the user clicked as it came forward (they switched to it): typing or clicking in their
+/// own app before then doesn't count (D930). What happened is told, as measured.
 fn keep_behind(data: &Path, me: &str, app: String, pid: i64, user: i64, window: Value) {
     let (data, me) = (data.to_path_buf(), me.to_string());
     let start = Instant::now();
     thread::spawn(move || {
         let never = || true;
+        // When it was last seen behind.
+        let mut behind = 0.0;
         while start.elapsed() < KEEP {
             thread::sleep(Duration::from_millis(100));
+            let at = start.elapsed().as_secs_f64();
             if front(&data, &never) != Some(pid) {
+                behind = at;
                 continue;
             }
-            let at = start.elapsed().as_secs_f64();
-            if idle() < at {
+            if idle(CLICK) < at - behind {
                 return;
             }
             let back = own(
