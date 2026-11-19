@@ -111,7 +111,7 @@ function App() {
     // Its Home tab under the project's Home tab bar [D780 D819 D820].
     return (
       <Shell hash={hash} active={null} rows={rows} page={page.id}>
-        <Home offline={daemon === null} page={page.id}>
+        <Home page={page.id}>
           <ProjectPage id={page.id} tab={page.tab} />
         </Home>
       </Shell>
@@ -126,7 +126,7 @@ function App() {
   }
   return (
     <Shell hash={hash} active={null} rows={rows}>
-      <Home offline={daemon === null}>
+      <Home>
         <HomeDraft />
       </Home>
     </Shell>
@@ -143,6 +143,9 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   const [open, setOpen] = useStored("sidebar.open", true);
   const [collapse, setCollapse] = useStored<SidebarCollapse>("sidebar.collapse", "strip");
   useSeen(rows?.find((row) => row.id === active));
+  // One tab bar for every page but Settings, kept as the page changes so its tabs change smoothly: the old ones shrink
+  // out, the new grow in, the house holds its place [D836 D854]. It shows a rename or an archive at once [D30].
+  const titled = useShown(rows)?.find((each) => each.id === active);
   return (
     <div
       className="fixed inset-0 bg-card px-2 pt-tab-bar pb-2"
@@ -172,6 +175,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         />
         )}
         <div className="page-panel flex min-w-0 flex-1 flex-col overflow-clip rounded-surface bg-background ring-1 ring-glass-stroke">{children}</div>
+        {settings === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} home={page !== undefined} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
@@ -185,7 +189,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
 }
 
 // Home is a new session's draft [D161], or a project's page, whose Home tab it is: the same project's tabs [D706 D819 D820].
-function Home({ offline, page, children }: { offline: boolean; page?: string; children: ReactNode }) {
+function Home({ page, children }: { page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
   useLayoutEffect(() => setHomeTabs(page ?? project), [page, project]);
   // Opening a project's page shows its Home tab in front, the project's other tabs kept beside it as left [D836 D837];
@@ -197,7 +201,6 @@ function Home({ offline, page, children }: { offline: boolean; page?: string; ch
   }, [page]);
   return (
     <>
-      <TabBar key={HOME} owner={HOME} offline={offline} home={page !== undefined} />
       <TabbedMain owner={HOME} archived={false}>
         {children}
       </TabbedMain>
@@ -226,8 +229,6 @@ const peekRow = (target: EventTarget, wait = 0) => {
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
 function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefined; offline: boolean }) {
   const row = rows?.find((each) => each.id === id);
-  // The title bar shows a rename or an archive at once [D30].
-  const titled = useShown(rows)?.find((each) => each.id === id);
   const thread = useRef<ThreadHandle>(null);
   // Before the paint, and the Thread waits for it below: a new one never starts on the last session's rows.
   useLayoutEffect(() => openThread(id), [id]);
@@ -245,7 +246,6 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   const missing = state?.status === "missing" && !starting;
   return (
     <>
-      <TabBar key={id} owner={id} offline={offline} row={titled} />
       <TabbedMain owner={id} archived={Boolean(row?.archived)}>
         <div className="flex min-h-0 flex-1">
           {missing ? (

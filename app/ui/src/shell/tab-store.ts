@@ -51,6 +51,16 @@ export function setHomeTabs(project: string | null): void {
   homeKey = project ? `${HOME}:${project}` : HOME;
   for (const listener of listeners) listener();
 }
+/** The project Home's tabs are, or null for a chat in none. */
+export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, () => (homeKey === HOME ? null : homeKey.slice(HOME.length + 1)));
+/** What a project's page shows after its house: the session last shown in that project, or its draft (HOME) [D849 D850]. */
+const currents = new Map<string, string>();
+export function setCurrent(project: string, owner: string): void {
+  if (currents.get(project) === owner) return;
+  currents.set(project, owner);
+  for (const listener of listeners) listener();
+}
+export const useCurrent = (project: string | null): string | undefined => useSyncExternalStore(subscribe, () => (project ? currents.get(project) : undefined));
 const opened = new Set<string>();
 
 function slotOf(owner: string): Slot {
