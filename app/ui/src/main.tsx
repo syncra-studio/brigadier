@@ -165,6 +165,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           rows={rows}
           projects={projects ?? []}
           active={active}
+          page={page}
           home={active === null && page === undefined}
           offline={daemon === null}
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}

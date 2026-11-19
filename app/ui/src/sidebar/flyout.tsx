@@ -8,7 +8,7 @@ import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
 import { Archive, ArrowUpRight, Chats, Folder, Folders } from "../icons";
-import { newSessionIn } from "../projects/menu";
+import { openProject } from "../projects/page";
 import { openAddProject } from "../projects/store";
 import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
@@ -83,7 +83,7 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-/** Each project, picked to start a session in it, with its sessions. */
+/** Each project, picked to open its page [D780], with its sessions. */
 export function ProjectsFlyout({ projects, sessions, ...rows }: Rows & { projects: Project[]; sessions: SessionRow[] }) {
   return (
     <Flyout label="Projects" icon={<Folders />} lit={sessions.some((row) => markOf(row, rows.active) && projects.some((project) => project.id === row.project))}>
@@ -96,7 +96,7 @@ export function ProjectsFlyout({ projects, sessions, ...rows }: Rows & { project
           <NavList>
             {projects.map((project) => (
               <li key={project.id} className="flex flex-col">
-                <NavRow title={`New session in ${project.name}`} onClick={() => pick(() => newSessionIn(project.id))}>
+                <NavRow onClick={() => pick(() => openProject(project.id))}>
                   <Folder />
                   <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 </NavRow>

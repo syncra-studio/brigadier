@@ -3,16 +3,17 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavFold, NavHeader, NavList, NavRow, NavSection } from "../components/nav";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, DotsHorizontal, FeedbackGlyph, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { ChevronRight, ComposeEditSquare, FeedbackGlyph, MagnifyingGlassSmSearch, Plus } from "../icons";
+import { cx } from "../components/cx";
 import { BrigadierMark } from "../onboarding/mark";
 import { openFeedback } from "../feedback/dialog";
 import { openSearch } from "../palette/palette";
-import { newSessionIn, ProjectMenuItems } from "../projects/menu";
+import { newSession } from "../home/start";
+import { openProject } from "../projects/page";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection } from "../sessions/archived";
 import { openAddProject, setShowProject } from "../projects/store";
@@ -56,6 +57,7 @@ export function AppSidebar({
   rows,
   projects,
   active,
+  page = null,
   home,
   offline,
   onOpen,
@@ -69,6 +71,8 @@ export function AppSidebar({
   projects: Project[];
   /** The open session's id. */
   active: string | null;
+  /** The project whose page shows [D780]. */
+  page?: string | null;
   /** The home page (a new session) is what shows. */
   home: boolean;
   offline: boolean;
@@ -281,6 +285,7 @@ export function AppSidebar({
                           key={project.id}
                           project={project}
                           tone={projects.indexOf(project)}
+                          current={page === project.id}
                           open={isOpen(project.id)}
                           onOpenChange={(open) => setOpen(project.id, open)}
                         >
@@ -329,10 +334,14 @@ function Loading() {
   );
 }
 
-/** A project and its sessions, folding away under it; "No sessions yet" with none. Hovered, its menu and New session [D171, D212]. */
+/**
+ * A project and its sessions, folding away under it; "No sessions yet" with none. A click opens its page, where its
+ * settings are; hovered, its chevron folds it and New session starts one [D171, D212, D780].
+ */
 function ProjectRow({
   project,
   tone,
+  current,
   open,
   onOpenChange,
   children,
@@ -340,6 +349,8 @@ function ProjectRow({
   project: Project;
   /** Its place in Rust's list, for its badge. */
   tone: number;
+  /** Its page is what shows. */
+  current: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode[];
@@ -352,27 +363,22 @@ function ProjectRow({
     <li data-project-id={project.id} className="flex flex-col">
       <div className="group/row relative">
         <Tooltip>
-          <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-expanded={open} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => onOpenChange(!open)} />}>
-            {/* Its logo, else its initials, as View's menu shows it [D650]; folded or not reads from aria-expanded. */}
+          <TooltipTrigger delay={CARD_DELAY_MS} render={<NavRow aria-current={current ? "page" : undefined} className="pe-16" onPointerEnter={measure} onFocus={measure} onClick={() => openProject(project.id)} />}>
+            {/* Its logo, else its initials, as View's menu shows it [D650]. */}
             <ProjectBadge id={project.id} name={project.name} tone={tone} />
             <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
           </TooltipTrigger>
           {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
         </Tooltip>
         <RowActionsSlot>
-          <DropdownMenu modal={false}>
-            <Tooltip>
-              <TooltipTrigger render={<DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${project.name}`} />} />}>
-                <DotsHorizontal />
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Project actions</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="start">
-              <ProjectMenuItems project={project} />
-            </DropdownMenuContent>
-          </DropdownMenu>
           <Tooltip>
-            <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSessionIn(project.id)} />}>
+            <TooltipTrigger render={<RowAction aria-label={open ? `Hide ${project.name}'s sessions` : `Show ${project.name}'s sessions`} onClick={() => onOpenChange(!open)} />}>
+              <ChevronRight className={cx("motion-safe:transition-transform", open && "rotate-90")} />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{open ? "Hide sessions" : "Show sessions"}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSession(project.id)} />}>
               <ComposeEditSquare />
             </TooltipTrigger>
             <TooltipContent side="bottom">New session</TooltipContent>
