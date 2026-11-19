@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { baseName } from "../files/tree";
 import { setHomeDraft } from "../home/start";
 import { HOME_DRAFT } from "../session/draft";
-import { Archive, Chat, DotsHorizontal, Plus, SidebarError, X } from "../icons";
+import { Archive, Chat, DotsHorizontal, Folder, Plus, SidebarError, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { BossCrumb, BrigadeGlyph } from "../sessions/brigade";
 import { showToast } from "../components/toast";
@@ -138,13 +138,14 @@ function ChatTab({ owner, row, active, separator, order }: { owner: string; row:
   );
 }
 
-/** The Chat tab before there's a session to act on: Home, or a row not read yet. */
-function BlankChatTab({ owner, active, separator }: { owner: string; active: boolean; separator: boolean }) {
+/** The Chat tab before there's a session to act on: Home, or a row not read yet; on a project's page, its Home tab [D819 D820]. */
+function BlankChatTab({ owner, active, separator, home }: { owner: string; active: boolean; separator: boolean; home: boolean }) {
+  const [Icon, title] = home ? [Folder, "Home"] : [Chat, "Chat"];
   return (
     <div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))}>
-      <button type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} title="Chat" onMouseDown={noAutoscroll} onClick={() => selectTab(owner, CHAT)} className={BUTTON}>
-        <Chat className="size-icon-sm shrink-0" />
-        <span className={TITLE}>Chat</span>
+      <button type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} title={title} onMouseDown={noAutoscroll} onClick={() => selectTab(owner, CHAT)} className={BUTTON}>
+        <Icon className="size-icon-sm shrink-0" />
+        <span className={TITLE}>{title}</span>
       </button>
     </div>
   );
@@ -272,7 +273,7 @@ function useTabPresence(tabs: readonly Tab[]) {
  * opened, "+", and at the end the toolbar. Click shows, drag reorders, middle-click or Delete closes. It takes the
  * title bar's place, so the title, rename and ⋯ live on the Chat tab.
  */
-export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRow | undefined; offline: boolean }): ReactNode {
+export function TabBar({ owner, row, offline, home = false }: { owner: string; row?: SessionRow | undefined; offline: boolean; home?: boolean }): ReactNode {
   const now = useTabs(owner);
   const { tabs, active } = now;
   useTabsFromRust(owner);
@@ -280,7 +281,8 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
   // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
-  const bare = owner === HOME && tabs.length === 0;
+  // A project's page always shows its Home tab [D819].
+  const bare = owner === HOME && tabs.length === 0 && !home;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
@@ -394,7 +396,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
           {/* The tabs in one glass pill [new-design]; the front tab its fill alone, 1px in on every side, so the pill has one edge.
               The whole pill is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
           <div role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule bg-control p-px ring-1 ring-glass-stroke ring-inset" onKeyDown={onKeys} onWheel={onWheel}>
-            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} />}
+            {row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} order={order} /> : <BlankChatTab owner={owner} active={active === CHAT} separator={active !== CHAT && tabs[0]?.id !== active} home={home} />}
             <div ref={strip} className="hide-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider

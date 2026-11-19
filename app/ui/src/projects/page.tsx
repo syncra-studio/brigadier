@@ -10,11 +10,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../compo
 import { RowAction } from "../components/row-action";
 import { Segment, SegmentedRoot } from "../components/segmented";
 import { useDaemon } from "../daemon";
-import { newSession, setHomeDraft } from "../home/start";
+import { newSession } from "../home/start";
 import { ArrowUpRight, BranchAlt, ChevronDown, DotsHorizontal, Folder, Plus } from "../icons";
 import { HostOf } from "../landing/host";
 import { openPr } from "../panel/open";
-import { HOME, setHomeTabs } from "../shell/tab-store";
+import { HOME } from "../shell/tab-store";
 import { rename, useShown } from "../sidebar/actions";
 import { useSecond } from "../thread/words";
 import { CHIP, PrList } from "../landing/pr-list";
@@ -302,16 +302,8 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
         onRename={setRenaming}
         prs={
           <HostOf.Provider value={id}>
-            {/* A row opens its Pull request tab in Home, on this project, as Home's list does [D613]. */}
-            <PrList
-              owner={HOME}
-              onOpen={(pr) => {
-                setHomeDraft({ project: id, chat: false });
-                setHomeTabs(id);
-                openPr(HOME, pr);
-                window.location.hash = "";
-              }}
-            />
+            {/* A row opens its Pull request tab after this page's Home tab, in the project's Home tabs [D613 D820]. */}
+            <PrList owner={HOME} onOpen={(pr) => openPr(HOME, pr)} />
           </HostOf.Provider>
         }
         settings={<ProjectSettings project={project} source={daemonSettings} />}

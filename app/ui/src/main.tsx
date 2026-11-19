@@ -11,7 +11,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, setHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -35,7 +35,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { HOME, setHomeTabs } from "./shell/tab-store";
+import { CHAT, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -108,13 +108,12 @@ function App() {
   }
   const page = projectPageOf(hash);
   if (page !== null) {
-    // Under the tab bar's row, on the content's surface, level with the sidebar card as Settings [D780 D799].
+    // Its Home tab under the project's Home tab bar, level with the sidebar card [D780 D799 D819 D820].
     return (
       <Shell hash={hash} active={null} rows={rows} page={page.id}>
-        <div className="app-drag h-page-top shrink-0" />
-        <main className="flex min-h-0 flex-1 flex-col overflow-clip rounded-e-surface bg-background">
+        <Home offline={daemon === null} page={page.id}>
           <ProjectPage id={page.id} tab={page.tab} />
-        </main>
+        </Home>
       </Shell>
     );
   }
@@ -127,7 +126,9 @@ function App() {
   }
   return (
     <Shell hash={hash} active={null} rows={rows}>
-      <Home offline={daemon === null} />
+      <Home offline={daemon === null}>
+        <HomeDraft />
+      </Home>
     </Shell>
   );
 }
@@ -182,15 +183,21 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   );
 }
 
-// Home is a new session's draft [D161].
-function Home({ offline }: { offline: boolean }) {
+// Home is a new session's draft [D161], or a project's page, whose Home tab it is: the same project's tabs [D706 D819 D820].
+function Home({ offline, page, children }: { offline: boolean; page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
-  useLayoutEffect(() => setHomeTabs(project), [project]);
+  useLayoutEffect(() => setHomeTabs(page ?? project), [page, project]);
+  // Opening a project's page shows its Home tab in front; its tabs read the project as Home's do [D279].
+  useLayoutEffect(() => {
+    if (!page) return;
+    setHomeDraft({ project: page, chat: false });
+    selectTab(HOME, CHAT);
+  }, [page]);
   return (
     <>
-      <TabBar key={HOME} owner={HOME} offline={offline} />
+      <TabBar key={HOME} owner={HOME} offline={offline} home={page !== undefined} />
       <TabbedMain owner={HOME} archived={false}>
-        <HomeDraft />
+        {children}
       </TabbedMain>
     </>
   );
