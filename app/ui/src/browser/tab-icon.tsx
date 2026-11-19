@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { useDaemon } from "../daemon";
 import { Globe, Spinner } from "../icons";
-import { BrigadierMark } from "../onboarding/mark";
 import { useAgentHoldsAny } from "./overlay";
 import { useBrowserPage } from "./pages";
 import { useAgentPause } from "./pause";
@@ -16,16 +15,25 @@ export function useDriverName(driver: string | undefined): string | null {
 
 /**
  * The tab bar's group label before an agent's tabs, as Chrome's tab group that Claude in Chrome drives: the group's
- * colour, the mark and who drives (Brigadier or the worker), turning while it holds one of them; one line runs beneath its tabs.
+ * colour and who drives (Brigadier or the worker), after an hourglass while it holds one of them; its words fade out
+ * at its end when cut. One line runs beneath its tabs [D894].
  */
 export function BrowserTabGroupLabel({ tabIds, driver }: { tabIds: readonly string[]; driver: string }) {
   const name = useDriverName(driver);
   const holds = useAgentHoldsAny(tabIds);
+  const words = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const at = words.current;
+    if (at) setCut(at.scrollWidth > at.clientWidth);
+  }, [name, holds]);
   return (
     <span aria-hidden data-slot="browser-tab-group" className="browser-tab-group">
       <span>
-        {holds ? <Spinner className="animate-spin" /> : <BrigadierMark pixels={12} />}
-        <span className="truncate">{name}</span>
+        <span ref={words} data-cut={cut || undefined} className="min-w-0 overflow-hidden">
+          {holds && "⌛ "}
+          {name}
+        </span>
       </span>
     </span>
   );
