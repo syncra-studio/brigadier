@@ -4,7 +4,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { cx } from "../components/cx";
 import { Section } from "../components/section";
 import { TooltipIconButton } from "../components/icon-button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ArrowLeft, ChevronRight } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Body } from "../components/thread/body";
@@ -14,25 +13,24 @@ import { type Line, lineMaker } from "../thread/lines";
 import { Markdown } from "../thread/markdown";
 import { GroupLine } from "../components/thread/body";
 import { px } from "../shell/right-panel";
-import { duration, useSecond } from "../thread/words";
+import { duration, hhmm, useSecond } from "../thread/words";
 import { finished, waiting, type Worker } from "./chip";
 import { WORKERS_LABEL } from "./list";
 
 /*
  * One worker in the right panel, as the old app's WorkerDetail, WorkerHeader, WorkerThread and WorkerBrief [D3013]:
- * back, its glyph and name, "‹model› · ‹state›"; below, its brief as the thread's first bubble, what routing picked
+ * back, its glyph and "‹name› · ‹model› · ‹effort›" [D884]; below, its brief as the thread's first bubble, what routing picked
  * for it [D3018], how long it worked, and its thread, read only. The user talks to it from the parent's composer.
  */
 
-/** Its header: back, its glyph and name, its model and state (a click shows its details) and the panel's own actions; no End here. */
+/** Its header: back, its glyph, "‹name› · ‹model› · ‹effort›" as one piece that shows its details, and the panel's own actions [D884]. */
 export function WorkerHeader({ worker, details = false, onBack, onToggleDetails, actions, list = WORKERS_LABEL }: {
   worker: Worker;
   /** The list Back goes to. */
   list?: string;
   details?: boolean;
   onBack: () => void;
-  /** Absent for one with no details to show (a CLI's own subagent): its state stands as words. */
-  onToggleDetails?: () => void;
+  onToggleDetails: () => void;
   actions?: ReactNode;
 }) {
   return (
@@ -41,58 +39,48 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
         <ArrowLeft />
       </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />
-      <h2 className="min-w-8 truncate text-label font-medium" title={worker.name}>
-        {worker.name}
-      </h2>
-      {/* Its model and state at the end; a click shows its details. Where the header is short the model gives way
-          first, then the name, never the state: the model sizes as nothing (contain-inline-size) and takes the room left. */}
-      {!onToggleDetails ? (
-        <span className="ms-auto shrink-0 whitespace-nowrap text-label text-muted-foreground">{worker.word}</span>
-      ) : (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={`Worker details: ${worker.model} · ${worker.word}`}
-              aria-pressed={details}
-              data-slot="worker-header-model"
-              onClick={onToggleDetails}
-              className="flex grow cursor-pointer rounded-control text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring aria-pressed:text-foreground"
-            />
-          }
+      {/* A long name truncates; its model and effort (Rust's "Opus 5.5 · High") stay whole. */}
+      <h2 className="me-auto flex min-w-0 text-label">
+        <button
+          type="button"
+          aria-label={`Details: ${worker.name}${worker.model ? ` · ${worker.model}` : ""}`}
+          aria-pressed={details}
+          data-slot="worker-header-name"
+          title={worker.name}
+          onClick={onToggleDetails}
+          className="-mx-1 flex h-control-sm min-w-8 cursor-pointer items-center rounded-control px-1 whitespace-nowrap hover:bg-fill focus-visible:focus-ring aria-pressed:bg-fill"
         >
-          <span className="grow truncate text-end contain-inline-size">{worker.model}</span>
-          <span className="whitespace-nowrap">{"\u00a0· "}{worker.word}</span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Worker details · {worker.model} · {worker.word}
-        </TooltipContent>
-      </Tooltip>
-      )}
+          <span className="min-w-0 truncate font-medium">{worker.name}</span>
+          {worker.model && <span className="shrink-0 text-muted-foreground">{"\u00a0· "}{worker.model}</span>}
+        </button>
+      </h2>
       {actions}
     </header>
   );
 }
 
-/** Its details page, as the old WorkerDetails: why this model, and the instructions it was started with. */
+/** Its details page, as the old WorkerDetails: its state since the header dropped it [D885], why this model, and the instructions it was started with. */
 export function WorkerDetails({ worker }: { worker: Worker }) {
   return (
     <div data-slot="worker-details" className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 wrap-anywhere">
       <div className="flex flex-col gap-4">
         <h3 className="text-sm font-medium">Details</h3>
-        <Section title="Why this model">
+        <Section title="Status">
+          <p className="text-sm">{worker.word}</p>
+          {worker.startedAt > 0 && <p className="text-xs text-muted-foreground">Started {hhmm(worker.startedAt)}</p>}
+        </Section>
+        {worker.model && <Section title="Why this model">
           <p className="text-sm">{worker.model}</p>
           {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
           {worker.why && <p className="text-xs text-muted-foreground first-letter:uppercase">{worker.why}</p>}
           {worker.asked && <p className="text-xs text-muted-foreground">{worker.asked}</p>}
-        </Section>
-        <section className="flex flex-col gap-2">
+        </Section>}
+        {worker.brief && <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Instructions</h3>
           <div className="text-sm leading-relaxed">
-            <Markdown text={worker.brief ?? ""} keep={`instructions:${worker.id}`} />
+            <Markdown text={worker.brief} keep={`instructions:${worker.id}`} />
           </div>
-        </section>
+        </section>}
       </div>
     </div>
   );

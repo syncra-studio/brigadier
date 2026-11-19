@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips } from "../components/tooltip";
@@ -8,7 +8,7 @@ import type { Item, Progress, Turn } from "../thread/item";
 import type { Worker, WorkerStateKind } from "./chip";
 import { Opens, TeamCard } from "./live";
 import { type Lifecycle, TeamSentence } from "./sentence";
-import { WorkerHeader, WorkerThread } from "./view";
+import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
  * The agent CLI's own subagents [D78, D115]: in the thread only "‹name› started working", then
@@ -68,6 +68,7 @@ const NO_TURNS: readonly Turn[] = [];
 /** One subagent in the side panel: its header, its steps as they come, and its answer once it's in. */
 export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: () => void; onClose: () => void }) {
   const worker = asSubagent(item);
+  const [details, setDetails] = useState(false);
   const items = useMemo<Item[]>(
     () => [...(item.log ?? []), ...(item.answer ? [{ id: `${item.id}:answer`, turnId: item.turnId, kind: "message" as const, role: "assistant" as const, text: item.answer, streaming: false }] : [])],
     [item],
@@ -77,7 +78,9 @@ export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: (
       <WorkerHeader
         worker={worker}
         list={SUBAGENTS_LABEL}
-        onBack={onBack}
+        details={details}
+        onBack={() => (details ? setDetails(false) : onBack())}
+        onToggleDetails={() => setDetails(!details)}
         actions={
           <TitlebarTips>
             <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
@@ -86,7 +89,7 @@ export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: (
           </TitlebarTips>
         }
       />
-      <WorkerThread worker={worker} items={items} turns={NO_TURNS} />
+      {details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={items} turns={NO_TURNS} />}
     </section>
   );
 }
