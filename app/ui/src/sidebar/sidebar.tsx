@@ -160,7 +160,7 @@ export function AppSidebar({
       if (event.repeat) return;
       const action = Object.entries({
         "next-waiting": nextNeedingYou,
-        pin: activeRow && (() => pin(activeRow, !activeRow.pinned)),
+        pin: pinsSessions && activeRow && (() => pin(activeRow, !activeRow.pinned)),
         rename: activeRow && (() => setRenaming(activeRow)),
       }).find(([id]) => matches(event, id))?.[1];
       if (!action) return;
@@ -184,6 +184,7 @@ export function AppSidebar({
       project={each.project === null ? undefined : projectOf.get(each.project)}
       tone={projects.findIndex((project) => project.id === each.project)}
       active={each.id === active}
+      canPin={pinsSessions}
       offline={offline}
       onOpen={onOpen}
       picked={picks.has(each.id)}
@@ -221,7 +222,15 @@ export function AppSidebar({
         <Strip onNewChat={onNewChat}>
           {pinsSessions
             ? order.map((each) => (
-                <SessionSquare key={each.id} row={each} project={each.project === null ? undefined : projectOf.get(each.project)} tone={projects.findIndex((project) => project.id === each.project)} active={each.id === active} onOpen={onOpen} />
+                <SessionSquare
+                  key={each.id}
+                  row={each}
+                  project={each.project === null ? undefined : projectOf.get(each.project)}
+                  tone={projects.findIndex((project) => project.id === each.project)}
+                  active={each.id === active}
+                  attention={attentionOf(kept?.filter((row) => row.id === each.id || (row.boss === each.id && !isOpen(`brigade:${each.id}`))) ?? [], active)}
+                  onOpen={onOpen}
+                />
               ))
             : [...pinnedProjects, ...unpinnedProjects].map((project) => (
                 <ProjectSquare key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} />

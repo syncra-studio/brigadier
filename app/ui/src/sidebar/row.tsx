@@ -122,6 +122,7 @@ export function SessionRowItem({
   tone,
   active,
   badged = false,
+  canPin = true,
   nested = false,
   forked = false,
   sub = false,
@@ -139,6 +140,7 @@ export function SessionRowItem({
   tone?: number;
   active: boolean;
   badged?: boolean;
+  canPin?: boolean;
   nested?: boolean;
   /** A fork, under its source: the fork mark before its title, one step further in [D48]. */
   forked?: boolean;
@@ -164,7 +166,7 @@ export function SessionRowItem({
   const title = row.title || "New session";
   // Archived rows bring their own menu (Restore, Delete…) and no Archive.
   const live = !menu && !row.archived;
-  const items = menu ?? <RowMenuItems row={row} onRename={() => onRename(row)} />;
+  const items = menu ?? <RowMenuItems row={row} canPin={canPin} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/row relative" />}>

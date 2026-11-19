@@ -24,7 +24,7 @@ import { useBranchPreview } from "./rename-branch";
 import type { SessionRow } from "./words";
 
 /** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
-export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () => void }) {
+export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow; canPin?: boolean; onRename: () => void }) {
   const pinned = Boolean(row.pinned);
   const projects = useDaemon().projects;
   const git = useGit();
@@ -39,11 +39,13 @@ export function RowMenuItems({ row, onRename }: { row: SessionRow; onRename: () 
   ];
   return (
     <>
-      <DropdownMenuItem onClick={() => pin(row, !pinned)}>
-        {pinned ? <Unpin /> : <Pin />}
-        {pinned ? "Unpin" : "Pin"}
-        <DropdownMenuShortcut>{keysOf("pin")[0]}</DropdownMenuShortcut>
-      </DropdownMenuItem>
+      {canPin && (
+        <DropdownMenuItem onClick={() => pin(row, !pinned)}>
+          {pinned ? <Unpin /> : <Pin />}
+          {pinned ? "Unpin" : "Pin"}
+          <DropdownMenuShortcut>{keysOf("pin")[0]}</DropdownMenuShortcut>
+        </DropdownMenuItem>
+      )}
       <DropdownMenuItem onClick={onRename}>
         <Pencil />
         Rename

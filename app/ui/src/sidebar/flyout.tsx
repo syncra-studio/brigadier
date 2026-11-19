@@ -99,9 +99,8 @@ export function ProjectSquare({ project, tone, current, attention }: { project: 
   );
 }
 
-/** A session's square in the strip, smaller than a project's: its project's logo or initials, its title on hover [D805]. */
-export function SessionSquare({ row, project, tone, active, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; onOpen: (id: string) => void }) {
-  const attention = attentionOf([row], active ? row.id : null);
+/** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
+export function SessionSquare({ row, project, tone, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; attention: "needs" | "amber" | null; onOpen: (id: string) => void }) {
   return (
     <TooltipIconButton look="strip" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? DOT[attention] : undefined} onClick={() => onOpen(row.id)}>
       <ProjectBadge id={project?.id} name={project?.name ?? null} tone={tone} size="size-4.5 text-badge" />
