@@ -1825,6 +1825,11 @@
   max-width: min(var(--container-reading), 100% - var(--summary-room));
 }
 
+/* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. */
+@utility reading-full {
+  --container-reading: 100%;
+}
+
 /* The card's room easing in and out: with the card, and with a fold when a panel's width is what makes it [D45, D49]. */
 @utility summary-shift-motion {
   transition-property: --summary-room;

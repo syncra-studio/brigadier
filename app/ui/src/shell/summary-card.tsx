@@ -14,6 +14,7 @@ import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
 import { useSource } from "../panel/source/view";
+import { useSettings } from "../settings/api";
 import { WorkersCard } from "../workers/live";
 import { SubagentsCard } from "../workers/subagents";
 import { useHasPanel } from "./right-panel";
@@ -34,10 +35,10 @@ type Layout = "beside" | "shift" | "float";
 const GUTTER_FROM = 19 + 1.25 + 37.5;
 const BESIDE_FROM = 25;
 
-function layoutOf(width: number): Layout {
+function layoutOf(width: number, full: boolean): Layout {
   const root = getComputedStyle(document.documentElement);
   const rem = Number.parseFloat(root.fontSize);
-  const column = Number.parseFloat(root.getPropertyValue("--container-reading")) * rem;
+  const column = full ? width : Number.parseFloat(root.getPropertyValue("--container-reading")) * rem;
   if (width < GUTTER_FROM * rem) return "float";
   return (width - column) / 2 < BESIDE_FROM * rem ? "shift" : "beside";
 }
@@ -166,6 +167,8 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
   const [settledFor, setSettledFor] = useState<string | null>(null);
   const settled = settledFor === owner;
   const has = room;
+  // Full width: the reading column fills the pane, which then always moves it aside for the card [D914, D915].
+  const full = useSettings().value?.thread_width === "full";
 
   useLayoutEffect(() => {
     const element = pane.current;
@@ -182,7 +185,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       windowWidth = innerWidth;
       const before = cardOf(owner);
       const sliding = fold(element);
-      const layout = layoutOf(width + sliding.left);
+      const layout = layoutOf(width + sliding.left, full);
       const changed = element.dataset.summary !== layout;
       // On the element at once, for CSS: the column's move and the card's hiding land in this frame, not the next.
       element.dataset.summary = layout;
@@ -206,7 +209,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       setSettledFor(null);
       setCard(owner, { layout: null, floating: false });
     };
-  }, [has, owner]);
+  }, [has, owner, full]);
 
   // Escape closes it where it floats; a menu or dialog with the focus takes its own Escape first. Captured, as an
   // open popup elsewhere stops the key's way up.
@@ -267,6 +270,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
         "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip",
         // As the old app: the reading column glides aside, narrowing, and back, with the card and a fold as one.
         "reading-column:summary-column summary-shift:summary-room",
+        full && "reading-full",
         settled && "summary-shift-motion",
       )}
     >

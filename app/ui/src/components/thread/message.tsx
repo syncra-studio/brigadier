@@ -17,6 +17,7 @@ import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { openChip } from "../../session/commands";
 import { urlOf } from "../../session/files";
+import { useSettings } from "../../settings/api";
 
 const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -146,10 +147,12 @@ export function UserBubble({
     if (element.firstElementChild) observer.observe(element.firstElementChild);
     return () => observer.disconnect();
   }, [more]);
+  // Stacked: one left-aligned column with the agent's text, the bubble kept so it stands apart [D914, D915].
+  const side = useSettings().value?.message_layout === "stacked" ? "items-start" : "items-end";
   return (
-    <div className="group/user flex flex-col items-end gap-y-1">
+    <div className={cx("group/user flex flex-col gap-y-1", side)}>
       {dated && time !== undefined && <TimeSeparator at={time} />}
-      <div className="flex max-w-7/10 min-w-0 flex-col items-end gap-y-1">
+      <div className={cx("flex max-w-7/10 min-w-0 flex-col gap-y-1", side)}>
         {files}
         {/* A message of only files (a paste, an image) has no bubble under them. */}
         {(text.trim() !== "" || chips || !files) && (
@@ -211,7 +214,7 @@ export function UserBubble({
           <ErrorLine
             size="sm"
             error={failed && `Not sent · ${failed}`}
-            className="justify-end"
+            className={side === "items-end" ? "justify-end" : undefined}
             actions={
               onRetry ? (
                 <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
