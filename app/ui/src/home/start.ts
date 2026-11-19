@@ -9,7 +9,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeRight, closeTab, rereadHome, selectTab, setCurrent, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeRight, closeTab, pageKey, rereadHome, selectTab, setCurrent, tabsOf } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -56,21 +56,23 @@ export const draftKey = (d: Pick<HomeDraft, "locked" | "project"> = draft.get())
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
   setHomeDraft({ ...(project ? { project, chat: false, locked: true } : { locked: false }), focus: draft.get().focus + 1 });
-  selectTab(HOME_DRAFT, CHAT);
+  // By its own key: from a project's page, Home's tabs are still the page's [D875].
+  selectTab(draftKey(), CHAT);
   window.location.hash = "";
 }
 
 /** Home in no project, from the sidebar's New chat [D421]. */
 export function newChat(): void {
   setHomeDraft({ chat: true, locked: false, focus: draft.get().focus + 1 });
-  selectTab(HOME_DRAFT, CHAT);
+  selectTab(draftKey(), CHAT);
   window.location.hash = "";
 }
 
 /** A project's draft closed with its Chat tab's ×: its tabs and words go, and its page shows [D865 D866]. */
 export function dropDraft(project: string): void {
-  closeRight(HOME_DRAFT, CHAT);
-  keepDraft(daemonRun, draftKey({ locked: true, project }), EMPTY_DRAFT);
+  const key = draftKey({ locked: true, project });
+  closeRight(key, CHAT);
+  keepDraft(daemonRun, key, EMPTY_DRAFT);
   setCurrent(project, null);
   window.location.hash = `#project/${encodeURIComponent(project)}`;
 }
@@ -179,9 +181,11 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
   setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
-  // Its PR tab closes on Home: the session has the PR's page instead [D699].
-  const tab = place.pr && tabsOf(HOME_DRAFT).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
-  if (tab) closeTab(HOME_DRAFT, tab.id);
+  // Its PR tab closes on Home, or on the project's page it was opened from: the session has the PR's page instead [D699 D875].
+  for (const owner of place.pr ? [HOME_DRAFT, pageKey(place.pr.project)] : []) {
+    const tab = tabsOf(owner).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
+    if (tab) closeTab(owner, tab.id);
+  }
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, key, EMPTY_DRAFT);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;

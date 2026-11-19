@@ -16,7 +16,7 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { baseName } from "../files/tree";
-import { dropDraft, newChat, newSession } from "../home/start";
+import { dropDraft, newChat } from "../home/start";
 import { HOME_DRAFT } from "../session/draft";
 import { Plus, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
@@ -28,7 +28,7 @@ import { BlankChatTab, BUTTON, ChatTab, CLOSE, HouseTab, leave, LOOK, noAutoscro
 import { useNoteTitle } from "./note-tab";
 import { HOUSE, useTabGlide } from "./tab-glide";
 import { useTabKeys } from "./tab-keys";
-import { CHAT, closeTab, HOME, homeProject, justOpened, keepTab, moveTab, openTab, selectTab, setCurrent, setPlace, type Tab, TAB_KINDS, tabOrder, tabsOf, useCurrent, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
+import { CHAT, closeTab, HOME, homeProject, justOpened, keepTab, moveTab, openTab, pageKey, selectTab, setCurrent, setPlace, type Tab, TAB_KINDS, tabOrder, tabsOf, useCurrent, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -42,9 +42,6 @@ const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar it
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 /** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
 const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
-
-
-const openThread = (id: string) => (window.location.hash = `#thread/${encodeURIComponent(id)}`);
 
 /** A file tab is named by its file, a PR tab by its number; a Review or Mockup tab keeps its kind's name, whatever it shows. */
 const pathName = (tab: Tab) => (tab.target === undefined || tab.kind === "review" || tab.kind === "mockup" ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
@@ -126,7 +123,7 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, enter
             <DropdownMenuSeparator />
           </>
         )}
-        {tab.kind === "browser" && owner !== HOME_DRAFT && (
+        {tab.kind === "browser" && !owner.startsWith(HOME_DRAFT) && (
           <>
             {/* The session's own agent is Brigadier to the user, whichever CLI it runs [D778]. */}
             {tab.driver ? <DropdownMenuItem onClick={() => takeBackTab(owner, tab.id)}>Take back</DropdownMenuItem> : <DropdownMenuItem onClick={() => giveTabToChat(owner, tab.id)}>Give to Brigadier</DropdownMenuItem>}
@@ -171,49 +168,48 @@ function useTabPresence(tabs: readonly Tab[]) {
 export function TabBar({ owner, row, offline, home = false }: { owner: string; row?: SessionRow | undefined; offline: boolean; home?: boolean }): ReactNode {
   const own = useTabs(owner);
   // In a project, the row is its house and the tabs of what's current there: on its page, the session last shown in it
-  // (its tabs, none in front, each opening it) or its draft, whose own page shows Chat and its tabs [D849 D850].
+  // or its draft (their tabs, none in front, each opening it), else the page's own, Chat-less [D849 D850 D875].
   const tabsProject = useTabsProject();
   const project = owner === HOME ? tabsProject : (row?.project ?? null);
   const current = useCurrent(home ? project : null);
   const rows = useDaemon().rows;
   const peekRow = home && own.active === CHAT && current !== HOME ? rows?.find((each) => each.id === current && !each.archived) : undefined;
-  const peek = peekRow?.id;
+  const draft = home && own.active === CHAT && current === HOME ? `${HOME}:${project}` : undefined;
+  const peek = peekRow?.id ?? draft;
   const shown = peek ?? owner;
+  const openPeek = () => peek && (window.location.hash = peekRow ? `#thread/${encodeURIComponent(peek)}` : "");
   const now = useTabs(shown);
   const { tabs, active } = now;
   // What's in front in the row: nothing of a session's shown on its project's page, its house is.
   const front = peek ? "" : active;
   useTabsFromRust(owner);
   useTabsFromRust(shown);
-  // The draft, when it's current or holds tabs and no session is (after a reload).
-  const draftShown = !peek && (current === HOME || own.active !== CHAT || own.tabs.length > 0);
-  // A session shown is current in its project, and the draft as its page shows or a tab opens from the project's page;
+  // A session shown is current in its project, the draft as its page shows, the page's tabs as one is in front there;
   // read as the page settles, after Home's arrival put its house in front.
-  // The page itself is the last place used there while its house is in front [D865].
+  // The page itself is the last place used there while its house is in front [D865 D875].
   // Home's project as it is now: the render's may be the last page's, before Home set its own [D863].
   useEffect(() => {
     const at = owner === HOME ? homeProject() : project;
     if (!at || row?.archived) return;
     const page = home && tabsOf(HOME).active === CHAT;
-    setPlace(at, page ? "" : owner);
-    if (!page) setCurrent(at, owner);
+    const here = home ? pageKey(at) : owner;
+    setPlace(at, page ? "" : here);
+    if (!page) setCurrent(at, here);
   }, [owner, home, project, row?.archived, own.active]);
   const archived = Boolean(row?.archived);
   useTabKeys(owner, archived, peek);
   const presence = useTabPresence(tabs);
   // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
-  // New chat in no project with no tabs has no Chat tab, "+" at the row's end [D831]; a project's page none while
-  // nothing is current there, "+" after its house [D824 D850].
+  // New chat in no project with no tabs has no Chat tab, "+" at the row's end [D831]; a project's page none but a
+  // session's or its draft's, "+" after its house [D824 D850 D875].
   const bare = owner === HOME && !home && !project && tabs.length === 0;
-  const chatGone = bare || (home && !peek && !draftShown);
+  const chatGone = bare || (home && !peek);
   const house = owner !== HOME || project !== null;
   const houseActive = home && own.active === CHAT;
   const openHouse = () => (owner === HOME && selectTab(HOME, CHAT), project ? openProject(project) : newChat());
-  // On a project's page a tab of what's current opens it: the session, or the draft's page for its Chat.
+  // On a project's page a tab of what's current opens it there, the session or the draft's page; the page's own show on it.
   const onPick = (event: ReactMouseEvent) => {
-    if (!home || !(event.target as Element).closest('[role="tab"]')) return;
-    if (peek) openThread(peek);
-    else if ((event.target as Element).closest(`[data-tab-id="${CHAT}"]`)) newSession(project);
+    if (home && (event.target as Element).closest('[role="tab"]')) openPeek();
   };
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
@@ -308,7 +304,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   const newTab = (
     <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag session-tab-new" onClick={() => {
         openTab(shown, "new");
-        if (peek) openThread(peek);
+        openPeek();
       }}>
       <Plus />
     </TooltipIconButton>
@@ -321,13 +317,13 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
         <span ref={ghost} aria-hidden hidden data-active className="session-tab-glide">
           <span className="session-tab-shape" />
         </span>
-        {house && <HouseTab active={houseActive} separator={!houseActive && (chatGone || !(front === CHAT && !home))} onOpen={openHouse} />}
+        {house && <HouseTab active={houseActive} separator={!houseActive && (chatGone ? tabs[0]?.id !== front : !(front === CHAT && !home))} onOpen={openHouse} />}
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
           <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length + (chatGone ? 0 : 1)} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
-            {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && tabs[0]?.id !== front} order={order} /> : <BlankChatTab owner={owner} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
+            {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && tabs[0]?.id !== front} order={order} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
             <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider

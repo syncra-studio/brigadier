@@ -35,7 +35,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { CHAT, HOME, selectTab, setHomeTabs } from "./shell/tab-store";
+import { CHAT, HOME, pageTabLast, selectTab, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -193,13 +193,14 @@ function Home({ page, children }: { page?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
   // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
   const locked = useHomeDraft().locked === true;
-  useLayoutEffect(() => setHomeTabs(page ?? (locked ? project : null)), [page, project, locked]);
-  // Opening a project's page shows its Home tab in front, the project's other tabs kept beside it as left [D836 D837];
-  // its tabs read the project as Home's do [D279].
+  // A project's page its own, apart from its draft's [D875].
+  useLayoutEffect(() => (page ? setHomeTabs(page, true) : setHomeTabs(locked ? project : null)), [page, project, locked]);
+  // Opening a project's page shows its Home tab in front, the page's tabs kept beside it as left, or the tab of it last
+  // in front when the project was left there [D836 D837 D865]; its tabs read the project as Home's do [D279].
   useLayoutEffect(() => {
     if (!page) return;
     setHomeDraft({ project: page, chat: false, locked: true });
-    selectTab(HOME, CHAT);
+    if (!pageTabLast(page)) selectTab(HOME, CHAT);
   }, [page]);
   return (
     <>

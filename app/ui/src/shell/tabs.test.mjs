@@ -21,7 +21,7 @@ const store = await load("./tab-store.ts", {
   "../daemon": { ask: (request) => asked.push(request.args), useDaemon: () => ({}) },
   "../session/store": { newId: () => String(asked.length) },
 });
-const { HOME, openTab, tabsOf, setHomeTabs, carryHome, setPlace, placeOf } = store;
+const { HOME, openTab, tabsOf, setHomeTabs, carryHome, setPlace, placeOf, pageKey, pageTabLast, homeProject } = store;
 
 test("New chat and a project's New session keep their own tabs [D859 D863]", () => {
   setHomeTabs("p");
@@ -36,6 +36,22 @@ test("New chat and a project's New session keep their own tabs [D859 D863]", () 
   assert.deepEqual(tabsOf("s2").tabs.map((tab) => tab.kind), ["new"]);
   assert.equal(tabsOf(HOME).tabs.length, 0, "sent, the draft is empty again");
   assert.ok(asked.some((args) => args[1] === "@home:p") && asked.some((args) => args[1] === "@home"));
+});
+
+test("a project's page keeps its own tabs: \"+\" there never shows in its New session [D859 D875]", () => {
+  setHomeTabs("r", true);
+  assert.equal(homeProject(), "r");
+  openTab(HOME, "new");
+  assert.deepEqual(tabsOf(pageKey("r")).tabs.map((tab) => tab.kind), ["new"], "the page's New tab, in front");
+  assert.equal(tabsOf(pageKey("r")).active, tabsOf(pageKey("r")).tabs[0].id);
+  setHomeTabs("r");
+  assert.equal(tabsOf(HOME).tabs.length, 0, "the project's draft has none of it");
+  assert.ok(asked.some((args) => args[1] === "@home:r--page" && args[2] === "open"));
+  setPlace("r", pageKey("r"));
+  assert.ok(pageTabLast("r"), "left on it, the page opens on it again");
+  assert.equal(placeOf("r", () => false, ""), null, "by way of the page");
+  setPlace("r", "");
+  assert.ok(!pageTabLast("r"));
 });
 
 test("a project's click goes back to its last place [D865]", () => {
@@ -60,16 +76,22 @@ test("on a project's page the keys act on the session its row shows, and open it
     react: { useEffect: (f) => f() },
     "../shortcuts": { matches: (event, id) => event.id === id },
     "./titlebar": { blocked: () => false },
-    "./tab-store": { openTab: (...args) => calls.push(args) },
+    "./tab-store": { HOME, openTab: (...args) => calls.push(args) },
   });
   const press = (id) => handler({ id, preventDefault() {}, stopPropagation() {} });
   useTabKeys(HOME, false, "s1");
   press("new-tab");
   assert.deepEqual(calls.pop(), ["s1", "new"]);
   assert.equal(window.location.hash, "#thread/s1");
+  useTabKeys(HOME, false, "@home:p");
+  press("new-tab");
+  assert.deepEqual(calls.pop(), ["@home:p", "new"], "its draft current: in the draft, on its page");
+  assert.equal(window.location.hash, "");
+  window.location.hash = "#project/p";
   useTabKeys(HOME, false);
   press("new-tab");
-  assert.deepEqual(calls.pop(), [HOME, "new"], "with nothing current, the project's draft");
+  assert.deepEqual(calls.pop(), [HOME, "new"], "with nothing current, Home's tabs: the page's own there [D875]");
+  assert.equal(window.location.hash, "#project/p");
 });
 
 test("New chat and a project's New session keep their own words [D863]", async () => {

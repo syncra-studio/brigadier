@@ -167,6 +167,7 @@ export function DropdownMenuLabel({
 }
 
 export function DropdownMenuSeparator({ className, ...props }: Omit<Menu.Separator.Props, "className"> & { className?: string }) {
+  // Only between two groups that have items (theme.css) [D876].
   return <Menu.Separator data-slot="dropdown-menu-separator" className={cx("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 

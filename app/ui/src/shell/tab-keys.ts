@@ -3,11 +3,11 @@ import { useEffect } from "react";
 import { allProfiles, switchProfile } from "../browser/profiles";
 import { matches } from "../shortcuts";
 import { blocked } from "./titlebar";
-import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
+import { closeOthers, HOME, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
 /** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here.
- *  On a project's page the row is `peek`'s, the session current there: they act on it and open it, as a click does,
- *  never on the project's draft behind the page [D849 D859]. */
+ *  On a project's page the row is `peek`'s, the session or draft current there: they act on it and open it, as a click
+ *  does; with neither, on the page's own tabs, never the draft's [D849 D859 D875]. */
 export function useTabKeys(home: string, archived: boolean, peek?: string): void {
   useEffect(() => {
     const owner = peek ?? home;
@@ -31,7 +31,8 @@ export function useTabKeys(home: string, archived: boolean, peek?: string): void
       event.preventDefault();
       event.stopPropagation();
       run();
-      if (peek) window.location.hash = `#thread/${encodeURIComponent(peek)}`;
+      // The draft's page is Home's, already in the page's project [D875].
+      if (peek) window.location.hash = peek.startsWith(HOME) ? "" : `#thread/${encodeURIComponent(peek)}`;
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
