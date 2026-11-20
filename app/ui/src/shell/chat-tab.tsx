@@ -22,8 +22,8 @@ export const TAB = "session-tab @container/tab app-no-drag group/tab flex min-w-
 export const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground");
 /** The front tab's shape, Chrome's, joined to the frame; every tab has one, shown in front only (session-tab-shape). */
 export const Shape = () => <span aria-hidden className="session-tab-shape" />;
-// Its icon and title from the start, a title too long cut with "…"; squeezed under 88px, the icon alone [D52].
-export const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm ps-2 pe-1 focus-visible:focus-ring @max-tab-icon/tab:justify-center @max-tab-icon/tab:px-0";
+// Its icon and title centred, as Safari's, a title too long cut with "…"; squeezed under 88px, the icon alone [D52 D3113].
+export const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-sm ps-2 pe-1 focus-visible:focus-ring @max-tab-icon/tab:px-0";
 export const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 // The house, Chrome's pinned tab: its icon alone [D848].
 export const PINNED = "flex h-full w-full cursor-pointer items-center justify-center rounded-sm focus-visible:focus-ring";
