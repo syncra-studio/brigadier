@@ -247,6 +247,8 @@ function openWindow(): void {
   window.on("enter-full-screen", tellFullScreen);
   window.on("leave-full-screen", tellFullScreen);
   window.webContents.on("did-finish-load", tellFullScreen);
+  // A trackpad scroll's end, after the fingers lift and any momentum, for swiping Back and Forward (shell/swipe.tsx) [D3110].
+  window.webContents.on("input-event", (_event, input) => input.type === "gestureScrollEnd" && window.webContents.send("scroll-end"));
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, themeBackground, introColours);

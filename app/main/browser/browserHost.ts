@@ -13,6 +13,7 @@ import { installBrowserDevtools, watchDevToolsLinks } from "./browserDevtools";
 import { installDurableStorage, keepStorageOf } from "./durableStorage";
 import { installGuestFavicon } from "./guestFavicon";
 import { installGuestKeys } from "./guestKeys";
+import { installGuestSwipe } from "./guestSwipe";
 import { installGuest, webOrBlank } from "./guestPopups";
 import { installLocalCerts } from "./localCerts";
 import { applyAppSessionPolicy, applyPermissionPolicy, installPermissionAnswers } from "./permissions";
@@ -63,6 +64,7 @@ export function installBrowserHost(origin: string): void {
     keepStorageOf(contents);
     if (contents.getType() === "webview") {
       installGuestKeys(contents);
+      installGuestSwipe(contents);
       installGuest(contents);
       watchGuest(contents);
       watchDevToolsLinks(contents);

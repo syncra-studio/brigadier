@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld("brigadier", {
     ipcRenderer.on("menu", heard);
     return () => void ipcRenderer.off("menu", heard);
   },
+  onScrollEnd: (listener: () => void) => {
+    const heard = () => listener();
+    ipcRenderer.on("scroll-end", heard);
+    return () => void ipcRenderer.off("scroll-end", heard);
+  },
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
   ignoreMenuKeys: (on: boolean) => ipcRenderer.send("ignore-menu-keys", on),
   openLink: (url: string) => ipcRenderer.send("open-link", url),
@@ -74,6 +79,11 @@ contextBridge.exposeInMainWorld("brigadierShell", {
   onGuestPermissionRefused: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-permission-refused", (_event, details) => listener(details)),
   onGuestEscape: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-escape", (_event, details) => listener(details)),
   onGuestKey: (listener: () => void) => void ipcRenderer.on("brigadier:guest-key", () => listener()),
+  onPageSwipe: (listener: (details: unknown) => void) => {
+    const heard = (_event: unknown, details: unknown) => listener(details);
+    ipcRenderer.on("brigadier:page-swipe", heard);
+    return () => void ipcRenderer.off("brigadier:page-swipe", heard);
+  },
   // A key a page gave up (main's browser/guestKeys.ts). ⌘W, ⌘[ and ⌘] are the menu's, which never saw the press: they go
   // on as its commands; the rest to the page as presses (browser/keys.ts).
   onGuestShortcut: (listener: (key: string) => void) => void ipcRenderer.on("brigadier:guest-shortcut", (event, key: string) => {

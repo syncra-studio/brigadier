@@ -1494,6 +1494,64 @@
   border-radius: var(--spacing-session-tab-rule);
   background: var(--color-fill);
 }
+/* A swipe's chip, the image viewer's round button: in from the window's edge as the fingers travel (data-travel,
+   1 armed), its chevron bright once a release goes; it shrinks away on going, slides back out short [D3110]. */
+@utility swipe-chip {
+  --swipe-travel: attr(data-travel type(<number>), 0);
+  --swipe-in: calc(var(--swipe-travel) * var(--spacing) * 16 - var(--spacing) * 10);
+  position: fixed;
+  z-index: 50;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--spacing) * 10);
+  height: calc(var(--spacing) * 10);
+  border-radius: var(--radius-capsule);
+  border: 1px solid var(--color-popover-edge);
+  background: var(--color-muted);
+  box-shadow: var(--shadow-image-viewer-button);
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+  translate: var(--swipe-in) -50%;
+  transition: color var(--duration-popup-fast) var(--ease-out), scale var(--duration-popup-fast) var(--ease-out);
+  & svg {
+    width: var(--spacing-icon-lg);
+    height: var(--spacing-icon-lg);
+  }
+  &[data-side="back"] {
+    left: 0;
+  }
+  &[data-side="forward"] {
+    right: 0;
+    translate: calc(var(--swipe-in) * -1) -50%;
+  }
+  &[data-armed] {
+    color: var(--color-foreground);
+    scale: 1.1;
+  }
+  &[data-gone="went"] {
+    opacity: 0;
+    scale: 0.6;
+    transition: opacity var(--duration-session-tab) var(--ease-out), scale var(--duration-session-tab) var(--ease-out);
+  }
+  &[data-gone="short"] {
+    --swipe-travel: 0;
+    transition: translate var(--duration-session-tab) var(--ease-out);
+  }
+  /* Still: it shows in place, fading in with the fingers' travel, and goes at once. */
+  @media (prefers-reduced-motion: reduce) {
+    --swipe-in: calc(var(--spacing) * 6);
+    opacity: calc(0.4 + var(--swipe-travel) * 0.6);
+    transition: none;
+    &[data-armed] {
+      scale: 1;
+    }
+    &[data-gone] {
+      display: none;
+    }
+  }
+}
 
 /* The tab bar runs from the window's start: its tabs from the page panel's start edge (the frame's 8px and the sidebar's
    room, sidebar-width-source), or past the traffic lights and the toggle with 8px [D934], where

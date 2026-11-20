@@ -27,6 +27,8 @@ declare global {
       onGuestPermissionRefused(listener: (details: { from: number; origin: string; refused: string[] }) => void): void;
       onGuestEscape(listener: (details: { from: number }) => void): void;
       onGuestKey(listener: () => void): void;
+      /** A swipe over a tab's page so far, and at its end (main's browser/guestSwipe.ts) [D3110]. */
+      onPageSwipe(listener: (details: { from: number; dx: number; events: number; end: boolean }) => void): () => void;
       onGuestShortcut(listener: (key: string) => void): void;
       answerPermission(request: number, answer: "once" | "visiting" | "never" | "dismiss"): Promise<void>;
       openPermissionSettings(device: "camera" | "microphone" | "location"): Promise<void>;
@@ -159,6 +161,8 @@ function installKeyboardHandover(): void {
 
 /** The page whose guest is `from`, once it has one. */
 const pageOf = (from: number) => [...pages.values()].find((page) => page.ready && page.element.getWebContentsId() === from);
+/** The tab's page whose guest is `from`, for walking its history. */
+export const guestPage = (from: number): Webview | undefined => pageOf(from)?.element;
 
 export function installTabLayer(): void {
   layer = document.createElement("div");
