@@ -3,6 +3,8 @@
 // trackpad's scroll lasts and sent to the app, which draws the chip and goes Back or Forward (shell/titlebar.tsx).
 import type { WebContents } from "electron";
 
+import { watchScrolls } from "../scrolls";
+
 const SWIPE_WORLD = 1011;
 const READ_MS = 33;
 
@@ -35,27 +37,34 @@ const read = (end: boolean) => `(() => {
   return now;
 })()`;
 
-/** A tab's page: its swipes go to the app as `brigadier:page-swipe`, read while the scroll lasts and once at its end. */
+/** A tab's page: its trackpad swipes go to the app as `brigadier:page-swipe`, read while the fingers are down and once
+ * as they lift (or at the scroll's end, without the addon's lift). A mouse's scroll and momentum are only cleared. */
 export function installGuestSwipe(guest: WebContents): void {
   guest.on("dom-ready", () => void guest.executeJavaScriptInIsolatedWorld(SWIPE_WORLD, [{ code: TALLY }]).catch(() => {}));
   let reading: NodeJS.Timeout | undefined;
-  // The app while a scroll lasts: a page that goes mid-swipe tells it the end, so its chip never stays.
+  // The app while a swipe lasts: a page that goes mid-swipe tells it the end, so its chip never stays.
   let host: WebContents | null = null;
   const from = guest.id;
-  const send = (end: boolean) =>
+  const send = (end: boolean) => {
+    const to = host;
     void guest.executeJavaScriptInIsolatedWorld(SWIPE_WORLD, [{ code: read(end) }]).then((now: { dx: number; events: number } | null) => {
-      if (now && !guest.isDestroyed()) guest.hostWebContents?.send("brigadier:page-swipe", { from: guest.id, ...now, end });
+      if (now && to && !to.isDestroyed() && !guest.isDestroyed()) to.send("brigadier:page-swipe", { from, ...now, end });
     }, () => {});
-  guest.on("input-event", (_event, input) => {
-    if (input.type === "gestureScrollBegin") {
-      host = guest.hostWebContents;
+  };
+  const ended = () => {
+    clearInterval(reading);
+    send(true);
+    host = null;
+  };
+  watchScrolls(guest, {
+    begin: (trackpad) => {
       clearInterval(reading);
-      reading = setInterval(() => send(false), READ_MS);
-    } else if (input.type === "gestureScrollEnd") {
-      host = null;
-      clearInterval(reading);
-      send(true);
-    }
+      host = trackpad ? guest.hostWebContents : null;
+      if (host) reading = setInterval(() => send(false), READ_MS);
+    },
+    lift: ended,
+    // After a lift, or a mouse's scroll, this only clears the tally: nothing goes to the app.
+    end: ended,
   });
   guest.once("destroyed", () => {
     clearInterval(reading);

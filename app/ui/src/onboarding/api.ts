@@ -20,8 +20,8 @@ declare global {
       pickFile(title: string, at?: string): Promise<string | null>;
       /** The app menu's commands for the page: "open-folders" (with the paths picked), "add-project", "new-session". */
       onMenu(listener: (command: string, paths?: string[]) => void): () => void;
-      /** A trackpad scroll's end, after the fingers lift and any momentum [D3110]. */
-      onScrollEnd(listener: () => void): () => void;
+      /** A scroll's news, for swiping [D3110]: it is a mouse's, its fingers lifted (momentum may follow), or it ended. */
+      onScroll(listener: (news: "mouse" | "lift" | "end") => void): () => void;
       closesTab(on: boolean): void;
       /** Whether the app menu's key shortcuts are off for this page (while a press is recorded). */
       ignoreMenuKeys(on: boolean): void;

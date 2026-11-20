@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { installBrowserHost } from "./browser/browserHost";
 import { holdForIntro } from "./intro";
 import { serveNotices } from "./notices";
+import { type ScrollAddon, useScrollAddon, watchScrolls } from "./scrolls";
 import { keepOnClose, serveTray } from "./tray";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
@@ -55,13 +56,14 @@ protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: t
 // The app's addon (crates/panel), loaded once. Loading it readies the folder picker: the first open panel of a run
 // loads its frameworks, about half a second, paid off the user's click so Choose folder and Change open at once (the
 // old app's warm_folder_picker) [D389]. It also tells Settings what macOS lets notices do [D611].
-let addon: { notifications?: () => string | null } | undefined;
+let addon: ({ notifications?: () => string | null } & ScrollAddon) | undefined;
 function panel(): typeof addon {
   if (addon || process.platform !== "darwin") return addon;
   addon = {};
   const file = app.isPackaged ? path.join(process.resourcesPath, "bin/libbrigadier_panel.dylib") : path.join(__dirname, "../../../target/debug/libbrigadier_panel.dylib");
   try {
     process.dlopen({ exports: addon } as NodeJS.Module, file);
+    useScrollAddon(addon);
   } catch (error) {
     console.error("Could not load the app's addon:", error);
   }
@@ -247,8 +249,12 @@ function openWindow(): void {
   window.on("enter-full-screen", tellFullScreen);
   window.on("leave-full-screen", tellFullScreen);
   window.webContents.on("did-finish-load", tellFullScreen);
-  // A trackpad scroll's end, after the fingers lift and any momentum, for swiping Back and Forward (shell/swipe.tsx) [D3110].
-  window.webContents.on("input-event", (_event, input) => input.type === "gestureScrollEnd" && window.webContents.send("scroll-end"));
+  // A scroll's news for swiping Back and Forward (shell/titlebar.tsx): a mouse's, the fingers' lift, its end [D3110].
+  watchScrolls(window.webContents, {
+    begin: (trackpad) => trackpad || window.webContents.send("scroll", "mouse"),
+    lift: () => window.webContents.send("scroll", "lift"),
+    end: () => window.webContents.send("scroll", "end"),
+  });
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, themeBackground, introColours);

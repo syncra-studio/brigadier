@@ -30,10 +30,10 @@ contextBridge.exposeInMainWorld("brigadier", {
     ipcRenderer.on("menu", heard);
     return () => void ipcRenderer.off("menu", heard);
   },
-  onScrollEnd: (listener: () => void) => {
-    const heard = () => listener();
-    ipcRenderer.on("scroll-end", heard);
-    return () => void ipcRenderer.off("scroll-end", heard);
+  onScroll: (listener: (news: "mouse" | "lift" | "end") => void) => {
+    const heard = (_event: unknown, news: "mouse" | "lift" | "end") => listener(news);
+    ipcRenderer.on("scroll", heard);
+    return () => void ipcRenderer.off("scroll", heard);
   },
   closesTab: (on: boolean) => ipcRenderer.send("closes-tab", on),
   ignoreMenuKeys: (on: boolean) => ipcRenderer.send("ignore-menu-keys", on),

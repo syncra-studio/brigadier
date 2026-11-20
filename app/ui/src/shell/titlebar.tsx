@@ -37,9 +37,10 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 const SWIPE_ARM = 120;
 // A wheel this long after the last starts a new swipe: one whose scroll never ends (a page took its wheel) is dropped.
 const SWIPE_STALE_MS = 500;
-// The swipe now, from its first wheel event to main's scroll-end after the fingers lift and any momentum. It isn't
-// ours when it starts mostly vertical, over a dialog, an agent's page or the tab bar (its wheel scrolls the strip from
-// anywhere on it), or where something takes or scrolls it.
+// The swipe now, from its first wheel event to the fingers' lift (main's scroll news), or to the scroll's end where
+// the lift isn't known; momentum after a lift and a mouse's scroll are spent, never a swipe. It isn't ours when it
+// starts mostly vertical, over a dialog, an agent's page or the tab bar (its wheel scrolls the strip from anywhere on
+// it), or where something takes or scrolls it.
 let swiping: { dx: number; events: number; at: number; ours: boolean } | null = null;
 /** Whether something under the pointer scrolls sideways itself towards `dx`'s side: a code block, a table, the tab strip, the board. */
 function scrollsSideways(from: EventTarget | null, dx: number): boolean {
@@ -138,10 +139,12 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       swiping.events += 1;
       swiped(app, swiping.dx, swiping.events, false);
     };
-    const offEnd = window.brigadier?.onScrollEnd(() => {
+    const offScroll = window.brigadier?.onScroll((news) => {
       const ended = swiping;
-      swiping = null;
-      if (ended?.ours) swiped(app, ended.dx, ended.events, true);
+      swiping = news === "end" ? null : { dx: 0, events: 0, at: performance.now(), ours: false };
+      if (!ended?.ours) return;
+      if (news === "mouse") setChip(null);
+      else swiped(app, ended.dx, ended.events, true);
     });
     const offPage = window.brigadierShell?.onPageSwipe(({ from, dx, events, end }) => {
       const page = guestPage(from);
@@ -155,7 +158,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     addEventListener("wheel", onWheel, { passive: true });
     return () => {
       offMenu?.();
-      offEnd?.();
+      offScroll?.();
       offPage?.();
       removeEventListener("wheel", onWheel);
       removeEventListener("keydown", onKeyDown);

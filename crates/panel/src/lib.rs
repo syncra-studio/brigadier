@@ -2,12 +2,14 @@
 //! without showing anything [D389]: `[NSOpenPanel openPanel]` loads the frameworks the first panel of
 //! a run needs. Electron has no call for that. A failure leaves the picker as it was, only slower.
 //! It also answers `notifications()`: what macOS lets Brigadier's notices do, which only the app's
-//! own process can ask and Electron can't [D611].
+//! own process can ask and Electron can't [D611]. And it watches the app's scroll-wheel events
+//! for swiping Back and Forward [D3110]: whether a scroll is a trackpad's (a mouse's wheel is never a
+//! swipe) and when the fingers lift, before any momentum; Electron tells neither.
 
 #[cfg(target_os = "macos")]
 mod mac {
     use std::ffi::{c_char, c_ulong, c_void};
-    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
     use std::time::{Duration, Instant};
 
     type Id = *mut c_void;
@@ -48,6 +50,8 @@ mod mac {
             result: *mut Id,
         ) -> i32;
         fn napi_get_null(env: Id, result: *mut Id) -> i32;
+        fn napi_get_boolean(env: Id, value: bool, result: *mut Id) -> i32;
+        fn napi_create_uint32(env: Id, value: u32, result: *mut Id) -> i32;
         fn napi_set_named_property(env: Id, object: Id, name: *const c_char, value: Id) -> i32;
     }
 
@@ -76,21 +80,107 @@ mod mac {
         unsafe {
             let pool = objc_autoreleasePoolPush();
             send(objc_getClass(c"NSOpenPanel".as_ptr()), c"openPanel");
+            watch_scrolls();
             objc_autoreleasePoolPop(pool);
-            let mut function = std::ptr::null_mut();
-            if napi_create_function(
-                env,
-                c"notifications".as_ptr(),
-                usize::MAX,
-                notifications,
-                std::ptr::null_mut(),
-                &mut function,
-            ) == 0
-            {
-                napi_set_named_property(env, exports, c"notifications".as_ptr(), function);
+            let calls: [(&std::ffi::CStr, unsafe extern "C" fn(Id, Id) -> Id); 3] = [
+                (c"notifications", notifications),
+                (c"trackpadScroll", trackpad_scroll),
+                (c"scrollLifts", scroll_lifts),
+            ];
+            for (name, call) in calls {
+                let mut function = std::ptr::null_mut();
+                if napi_create_function(
+                    env,
+                    name.as_ptr(),
+                    usize::MAX,
+                    call,
+                    std::ptr::null_mut(),
+                    &mut function,
+                ) == 0
+                {
+                    napi_set_named_property(env, exports, name.as_ptr(), function);
+                }
             }
         }
         exports
+    }
+
+    // The last scroll-wheel event's: precise deltas are a trackpad's (or a Magic Mouse's surface),
+    // never a wheel's; and how many times fingers have left the trackpad.
+    static PRECISE: AtomicBool = AtomicBool::new(true);
+    static LIFTS: AtomicU32 = AtomicU32::new(0);
+
+    #[repr(C)]
+    struct MonitorBlock {
+        isa: *const c_void,
+        flags: i32,
+        reserved: i32,
+        invoke: unsafe extern "C" fn(*mut MonitorBlock, Id) -> Id,
+        descriptor: *const Descriptor,
+    }
+
+    static MONITOR_DESCRIPTOR: SyncDescriptor = SyncDescriptor(Descriptor {
+        reserved: 0,
+        size: size_of::<MonitorBlock>() as c_ulong,
+        signature: c"@16@?0@8".as_ptr(),
+    });
+
+    /// Each scroll-wheel event of the app's windows, seen before Chromium gets it, and passed on as it was.
+    unsafe extern "C" fn scrolled(_block: *mut MonitorBlock, event: Id) -> Id {
+        unsafe {
+            let flag: unsafe extern "C" fn(Id, Id) -> bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            PRECISE.store(
+                flag(
+                    event,
+                    sel_registerName(c"hasPreciseScrollingDeltas".as_ptr()),
+                ),
+                Ordering::Relaxed,
+            );
+            // NSEventPhaseEnded 8 or Cancelled 16 with no momentum phase: the fingers lifted.
+            if number(event, c"phase") & (8 | 16) != 0 && number(event, c"momentumPhase") == 0 {
+                LIFTS.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        event
+    }
+
+    /// `[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskScrollWheel handler:]`, kept for the run.
+    unsafe fn watch_scrolls() {
+        unsafe {
+            let mut block = MonitorBlock {
+                isa: &raw const _NSConcreteStackBlock,
+                flags: 1 << 30, // BLOCK_HAS_SIGNATURE; AppKit copies it, and it holds nothing
+                reserved: 0,
+                invoke: scrolled,
+                descriptor: &MONITOR_DESCRIPTOR.0,
+            };
+            let add: unsafe extern "C" fn(Id, Id, u64, *mut MonitorBlock) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let monitor = add(
+                objc_getClass(c"NSEvent".as_ptr()),
+                sel_registerName(c"addLocalMonitorForEventsMatchingMask:handler:".as_ptr()),
+                1 << 22, // NSEventTypeScrollWheel
+                &mut block,
+            );
+            if !monitor.is_null() {
+                send(monitor, c"retain");
+            }
+        }
+    }
+
+    /// `trackpadScroll()`: whether the last scroll-wheel event was a trackpad's; true before any.
+    unsafe extern "C" fn trackpad_scroll(env: Id, _info: Id) -> Id {
+        let mut value = std::ptr::null_mut();
+        unsafe { napi_get_boolean(env, PRECISE.load(Ordering::Relaxed), &mut value) };
+        value
+    }
+
+    /// `scrollLifts()`: how many times fingers have left the trackpad this run; a change is a lift.
+    unsafe extern "C" fn scroll_lifts(env: Id, _info: Id) -> Id {
+        let mut value = std::ptr::null_mut();
+        unsafe { napi_create_uint32(env, LIFTS.load(Ordering::Relaxed), &mut value) };
+        value
     }
 
     // What getNotificationSettings answered, as the page's words; -1 until it has.
