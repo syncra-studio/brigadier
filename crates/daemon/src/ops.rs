@@ -21,7 +21,7 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 49] = [
+const ROUTED: [&str; 50] = [
     // Computer use: the helper's connection lives here [D913].
     "computer",
     "plugins",
@@ -36,6 +36,7 @@ const ROUTED: [&str; 49] = [
     "seen",
     "rename",
     "pin",
+    "label",
     "send",
     "stop",
     "answer",

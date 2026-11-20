@@ -58,6 +58,8 @@ struct Marks {
     at: u64,
     title: Option<String>,
     pinned: Option<u64>,
+    /// Its labels' names (`labels`), in the order given [D7, D10].
+    labels: Value,
     seen: u64,
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     archived: Option<u64>,
@@ -79,6 +81,9 @@ impl Marks {
             at,
             title: text("title").filter(|t| !t.is_empty()),
             pinned: ms("pinned"),
+            labels: text("labels")
+                .and_then(|t| serde_json::from_str(&t).ok())
+                .unwrap_or_else(|| json!([])),
             seen: ms("seen").unwrap_or(0),
             archived,
             lifecycle,
@@ -311,6 +316,7 @@ impl Index {
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
+            row["labels"] = e.marks.labels.clone(); // its labels [D7, D10]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
             // Using the computer now: holding its lock, its turn running, not waiting on the user [D907, D957].
             row["computer"] = json!(

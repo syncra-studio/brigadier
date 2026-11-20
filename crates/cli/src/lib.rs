@@ -54,7 +54,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
-       brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off]
+       brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | ungroup <driver> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen] | note <id> read <note> | write <note> <head> <body> [--base R] | list | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
@@ -334,6 +334,33 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 "rename" => return rename::run(data, args),
                 _ if has(args, "--off") => remove(&dir.join("pinned"))?,
                 _ => core::write_atomic(&dir.join("pinned"), log::now_ms().to_string().as_bytes())?,
+            }
+            Ok(json!({"ok": true, "at": index::touched(&dir)}))
+        }
+        // Its labels, a JSON list of names in `labels` [D7, D10]. Read, changed and replaced under the
+        // session's lock, so two windows' changes at once both stick; adding or removing twice is a no-op.
+        "label" => {
+            let (id, name) = (arg(args, 1)?, arg(args, 2)?.trim());
+            if name.is_empty() || name.chars().count() > 40 {
+                return Err(io::Error::other("a label is 1 to 40 characters"));
+            }
+            core::load(data, id)?;
+            let dir = core::session_dir(data, id);
+            let _lock = core::worktrees::lock(&dir)?;
+            let path = dir.join("labels");
+            let mut labels: Vec<String> = fs::read(&path)
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or_default();
+            let had = labels.iter().any(|l| l == name);
+            if has(args, "--off") && had {
+                labels.retain(|l| l != name);
+            } else if !has(args, "--off") && !had {
+                labels.push(name.to_string());
+            }
+            match labels.is_empty() {
+                true => remove(&path)?,
+                false => core::write_atomic(&path, &serde_json::to_vec(&labels)?)?,
             }
             Ok(json!({"ok": true, "at": index::touched(&dir)}))
         }
