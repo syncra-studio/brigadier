@@ -1,5 +1,5 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { Button } from "../components/button";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
@@ -9,7 +9,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Segment, Segmented, SegmentedRoot } from "../components/segmented";
 import { useDaemon } from "../daemon";
 import { newSession, setHomeDraft } from "../home/start";
-import { ArrowUpRight, BranchAlt, ChevronDown, Folder, Grid, ListBullets, Plus } from "../icons";
+import { ArrowUpRight, BranchAlt, ChevronDown, ChevronRight, Folder, Grid, ListBullets, Plus } from "../icons";
 import { HostOf } from "../landing/host";
 import { openPr } from "../panel/open";
 import { HOME, placeOf } from "../shell/tab-store";
@@ -25,7 +25,7 @@ import { useStored } from "../sidebar/sidebar";
 import { Labels } from "../sidebar/labels";
 import { RowMark } from "../sidebar/row";
 import { type Mark, type SessionRow, statusWords } from "../sidebar/words";
-import { Board, itemsOf, MenuButton, shortAgo } from "./board";
+import { Board, familyMark, itemsOf, MenuButton, shortAgo, type Tree } from "./board";
 import { useProjects } from "./projects";
 import { daemonSettings, ProjectSettings } from "./settings";
 
@@ -62,6 +62,7 @@ const GROUPS: { value: Exclude<Filter, "all" | "archived">; label: string }[] = 
   { value: "waiting", label: "Waiting" },
 ];
 const groupOf = (mark: Mark) => (mark === "needs" || mark === "amber" ? "needs" : mark === "working" ? "running" : mark === "background" ? "waiting" : "idle");
+const PRESSING = ["needs", "running", "waiting", "idle"];
 
 /** The page with its parts given: `prs` and `settings` are their tabs' bodies, `rows` this project's sessions. */
 export function ProjectPageView({
@@ -173,11 +174,21 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
   const live = rows?.filter((row) => !closed(row)) ?? [];
   const count = (value: Filter) => (value === "all" ? live.length : live.filter((row) => groupOf(row.mark) === value).length);
   const words = text.trim().toLowerCase();
-  const shown = (filter === "archived" ? (rows ?? []).filter(closed) : live)
-    .filter((row) => filter === "all" || filter === "archived" || groupOf(row.mark) === filter)
-    .filter((row) => !words || (row.title || "New session").toLowerCase().includes(words));
+  // A Brigade's sessions sit under it, not as rows of their own; one whose Brigade isn't here is a row [D189 D3108].
+  const base = filter === "archived" ? (rows ?? []).filter(closed) : live;
+  const [folded, setFolded] = useStored<string[]>("project.brigades.folded", []);
+  const tree: Tree = {
+    kids: (row) => (row.brigade ? base.filter((sub) => sub.boss === row.id).toSorted((a, b) => a.sent - b.sent) : []),
+    open: (id) => !folded.includes(id),
+    toggle: (id) => setFolded(folded.includes(id) ? folded.filter((each) => each !== id) : [...folded, id]),
+  };
+  const family = (row: SessionRow) => [row, ...tree.kids(row)];
+  const matches = (row: SessionRow) => (filter === "all" || filter === "archived" || groupOf(row.mark) === filter) && (!words || (row.title || "New session").toLowerCase().includes(words));
+  // A family shows when any of it matches, in the group of its most pressing member (proposed).
+  const shown = base.filter((row) => !(row.boss && base.some((boss) => boss.id === row.boss)) && family(row).some(matches));
+  const groupOfFamily = (row: SessionRow) => PRESSING[Math.min(...family(row).map((each) => PRESSING.indexOf(groupOf(each.mark))))];
   const groups: [string, string, SessionRow[]][] =
-    filter === "archived" ? [["archived", "", shown]] : [...GROUPS, { value: "idle", label: "Done & idle" }].map(({ value, label }) => [value, label, shown.filter((row) => groupOf(row.mark) === value)]);
+    filter === "archived" ? [["archived", "", shown]] : [...GROUPS, { value: "idle", label: "Done & idle" }].map(({ value, label }) => [value, label, shown.filter((row) => groupOfFamily(row) === value)]);
   return (
     <>
       <TabBar
@@ -202,7 +213,7 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
       </TabBar>
       {view === "board" && shown.length > 0 ? (
         // Every column under All, so the board keeps its shape; a chip's or Archived's alone.
-        <Board columns={groups.filter(([, , each]) => filter === "all" || each.length > 0).map(([key, label, each]) => [key, label || "Archived", each])} now={now} onOpen={onOpen} onRename={onRename} />
+        <Board columns={groups.filter(([, , each]) => filter === "all" || each.length > 0).map(([key, label, each]) => [key, label || "Archived", each])} tree={tree} now={now} onOpen={onOpen} onRename={onRename} />
       ) : (
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
         {rows === undefined ? null : shown.length === 0 ? (
@@ -234,9 +245,16 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
             ([key, label, each]) =>
               each.length > 0 && (
                 <Group key={key} label={label || "Archived"} count={each.length}>
-                  {each.map((row) => (
-                    <Line key={row.id} row={row} now={now} onOpen={onOpen} onRename={onRename} />
-                  ))}
+                  {each.map((row) => {
+                    const kids = tree.kids(row);
+                    const open = tree.open(row.id);
+                    return (
+                      <Fragment key={row.id}>
+                        <Line row={row} now={now} onOpen={onOpen} onRename={onRename} fold={kids.length > 0 ? { open, toggle: () => tree.toggle(row.id), mark: familyMark(row, kids, open) } : undefined} />
+                        {open && kids.map((sub) => <Line key={sub.id} row={sub} sub now={now} onOpen={onOpen} onRename={onRename} />)}
+                      </Fragment>
+                    );
+                  })}
                 </Group>
               ),
           )
@@ -247,8 +265,9 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
   );
 }
 
-/** A row: the title, then its labels, PRs, mark, when it last moved and its menu; a click opens the session. */
-function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; onOpen: (id: string) => void; onRename: (row: SessionRow) => void }) {
+/** A row: the title, then its labels, PRs, mark, when it last moved and its menu; a click opens the session.
+ *  A Brigade with sessions folds them, its glyph the chevron on hover, ← and → too, as the sidebar's [D189 D3108]. */
+function Line({ row, sub = false, fold, now, onOpen, onRename }: { row: SessionRow; sub?: boolean; fold?: { open: boolean; toggle: () => void; mark: Mark }; now: number; onOpen: (id: string) => void; onRename: (row: SessionRow) => void }) {
   const title = row.title || "New session";
   const words = statusWords(row) ?? "";
   const items = itemsOf(row, onRename);
@@ -258,11 +277,21 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
         <div
           role="button"
           tabIndex={0}
-          onClick={() => onOpen(row.id)}
-          onKeyDown={(event) => event.key === "Enter" && onOpen(row.id)}
-          className="flex h-12 cursor-pointer items-center gap-3 rounded-control px-2 text-sm hover:bg-fill-subtle focus-visible:focus-ring"
+          onClick={(event) => (fold && (event.target as Element).closest('[data-slot="row-fold"]') ? fold.toggle() : onOpen(row.id))}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onOpen(row.id);
+            else if (fold && (event.key === "ArrowRight") !== fold.open && ["ArrowRight", "ArrowLeft"].includes(event.key)) fold.toggle();
+          }}
+          className={cx("flex h-12 cursor-pointer items-center gap-3 rounded-control px-2 text-sm hover:bg-fill-subtle focus-visible:focus-ring", sub && "ps-10")}
         >
-          {row.brigade && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
+          {fold ? (
+            <span data-slot="row-fold" title={fold.open ? "Hide its sessions" : "Show its sessions"} className="-m-0.5 flex size-icon-lg shrink-0 items-center justify-center rounded-xs text-muted-foreground hover:bg-fill">
+              <BrigadeGlyph aria-label="Brigade" className="size-icon-md group-hover/line:hidden" />
+              <ChevronRight className={cx("hidden size-icon-sm group-hover/line:block", fold.open && "rotate-90")} />
+            </span>
+          ) : (
+            row.brigade && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />
+          )}
           {row.forkOf && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
           <span title={title} className={cx("min-w-0 flex-1 truncate font-medium", closed(row) ? "text-marker-foreground" : "text-foreground")}>
             {title}
@@ -271,7 +300,7 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
             <Labels row={row} className="flex max-w-80 items-center gap-1 overflow-hidden" />
             {row.pr && <span>{prList(row.pr)}</span>}
             {words && <span className="max-w-60 truncate">{words}</span>}
-            <RowMark mark={row.lifecycle?.left ? "amber" : row.mark} label={words} />
+            <RowMark mark={fold?.mark ?? (row.lifecycle?.left ? "amber" : row.mark)} label={words} />
             <span className="w-8 text-end whitespace-nowrap">{shortAgo(row, now)}</span>
             <MenuButton title={title} items={items} />
           </span>
