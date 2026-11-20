@@ -1370,8 +1370,10 @@
   /* The titlebar's sidebar toggle and 8px past it (titlebar-clear), a separator between them (session-tab-bar) [D931 D934]. */
   --toggle-room: calc(var(--spacing) * 10);
   --toggle-rule: 1;
+  /* Open, the tabs start past the sidebar, away from the toggle: no rule. */
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
+    --toggle-rule: 0;
   }
   /* Hidden, the page panel's 12px start gap takes its place (page-panel). */
   &[data-state="collapsed"][data-collapse="hidden"] {
@@ -1508,14 +1510,14 @@
   &:has([role="tablist"] > .session-tab:first-child:hover, [role="tablist"] > [data-closing]:first-child + * > .session-tab:first-child:hover) [data-home]::before {
     opacity: 0;
   }
-  /* The hidden sidebar's toggle and the house: a tab's separator centred in their gap, gone as the house's own when it's
-     hovered or in front [D840 D931]. */
+  /* The strip's or hidden sidebar's toggle and the house: a tab's separator midway between their icons (the toggle's 32px
+     box, the house's 48px), gone as the house's own when it's hovered or in front [D840 D931]. */
   & > :has(> [data-home]) {
     position: relative;
     &::before {
       content: "";
       position: absolute;
-      inset-inline-start: calc((var(--spacing) * 8 - var(--toggle-room, 0px)) / 2 - var(--spacing-session-tab-rule) / 2);
+      inset-inline-start: calc((var(--spacing) * 4 + var(--spacing-home-tab) / 2 - var(--toggle-room, 0px)) / 2 - var(--spacing-session-tab-rule) / 2);
       top: calc((100% - var(--spacing-session-tab-foot) - var(--spacing-session-tab-rule-height)) / 2);
       height: var(--spacing-session-tab-rule-height);
       width: var(--spacing-session-tab-rule);
