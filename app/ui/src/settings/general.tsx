@@ -9,9 +9,11 @@ import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
+import { startTour } from "../onboarding/tour";
 import { type Settings, setSetting, useSettings } from "./api";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
+import { closeSettings } from "./shell";
 
 /** The General page's rows, for the page and for Settings search (the old app's words). */
 export const GENERAL_ROWS = {
@@ -24,6 +26,7 @@ export const GENERAL_ROWS = {
   systemSettings: { label: "macOS notifications", description: "Allow, banners and Focus are set in System Settings", section: "Notifications" },
   keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open", section: "Power" },
   lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake", section: "Power" },
+  tour: { label: "Take the tour", description: "A short walk through the sidebar, tabs and the rest of the app", section: "Help" },
   version: { label: "Version", description: "The Brigadier you're running", section: "About" },
   build: { label: "Build", description: "The build this Brigadier was made as", section: "About" },
 } as const;
@@ -97,6 +100,24 @@ export function GeneralPage() {
           <PowerSection settings={settings} />
         </div>
       )}
+      {/* The tour over the app, so Settings closes first [D3109]. */}
+      <SettingsSection title="Help">
+        <SettingsCard>
+          <SettingsRow label={GENERAL_ROWS.tour.label} description={GENERAL_ROWS.tour.description}>
+            <Button
+              variant="soft"
+              size="sm"
+              onClick={() => {
+                closeSettings();
+                // After the app is back in front, so the tour lights its parts.
+                requestAnimationFrame(startTour);
+              }}
+            >
+              Start
+            </Button>
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
       <SettingsSection title="About">
         <SettingsCard>
           <SettingsRow label={GENERAL_ROWS.version.label} description={GENERAL_ROWS.version.description}>

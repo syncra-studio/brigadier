@@ -8,9 +8,10 @@ import { ErrorLine } from "../components/error-line";
 import { Kbd } from "../components/kbd";
 import { MenuRow } from "../components/menu";
 import { ask, useDaemon } from "../daemon";
-import { Folder, MagnifyingGlassSmSearch, Terminal } from "../icons";
+import { Folder, MagnifyingGlassSmSearch, PlayTriangle, Terminal } from "../icons";
 import { newSession } from "../home/start";
 import { store, useProfile } from "../onboarding/api";
+import { startTour } from "../onboarding/tour";
 import { showProject } from "../projects/store";
 import { matches } from "../shortcuts";
 import { useShown } from "../sidebar/actions";
@@ -67,21 +68,34 @@ export function Marked({ text, at }: { text: string; at: [number, number][] }) {
 
 type Result =
   | { kind: "project"; id: string; project: Project; at: [number, number][]; count: number }
-  | { kind: "session"; id: string; row: PaletteRow; at?: [number, number][]; hit?: Hit };
-type Group = { value: "Projects" | "Sessions"; items: Result[] };
+  | { kind: "session"; id: string; row: PaletteRow; at?: [number, number][]; hit?: Hit }
+  | { kind: "command"; id: string; title: string; at?: [number, number][] };
+type Group = { value: "Projects" | "Sessions" | "Commands"; items: Result[] };
+
+/** What ⌘K runs besides opening things: the tour for now [D3109]. */
+const COMMANDS = [{ id: "tour", title: "Take the tour" }];
 
 const byLastSend = (a: { row: PaletteRow }, b: { row: PaletteRow }) => b.row.sent - a.row.sent;
 const archivedLast = (a: { row: PaletteRow }, b: { row: PaletteRow }) => Number(Boolean(a.row.archived)) - Number(Boolean(b.row.archived));
 
 /**
  * Empty: recent sessions, those needing you first. Typed: projects and sessions by title from memory at once, then
- * sessions by message text as Rust answers, each once; archived ones last [D196, D197].
+ * sessions by message text as Rust answers, each once; archived ones last [D196, D197]. Commands come last, all of
+ * them when empty, else those whose title matches [D3109].
  */
 function results(rows: PaletteRow[], projects: Project[], query: string, hits: Hit[] | undefined): Group[] {
+  const commands: Group = {
+    value: "Commands",
+    items: COMMANDS.flatMap((command) => {
+      const at = query.trim() ? wordStarts(command.title, query) : [];
+      return at ? [{ kind: "command" as const, ...command, at }] : [];
+    }),
+  };
   if (!query.trim()) {
     const needs = (each: { row: PaletteRow }) => Number(each.row.mark === "needs");
     const recent = rows.map((row) => ({ kind: "session" as const, id: row.id, row }));
-    return [{ value: "Sessions", items: recent.toSorted((a, b) => archivedLast(a, b) || needs(b) - needs(a) || byLastSend(a, b)).slice(0, MAX) }];
+    const sessions: Group = { value: "Sessions", items: recent.toSorted((a, b) => archivedLast(a, b) || needs(b) - needs(a) || byLastSend(a, b)).slice(0, MAX) };
+    return [sessions, commands].filter((group) => group.items.length > 0);
   }
   const named = projects
     .flatMap((project) => {
@@ -105,6 +119,7 @@ function results(rows: PaletteRow[], projects: Project[], query: string, hits: H
   const groups: Group[] = [
     { value: "Projects", items: named.slice(0, MAX) },
     { value: "Sessions", items: [...titled, ...texted].toSorted(archivedLast).slice(0, MAX) },
+    commands,
   ];
   return groups.filter((group) => group.items.length > 0);
 }
@@ -152,6 +167,7 @@ const end = (detail: ReactNode) => (
 );
 
 function ResultRow({ result, projects }: { result: Result; projects: Map<string, Project> }) {
+  if (result.kind === "command") return <MenuRow icon={<PlayTriangle />} title={<Marked text={result.title} at={result.at ?? []} />} hint={end(null)} />;
   if (result.kind === "project") {
     const { project, at, count } = result;
     return <MenuRow icon={<Folder />} title={<Marked text={project.name} at={at} />} hint={end(`${count} ${count === 1 ? "session" : "sessions"}`)} />;
@@ -186,16 +202,18 @@ export type PaletteProps = {
   search: TextSearch;
   onOpenSession: (id: string) => void;
   onOpenProject: (id: string) => void;
+  /** Runs a command; none listed without it. */
+  onCommand?: (id: string) => void;
 };
 
 /** The palette's input, results and key hints: the old app's, with message text matches under their titles. */
-export function PaletteBody({ rows, projects, offline, search, onOpenSession, onOpenProject }: PaletteProps) {
+export function PaletteBody({ rows, projects, offline, search, onOpenSession, onOpenProject, onCommand }: PaletteProps) {
   const [q, setQ] = useState("");
   const query = q.trim();
   const text = useTextSearch(query, search, offline);
-  const groups = rows ? results(rows, projects, q, text.hits) : [];
+  const groups = rows ? results(rows, projects, q, text.hits).filter((group) => onCommand || group.value !== "Commands") : [];
   const projectOf = new Map(projects.map((project) => [project.id, project]));
-  const choose = (result: Result) => (result.kind === "project" ? onOpenProject(result.id) : onOpenSession(result.id));
+  const choose = (result: Result) => (result.kind === "project" ? onOpenProject(result.id) : result.kind === "command" ? onCommand?.(result.id) : onOpenSession(result.id));
   return (
     <Autocomplete.Root
       open
@@ -213,7 +231,7 @@ export function PaletteBody({ rows, projects, offline, search, onOpenSession, on
         <MagnifyingGlassSmSearch className="size-icon-md shrink-0 text-muted-foreground" />
         <Autocomplete.Input
           aria-label="Search"
-          placeholder="Search projects and sessions"
+          placeholder="Search projects, sessions and commands"
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
         <Kbd>esc</Kbd>
@@ -278,7 +296,7 @@ export function SearchPalette({ open, onOpenChange, ...props }: PaletteProps & {
       <DialogContent showCloseButton={false} frame={PALETTE_FRAME} top={PALETTE_TOP}>
         <DialogTitle className="sr-only">Search</DialogTitle>
         <DialogDescription className="sr-only">Find projects and sessions by title or by what was said in them.</DialogDescription>
-        {open && <PaletteBody {...props} onOpenSession={close(props.onOpenSession)} onOpenProject={close(props.onOpenProject)} />}
+        {open && <PaletteBody {...props} onOpenSession={close(props.onOpenSession)} onOpenProject={close(props.onOpenProject)} onCommand={props.onCommand && close(props.onCommand)} />}
       </DialogContent>
     </Dialog>
   );
@@ -321,6 +339,7 @@ export function GlobalSearch() {
         newSession(id);
         showProject(id, false);
       }}
+      onCommand={startTour}
     />
   );
 }
