@@ -336,7 +336,7 @@
   /* Under its content, the foot where the front tab meets the frame: the content on the row's middle line, as Chrome's. */
   --spacing-session-tab-foot: 0.375rem;
   /* A hovered tab's fill and the front tab's shape in from its sides alike, so a separator is as far from either;
-     the hover is equally inset from the tab's top and the frame below [D857 D910 D911]. */
+     the hover is equally inset from the tab's top and its foot, round its content [D857 D925]. */
   --spacing-session-tab-inset: 0.125rem;
   /* Chrome's separator between two tabs in back, as the floating design's (Safari's) [D437 D840 D848]. */
   --spacing-session-tab-rule: 1px;
@@ -1593,7 +1593,8 @@
   &::after {
     content: "";
     position: absolute;
-    inset: var(--spacing-session-tab-inset);
+    /* The content box, not the foot: the content sits on the fill's middle line [D925]. */
+    inset: var(--spacing-session-tab-inset) var(--spacing-session-tab-inset) calc(var(--spacing-session-tab-foot) + var(--spacing-session-tab-inset));
     z-index: -1;
     border-radius: var(--radius-control);
     /* Clearly there, as Chrome's [D877]. */
@@ -1652,25 +1653,10 @@
   }
 }
 
-/* "+": a hovered tab's height, as far past the last tab's separator as that fill is from one [D857 D860 D911].
-   Unlayered, so it outweighs the strip look's own size and corners. */
+/* "+": the titlebar's strip button as is (summary, Files), as far past the last tab's separator as a hovered tab's
+   fill is from one, on the tabs' content line [D857 D860 D924 D928]. */
 .session-tab-new {
-  width: calc(var(--spacing-tab-front) - var(--spacing-session-tab-foot) - var(--spacing-session-tab-inset) * 2);
-  min-width: 0;
-  height: calc(var(--spacing-tab-front) - var(--spacing-session-tab-inset) * 2);
   margin-inline-start: calc(var(--spacing-session-tab-inset) - var(--spacing) * 2);
-  border-radius: var(--radius-control);
-  &:hover,
-  &[aria-expanded="true"] {
-    background-color: var(--color-fill-active);
-  }
-}
-
-/* The visible tab includes its foot: lower "+" and its preceding rule to that centre [D896]. */
-.session-tab-new,
-.session-tab-list .session-tab:not(:has(~ .session-tab, ~ * .session-tab))::before,
-.session-tab-bar:not(:has(.session-tab-list .session-tab:not([data-closing]))) [data-home]::before {
-  translate: 0 calc(var(--spacing-session-tab-foot) / 2);
 }
 
 /* Between the tabs and "+", its gap taken back: nothing, or with no tabs (New chat) all the room, so "+" slides to the
