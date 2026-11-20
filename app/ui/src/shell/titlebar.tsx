@@ -38,7 +38,8 @@ const SWIPE_ARM = 120;
 // A wheel this long after the last starts a new swipe: one whose scroll never ends (a page took its wheel) is dropped.
 const SWIPE_STALE_MS = 500;
 // The swipe now, from its first wheel event to main's scroll-end after the fingers lift and any momentum. It isn't
-// ours when it starts mostly vertical, over a dialog or an agent's page, or where something takes or scrolls it.
+// ours when it starts mostly vertical, over a dialog, an agent's page or the tab bar (its wheel scrolls the strip from
+// anywhere on it), or where something takes or scrolls it.
 let swiping: { dx: number; events: number; at: number; ours: boolean } | null = null;
 /** Whether something under the pointer scrolls sideways itself towards `dx`'s side: a code block, a table, the tab strip, the board. */
 function scrollsSideways(from: EventTarget | null, dx: number): boolean {
@@ -121,7 +122,8 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       const side = dx < 0 ? -1 : 1;
       // A mouse's notch is one wheel event, its own scroll, never a swipe.
       const swipe = events > 1;
-      if (!end) return setChip(swipe && walk.can(side) ? { side, travel: Math.min(Math.abs(dx) / SWIPE_ARM, 1) } : null);
+      // A lone wheel after the end (main's end can beat the gesture's last wheel here) leaves a going chip to finish.
+      if (!end) return setChip((now) => (swipe && walk.can(side) ? { side, travel: Math.min(Math.abs(dx) / SWIPE_ARM, 1) } : now?.gone ? now : null));
       const went = swipe && Math.abs(dx) >= SWIPE_ARM && walk.can(side);
       if (went) walk.go(side);
       setChip((now) => now && { ...now, gone: went ? "went" : "short" });
@@ -129,7 +131,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     const onWheel = (event: WheelEvent) => {
       if (swiping && event.timeStamp - swiping.at > SWIPE_STALE_MS) swiping = null;
       const target = event.target instanceof Element ? event.target : null;
-      swiping ??= { dx: 0, events: 0, at: 0, ours: Math.abs(event.deltaX) > Math.abs(event.deltaY) && !event.defaultPrevented && !blocked() && !target?.closest(".brigadier-agent-frame") && !scrollsSideways(target, event.deltaX) };
+      swiping ??= { dx: 0, events: 0, at: 0, ours: Math.abs(event.deltaX) > Math.abs(event.deltaY) && !event.defaultPrevented && !blocked() && !target?.closest(".brigadier-agent-frame, .session-tab-list") && !scrollsSideways(target, event.deltaX) };
       swiping.at = event.timeStamp;
       if (!swiping.ours) return;
       swiping.dx += event.deltaX;
@@ -144,6 +146,8 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     const offPage = window.brigadierShell?.onPageSwipe(({ from, dx, events, end }) => {
       const page = guestPage(from);
       if (page) swiped({ can: (side) => (side < 0 ? page.canGoBack() : page.canGoForward()), go: (side) => (side < 0 ? page.goBack() : page.goForward()) }, dx, events, end);
+      // Its page closed mid-swipe, or an agent holds it: the chip goes, short.
+      else if (end) setChip((now) => now && { ...now, gone: "short" });
     });
     addEventListener("keydown", onKeyDown);
     addEventListener("mousedown", onMouse);
