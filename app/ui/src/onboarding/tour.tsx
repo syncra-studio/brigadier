@@ -117,11 +117,13 @@ function Tour({ index }: { index: number }) {
   const { box } = target;
   return (
     <>
+      {/* The whole window catches clicks, the lit part too: the tour only points. */}
       {createPortal(
-        <div aria-hidden data-left={box.left - 4} data-top={box.top - 4} data-width={box.width + 8} data-height={box.height + 8} className="tour-spot pointer-events-none fixed z-popup rounded-control ring-2 ring-ring" />,
+        <div aria-hidden className="fixed inset-0 z-popup">
+          <div data-left={box.left - 4} data-top={box.top - 4} data-width={box.width + 8} data-height={box.height + 8} className="tour-spot fixed rounded-control ring-2 ring-ring" />
+        </div>,
         document.body,
       )}
-      {/* Modal: the app under it takes no clicks while the tour points at it. */}
       <Popover open modal onOpenChange={close}>
         <PopoverContent anchor={target.element} side={step.side} collisionAvoidance={{ side: "flip", align: "shift" }} aria-labelledby={titleId} aria-describedby={lineId}>
           {card}
