@@ -23,8 +23,7 @@ export function useTabGlide(bar: RefObject<HTMLElement | null>, ghost: RefObject
   useLayoutEffect(() => {
     const row = bar.current;
     const shape = ghost.current;
-    // A Brigade's Chat tab answers to its session's key too, so a click on another of its sessions glides there [D3112].
-    const find = (key: string) => row?.querySelector(key === HOUSE ? "[data-home]" : `[data-tab-id="${CSS.escape(key)}"]:not([data-closing]), [data-glide="${CSS.escape(key)}"]`) ?? null;
+    const find = (key: string) => row?.querySelector(key === HOUSE ? "[data-home]" : `[data-tab-id="${CSS.escape(key)}"]:not([data-closing])`) ?? null;
     const to = find(front);
     if (!row || !shape || !to) return;
     const before = last.current;
@@ -33,8 +32,7 @@ export function useTabGlide(bar: RefObject<HTMLElement | null>, ghost: RefObject
     // A glide cut short goes on from where it got to; the last front drawn again since is looked up afresh.
     const held = run.current?.at() ?? null;
     run.current?.stop();
-    // Its key's tab now, else the one still sliding shut: a Brigade's Chat tab stays one node as it moves to the session shown.
-    const from = held ? null : (find(before.key) ?? (before.tab.isConnected ? before.tab : null));
+    const from = held ? null : before.tab.isConnected ? before.tab : find(before.key);
     if (!(held || from) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let start = held ?? from!.getBoundingClientRect();
     let then = performance.now();
@@ -51,8 +49,6 @@ export function useTabGlide(bar: RefObject<HTMLElement | null>, ghost: RefObject
       const left = start.left + (end.left - start.left) * t;
       const right = start.right + (end.right - start.right) * t;
       Object.assign(shape.dataset, { x: left - origin.left, y: end.top - origin.top, w: right - left, h: end.height });
-      // Where the group's line opens under it (theme.css), on the window [D3112].
-      Object.assign(row.dataset, { glideFrom: left, glideTo: right });
       if (gone < GLIDE_MS && to.isConnected) frame = requestAnimationFrame(place);
       else stop();
     };
@@ -60,13 +56,9 @@ export function useTabGlide(bar: RefObject<HTMLElement | null>, ghost: RefObject
       cancelAnimationFrame(frame);
       shape.hidden = true;
       delete row.dataset.gliding;
-      delete row.dataset.glideFrom;
-      delete row.dataset.glideTo;
       run.current = null;
     };
     run.current = { at: () => shape.getBoundingClientRect(), stop };
-    // A group's tab's shape is outlined in the group's colour, so its orange line glides with it [D3112].
-    shape.toggleAttribute("data-agent-group", to.hasAttribute("data-agent-group"));
     shape.hidden = false;
     row.dataset.gliding = "";
     place(then);

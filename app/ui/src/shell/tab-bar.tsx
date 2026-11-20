@@ -232,8 +232,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   const strip = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLElement>(null);
   const ghost = useRef<HTMLSpanElement>(null);
-  // In a Brigade the Chat tab is its session's place in the group: going to another session glides there [D3112].
-  useTabGlide(header, ghost, houseActive ? HOUSE : front === CHAT && family.length > 0 ? SIBLING + shown : front);
+  useTabGlide(header, ghost, houseActive ? HOUSE : front);
   const list = useRef<HTMLDivElement>(null);
   // Chrome's: a tab closed with the pointer leaves the others their width until the pointer leaves the row, so the
   // next tab's × comes under it [D848].

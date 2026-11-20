@@ -13,7 +13,7 @@ import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
-import { CHAT, closeOthers, closeRight, selectTab, SIBLING } from "./tab-store";
+import { CHAT, closeOthers, closeRight, selectTab } from "./tab-store";
 
 /* The tabs that aren't a session's own: its Chat tab, the draft's and the house (tab-bar.tsx) [D848]. */
 // Chrome's tabs: every one the same box down to the frame, in front or not, so choosing one moves nothing; the front one
@@ -63,7 +63,7 @@ export function ChatTab({ owner, row, active, separator, order, grouped = false 
   const startRename = archived ? undefined : () => setRenaming(true);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} data-glide={grouped ? SIBLING + row.id : undefined} className={cx(TAB, LOOK(active))} />}>
+      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} className={cx(TAB, LOOK(active))} />}>
         <Shape />
         <button
           type="button"
