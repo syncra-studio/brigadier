@@ -271,6 +271,9 @@ export const hideDeleting = (id: string, on: boolean) => {
   deleting.set(next);
 };
 
+/** Archived, or a delete that left something: among the archived, not the live rows. */
+export const closed = (row: SessionRow) => Boolean(row.archived) || row.lifecycle?.op === "delete";
+
 /**
  * The live rows and the archived ones. A delete under way is hidden; one that left something comes back
  * among the archived with what stayed (Rust's `lifecycle.left`) [D35].
@@ -278,6 +281,5 @@ export const hideDeleting = (id: string, on: boolean) => {
 export function useArchiveSplit(rows: SessionRow[] | undefined): { live: SessionRow[] | undefined; archived: SessionRow[] } {
   const gone = deleting.use();
   const shown = rows?.filter((row) => !gone.has(row.id) && !(row.lifecycle?.op === "delete" && !row.lifecycle.left));
-  const closed = (row: SessionRow) => Boolean(row.archived) || row.lifecycle?.op === "delete";
   return { live: shown?.filter((row) => !closed(row)), archived: (shown ?? []).filter(closed).toSorted((a, b) => (b.archived ?? 0) - (a.archived ?? 0)) };
 }

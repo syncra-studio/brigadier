@@ -12,7 +12,7 @@ import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
-import { errorText, run } from "../onboarding/api";
+import { errorText, run, store } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
 import { restore } from "../sidebar/actions";
 import { ArchivedActions } from "../sidebar/flyout";
@@ -23,7 +23,7 @@ import { type ArchiveCheck, hideDeleting } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
- * archived. Its rows open read-only; their menu has Restore and Delete…, the only place delete is.
+ * archived. Its rows open read-only; their menu has Restore and Delete…, as every live row's menu has Delete… [D7].
  */
 
 const titleOf = (row: SessionRow) => row.title || "New session";
@@ -44,9 +44,8 @@ export function ArchivedSection({
   storeKey?: string;
 }) {
   const [open, setOpen] = useStored(`${storeKey}.archived`, false);
-  const [asking, setAsking] = useState<{ row: SessionRow; check: Check } | null>(null);
   const projectOf = new Map(projects.map((project) => [project.id, project]));
-  if (rows.length === 0 && !asking) return null;
+  if (rows.length === 0) return null;
   return (
     <div className="flex max-h-2/5 min-h-0 shrink-0 flex-col px-2 pt-1 pb-2">
       <NavSection
@@ -61,47 +60,67 @@ export function ArchivedSection({
         }
       >
         <NavList className="gap-1">
-          {rows.map((row) => {
-            const left = row.lifecycle?.left;
-            return (
-              <SessionRowItem
-                key={row.id}
-                row={left ? { ...row, mark: "amber" } : row}
-                project={row.project === null ? undefined : projectOf.get(row.project)}
-                tone={projects.findIndex((project) => project.id === row.project)}
-                active={row.id === active}
-                offline={offline}
-                badged
-                onOpen={onOpen}
-                onRename={() => {}}
-                menu={
-                  <>
-                    {left && (
-                      <DropdownMenuItem disabled className="max-w-80 whitespace-normal">
-                        Couldn't delete everything: {left[0]}
-                      </DropdownMenuItem>
-                    )}
-                    {row.archived && (
-                      <DropdownMenuItem onClick={() => restore(row)}>
-                        <Unarchive />
-                        Restore
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem variant="destructive" onClick={() => void readDelete(row.id).then((check) => setAsking({ row, check }))}>
-                      <Trash />
-                      Delete…
-                    </DropdownMenuItem>
-                  </>
-                }
-              />
-            );
-          })}
+          {rows.map((row) => (
+            <SessionRowItem
+              key={row.id}
+              row={row.lifecycle?.left ? { ...row, mark: "amber" } : row}
+              project={row.project === null ? undefined : projectOf.get(row.project)}
+              tone={projects.findIndex((project) => project.id === row.project)}
+              active={row.id === active}
+              offline={offline}
+              badged
+              onOpen={onOpen}
+              onRename={() => {}}
+              menu={<ClosedMenuItems row={row} />}
+            />
+          ))}
         </NavList>
       </NavSection>
-      <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
-        <DialogContent showCloseButton={false}>{asking && <DeleteForm key={asking.row.id} row={asking.row} first={asking.check} onClose={() => setAsking(null)} />}</DialogContent>
-      </Dialog>
     </div>
+  );
+}
+
+/** An archived row's menu, or one a delete left unfinished: what stayed, Restore, and Delete… again [D35]. */
+export function ClosedMenuItems({ row }: { row: SessionRow }) {
+  const left = row.lifecycle?.left;
+  return (
+    <>
+      {left && (
+        <DropdownMenuItem disabled className="max-w-80 whitespace-normal">
+          Couldn't delete everything: {left[0]}
+        </DropdownMenuItem>
+      )}
+      {row.archived && (
+        <DropdownMenuItem onClick={() => restore(row)}>
+          <Unarchive />
+          Restore
+        </DropdownMenuItem>
+      )}
+      <DeleteMenuItem row={row} />
+    </>
+  );
+}
+
+const deleting = store<{ row: SessionRow; check: Check } | null>(null);
+/** Opens delete's confirm once Rust's check is in, so it opens whole [D463]. */
+export const askDelete = (row: SessionRow) => void readDelete(row.id).then((check) => deleting.set({ row, check }));
+
+export function DeleteMenuItem({ row }: { row: SessionRow }) {
+  return (
+    <DropdownMenuItem variant="destructive" onClick={() => askDelete(row)}>
+      <Trash />
+      Delete…
+    </DropdownMenuItem>
+  );
+}
+
+/** Where delete's confirm shows, mounted once by the sidebar, for every row menu's Delete… [D7]. */
+export function DeleteAsk() {
+  const asking = deleting.use();
+  return (
+    <Dialog open={asking !== null} onOpenChange={(next) => !next && deleting.set(null)}>
+      <DialogContent showCloseButton={false}>{asking && <DeleteForm key={asking.row.id} row={asking.row} first={asking.check} onClose={() => deleting.set(null)} />}</DialogContent>
+    </Dialog>
   );
 }
 

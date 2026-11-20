@@ -20,6 +20,8 @@ import { useSecond } from "../thread/words";
 import { CHIP, PrList } from "../landing/pr-list";
 import { prList } from "../landing/pr-chip";
 import { ago } from "../landing/pr-words";
+import { closed, useArchiveSplit } from "../sessions/archive";
+import { ClosedMenuItems } from "../sessions/archived";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { SearchField } from "../settings/archived-toolbar";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
@@ -167,10 +169,10 @@ export function Group({ label, count, children }: { label: string; count?: numbe
 function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: SessionRow[] | undefined; now: number; onOpen: (id: string) => void; onNewSession: () => void; onRename: (row: SessionRow) => void }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [text, setText] = useState("");
-  const live = rows?.filter((row) => !row.archived) ?? [];
+  const live = rows?.filter((row) => !closed(row)) ?? [];
   const count = (value: Filter) => (value === "all" ? live.length : live.filter((row) => groupOf(row.mark) === value).length);
   const words = text.trim().toLowerCase();
-  const shown = (filter === "archived" ? (rows ?? []).filter((row) => row.archived) : live)
+  const shown = (filter === "archived" ? (rows ?? []).filter(closed) : live)
     .filter((row) => filter === "all" || filter === "archived" || groupOf(row.mark) === filter)
     .filter((row) => !words || (row.title || "New session").toLowerCase().includes(words));
   const groups: [string, string, SessionRow[]][] =
@@ -232,7 +234,8 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
 function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; onOpen: (id: string) => void; onRename: (row: SessionRow) => void }) {
   const title = row.title || "New session";
   const words = statusWords(row) ?? "";
-  const items = <RowMenuItems row={row} onRename={() => onRename(row)} />;
+  // Archived, or left by a delete: the sidebar's Archived menu, with what stayed and Delete… again [D35].
+  const items = closed(row) ? <ClosedMenuItems row={row} /> : <RowMenuItems row={row} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/line border-b border-divider" />}>
@@ -245,13 +248,13 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
         >
           {row.brigade && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
           {row.forkOf && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
-          <span title={title} className={cx("min-w-0 flex-1 truncate font-medium", row.archived ? "text-marker-foreground" : "text-foreground")}>
+          <span title={title} className={cx("min-w-0 flex-1 truncate font-medium", closed(row) ? "text-marker-foreground" : "text-foreground")}>
             {title}
           </span>
           <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
             {row.pr && <span>{prList(row.pr)}</span>}
             {words && <span className="max-w-60 truncate">{words}</span>}
-            <RowMark mark={row.mark} label={words} />
+            <RowMark mark={row.lifecycle?.left ? "amber" : row.mark} label={words} />
             {/* The short age: 4m, 2h, 3d. */}
             <span className="w-8 text-end whitespace-nowrap">{ago(row.updated ?? row.sent, now).replace(/ (s|min|h|d) ago/, (_, unit: string) => unit[0]!)}</span>
             {/* Its menu's clicks and keys bubble through the portal to the row: they stop here. */}
@@ -281,7 +284,9 @@ export function ProjectPage({ id, tab }: { id: string; tab: ProjectTab }) {
   const [repo, setRepo] = useState<string | null>(null);
   // As the sidebar has them: a worker is its parent's, not a row [D3012].
   const sessions = useMemo(() => all?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [all]);
-  const rows = useShown(sessions)?.filter((row) => row.project === id);
+  // As the sidebar's: a delete under way is hidden, one that left something shows among the archived [D30, D35].
+  const split = useArchiveSplit(useShown(sessions));
+  const rows = split.live && [...split.live, ...split.archived].filter((row) => row.project === id);
   // Rust's local read of its GitHub repository, no network [D631].
   useEffect(() => {
     setRepo(null);

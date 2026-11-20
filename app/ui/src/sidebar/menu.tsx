@@ -15,6 +15,8 @@ import {
 } from "../components/menu";
 import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
+import { DeleteMenuItem } from "../sessions/archived";
+import { useFolderChat } from "../daemon";
 import { showToast } from "../components/toast";
 import { keysOf } from "../shortcuts";
 import { pin } from "./actions";
@@ -24,6 +26,7 @@ import type { SessionRow } from "./words";
 /** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
 export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow; canPin?: boolean; onRename: () => void }) {
   const pinned = Boolean(row.pinned);
+  const folder = useFolderChat(row.id);
   const copies: [string, string | null | undefined][] = [
     ["ID", row.id],
     ["absolute path", row.folder],
@@ -54,6 +57,8 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
       </DropdownMenuSub>
       <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
+      {/* Off for a folder chat, as archive is: delete's check doesn't see its repos' branches yet [D494, D9]. */}
+      {!folder && <DeleteMenuItem row={row} />}
     </>
   );
 }
