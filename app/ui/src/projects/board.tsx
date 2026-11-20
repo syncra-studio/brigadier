@@ -44,7 +44,7 @@ export function Board({ columns, now, onOpen, onRename }: { columns: [string, st
   return (
     <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-6 pb-4">
       {columns.map(([key, label, rows]) => (
-        <section key={key} aria-label={label} className="flex w-72 min-w-0 shrink-0 flex-col">
+        <section key={key} aria-label={label} className="flex max-w-80 min-w-48 flex-1 basis-0 flex-col">
           <h3 className="flex h-8 shrink-0 items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
             {label}
             <span className="tabular-nums">{rows.length}</span>
