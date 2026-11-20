@@ -15,6 +15,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if name.is_empty() || name.chars().count() > 40 {
         return Err(io::Error::other("a label is 1 to 40 characters"));
     }
+    // So a name can never read as a flag, `--off` above all.
+    if name.starts_with('-') {
+        return Err(io::Error::other("a label can't start with -"));
+    }
     core::load(data, id)?;
     let dir = core::session_dir(data, id);
     let _lock = core::worktrees::lock(&dir)?;
