@@ -6,12 +6,10 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../componen
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
-import { RowAction } from "../components/row-action";
-import { Segment, SegmentedRoot } from "../components/segmented";
+import { Segment, Segmented, SegmentedRoot } from "../components/segmented";
 import { useDaemon } from "../daemon";
 import { newSession, setHomeDraft } from "../home/start";
-import { ArrowUpRight, BranchAlt, ChevronDown, DotsHorizontal, Folder, Plus } from "../icons";
+import { ArrowUpRight, BranchAlt, ChevronDown, Folder, Grid, ListBullets, Plus } from "../icons";
 import { HostOf } from "../landing/host";
 import { openPr } from "../panel/open";
 import { HOME, placeOf } from "../shell/tab-store";
@@ -19,15 +17,15 @@ import { rename, useShown } from "../sidebar/actions";
 import { useSecond } from "../thread/words";
 import { CHIP, PrList } from "../landing/pr-list";
 import { prList } from "../landing/pr-chip";
-import { ago } from "../landing/pr-words";
 import { closed, useArchiveSplit } from "../sessions/archive";
-import { ClosedMenuItems } from "../sessions/archived";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { SearchField } from "../settings/archived-toolbar";
-import { RenameDialog, RowMenuItems } from "../sidebar/menu";
+import { RenameDialog } from "../sidebar/menu";
+import { useStored } from "../sidebar/sidebar";
 import { Labels } from "../sidebar/labels";
 import { RowMark } from "../sidebar/row";
 import { type Mark, type SessionRow, statusWords } from "../sidebar/words";
+import { Board, itemsOf, MenuButton, shortAgo } from "./board";
 import { useProjects } from "./projects";
 import { daemonSettings, ProjectSettings } from "./settings";
 
@@ -128,7 +126,7 @@ export function ProjectPageView({
 }
 
 /** A tab's bar: its search, then its chips at the end, each with its count. */
-export function TabBar<T extends string>({ search, text, onText, label, chips, value, onValue }: { search: string; text: string; onText: (text: string) => void; label: string; chips: { value: T; label: string; count?: number }[]; value: T; onValue: (value: T) => void }) {
+export function TabBar<T extends string>({ search, text, onText, label, chips, value, onValue, children }: { search: string; text: string; onText: (text: string) => void; label: string; chips: { value: T; label: string; count?: number }[]; value: T; onValue: (value: T) => void; children?: ReactNode }) {
   return (
     <div className="flex shrink-0 items-center gap-3 px-6 py-4">
       <div className="flex max-w-60 min-w-24 flex-1">
@@ -142,6 +140,7 @@ export function TabBar<T extends string>({ search, text, onText, label, chips, v
           </Segment>
         ))}
       </SegmentedRoot>
+      {children}
     </div>
   );
 }
@@ -170,6 +169,7 @@ export function Group({ label, count, children }: { label: string; count?: numbe
 function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: SessionRow[] | undefined; now: number; onOpen: (id: string) => void; onNewSession: () => void; onRename: (row: SessionRow) => void }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [text, setText] = useState("");
+  const [view, setView] = useStored<"list" | "board">("project.sessions.view", "list");
   const live = rows?.filter((row) => !closed(row)) ?? [];
   const count = (value: Filter) => (value === "all" ? live.length : live.filter((row) => groupOf(row.mark) === value).length);
   const words = text.trim().toLowerCase();
@@ -188,7 +188,22 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
         chips={FILTERS.map((each) => ({ ...each, count: each.value === "archived" ? undefined : count(each.value) }))}
         value={filter}
         onValue={setFilter}
-      />
+      >
+        {/* The list and board [D7, D11]. */}
+        <Segmented
+          label="View"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "list", label: <ListBullets className="size-icon-sm" />, tip: "List" },
+            { value: "board", label: <Grid className="size-icon-sm" />, tip: "Board" },
+          ]}
+        />
+      </TabBar>
+      {view === "board" && shown.length > 0 ? (
+        // Every column under All, so the board keeps its shape; a chip's or Archived's alone.
+        <Board columns={groups.filter(([, , each]) => filter === "all" || each.length > 0).map(([key, label, each]) => [key, label || "Archived", each])} now={now} onOpen={onOpen} onRename={onRename} />
+      ) : (
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
         {rows === undefined ? null : shown.length === 0 ? (
           <div className="flex flex-col items-center gap-3 pt-24">
@@ -227,16 +242,16 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
           )
         )}
       </div>
+      )}
     </>
   );
 }
 
-/** A row: the title, then its PRs, its mark, when it last moved and its menu; a click opens the session. */
+/** A row: the title, then its labels, PRs, mark, when it last moved and its menu; a click opens the session. */
 function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; onOpen: (id: string) => void; onRename: (row: SessionRow) => void }) {
   const title = row.title || "New session";
   const words = statusWords(row) ?? "";
-  // Archived, or left by a delete: the sidebar's Archived menu, with what stayed and Delete… again [D35].
-  const items = closed(row) ? <ClosedMenuItems row={row} /> : <RowMenuItems row={row} onRename={() => onRename(row)} />;
+  const items = itemsOf(row, onRename);
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/line border-b border-divider" />}>
@@ -257,17 +272,8 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
             {row.pr && <span>{prList(row.pr)}</span>}
             {words && <span className="max-w-60 truncate">{words}</span>}
             <RowMark mark={row.lifecycle?.left ? "amber" : row.mark} label={words} />
-            {/* The short age: 4m, 2h, 3d. */}
-            <span className="w-8 text-end whitespace-nowrap">{ago(row.updated ?? row.sent, now).replace(/ (s|min|h|d) ago/, (_, unit: string) => unit[0]!)}</span>
-            {/* Its menu's clicks and keys bubble through the portal to the row: they stop here. */}
-            <span className="contents" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${title}`} />}>
-                  <DotsHorizontal />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">{items}</DropdownMenuContent>
-              </DropdownMenu>
-            </span>
+            <span className="w-8 text-end whitespace-nowrap">{shortAgo(row, now)}</span>
+            <MenuButton title={title} items={items} />
           </span>
         </div>
       </ContextMenuTrigger>
