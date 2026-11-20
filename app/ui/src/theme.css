@@ -1768,6 +1768,7 @@
 @utility session-tab-shape {
   --flare: var(--radius-control);
   --stroke: 1px;
+  --edge: var(--color-glass-stroke);
   position: absolute;
   inset-block: 0;
   inset-inline: var(--spacing-session-tab-inset);
@@ -1789,7 +1790,7 @@
     content: "";
     position: absolute;
     inset: 0 0 var(--flare);
-    border: var(--stroke) solid var(--color-glass-stroke);
+    border: var(--stroke) solid var(--edge);
     border-bottom: 0;
     border-start-start-radius: inherit;
     border-start-end-radius: inherit;
@@ -1803,8 +1804,8 @@
     height: var(--flare);
     /* The stroke over the fill, as the frame's edge is over the frame: where the two meet they're one colour. */
     background:
-      radial-gradient(circle at 0 0, transparent calc(var(--flare) - var(--stroke)), var(--color-glass-stroke) 0 var(--flare), transparent 0) left / var(--flare) 100% no-repeat,
-      radial-gradient(circle at 100% 0, transparent calc(var(--flare) - var(--stroke)), var(--color-glass-stroke) 0 var(--flare), transparent 0) right / var(--flare) 100% no-repeat,
+      radial-gradient(circle at 0 0, transparent calc(var(--flare) - var(--stroke)), var(--edge) 0 var(--flare), transparent 0) left / var(--flare) 100% no-repeat,
+      radial-gradient(circle at 100% 0, transparent calc(var(--flare) - var(--stroke)), var(--edge) 0 var(--flare), transparent 0) right / var(--flare) 100% no-repeat,
       radial-gradient(circle at 0 0, transparent calc(var(--flare) - var(--stroke)), var(--color-card) 0) left / var(--flare) 100% no-repeat,
       radial-gradient(circle at 100% 0, transparent calc(var(--flare) - var(--stroke)), var(--color-card) 0) right / var(--flare) 100% no-repeat;
   }
@@ -1860,9 +1861,31 @@
 .session-tab[data-agent-group]:not([data-active]) {
   background: linear-gradient(var(--color-agent-group) 0 0) bottom / 100% 2px no-repeat;
 }
+/* Its outline grows in as the gliding grey shape lands on it (tab-glide.ts), from that 1px grey to the group's 2px. */
 .session-tab[data-agent-group] > .session-tab-shape {
   --stroke: 2px;
-  --color-glass-stroke: var(--color-agent-group);
+  --edge: var(--color-agent-group);
+  animation: group-edge-in var(--duration-session-tab) var(--ease-session-tab);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+@keyframes group-edge-in {
+  from {
+    --stroke: 1px;
+    --edge: var(--color-glass-stroke);
+  }
+}
+/* Registered so they interpolate. */
+@property --stroke {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 1px;
+}
+@property --edge {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
 }
 
 /* Home's mark brightening under the pointer. */
