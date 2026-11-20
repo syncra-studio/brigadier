@@ -113,6 +113,11 @@ fn holder(spec: &Spec, others: &[Spec]) -> PathBuf {
         .map_or(spec.dir.clone(), |o| o.dir.clone())
 }
 
+/// A claim's copy another session works in ("Existing worktree"), archived or not [D1080].
+fn shared_claim(data: &Path, spec: &Spec, rec: &Path) -> bool {
+    worktrees::folder(rec).is_some_and(|f| !share::in_folder(data, &f, Some(&spec.id)).is_empty())
+}
+
 fn finish_archive(spec: &Spec) -> io::Result<()> {
     let dir = &spec.dir;
     let (others, _held) = sharers(spec)?;
@@ -130,8 +135,7 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
         .and_then(|()| {
             crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
                 let _one = worktrees::lock(rec)?;
-                let copy = worktrees::folder(rec);
-                if copy.is_some_and(|f| !share::in_folder(&data, &f, Some(&spec.id)).is_empty()) {
+                if shared_claim(&data, spec, rec) {
                     return Ok(());
                 }
                 let was = worktrees::present(rec);
@@ -379,18 +383,22 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
 }
 
 /// Rolls back a restore cut short: its worktree is freed again, unless another session still
-/// works there unarchived [D1080].
+/// works there unarchived [D1080]; a claim another session works in stays, as archive left it.
 fn undo_restore(spec: &Spec) -> io::Result<()> {
     let (others, _held) = sharers(spec)?;
     if others.iter().any(|o| !o.dir.join(ARCHIVED).exists()) {
         return Ok(());
     }
     worktrees::free(&holder(spec, &others))?;
+    let data = data_of(spec);
     crate::folder::claims(&spec.dir)
         .iter()
         .try_for_each(|(_, rec)| {
             let _one = worktrees::lock(rec)?;
-            worktrees::free(rec)
+            match shared_claim(&data, spec, rec) {
+                true => Ok(()),
+                false => worktrees::free(rec),
+            }
         })
 }
 

@@ -19,15 +19,21 @@ pub struct Repo {
 }
 
 /// The repos `src` claimed, for a fork from `at`; `order`, its turns oldest first. A claim whose
-/// turn is unknown counts as made by then: never left out unsaid.
+/// turn is unknown counts as made by then: never left out unsaid. One whose turn was rewound away
+/// came after every turn up to `at` that has no snapshot of it.
 pub fn of(src: &Spec, gone: bool, order: &[String], at: &str) -> Vec<Repo> {
     let pos = |c: &str| order.iter().position(|o| o == c);
+    let upto = pos(at).map_or(&order[..0], |a| &order[..=a]);
     let claims = folder::claims(&src.dir).into_iter();
     claims
         .map(|(name, rec)| {
             let store = Store::claim(&rec);
-            let turn = folder::claimed_in(&rec).flatten();
-            let later = (turn.and_then(|t| pos(&t)).zip(pos(at))).is_some_and(|(t, a)| t > a);
+            let seen = |c: &String| store.as_ref().is_some_and(|s| s.load(c).is_some());
+            let later = match folder::claimed_in(&rec).flatten().map(|t| pos(&t)) {
+                Some(Some(t)) => pos(at).is_some_and(|a| t > a),
+                Some(None) => !upto.iter().any(seen),
+                None => false,
+            };
             let end = (store.as_ref().filter(|_| !gone)).and_then(|s| s.load(at)?.end);
             let (files, shot) = match end {
                 None if later => ("later", None),

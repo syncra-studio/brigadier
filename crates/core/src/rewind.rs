@@ -78,8 +78,9 @@ pub fn before(spec: &Spec, f: &Fold, cid: &str) {
     if !f.turns.is_empty() {
         return;
     }
+    let at = now_ms();
     for store in Store::of(spec).into_iter().chain(repos::stores(spec)) {
-        ended(&store, f);
+        store.ended(f, at);
         if store.load(cid).is_none()
             && let Ok(before) = store.capture()
         {
@@ -88,29 +89,11 @@ pub fn before(spec: &Spec, f: &Fold, cid: &str) {
     }
 }
 
-/// Takes the folder as the last turn ended. Too late, the edits may be the user's, not the agent's,
-/// and it stays missing: that range offers keep only.
+/// Takes the folder as the last turn ended, each store judged from when this pass began.
 pub fn ends(spec: &Spec, f: &Fold) {
+    let at = now_ms();
     for store in Store::of(spec).into_iter().chain(repos::stores(spec)) {
-        ended(&store, f);
-    }
-}
-
-fn ended(store: &Store, f: &Fold) {
-    let Some(last) = f.last.as_ref().filter(|_| f.turns.is_empty()) else {
-        return;
-    };
-    let (Some(id), Some(ts)) = (last["id"].as_str(), last["ts"].as_u64()) else {
-        return;
-    };
-    let Some(mut record) = store.load(id).filter(|r| r.end.is_none()) else {
-        return;
-    };
-    if now_ms().saturating_sub(ts) <= GRACE_MS
-        && let Ok(end) = store.capture()
-    {
-        record.end = Some(end);
-        let _ = store.save(id, &record);
+        store.ended(f, at);
     }
 }
 

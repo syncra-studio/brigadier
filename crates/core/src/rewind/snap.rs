@@ -2,7 +2,9 @@
 //! (`sessions/<id>/rewind.git`) [D35]. Never the project's repository: its history, index and
 //! hooks are untouched. Files the project ignores stay out, git's own data too (proposed).
 
+use super::GRACE_MS;
 use crate::adapters::setup;
+use crate::fold::Fold;
 use crate::{Spec, check_id, write_atomic};
 use brigadier_frames::log::now_ms;
 use serde::{Deserialize, Serialize};
@@ -268,6 +270,27 @@ impl Store {
         let path = self.record(cid)?;
         fs::create_dir_all(self.git.join("turns"))?;
         write_atomic(&path, &serde_json::to_vec(record)?)
+    }
+
+    /// Takes the folder as the last turn ended, if `at` is in time. Too late, the edits may be the
+    /// user's, not the agent's, and it stays missing: that range offers keep only. `at`: when this
+    /// pass began, so a folder chat's earlier repos can't use up a later one's time [D3105].
+    pub(super) fn ended(&self, f: &Fold, at: u64) {
+        let Some(last) = f.last.as_ref().filter(|_| f.turns.is_empty()) else {
+            return;
+        };
+        let (Some(id), Some(ts)) = (last["id"].as_str(), last["ts"].as_u64()) else {
+            return;
+        };
+        let Some(mut record) = self.load(id).filter(|r| r.end.is_none()) else {
+            return;
+        };
+        if at.saturating_sub(ts) <= GRACE_MS
+            && let Ok(end) = self.capture()
+        {
+            record.end = Some(end);
+            let _ = self.save(id, &record);
+        }
     }
 
     /// Every turn's record, oldest first by its first capture; those with no time first.
