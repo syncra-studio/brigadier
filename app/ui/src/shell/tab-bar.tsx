@@ -234,13 +234,14 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   const ghost = useRef<HTMLSpanElement>(null);
   useTabGlide(header, ghost, houseActive ? HOUSE : front);
   const list = useRef<HTMLDivElement>(null);
-  // Chrome's: a tab closed with the pointer leaves the others their width until the pointer leaves the row, so the
-  // next tab's × comes under it [D848].
-  const [frozen, setFrozen] = useState<number>();
+  // Safari's and Chrome's: a tab closed with the pointer leaves each other tab its width until the pointer leaves the
+  // row, so the next tab's × comes under it, even where closing the front puts its opener in front elsewhere [D848 D3113].
+  const tabsHere = () => list.current?.querySelectorAll<HTMLElement>(".session-tab") ?? [];
   const closeHere = (id: string) => {
-    setFrozen(list.current?.querySelector(".session-tab:not([data-home], [data-closing])")?.getBoundingClientRect().width);
+    for (const tab of tabsHere()) tab.dataset.frozen ??= String(tab.getBoundingClientRect().width);
     closeTab(shown, id);
   };
+  const thaw = () => tabsHere().forEach((tab) => delete tab.dataset.frozen);
   // ⌘W closes the tab in front, or leaves the session from its Chat tab. Home's Chat tab has nothing to close, so main closes the window.
   const closes = !(owner === HOME && own.active === CHAT);
   useEffect(() => window.brigadier?.closesTab(closes), [closes]);
@@ -338,7 +339,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
-      <header ref={header} data-slot="session-tabs" data-settled={settled || undefined} onPointerLeave={() => setFrozen(undefined)} className={cx(BAR, "session-tab-bar")}>
+      <header ref={header} data-slot="session-tabs" data-settled={settled || undefined} onPointerLeave={thaw} className={cx(BAR, "session-tab-bar")}>
         <span ref={ghost} aria-hidden hidden data-active className="session-tab-glide">
           <span className="session-tab-shape" />
         </span>
@@ -346,7 +347,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1) + siblings} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1) + siblings} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
             {family.length === 0 && chat}
             <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">

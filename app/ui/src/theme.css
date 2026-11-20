@@ -326,10 +326,11 @@
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
-  /* Chrome's tabs [D848]: 240px each, shrinking evenly when crowded down to their icon, then the strip scrolls; below
-     88px a tab shows its icon alone, below 64px no × either. The house is Chrome's pinned tab, its icon alone in 48px
-     wherever it shows, so it holds its place between a session and its project's page [D834 D875]. */
-  --spacing-session-tab-max: 15rem;
+  /* Safari's tabs [D3113]: they fill the row evenly, the one in front never under Safari's ~194pt so its title shows,
+     the others shrinking down to their icon, then the strip scrolls; below 88px a tab shows its icon alone, below 64px
+     no × either. The house is Chrome's pinned tab, its icon alone in 48px wherever it shows, so it holds its place
+     between a session and its project's page [D834 D848 D875]. */
+  --spacing-session-tab-front: 12rem;
   --spacing-session-tab-icon: 2.5rem;
   --spacing-home-tab: 3rem;
   /* Under its content, the foot where the front tab meets the frame: above it the titlebar's strip buttons' 30px
@@ -1626,9 +1627,10 @@
   }
 }
 
-/* Chrome's widths [D848]: every tab but the house as wide as the others, 240px down to an even share of the tab area
-   (its container) less "+" and the agents' group labels, down to its icon, then the strip scrolls. Choosing a tab
-   changes no width; the row is as wide as its tabs, so "+" slides as one grows in or shrinks out [D834 D835]. */
+/* Safari's widths [D3113]: every tab but the house an even share of the tab area (its container) less "+" and the
+   group labels, down to its icon, then the strip scrolls. A tab in front in the list keeps at least
+   --spacing-session-tab-front, the others sharing what's left, so choosing one widens it; with none in front (a
+   project's page) all share alike. The row is as wide as its tabs, so "+" slides as one grows in or shrinks out [D835]. */
 @utility session-tab-list {
   position: relative;
   /* The project page's house is its first tab here; a session's sits before the list. */
@@ -1639,10 +1641,12 @@
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
   --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - var(--session-tab-pinned) * var(--spacing-home-tab));
-  --session-tab-width: clamp(var(--spacing-session-tab-icon), var(--session-tab-room) / max(attr(data-count type(<number>), 1) - var(--session-tab-pinned), 1), var(--spacing-session-tab-max));
-  /* Held after a close with the pointer, until it leaves the row (tab-bar.tsx). */
-  &[data-frozen] {
-    --session-tab-width: attr(data-frozen px);
+  --session-tab-count: max(attr(data-count type(<number>), 1) - var(--session-tab-pinned), 1);
+  --session-tab-width: max(var(--spacing-session-tab-icon), var(--session-tab-room) / var(--session-tab-count));
+  --session-tab-front-width: var(--session-tab-width);
+  &:has(.session-tab[data-active]:not([data-closing])) {
+    --session-tab-front-width: min(var(--session-tab-room), max(var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-front)));
+    --session-tab-width: max(var(--spacing-session-tab-icon), (var(--session-tab-room) - var(--session-tab-front-width)) / max(var(--session-tab-count) - 1, 1));
   }
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
@@ -1666,6 +1670,13 @@
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     padding var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
+  &[data-active] {
+    flex-basis: var(--session-tab-front-width);
+  }
+  /* Each held at its width after a close with the pointer, until it leaves the row (tab-bar.tsx). */
+  &[data-frozen] {
+    flex-basis: attr(data-frozen px);
+  }
   &[data-home] {
     flex-basis: var(--spacing-home-tab);
   }
