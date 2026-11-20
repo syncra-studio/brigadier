@@ -1130,6 +1130,15 @@
   width: calc(attr(data-w type(<number>), 0) * 100%);
   height: calc(attr(data-h type(<number>), 0) * 100%);
 }
+/* The tour's spotlight (onboarding/tour.tsx): the window dimmed as behind a dialog but round the part it lights,
+   placed where it measures that part [D3109]. */
+@utility tour-spot {
+  left: attr(data-left px, 0px);
+  top: attr(data-top px, 0px);
+  width: attr(data-width px, 0px);
+  height: attr(data-height px, 0px);
+  box-shadow: 0 0 0 100vmax var(--color-dialog-backdrop);
+}
 /* What draws over a variant's live page, on its frame's box in the window (mockup/frame.tsx). */
 @utility mockup-over {
   left: attr(data-left px, 0px);

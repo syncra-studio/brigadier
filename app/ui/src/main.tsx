@@ -17,6 +17,7 @@ import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
 import { Onboarding } from "./onboarding/onboarding";
+import { TourHost } from "./onboarding/tour";
 import { GlobalSearch } from "./palette/palette";
 import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
@@ -186,6 +187,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       <RemoveProjectHost />
       <FeedbackDialog />
       <FolderDrop />
+      <TourHost home={active === null && page === undefined && settings === undefined} />
     </div>
   );
 }

@@ -238,7 +238,7 @@ export async function changeAgentPath(agent: Agent): Promise<void> {
 }
 
 /** What onboarding keeps [D45]: undefined until loaded. */
-export type Profile = { name: string; intro_seen: boolean; onboarded: boolean; /** Settings › Git's "Write with"; null is Automatic [D1224]. */ git_writer?: { backend: string; model: string } | null };
+export type Profile = { name: string; intro_seen: boolean; onboarded: boolean; /** The tour offered or taken [D3109]. */ tour_seen?: boolean; /** Settings › Git's "Write with"; null is Automatic [D1224]. */ git_writer?: { backend: string; model: string } | null };
 const profile = store<{ value?: Profile; error?: string }>({});
 export const useProfile = profile.use;
 
