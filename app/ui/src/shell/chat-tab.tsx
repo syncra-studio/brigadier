@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { showToast } from "../components/toast";
 import { setHomeDraft } from "../home/start";
 import { Archive, Chat, DotsHorizontal, House, SidebarError, X } from "../icons";
-import { BossCrumb, BrigadeGlyph } from "../sessions/brigade";
+import { BrigadeGlyph } from "../sessions/brigade";
 import { useMark } from "../session/turn";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
@@ -53,7 +53,7 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
 }
 
 /** A chat or session's first tab, never moved: its title, its state and its ⋯. It has no × [D427]; ⌘W, middle-click and Close leave it. */
-export function ChatTab({ owner, row, active, separator, order }: { owner: string; row: SessionRow; active: boolean; separator: boolean; order: string[] }) {
+export function ChatTab({ owner, row, active, separator, order, grouped = false }: { owner: string; row: SessionRow; active: boolean; separator: boolean; order: string[]; grouped?: boolean }) {
   const [renaming, setRenaming] = useState(false);
   const words = useStatusWords(row);
   const archived = Boolean(row.archived);
@@ -63,9 +63,8 @@ export function ChatTab({ owner, row, active, separator, order }: { owner: strin
   const startRename = archived ? undefined : () => setRenaming(true);
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))} />}>
+      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} className={cx(TAB, LOOK(active))} />}>
         <Shape />
-        <BossCrumb boss={row.boss} />
         <button
           type="button"
           role="tab"

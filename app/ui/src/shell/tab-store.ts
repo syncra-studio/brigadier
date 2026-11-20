@@ -381,18 +381,31 @@ export function reopenTab(owner: string): void {
   act(owner, { args: ["reopen"], change: (now) => now, once: true });
 }
 
-export function stepTab(owner: string, step: 1 | -1): void {
+export function stepTab(owner: string, step: 1 | -1, family: readonly string[] = []): void {
   const now = tabsOf(owner);
-  const order = tabOrder(now);
-  selectTab(owner, order[(order.indexOf(now.active) + step + order.length) % order.length]!);
+  const order = familyOrder(tabOrder(now), family, owner);
+  go(owner, order[(order.indexOf(now.active) + step + order.length) % order.length]!);
 }
 
-/** ⌘1 is Chat, ⌘2 to ⌘8 the tabs after it, ⌘9 the last, as browsers do. */
-export function selectNumber(owner: string, number: number): void {
-  const order = tabOrder(tabsOf(owner));
+/** ⌘1 is Chat, ⌘2 to ⌘8 the tabs after it, ⌘9 the last, as browsers do; in a Brigade, its family's tabs first. */
+export function selectNumber(owner: string, number: number, family: readonly string[] = []): void {
+  const order = familyOrder(tabOrder(tabsOf(owner)), family, owner);
   const id = number === 9 ? order.at(-1) : order[number - 1];
-  if (id) selectTab(owner, id);
+  if (id) go(owner, id);
 }
+
+/** A tab of a Brigade's family that isn't the session shown: its id is `SIBLING` and the session's [D3108]. */
+export const SIBLING = "brigade-session:";
+/** The strip's order in a Brigade's family (`family`: its head, then its sessions): those before `shown`, its Chat tab,
+ *  those after, then its own tabs [D3108]. */
+export function familyOrder(order: readonly string[], family: readonly string[], shown: string): string[] {
+  const at = family.indexOf(shown);
+  if (at < 0) return [...order];
+  const sib = (ids: readonly string[]) => ids.map((id) => SIBLING + id);
+  return [...sib(family.slice(0, at)), CHAT, ...sib(family.slice(at + 1)), ...order.slice(1)];
+}
+/** A family's tab opens its session, as its row does; any other is selected. */
+const go = (owner: string, id: string) => (id.startsWith(SIBLING) ? (window.location.hash = `#thread/${encodeURIComponent(id.slice(SIBLING.length))}`) : selectTab(owner, id));
 
 /**
  * Home's tabs show on the session at once; `start --carry-tabs` moves what Rust has, so `start` waits its turn behind

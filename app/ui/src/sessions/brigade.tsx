@@ -1,6 +1,5 @@
 import { ComposerPill, PillDivider } from "../components/composer/composer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { useDaemon } from "../daemon";
 import { Nodes, type IconProps } from "../icons";
 
 /** A Brigade's mark: one over several [D194]. */
@@ -33,20 +32,5 @@ export function BrigadeMessagePill() {
       <BrigadeGlyph className="size-icon-sm" />
       Brigade
     </span>
-  );
-}
-
-/** A Brigade's session's tab starts with its Brigade, one click back to it [D196]. */
-export function BossCrumb({ boss }: { boss: string | null | undefined }) {
-  const row = useDaemon().rows?.find((each) => each.id === boss);
-  if (!row) return null;
-  return (
-    <>
-      <button type="button" title={`Back to ${row.title}`} onClick={() => (window.location.hash = `#thread/${encodeURIComponent(row.id)}`)} className="flex max-w-20 min-w-0 shrink cursor-pointer items-center gap-1 rounded-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
-        <BrigadeGlyph className="size-icon-sm shrink-0" />
-        <span className="truncate">{row.title || "Brigade"}</span>
-      </button>
-      <span aria-hidden className="shrink-0 text-muted-foreground">›</span>
-    </>
   );
 }

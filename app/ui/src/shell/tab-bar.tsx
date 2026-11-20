@@ -2,7 +2,7 @@ import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
 import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { useDaemon } from "../daemon";
@@ -24,11 +24,12 @@ import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 import { LiveMockupTabIcon } from "../mockup/live";
 import { openProject } from "../projects/page";
+import { BrigadeGroupLabel, SiblingTab, useBrigadeFamily } from "./brigade-tabs";
 import { BlankChatTab, BUTTON, ChatTab, CLOSE, HouseTab, leave, LOOK, noAutoscroll, Shape, TAB, TabMenuItems, TITLE } from "./chat-tab";
 import { useNoteTitle } from "./note-tab";
 import { HOUSE, useTabGlide } from "./tab-glide";
 import { useTabKeys } from "./tab-keys";
-import { CHAT, closeTab, HOME, homeProject, justOpened, keepTab, moveTab, openTab, pageKey, selectTab, setCurrent, setPlace, type Tab, TAB_KINDS, tabOrder, tabsOf, useCurrent, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
+import { CHAT, closeTab, familyOrder, HOME, homeProject, justOpened, keepTab, moveTab, openTab, pageKey, selectTab, setCurrent, setPlace, SIBLING, type Tab, TAB_KINDS, tabOrder, tabsOf, useCurrent, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -197,7 +198,11 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
     if (!page) setCurrent(at, here);
   }, [owner, home, project, row?.archived, own.active]);
   const archived = Boolean(row?.archived);
-  useTabKeys(owner, archived, peek);
+  // A Brigade's family, its tab group around the Chat tab [D3108].
+  const family = useBrigadeFamily(peekRow ?? row);
+  const familyIds = useMemo(() => family.map((each) => each.id), [family]);
+  const me = family.findIndex((each) => each.id === shown);
+  useTabKeys(owner, archived, peek, familyIds);
   const presence = useTabPresence(tabs);
   // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
   // New chat in no project with no tabs has no Chat tab, "+" at the row's end [D831]; a project's page none but a
@@ -209,7 +214,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   const openHouse = () => (owner === HOME && selectTab(HOME, CHAT), project ? openProject(project) : newChat());
   // On a project's page a tab of what's current opens it there, the session or the draft's page; the page's own show on it.
   const onPick = (event: ReactMouseEvent) => {
-    if (home && (event.target as Element).closest('[role="tab"]')) openPeek();
+    if (home && (event.target as Element).closest('[role="tab"]:not([data-sibling])')) openPeek();
   };
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
@@ -277,18 +282,20 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
     const focus = (id: string) => requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"] [role="tab"]`)?.focus());
     if (matches(event.nativeEvent, "close-focused")) {
       const id = event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId;
-      if (!id || id === CHAT) return;
+      if (!id || id === CHAT || id.startsWith(SIBLING)) return;
       event.preventDefault();
       closeTab(shown, id);
       return focus(tabsOf(shown).active);
     }
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const at = order.indexOf(active);
+    // A family's other tab takes the focus only; Enter opens its session [D3108].
+    const keys = familyOrder(order, familyIds, shown);
+    const at = keys.indexOf(event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId ?? active);
     const forward = (event.key === "ArrowRight") !== (getComputedStyle(list).direction === "rtl");
-    const next = event.key === "Home" ? 0 : event.key === "End" ? order.length - 1 : (at + (forward ? 1 : -1) + order.length) % order.length;
-    selectTab(shown, order[next]!);
-    focus(order[next]!);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1 : (at + (forward ? 1 : -1) + keys.length) % keys.length;
+    if (!keys[next]!.startsWith(SIBLING)) selectTab(shown, keys[next]!);
+    focus(keys[next]!);
   };
 
   // The wheel scrolls the strip from anywhere on the pill: the chat tab and the pill's edge move it as the tabs do,
@@ -312,6 +319,11 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
     if (folds.has(key) || !group.some((tab) => tab.id === front)) return;
     moveTab(shown, openTab(shown, "new"), tabs.length);
   };
+  // A Brigade's group folds its other sessions' tabs, never the Chat tab: no New tab takes the front, as an agent's does [D3108].
+  const familyKey = `brigade:${family[0]?.id}`;
+  const familyFolded = folds.has(familyKey);
+  const foldFamily = () => setFolds((now) => (now.has(familyKey) ? new Set([...now].filter((each) => each !== familyKey)) : new Set([...now, familyKey])));
+  const siblings = familyFolded ? 0 : Math.max(family.length - 1, 0);
   const newTab = (
     <TooltipIconButton look="strip" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag session-tab-new" onClick={() => {
         openTab(shown, "new");
@@ -332,9 +344,12 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1)} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1) + siblings} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
-            {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && tabs[0]?.id !== front} order={order} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
+            {family.length > 0 && <BrigadeGroupLabel family={family} folded={familyFolded} onFold={foldFamily} />}
+            {family.slice(0, Math.max(me, 0)).map((each, at) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={!(at === me - 1 && front === CHAT)} />)}
+            {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== front)} order={order} grouped={family.length > 0} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
+            {me >= 0 && family.slice(me + 1).map((each, at, after) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={at < after.length - 1 || tabs[0]?.id !== front} />)}
             <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider

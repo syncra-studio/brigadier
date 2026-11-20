@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { useDaemon } from "../daemon";
@@ -37,13 +37,23 @@ function GroupTabName({ id, target }: { id: string; target?: string }) {
 export function BrowserTabGroupLabel({ tabs, driver, folded, onFold }: { tabs: readonly { id: string; target?: string }[]; driver: string; folded: boolean; onFold: () => void }) {
   const name = useDriverName(driver);
   const holds = useAgentHoldsAny(tabs.map((tab) => tab.id));
+  return (
+    <TabGroupLabel name={name ?? ""} before={holds ? "⌛ " : ""} count={`${tabs.length} ${tabs.length === 1 ? "tab" : "tabs"}`} folded={folded} onFold={onFold}>
+      {tabs.map((tab) => (
+        <GroupTabName key={tab.id} id={tab.id} target={tab.target} />
+      ))}
+    </TabGroupLabel>
+  );
+}
+
+/** A tab group's label, an agent's or a Brigade's [D3108]: `name`, then on hover its `count` and its tabs' names (`children`); `before`, an agent's hourglass. */
+export function TabGroupLabel({ name, before = "", count, folded, onFold, children }: { name: string; before?: string; count: string; folded: boolean; onFold: () => void; children: ReactNode }) {
   const words = useRef<HTMLSpanElement>(null);
   const [cut, setCut] = useState(false);
   useLayoutEffect(() => {
     const at = words.current;
     if (at) setCut(at.scrollWidth > at.clientWidth);
-  }, [name, holds]);
-  const count = `${tabs.length} ${tabs.length === 1 ? "tab" : "tabs"}`;
+  }, [name, before]);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -52,7 +62,7 @@ export function BrowserTabGroupLabel({ tabs, driver, folded, onFold }: { tabs: r
       >
         <span>
           <span ref={words} data-cut={cut || undefined} className="min-w-0 overflow-hidden">
-            {holds && "⌛ "}
+            {before}
             {name}
           </span>
         </span>
@@ -61,11 +71,7 @@ export function BrowserTabGroupLabel({ tabs, driver, folded, onFold }: { tabs: r
         <span className="font-medium">
           {name} ({count})
         </span>
-        <ul className="w-full list-inside list-disc text-muted-foreground">
-          {tabs.map((tab) => (
-            <GroupTabName key={tab.id} id={tab.id} target={tab.target} />
-          ))}
-        </ul>
+        <ul className="w-full list-inside list-disc text-muted-foreground">{children}</ul>
       </TooltipContent>
     </Tooltip>
   );
