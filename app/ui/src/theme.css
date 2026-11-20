@@ -1479,7 +1479,8 @@
    room, sidebar-width-source), or past the traffic lights and the toggle with 8px [D934], where
    that's further, easing with the sidebar [D48 D838 D862]. */
 @utility titlebar-clear {
-  padding-inline-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room, 0px)), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
+  --tabs-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room, 0px)), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
+  padding-inline-start: var(--tabs-start);
   transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -1511,13 +1512,14 @@
     opacity: 0;
   }
   /* The strip's or hidden sidebar's toggle and the house: a tab's separator midway between their icons (the toggle's 32px
-     box, the house's 48px), gone as the house's own when it's hovered or in front [D840 D931]. */
+     box, the house's 48px, wherever the tabs start: past the toggle, or past the strip in full screen), gone as the
+     house's own when it's hovered or in front [D840 D931]. */
   & > :has(> [data-home]) {
     position: relative;
     &::before {
       content: "";
       position: absolute;
-      inset-inline-start: calc((var(--spacing) * 4 + var(--spacing-home-tab) / 2 - var(--toggle-room, 0px)) / 2 - var(--spacing-session-tab-rule) / 2);
+      inset-inline-start: calc((var(--spacing-toggle-start) + var(--spacing) * 4 + var(--spacing-home-tab) / 2 - var(--tabs-start, 0px)) / 2 - var(--spacing-session-tab-rule) / 2);
       top: calc((100% - var(--spacing-session-tab-foot) - var(--spacing-session-tab-rule-height)) / 2);
       height: var(--spacing-session-tab-rule-height);
       width: var(--spacing-session-tab-rule);
