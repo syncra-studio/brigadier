@@ -32,6 +32,8 @@ export type SessionRow = {
   pr?: PrChipState | null;
   /** Its labels' names, in the order given [D3101, D3103]. */
   labels?: string[];
+  /** Archived with its Brigade: the Brigade's restore brings it back [D3111]. */
+  archivedWith?: boolean;
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss">;
 
 export type Project = { id: string; name: string; folder: string };

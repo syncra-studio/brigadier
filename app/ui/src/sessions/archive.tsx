@@ -9,6 +9,7 @@ import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Archive } from "../icons";
+import { useDaemon } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
 import { archive, restore } from "../sidebar/actions";
@@ -57,7 +58,7 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
  * Rust's check before archiving [D1197]: whose agent is working, and per folder the batch frees, the ignored files
  * it deletes for good (or why they couldn't be listed).
  */
-export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[] };
+export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[]; with?: Record<string, string[]> };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
 const asking = store<Asking | null>(null);
 /** Rows Rust checks or the confirm asks about: hidden at once [D198], back on Cancel or a failed check. */
@@ -90,8 +91,8 @@ export function archiveRows(chosen: SessionRow[]) {
   run(["archive", ...rows.map((row) => row.id), "--check"])
     .then(
       (reply) => {
-        const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
-        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus);
+        const check = { running: reply.running ?? [], lost: reply.lost ?? [], with: reply.with ?? {} };
+        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus, check);
         ask({ rows, focus, check });
         asked = true;
       },
@@ -100,7 +101,11 @@ export function archiveRows(chosen: SessionRow[]) {
     .finally(() => !asked && hold(rows, false));
 }
 
-function archiveNow(rows: SessionRow[], focus: Element | null) {
+/** How many sessions go with the rows' Brigades [D3111]. */
+const withCount = (check?: ArchiveCheck) => Object.values(check?.with ?? {}).flat().length;
+const theirs = (count: number, owner = "its") => (count === 1 ? `${owner} session` : `${owner} ${count} sessions`);
+
+function archiveNow(rows: SessionRow[], focus: Element | null, check?: ArchiveCheck) {
   const { active, onHome } = view;
   undoFocus = focus;
   typedSinceArchive = false;
@@ -114,7 +119,7 @@ function archiveNow(rows: SessionRow[], focus: Element | null) {
   };
   undo = back;
   const id = toastManager.add({
-    title: rows.length === 1 ? "Archived session" : `Archived ${rows.length} sessions`,
+    title: rows.length > 1 ? `Archived ${rows.length + withCount(check)} sessions` : withCount(check) ? `Archived ${titleOf(rows[0])} and ${theirs(withCount(check))}` : "Archived session",
     type: "neutral",
     timeout: UNDO_MS,
     data: { actions: [{ label: "Undo", run: back }] },
@@ -127,12 +132,24 @@ const titleOf = (row: SessionRow | undefined) => `“${row?.title || "New sessio
 /** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
 export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
   const one = rows.length === 1;
-  const byId = (id: string) => rows.find((row) => row.id === id);
-  const whose = (ids: string[]) => (one ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
+  // A Brigade's sessions going with it are named from the rows Rust sends [D3111].
+  const all = useDaemon().rows as SessionRow[] | undefined;
+  const byId = (id: string) => rows.find((row) => row.id === id) ?? all?.find((row) => row.id === id);
+  const more = withCount(check);
+  const lone = one && more === 0;
+  const whose = (ids: string[]) => (lone ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
   return (
     <ConfirmForm
       title={one ? "Archive session?" : `Archive ${rows.length} sessions?`}
-      description={one ? `This archives ${titleOf(rows[0])}. Restore brings it back.` : "Restore brings each one back."}
+      description={
+        one && more
+          ? `This archives ${titleOf(rows[0])} and ${theirs(more)}. Restore brings them back.`
+          : one
+            ? `This archives ${titleOf(rows[0])}. Restore brings it back.`
+            : more
+              ? `This archives them and ${theirs(more, "their")}. Restore brings each one back.`
+              : "Restore brings each one back."
+      }
       confirm="Archive"
       destructive={!!check?.lost.some((each) => each.files)}
       onConfirm={onConfirm}
@@ -140,7 +157,7 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
     >
       {(check?.running ?? []).map((id) => (
         <p key={id} className="text-xs text-muted-foreground">
-          {one ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
+          {lone ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
         </p>
       ))}
       {(check?.lost ?? []).map((each) =>
@@ -173,7 +190,7 @@ export function ArchiveAsk() {
             check={now.check}
             error={now.error}
             onConfirm={() => {
-              archiveNow(now.rows, now.focus);
+              archiveNow(now.rows, now.focus, now.check);
               close();
             }}
             onCancel={close}

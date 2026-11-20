@@ -46,6 +46,10 @@ function settle(id: string): void {
   const action = queues.get(id)?.[0];
   const row = rows.get(id);
   if (action?.at === undefined || (row?.touched ?? 0) < action.at) return;
+  // A Brigade's archive or restore holds until its sessions' rows show it too [D3111].
+  const archived = action.change.archived;
+  const lagging = (sub: SessionRow) => sub.boss === id && (archived ? !sub.archived : sub.archivedWith && sub.archived);
+  if (archived !== undefined && [...rows.values()].some(lagging)) return;
   queues.get(id)!.shift();
   emit();
   sendFirst(id);
@@ -86,7 +90,7 @@ export function useShown(list: SessionRow[] | undefined): SessionRow[] | undefin
     rows = new Map(list?.map((row) => [row.id, row]));
     for (const id of queues.keys()) settle(id);
   }, [list]);
-  return list?.map((row) => {
+  const shown = list?.map((row) => {
     const actions = pending.get(row.id);
     if (!actions?.length) return row;
     return actions.reduce<SessionRow>(
@@ -99,5 +103,12 @@ export function useShown(list: SessionRow[] | undefined): SessionRow[] | undefin
       }),
       row,
     );
+  });
+  // A Brigade's archive takes its live sessions and its restore those that went with it, as Rust does [D3111].
+  const bosses = new Map(shown?.filter((row) => row.brigade && pending.get(row.id)?.some(({ change }) => change.archived !== undefined)).map((row) => [row.id, row.archived]));
+  return shown?.map((row) => {
+    const archived = row.boss ? bosses.get(row.boss) : undefined;
+    if (archived === undefined || Boolean(archived) === Boolean(row.archived) || (!archived && !row.archivedWith)) return row;
+    return { ...row, archived };
   });
 }
