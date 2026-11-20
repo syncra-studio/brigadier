@@ -7,38 +7,36 @@
 @theme static {
   --*: initial;
 
-  /* The new design's bg-window, in hex: main reads this line for the window, and Electron can't parse oklch. */
-  --color-background: #151517;
-  /* The window around the floating sidebar and panels: the page itself now [new-design]. */
-  --color-chrome: var(--color-background);
-  /* The floating sidebar, strip, right panel and summary card (the new design's #222224). */
-  --color-card: #222224;
-  /* Menus and the hover card: the new design's menu-bg, opaque [D655], and its edge. */
-  --color-popover: #2b2b2e;
-  --color-popover-edge: #ffffff1f;
-  /* The new design's glass: a pill's fill (control-fill) and edge (glass-stroke), and the active tab and picked row (selection). */
-  --color-control: #ffffff12;
-  --color-glass-stroke: #ffffff14;
-  --color-selection: #ffffff1c;
+  /* The old page, oklch(0.21 0.002 106), in hex: main reads this line for the window, and Electron can't parse oklch. */
+  --color-background: #181817;
+  /* The window around the floating sidebar and panels: the old chrome, a step lighter than the page. */
+  --color-chrome: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
+  /* The floating sidebar, strip, right panel and summary card: the old sidebar (page 65% over chrome), in hex for main. */
+  --color-card: #1d1d1c;
+  /* Menus and the hover card: the old popover, opaque [D655], and its edge. */
+  --color-popover: oklch(0.297 0.002 106);
+  --color-popover-edge: oklch(0.985 0.002 106 / 10%);
+  /* The glass: a pill's fill (control-fill) and edge (glass-stroke), and the active tab and picked row (selection). */
+  --color-control: oklch(0.985 0.002 106 / 6%);
+  --color-glass-stroke: oklch(0.985 0.002 106 / 8%);
+  --color-selection: oklch(0.985 0.002 106 / 10%);
   /* A card's edge while its resize handle is hovered or dragged [D16]. */
-  --color-muted: oklch(0.315 0.004 286);
-  /* The new design's label and label-2; label-3 is --color-placeholder (label-2 at 60%). */
-  --color-foreground: #f5f5f7;
-  --color-muted-foreground: #ebebf599;
-  --color-primary: oklch(0.922 0.002 286);
-  --color-primary-fg: oklch(0.255 0.003 286);
-  /* Apple's system red (HIG, dark), the owner's pick. */
-  --color-destructive: rgb(255 66 69);
+  --color-muted: oklch(0.315 0.004 106);
+  /* The old foreground, oklch(0.985 0.002 106), in hex for main, and muted-foreground; --color-placeholder is the latter at 60%. */
+  --color-foreground: #fafaf9;
+  --color-muted-foreground: oklch(0.708 0.004 106);
+  --color-primary: oklch(0.922 0.002 106);
+  --color-primary-fg: oklch(0.255 0.003 106);
+  --color-destructive: oklch(0.704 0.191 22.216);
   --color-warning: oklch(0.769 0.165 62);
   --color-success: oklch(0.765 0.15 155);
-  --color-border: oklch(0.985 0.002 286 / 10%);
-  /* The new design's separator. */
-  --color-divider: #ffffff14;
+  --color-border: oklch(0.985 0.002 106 / 10%);
+  --color-divider: oklch(0.985 0.002 106 / 8%);
   /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
   --color-find-match: oklch(0.86 0.17 95 / 38%);
   --color-find-match-active: oklch(0.66 0.18 50 / 85%);
-  --color-input: oklch(0.985 0.002 286 / 15%);
-  --color-ring: oklch(0.556 0.004 286);
+  --color-input: oklch(0.985 0.002 106 / 15%);
+  --color-ring: oklch(0.556 0.004 106);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
   --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
@@ -207,14 +205,14 @@
   /* The line between a split button's halves (the old border-background/40). */
   --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
   /* The composer card, and a field's placeholder in it. */
-  --color-composer: var(--color-card);
+  --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
   --color-rail-line: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
   --color-rail-line-current: color-mix(in oklab, var(--color-foreground) 60%, transparent);
-  /* The live workers pane's fill (the old card at 70%). */
-  --color-rail-glass: #232322b3;
+  /* The live workers pane's fill (the old sidebar at 70%). */
+  --color-rail-glass: oklch(0.229 0.002 106 / 70%);
   --color-queue-glyph: color-mix(in oklab, var(--color-muted-foreground) 70%, transparent);
   /* A decision card (old app's action card): its kind line, a dim note ("in /path"), a host note, a code box's
      text, an outlined button's wash, the filled button's hover, a file list's ground. */
