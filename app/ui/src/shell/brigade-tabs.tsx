@@ -8,7 +8,7 @@ import { BrigadeGlyph } from "../sessions/brigade";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { BUTTON, LOOK, noAutoscroll, Shape, TAB, TITLE } from "./chat-tab";
-import { SIBLING } from "./tab-store";
+import { openSibling, SIBLING } from "./tab-store";
 
 /*
  * A Brigade's family in the tab bar, as an agent's tab group [D793 D3108]: its label, then the Brigade's tab and one
@@ -47,7 +47,7 @@ export function SiblingTab({ row, separator, folded }: { row: SessionRow; separa
   return (
     <div data-tab-id={SIBLING + row.id} data-separator={separator || undefined} data-closing={folded || undefined} aria-hidden={folded || undefined} inert={folded} data-agent-group className={cx(TAB, LOOK(false))}>
       <Shape />
-      <button type="button" role="tab" data-sibling aria-selected={false} tabIndex={-1} title={words ? `${title} · ${words}` : title} onMouseDown={noAutoscroll} onClick={() => (window.location.hash = `#thread/${encodeURIComponent(row.id)}`)} className={BUTTON}>
+      <button type="button" role="tab" data-sibling aria-selected={false} tabIndex={-1} title={words ? `${title} · ${words}` : title} onMouseDown={noAutoscroll} onClick={() => openSibling(row.id)} className={BUTTON}>
         {row.mark === "amber" ? <SidebarError className="size-icon-sm shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-sm shrink-0" /> : <Chat className="size-icon-sm shrink-0" />}
         <span className={TITLE}>{title}</span>
         {row.mark && row.mark !== "amber" && <RowMark mark={row.mark} label={words ?? ""} />}

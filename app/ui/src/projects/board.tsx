@@ -54,7 +54,7 @@ export function Board({ columns, tree, now, onOpen, onRename }: { columns: [stri
         <section key={key} aria-label={label} className="flex max-w-80 min-w-48 flex-1 basis-0 flex-col">
           <h3 className="flex h-8 shrink-0 items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
             {label}
-            <span className="tabular-nums">{rows.length}</span>
+            <span className="tabular-nums">{rows.reduce((n, row) => n + 1 + tree.kids(row).length, 0)}</span>
           </h3>
           <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-surface bg-fill-subtle p-2">
             {rows.toSorted((a, b) => (b.pinned ?? 0) - (a.pinned ?? 0)).map((row) => (

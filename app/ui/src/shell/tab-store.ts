@@ -404,8 +404,12 @@ export function familyOrder(order: readonly string[], family: readonly string[],
   const sib = (ids: readonly string[]) => ids.map((id) => SIBLING + id);
   return [...sib(family.slice(0, at)), CHAT, ...sib(family.slice(at + 1)), ...order.slice(1)];
 }
-/** A family's tab opens its session, as its row does; any other is selected. */
-const go = (owner: string, id: string) => (id.startsWith(SIBLING) ? (window.location.hash = `#thread/${encodeURIComponent(id.slice(SIBLING.length))}`) : selectTab(owner, id));
+/** A family's tab opens its session on its Chat tab, the tab it stands for; any other is selected [D3108]. */
+const go = (owner: string, id: string) => (id.startsWith(SIBLING) ? openSibling(id.slice(SIBLING.length)) : selectTab(owner, id));
+export function openSibling(id: string): void {
+  selectTab(id, CHAT);
+  window.location.hash = `#thread/${encodeURIComponent(id)}`;
+}
 
 /**
  * Home's tabs show on the session at once; `start --carry-tabs` moves what Rust has, so `start` waits its turn behind

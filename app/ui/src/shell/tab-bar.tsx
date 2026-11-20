@@ -200,8 +200,12 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   const archived = Boolean(row?.archived);
   // A Brigade's family, its tab group around the Chat tab [D3108].
   const family = useBrigadeFamily(peekRow ?? row);
-  const familyIds = useMemo(() => family.map((each) => each.id), [family]);
   const me = family.findIndex((each) => each.id === shown);
+  const [folds, setFolds] = useState<ReadonlySet<string>>(new Set());
+  const familyKey = `brigade:${family[0]?.id}`;
+  const familyFolded = folds.has(familyKey);
+  // Keys reach only the tabs that show: folded, the family's others are out of the order.
+  const familyIds = useMemo(() => (familyFolded ? [] : family.map((each) => each.id)), [family, familyFolded]);
   useTabKeys(owner, archived, peek, familyIds);
   const presence = useTabPresence(tabs);
   // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
@@ -309,8 +313,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
   };
 
   // A folded group shows its label alone, as Chrome's; its tab in front keeps it open. Folding the one in front opens
-  // a New tab after the strip's last, as Chrome does [D894 D909].
-  const [folds, setFolds] = useState<ReadonlySet<string>>(new Set());
+  // a New tab after the strip's last, as Chrome does [D894 D909]. `folds` is above, for the keys.
   const frontDriver = tabs.find((tab) => tab.id === front)?.driver;
   const folded = (driver: string | undefined) => Boolean(driver) && driver !== frontDriver && folds.has(`${shown}:${driver}`);
   const fold = (driver: string, group: readonly Tab[]) => {
@@ -320,8 +323,6 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
     moveTab(shown, openTab(shown, "new"), tabs.length);
   };
   // A Brigade's group folds its other sessions' tabs, never the Chat tab: no New tab takes the front, as an agent's does [D3108].
-  const familyKey = `brigade:${family[0]?.id}`;
-  const familyFolded = folds.has(familyKey);
   const foldFamily = () => setFolds((now) => (now.has(familyKey) ? new Set([...now].filter((each) => each !== familyKey)) : new Set([...now, familyKey])));
   const siblings = familyFolded ? 0 : Math.max(family.length - 1, 0);
   const newTab = (

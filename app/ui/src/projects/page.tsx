@@ -244,7 +244,7 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
           groups.map(
             ([key, label, each]) =>
               each.length > 0 && (
-                <Group key={key} label={label || "Archived"} count={each.length}>
+                <Group key={key} label={label || "Archived"} count={each.reduce((n, row) => n + 1 + tree.kids(row).length, 0)}>
                   {each.map((row) => {
                     const kids = tree.kids(row);
                     const open = tree.open(row.id);
