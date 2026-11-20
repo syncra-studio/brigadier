@@ -60,7 +60,7 @@ function run(id: string, args: string[], change: Change, failed: string): void {
 export const pin = (row: SessionRow, on: boolean) =>
   run(row.id, on ? ["pin", row.id] : ["pin", row.id, "--off"], { pinned: on ? Date.now() : null }, on ? "Couldn't pin" : "Couldn't unpin");
 
-/** Gives the session a label, or takes it off [D7, D10]. */
+/** Gives the session a label, or takes it off [D3101, D3103]. */
 export const label = (row: SessionRow, name: string, on: boolean) =>
   run(row.id, ["label", row.id, name, ...(on ? [] : ["--off"])], { label: { name, on } }, on ? `Couldn't add the label “${name}”` : `Couldn't remove the label “${name}”`);
 

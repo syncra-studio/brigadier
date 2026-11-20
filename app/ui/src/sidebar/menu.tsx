@@ -59,7 +59,7 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
       </DropdownMenuSub>
       <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
-      {/* Off for a folder chat, as archive is: delete's check doesn't see its repos' branches yet [D494, D9]. */}
+      {/* Off for a folder chat, as archive is: delete's check doesn't see its repos' branches yet [D494, D3102]. */}
       {!folder && <DeleteMenuItem row={row} />}
     </>
   );

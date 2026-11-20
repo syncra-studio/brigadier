@@ -1,4 +1,4 @@
-//! A session's labels, a JSON list of names in its folder's `labels` [D7, D10]. Read, changed and
+//! A session's labels, a JSON list of names in its folder's `labels` [D3101, D3103]. Read, changed and
 //! replaced under the session's lock, so two windows' changes at once both stick; adding or
 //! removing twice is a no-op. A label lives while some session has it: there's no list of its own.
 

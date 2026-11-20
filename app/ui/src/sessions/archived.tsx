@@ -23,7 +23,7 @@ import { type ArchiveCheck, hideDeleting } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
- * archived. Its rows open read-only; their menu has Restore and Delete…, as every live row's menu has Delete… [D7].
+ * archived. Its rows open read-only; their menu has Restore and Delete…, as every live row's menu has Delete… [D3101].
  */
 
 const titleOf = (row: SessionRow) => row.title || "New session";
@@ -116,7 +116,7 @@ export function DeleteMenuItem({ row }: { row: SessionRow }) {
   );
 }
 
-/** Where delete's confirm shows, mounted once by the sidebar, for every row menu's Delete… [D7]. */
+/** Where delete's confirm shows, mounted once by the sidebar, for every row menu's Delete… [D3101]. */
 export function DeleteAsk() {
   const asking = deleting.use();
   return (

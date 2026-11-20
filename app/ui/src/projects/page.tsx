@@ -189,7 +189,7 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
         value={filter}
         onValue={setFilter}
       >
-        {/* The list and board [D7, D11]. */}
+        {/* The list and board [D3101, D3104]. */}
         <Segmented
           label="View"
           value={view}

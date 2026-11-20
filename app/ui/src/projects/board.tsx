@@ -16,7 +16,7 @@ import { RowMark } from "../sidebar/row";
 import { type SessionRow, statusWords } from "../sidebar/words";
 
 /*
- * The Sessions tab's board [D7, D11]: one column per group the list has, its cards pinned first, then
+ * The Sessions tab's board [D3101, D3104]: one column per group the list has, its cards pinned first, then
  * as the list orders them. A card opens its session; there's no drag, since a column is Rust's state, not a choice.
  */
 

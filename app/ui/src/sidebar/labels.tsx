@@ -12,7 +12,7 @@ import { label } from "./actions";
 import type { SessionRow } from "./words";
 
 /*
- * A session's labels [D7, D10]: names only, no colours or rename. A label lives while some session has it, so the
+ * A session's labels [D3101, D3103]: names only, no colours or rename. A label lives while some session has it, so the
  * menu offers every name any session has, and New label… makes one by giving it to this session.
  */
 

@@ -28,7 +28,7 @@ export type SessionRow = {
   project: string | null;
   /** Its pull requests' chip, as Rust computes it [D1018]; none when no PR needs a word. */
   pr?: PrChipState | null;
-  /** Its labels' names, in the order given [D7, D10]. */
+  /** Its labels' names, in the order given [D3101, D3103]. */
   labels?: string[];
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss">;
 
