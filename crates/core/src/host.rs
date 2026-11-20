@@ -433,8 +433,8 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         Some((first, _)) => first.clone(),
         None => git::checkout(data, &target)?,
     };
-    // A "here" fork's is its folder's holder's [D1082]. A Local session has none: its PRs are
-    // still read.
+    // An "Existing worktree" session's is its folder's holder's. A Local session has none: its
+    // PRs are still read.
     let base = match target {
         Target::Project(_) => String::new(),
         Target::Repo(..) => git::base_of(data, &target).unwrap_or_default(),

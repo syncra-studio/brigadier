@@ -17,26 +17,25 @@ import {
 } from "../menu";
 
 /**
- * What Rust's one check offers on an answer [D1068, D1070]; the UI writes the words. `worktree`: the new worktree
+ * What Rust's one check offers on an answer [D1068]; the UI writes the words. `worktree`: the new worktree
  * row's files, as they were (`snapshot`), today's (`none`), as they were from today's base (`gone`), or today's from
- * the fork's own copy where its source is gone (`sourceGone`, D1079); null where the folder isn't a git repository.
- * `here`: what Fork here shares, null in a chat with no project. `fingerprint` goes back with the fork, which refuses
+ * the fork's own copy where its source is gone (`sourceGone`, D1079); null in a chat with no project, which forks
+ * its conversation only. `fingerprint` goes back with the fork, which refuses
  * if the answer changed meanwhile (proposed). A folder chat's fork copies each repo it claimed, said per repo in
  * `repos`, and reads `repos` where they aren't all as they were [D3105].
  */
 export type ForkOffer = {
   worktree: "snapshot" | "none" | "gone" | "sourceGone" | "repos" | null;
   repos?: { name: string; files: "snapshot" | "none" | "gone" | "later" }[];
-  here: "worktree" | "folder" | null;
   /** The one destination rule's place, where a fork with another agent goes (proposed). */
-  default: "worktree" | "here" | "chat";
+  default: "worktree" | "chat";
   /** The agent the answer's conversation is on, which forks natively; null from an inherited copy [D1081]. */
   agent: string | null;
   fingerprint: string;
 };
 
 /** Where a pick sends the fork; `to`, another agent, model, effort or speed, goes by the one destination rule (proposed). */
-export type ForkPick = { where: "worktree" | "here" | "chat" } | { to: ModelChoice };
+export type ForkPick = { where: "worktree" | "chat" } | { to: ModelChoice };
 
 // Proposed words, shown to the owner on screen [D1068].
 const FILES: Record<Exclude<ForkOffer["worktree"], "repos" | null>, string> = {
@@ -44,10 +43,6 @@ const FILES: Record<Exclude<ForkOffer["worktree"], "repos" | null>, string> = {
   none: "Today's files: this message has no snapshot",
   gone: "Files as they were · their commit is gone, so it starts from today's base",
   sourceGone: "Today's files: the session it came from is gone",
-};
-const HERE = {
-  worktree: "Same worktree: both sessions work on these files",
-  folder: "Same folder: keeps working on these files with you",
 };
 
 // Proposed words: each repo of a folder chat by where its copy's files come from [D3105].
@@ -72,8 +67,7 @@ export function ForkPlaces({ offer, onPick }: { offer: ForkOffer; onPick: (pick:
       {offer.worktree && (
         <Place title={offer.repos ? "Fork to new copies of its repos" : "Fork to a new worktree"} detail={detailOf(offer)} onClick={() => onPick({ where: "worktree" })} />
       )}
-      {offer.here && <Place title="Fork here" detail={HERE[offer.here]} onClick={() => onPick({ where: "here" })} />}
-      {!offer.worktree && !offer.here && (
+      {!offer.worktree && (
         <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>
           <MenuRow icon={<BranchAlt />} title="Fork chat" />
         </DropdownMenuItem>
@@ -96,7 +90,7 @@ function Place({ title, detail, onClick, disabled }: { title: string; detail: st
 }
 
 /**
- * The fork icon after Copy under an answer, and its menu [D48, D1069, D1070, D1071]: the old ForkMenu's rows on our
+ * The fork icon after Copy under an answer, and its menu [D48, D1069, D1071]: the old ForkMenu's rows on our
  * kit's menu. The offer is read as the pointer reaches the button and as it opens (`onOpen`); until then a spinner row, or why it couldn't be read. "Fork with
  * another agent" opens the composer's own model picker by the button, on this session's model: what is picked there is
  * held, and the fork goes on it as the picker closes, another vendor's agent asked first; Escape forks nothing.

@@ -1,4 +1,4 @@
-//! A worktree other sessions share [D1070]: handed on with its record when the session that made
+//! A worktree other sessions share ("Existing worktree"): handed on with its record when the session that made
 //! it is deleted, its folder kept for it [D35, D1080].
 
 use super::{Owned, RECORD, read, write};

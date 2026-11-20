@@ -67,8 +67,8 @@ pub fn retired(dir: &Path) -> Option<&'static str> {
 /// Held by a turn's start from this check until its turn is logged, and by Remove project around
 /// its busy check, so a send that raced the marker is either seen as busy or refused here [D172].
 /// The second lock keeps a turn from starting in a folder while a restore, or one of our own
-/// changes to a shared folder, writes there; any folder, as a "here" fork shares even a worktree
-/// [D1070, D1089].
+/// changes to a shared folder, writes there; any folder, as an "Existing worktree" session shares
+/// even a worktree [D1089].
 pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
     let lock = worktrees::lock(&spec.dir)?;
     let removing = projects::removing(data, spec).then_some("This project is being removed.");

@@ -1,4 +1,4 @@
-//! A folder other sessions share [D1070]: whether their turns keep a restore from putting files
+//! A folder other sessions share: whether their turns keep a restore from putting files
 //! back [D1078, D1089].
 
 use super::snap::Store;

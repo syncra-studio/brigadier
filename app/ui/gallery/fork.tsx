@@ -1,4 +1,4 @@
-// Fork on Fake data, unwired [D48, D388, D1069–D1071, D1079]: the icon on an answer, its menu in each kind of
+// Fork on Fake data, unwired [D48, D388, D1069, D1071, D1079]: the icon on an answer, its menu in each kind of
 // session, each worktree-row wording, the agent submenu and vendor confirm, the pending fork, the "Forked from"
 // line and a nested fork.
 import { useState } from "react";
@@ -15,12 +15,10 @@ import { Row, Section, State } from "./parts";
 import { useAgents } from "./pickers";
 
 const noop = () => undefined;
-const offer = (worktree: ForkOffer["worktree"], here: ForkOffer["here"]): ForkOffer => ({ worktree, here, default: worktree ? "worktree" : here ? "here" : "chat", agent: "cloud", fingerprint: "f1" });
+const offer = (worktree: ForkOffer["worktree"]): ForkOffer => ({ worktree, default: worktree ? "worktree" : "chat", agent: "cloud", fingerprint: "f1" });
 const MENUS: [string, ForkOffer | undefined, boolean, string?][] = [
-  ["worktree session", offer("snapshot", "worktree"), false],
-  ["Local checkout", offer("snapshot", "folder"), false],
-  ["folder that isn't a git repository", offer(null, "folder"), false],
-  ["chat with no project", offer(null, null), true],
+  ["session in a git project", offer("snapshot"), false],
+  ["chat with no project", offer(null), true],
   ["checking", undefined, false],
   ["couldn't check", undefined, false, "This session isn't reachable right now."],
 ];
@@ -41,7 +39,6 @@ const PENDING: Setup = { state: "running", after: null, steps: [{ kind: "worktre
 const FAILED: Setup = { state: "failed", after: null, steps: [{ kind: "worktree", state: "failed", branch: "brigadier/fork-of-login", base: "main", error: "The snapshot couldn't be written in." }] };
 const ORIGINS: [string, ForkOrigin][] = [
   ["new worktree", { source: { id: "s1", title: "Login" }, where: "worktree", summary: false, leftOut: [] }],
-  ["same folder", { source: { id: "s1", title: "Login" }, where: "folder", summary: false, leftOut: [] }],
   ["source deleted", { source: null, where: "worktree", summary: false, leftOut: [] }],
   ["started from a summary", { source: { id: "s1", title: "Login" }, where: "worktree", summary: true, leftOut: [] }],
   ["big files left out", { source: { id: "s1", title: "Login" }, where: "worktree", summary: false, leftOut: ["data/dump.sql", "vendor/sdk"] }],
@@ -60,7 +57,7 @@ export function ForkGallery() {
     <Section title="Fork">
       <Row name="the icon on an answer, after Copy · session · chat · forking">
         <State label="session">
-          <Menu chat={false} value={offer("snapshot", "worktree")} />
+          <Menu chat={false} value={offer("snapshot")} />
         </State>
         <State label="chat">
           <Menu chat />
@@ -79,7 +76,7 @@ export function ForkGallery() {
       <Row name="the worktree row, by what the check found">
         {FILES.map(([label, files]) => (
           <State key={label} label={label}>
-            <Menu chat={false} value={offer(files, "folder")} />
+            <Menu chat={false} value={offer(files)} />
           </State>
         ))}
       </Row>

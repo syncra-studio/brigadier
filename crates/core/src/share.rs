@@ -1,9 +1,8 @@
-//! Sessions sharing one folder [D1070]: a "here" fork works in its source's folder, a worktree or
-//! a Local checkout. Who else uses it, archived sessions too [D1080, D1089], and who lands its work
-//! [D1082].
+//! Sessions sharing one folder: an "Existing worktree" session works in another's worktree, and
+//! archived sessions keep a Local checkout. Who else uses it, archived sessions too [D1080, D1089].
 
 use crate::projects::Project;
-use crate::{Spec, fork, ids, load, worktrees};
+use crate::{Spec, ids, load, worktrees};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -71,32 +70,9 @@ pub fn holder(data: &Path, spec: &Spec) -> Option<Spec> {
     })
 }
 
-/// The base its worktree started from: its folder's holder's for a "here" fork [D1082].
+/// The base its worktree started from: its folder's holder's for an "Existing worktree" session.
 pub fn base(data: &Path, spec: &Spec) -> Option<String> {
     worktrees::base(&holder(data, spec).map_or_else(|| spec.dir.clone(), |h| h.dir))
-}
-
-/// The first session of a line of "here" forks; a session in no line is its own.
-pub fn root(spec: &Spec) -> String {
-    fork::record(&spec.dir)
-        .filter(|r| r["where"] == "folder")
-        .and_then(|r| r["root"].as_str().map(String::from))
-        .unwrap_or_else(|| spec.id.clone())
-}
-
-/// Who lands the folder's work [D1082]: whoever holds its worktree's record, passed on when that
-/// session is deleted; in a Local checkout, the oldest of `spec`'s line. Archived ones count.
-pub fn owner<'a>(spec: &'a Spec, others: &'a [Spec]) -> &'a Spec {
-    let line: Vec<&Spec> = (others.iter())
-        .chain([spec])
-        .filter(|s| root(s) == root(spec))
-        .collect();
-    let folder = key(Path::new(&spec.cwd));
-    (line.iter())
-        .find(|s| worktrees::folder(&s.dir).is_some_and(|f| key(&f) == folder))
-        .or_else(|| line.iter().min_by_key(|s| (s.created, &s.id)))
-        .copied()
-        .unwrap_or(spec)
 }
 
 /// The session's name in a sentence: as its row's, the name given, else its first message's.

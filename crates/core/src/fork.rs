@@ -127,9 +127,10 @@ fn refused(error: &str, message: &str) -> Value {
     json!({"ok": false, "error": error, "message": message})
 }
 
-/// The one check for an answer [D1068, D1070]: the worktree row's files (`snapshot`, `none`,
-/// `gone`, `sourceGone`; null where the folder isn't a git repository), what Fork here shares,
-/// the place the one rule picks, and a fingerprint the command compares (proposed).
+/// The one check for an answer [D1068]: the worktree row's files (`snapshot`, `none`, `gone`,
+/// `sourceGone`; null in a chat with no project), the place the one rule picks, and a fingerprint
+/// the command compares (proposed). A project folder that isn't a git repository has no fork
+/// [D3107].
 pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     if session::lifecycle(&spec.dir).0.is_some() {
         return refused("archived", "Restore this session to fork from it.");
@@ -147,21 +148,26 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     let Some(agent) = agent else {
         return refused("gone", "This answer can't be forked any more.");
     };
-    // A folder chat forks into copies of the repos it claimed [D3105]. Proposed, till O4 is
-    // answered: no Fork here, whose fork couldn't claim a repo of its own.
+    // A folder chat forks into copies of the repos it claimed [D3105].
     if crate::folder::chat(&s.src) {
         let f = crate::fold(&s.src.dir, true)
             .map(|f| f.fold)
             .unwrap_or_default();
         let each = repos::of(&s.src, s.gone, &order(&s.src.dir, &f), at);
         let (worktree, each, print) = repos::offer(&each, s.gone);
-        return json!({"ok": true, "worktree": worktree, "repos": each, "here": null,
+        return json!({"ok": true, "worktree": worktree, "repos": each,
             "default": "worktree", "agent": agent, "fingerprint": hashed(&format!("{}:{at}{print}", s.src.id))});
     }
     let project = (s.src.project.as_deref()).and_then(|p| projects::get(data, p).ok());
     let git = project
         .as_ref()
         .is_some_and(|p| Path::new(&p.folder).join(".git").exists());
+    if project.is_some() && !git {
+        return refused(
+            "place",
+            "This folder isn't a git repository, so it can't be forked.",
+        );
+    }
     let mut print = format!("{}:{at}", s.src.id);
     let worktree = match crate::rewind::end_of(&s.src, at) {
         _ if !git => None,
@@ -176,17 +182,9 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
         }
         None => Some("none"),
     };
-    let own = Path::new(&spec.cwd) == worktrees::path(data, &spec.id);
-    let here = project
-        .as_ref()
-        .map(|_| if own { "worktree" } else { "folder" });
-    let place = match (worktree, here) {
-        (Some(_), _) => "worktree",
-        (_, Some(_)) => "here",
-        _ => "chat",
-    };
-    print += &format!(":{worktree:?}:{here:?}");
-    json!({"ok": true, "worktree": worktree, "here": here, "default": place, "agent": agent,
+    let place = worktree.map_or("chat", |_| "worktree");
+    print += &format!(":{worktree:?}");
+    json!({"ok": true, "worktree": worktree, "default": place, "agent": agent,
         "fingerprint": hashed(&print)})
 }
 
@@ -277,9 +275,6 @@ pub fn fork(data: &Path, spec: &Spec, s: &Source, ask: &Ask, call_in: CallIn) ->
     let place = ask.place.unwrap_or(offer["default"].as_str().unwrap_or(""));
     let offered = match place {
         "worktree" => !offer["worktree"].is_null(),
-        // In the source's own folder, today's files [D1070]; an inherited answer whose source is
-        // gone has no folder to share.
-        "here" => !offer["here"].is_null() && !s.gone,
         "chat" => s.src.project.is_none(),
         _ => false,
     };
@@ -358,11 +353,8 @@ fn build(
     // Another vendor's agent has no native fork: it begins from the hand-off [D1081, D90].
     let other = ask.to.filter(|(b, ..)| *b != op.backend);
     let worktree = place == "worktree";
-    let here = place == "here";
     let cwd = if worktree {
         worktrees::path(data, ask.fork)
-    } else if here {
-        src.cwd.clone().into()
     } else {
         session_dir(data, ask.fork).join("scratch")
     };
@@ -418,8 +410,6 @@ fn build(
             None,
         )?;
         write_shot(src, &shot, &cwd)?
-    } else if here {
-        vec![]
     } else {
         fs::create_dir_all(&cwd)?;
         vec![]
@@ -452,10 +442,8 @@ fn build(
         .collect();
     inherited.push(ask.at);
     let at = op.at.as_ref();
-    // Written under the source's fence, so no restore sits between its check and this [D1073].
-    let place = (worktree.then_some("worktree")).or(here.then_some("folder"));
     op.record = json!({"fork": ask.fork, "source": src.id, "at": ask.at,
-        "where": place, "root": here.then(|| crate::share::root(src)), "summary": forked.is_none(), "leftOut": left_out,
+        "where": worktree.then_some("worktree"), "summary": forked.is_none(), "leftOut": left_out,
         "backend": op.backend, "account": op.account, "moved": forked.as_ref().map(|k| &k.conv),
         "branch": forked.as_ref().zip(at).is_some_and(|(k, b)| k.conv == b.conv),
         "turns": forked.as_ref().map(|k| k.turns), "end": at.and_then(|b| b.end.clone()),

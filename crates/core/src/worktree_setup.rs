@@ -26,8 +26,8 @@ pub fn setup_launch(item: &serde_json::Value) -> bool {
 /// stop the agent (proposed). A script started before and never ended was interrupted: it's
 /// recorded so and not run again.
 pub fn wrap(data: &Path, spec: &Spec, argv: Vec<String>) -> Vec<String> {
-    // Once per worktree, recorded with whoever holds it: a "here" fork's runs its holder's, in
-    // the worktree that record names [D263, D1080].
+    // Once per worktree, recorded with whoever holds it: an "Existing worktree" session's runs
+    // its holder's, in the worktree that record names [D263, D1080].
     // shortcut: two sharers' first launches at once after a restore may mark the other's run
     // interrupted; give setup its own lock if that shows up.
     let Some(holder) = crate::share::holder(data, spec) else {

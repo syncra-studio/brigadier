@@ -307,7 +307,7 @@ pub fn apply(
     let (fence, mut checkout) = session::fence(data, spec)?;
     let _fence = fence;
     // The shared lock is this process's own: exchanged, or the exclusive one would wait on it.
-    // Every restore takes it: another session may share even a worktree [D1070, D1089].
+    // Every restore takes it: another session may share even a worktree [D1089].
     let _exclusive = if restore {
         checkout.take();
         Some(checkout_lock(data, true)?)

@@ -236,7 +236,7 @@ export type Item = Base &
         op?: string;
       }
     /** Where a fork starts, after its inherited rows [D48, D1063]; `where` null for a chat's. */
-    | { kind: "forked"; source: string; where: "worktree" | "folder" | null; summary: boolean; leftOut: string[] }
+    | { kind: "forked"; source: string; where: "worktree" | null; summary: boolean; leftOut: string[] }
     /**
      * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,
      * with the text) then its result in place. The new session's title and status come from its own row; `title`

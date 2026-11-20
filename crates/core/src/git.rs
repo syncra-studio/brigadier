@@ -61,8 +61,8 @@ pub struct Checkout {
     pub worktree: bool,
 }
 
-/// The branch a session's checkout lands into, from its record (a "here" fork's from its folder's
-/// holder's, D1082); none for a project's folder.
+/// The branch a session's checkout lands into, from its record (an "Existing worktree"
+/// session's from its folder's holder's); none for a project's folder.
 // shortcut: a watch keeps the base it started with; Change what it lands into reads the step again itself.
 pub fn base_of(data: &Path, target: &Target) -> Option<String> {
     if let Target::Repo(id, repo) = target {

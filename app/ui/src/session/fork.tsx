@@ -16,7 +16,7 @@ import { asGroups } from "./model";
 import { SetUpAgentDialog } from "./set-up";
 
 /*
- * Fork, wired for a new worktree, the same folder [D1070] and a chat's own fork [D1063]: the menu reads Rust's one
+ * Fork, wired for a new worktree and a chat's own fork [D1063]: the menu reads Rust's one
  * check as the pointer reaches it and as it opens, so it opens whole [D177]; a pick opens the new session at once, pending, and runs `fork` behind it (home/start.ts), the
  * menu's fingerprint going with it so Rust refuses if the answer changed meanwhile (proposed). Another agent [D1081]:
  * the composer's model picker, its list read as the menu opens; it goes where the one destination rule says (proposed).
