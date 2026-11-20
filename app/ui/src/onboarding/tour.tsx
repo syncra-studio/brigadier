@@ -80,9 +80,24 @@ function shown(selector: string): Element | null {
   return (
     [...document.querySelectorAll(selector)].find((found) => {
       const box = found.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && box.right > 0 && box.left < innerWidth && box.top < innerHeight && found.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+      return box.width > 0 && box.height > 0 && box.right > 0 && box.bottom > 0 && box.left < innerWidth && box.top < innerHeight && !clipped(found, box) && found.checkVisibility({ opacityProperty: true, visibilityProperty: true });
     }) ?? null
   );
+}
+
+/** Scrolled or cut out of sight by a box around it that clips, as the sidebar's list scrolled down. */
+function clipped(found: Element, box: DOMRect): boolean {
+  // Not body: its overflow is the viewport's, checked above, and its own box can be empty.
+  for (let up = found.parentElement; up && up !== document.body; up = up.parentElement) {
+    const { overflow, overflowY } = getComputedStyle(up);
+    if (overflow === "visible") continue;
+    const clip = up.getBoundingClientRect();
+    // A list that scrolls must show the part whole; a box that only clips (the folded sidebar), some of it.
+    const whole = overflowY === "auto" || overflowY === "scroll";
+    if (whole ? box.top < clip.top - 1 || box.bottom > clip.bottom + 1 : box.bottom <= clip.top || box.top >= clip.bottom) return true;
+    if (box.right <= clip.left || box.left >= clip.right) return true;
+  }
+  return false;
 }
 
 /** The step's part and its box, measured again after the paint (a part still sliding in) and as it or the window resizes. */
