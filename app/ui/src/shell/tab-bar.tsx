@@ -258,7 +258,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
 
   // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking. It holds at
   // the strip's edge (sticky), so it's measured at its own place for the moment: its place is what comes into view.
-  const count = tabs.length;
+  const count = tabs.length + family.length; // a Brigade's tabs scroll in the strip too
   useEffect(() => {
     const list = strip.current;
     if (!list || count === 0) return;
@@ -333,6 +333,7 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
       <Plus />
     </TooltipIconButton>
   );
+  const chat = (peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== front)} order={order} grouped={family.length > 0} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />;
   const reconnecting = offline && <Badge variant="warning" role="status" className="shrink-0">Reconnecting…</Badge>;
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
@@ -347,11 +348,17 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
           <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1) + siblings} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
-            {family.length > 0 && <BrigadeGroupLabel family={family} folded={familyFolded} onFold={foldFamily} />}
-            {family.slice(0, Math.max(me, 0)).map((each, at) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={!(at === me - 1 && front === CHAT)} />)}
-            {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== front)} order={order} grouped={family.length > 0} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
-            {me >= 0 && family.slice(me + 1).map((each, at, after) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={at < after.length - 1 || tabs[0]?.id !== front} />)}
+            {family.length === 0 && chat}
             <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">
+              {/* A Brigade's family scrolls with the tabs, its Chat tab held in view as the front one is [D3108]. */}
+              {family.length > 0 && (
+                <>
+                  <BrigadeGroupLabel family={family} folded={familyFolded} onFold={foldFamily} />
+                  {family.slice(0, Math.max(me, 0)).map((each, at) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={!(at === me - 1 && front === CHAT)} />)}
+                  {chat}
+                  {me >= 0 && family.slice(me + 1).map((each, at, after) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={at < after.length - 1 || tabs[0]?.id !== front} />)}
+                </>
+              )}
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider
                 sensors={SENSORS}
