@@ -1604,8 +1604,8 @@
     inset: 0 var(--spacing-session-tab-inset) var(--spacing-session-tab-foot);
     z-index: -1;
     border-radius: var(--radius-icon-button);
-    /* Clearly there, as Chrome's [D877]. */
-    background-color: var(--color-fill-active);
+    /* The titlebar buttons' hover fill (+, summary, Files) [D938]. */
+    background-color: var(--color-fill);
     opacity: 0;
     transition: opacity var(--duration-session-tab-rule);
     pointer-events: none;
