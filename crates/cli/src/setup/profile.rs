@@ -15,11 +15,12 @@ fn read_profile(data: &Path) -> Value {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     json!({"name": p["name"].as_str().unwrap_or(""), "git_writer": p["git_writer"], "intro_seen": p["intro_seen"] == true,
-        "onboarded": p["onboarded"] == true})
+        "onboarded": p["onboarded"] == true, "tour_seen": p["tour_seen"] == true})
 }
 
-/// `profile [--name N] [--intro] [--done]`: what onboarding keeps, in `profile.json`. Projects
-/// are records of their own (`projects`); a write here drops the plain paths they moved from.
+/// `profile [--name N] [--intro] [--done] [--tour]`: what onboarding keeps, in `profile.json`; `--tour` marks the
+/// tour offered or taken, so it never comes back on its own [D3109]. Projects are records of their own
+/// (`projects`); a write here drops the plain paths they moved from.
 pub(super) fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
     let _one = PROFILE.lock().unwrap();
     // The plain paths move to the records before a write here drops them.
@@ -35,6 +36,7 @@ pub(super) fn profile(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     p["intro_seen"] = (p["intro_seen"] == true || has("--intro")).into();
     p["onboarded"] = (p["onboarded"] == true || has("--done")).into();
+    p["tour_seen"] = (p["tour_seen"] == true || has("--tour")).into();
     if args.len() > 1 {
         fs::create_dir_all(data)?;
         core::write_atomic(&data.join("profile.json"), p.to_string().as_bytes())?;
