@@ -13,6 +13,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::{fs, io};
 
+mod repos;
+
 /// The fork's own record: where it came from and what it holds.
 const RECORD: &str = "forked.json";
 /// The source's thread up to the answer, normalised items, one per line [D35].
@@ -80,6 +82,20 @@ pub fn handoff(spec: &Spec, f: &Fold, backend: &str) -> bool {
         && !native.is_some_and(|(at, a)| a.fork(&run(), at, None, Path::new(&spec.cwd)).is_ok())
 }
 
+/// The session's latest answer, the one its row menu's Fork forks from [D3105].
+pub fn latest(spec: &Spec) -> Option<String> {
+    let f = crate::fold(&spec.dir, true).ok()?.fold;
+    let own = (f.boundaries.iter().rev()).find(|b| b.origin != "fork");
+    let copied = || {
+        record(&spec.dir)?["inherited"]
+            .as_array()?
+            .last()?
+            .as_str()
+            .map(String::from)
+    };
+    own.map(|b| b.cid.clone()).or_else(copied)
+}
+
 fn inherits(dir: &Path, at: &str) -> bool {
     record(dir)
         .is_some_and(|r| (r["inherited"].as_array()).is_some_and(|a| a.iter().any(|c| c == at)))
@@ -118,9 +134,6 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     if session::lifecycle(&spec.dir).0.is_some() {
         return refused("archived", "Restore this session to fork from it.");
     }
-    if let Err(e) = crate::folder::off(spec, "Fork") {
-        return refused("folder", &e.to_string());
-    }
     // The agent whose conversation the answer is in: picking it forks natively [D1081].
     let agent = if s.gone {
         inherits(&s.src.dir, at).then_some(None)
@@ -134,6 +147,17 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
     let Some(agent) = agent else {
         return refused("gone", "This answer can't be forked any more.");
     };
+    // A folder chat forks into copies of the repos it claimed [D3105]. Proposed, till O4 is
+    // answered: no Fork here, whose fork couldn't claim a repo of its own.
+    if crate::folder::chat(&s.src) {
+        let f = crate::fold(&s.src.dir, true)
+            .map(|f| f.fold)
+            .unwrap_or_default();
+        let each = repos::of(&s.src, s.gone, &order(&s.src.dir, &f), at);
+        let (worktree, each, print) = repos::offer(&each, s.gone);
+        return json!({"ok": true, "worktree": worktree, "repos": each, "here": null,
+            "default": "worktree", "agent": agent, "fingerprint": hashed(&format!("{}:{at}{print}", s.src.id))});
+    }
     let project = (s.src.project.as_deref()).and_then(|p| projects::get(data, p).ok());
     let git = project
         .as_ref()
@@ -162,10 +186,14 @@ pub fn offer(data: &Path, spec: &Spec, s: &Source, at: &str) -> Value {
         _ => "chat",
     };
     print += &format!(":{worktree:?}:{here:?}");
+    json!({"ok": true, "worktree": worktree, "here": here, "default": place, "agent": agent,
+        "fingerprint": hashed(&print)})
+}
+
+fn hashed(print: &str) -> String {
     let mut hash = DefaultHasher::new();
     print.hash(&mut hash);
-    json!({"ok": true, "worktree": worktree, "here": here, "default": place, "agent": agent,
-        "fingerprint": format!("{:016x}", hash.finish())})
+    format!("{:016x}", hash.finish())
 }
 
 /// The turns `f`'s session holds, oldest first: inherited, its own, then one running.
@@ -365,7 +393,11 @@ fn build(
     )?;
     fs::write(new.dir.join(FORKING), b"")?;
     write_atomic(&new.dir.join("title"), ask.title.as_bytes())?;
-    let left_out = if worktree {
+    let order = order(&src.dir, f);
+    let left_out = if worktree && crate::folder::chat(src) {
+        let each = repos::of(src, s.gone, &order, ask.at);
+        repos::make(src, &new, each, ask.title)?
+    } else if worktree {
         let project = projects::get(data, src.project.as_deref().unwrap_or(""))?;
         // The answer's end snapshot; with none, or its source gone, the files as they are now [D1068].
         let ended = (!s.gone)
@@ -392,7 +424,6 @@ fn build(
         fs::create_dir_all(&cwd)?;
         vec![]
     };
-    let order = order(&src.dir, f);
     let copied = copy_of(&src.dir, &order, ask.at)?;
     let lines: String = copied.iter().map(|item| format!("{item}\n")).collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;

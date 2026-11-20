@@ -2,12 +2,16 @@ import { useContext, useRef, useState } from "react";
 
 import { SessionOfThread } from "../accounts/limit";
 import type { ModelGroup } from "../components/composer/model-picker";
-import { ForkMenu, type ForkOffer } from "../components/thread/fork-menu";
+import { ErrorLine } from "../components/error-line";
+import { DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, MenuRow } from "../components/menu";
+import { ForkMenu, type ForkOffer, ForkPlaces } from "../components/thread/fork-menu";
 import { ForkedFrom } from "../components/thread/forked-from";
-import { ask, useDaemon, useFolderChat } from "../daemon";
+import { ask, useDaemon } from "../daemon";
+import { BranchAlt, Spinner } from "../icons";
 import { startFork } from "../home/start";
 import { errorText, run } from "../onboarding/api";
 import type { Item } from "../thread/item";
+import type { SessionRow } from "../sidebar/words";
 import { asGroups } from "./model";
 import { SetUpAgentDialog } from "./set-up";
 
@@ -20,7 +24,41 @@ import { SetUpAgentDialog } from "./set-up";
 
 /** The fork icon under answer `at` (its turn's message id) in the open session. */
 export function ForkAction({ at }: { at: string }) {
-  return useFolderChat(useContext(SessionOfThread)?.id) ? null : <Fork at={at} />;
+  return <Fork at={at} />;
+}
+
+type Latest = ForkOffer & { at: string };
+
+/** Fork in a session's ⋯ menu, from its latest answer [D3105, D3106]: Rust's check read as the pointer reaches it and as it opens, then the places an answer's menu offers. */
+export function ForkMenuItem({ row }: { row: SessionRow }) {
+  const [offer, setOffer] = useState<Latest>();
+  const [error, setError] = useState<string>();
+  const read = () =>
+    ask({ op: "run", args: ["fork", row.id, "--latest"] }, (reply) => {
+      setOffer(reply.ok ? (reply as unknown as Latest) : undefined);
+      setError(reply.ok ? undefined : String(reply.message ?? reply.error ?? "Couldn't check this session"));
+    });
+  return (
+    <DropdownMenuSub onOpenChange={(open) => open && read()}>
+      <DropdownMenuSubTrigger onPointerEnter={read}>
+        <BranchAlt />
+        Fork
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-select">
+        {offer ? (
+          <ForkPlaces offer={offer} onPick={(pick) => "where" in pick && startFork(row.id, row.project ?? null, offer.at, pick.where, offer.fingerprint, `Fork of ${row.title}`)} />
+        ) : error ? (
+          <div className="px-2 py-1.5">
+            <ErrorLine size="sm" error={error} />
+          </div>
+        ) : (
+          <DropdownMenuItem disabled>
+            <MenuRow icon={<Spinner className="animate-spin" />} title="Checking its latest answer" />
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
 }
 
 function Fork({ at }: { at: string }) {

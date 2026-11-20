@@ -30,9 +30,13 @@ pub fn now_of(spec: &Spec) -> io::Result<Shot> {
 
 /// Writes `shot`'s differing paths into `into`, a fork's worktree; returns those left as they were.
 pub fn write_shot(spec: &Spec, shot: &Shot, into: &Path) -> io::Result<Vec<String>> {
-    let store = Store::of(spec)
-        .ok_or_else(|| io::Error::other("no snapshots here"))?
-        .over(into)?;
+    let store = Store::of(spec).ok_or_else(|| io::Error::other("no snapshots here"))?;
+    write_into(&store, shot, into)
+}
+
+/// The same from any store: a folder chat's claimed repo's [D3105].
+pub fn write_into(store: &Store, shot: &Shot, into: &Path) -> io::Result<Vec<String>> {
+    let store = store.over(into)?;
     let now = store.capture()?;
     let wanted: BTreeSet<String> = (store.diff(&now, shot)?.into_iter())
         .filter(|p| !shot.out.contains_key(p))
@@ -84,6 +88,7 @@ pub fn remove(data: &Path, id: &str) -> io::Result<()> {
     {
         let _one = worktrees::lock(&dir)?;
         worktrees::delete(&dir, true)?;
+        crate::folder::delete(&dir, true)?;
     }
     fs::remove_dir_all(&dir)
 }

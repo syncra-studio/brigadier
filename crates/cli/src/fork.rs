@@ -1,4 +1,4 @@
-//! `fork <id> --check <cid>`: what the Fork menu offers on an answer; `fork <id> <new-id> --at <cid>
+//! `fork <id> --check <cid>`: what the Fork menu offers on an answer, `--latest` on its latest; `fork <id> <new-id> --at <cid>
 //! [--where worktree|here|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]`: the
 //! fork, on agent B's model M (on its fast tier with `--fast`) when picked [D1081], settled and fenced on the answer's source
 //! [D1063, D1089]. Run again under the same ids, it finishes or rolls back what its record proves.
@@ -17,6 +17,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         check_id(at)?;
         let s = fork::source(data, &spec, at)?;
         return Ok(fork::offer(data, &spec, &s, at));
+    }
+    // `fork <id> --latest`: the same check on its latest answer, named in `at` [D3105].
+    if has(args, "--latest") {
+        let Some(at) = fork::latest(&spec) else {
+            return Ok(
+                json!({"ok": false, "error": "none", "message": "No answer to fork from yet."}),
+            );
+        };
+        let mut offer = fork::offer(data, &spec, &fork::source(data, &spec, &at)?, &at);
+        offer["at"] = at.into();
+        return Ok(offer);
     }
     let new = arg(args, 2)?;
     let at = flag(args, "--at").ok_or_else(|| io::Error::other(USAGE))?;

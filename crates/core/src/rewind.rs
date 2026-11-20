@@ -16,7 +16,7 @@ use crate::fold::{Boundary, Fold, Live, Owner};
 use crate::{Call, CallIn, Spec, as_run, session, session_dir, worktrees, write_atomic};
 pub use active::{Active, read_active};
 use brigadier_frames::log::now_ms;
-pub use fork::{end_of, now_of, write_shot};
+pub use fork::{end_of, now_of, write_into, write_shot};
 use plan::plan_for;
 use repos::Part;
 pub use repos::claimed;

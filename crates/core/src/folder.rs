@@ -149,8 +149,16 @@ pub fn claimed_in(rec: &Path) -> Option<Option<String>> {
     Some(v["turn"].as_str().map(String::from))
 }
 
+/// Keeps the turn a claim was made in, none outside a turn.
+pub fn mark(rec: &Path, turn: Option<&str>) -> io::Result<()> {
+    crate::write_atomic(
+        &rec.join(CLAIMED),
+        &serde_json::to_vec(&json!({"turn": turn}))?,
+    )
+}
+
 /// Where a session's claim of `name` keeps its record.
-fn record(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn record(dir: &Path, name: &str) -> PathBuf {
     dir.join("repos").join(name)
 }
 
@@ -246,11 +254,7 @@ pub fn claim(spec: &Spec, name: &str) -> io::Result<String> {
         None,
     );
     made.or_else(|e| worktrees::made(&rec).then_some(()).ok_or(e))?;
-    let turn = crate::rewind::claimed(spec, &rec);
-    crate::write_atomic(
-        &rec.join(CLAIMED),
-        &serde_json::to_vec(&json!({"turn": turn}))?,
-    )?;
+    mark(&rec, crate::rewind::claimed(spec, &rec).as_deref())?;
     let mut out = worktrees::folder(&rec)
         .unwrap_or(path)
         .display()
@@ -336,16 +340,6 @@ pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
 /// Whether the session is a folder chat [D494].
 pub fn chat(spec: &Spec) -> bool {
     of(spec).is_some()
-}
-
-/// Refuses `what` for a folder chat: delete, for now [D3102].
-pub fn off(spec: &Spec, what: &str) -> io::Result<()> {
-    match chat(spec) {
-        true => err(format!(
-            "{what} isn't available yet in a chat on a folder of repos."
-        )),
-        false => Ok(()),
-    }
 }
 
 /// Whether `path` is in `home`, through links: the nearest folder of it that exists decides.

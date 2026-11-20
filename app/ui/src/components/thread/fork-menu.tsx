@@ -4,6 +4,7 @@ import { BranchAlt, Spinner } from "../../icons";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../composer/model-picker";
 import { SwitchAgentDialog } from "../composer/switch-agent";
 import { ErrorLine } from "../error-line";
+import { named } from "./rewind";
 import { TooltipIconButton } from "../icon-button";
 import {
   DropdownMenu,
@@ -20,10 +21,12 @@ import {
  * row's files, as they were (`snapshot`), today's (`none`), as they were from today's base (`gone`), or today's from
  * the fork's own copy where its source is gone (`sourceGone`, D1079); null where the folder isn't a git repository.
  * `here`: what Fork here shares, null in a chat with no project. `fingerprint` goes back with the fork, which refuses
- * if the answer changed meanwhile (proposed).
+ * if the answer changed meanwhile (proposed). A folder chat's fork copies each repo it claimed, said per repo in
+ * `repos`, and reads `repos` where they aren't all as they were [D3105].
  */
 export type ForkOffer = {
-  worktree: "snapshot" | "none" | "gone" | "sourceGone" | null;
+  worktree: "snapshot" | "none" | "gone" | "sourceGone" | "repos" | null;
+  repos?: { name: string; files: "snapshot" | "none" | "gone" | "later" }[];
   here: "worktree" | "folder" | null;
   /** The one destination rule's place, where a fork with another agent goes (proposed). */
   default: "worktree" | "here" | "chat";
@@ -36,7 +39,7 @@ export type ForkOffer = {
 export type ForkPick = { where: "worktree" | "here" | "chat" } | { to: ModelChoice };
 
 // Proposed words, shown to the owner on screen [D1068].
-const FILES: Record<NonNullable<ForkOffer["worktree"]>, string> = {
+const FILES: Record<Exclude<ForkOffer["worktree"], "repos" | null>, string> = {
   snapshot: "Files as they were at this message",
   none: "Today's files: this message has no snapshot",
   gone: "Files as they were · their commit is gone, so it starts from today's base",
@@ -46,6 +49,38 @@ const HERE = {
   worktree: "Same worktree: both sessions work on these files",
   folder: "Same folder: keeps working on these files with you",
 };
+
+// Proposed words: each repo of a folder chat by where its copy's files come from [D3105].
+const REPO_FILES = [
+  ["snapshot", "As they were at this message"],
+  ["none", "Today's files, no snapshot of this message"],
+  ["gone", "As they were, from today's base: their commit is gone"],
+  ["later", "Not copied, claimed after this message"],
+] as const;
+const detailOf = (offer: ForkOffer) =>
+  offer.worktree === "repos"
+    ? REPO_FILES.map(([files, words]) => [words, (offer.repos ?? []).filter((repo) => repo.files === files).map((repo) => repo.name)] as const)
+        .filter(([, names]) => names.length > 0)
+        .map(([words, names]) => `${words}: ${named(names)}`)
+        .join(" · ")
+    : FILES[offer.worktree ?? "none"];
+
+/** The places a fork can go, from Rust's offer: under an answer and in a session's ⋯ menu alike. */
+export function ForkPlaces({ offer, onPick }: { offer: ForkOffer; onPick: (pick: ForkPick) => void }) {
+  return (
+    <>
+      {offer.worktree && (
+        <Place title={offer.repos ? "Fork to new copies of its repos" : "Fork to a new worktree"} detail={detailOf(offer)} onClick={() => onPick({ where: "worktree" })} />
+      )}
+      {offer.here && <Place title="Fork here" detail={HERE[offer.here]} onClick={() => onPick({ where: "here" })} />}
+      {!offer.worktree && !offer.here && (
+        <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>
+          <MenuRow icon={<BranchAlt />} title="Fork chat" />
+        </DropdownMenuItem>
+      )}
+    </>
+  );
+}
 
 /** A place the fork can go, as the old ForkPlaces row: its icon, title and a grey line under it that wraps. */
 function Place({ title, detail, onClick, disabled }: { title: string; detail: string; onClick: () => void; disabled?: boolean }) {
@@ -124,17 +159,7 @@ export function ForkMenu({
           <DropdownMenuLabel variant="heading">{tooltip}</DropdownMenuLabel>
           {offer ? (
             <>
-              {offer.worktree && (
-                <Place title="Fork to a new worktree" detail={FILES[offer.worktree]} onClick={() => onPick({ where: "worktree" })} />
-              )}
-              {offer.here && (
-                <Place title="Fork here" detail={HERE[offer.here]} onClick={() => onPick({ where: "here" })} />
-              )}
-              {!offer.worktree && !offer.here && (
-                <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>
-                  <MenuRow icon={<BranchAlt />} title="Fork chat" />
-                </DropdownMenuItem>
-              )}
+              <ForkPlaces offer={offer} onPick={onPick} />
               {another && (
                 <>
                   <DropdownMenuSeparator />

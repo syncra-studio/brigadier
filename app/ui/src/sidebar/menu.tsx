@@ -16,6 +16,7 @@ import {
 import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { DeleteMenuItem } from "../sessions/archived";
+import { ForkMenuItem } from "../session/fork";
 import { useFolderChat } from "../daemon";
 import { showToast } from "../components/toast";
 import { keysOf } from "../shortcuts";
@@ -47,6 +48,7 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
         Rename
         <DropdownMenuShortcut>{keysOf("rename")[0]}</DropdownMenuShortcut>
       </DropdownMenuItem>
+      <ForkMenuItem row={row} />
       <DropdownMenuSeparator />
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>
@@ -59,7 +61,7 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
       </DropdownMenuSub>
       <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
-      {/* Off for a folder chat, as archive is: delete's check doesn't see its repos' branches yet [D494, D3102]. */}
+      {/* Off for a folder chat: delete's check doesn't see its repos' branches yet [D494, D3102]. */}
       {!folder && <DeleteMenuItem row={row} />}
     </>
   );
