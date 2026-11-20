@@ -81,12 +81,19 @@ export function firesOn(id: string, press: string): boolean {
   return keysOf(id).some((chip) => chip.split(" ").some((each) => each === press || (digit !== undefined && each.replace("1–9", digit) === press)));
 }
 
-// While Settings › Keyboard shortcuts records a press, no shortcut fires.
+// While Settings › Keyboard shortcuts records a press, or the guided tour points [D3109], no shortcut fires.
 let recording = false;
+let held = false;
+
+/** Holds every shortcut, the app menu's keys too, while `on`. */
+export function holdShortcuts(on: boolean): void {
+  held = on;
+  window.brigadier?.ignoreMenuKeys(on);
+}
 
 /** Whether a key press is the shortcut `id`, exactly: no modifier more or less. */
 export function matches(event: KeyboardEvent, id: string): boolean {
-  if (recording || event.isComposing) return false;
+  if (recording || held || event.isComposing) return false;
   const press = strokeOf(event);
   return press !== null && firesOn(id, press);
 }
