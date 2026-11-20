@@ -37,9 +37,8 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 const LIGHTS_X = 13;
 
 /**
- * Back and Forward by their keys, mouse buttons and menu items, with buttons only in Settings [D861 D862 D926], and the sidebar toggle: at
- * the end of the sidebar's name row, above the strip's logo, or after the traffic lights while hidden, gliding between
- * them with the sidebar (sidebar-toggle). It steps open, strip, hidden, and open again [D654 D800].
+ * Back and Forward by their keys, mouse buttons and menu items, with buttons only in Settings [D861 D862 D926], and the sidebar toggle
+ * after the traffic lights in every sidebar mode (sidebar-toggle) [D933 D934]. It steps open, strip, hidden, and open again [D654 D800].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, collapse, toggleSidebar, canToggle } = useSidebar();
@@ -102,7 +101,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   // Settings' Back and Forward after the traffic lights, where the hidden sidebar's toggle sits; Forward fades in its slot [D926 D927 D897].
   if (inSettings)
     return (
-      <div data-mode="hidden" data-slot="settings-history" className="sidebar-toggle app-no-drag fixed z-20 flex gap-0.5">
+      <div data-slot="settings-history" className="sidebar-toggle app-no-drag fixed z-20 flex gap-0.5">
         <TitlebarTips>
           <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} onClick={() => step(-1)}>
             <ArrowLeft />
@@ -118,7 +117,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   // Its name says what a click does; aria-expanded would draw an open fill. Settings holds the panel open, so it has none [D34].
   if (!canToggle) return null;
   return (
-    <div data-mode={mode} className="sidebar-toggle app-no-drag fixed z-20 flex">
+    <div className="sidebar-toggle app-no-drag fixed z-20 flex">
       <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
         {open ? <Sidebar /> : <SidebarFloatingLeft />}
       </TooltipIconButton>

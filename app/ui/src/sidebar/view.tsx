@@ -5,8 +5,7 @@ import { Checkbox } from "../components/checkbox";
 import { cx } from "../components/cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, MenuRow } from "../components/menu";
-import { RowAction } from "../components/row-action";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { TooltipIconButton } from "../components/icon-button";
 import { ArrowDownUp, Bolt, Check, ChevronRight, Comment, Eye, Filter, Folder, ListBullets, Plus, Sidebar } from "../icons";
 import { openAddProject } from "../projects/store";
 import { ProjectBadge } from "./row";
@@ -64,18 +63,15 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, Filter [D853], in the sidebar's search field [D846]; before it, how many projects show while anything is left out. */
+/** The View button, Filter [D853], after the sidebar's search field [D934]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (
     <>
       {!show.all && <span className="me-1 text-xs whitespace-nowrap text-marker-foreground">{shown === 1 ? "1 project" : `${shown} projects`}</span>}
-      <Tooltip>
-        <TooltipTrigger render={<PopoverTrigger render={<RowAction header aria-label="View" data-filtered={!show.all || undefined} className="aria-expanded:bg-fill data-filtered:bg-fill data-filtered:text-foreground" />} />}>
-          <Filter />
-        </TooltipTrigger>
-        <TooltipContent side="bottom">View</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger render={<TooltipIconButton tooltip="View" look="strip" side="bottom" data-filtered={!show.all || undefined} className="data-filtered:bg-fill data-filtered:text-foreground" />}>
+        <Filter />
+      </PopoverTrigger>
     </>
   );
 }

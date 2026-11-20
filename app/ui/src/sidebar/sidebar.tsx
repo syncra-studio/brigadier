@@ -246,7 +246,7 @@ export function AppSidebar({
       }
       foot={foot?.(pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
     >
-      {/* The card's top, under the tab bar [D48]: the name, room under it [D864], then the search field with View in it and New chat [D846, D868]; ⌘K's palette stays. */}
+      {/* The card's top, under the tab bar [D48]: the name and New chat, room under it [D864], then the search field and View [D846, D868, D934]; ⌘K's palette stays. */}
       <div className="flex shrink-0 px-2.5 pt-3 pb-4">
         <h1 className="flex h-7.5 min-w-0 flex-1 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
           <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
@@ -254,8 +254,9 @@ export function AppSidebar({
           </button>
           <span className="min-w-0 truncate">Brigadier</span>
         </h1>
-        {/* The sidebar toggle's place (sidebar-toggle) [D861]. */}
-        <span aria-hidden className="w-8 shrink-0" />
+        <TooltipIconButton tooltip="New chat" look="strip" side="bottom" pressed={home} onClick={onNewChat}>
+          <ComposeEditSquare />
+        </TooltipIconButton>
       </div>
       <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
         <div className="flex shrink-0 items-center gap-1 px-2.5 pb-2.5">
@@ -269,11 +270,8 @@ export function AppSidebar({
               onKeyDown={search.onKeyDown}
               className="min-w-0 flex-1 self-stretch bg-transparent text-label text-foreground outline-none placeholder:text-placeholder"
             />
-            {view}
           </div>
-          <TooltipIconButton tooltip="New chat" look="strip" side="bottom" pressed={home} onClick={onNewChat}>
-            <ComposeEditSquare />
-          </TooltipIconButton>
+          {view}
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div ref={list} className={LIST}>
@@ -423,13 +421,12 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
 }
 
 /**
- * The collapsed rail [new-design]: the sidebar toggle's place (sidebar-toggle) [D861], the logo, New chat and Search, a
+ * The collapsed rail [new-design]: the logo, New chat and Search, a
  * rule, then the squares and Chats (`children`), scrolling. A click on the logo goes Home [D66, D69, D803].
  */
 function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
   return (
     <div className="flex h-full flex-col items-center gap-3 pt-3">
-      <span aria-hidden className="h-7.5 shrink-0" />
       <TooltipIconButton tooltip="Home" tip={false} look="strip" onClick={onNewChat}>
         <BrigadierMark className="size-icon-mark" />
       </TooltipIconButton>
