@@ -112,7 +112,9 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
         return Err(gone());
     }
     // With no turns of its own to weigh, only a sharer working now is named.
-    if let Some((_, with)) = (store.as_ref()).and_then(|s| sharer(data, spec, s, &[], live)) {
+    let here =
+        (store.as_ref()).and_then(|s| sharer(data, spec, s, &[], live).map(|(_, with)| with));
+    if let Some(with) = here.or_else(|| super::repos::busy(data, spec, &r.repos, live)) {
         let name = (crate::load(data, &with).ok()).map_or("Another session".into(), |o| {
             crate::share::title(&o).to_string()
         });

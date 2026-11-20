@@ -120,6 +120,9 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
     let holder =
         (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
     // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D3105].
+    // One another session works in ("Existing worktree"), archived too, stays: that session's
+    // restore couldn't bring it back [D1080].
+    let data = data_of(spec);
     let mut went = false;
     let freed = holder
         .as_deref()
@@ -127,6 +130,10 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
         .and_then(|()| {
             crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
                 let _one = worktrees::lock(rec)?;
+                let copy = worktrees::folder(rec);
+                if copy.is_some_and(|f| !share::in_folder(&data, &f, Some(&spec.id)).is_empty()) {
+                    return Ok(());
+                }
                 let was = worktrees::present(rec);
                 let freed = worktrees::free(rec);
                 went |= was && !worktrees::present(rec);

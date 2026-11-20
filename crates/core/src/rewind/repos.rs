@@ -2,10 +2,11 @@
 //! folder over its copy, taken at the same turn edges as a session's; a restore and its Redo go
 //! through each one, its paths named `<repo>/<path>` wherever they're shown.
 
-use super::plan::{Files, plan};
+use super::plan::{Files, Why, plan};
+use super::shared::{Lives, sharer};
 use super::snap::{Record, Shot, Store};
 use crate::fold::Boundary;
-use crate::{Spec, folder};
+use crate::{Spec, folder, worktrees};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io;
@@ -46,16 +47,41 @@ fn own<'a>(rec: &Path, turns: &'a [Boundary]) -> &'a [Boundary] {
     &turns[at.unwrap_or(0)..]
 }
 
+/// `spec` as the session working in claim `rec`'s copy, so the shared-folder checks see who else
+/// works there, "Existing worktree" sessions too [D1078, D1089].
+fn in_copy(spec: &Spec, rec: &Path) -> Option<Spec> {
+    let cwd = worktrees::folder(rec)?.display().to_string();
+    Some(Spec {
+        cwd,
+        ..spec.clone()
+    })
+}
+
 /// Every claimed repo's restore across `turns`, as one. A repo with a turn it has no snapshot of,
-/// or none it can read, stays as it is and is named in `stale`, never left out unsaid.
-pub(super) fn plan_all(spec: &Spec, turns: &[Boundary]) -> Files {
+/// or none it can read, stays as it is and is named in `stale`, never left out unsaid. A repo whose
+/// copy another session works in now, or did during those turns, refuses it all, as a shared
+/// folder does.
+pub(super) fn plan_all(
+    data: &Path,
+    spec: &Spec,
+    turns: &[Boundary],
+    live: Lives,
+) -> Result<Files, Why> {
     let mut all = Files::default();
     for (name, rec) in folder::claims(&spec.dir) {
-        let one = Store::claim(&rec).ok_or("no_folder");
-        let Ok(p) = one.and_then(|s| plan(&s, own(&rec, turns))) else {
+        let (Some(store), Some(me)) = (Store::claim(&rec), in_copy(spec, &rec)) else {
             all.stale.push(name);
             continue;
         };
+        let Ok(p) = plan(&store, own(&rec, turns)) else {
+            all.stale.push(name);
+            continue;
+        };
+        if !p.paths.is_empty()
+            && let Some((why, with)) = sharer(data, &me, &store, own(&rec, turns), live)
+        {
+            return Err((why, Some(with)));
+        }
         let under = |v: &[String]| v.iter().map(|p| format!("{name}/{p}")).collect::<Vec<_>>();
         all.hand.extend(under(&p.hand));
         all.left_out.extend(under(&p.left_out));
@@ -70,7 +96,16 @@ pub(super) fn plan_all(spec: &Spec, turns: &[Boundary]) -> Files {
             });
         }
     }
-    all
+    Ok(all)
+}
+
+/// The session working now in the copy of a repo `parts` would put back, if one is: Redo waits
+/// for it, as it does in a shared folder.
+pub(super) fn busy(data: &Path, spec: &Spec, parts: &[Part], live: Lives) -> Option<String> {
+    let claims = folder::claims(&spec.dir);
+    let recs = (parts.iter()).filter_map(|p| claims.iter().find(|(n, _)| *n == p.name));
+    recs.filter_map(|(_, rec)| Some((Store::claim(rec)?, in_copy(spec, rec)?)))
+        .find_map(|(store, me)| sharer(data, &me, &store, &[], live).map(|(_, with)| with))
 }
 
 fn by_name(spec: &Spec, name: &str) -> io::Result<Store> {

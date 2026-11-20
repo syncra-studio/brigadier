@@ -110,7 +110,7 @@ pub(super) fn plan_for(
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
     // A folder chat's own folder isn't a repo: its claimed ones go back, each by itself [D3105].
     if crate::folder::chat(spec) {
-        return Ok(super::repos::plan_all(spec, &turns));
+        return super::repos::plan_all(data, spec, &turns, live);
     }
     let store = Store::of(spec).ok_or((none, None))?;
     let files = plan(&store, &turns).map_err(|why| (why, None))?;
