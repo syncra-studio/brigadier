@@ -20,6 +20,7 @@ import { useFolderChat } from "../daemon";
 import { showToast } from "../components/toast";
 import { keysOf } from "../shortcuts";
 import { pin } from "./actions";
+import { LabelMenu } from "./labels";
 import { useBranchPreview } from "./rename-branch";
 import type { SessionRow } from "./words";
 
@@ -40,6 +41,7 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
           <DropdownMenuShortcut>{keysOf("pin")[0]}</DropdownMenuShortcut>
         </DropdownMenuItem>
       )}
+      <LabelMenu row={row} />
       <DropdownMenuItem onClick={onRename}>
         <Pencil />
         Rename

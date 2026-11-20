@@ -17,6 +17,7 @@ import { newSession } from "../home/start";
 import { useOpenPlace } from "../projects/page";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection, DeleteAsk } from "../sessions/archived";
+import { LabelAsk } from "./labels";
 import { pinProject, type Project } from "../projects/projects";
 import { openAddProject, setShowProject } from "../projects/store";
 import { keysOf, matches } from "../shortcuts";
@@ -347,6 +348,7 @@ export function AppSidebar({
       </ViewMenu>
       <ArchiveAsk />
       <DeleteAsk />
+      <LabelAsk />
       {pinsSessions && !search.query && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
     </SidebarPanel>

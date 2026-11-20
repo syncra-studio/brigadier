@@ -25,6 +25,7 @@ import { ClosedMenuItems } from "../sessions/archived";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { SearchField } from "../settings/archived-toolbar";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
+import { Labels } from "../sidebar/labels";
 import { RowMark } from "../sidebar/row";
 import { type Mark, type SessionRow, statusWords } from "../sidebar/words";
 import { useProjects } from "./projects";
@@ -252,6 +253,7 @@ function Line({ row, now, onOpen, onRename }: { row: SessionRow; now: number; on
             {title}
           </span>
           <span className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground tabular-nums">
+            <Labels row={row} className="flex max-w-80 items-center gap-1 overflow-hidden" />
             {row.pr && <span>{prList(row.pr)}</span>}
             {words && <span className="max-w-60 truncate">{words}</span>}
             <RowMark mark={row.lifecycle?.left ? "amber" : row.mark} label={words} />
