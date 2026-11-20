@@ -44,7 +44,7 @@ const countOf = (group: Group) => {
  * Delete all… is in the toolbar's "…" menu.
  */
 export function ArchivedPage() {
-  const { daemon, rows } = useDaemon();
+  const { daemon, rows, projects } = useDaemon();
   const online = Boolean(daemon);
   const [typed, setTyped] = useState("");
   const [filter, setFilter] = useState<ArchivedFilter>({ query: "", kind: "all", project: "all", order: "updated" });
@@ -122,7 +122,12 @@ export function ArchivedPage() {
       });
     }
   };
-  const askDelete = (targets: ArchivedRow[]) => {
+  // Delete stays off for a folder chat, archived or not [D9].
+  const folders = new Set(projects?.filter((each) => each.kind === "folder").map((each) => each.id));
+  const deletable = (targets: ArchivedRow[]) => targets.filter((row) => !folders.has(row.project ?? ""));
+  const askDelete = (all: ArchivedRow[]) => {
+    const targets = deletable(all);
+    if (targets.length === 0) return;
     setPicked([]);
     // Each check read first: the confirm opens whole [D463]. A later click's answer replaces it, keyed, so no choice carries over.
     void Promise.all(targets.map((row) => readDelete(row.id))).then((checks) => setAsking({ rows: targets, checks }));
@@ -160,7 +165,7 @@ export function ArchivedPage() {
                   <SearchField label="Search archived chats" value={typed} onChange={setTyped} />
                   <KindMenu filter={filter} onChange={(next) => setFilter((now) => ({ ...now, ...next }))} />
                   <ProjectMenu value={project} choices={reply.projects} onChange={(next) => setFilter((now) => ({ ...now, project: next }))} />
-                  <MoreMenu count={shown.length} narrowed={reply.narrowed} onDeleteAll={() => askDelete(shown)} />
+                  <MoreMenu count={deletable(shown).length} narrowed={reply.narrowed} onDeleteAll={() => askDelete(shown)} />
                 </div>
                 {pick.length > 0 && (
                   <div role="toolbar" aria-label="Picked chats" className="flex items-center gap-2">
@@ -171,9 +176,11 @@ export function ArchivedPage() {
                     <Button variant="soft" size="sm" disabled={!online} onClick={() => unarchive(pick)}>
                       Unarchive ({pick.length})
                     </Button>
-                    <Button variant="soft-destructive" size="sm" disabled={!online} onClick={() => askDelete(pick)}>
-                      Delete ({pick.length})…
-                    </Button>
+                    {deletable(pick).length > 0 && (
+                      <Button variant="soft-destructive" size="sm" disabled={!online} onClick={() => askDelete(pick)}>
+                        Delete ({deletable(pick).length})…
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -202,6 +209,7 @@ export function ArchivedPage() {
                           picked={selected}
                           // A right-click acts on every picked row when it is one of them.
                           targets={selected ? pick : [row]}
+                          deletes={deletable(selected ? pick : [row]).length}
                           pending={pending(row.id)}
                           offline={!online}
                           onTitle={onTitle}
@@ -240,6 +248,7 @@ function ArchivedRowItem({
   row,
   picked,
   targets,
+  deletes,
   pending,
   offline,
   onTitle,
@@ -250,6 +259,8 @@ function ArchivedRowItem({
   row: ArchivedRow;
   picked: boolean;
   targets: ArchivedRow[];
+  /** How many of `targets` can be deleted: a folder chat can't [D9]. */
+  deletes: number;
   pending: boolean;
   offline: boolean;
   onTitle: (id: string, event: MouseEvent) => void;
@@ -281,9 +292,11 @@ function ArchivedRowItem({
           <Button variant="soft" size="sm" disabled={off} onClick={() => onUnarchive([row])}>
             {pending ? "Restoring…" : "Unarchive"}
           </Button>
-          <Button variant="soft-destructive" size="sm" disabled={off} aria-label={`Delete “${titleOf(row)}”…`} onClick={() => onDelete([row])}>
-            Delete
-          </Button>
+          {deletes > 0 && (
+            <Button variant="soft-destructive" size="sm" disabled={off} aria-label={`Delete “${titleOf(row)}”…`} onClick={() => onDelete([row])}>
+              Delete
+            </Button>
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -291,11 +304,15 @@ function ArchivedRowItem({
           <Unarchive />
           {targets.length > 1 ? `Unarchive (${targets.length})` : "Unarchive"}
         </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" disabled={off} onClick={() => onDelete(targets)}>
-          <Trash />
-          {targets.length > 1 ? `Delete (${targets.length})…` : "Delete…"}
-        </ContextMenuItem>
+        {deletes > 0 && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" disabled={off} onClick={() => onDelete(targets)}>
+              <Trash />
+              {deletes > 1 ? `Delete (${deletes})…` : "Delete…"}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );

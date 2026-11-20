@@ -10,7 +10,7 @@ import { NavList, NavSection } from "../components/nav";
 import { Radio, RadioGroup } from "../components/radio";
 import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
-import { ask, useDaemon } from "../daemon";
+import { ask, useDaemon, useFolderChat } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
@@ -83,6 +83,8 @@ export function ArchivedSection({
 /** An archived row's menu, or one a delete left unfinished: what stayed, Restore, and Delete… again [D35]. */
 export function ClosedMenuItems({ row }: { row: SessionRow }) {
   const left = row.lifecycle?.left;
+  // Off for a folder chat, archived too [D9].
+  const folder = useFolderChat(row.id);
   return (
     <>
       {left && (
@@ -96,7 +98,7 @@ export function ClosedMenuItems({ row }: { row: SessionRow }) {
           Restore
         </DropdownMenuItem>
       )}
-      <DeleteMenuItem row={row} />
+      {!folder && <DeleteMenuItem row={row} />}
     </>
   );
 }

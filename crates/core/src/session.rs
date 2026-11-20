@@ -82,7 +82,6 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
 pub fn archive(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
-    crate::folder::off(spec, "Archive")?;
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
         return Ok(());
@@ -120,19 +119,51 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
     // Another still working there keeps the folder; the last user archived frees it [D1080].
     let holder =
         (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
-    match holder.as_deref().map_or(Ok(()), worktrees::free) {
+    // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D13].
+    let mut went = false;
+    let freed = holder.as_deref().map_or(Ok(()), worktrees::free).and_then(|()| {
+        crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
+            let _one = worktrees::lock(rec)?;
+            let was = worktrees::present(rec);
+            let freed = worktrees::free(rec);
+            went |= was && !worktrees::present(rec);
+            freed
+        })
+    });
+    match freed {
         Ok(()) => {
             write_atomic(&dir.join(ARCHIVED), now_ms().to_string().as_bytes())?;
             clear(dir, INTENT)
         }
         // Nothing went yet: the session stays as it was. Half gone: the next start finishes it.
         Err(e) => {
-            if holder.as_deref().is_none_or(worktrees::present) {
+            if !went && holder.as_deref().is_none_or(worktrees::present) {
                 clear(dir, INTENT)?;
             }
             Err(e)
         }
     }
+}
+
+/// Puts each claim of a folder chat back on its branch, as `worktrees::restore` does a session's;
+/// one that fails frees those it brought back, so the chat stays archived whole [D13].
+fn restore_claims(dir: &Path, picks: &[String]) -> io::Result<()> {
+    let mut back: Vec<PathBuf> = vec![];
+    for (_, rec) in crate::folder::claims(dir) {
+        let _one = worktrees::lock(&rec)?;
+        let was = worktrees::present(&rec);
+        if let Err(e) = worktrees::restore(&rec, picks) {
+            for rec in back {
+                let _one = worktrees::lock(&rec)?;
+                worktrees::free(&rec)?;
+            }
+            return Err(e);
+        }
+        if !was {
+            back.push(rec);
+        }
+    }
+    Ok(())
 }
 
 /// Brings an archived session back: its worktree again on its branch, with its files to copy.
@@ -154,7 +185,9 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         .as_ref()
         .map(|p| p.include.clone())
         .unwrap_or_default();
-    if let Err(e) = worktrees::restore(&holder, &picks) {
+    let restored =
+        worktrees::restore(&holder, &picks).and_then(|()| restore_claims(&spec.dir, &picks));
+    if let Err(e) = restored {
         // Rolled back: it stays archived and can be restored again.
         if !worktrees::present(&holder) {
             clear(&spec.dir, INTENT)?;
@@ -342,7 +375,11 @@ fn undo_restore(spec: &Spec) -> io::Result<()> {
     if others.iter().any(|o| !o.dir.join(ARCHIVED).exists()) {
         return Ok(());
     }
-    worktrees::free(&holder(spec, &others))
+    worktrees::free(&holder(spec, &others))?;
+    crate::folder::claims(&spec.dir).iter().try_for_each(|(_, rec)| {
+        let _one = worktrees::lock(rec)?;
+        worktrees::free(rec)
+    })
 }
 
 /// The session's folder goes; one still holding a worktree another uses keeps only that, its

@@ -22,16 +22,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
-        "archive" if has(args, "--check") => {
-            // A folder chat can't be archived yet: said before the app hides its row [D494].
-            let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
-            let off = (ids.filter_map(|id| core::load(data, id).ok()))
-                .find_map(|s| core::folder::off(&s, "Archive").err());
-            return Ok(match off {
-                Some(e) => json!({"ok": false, "error": e.to_string()}),
-                None => check(data, &args[1..]),
-            });
-        }
+        "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
         // Every id given, each loaded first so an unknown one refuses before any is archived.
         "archive" => {
             let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
@@ -96,6 +87,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             fold::note_stop(&spec.dir, pid, start_us);
             fold::stop_job(&f.fold, data, pid, start_us);
             return Ok(json!({"ok": true}));
+        }
+        // Off for a folder chat that claimed a repo: its confirm doesn't name the repos' branches
+        // yet [D9]. A start that never took still goes.
+        "delete" if core::folder::chat(&spec) && !core::folder::claims(&spec.dir).is_empty() => {
+            return Err(io::Error::other(
+                "Delete isn't available yet in a chat on a folder of repos.",
+            ));
         }
         // Proposed: `--check` names the branch the confirm asks about [D181].
         _ if has(args, "--check") => {

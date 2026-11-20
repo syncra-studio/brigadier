@@ -492,7 +492,7 @@ export const threadSource: Omit<Source, "older"> & {
 
 export const useThread = (): ThreadState | undefined => useSyncExternalStore(threadSource.subscribe, () => thread);
 
-/** Whether a session is a chat on a folder of repos: fork, rewind and archive are off for it for now [D494]. */
+/** Whether a session is a chat on a folder of repos: Delete is off for it for now [D494, D9]. */
 export function useFolderChat(id: string | undefined): boolean {
   const { rows, projects } = useDaemon();
   const project = rows?.find((row) => row.id === id)?.project;

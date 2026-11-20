@@ -318,12 +318,12 @@ pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
     Ok(out)
 }
 
-/// Whether the session is a folder chat: fork, rewind and archive are off for it for now [D494].
+/// Whether the session is a folder chat [D494].
 pub fn chat(spec: &Spec) -> bool {
     of(spec).is_some()
 }
 
-/// Refuses `what` for a folder chat.
+/// Refuses `what` for a folder chat: delete, for now [D9].
 pub fn off(spec: &Spec, what: &str) -> io::Result<()> {
     match chat(spec) {
         true => err(format!(
