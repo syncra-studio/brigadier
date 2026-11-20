@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { EmptyState } from "../components/empty-state";
 import { StateDot } from "../components/state-dot";
 import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
-import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
+import { ArrowLeft, MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { matches } from "../shortcuts";
 import { useRoutingDot } from "./routing";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
@@ -181,6 +181,13 @@ export function SettingsNav({ current }: { current: string }) {
             </NavSection>
           ))
         )}
+      </div>
+      {/* Back to the app, at the foot where the app's sidebar keeps Settings, leaving the title on the name line [D48]. */}
+      <div className="shrink-0 px-2 pb-2">
+        <NavRow onClick={closeSettings}>
+          <ArrowLeft className="text-quiet-foreground" />
+          <span className="truncate">Back to app</span>
+        </NavRow>
       </div>
     </>
   );

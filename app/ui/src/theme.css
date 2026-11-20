@@ -321,9 +321,10 @@
   --spacing-tab-front: calc(var(--spacing-tab-bar) - var(--spacing) * 1.25);
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
-  /* The sidebar toggle's start while the sidebar is hidden: 4px past the traffic lights; with none (Windows, macOS full
-     screen) the sidebar card's start edge [D861]. */
-  --spacing-toggle-start: calc(var(--spacing-traffic-lights) + 0.25rem);
+  /* Back's start: 4px past the traffic lights; with none (Windows, macOS full screen) the sidebar card's start edge [D861]. */
+  --spacing-history-start: calc(var(--spacing-traffic-lights) + 0.25rem);
+  /* The sidebar toggle's start: past Back and Forward (32 each, 2 apart) and 16px with their rule midway (titlebar-nav). */
+  --spacing-toggle-start: calc(var(--spacing-history-start) + var(--spacing) * 20.5);
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
@@ -675,6 +676,8 @@
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
   --opacity-tab-close: 60%;
+  /* Back and Forward with nowhere to go. */
+  --opacity-titlebar-nowhere: 40%;
   --opacity-switch-disabled: 60%;
   --opacity-spinner-track: 25%;
   --opacity-dialog-close: 70%;
@@ -1464,15 +1467,25 @@
   }
 }
 
-/* Full screen takes the traffic lights away, and the hidden sidebar's toggle moves to the titlebar's start. */
+/* Full screen takes the traffic lights away, and Back moves to the titlebar's start. */
 :root:is([data-fullscreen], [data-platform="win32"]) {
-  --spacing-toggle-start: var(--spacing-window-inset);
+  --spacing-history-start: var(--spacing-window-inset);
 }
 
-/* The sidebar toggle after the traffic lights on the titlebar's middle line, in every sidebar mode [D933 D934]. */
-@utility sidebar-toggle {
+/* Back, Forward and the sidebar toggle after the traffic lights on the titlebar's middle line, in every sidebar mode [D933 D934]. */
+@utility titlebar-nav {
+  /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
+  --opacity-disabled: var(--opacity-titlebar-nowhere);
   top: calc((var(--spacing-tab-bar) - var(--spacing) * 7.5) / 2);
-  inset-inline-start: var(--spacing-toggle-start);
+  inset-inline-start: var(--spacing-history-start);
+}
+/* The rule between Forward and the toggle: the house's (session-tab-bar), midway in their 16px [D931]. */
+@utility titlebar-nav-rule {
+  height: var(--spacing-session-tab-rule-height);
+  width: var(--spacing-session-tab-rule);
+  margin-inline: calc((var(--spacing) * 4 - var(--spacing-session-tab-rule)) / 2 - var(--spacing) * 0.5);
+  border-radius: var(--spacing-session-tab-rule);
+  background: var(--color-fill);
 }
 
 /* The tab bar runs from the window's start: its tabs from the page panel's start edge (the frame's 8px and the sidebar's

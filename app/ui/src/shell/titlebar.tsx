@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 
-import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
@@ -37,8 +36,9 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 const LIGHTS_X = 13;
 
 /**
- * Back and Forward by their keys, mouse buttons and menu items, with buttons only in Settings [D861 D862 D926], and the sidebar toggle
- * after the traffic lights in every sidebar mode (sidebar-toggle) [D933 D934]. It steps open, strip, hidden, and open again [D654 D800].
+ * Back and Forward by their buttons, keys, mouse buttons and menu items, the same pair in the app and Settings, each walking
+ * its own history, then a rule and the sidebar toggle, after the traffic lights in every sidebar mode (titlebar-nav)
+ * [D926 D933 D934]. The toggle steps open, strip, hidden, and open again [D654 D800].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, collapse, toggleSidebar, canToggle } = useSidebar();
@@ -98,29 +98,26 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // Settings' Back and Forward after the traffic lights, where the hidden sidebar's toggle sits; Forward fades in its slot [D926 D927 D897].
-  if (inSettings)
-    return (
-      <div data-slot="settings-history" className="sidebar-toggle app-no-drag fixed z-20 flex gap-0.5">
-        <TitlebarTips>
-          <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} onClick={() => step(-1)}>
-            <ArrowLeft />
-          </TooltipIconButton>
-          <span inert={forward === null} className={cx("flex transition-opacity duration-300 ease-sidebar motion-reduce:transition-none", forward === null && "opacity-0")}>
-            <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} onClick={() => step(1)}>
-              <ArrowRight />
-            </TooltipIconButton>
-          </span>
-        </TitlebarTips>
-      </div>
-    );
-  // Its name says what a click does; aria-expanded would draw an open fill. Settings holds the panel open, so it has none [D34].
-  if (!canToggle) return null;
+  // Back, Forward, a rule, then the toggle; Settings holds the panel open, so it has no toggle [D34 D926].
   return (
-    <div className="sidebar-toggle app-no-drag fixed z-20 flex">
-      <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
-        {open ? <Sidebar /> : <SidebarFloatingLeft />}
-      </TooltipIconButton>
+    <div className="titlebar-nav app-no-drag fixed z-20 flex items-center gap-0.5">
+      <TitlebarTips>
+        <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
+          <ArrowLeft />
+        </TooltipIconButton>
+        <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
+          <ArrowRight />
+        </TooltipIconButton>
+        {canToggle && (
+          <>
+            <span aria-hidden className="titlebar-nav-rule" />
+            {/* Its name says what a click does; aria-expanded would draw an open fill. */}
+            <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+              {open ? <Sidebar /> : <SidebarFloatingLeft />}
+            </TooltipIconButton>
+          </>
+        )}
+      </TitlebarTips>
     </div>
   );
 }
