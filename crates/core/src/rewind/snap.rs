@@ -86,6 +86,14 @@ impl Store {
         (!dir.starts_with(&cwd)).then_some(Store { dir, git, cwd })
     }
 
+    /// A folder chat's claimed repo: its own store in the claim's record folder, over its copy [D13].
+    pub fn claim(rec: &Path) -> Option<Store> {
+        let cwd = fs::canonicalize(crate::worktrees::folder(rec)?).ok()?;
+        let dir = fs::canonicalize(rec).ok()?;
+        let git = dir.join(STORE);
+        Some(Store { dir, git, cwd })
+    }
+
     /// The same store over another folder, a fork's new worktree, to write a snapshot there [D1068].
     pub fn over(&self, cwd: &Path) -> io::Result<Store> {
         let (dir, git) = (self.dir.clone(), self.git.clone());

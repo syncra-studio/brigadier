@@ -2,6 +2,7 @@
 //! the toast's Redo file changes puts back what it changed, only where each path is still exactly as
 //! the restore left it [D1192].
 
+use super::repos::Part;
 use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
 use super::{Op, checkout_lock, folded, refused};
@@ -19,22 +20,27 @@ const FILE: &str = "restored.json";
 #[derive(Serialize, Deserialize)]
 struct Restored {
     op: String,
-    pre: Shot,
-    target: String,
+    /// None for a folder chat's, whose own folder isn't a repo [D13].
+    pre: Option<Shot>,
+    target: Option<String>,
     paths: BTreeSet<String>,
+    #[serde(default)]
+    repos: Vec<Part>,
 }
 
 /// A rewind that landed: a restore's record replaces the last one, any other rewind removes it, so
 /// Undo only ever reaches the latest; then its operation goes, never before [D1213].
 pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
     let path = spec.dir.join(FILE);
-    match (&op.pre, &op.target) {
-        (Some(pre), Some(target)) if !op.paths.is_empty() => {
+    let main = op.pre.is_some() && op.target.is_some() && !op.paths.is_empty();
+    match main || !op.repos.is_empty() {
+        true => {
             let r = Restored {
                 op: op.op.clone(),
-                pre: pre.clone(),
-                target: target.clone(),
+                pre: op.pre.clone(),
+                target: op.target.clone(),
                 paths: op.paths.clone(),
+                repos: op.repos.clone(),
             };
             write_atomic(&path, &serde_json::to_vec(&r)?)
         }
@@ -101,9 +107,12 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
             "Background work from this session is still running. Stop it first.",
         ));
     }
-    let store = Store::of(spec).ok_or_else(gone)?;
+    let store = Store::of(spec).filter(|_| r.target.is_some());
+    if store.is_none() && r.target.is_some() {
+        return Err(gone());
+    }
     // With no turns of its own to weigh, only a sharer working now is named.
-    if let Some((_, with)) = sharer(data, spec, &store, &[], live) {
+    if let Some((_, with)) = (store.as_ref()).and_then(|s| sharer(data, spec, s, &[], live)) {
         let name = (crate::load(data, &with).ok()).map_or("Another session".into(), |o| {
             crate::share::title(&o).to_string()
         });
@@ -112,9 +121,17 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
             format!("Files stay: {name} is working in this folder now."),
         ));
     }
-    let kept = put_back(&store, &r.pre.tree, &r.target, &r.paths)
-        .map_err(|e| refused("failed", e.to_string()))?;
+    let mine = match (&store, &r.pre, &r.target) {
+        (Some(store), Some(pre), Some(target)) => put_back(store, &pre.tree, target, &r.paths),
+        _ => Ok(vec![]),
+    };
+    let kept = (mine.and_then(|mut kept| {
+        kept.extend(super::repos::put_back(spec, &r.repos)?);
+        Ok(kept)
+    }))
+    .map_err(|e| refused("failed", e.to_string()))?;
     // One deep: gone once used. Left behind, a second Undo finds every path changed and keeps it.
     let _ = fs::remove_file(&path);
-    Ok(json!({"ok": true, "undone": r.paths.len() - kept.len(), "kept": kept}))
+    let all = r.paths.len() + super::repos::named(&r.repos).len();
+    Ok(json!({"ok": true, "undone": all - kept.len(), "kept": kept}))
 }

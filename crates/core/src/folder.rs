@@ -139,6 +139,16 @@ pub fn standing(spec: &Spec) -> Option<String> {
     ))
 }
 
+/// The turn a claim was made in, kept apart from its snapshots [D13].
+const CLAIMED: &str = "claimed.json";
+
+/// When a claim was made: the turn that made it, none outside a turn; None for a claim from
+/// before this was kept, whose history is unknown.
+pub fn claimed_in(rec: &Path) -> Option<Option<String>> {
+    let v: Value = serde_json::from_slice(&fs::read(rec.join(CLAIMED)).ok()?).ok()?;
+    Some(v["turn"].as_str().map(String::from))
+}
+
 /// Where a session's claim of `name` keeps its record.
 fn record(dir: &Path, name: &str) -> PathBuf {
     dir.join("repos").join(name)
@@ -236,6 +246,11 @@ pub fn claim(spec: &Spec, name: &str) -> io::Result<String> {
         None,
     );
     made.or_else(|e| worktrees::made(&rec).then_some(()).ok_or(e))?;
+    let turn = crate::rewind::claimed(spec, &rec);
+    crate::write_atomic(
+        &rec.join(CLAIMED),
+        &serde_json::to_vec(&json!({"turn": turn}))?,
+    )?;
     let mut out = worktrees::folder(&rec)
         .unwrap_or(path)
         .display()

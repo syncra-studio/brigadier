@@ -1,5 +1,6 @@
 //! What a restore would put back, from the turn snapshots [D384].
 
+use super::repos::Part;
 use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
 use crate::Spec;
@@ -7,11 +8,15 @@ use crate::fold::{Boundary, Fold};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// What a restore would do.
+/// What a restore would do: in the session's folder, and in each repo a folder chat claimed.
+#[derive(Default)]
 pub(super) struct Files {
-    pub pre: Shot,
-    pub target: String,
+    pub pre: Option<Shot>,
+    pub target: Option<String>,
     pub paths: BTreeSet<String>,
+    pub repos: Vec<Part>,
+    /// The claimed repos that stay as they are: a turn of theirs has no snapshot [D13].
+    pub stale: Vec<String>,
     pub hand: Vec<String>,
     pub left_out: Vec<String>,
     /// Of `left_out`, the nested repositories; the rest are untracked files too big to keep.
@@ -76,12 +81,13 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         .collect();
     Ok(Files {
         commits: target.head != pre.head,
-        target: target.tree,
-        pre,
+        target: Some(target.tree),
+        pre: Some(pre),
         paths,
         hand: hand.into_iter().collect(),
         left_out,
         nested,
+        ..Files::default()
     })
 }
 
@@ -101,8 +107,12 @@ pub(super) fn plan_for(
         true => "no_folder",
         false => "no_project",
     };
-    let store = Store::of(spec).ok_or((none, None))?;
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
+    // A folder chat's own folder isn't a repo: its claimed ones go back, each by itself [D13].
+    if crate::folder::chat(spec) {
+        return Ok(super::repos::plan_all(spec, &turns));
+    }
+    let store = Store::of(spec).ok_or((none, None))?;
     let files = plan(&store, &turns).map_err(|why| (why, None))?;
     // Only files that would go back are any sharer's business [D481].
     if !files.paths.is_empty()

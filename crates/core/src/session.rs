@@ -121,15 +121,18 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
         (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
     // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D13].
     let mut went = false;
-    let freed = holder.as_deref().map_or(Ok(()), worktrees::free).and_then(|()| {
-        crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
-            let _one = worktrees::lock(rec)?;
-            let was = worktrees::present(rec);
-            let freed = worktrees::free(rec);
-            went |= was && !worktrees::present(rec);
-            freed
-        })
-    });
+    let freed = holder
+        .as_deref()
+        .map_or(Ok(()), worktrees::free)
+        .and_then(|()| {
+            crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
+                let _one = worktrees::lock(rec)?;
+                let was = worktrees::present(rec);
+                let freed = worktrees::free(rec);
+                went |= was && !worktrees::present(rec);
+                freed
+            })
+        });
     match freed {
         Ok(()) => {
             write_atomic(&dir.join(ARCHIVED), now_ms().to_string().as_bytes())?;
@@ -376,10 +379,12 @@ fn undo_restore(spec: &Spec) -> io::Result<()> {
         return Ok(());
     }
     worktrees::free(&holder(spec, &others))?;
-    crate::folder::claims(&spec.dir).iter().try_for_each(|(_, rec)| {
-        let _one = worktrees::lock(rec)?;
-        worktrees::free(rec)
-    })
+    crate::folder::claims(&spec.dir)
+        .iter()
+        .try_for_each(|(_, rec)| {
+            let _one = worktrees::lock(rec)?;
+            worktrees::free(rec)
+        })
 }
 
 /// The session's folder goes; one still holding a worktree another uses keeps only that, its

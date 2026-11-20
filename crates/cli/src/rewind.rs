@@ -14,7 +14,6 @@ use std::thread;
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let (id, cid) = (arg(args, 1)?, arg(args, 2)?);
     let spec = core::load(data, id)?;
-    core::folder::off(&spec, "Rewind")?;
     check_id(cid)?;
     settled(data, &spec)?;
     let live =

@@ -6,6 +6,7 @@
 mod active;
 pub mod fork;
 mod plan;
+mod repos;
 mod shared;
 mod snap;
 mod undo;
@@ -17,6 +18,8 @@ pub use active::{Active, read_active};
 use brigadier_frames::log::now_ms;
 pub use fork::{end_of, now_of, write_shot};
 use plan::plan_for;
+use repos::Part;
+pub use repos::claimed;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use shared::Lives;
@@ -58,6 +61,11 @@ struct Op {
     nested: Vec<String>,
     commits: bool,
     done: Option<Rewound>,
+    /// A folder chat's claimed repos: each one's restore, and those that stay [D13].
+    #[serde(default)]
+    repos: Vec<Part>,
+    #[serde(default)]
+    stale: Vec<String>,
 }
 
 fn refused(error: &str, message: impl Into<String>) -> Value {
@@ -70,19 +78,20 @@ pub fn before(spec: &Spec, f: &Fold, cid: &str) {
     if !f.turns.is_empty() {
         return;
     }
-    let Some(store) = Store::of(spec) else { return };
-    ended(&store, f);
-    if store.load(cid).is_none()
-        && let Ok(before) = store.capture()
-    {
-        let _ = store.save(cid, &Record { before, end: None });
+    for store in Store::of(spec).into_iter().chain(repos::stores(spec)) {
+        ended(&store, f);
+        if store.load(cid).is_none()
+            && let Ok(before) = store.capture()
+        {
+            let _ = store.save(cid, &Record { before, end: None });
+        }
     }
 }
 
 /// Takes the folder as the last turn ended. Too late, the edits may be the user's, not the agent's,
 /// and it stays missing: that range offers keep only.
 pub fn ends(spec: &Spec, f: &Fold) {
-    if let Some(store) = Store::of(spec) {
+    for store in Store::of(spec).into_iter().chain(repos::stores(spec)) {
         ended(&store, f);
     }
 }
@@ -126,8 +135,11 @@ pub fn preview(data: &Path, spec: &Spec, f: &Fold, cid: &str, live: Lives) -> Va
         return refused("gone", "This message can't be rewound to any more.");
     }
     match plan_for(data, spec, f, cid, live) {
-        Ok(p) => json!({"ok": true, "restore": true, "paths": p.paths, "hand": p.hand,
-            "leftOut": p.left_out, "nested": p.nested, "commits": p.commits}),
+        Ok(p) => {
+            let paths = (p.paths.iter().cloned()).chain(repos::named(&p.repos));
+            json!({"ok": true, "restore": true, "paths": paths.collect::<Vec<_>>(), "hand": p.hand,
+            "leftOut": p.left_out, "nested": p.nested, "commits": p.commits, "stale": p.stale})
+        }
         Err((why, with)) => json!({"ok": true, "restore": false, "why": why, "with": with}),
     }
 }
@@ -198,7 +210,7 @@ fn undo(spec: &Spec, op: &Op) -> io::Result<()> {
     if let (Some(pre), Some(target), Some(store)) = (&op.pre, &op.target, Store::of(spec)) {
         undo::put_back(&store, &pre.tree, target, &op.paths)?;
     }
-    Ok(())
+    repos::put_back(spec, &op.repos).map(drop)
 }
 
 fn cut<'a>(op: &'a Op) -> Cut<'a> {
@@ -251,8 +263,9 @@ fn landed(spec: &Spec, f: &Fold, op: &Op) -> Landing {
 
 /// A restore's reply never reads as complete when something stayed as it was [D384].
 fn reply(op: &Op) -> Value {
-    let complete = op.hand.is_empty() && op.left_out.is_empty();
-    json!({"ok": true, "op": op.op, "restored": op.paths.len(), "hand": op.hand,
+    let complete = op.hand.is_empty() && op.left_out.is_empty() && op.stale.is_empty();
+    let restored = op.paths.len() + repos::named(&op.repos).len();
+    json!({"ok": true, "op": op.op, "restored": restored, "hand": op.hand, "stale": op.stale,
         "leftOut": op.left_out, "nested": op.nested, "commits": op.commits, "complete": complete})
 }
 
@@ -384,12 +397,7 @@ fn run(
         .ok_or_else(|| refused("gone", format!("unknown agent {backend}")))?;
     let resume = (f.resume.get(&backend).cloned())
         .ok_or_else(|| refused("gone", "This conversation has no record to cut."))?;
-    let (mut pre, mut target, mut paths) = (None, None, BTreeSet::new());
-    let (mut hand, mut left_out, mut nested, mut commits) = (vec![], vec![], vec![], false);
-    if let Some(p) = files {
-        (pre, target, paths) = (Some(p.pre), Some(p.target), p.paths);
-        (hand, left_out, nested, commits) = (p.hand, p.left_out, p.nested, p.commits);
-    }
+    let p = files.unwrap_or_default();
     let mut record = Op {
         phase: String::new(),
         op: op.into(),
@@ -399,19 +407,26 @@ fn run(
         at: now_ms(),
         kept,
         dropped: turns.remove(0),
-        pre,
-        target,
-        paths,
-        hand,
-        left_out,
-        nested,
-        commits,
+        pre: p.pre,
+        target: p.target,
+        paths: p.paths,
+        hand: p.hand,
+        left_out: p.left_out,
+        nested: p.nested,
+        commits: p.commits,
         done: None,
+        repos: p.repos,
+        stale: p.stale,
     };
     write(spec, &mut record, "prepared")?;
-    if let (Some(target), Some(store)) = (record.target.clone(), Store::of(spec)) {
+    let main = record.target.clone().zip(Store::of(spec));
+    if main.is_some() || !record.repos.is_empty() {
         write(spec, &mut record, "files")?;
-        if let Err(e) = store.write_back(&target, &record.paths) {
+        let wrote = (main.map_or(Ok(()), |(target, store)| {
+            store.write_back(&target, &record.paths)
+        }))
+        .and_then(|()| repos::write_back(spec, &record.repos));
+        if let Err(e) = wrote {
             return Err(rolled_back(
                 spec,
                 &record,

@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 import { Dialog, DialogContent } from "../components/dialog";
 import { files, named, RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
 import { showToast, toastManager } from "../components/toast";
-import { threadSource, useDaemon, useFolderChat } from "../daemon";
+import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
 import { type ComposerRow, daemonRun, type Runner } from "./composer";
 import { putBack } from "./side";
@@ -25,7 +25,7 @@ const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "B
 function previewOf(reply: Record<string, any>): RewindPreview {
   const none = { paths: [], hand: [], leftOut: [], nested: [], commits: false };
   if (!reply.ok) return { ...none, error: why(reply) };
-  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], nested: reply.nested ?? [], commits: reply.commits === true };
+  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], nested: reply.nested ?? [], stale: reply.stale ?? [], commits: reply.commits === true };
   // Another session in the folder keeps the files [D1078]; else Rust's reason [D384].
   return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : { ...none, why: String(reply.why) };
 }
@@ -54,7 +54,6 @@ function undoRestore(run: Runner, id: string, cid: string, op: string) {
 export function RewindProvider({ id, row, offline, children, run = daemonRun, source = threadSource }: { id: string; row: ComposerRow | undefined; offline: boolean; children: ReactNode; run?: Runner; source?: Source }) {
   const session = useSyncExternalStore(source.subscribe, source.get);
   const { rows } = useDaemon();
-  const folder = useFolderChat(id);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [running, setRunning] = useState<Running | null>(null);
   // Answers stand until a turn starts or ends, or the messages that can be rewound to change.
@@ -86,7 +85,7 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
     const first = running && session?.items.find((item) => "cid" in item && item.cid === running.cid);
     const turnsGone = new Set(running ? session?.turns.slice(session.turns.findIndex((turn) => turn.id === running.cid)).map((turn) => turn.id) : []);
     return {
-      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) && !folder ? { blocked, open: () => open(cid, text), look: () => look(cid) } : undefined),
+      offer: (cid: string, text: string) => (session?.rewind?.includes(cid) ? { blocked, open: () => open(cid, text), look: () => look(cid) } : undefined),
       gone: (n: number | undefined, turn: string | undefined) => !!running && ((first && n !== undefined && first.n !== undefined && n >= first.n) || (turn !== undefined && turnsGone.has(turn))),
     };
   }, [session, running, offline, row?.running, row?.queue, id, run, looked]);

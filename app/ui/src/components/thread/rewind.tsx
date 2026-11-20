@@ -15,9 +15,10 @@ export const RewindContext = createContext<{
 /**
  * Rust's answer: what a restore would put back and leave alone. No paths, no file choice [D481]. `sharer`: the files
  * stay because another session in this folder worked during these turns, or works now [D1078]. `nested`: the
- * nested repositories among `leftOut`. `why`: Rust's reason only keep is offered, when it has one [D384].
+ * nested repositories among `leftOut`. `why`: Rust's reason only keep is offered, when it has one [D384]. `stale`: a
+ * folder chat's repos missing a snapshot of one of these turns, which stay as they are [D13].
  */
-export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean }; why?: string };
+export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; stale?: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean }; why?: string };
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
 export const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
@@ -27,13 +28,14 @@ function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs break-words text-muted-foreground">{children}</p>;
 }
 
-/** What stays as it is: edited since, too big to keep, nested repositories. */
-function Stays({ hand, big, nested }: { hand: string[]; big: string[]; nested: string[] }) {
+/** What stays as it is: edited since, too big to keep, nested repositories, repos with no snapshot. */
+function Stays({ hand, big, nested, stale = [] }: { hand: string[]; big: string[]; nested: string[]; stale?: string[] }) {
   return (
     <>
       {hand.length > 0 && <Note>Left as you edited them: {named(hand)}.</Note>}
       {big.length > 0 && <Note>Too big to go back: {named(big)}.</Note>}
       {nested.length > 0 && <Note>Nested repositories stay as they are: {named(nested)}.</Note>}
+      {stale.length > 0 && <Note>No snapshot was taken of these repos for every turn, so they stay as they are: {named(stale)}.</Note>}
     </>
   );
 }
@@ -64,10 +66,10 @@ const CANT: Record<string, string> = {
 
 export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCancel }: FormProps) {
   const [choice, setChoice] = useState("keep");
-  const { paths, hand, leftOut, nested, commits } = preview;
+  const { paths, hand, leftOut, nested, stale = [], commits } = preview;
   const big = leftOut.filter((path) => !nested.includes(path));
   const can = paths.length > 0;
-  const kept = hand.length + leftOut.length > 0;
+  const kept = hand.length + leftOut.length + stale.length > 0;
   const cant = preview.why === undefined ? undefined : CANT[preview.why];
   return (
     <ConfirmForm
@@ -93,7 +95,7 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
             <Note>
               Undoes {files(paths.length)} the agent changed: {named(paths)}.
             </Note>
-            <Stays hand={hand} big={big} nested={nested} />
+            <Stays hand={hand} big={big} nested={nested} stale={stale} />
             {/* Snapshots keep no ignored files, so which ones changed can't be said [D1192]. */}
             <Note>Ignored files (like .env) aren't in snapshots and stay as they are.</Note>
             {commits && <Note>Commits made since then stay.</Note>}
@@ -108,7 +110,7 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
           ) : (
             <>
               <Note>Files stay: nothing the agent changed can go back.</Note>
-              <Stays hand={hand} big={big} nested={nested} />
+              <Stays hand={hand} big={big} nested={nested} stale={stale} />
             </>
           )}
         </div>
