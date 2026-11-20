@@ -1860,7 +1860,17 @@
 .session-tab[data-agent-group]:not([data-active]) {
   background: linear-gradient(var(--color-agent-group) 0 0) bottom / 100% 2px no-repeat;
 }
-.session-tab[data-agent-group] > .session-tab-shape {
+/* While the front shape glides (tab-glide.ts), the line is laid out on the window, at the bar's foot, open under the
+   shape as it is under the front tab, so it closes behind and opens ahead as the shape moves [D3112]. */
+[data-gliding] {
+  --glide-from: attr(data-glide-from px, 0px);
+  --glide-to: attr(data-glide-to px, 0px);
+}
+[data-gliding] .session-tab[data-agent-group]:not([data-active]) {
+  background: linear-gradient(to right, var(--color-agent-group) var(--glide-from), transparent 0 var(--glide-to), var(--color-agent-group) 0) 0 calc(var(--spacing-tab-bar) - 2px) / 100% 2px no-repeat fixed;
+}
+/* The shape gliding to a group's tab is outlined too, so the line glides with it (tab-glide.ts) [D3112]. */
+:is(.session-tab, .session-tab-glide)[data-agent-group] > .session-tab-shape {
   --stroke: 2px;
   --color-glass-stroke: var(--color-agent-group);
 }
