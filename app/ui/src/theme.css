@@ -315,10 +315,10 @@
   --spacing-icon-mark: 1.5rem;
   --spacing-titlebar: 2.5rem;
   /* The titlebar row [D823]: 40px from the window's top to the frame's, its controls, tabs and the traffic
-     lights on its middle line (main.ts reads it) [D832]. Tabs are Chrome's 34px, down to the frame, their content kept
-     on the line by their foot (session-tab) [D848]. */
+     lights on its middle line (main.ts reads it) [D832]. Tabs from the controls' top (5px) down to the frame, their
+     content kept on the line by their foot (session-tab) [D848 D937]. */
   --spacing-tab-bar: 2.5rem;
-  --spacing-tab-front: calc(var(--spacing-tab-bar) - var(--spacing) * 1.5);
+  --spacing-tab-front: calc(var(--spacing-tab-bar) - var(--spacing) * 1.25);
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
   /* The sidebar toggle's start while the sidebar is hidden: 4px past the traffic lights; with none (Windows, macOS full
@@ -333,8 +333,9 @@
   --spacing-session-tab-max: 15rem;
   --spacing-session-tab-icon: 2.5rem;
   --spacing-home-tab: 3rem;
-  /* Under its content, the foot where the front tab meets the frame: the content on the row's middle line, as Chrome's. */
-  --spacing-session-tab-foot: 0.375rem;
+  /* Under its content, the foot where the front tab meets the frame: above it the titlebar's strip buttons' 30px
+     (h-7.5), the content on the row's middle line, as Chrome's [D937]. */
+  --spacing-session-tab-foot: 0.3125rem;
   /* A hovered tab's fill and the front tab's shape in from its sides alike, so a separator is as far from either [D857]. */
   --spacing-session-tab-inset: 0.125rem;
   /* Chrome's separator between two tabs in back, as the floating design's (Safari's) [D437 D840 D848]. */
@@ -490,8 +491,8 @@
 
   --radius-sm: 0.375rem;
   --radius-session-tab: 0.5rem;
-  /* Chrome's tab's top corners [D848]. */
-  --radius-session-tab-top: 0.625rem;
+  /* Chrome's tab's top corners [D848 D936]. */
+  --radius-session-tab-top: 0.5625rem;
   --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
@@ -1599,10 +1600,8 @@
   &::after {
     content: "";
     position: absolute;
-    /* The titlebar's strip button's hover (h-7.5 rounded-icon-button), on the content's middle line above the foot [D925 D930]. */
-    inset-inline: var(--spacing-session-tab-inset);
-    top: calc((100% - var(--spacing-session-tab-foot) - var(--spacing) * 7.5) / 2);
-    height: calc(var(--spacing) * 7.5);
+    /* Its content box, the titlebar's strip button's hover (h-7.5 rounded-icon-button) [D925 D930 D937]. */
+    inset: 0 var(--spacing-session-tab-inset) var(--spacing-session-tab-foot);
     z-index: -1;
     border-radius: var(--radius-icon-button);
     /* Clearly there, as Chrome's [D877]. */

@@ -27,8 +27,8 @@ export const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center ga
 export const TITLE = "@max-tab-icon/tab:hidden min-w-0 truncate";
 // The house, Chrome's pinned tab: its icon alone [D848].
 export const PINNED = "flex h-full w-full cursor-pointer items-center justify-center rounded-sm focus-visible:focus-ring";
-// × at the tab's end on every tab, as Chrome's; none under 64px.
-export const CLOSE = "absolute end-2 top-1 flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
+// × at the tab's end on every tab, as Chrome's, centred above the foot with the content [D937]; none under 64px.
+export const CLOSE = "absolute end-2 top-0 bottom-session-tab-foot my-auto flex @max-tab-close/tab:hidden size-5 cursor-pointer items-center justify-center rounded-capsule opacity-tab-close hover:bg-fill hover:opacity-100 focus-visible:focus-ring";
 export const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */

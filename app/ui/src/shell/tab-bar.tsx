@@ -335,9 +335,8 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
           <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + (chatGone ? 0 : 1)} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} data-frozen={frozen} className="session-tab-list app-no-drag flex h-tab-front min-w-0 items-end self-end" onKeyDown={onKeys} onWheel={onWheel} onClick={onPick}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
             {(peekRow ?? row) ? <ChatTab owner={shown} row={(peekRow ?? row)!} active={front === CHAT} separator={front !== CHAT && tabs[0]?.id !== front} order={order} /> : <BlankChatTab owner={shown} active={!home && front === CHAT} closing={chatGone} separator={!chatGone && (home || front !== CHAT) && tabs[0]?.id !== front} onClose={project ? () => dropDraft(project) : undefined} />}
-            {/* 1px over the tabs: a hovered one's fill (session-tab) rises that far above its tab and the scroller clips it [D930]. */}
-            <div ref={strip} className="hide-scrollbar -mx-2 -mt-px flex min-w-0 items-end self-stretch overflow-x-auto px-2 pt-px empty:hidden">
-              {/* Held inside the strip, a tab high and the hover's 1px: it moves along the row only. */}
+            <div ref={strip} className="hide-scrollbar -mx-2 flex min-w-0 items-end self-stretch overflow-x-auto px-2 empty:hidden">
+              {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider
                 sensors={SENSORS}
                 modifiers={[RestrictToElement.configure({ element: () => strip.current })]}
