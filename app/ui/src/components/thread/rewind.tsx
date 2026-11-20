@@ -16,7 +16,7 @@ export const RewindContext = createContext<{
  * Rust's answer: what a restore would put back and leave alone. No paths, no file choice [D481]. `sharer`: the files
  * stay because another session in this folder worked during these turns, or works now [D1078]. `nested`: the
  * nested repositories among `leftOut`. `why`: Rust's reason only keep is offered, when it has one [D384]. `stale`: a
- * folder chat's repos missing a snapshot of one of these turns, which stay as they are [D13].
+ * folder chat's repos missing a snapshot of one of these turns, which stay as they are [D3105].
  */
 export type RewindPreview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; stale?: string[]; commits: boolean; error?: string; sharer?: { id: string; now: boolean }; why?: string };
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };

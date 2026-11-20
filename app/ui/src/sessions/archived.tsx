@@ -83,7 +83,7 @@ export function ArchivedSection({
 /** An archived row's menu, or one a delete left unfinished: what stayed, Restore, and Delete… again [D35]. */
 export function ClosedMenuItems({ row }: { row: SessionRow }) {
   const left = row.lifecycle?.left;
-  // Off for a folder chat, archived too [D9].
+  // Off for a folder chat, archived too [D3102].
   const folder = useFolderChat(row.id);
   return (
     <>

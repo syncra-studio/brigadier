@@ -119,7 +119,7 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
     // Another still working there keeps the folder; the last user archived frees it [D1080].
     let holder =
         (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
-    // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D13].
+    // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D3105].
     let mut went = false;
     let freed = holder
         .as_deref()
@@ -149,7 +149,7 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
 }
 
 /// Puts each claim of a folder chat back on its branch, as `worktrees::restore` does a session's;
-/// one that fails frees those it brought back, so the chat stays archived whole [D13].
+/// one that fails frees those it brought back, so the chat stays archived whole [D3105].
 fn restore_claims(dir: &Path, picks: &[String]) -> io::Result<()> {
     let mut back: Vec<PathBuf> = vec![];
     for (_, rec) in crate::folder::claims(dir) {

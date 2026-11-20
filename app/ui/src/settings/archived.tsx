@@ -122,7 +122,7 @@ export function ArchivedPage() {
       });
     }
   };
-  // Delete stays off for a folder chat, archived or not [D9].
+  // Delete stays off for a folder chat, archived or not [D3102].
   const folders = new Set(projects?.filter((each) => each.kind === "folder").map((each) => each.id));
   const deletable = (targets: ArchivedRow[]) => targets.filter((row) => !folders.has(row.project ?? ""));
   const askDelete = (all: ArchivedRow[]) => {
@@ -259,7 +259,7 @@ function ArchivedRowItem({
   row: ArchivedRow;
   picked: boolean;
   targets: ArchivedRow[];
-  /** How many of `targets` can be deleted: a folder chat can't [D9]. */
+  /** How many of `targets` can be deleted: a folder chat can't [D3102]. */
   deletes: number;
   pending: boolean;
   offline: boolean;

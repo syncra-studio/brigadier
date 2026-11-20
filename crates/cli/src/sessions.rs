@@ -89,7 +89,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             return Ok(json!({"ok": true}));
         }
         // Off for a folder chat that claimed a repo: its confirm doesn't name the repos' branches
-        // yet [D9]. A start that never took still goes.
+        // yet [D3102]. A start that never took still goes.
         "delete" if core::folder::chat(&spec) && !core::folder::claims(&spec.dir).is_empty() => {
             return Err(io::Error::other(
                 "Delete isn't available yet in a chat on a folder of repos.",

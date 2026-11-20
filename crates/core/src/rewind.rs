@@ -61,7 +61,7 @@ struct Op {
     nested: Vec<String>,
     commits: bool,
     done: Option<Rewound>,
-    /// A folder chat's claimed repos: each one's restore, and those that stay [D13].
+    /// A folder chat's claimed repos: each one's restore, and those that stay [D3105].
     #[serde(default)]
     repos: Vec<Part>,
     #[serde(default)]

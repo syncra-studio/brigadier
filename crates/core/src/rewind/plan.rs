@@ -15,7 +15,7 @@ pub(super) struct Files {
     pub target: Option<String>,
     pub paths: BTreeSet<String>,
     pub repos: Vec<Part>,
-    /// The claimed repos that stay as they are: a turn of theirs has no snapshot [D13].
+    /// The claimed repos that stay as they are: a turn of theirs has no snapshot [D3105].
     pub stale: Vec<String>,
     pub hand: Vec<String>,
     pub left_out: Vec<String>,
@@ -108,7 +108,7 @@ pub(super) fn plan_for(
         false => "no_project",
     };
     let (_, turns) = f.range(cid).ok_or(("missing", None))?;
-    // A folder chat's own folder isn't a repo: its claimed ones go back, each by itself [D13].
+    // A folder chat's own folder isn't a repo: its claimed ones go back, each by itself [D3105].
     if crate::folder::chat(spec) {
         return Ok(super::repos::plan_all(spec, &turns));
     }

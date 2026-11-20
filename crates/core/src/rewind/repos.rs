@@ -1,4 +1,4 @@
-//! A folder chat's claimed repos [D494, D13]: each has its own snapshots, in its claim's record
+//! A folder chat's claimed repos [D494, D3105]: each has its own snapshots, in its claim's record
 //! folder over its copy, taken at the same turn edges as a session's; a restore and its Redo go
 //! through each one, its paths named `<repo>/<path>` wherever they're shown.
 

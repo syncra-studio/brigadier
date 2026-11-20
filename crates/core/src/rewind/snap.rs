@@ -86,7 +86,7 @@ impl Store {
         (!dir.starts_with(&cwd)).then_some(Store { dir, git, cwd })
     }
 
-    /// A folder chat's claimed repo: its own store in the claim's record folder, over its copy [D13].
+    /// A folder chat's claimed repo: its own store in the claim's record folder, over its copy [D3105].
     pub fn claim(rec: &Path) -> Option<Store> {
         let cwd = fs::canonicalize(crate::worktrees::folder(rec)?).ok()?;
         let dir = fs::canonicalize(rec).ok()?;

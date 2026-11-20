@@ -20,7 +20,7 @@ const FILE: &str = "restored.json";
 #[derive(Serialize, Deserialize)]
 struct Restored {
     op: String,
-    /// None for a folder chat's, whose own folder isn't a repo [D13].
+    /// None for a folder chat's, whose own folder isn't a repo [D3105].
     pre: Option<Shot>,
     target: Option<String>,
     paths: BTreeSet<String>,

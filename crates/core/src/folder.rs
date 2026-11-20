@@ -139,7 +139,7 @@ pub fn standing(spec: &Spec) -> Option<String> {
     ))
 }
 
-/// The turn a claim was made in, kept apart from its snapshots [D13].
+/// The turn a claim was made in, kept apart from its snapshots [D3105].
 const CLAIMED: &str = "claimed.json";
 
 /// When a claim was made: the turn that made it, none outside a turn; None for a claim from
@@ -338,7 +338,7 @@ pub fn chat(spec: &Spec) -> bool {
     of(spec).is_some()
 }
 
-/// Refuses `what` for a folder chat: delete, for now [D9].
+/// Refuses `what` for a folder chat: delete, for now [D3102].
 pub fn off(spec: &Spec, what: &str) -> io::Result<()> {
     match chat(spec) {
         true => err(format!(
