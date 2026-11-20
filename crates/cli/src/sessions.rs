@@ -145,16 +145,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// A Brigade's sessions that go with it are checked too, and listed under it in `with` [D3111].
 fn check(data: &Path, ids: &[String]) -> Value {
     let mut ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
+    // One picked as well isn't counted twice.
     let family: Vec<(String, Vec<String>)> = (ids.iter())
         .filter_map(|id| core::load(data, id).ok())
-        .map(|s| (s.id.clone(), subs(data, &s, unarchived)))
-        .filter(|(_, subs)| !subs.is_empty())
+        .map(|s| {
+            let subs = subs(data, &s, unarchived);
+            (
+                s.id,
+                subs.into_iter().filter(|x| !ids.contains(x)).collect(),
+            )
+        })
+        .filter(|(_, subs): &(String, Vec<String>)| !subs.is_empty())
         .collect();
-    for sub in family.iter().flat_map(|(_, subs)| subs) {
-        if !ids.contains(sub) {
-            ids.push(sub.clone());
-        }
-    }
+    ids.extend(family.iter().flat_map(|(_, subs)| subs.iter().cloned()));
     let with: serde_json::Map<String, Value> = (family.into_iter())
         .map(|(id, subs)| (id, subs.into()))
         .collect();
@@ -173,9 +176,10 @@ fn subs(data: &Path, spec: &core::Spec, keep: fn(&Path) -> bool) -> Vec<String> 
         .collect()
 }
 
-/// Those an archive takes with their Brigade: the ones not archived already [D3111].
+/// Those an archive takes with their Brigade: ones that exist, not archived, with no archive,
+/// restore or delete recorded, so a delete left unfinished keeps its record [D35, D3111].
 fn unarchived(dir: &Path) -> bool {
-    session::lifecycle(dir).0.is_none()
+    dir.join("session.json").exists() && matches!(session::lifecycle(dir), (None, Value::Null))
 }
 
 /// One session's archive: what a rewind or Replace all cut short settles first, its host stops,
