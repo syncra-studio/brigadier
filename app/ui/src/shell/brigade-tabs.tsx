@@ -22,7 +22,7 @@ export function useBrigadeFamily(row: SessionRow | undefined): SessionRow[] {
   return useMemo(() => {
     const head = row?.brigade ? row : rows?.find((each) => each.id === row?.boss);
     if (!row || !head) return [];
-    const subs = (rows ?? []).filter((each) => each.boss === head.id && (!each.archived || each.id === row.id)).toSorted((a, b) => a.sent - b.sent);
+    const subs = (rows ?? []).filter((each) => each.boss === head.id && (!each.archived || each.id === row.id)).toSorted((a, b) => (a.created ?? 0) - (b.created ?? 0));
     return subs.length > 0 ? [head, ...subs] : [];
   }, [row, rows]);
 }

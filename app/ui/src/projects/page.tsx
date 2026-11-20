@@ -178,7 +178,7 @@ function Sessions({ rows, now, onOpen, onNewSession, onRename }: { rows: Session
   const base = filter === "archived" ? (rows ?? []).filter(closed) : live;
   const [folded, setFolded] = useStored<string[]>("project.brigades.folded", []);
   const tree: Tree = {
-    kids: (row) => (row.brigade ? base.filter((sub) => sub.boss === row.id).toSorted((a, b) => a.sent - b.sent) : []),
+    kids: (row) => (row.brigade ? base.filter((sub) => sub.boss === row.id).toSorted((a, b) => (a.created ?? 0) - (b.created ?? 0)) : []),
     open: (id) => !folded.includes(id),
     toggle: (id) => setFolded(folded.includes(id) ? folded.filter((each) => each !== id) : [...folded, id]),
   };
