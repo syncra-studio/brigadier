@@ -39,18 +39,26 @@ const read = (end: boolean) => `(() => {
 export function installGuestSwipe(guest: WebContents): void {
   guest.on("dom-ready", () => void guest.executeJavaScriptInIsolatedWorld(SWIPE_WORLD, [{ code: TALLY }]).catch(() => {}));
   let reading: NodeJS.Timeout | undefined;
+  // The app while a scroll lasts: a page that goes mid-swipe tells it the end, so its chip never stays.
+  let host: WebContents | null = null;
+  const from = guest.id;
   const send = (end: boolean) =>
     void guest.executeJavaScriptInIsolatedWorld(SWIPE_WORLD, [{ code: read(end) }]).then((now: { dx: number; events: number } | null) => {
       if (now && !guest.isDestroyed()) guest.hostWebContents?.send("brigadier:page-swipe", { from: guest.id, ...now, end });
     }, () => {});
   guest.on("input-event", (_event, input) => {
     if (input.type === "gestureScrollBegin") {
+      host = guest.hostWebContents;
       clearInterval(reading);
       reading = setInterval(() => send(false), READ_MS);
     } else if (input.type === "gestureScrollEnd") {
+      host = null;
       clearInterval(reading);
       send(true);
     }
   });
-  guest.once("destroyed", () => clearInterval(reading));
+  guest.once("destroyed", () => {
+    clearInterval(reading);
+    if (host && !host.isDestroyed()) host.send("brigadier:page-swipe", { from, dx: 0, events: 0, end: true });
+  });
 }

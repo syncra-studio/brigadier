@@ -45,6 +45,8 @@ function changed(): void {
 const subscribe = (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener));
 /** Whether an agent holds any of tabs `ids` now: a shield is up over it. */
 export const useAgentHoldsAny = (ids: readonly string[]): boolean => useSyncExternalStore(subscribe, () => ids.some((id) => held.has(id)));
+/** Whether an agent's shield is up over tab `id`: the user's wheels reach its page only as the shield passes them on. */
+export const agentShields = (id: string): boolean => overlays.get(id)?.shielded === true;
 /** How many times the user's click or key on tab `id`'s page asked for Take over: each one focuses it. */
 export const useAgentLit = (id: string): number => useSyncExternalStore(subscribe, () => lit.get(id) ?? 0);
 /** Where tab `id`'s pill goes while an agent holds it: a slot at its page's top, in the app; null when no one holds it. */

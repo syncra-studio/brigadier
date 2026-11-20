@@ -11,7 +11,7 @@
 import { readFavicon } from "./favicon";
 import { pressGuestKey, ZOOM_LEAST, ZOOM_MOST } from "./keys";
 import { watchUserComposition } from "./focus-guard";
-import { dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
+import { agentShields, dropOverlay, installAgentOverlays, placeOverlay } from "./overlay";
 import { devToolsChanged, userUsed } from "./pause";
 import { type SignInSeen, signInSeen } from "./sign-in";
 import { recordDates, trustLocalCert } from "./profiles";
@@ -161,8 +161,12 @@ function installKeyboardHandover(): void {
 
 /** The page whose guest is `from`, once it has one. */
 const pageOf = (from: number) => [...pages.values()].find((page) => page.ready && page.element.getWebContentsId() === from);
-/** The tab's page whose guest is `from`, for walking its history. */
-export const guestPage = (from: number): Webview | undefined => pageOf(from)?.element;
+/** The tab's page whose guest is `from`, for walking its history; none under an agent's shield, whose passed-on wheels
+ * the page tallies as a swipe of its own [D3110]. */
+export const guestPage = (from: number): Webview | undefined => {
+  const page = pageOf(from);
+  return page && !agentShields(page.id) ? page.element : undefined;
+};
 
 export function installTabLayer(): void {
   layer = document.createElement("div");
