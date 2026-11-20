@@ -1,20 +1,31 @@
 import { useEffect } from "react";
 
+import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
-import { Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { TitlebarTips } from "../components/tooltip";
+import { ArrowLeft, ArrowRight, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
-import { settingsPageOf, settingsUp } from "../settings/shell";
-import { matches } from "../shortcuts";
+import { settingsOrigin, settingsPageOf } from "../settings/shell";
+import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 
 // The old app's history (state/history.ts) [kit D170]: Back goes by where you are, never by how you got there, a
-// session to Home, Settings up a level and out (settingsUp), and Home has nowhere to go. Forward redoes what Back left; any other navigation clears it.
+// session to Home, and Home has nowhere to go. Forward redoes what Back left; any other navigation clears it.
 const ahead = store<string | null>(null);
+// Settings walks its own pages since it opened, Back off the first leaving it [D927].
+const walk = store<{ pages: string[]; at: number }>({ pages: [], at: 0 });
 let stepping: string | null = null;
-window.addEventListener("hashchange", () => {
-  if (window.location.hash !== stepping) ahead.set(null);
+window.addEventListener("hashchange", (event) => {
+  const hash = window.location.hash;
+  const ours = hash === stepping;
   stepping = null;
+  if (ours) return;
+  ahead.set(null);
+  if (settingsPageOf(hash) === null) return;
+  const { pages, at } = walk.get();
+  const inside = settingsPageOf(new URL(event.oldURL).hash) !== null;
+  walk.set(inside ? { pages: [...pages.slice(0, at + 1), hash], at: at + 1 } : { pages: [hash], at: 0 });
 });
 
 const MOUSE_BACK = 3;
@@ -26,7 +37,7 @@ export const blocked = () => document.querySelector('[role="dialog"], [role="ale
 const LIGHTS_X = 13;
 
 /**
- * Back and Forward by their keys, mouse buttons and menu items, with no buttons [D861 D862], and the sidebar toggle: at
+ * Back and Forward by their keys, mouse buttons and menu items, with buttons only in Settings [D861 D862 D926], and the sidebar toggle: at
  * the end of the sidebar's name row, above the strip's logo, or after the traffic lights while hidden, gliding between
  * them with the sidebar (sidebar-toggle). It steps open, strip, hidden, and open again [D654 D800].
  */
@@ -34,9 +45,12 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   const { open, collapse, toggleSidebar, canToggle } = useSidebar();
   const mode = open ? "open" : collapse === "hidden" ? "hidden" : "strip";
   useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
-  const forward = ahead.use();
   const page = settingsPageOf(hash);
-  const up = page !== null ? settingsUp(page) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
+  const { pages, at } = walk.use();
+  const later = ahead.use();
+  const inSettings = page !== null;
+  const forward = inSettings ? (pages[at + 1] ?? null) : later;
+  const up = inSettings ? (at > 0 ? pages[at - 1]! : settingsOrigin()) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
   // A session deleted since shows Home instead.
   const go = (place: string) => {
     const gone = place.startsWith("#thread/") && rows && !rows.some((row) => row.id === decodeURIComponent(place.slice("#thread/".length)));
@@ -45,12 +59,14 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   };
   const stepBack = () => {
     if (up === null) return;
-    ahead.set(hash);
+    if (inSettings && at > 0) walk.set({ pages, at: at - 1 });
+    else ahead.set(hash);
     go(up);
   };
   const stepForward = () => {
     if (forward === null) return;
-    ahead.set(null);
+    if (inSettings) walk.set({ pages, at: at + 1 });
+    else ahead.set(null);
     go(forward);
   };
   const step = (delta: -1 | 1) => {
@@ -83,6 +99,22 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
+  // Settings' Back and Forward after the traffic lights, where the hidden sidebar's toggle sits; Forward fades in its slot [D926 D927 D897].
+  if (inSettings)
+    return (
+      <div data-mode="hidden" data-slot="settings-history" className="sidebar-toggle app-no-drag fixed z-20 flex gap-0.5">
+        <TitlebarTips>
+          <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} onClick={() => step(-1)}>
+            <ArrowLeft />
+          </TooltipIconButton>
+          <span inert={forward === null} className={cx("flex transition-opacity duration-300 ease-sidebar motion-reduce:transition-none", forward === null && "opacity-0")}>
+            <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} onClick={() => step(1)}>
+              <ArrowRight />
+            </TooltipIconButton>
+          </span>
+        </TitlebarTips>
+      </div>
+    );
   // Its name says what a click does; aria-expanded would draw an open fill. Settings holds the panel open, so it has none [D34].
   if (!canToggle) return null;
   return (

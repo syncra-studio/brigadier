@@ -6,7 +6,6 @@ import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { matches } from "../shortcuts";
 import { useRoutingDot } from "./routing";
-import { LeaveSettings } from "./parts";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
 
 /*
@@ -34,11 +33,8 @@ export function closeSettings(): void {
   window.location.hash = back;
 }
 
-/** Where Back goes from Settings, the old app's levelUp: an agent's page to its page, a page to General, General to `back`. */
-export function settingsUp(page: string): string {
-  if (page.includes("/")) return `${PREFIX}${page.split("/")[0]}`;
-  return page === "general" ? back : `${PREFIX}general`;
-}
+/** Where leaving Settings goes: the last screen that wasn't Settings. */
+export const settingsOrigin = (): string => back;
 
 /** ⌘, opens Settings (from the keys, or the app menu's Settings…) and ⌘/ its Keyboard shortcuts [D2013, D2022]. Call once. */
 export function listenToSettingsKeys(): void {
@@ -210,9 +206,7 @@ export function SettingsView({ page }: { page: string }) {
   // The page beside the nav, on the nav's colour, no dark panel (settings-surface) [D898].
   return (
     <main className="flex min-h-0 flex-1 overflow-clip settings-surface">
-      <LeaveSettings.Provider value={closeSettings}>
-        <Page key={page} detail={detail} />
-      </LeaveSettings.Provider>
+      <Page key={page} detail={detail} />
     </main>
   );
 }
