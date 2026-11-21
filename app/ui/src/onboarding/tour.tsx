@@ -15,15 +15,15 @@ type Step = { target: string; side: Side; title: string; line: string };
 
 /** The app as it is today, in the order a first-time user meets it; a step whose part isn't on screen shows centred. */
 const STEPS: readonly Step[] = [
-  { target: 'nav[aria-label="Strip"]', side: "right", title: "The strip", line: "Always at the window's edge: the logo goes Home, then Search, Plugins and Pull Requests. While the sidebar is hidden, your projects and Chats sit under them." },
+  { target: '[data-slot="sidebar-panel"] [data-sidebar="sidebar"] ul:first-of-type, nav[aria-label="Strip"]', side: "right", title: "Home, Plugins and Pull Requests", line: "The logo goes Home; New chat, Plugins and Pull Requests sit at the sidebar's top. Folded to the strip, they're its icons, with your projects and Chats under them." },
   { target: '[data-slot="sidebar-panel"]', side: "right", title: "Projects and sessions", line: "New chat starts one; a project opens and closes its sessions under it, and its … opens the project's settings. View at the top lists them by project or by session, and Search beside it finds any." },
   { target: '[data-slot="composer"]', side: "top", title: "Start a session", line: "Type a task and send it; the pickers set the project, its worktree and branch, what the agent may do unasked and the model, and ⌘N starts one from anywhere." },
   { target: ".strip-squares > *, [data-project-id], [data-row-id]", side: "right", title: "Working or needs you", line: "By a session, a spinner means an agent is working, and a dot that there's news or it needs your answer; a closed project shows the dot for its sessions." },
-  { target: ".titlebar-nav", side: "bottom", title: "The sidebar, Back and Forward", line: "The first button, or ⌘B, shows or hides the sidebar while the strip stays; Back and Forward retrace where you've been." },
+  { target: ".titlebar-nav", side: "bottom", title: "The sidebar, Back and Forward", line: "The first button, or ⌘B, folds the sidebar to a strip of icons, then hides it, then brings it back; Back and Forward retrace where you've been." },
   { target: '[data-slot="session-tabs"]', side: "bottom", title: "Tabs", line: "The open session's title sits up here with its … menu. + opens a web page, a terminal or a note as a tab, and a file, Workers and Subagents open as tabs too; the chat is then the first one." },
   { target: "[data-summary-toggle]", side: "bottom", title: "Summary", line: "Shows or hides the session's card: its changes, plan, pull requests, workers, subagents, background processes and sources." },
   { target: '[aria-controls="right-panel-content"]', side: "bottom", title: "Files", line: "Files shows the session's copy of the code; a file you pick opens as a tab." },
-  { target: '[data-slot="sidebar-foot"]', side: "right", title: "Settings", line: "The strip's foot holds Usage, Keep awake, Feedback and Settings. Settings and ⌘K can start this tour again." },
+  { target: '[data-slot="sidebar-foot"]', side: "right", title: "Settings", line: "The sidebar's foot holds Settings, Feedback, Keep awake and Usage. Settings and ⌘K can start this tour again." },
 ];
 
 const at = store<number | null>(null);

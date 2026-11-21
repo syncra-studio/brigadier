@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
-import { SidebarProvider } from "./components/sidebar";
+import { type SidebarMode, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
 import { hhmm } from "./thread/words";
@@ -158,14 +158,14 @@ function App() {
   );
 }
 
-// The strip and sidebar beside every screen after onboarding [D173, D174]; shown and its width kept across launches. The
-// shell [D69]: no frame, the strip and sidebar flush at the window's start and the main area from its edge to the window's
-// end, the titlebar row across both. Settings keeps the sidebar shown with its nav in place of the sessions [D2004].
+// The sidebar beside every screen after onboarding [D173, D174]: expanded, the strip or hidden, its mode and width kept across
+// launches [D226]. The shell [D69]: no frame, the sidebar flush at the window's start and the main area from its edge
+// to the window's end, the titlebar row across both. Settings keeps it expanded with its nav in place of the sessions [D2004].
 function Shell({ hash, active, rows, settings, page, prs, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; prs?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
   const projects = useProjects();
-  const [open, setOpen] = useStored("sidebar.open", true);
+  const [mode, setMode] = useStored<SidebarMode>("sidebar.mode", "expanded");
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   useSeen(rows?.find((row) => row.id === active));
   // One tab bar for every page but Settings and a project's, kept as the page changes so its tabs change smoothly: the
@@ -187,7 +187,7 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined}>
+      <SidebarProvider mode={mode} onModeChange={setMode} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined}>
         {/* One sidebar for every page: Settings' and Pull Requests' navs crossfade over the sessions in it [D2004 D225]. */}
         <AppSidebar
           rows={rows}

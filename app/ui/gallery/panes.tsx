@@ -13,7 +13,7 @@ import { RowAction, RowActionsSlot } from "../src/components/row-action";
 import { Section as KitSection } from "../src/components/section";
 import { RowText, SettingsCard } from "../src/components/settings-card";
 import { SettingsRow } from "../src/components/settings-row";
-import { SidebarPanel, SidebarProvider, useSidebar } from "../src/components/sidebar";
+import { type SidebarMode, SidebarPanel, SidebarProvider, useSidebar } from "../src/components/sidebar";
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
@@ -91,11 +91,11 @@ function ToggleButton() {
 
 /** The kit's sidebar frame in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
 function SidebarDemo() {
-  const [open, setOpen] = useState(true);
+  const [mode, setMode] = useState<SidebarMode>("expanded");
   const [tab, setTab] = useState("chat");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider open={open} onOpenChange={setOpen}>
+      <SidebarProvider mode={mode} onModeChange={setMode}>
         <TitlebarNav hash="" rows={[]} />
         <header className="titlebar-clear session-tab-bar fixed start-0 end-surface-inset top-0 flex h-tab-bar items-center pt-3.5" data-settled>
           <div role="tablist" aria-label="Sample tabs" data-count={2} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule p-px ring-1 ring-glass-stroke ring-inset">

@@ -13,7 +13,7 @@ import { type Agent, checkAll, useAgents } from "../onboarding/api";
 import { runFailure, useAgentSetup } from "../onboarding/agents";
 import { versionText } from "../accounts/parts";
 import { useDaemon } from "../daemon";
-import { footPlacement } from "./foot";
+import { useFootPlacement } from "./foot";
 
 /*
  * The updates icon at the strip's foot, with a dot, above Usage [D57]: one, whatever kinds of update there are, and what to update is chosen
@@ -154,6 +154,7 @@ export function UpdatesRow() {
   const online = Boolean(useDaemon().daemon);
   const { list } = useAgents();
   const setup = useAgentSetup(list, online);
+  const { row, ...placement } = useFootPlacement();
   const [skipped, setSkipped] = useState(readSkipped);
   useEffect(() => {
     if (!online) return;
@@ -203,15 +204,15 @@ export function UpdatesRow() {
   // Every row an "Update" button could run right now, for "Update all" [D199].
   const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
-    <BarItem show={!empty || open} axis="y">
+    <BarItem show={!empty || open} axis={row ? "x" : "y"}>
       <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<TooltipIconButton look="rail" side="right" dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          render={<TooltipIconButton look="rail" side={placement.side} dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
           onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
         </PopoverTrigger>
-        <PopoverContent {...footPlacement} padded={false} className="flex w-96 flex-col p-1.5">
+        <PopoverContent {...placement} padded={false} className="flex w-96 flex-col p-1.5">
           <BarItem axis="y" show={shown.length > 1}>
             <div className="flex justify-end px-1.5 pt-1 pb-1.5">
               <Button size="sm" variant="secondary" disabled={runnable.length < 2} onClick={() => runnable.forEach((item) => void update(item))}>

@@ -451,7 +451,7 @@
   --spacing-left-sidebar: 17.4375rem;
   --spacing-left-sidebar-min: 14.875rem;
   --spacing-left-sidebar-max: 29.25rem;
-  /* The strip beside it, always shown: a 52 rail of 36 buttons 8 in [D11]. */
+  /* The strip, the folded sidebar: a 52 rail of 36 buttons 8 in [D11 D226]. */
   --spacing-rail: 3.25rem;
   /* The panel's grab area, over the gap and its card's edge. */
   --spacing-resize-handle: 1rem;
@@ -1457,25 +1457,28 @@
   initial-value: transparent;
 }
 /* The sidebar's width, where it was dragged (data-width) or the default, in its range [D21], narrower only where the
-   content beside it would get less than its least room. Shown, the window behind the strip and it is the sidebar's
-   fill; hidden, the strip blends into the main area [D20 D69]. */
+   content beside it would get less than its least room. Expanded, the window behind it is the sidebar's fill; folded,
+   the strip blends into the main area; hidden, neither shows [D20 D69 D226]. */
 @utility sidebar-width-source {
   --sidebar-open-width: clamp(
     var(--spacing-left-sidebar-min),
     attr(data-width px, var(--spacing-left-sidebar)),
-    max(var(--spacing-left-sidebar-min), min(var(--spacing-left-sidebar-max), 100vw - var(--spacing-rail) - var(--spacing-sidebar-thread-min)))
+    max(var(--spacing-left-sidebar-min), min(var(--spacing-left-sidebar-max), 100vw - var(--spacing-sidebar-thread-min)))
   );
   background-color: var(--color-background);
   background-image: linear-gradient(var(--sidebar-layer), var(--sidebar-layer));
   transition-property: background-color, --sidebar-layer;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
-  /* How wide the strip and sidebar show beside the content: what a right panel leaves it. */
+  /* How wide the sidebar or strip shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
+  &[data-mode="hidden"] {
+    --sidebar-shown: 0px;
+  }
   /* The titlebar's toggle, Back, Forward and New chat (2px apart), and 8px past them (titlebar-clear) [D35 D934]. */
   --toggle-room: calc(var(--spacing) * 35);
   &[data-state="expanded"] {
-    --sidebar-shown: calc(var(--spacing-rail) + var(--sidebar-open-width));
+    --sidebar-shown: var(--sidebar-open-width);
     background-color: var(--color-window-fill);
     --sidebar-layer: var(--color-sidebar);
   }
@@ -1486,25 +1489,10 @@
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* The strip [D11], its hairline to the shown sidebar: the border on the sidebar's first half point, 8 in from
-   the titlebar row and the window's foot, fading over 3 at both ends [D20 D188]. */
+/* The strip, the sidebar folded [D11 D226]. */
 @utility rail {
   position: relative;
   width: var(--spacing-rail);
-  [data-state="expanded"] > &::after {
-    content: "";
-    position: absolute;
-    inset-block: calc(var(--spacing-tab-bar) + var(--spacing) * 2) calc(var(--spacing) * 2);
-    inset-inline-end: -0.5px;
-    width: 0.5px;
-    background: linear-gradient(
-      transparent,
-      var(--color-border) calc(var(--spacing) * 0.75),
-      var(--color-border) calc(100% - var(--spacing) * 0.75),
-      transparent
-    );
-    pointer-events: none;
-  }
 }
 /* The strip's rules: 24 wide, the border's hairline [D189 D191]. */
 @utility strip-rule {
