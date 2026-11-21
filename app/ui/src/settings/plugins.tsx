@@ -314,7 +314,7 @@ export function PluginsPage({
     const count = (kind: Kind) => new Set(shown?.items.filter((each) => each.kind === kind).map((each) => each.with ?? each.set ?? each.key)).size;
     page = (
       <SettingsPage title="Plugins" description={DESCRIPTION} actions={controls}>
-        <div className="-mt-4 flex flex-col gap-7">
+        <div className="-mt-4 flex flex-col gap-9.5">
           {!query.trim() && (
             <Segmented
               label="Plugins"

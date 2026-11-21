@@ -37,7 +37,7 @@ function firstOf({ form, mark, icon }: Found & { form: object }): AddFirst {
   return { form: { kind: "server", remote: form.remote, name: form.name, url: form.url ?? "", command: form.command ?? "", values }, step: values.length ? "form" : "install", mark: { detail: mark, icon } };
 }
 
-/** A row of Browse's 2 columns: its mark, name and line, opening its page where it has one, then + (or …); `dim` an off item's, its end not. */
+/** A row of Browse's 2 columns, 60 tall and 68 apart [D206]: its mark, name and line, opening its page where it has one, then + (or …); `dim` an off item's, its end not. */
 export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: ReactNode; name: ReactNode; line: ReactNode; end: ReactNode; onOpen?: () => void; dim?: boolean }) {
   const text = (
     <>
@@ -46,7 +46,7 @@ export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: Rea
     </>
   );
   return (
-    <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.5 hover:bg-fill-subtle">
+    <div data-slot="pick" className="flex items-center gap-3 rounded-control px-2 py-2.75 hover:bg-fill-subtle">
       {onOpen ? (
         <button type="button" onClick={onOpen} className={cx("flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-start focus-visible:focus-ring", dim && "opacity-disabled")}>
           {text}
@@ -82,12 +82,12 @@ export const entryRow = (entry: Entry, { onOpen, onInstall }: EntryActions) => (
 );
 export type EntryActions = { onOpen: (entry: Entry) => void; onInstall: (entry: Entry) => void };
 
-export const PickGrid = ({ children }: { children: ReactNode }) => <div className="grid grid-cols-1 gap-x-6 @reading:grid-cols-2">{children}</div>;
+export const PickGrid = ({ children }: { children: ReactNode }) => <div className="grid grid-cols-1 gap-x-6 gap-y-2 @reading:grid-cols-2">{children}</div>;
 
 /** A category's title, a link to its own page where it has one, over its rows. */
 export function Category({ title, onOpen, children }: { title: string; onOpen?: () => void; children: ReactNode }) {
   return (
-    <section aria-label={title} className="flex flex-col gap-2">
+    <section aria-label={title} className="flex flex-col gap-6">
       {onOpen ? (
         <button type="button" onClick={onOpen} className="flex w-fit cursor-pointer items-center gap-1 text-sm font-medium focus-visible:focus-ring">
           {title}
@@ -213,7 +213,7 @@ function Loading() {
     <div role="status" aria-label="Searching" className="contents">
       <PickGrid>
         {[0, 1, 2, 3, 4, 5].map((at) => (
-          <div key={at} className="flex items-center gap-3 px-2 py-2.5">
+          <div key={at} className="flex items-center gap-3 px-2 py-2.75">
             <Skeleton className="size-9 shrink-0" />
             <div className="flex flex-1 flex-col gap-1.5">
               <Skeleton className="h-3 w-24" />

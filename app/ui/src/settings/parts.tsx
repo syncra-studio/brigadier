@@ -75,13 +75,14 @@ export function SettingsPage({
   }, []);
   return (
     <div data-slot="settings-page" className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      {/* The panel header every panel has, its height and bottom line [D842]: the breadcrumb, above the scroll and its fade; Back is the titlebar's [D899 D926]. */}
-      <div className="app-drag flex h-panel-header shrink-0 items-center gap-1.5 border-b border-divider px-5">
+      {/* The breadcrumb in the titlebar's row, as a chat's title, taking no room of the page's, so the title sits where
+          a chat's title does [D206]; above the scroll and its fade; Back is the titlebar's [D899 D926]. */}
+      <div className="app-drag -mt-tab-bar flex h-tab-bar shrink-0 items-center gap-1.5 px-5">
         <Trail parts={parts} />
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
-          <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-6", scrollable ? "pb-12" : "min-h-0 flex-1")}>
+          <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-1.5", scrollable ? "pb-12" : "min-h-0 flex-1")}>
             <header className="flex shrink-0 items-start gap-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3.5">
                 {mark}
