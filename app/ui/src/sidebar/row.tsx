@@ -7,7 +7,7 @@ import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Comment, Pin, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking, Unpin } from "../icons";
+import { Chat, Comment, Pin, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking, Unpin } from "../icons";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { pin } from "./actions";
@@ -199,7 +199,8 @@ export function SessionRowItem({
               />
             }
           >
-            {badged && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />)}
+            {/* A chat with no project: the OpenAI SDK Chat icon, as its tab [D218 D214]. */}
+            {badged && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             <span className={cx("flex shrink-0 empty:hidden", live && HIDE_ON_HOVER, offline && "opacity-disabled")}>
               <SidebarMark mark={mark} label={label} />

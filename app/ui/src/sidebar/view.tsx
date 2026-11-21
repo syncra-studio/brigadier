@@ -6,7 +6,7 @@ import { cx } from "../components/cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, MenuRow } from "../components/menu";
 import { TooltipIconButton } from "../components/icon-button";
-import { ArrowDownUp, Bolt, Check, ChevronRight, Comment, Eye, Filter, Folder, ListBullets, Plus, Sidebar } from "../icons";
+import { ArrowDownUp, Bolt, Chat, Check, ChevronRight, Comment, Eye, Filter, Folder, ListBullets, Plus, Sidebar } from "../icons";
 import { openAddProject } from "../projects/store";
 import { ProjectBadge } from "./row";
 import { useStored } from "./sidebar";
@@ -173,7 +173,7 @@ export function ViewMenu({
                 count={count(project.id)}
               />
             ))}
-            <ShowRow name="Chats without a project" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<ProjectBadge name={null} tone={undefined} />} count={count(null)} />
+            <ShowRow name="Chats without a project" checked={!show.hideChats} onChange={(on) => show.setHideChats(!on)} mark={<Chat aria-hidden className="size-icon-md shrink-0" />} count={count(null)} />
           </div>
         </SubMenu>
         <div className={RULE} />
