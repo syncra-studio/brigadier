@@ -20,6 +20,8 @@
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
   --color-popover-edge: rgb(255 255 255 / 12%);
+  /* A menu's and popover's fill: the popover at 90%, over a blur [D73]. */
+  --color-menu: color-mix(in oklab, var(--color-popover) 90%, transparent);
   /* A pill's fill (a secondary button's), its edge (border), the active tab and picked row (ghost hover). */
   --color-control: rgb(255 255 255 / 5.2%);
   --color-glass-stroke: rgb(255 255 255 / 8.4%);
@@ -387,6 +389,8 @@
   --spacing-code-folded: 10lh;
   /* A menu's least width, and a select's longest list and widest menu. */
   --spacing-menu: 8rem;
+  /* A menu row's least height, 29 [D73]. */
+  --spacing-menu-item: 1.8125rem;
   --spacing-select: 24rem;
   --container-dialog: 24rem;
   /* Add project: its card, and the list's room for five rows (the old app's). */
@@ -512,11 +516,13 @@
   /* The image the viewer shows (the old app's rounded-lg). */
   --radius-image-viewer: 0.625rem;
   --radius-tooltip: 1rem;
+  /* A menu's corners, 16 [D73]. */
+  --radius-menu: 1rem;
   --radius-overlay: 1.25rem;
   /* The floating sidebar, strip and right panel cards (the new design's 18). */
   --radius-panel: 1.125rem;
   /* A menu row's highlight follows the menu's corners: the menu's radius less its padding. */
-  --radius-menu-item: calc(var(--radius-overlay) - var(--spacing));
+  --radius-menu-item: calc(var(--radius-menu) - var(--spacing));
   --radius-capsule: 9999px;
   /* Sidebar and Settings navigation rows; a Settings card. */
   --radius-nav: 0.78125rem;
@@ -524,7 +530,7 @@
   --radius-row: 0.625rem;
   --radius-settings: 0.875rem;
   /* A dialog's card, and a confirm's rounder one (D46). */
-  --radius-sheet: 1rem;
+  --radius-sheet: 0.75rem;
   --radius-alert: 1.5rem;
   /* A user's message bubble; a thread card (approval); a shell box and a diff card. */
   --radius-bubble: 1.375rem;
@@ -537,8 +543,8 @@
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
-  /* The new design's menu shadow. */
-  --shadow-overlay: 0 10px 32px #00000080;
+  /* Menus' and popovers' edge and shadow: a hairline ring and a large shadow [D73]. */
+  --shadow-overlay: 0 0 0 0.5px var(--color-popover-edge), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   /* The right panel's soft edge over the chat [D41]. */
   --shadow-panel-edge: -8px 0 16px -8px rgb(0 0 0 / 18%);

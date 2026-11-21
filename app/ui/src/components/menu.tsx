@@ -7,13 +7,13 @@ import { spacingPx } from "./tooltip";
 
 /** A menu's surface; the context menu and the select share it. */
 export const menuSurface = cx(
-  "z-popup min-w-menu rounded-overlay bg-popover p-1 text-foreground shadow-overlay ring ring-popover-edge backdrop-blur-popover outline-none menu-motion",
+  "z-popup min-w-menu rounded-menu bg-menu p-1 text-foreground shadow-overlay backdrop-blur-popover outline-none menu-motion",
 );
 
-// A menu row (a two-line one grows: give it `py-2`); the context menu shares it. Padding is set per side
+// A menu row, 29 tall (a two-line MenuRow is 54); the context menu shares it. Padding is set per side
 // (cx doesn't merge): rows with a mark at the end keep room for it.
 export const itemBase = cx(
-  "relative flex min-h-control-sm cursor-pointer items-center gap-2 rounded-menu-item ps-2 text-sm outline-none select-none",
+  "relative flex min-h-menu-item cursor-pointer items-center gap-2 rounded-menu-item ps-2 text-label outline-none select-none",
   "highlighted:bg-fill data-disabled:cursor-not-allowed data-disabled:opacity-disabled",
   "svg:pointer-events-none svg:shrink-0 svg:size-icon-md svg-uncoloured:text-muted-foreground data-inset:ps-8",
 );
@@ -167,8 +167,8 @@ export function DropdownMenuLabel({
 }
 
 export function DropdownMenuSeparator({ className, ...props }: Omit<Menu.Separator.Props, "className"> & { className?: string }) {
-  // Only between two groups that have items (theme.css) [D876].
-  return <Menu.Separator data-slot="dropdown-menu-separator" className={cx("-mx-1 my-1 h-px bg-border", className)} {...props} />;
+  // Only between two groups that have items (theme.css) [D876]; inset [D73].
+  return <Menu.Separator data-slot="dropdown-menu-separator" className={cx("mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
 export function DropdownMenuShortcut({ className, ...props }: ComponentProps<"span">) {
@@ -241,7 +241,7 @@ export function MenuRow({
         </span>
       )}
       {twoLine ? (
-        <span className="flex min-w-0 flex-1 flex-col py-1">
+        <span className="flex min-w-0 flex-1 flex-col py-2.5">
           <span className="flex min-w-0 gap-2">
             <span className="truncate">{title}</span>
             {end}

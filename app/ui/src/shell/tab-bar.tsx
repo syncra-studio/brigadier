@@ -17,7 +17,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { baseName } from "../files/tree";
 import { dropDraft, newChat } from "../home/start";
 import { HOME_DRAFT } from "../session/draft";
-import { Plus, X } from "../icons";
+import { ArrowRight, Pin, Plus, Undo, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
@@ -120,14 +120,27 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, enter
       <ContextMenuContent>
         {tab.preview && (
           <>
-            <DropdownMenuItem onClick={() => keepTab(owner, tab.id)}>Keep open</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => keepTab(owner, tab.id)}>
+              <Pin />
+              Keep open
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         )}
         {tab.kind === "browser" && !owner.startsWith(HOME_DRAFT) && (
           <>
             {/* The session's own agent is Brigadier to the user, whichever CLI it runs [D778]. */}
-            {tab.driver ? <DropdownMenuItem onClick={() => takeBackTab(owner, tab.id)}>Take back</DropdownMenuItem> : <DropdownMenuItem onClick={() => giveTabToChat(owner, tab.id)}>Give to Brigadier</DropdownMenuItem>}
+            {tab.driver ? (
+              <DropdownMenuItem onClick={() => takeBackTab(owner, tab.id)}>
+                <Undo />
+                Take back
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => giveTabToChat(owner, tab.id)}>
+                <ArrowRight />
+                Give to Brigadier
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
           </>
         )}
@@ -407,8 +420,13 @@ export function TabBar({ owner, row, offline, home = false }: { owner: string; r
                           </ContextMenuTrigger>
                           {/* As Chrome's group menu: its tabs stay open as the user's, or all close [D901]. */}
                           <ContextMenuContent>
-                            <DropdownMenuItem onClick={() => ungroup(shown, driver)}>Ungroup</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => group.forEach((each) => closeHere(each.id))}>Close group</DropdownMenuItem>
+                            <DropdownMenuItem inset onClick={() => ungroup(shown, driver)}>
+                              Ungroup
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => group.forEach((each) => closeHere(each.id))}>
+                              <X />
+                              Close group
+                            </DropdownMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
                       )}

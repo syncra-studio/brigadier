@@ -76,7 +76,7 @@ export function TooltipContent({ className, side = "top", align, collisionAvoida
             // Never under the pointer: a tip sliding in over its own control would close it.
             "pointer-events-none popup-motion",
             "inline-flex w-fit max-w-80 items-center gap-1.5 rounded-tooltip border border-border bg-popover px-3 py-1.25",
-            "text-center text-sm tracking-tooltip text-foreground shadow-tooltip has-kbd:pe-1.5",
+            "text-center text-label tracking-tooltip text-foreground shadow-tooltip has-kbd:pe-1.5",
             className,
           )}
           {...props}

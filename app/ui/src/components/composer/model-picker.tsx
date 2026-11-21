@@ -479,7 +479,7 @@ export function ModelPicker({
             data-slot="model-popover"
             aria-label="Model"
             initialFocus={false}
-            className="w-model-picker max-w-available rounded-surface bg-popover p-1.25 text-foreground shadow-overlay ring ring-popover-edge backdrop-blur-popover outline-none menu-motion"
+            className="w-model-picker max-w-available rounded-surface bg-menu p-1.25 text-foreground shadow-overlay backdrop-blur-popover outline-none menu-motion"
           >
             <ModelShelf
               {...shelf}

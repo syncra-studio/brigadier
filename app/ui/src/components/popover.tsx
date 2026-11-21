@@ -43,7 +43,7 @@ export function PopoverContent({
         <BasePopover.Popup
           data-slot="popover-content"
           className={cx(
-            "rounded-overlay bg-popover text-foreground shadow-overlay ring ring-popover-edge backdrop-blur-popover outline-none menu-motion",
+            "rounded-surface bg-menu text-foreground shadow-overlay backdrop-blur-popover outline-none menu-motion",
             padded && "p-1",
             className,
           )}

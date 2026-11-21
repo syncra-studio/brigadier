@@ -8,7 +8,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { showToast } from "../components/toast";
 import { setHomeDraft } from "../home/start";
 import { store } from "../onboarding/api";
-import { Archive, Chat, House, SidebarError, X } from "../icons";
+import { Archive, Chat, House, Pencil, SidebarError, X } from "../icons";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { useMark } from "../session/turn";
 import { rename } from "../sidebar/actions";
@@ -68,14 +68,21 @@ export function leave(row: SessionRow | undefined): void {
 export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id: string; order: string[]; onClose: () => void }) {
   return (
     <>
-      <DropdownMenuItem onClick={onClose}>Close</DropdownMenuItem>
+      {/* The tab's menu: each Close an × [D73]. */}
+      <DropdownMenuItem onClick={onClose}>
+        <X />
+        Close
+      </DropdownMenuItem>
       <DropdownMenuItem disabled={order.length <= (id === CHAT ? 1 : 2)} onClick={() => closeOthers(owner, id)}>
+        <X />
         Close other tabs
       </DropdownMenuItem>
       <DropdownMenuItem disabled={order.indexOf(id) === order.length - 1} onClick={() => closeRight(owner, id)}>
+        <X />
         Close tabs to the right
       </DropdownMenuItem>
       <DropdownMenuItem disabled={order.length <= 1} onClick={() => closingAll.set(owner)}>
+        <X />
         Close all tabs
       </DropdownMenuItem>
     </>
@@ -119,6 +126,7 @@ export function ChatTab({ owner, row, active, separator, order, grouped = false,
       </ContextMenuTrigger>
       <ContextMenuContent>
         <DropdownMenuItem disabled={!startRename} onClick={startRename}>
+          <Pencil />
           Rename
         </DropdownMenuItem>
         <DropdownMenuSeparator />
