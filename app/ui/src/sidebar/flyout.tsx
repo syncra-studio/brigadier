@@ -107,11 +107,6 @@ export function SessionSquare({ row, project, tone, active, attention, onOpen }:
   );
 }
 
-/** The strip's squares while the sidebar is hidden, scrolling under a fade (the sidebar list's) above the foot [D55 D803]. */
-export function Squares({ children }: { children: ReactNode }) {
-  return <div className="strip-squares scroll-edge-fade edge-fade-sidebar hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto">{children}</div>;
-}
-
 /** The chats: this branch has no chats, so those are the sessions in no project, as View's filter counts them. */
 export function ChatsFlyout({ chats, ...rows }: Rows & { chats: SessionRow[] }) {
   return (

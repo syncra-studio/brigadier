@@ -1,62 +1,52 @@
-import { type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { newChat } from "../home/start";
-import { Folder, Plugin } from "../icons";
+import { MagnifyingGlassSearch, Plugin, PullRequestOpen } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openProject } from "../projects/page";
-import { useProjects } from "../projects/projects";
-import { openAddProject } from "../projects/store";
+import { openSearch } from "../palette/palette";
 import { openSettings } from "../settings/shell";
-import { Squares } from "./flyout";
+import { keysOf } from "../shortcuts";
 import { StripFoot } from "./foot";
 
-/** The project page last shown, for the strip's Projects [D75]. */
-const LAST_PROJECT = "strip.project";
-
 /**
- * The strip, the rail, always at the window's start [D11]: the logo (Home), Plugins and Projects, no rule between
- * [D12 D14 D16 D17]; while the sidebar is hidden, the squares and their lists (`children`) under them [D55 D58]; the foot
- * at its bottom [D56].
+ * The strip, the rail, always at the window's start [D11]: the logo (Home), Search (⌘K), Plugins and Pull Requests;
+ * while the sidebar is hidden, a rule, then the squares and their lists (`children`) [D189 D194 D55 D58]. That part scrolls
+ * under a fade once it reaches the foot, which a rule then sets apart [D191]; the foot at the bottom [D56].
  */
-export function Strip({ home, page, settings, front, children }: {
+export function Strip({ home, pulls, settings, children }: {
   /** Home shows. */
   home: boolean;
-  /** The project whose page shows. */
-  page?: string;
+  /** The pull requests show. */
+  pulls: boolean;
   /** The Settings page that shows. */
   settings?: string;
-  /** The open session's project. */
-  front?: string | null;
   children?: ReactNode;
 }) {
   const { open } = useSidebar();
-  const projects = useProjects();
-  useEffect(() => {
-    if (page) localStorage.setItem(LAST_PROJECT, page);
-  }, [page]);
-  // The open session's project's page, else the last one shown, else the first, else Add project [D75].
-  const openProjects = () => {
-    const known = (id: string | null | undefined) => (id && projects?.some((project) => project.id === id) ? id : null);
-    const id = known(front) ?? known(localStorage.getItem(LAST_PROJECT)) ?? projects?.toSorted((a, b) => a.name.localeCompare(b.name))[0]?.id;
-    if (id) openProject(id);
-    else openAddProject();
-  };
   return (
-    <nav aria-label="Strip" className="rail flex h-full shrink-0 flex-col items-center gap-2 pt-tab-bar pb-2">
-      <div className="flex flex-col items-center gap-2 pt-1.25">
+    <nav aria-label="Strip" className="rail strip-timeline flex h-full shrink-0 flex-col items-center pt-tab-bar pb-2">
+      <div className="strip-scroll scroll-edge-fade edge-fade-group hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pt-1.25">
         <TooltipIconButton look="rail" side="right" tooltip="Home" pressed={home} onClick={newChat}>
-          <BrigadierMark className="size-icon-lg" />
+          <BrigadierMark className="size-icon-mark text-foreground" />
+        </TooltipIconButton>
+        <TooltipIconButton look="rail" side="right" tooltip="Search" shortcut={keysOf("search")[0]} onClick={openSearch}>
+          <MagnifyingGlassSearch />
         </TooltipIconButton>
         <TooltipIconButton look="rail" side="right" tooltip="Plugins" pressed={settings === "plugins"} onClick={() => openSettings("plugins")}>
           <Plugin />
         </TooltipIconButton>
-        <TooltipIconButton look="rail" side="right" tooltip="Projects" pressed={page !== undefined} onClick={openProjects}>
-          <Folder />
+        <TooltipIconButton look="rail" side="right" tooltip="Pull Requests" pressed={pulls} onClick={() => (window.location.hash = "#pull-requests")}>
+          <PullRequestOpen />
         </TooltipIconButton>
+        {!open && children && (
+          <>
+            <span aria-hidden className="strip-rule" />
+            <div className="strip-squares flex flex-col items-center gap-2">{children}</div>
+          </>
+        )}
       </div>
-      {!open && children ? <Squares>{children}</Squares> : <div className="flex-1" />}
       <StripFoot settings={settings !== undefined && settings !== "plugins"} />
     </nav>
   );

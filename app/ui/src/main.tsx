@@ -145,9 +145,11 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   // One tab bar for every page but Settings and a project's, kept as the page changes so its tabs change smoothly: the
   // old ones shrink out, the new grow in [D836 D854 D179]. It shows a rename or an archive at once [D30].
   const titled = useShown(rows)?.find((each) => each.id === active);
-  const home = active === null && page === undefined && settings === undefined;
+  // The pull requests' page isn't built yet: its hash shows Home meanwhile, the strip lighting Pull Requests [D194].
+  const pulls = hash.startsWith("#pull-requests");
+  const home = active === null && page === undefined && settings === undefined && !pulls;
   const rail = (squares?: ReactNode) => (
-    <Strip home={home} page={page} settings={settings} front={rows?.find((row) => row.id === active)?.project}>
+    <Strip home={home} pulls={pulls} settings={settings}>
       {squares}
     </Strip>
   );

@@ -1468,6 +1468,32 @@
     pointer-events: none;
   }
 }
+/* The strip's rules: 24 wide, the border's hairline [D189 D191]. */
+@utility strip-rule {
+  flex-shrink: 0;
+  width: calc(var(--spacing) * 6);
+  height: 1px;
+  background: var(--color-border);
+}
+/* The strip's top scrolls once it reaches the foot; the foot's rule shows only then: its scroll timeline is active only
+   while it can scroll [D191]. */
+@utility strip-timeline {
+  timeline-scope: --strip;
+}
+@utility strip-scroll {
+  scroll-timeline: --strip y;
+}
+@utility strip-foot-rule {
+  opacity: 0;
+  animation: strip-touching linear both;
+  animation-timeline: --strip;
+}
+@keyframes strip-touching {
+  from,
+  to {
+    opacity: 1;
+  }
+}
 /* Files' width: where it was dragged (data-width on it) or the default, kept in its range and leaving the chat its least
    room beside the left sidebar, as the old workspace-pane-width. */
 @utility right-panel-width-source {

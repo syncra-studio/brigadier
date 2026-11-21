@@ -206,7 +206,7 @@ export function UpdatesRow() {
     <BarItem show={!empty || open} axis="y">
       <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<TooltipIconButton look="rail" side="right" dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          render={<TooltipIconButton look="foot" side="right" dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
           onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
