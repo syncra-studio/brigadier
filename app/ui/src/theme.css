@@ -1712,7 +1712,8 @@
 
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
-  /* With tabs, a 1px rule under the row across the main area; the chat alone has none, as its topbar [D201]. */
+  /* A 1px rule under the row across the main area, with tabs and with the chat alone, steady as one turns into
+     the other; none over New chat with no tabs [D201 D219]. */
   &::after {
     content: "";
     position: absolute;
@@ -1724,7 +1725,7 @@
     pointer-events: none;
     transition: opacity var(--duration-session-tab) var(--ease-session-tab);
   }
-  &[data-tabbed]::after {
+  &[data-ruled]::after {
     opacity: 1;
   }
   /* Until the tabs read on opening have drawn, they don't grow in [D423]. */

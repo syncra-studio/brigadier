@@ -321,7 +321,7 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
-      <header data-slot="session-tabs" data-settled={settled || undefined} data-tabbed={!bare || undefined} onPointerLeave={thaw} className={cx(BAR, "session-tab-bar")}>
+      <header data-slot="session-tabs" data-settled={settled || undefined} data-ruled={!bare || owner !== HOME || undefined} onPointerLeave={thaw} className={cx(BAR, "session-tab-bar")}>
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
