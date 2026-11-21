@@ -183,7 +183,7 @@ export function ShellBox({
     progress === "cancelled" ? "Stopped" : progress === "failed" && exitCode === null ? "Failed" : exitCode ? `Exit code ${exitCode}` : progress === "done" ? "Success" : null;
   return (
     <div className="group/shell relative mt-1 flex flex-col overflow-hidden rounded-shell border border-fill-active bg-fill *:shrink-0">
-      <p className="px-3 py-1 text-label text-shell-foreground">Shell</p>
+      <p className="px-2 py-1 text-label text-shell-foreground">Shell</p>
       <CopyButton
         text={command}
         tooltip="Copy command"
@@ -194,7 +194,7 @@ export function ShellBox({
         type="button"
         disabled={whole}
         onClick={() => setWhole(true)}
-        className={cx("px-3 pt-2 text-start font-mono text-code whitespace-pre-wrap wrap-anywhere select-text text-foreground", !whole && "line-clamp-2 cursor-pointer")}
+        className={cx("px-2 pt-2 text-start font-mono text-code whitespace-pre-wrap wrap-anywhere select-text text-foreground", !whole && "line-clamp-2 cursor-pointer")}
       >
         <span className="text-muted-foreground">$ </span>
         {command}
@@ -218,7 +218,7 @@ function Output({ keep, text }: { keep: string; text: string }) {
   const lines = useMemo(() => text.split("\n"), [text]);
   const cut = !all && lines.length > TAIL_LINES;
   return (
-    <div className="flex max-h-shell-output scroll-edge-fade edge-fade-shell flex-col-reverse overflow-y-auto px-3 py-2">
+    <div className="flex max-h-shell-output scroll-edge-fade edge-fade-shell flex-col-reverse overflow-y-auto px-2 py-2">
       <pre className="font-mono text-code font-medium whitespace-pre-wrap wrap-anywhere text-shell-foreground">
         {text ? (cut ? lines.slice(-TAIL_LINES).join("\n") : text) : <span className="text-muted-foreground">No output</span>}
       </pre>
