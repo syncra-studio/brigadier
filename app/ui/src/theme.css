@@ -1406,6 +1406,13 @@
   }
 }
 
+/* The sidebar's fill over the window's, eased as one with it: a background-image can't ease, and dropped at once on
+   hiding it bared the lighter window fill under the closing sidebar for the fold, a flash [D193]. */
+@property --sidebar-layer {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
 /* The sidebar's width, where it was dragged (data-width) or the default, in its range [D21], narrower only where the
    content beside it would get less than its least room. Shown, the window behind the strip and it is the sidebar's
    fill; hidden, the strip blends into the main area [D20 D69]. */
@@ -1416,7 +1423,10 @@
     max(var(--spacing-left-sidebar-min), min(var(--spacing-left-sidebar-max), 100vw - var(--spacing-rail) - var(--spacing-sidebar-thread-min)))
   );
   background-color: var(--color-background);
-  transition: background-color var(--duration-fold) var(--ease-sidebar);
+  background-image: linear-gradient(var(--sidebar-layer), var(--sidebar-layer));
+  transition-property: background-color, --sidebar-layer;
+  transition-duration: var(--duration-fold);
+  transition-timing-function: var(--ease-sidebar);
   /* How wide the strip and sidebar show beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
   /* The titlebar's toggle, Back, Forward and New chat (2px apart), and 8px past them (titlebar-clear) [D35 D934]. */
@@ -1424,7 +1434,7 @@
   &[data-state="expanded"] {
     --sidebar-shown: calc(var(--spacing-rail) + var(--sidebar-open-width));
     background-color: var(--color-window-fill);
-    background-image: linear-gradient(var(--color-sidebar), var(--color-sidebar));
+    --sidebar-layer: var(--color-sidebar);
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
