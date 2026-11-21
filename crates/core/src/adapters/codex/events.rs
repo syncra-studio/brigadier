@@ -1,6 +1,8 @@
 //! What Codex prints, as events: app-server lines and `exec --json` output [D48, D65].
 
-use super::super::{Done, Event, Tool, change, classify, counts, s, shell_step, temporary};
+use super::super::{
+    Done, Event, Tool, change, classify, counts, s, shell_step, temporary, unwrap_shell,
+};
 use serde_json::Value;
 
 mod app_server;
@@ -69,6 +71,10 @@ pub fn parse(line: &str) -> Vec<Event> {
 /// An exec item as a step, by its type [D48, D65].
 fn tool(item: &Value) -> Tool {
     let kind = s(item, &["type"]);
+    let command = match kind {
+        "command_execution" => unwrap_shell(s(item, &["command"])),
+        _ => String::new(),
+    };
     let (name, step, input) = match kind {
         "command_execution" => {
             let (step, what) = shell_step(s(item, &["command"]));
@@ -92,6 +98,7 @@ fn tool(item: &Value) -> Tool {
         input,
         changes: changes(item),
         server: item["server"].as_str().map(String::from),
+        command,
         ..Default::default()
     }
 }

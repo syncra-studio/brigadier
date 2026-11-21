@@ -8,7 +8,6 @@ import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
 import { tidy } from "../../thread/tidy";
-import { duration } from "../../thread/words";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
@@ -101,7 +100,7 @@ const FAILED = {
 };
 
 /**
- * One item's row, by its kind. `step` marks one of an opened group's steps, which says how long it took.
+ * One item's row, by its kind. `step` marks one of an opened group's steps, a command saying its line alone [D95].
  * `turn` says whether a question still waits (its turn runs). `dated`: a user's message with its date above. `again`:
  * a failed turn's actions, the app's (Retry and what its reason offers), or a line's (Continue).
  */
@@ -142,7 +141,6 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       // A thought is a line of the work; while it streams, the live line [D752].
       return item.streaming ? <ThinkingLine heading={item.heading} /> : <ThoughtRow item={item} />;
     case "tool": {
-      const ms = item.startedAt !== undefined && item.endedAt != null ? item.endedAt - item.startedAt : null;
       return (
         <ToolRow
           keep={item.id}
@@ -152,7 +150,8 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           output={item.output}
           progress={item.progress}
           exitCode={item.exitCode}
-          took={step && ms !== null && ms >= 1000 ? `in ${duration(ms)}` : undefined}
+          line={item.command}
+          bare={step}
           server={item.server}
           approval={item.approval}
           steps={item.log?.length ? <SkillSteps id={item.id} log={item.log} counts={item.logSteps ?? []} turn={turn} /> : undefined}

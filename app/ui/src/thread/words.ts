@@ -12,116 +12,42 @@ export function connectorName(server: string): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "an integration";
 }
 
-const IRREGULAR: Record<string, string> = {
-  begin: "began", bring: "brought", build: "built", buy: "bought", catch: "caught", choose: "chose", commit: "committed",
-  cut: "cut", do: "did", draw: "drew", feed: "fed", find: "found", get: "got", give: "gave", go: "went", hit: "hit",
-  hold: "held", keep: "kept", leave: "left", let: "let", lose: "lost", make: "made", meet: "met", pay: "paid", put: "put",
-  quit: "quit", read: "read", rebuild: "rebuilt", redo: "redid", reread: "reread", rerun: "reran", reset: "reset",
-  rewrite: "rewrote", run: "ran", say: "said", see: "saw", sell: "sold", send: "sent", set: "set", shut: "shut",
-  sleep: "slept", spend: "spent", split: "split", submit: "submitted", take: "took", tell: "told", think: "thought",
-  throw: "threw", understand: "understood", undo: "undid", wake: "woke", write: "wrote",
-};
-const PAST = new Set(Object.values(IRREGULAR));
-
-/** A verb in the past: "List" is "Listed", "Stop" "Stopped", "Copy" "Copied", "Read" "Read". Already past, as it is. */
-export function past(verb: string): string {
-  // A joined verb by its last part: "Re-verify" is "Re-verified", "Squash-merge" "Squash-merged".
-  const dash = verb.lastIndexOf("-");
-  if (dash > 0 && /^[a-z]+(-[a-z]+)+$/i.test(verb)) return verb.slice(0, dash + 1) + past(verb.slice(dash + 1));
-  const word = verb.toLowerCase();
-  let done: string;
-  if (IRREGULAR[word]) done = IRREGULAR[word];
-  else if (word.endsWith("ed") || PAST.has(word) || !/^[a-z]+$/.test(word)) return verb;
-  else if (word.endsWith("e")) done = `${word}d`;
-  else if (/[^aeiou]y$/.test(word)) done = `${word.slice(0, -1)}ied`;
-  // One short syllable ending vowel-consonant doubles it: "stop", "grep", "plan".
-  else if (/^[^aeiou]{0,3}[aeiou][bdgklmnprt]$/.test(word)) done = `${word}${word.at(-1)}ed`;
-  else done = `${word}ed`;
-  return verb[0] === verb[0]!.toUpperCase() ? done.charAt(0).toUpperCase() + done.slice(1) : done;
-}
-
-/** What the agent said it does, as done and short: "List Brigadier sessions to find who holds the computer" is "Listed Brigadier sessions". */
-export function said(text: string): string {
-  const words = text.trim().replace(/\s+/g, " ").replace(/[.:]$/, "").split(" ");
-  // Its why and what came next go ("to find …", "as requested", "and print …"), when what is left still says what.
-  const cut = words.findIndex(
-    (word, at) =>
-      at >= 2 &&
-      (/^(to|so|as|because|then)$/i.test(word) ||
-        (word === "and" && !/^((the|its|their|a|an|all|each|every|any|some)\b|[\d"'`])/i.test(words[at + 1] ?? "")) ||
-        // A new clause after a comma: "List apps, reopen TextEdit" is "Listed apps".
-        (words[at - 1]!.endsWith(",") && /^[a-z]+,?$/.test(word) && !/^(the|its|their|a|an|all|each|every|any|some|and|or)$/.test(word))),
-  );
-  const kept = (cut > 0 ? words.slice(0, cut) : words).join(" ").replace(/[,;]$/, "").split(" ");
-  // Its verbs: the first, and each after a leading list of them ("Clear, click 128 × 37" is "Cleared, clicked 128 × 37").
-  for (let at = 0; at < kept.length; at++) {
-    const comma = kept[at]!.endsWith(",");
-    kept[at] = comma ? `${past(kept[at]!.slice(0, -1))},` : past(kept[at]!);
-    if (!comma) break;
-  }
-  return kept.join(" ");
-}
-
-const base = (path: string) => path.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || path;
-/** A command as the program it ran, and its subcommand when it has one: "brigadier computer", "git status", "curl". */
-const program = (command: string): string => {
-  const [first = "", second = ""] = command.trim().split(/\s+/);
-  if (first === "cd" && command.includes("&&")) return program(command.slice(command.indexOf("&&") + 2));
-  if (/^(for|while|until|if|case)$/.test(first)) return "a shell script";
-  return /^[a-z][a-z-]*$/.test(second) ? `${base(first)} ${second}` : base(first);
-};
-
-/** One step as what it did: [the verb it is said with, what it acted on]; a verb alone is a whole clause. */
-function done(item: Item): [string, string?] | null {
-  if (item.kind === "fileChange") return ["Edited", item.changes.map((change) => base(change.path)).join("\u0000")];
-  if (item.kind === "childAgent") return [said(item.title || "Run a subagent")];
-  if (item.kind !== "tool") return null;
-  if (item.description) return [said(item.description)];
-  const input = item.input.trim().split("\n")[0]!.trim();
-  switch (item.step ?? "other") {
-    case "run":
-      return ["Ran", program(input) || item.name];
-    case "read":
-      return ["Read", base(input || item.name)];
-    case "edit":
-      return ["Edited", base(input || item.name)];
-    case "list":
-      return [`Listed files in ${base(input) || "the project"}`];
-    case "search":
-      return ["Searched code"];
-    case "web":
-      return ["Searched the web"];
-    case "agent":
-      return [said(input || "Run a subagent")];
-    case "skill":
-      return ["Used", item.name || "a skill"];
-    default:
-      return ["Used", item.server ? connectorName(item.server) : item.name];
-  }
-}
-
-/** "A", "A and B", "A, B and C": what one clause acted on, as in "Used Slack and GitHub". */
-const joined = (parts: readonly string[]) => (parts.length < 3 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`);
-
 /**
- * A group's one line, the gallery's, saying what its steps did from their own words, never a count [D697, D755, D758]:
- * "Ran brigadier computer, listed Brigadier sessions, searched the web", its clauses joined by commas alone
- * [D762]. Steps said with the same verb share a clause ("Read lines.ts and words.ts"); every step is said, a long line
- * ending in its row's ellipsis.
- * Thoughts say nothing; a group of only thoughts is "Thought".
+ * A group's one line, short words for what kinds of steps it holds, in order [D116]: "Read files, ran
+ * commands", "Edited a file, searched, listed files". Rust tells each step's kind, shell commands by what they do, so
+ * only true commands say "ran". Thoughts say nothing; a group of only thoughts is "Thought".
  */
 export function groupWords(steps: readonly Item[]): string {
-  const clauses = new Map<string, string[]>();
+  const used: string[] = [];
+  const files = new Set<string>();
+  const n: Partial<Record<StepKind, number>> = {};
   for (const step of steps) {
-    const [verb, object] = done(step) ?? [];
-    if (!verb) continue;
-    const objects = clauses.get(verb) ?? [];
-    for (const each of object?.split("\u0000") ?? []) if (each && !objects.includes(each)) objects.push(each);
-    clauses.set(verb, objects);
+    const kind = step.kind === "fileChange" ? "edit" : step.kind === "childAgent" ? "agent" : step.kind === "tool" ? (step.step ?? "other") : null;
+    if (!kind) continue;
+    // An MCP server's or a skill's calls say its name: "Used Linear", "Used code-review".
+    const name = step.kind !== "tool" ? null : kind === "skill" ? step.name || "a skill" : kind === "other" && step.server ? connectorName(step.server) : null;
+    if (name) {
+      if (!used.includes(name)) used.push(name);
+      continue;
+    }
+    n[kind] = (n[kind] ?? 0) + 1;
+    if (step.kind === "fileChange") for (const change of step.changes) files.add(change.path);
+    else if (kind === "edit" && step.kind === "tool") files.add(step.input);
   }
-  if (!clauses.size) return "Thought";
-  const parts = [...clauses].map(([verb, objects]) => (objects.length ? `${verb} ${joined(objects)}` : verb));
-  return parts.map((part, at) => (at === 0 ? part : part.charAt(0).toLowerCase() + part.slice(1))).join(", ");
+  const one = (count: number | undefined, a: string, many: string) => (count === 1 ? a : many);
+  const parts = [
+    used.length && `used ${used.length < 3 ? used.join(" and ") : `${used.slice(0, -1).join(", ")} and ${used.at(-1)}`}`,
+    n.edit && `edited ${one(files.size || n.edit, "a file", "files")}`,
+    n.read && "read files",
+    n.search && "searched",
+    n.list && "listed files",
+    n.run && `ran ${one(n.run, "a command", "commands")}`,
+    n.web && "searched the web",
+    n.agent && `ran ${one(n.agent, "a subagent", "subagents")}`,
+    n.other && `called ${one(n.other, "a tool", "tools")}`,
+  ].filter(Boolean);
+  const line = parts.join(", ") || "thought";
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 const ENDED: Record<Turn["status"], string> = {

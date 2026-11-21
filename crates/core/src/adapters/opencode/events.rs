@@ -1,7 +1,9 @@
 //! OpenCode's lines as events: its server's events through the helper [D159], and the shapes its
 //! `run` gives a turn.
 
-use super::super::{Done, Event, Tool, change, classify, counts, question, s, shell_step, under};
+use super::super::{
+    Done, Event, Tool, change, classify, counts, question, s, shell_step, under, unwrap_shell,
+};
 use serde_json::{Value, json};
 
 /// An error of its API as an event, by the whole error, telling the user its message, not its JSON.
@@ -361,7 +363,7 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
                 change(path.unwrap_or(""), how, diff, Some(added), Some(removed))
             })
             .collect(),
-        None if step == "edit" => {
+        None if step == "edit" && !matches!(name, "bash" | "shell") => {
             let how = match meta["exists"].as_bool() {
                 Some(false) => "added",
                 _ => "modified",
@@ -383,6 +385,10 @@ pub fn tool_use(part: &Value) -> Vec<Event> {
         at: state["time"]["start"].as_u64(),
         description: field(&["description"]),
         server: library.map(|(server, _)| crate::library::named(server)),
+        command: match name {
+            "bash" | "shell" => unwrap_shell(&field(&["command"])),
+            _ => String::new(),
+        },
         ..Default::default()
     })];
     if finished {

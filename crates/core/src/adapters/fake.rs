@@ -202,13 +202,10 @@ impl Adapter for Fake {
             "tool" if v["command"].is_string() => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),
                 name: s(&v, &["name"]).into(),
-                // A `brigadier start` and the like are no row, as a real CLI's [D3044].
-                step: if shell_step(s(&v, &["command"])).0.is_empty() {
-                    ""
-                } else {
-                    "run"
-                },
-                input: s(&v, &["command"]).into(),
+                // Read by what it does, as a real CLI's command [D116]; a `brigadier start` and the like are no row [D3044].
+                step: shell_step(s(&v, &["command"])).0,
+                input: shell_step(s(&v, &["command"])).1,
+                command: s(&v, &["command"]).into(),
                 parent: v["parent"].as_str().map(String::from),
                 ..Default::default()
             })],

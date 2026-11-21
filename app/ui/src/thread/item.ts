@@ -176,6 +176,8 @@ export type Item = Base &
         logSteps?: Extract<Item, { kind: "group" }>["steps"];
         /** What the agent said it does, when it said; empty otherwise [D214]. */
         description?: string;
+        /** A shell command's line, whatever its step says it does [D116]. */
+        command?: string | null;
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" | "brigadier" | "review"; by?: "parent" | "review" }

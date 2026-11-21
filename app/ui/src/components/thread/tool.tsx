@@ -77,7 +77,8 @@ export function ToolRow({
   output,
   progress,
   exitCode,
-  took,
+  line,
+  bare = false,
   server,
   approval,
   steps,
@@ -90,8 +91,10 @@ export function ToolRow({
   output: string;
   progress: Progress;
   exitCode: number | null;
-  /** How long it took, once done ("in 41s"), or how long it has run. */
-  took?: string;
+  /** A shell command's line: it opens to its Shell box, whatever its step [D116]. */
+  line?: string | null;
+  /** One of an opened group's steps: a command as its line alone, no verb, no time [D95]. */
+  bare?: boolean;
   /** An MCP tool's server: "Atlassian: search jira issues" running, "Used Atlassian" done [D176]. */
   server?: string | null;
   approval?: PendingApproval;
@@ -100,7 +103,7 @@ export function ToolRow({
   /** What the agent said a command does: its row reads by it, its command shows opened [D214]. */
   description?: string;
 }) {
-  const command = kind === "run";
+  const command = kind === "run" || Boolean(line);
   const skill = kind === "skill";
   const object = toolObject(kind, name, input, server);
   const said = command && description ? description : null;
@@ -115,14 +118,15 @@ export function ToolRow({
       <Words verb={`Waiting to ${waiting}${colon}`} object={shown} />
     ) : progress === "cancelled" ? (
       <Words verb={`Stopped${colon}`} object={command ? shown : `${doing.toLowerCase()} ${object}`} />
+    ) : bare && command ? (
+      <Words verb={line || object} live={progress === "running"} />
     ) : (
       <Words verb={`${running ? doing : done}${colon}`} object={progress === "failed" && !command ? `${object} — failed` : shown} live={progress === "running"} />
     );
   const head = (
     <>
-      <StepIcon kind={kind} icon={progress === "cancelled" ? Stop : server ? Mcp : undefined} />
+      <StepIcon kind={bare && command ? "run" : kind} icon={progress === "cancelled" ? Stop : server ? Mcp : undefined} />
       {words}
-      {took && <span className="shrink-0 tabular-nums">{took}</span>}
     </>
   );
   // A running step opens only when it's a command: its output shows as it comes. A running skill's steps show under it.
@@ -148,7 +152,7 @@ export function ToolRow({
               {output && <ToolBox title="Output">{output}</ToolBox>}
             </>
           ) : command ? (
-            <ShellBox keep={keep} command={object} output={output} progress={progress} exitCode={exitCode} />
+            <ShellBox keep={keep} command={line || object} output={output} progress={progress} exitCode={exitCode} />
           ) : (
             <ToolDetail name={server ? `${object}: ${actionWords(name)}` : name} what={server ? actionWords(name) : "Input"} input={input} output={output} failed={progress === "failed"} />
           )}

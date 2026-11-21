@@ -228,9 +228,11 @@ impl Norm {
                         && let Some((server, tool, args)) = adapters::relay_call(&t.input)
                     {
                         (t.step, t.name, t.server, t.input) = ("other", tool, Some(server), args);
+                        t.command.clear();
                     }
                     json!({"kind": "tool", "id": t.id, "name": t.name,
-                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server.as_deref().map(crate::library::plain), "description": t.description})
+                    "step": t.step, "input": t.input, "parent": t.parent, "changes": t.changes, "at": t.at, "server": t.server.as_deref().map(crate::library::plain), "description": t.description,
+                    "command": (!t.command.is_empty()).then_some(t.command)})
                 }
                 Event::Background(task, label) => {
                     json!({"kind": "background", "task": task, "label": label})

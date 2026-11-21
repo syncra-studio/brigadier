@@ -1,6 +1,6 @@
 //! Claude's tool calls as steps: a `tool_use` block as it starts, its `tool_result` as it ends.
 
-use super::super::{Done, Event, Tool, change, counts, s, shell_step};
+use super::super::{Done, Event, Tool, change, counts, s, shell_step, unwrap_shell};
 use serde_json::{Value, json};
 
 /// Tokens a request read: what's in the window as it was sent.
@@ -82,8 +82,12 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
     };
     // Every edit names its file from the start, so a running or failed one still shows. Whether a
     // write created its file only its result says; until then it reads as modified.
+    let command = match name {
+        "Bash" => unwrap_shell(&field("command")),
+        _ => String::new(),
+    };
     let changes = match step {
-        "edit" => vec![change(&what, "modified", None, None, None)],
+        "edit" if command.is_empty() => vec![change(&what, "modified", None, None, None)],
         _ => vec![],
     };
     // An MCP tool by its server and own name: `mcp__atlassian__getJiraIssue`, a claude.ai connector's `mcp__claude_ai_Gmail__…`.
@@ -102,6 +106,7 @@ pub fn tool_start(b: &Value, parent: Option<String>) -> Vec<Event> {
         at: None,
         server: mcp.map(|(server, _)| server.trim_start_matches("claude_ai_").into()),
         description: field("description"),
+        command,
     })]
 }
 

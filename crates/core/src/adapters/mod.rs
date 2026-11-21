@@ -65,15 +65,13 @@ pub enum Event {
     /// command, cwd, paths, files, branch, host, input, body, to, grant}`; structure only [D65].
     /// Optional `tool`: the normalised tool id whose work awaits this approval.
     Approval(Value),
-    /// The folder a tool call runs in, by the call's id, where its CLI says it only beside its ask:
-    /// the ask carries it [D391].
+    /// A tool call's folder, by its id, where its CLI says it only beside its ask, which carries it [D391].
     Cwd(String, String),
     /// The CLI cancelled or cleared a pending request by its id: its card closes [D159].
     Resolved(String),
     /// Another client, or the CLI's own rule, answered a pending request by its id: allowed or not.
     Decided(String, bool),
-    /// A file the CLI wrote outside the session folder for this session alone, by exact path:
-    /// recorded so delete removes it [D35].
+    /// A file the CLI wrote outside the session folder for this session alone, removed on delete [D35].
     External(String),
     /// The CLI's reply to a request Brigadier sent it, by that request's id: an error, or the
     /// permission level it now runs at when the reply says one.
@@ -147,6 +145,8 @@ pub struct Tool {
     pub server: Option<String>,
     /// What the agent said a command does, its row's words when given [D214].
     pub description: String,
+    /// A shell command's line as it reads, whatever its step: opened steps show it [D95, D116].
+    pub command: String,
 }
 
 /// A tool call as it ends; `cut`: a command sent to the background or interrupted [D74].

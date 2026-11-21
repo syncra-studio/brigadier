@@ -93,13 +93,14 @@ impl Thread {
                         json!({"kind": "childAgent", "sessionId": item["id"], "title": item["input"],
                         "progress": "running", "startedAt": at, "endedAt": null, "answer": null})
                     }
-                    "edit" => {
+                    // A shell command that writes a file stays its command, opening to its output [D116].
+                    "edit" if item["command"].is_null() => {
                         json!({"kind": "fileChange", "changes": item["changes"], "progress": "running"})
                     }
                     _ => {
                         json!({"kind": "tool", "name": item["name"], "input": item["input"], "output": "",
                         "progress": "running", "exitCode": null, "step": step, "startedAt": at, "endedAt": null,
-                        "server": item["server"], "description": item["description"]})
+                        "server": item["server"], "description": item["description"], "command": item["command"]})
                     }
                 };
                 let row = self.asked_first(&turn, &str_of("id"), row);
