@@ -53,6 +53,8 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   // On its base (or no branch), the PR needs a new branch.
   const needsBranch = !branch || branch === base;
   const head = name.trim() || (needsBranch ? "New branch" : branch);
+  // Never committed or pushed onto the base itself.
+  const blocked = Boolean(busy) || (needsBranch && (!name.trim() || name.trim() === base));
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && (onOpenChange(next), setExists(null))}>
       <DialogContent>
@@ -82,10 +84,10 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
             </p>
             <ErrorLine error={error} />
             <DialogFooter>
-              <Button variant="outline" disabled={Boolean(busy)} onClick={() => create(!startDraft)}>
+              <Button variant="outline" disabled={blocked} onClick={() => create(!startDraft)}>
                 {busy === (startDraft ? "ready" : "draft") ? "Creating…" : startDraft ? "Create PR" : "Create draft PR"}
               </Button>
-              <Button disabled={Boolean(busy)} onClick={() => create(startDraft)}>
+              <Button disabled={blocked} onClick={() => create(startDraft)}>
                 {busy === (startDraft ? "draft" : "ready") ? "Creating…" : startDraft ? "Create draft PR" : "Create PR"}
               </Button>
             </DialogFooter>

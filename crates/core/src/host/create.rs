@@ -33,18 +33,23 @@ impl Pr {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be made here.");
         };
+        let on = c.branch.unwrap_or(&self.branch);
+        let head = c.head.unwrap_or(on);
+        let base = c.base.map(String::from).unwrap_or_else(|| self.landing());
+        // Never a commit or a push onto the base itself: the PR needs a branch of its own first.
+        if head.is_empty() || head == base {
+            return err("Name a new branch for this pull request.");
+        }
         let stop = AtomicBool::new(false);
         if let Some(name) = c.branch
             && name != self.branch
         {
             branch::create(&self.checkout, name, None, &stop)?;
         }
-        let on = c.branch.unwrap_or(&self.branch);
         let committed = match c.commit {
             Some(message) => branch::commit_all(&self.checkout, message, &stop)?,
             None => false,
         };
-        let head = c.head.unwrap_or(on);
         let pushed = match head == on {
             true => {
                 let remote = crate::git::push::remote(&self.checkout, on)?;
@@ -52,7 +57,6 @@ impl Pr {
             }
             false => false,
         };
-        let base = c.base.map(String::from).unwrap_or_else(|| self.landing());
         let gh = gh(repo, self.account.as_deref()).ok_or_else(|| io::Error::other(super::NO_GH))?;
         let at = format!("{}/{}", repo.host, repo.path);
         let mut command = gh.command();
