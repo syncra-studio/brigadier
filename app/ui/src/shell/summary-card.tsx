@@ -153,8 +153,9 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
         onOpenChange={(next, details) => !next && !(details.event?.target instanceof Element && details.event.target.closest("[data-summary-toggle]")) && onClose()}
       >
         <Popover.Portal>
-          {/* Over the thread, under the toasts and its own menus (z-popup), which come before it in the page. */}
-          <Popover.Positioner className="z-20" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
+          {/* Over the thread, under the toasts and its own menus (z-popup), which come before it in the page. Never flipped
+              to the pane's start: it hangs from the pane's end, shifted in only where the pane is narrower than it. */}
+          <Popover.Positioner className="z-20" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0} collisionAvoidance={{ side: "none", align: "shift" }}>
             <Popover.Popup
               ref={popup}
               // The card itself takes the focus, not its first button, whose tip would open with it; a dialog the card
