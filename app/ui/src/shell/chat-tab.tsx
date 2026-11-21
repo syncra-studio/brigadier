@@ -4,11 +4,12 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../componen
 import { cx } from "../components/cx";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { Kbd } from "../components/kbd";
+import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { showToast } from "../components/toast";
 import { newChatIn, setHomeDraft } from "../home/start";
 import { store } from "../onboarding/api";
-import { Archive, ChatCompose, DotsHorizontal, Pencil, SidebarError, X } from "../icons";
+import { Archive, Chat, ChatCompose, DotsHorizontal, Pencil, SidebarError, X } from "../icons";
 import { useProjects } from "../projects/projects";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { useMark } from "../session/turn";
@@ -88,11 +89,11 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
   );
 }
 
-/** The chat's project icon, its sidebar row's badge [D36]. */
+/** The chat's project icon, its sidebar row's badge [D36]; a Chat bubble with no project [D214]. */
 function ProjectIcon({ project }: { project: string | null | undefined }) {
   const projects = useProjects() ?? [];
   const tone = projects.findIndex((each) => each.id === project);
-  return tone >= 0 ? <ProjectBadge id={project!} name={projects[tone]!.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />;
+  return tone >= 0 ? <ProjectBadge id={project!} name={projects[tone]!.name} tone={tone} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
 }
 
 /** A chat or session's first tab, never moved: its title and its state, and its "…" with the row's actions. It has no
@@ -131,46 +132,31 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div data-tab-id={CHAT} data-plain={plain || undefined} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} className={cx(TAB, LOOK(active))} />}>
-        {plain && !archived ? (
-          // The plain title is one button with its icon and "…": a click anywhere on it opens Chat actions [D211].
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active}
+          tabIndex={active ? 0 : -1}
+          title={label}
+          onMouseDown={noAutoscroll}
+          onMouseUp={middleLeaves}
+          onClick={() => selectTab(owner, CHAT)}
+          onDoubleClick={startRename}
+          className={BUTTON}
+        >
+          {icon}
+          <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>
+          {working && !keycap && <RowMark mark="working" label={words ?? ""} />}
+          <Keycap keycap={keycap} />
+        </button>
+        {/* Never at the row's end [D200]: its own toggle right after the plain title [D222], or in the tab where another's × is. */}
+        {!archived && !keycap && (
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={<button type="button" title={label} onMouseDown={noAutoscroll} onMouseUp={middleLeaves} className={BUTTON} />}>
-              {icon}
-              <span className={TITLE}>{title}</span>
-              {working && <RowMark mark="working" label={words ?? ""} />}
-              <DotsHorizontal className="size-icon-md shrink-0" />
+            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip="Chat actions" className="shrink-0" /> : <button type="button" aria-label="Chat actions" className={CLOSE} />}>
+              <DotsHorizontal className={plain ? undefined : "size-icon-sm"} />
             </DropdownMenuTrigger>
             {actions}
           </DropdownMenu>
-        ) : (
-          <>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={active}
-              tabIndex={active ? 0 : -1}
-              title={label}
-              onMouseDown={noAutoscroll}
-              onMouseUp={middleLeaves}
-              onClick={() => selectTab(owner, CHAT)}
-              onDoubleClick={startRename}
-              className={BUTTON}
-            >
-              {icon}
-              <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>
-              {working && !keycap && <RowMark mark="working" label={words ?? ""} />}
-              <Keycap keycap={keycap} />
-            </button>
-            {/* In the tab where another's × is, never at the row's end [D200]. */}
-            {!archived && !keycap && (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger render={<button type="button" aria-label="Chat actions" className={CLOSE} />}>
-                  <DotsHorizontal className="size-icon-sm" />
-                </DropdownMenuTrigger>
-                {actions}
-              </DropdownMenu>
-            )}
-          </>
         )}
       </ContextMenuTrigger>
       <ContextMenuContent>
