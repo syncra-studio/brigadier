@@ -159,7 +159,7 @@ export function SidebarPanel({
 }: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
   const { open, hidden, drawn, slide } = useSidebar();
   return (
-    <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
+    <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0 pt-tab-bar">
       <div
         inert={hidden}
         className={cx("sidebar-motion sidebar-clip h-full", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}

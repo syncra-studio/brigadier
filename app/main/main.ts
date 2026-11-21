@@ -31,7 +31,7 @@ const [daemonPath, daemonArgs] = app.isPackaged
 
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
-// The window's own fill, the frame's grey round the page's dark panel [D830].
+// The window's own fill where it has no vibrancy, the sidebar's [D830].
 const themeFrame = /--color-card:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
 // Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
@@ -42,6 +42,10 @@ const TAB_BAR = Number(/--spacing-tab-bar:\s*([\d.]+)rem;/.exec(theme)![1]) * 16
 const LIGHTS_Y = TAB_BAR / 2 - 7;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
+// A Mac's window is clear over macOS's sidebar vibrancy, which the page's strip and sidebar let through [D76].
+const vibrant = process.platform === "darwin" && platform === "darwin";
+// Clear as the intro's.
+const windowFill = vibrant ? introColours.clear : themeFrame;
 // The menu's keys, from the one list of shortcuts the page shows and matches too (app/ui/src/shortcuts.ts) [D2013].
 const shortcuts: { id: string; keys: string[] }[] = JSON.parse(readFileSync(path.join(uiDir, "src/shortcuts.json"), "utf8"));
 const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!.keys[0];
@@ -184,7 +188,8 @@ function openWindow(): void {
     minWidth: 900,
     minHeight: 560,
     title: APP_NAME,
-    backgroundColor: hold ? introColours.clear : themeFrame,
+    backgroundColor: hold ? introColours.clear : windowFill,
+    ...(vibrant ? { vibrancy: "menu" as const } : {}),
     ...(hold ? { transparent: true, show: false } : {}),
     titleBarStyle: "hidden",
     // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar). The
@@ -257,7 +262,7 @@ function openWindow(): void {
   });
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
-  if (hold) holdForIntro(window, themeBackground, introColours);
+  if (hold) holdForIntro(window, vibrant ? windowFill : themeBackground, introColours);
   // The Windows stand-in on a Mac has no traffic lights; the page draws its caption buttons.
   if (process.platform === "darwin" && platform !== "darwin") window.setWindowButtonVisibility(false);
   keepOnClose(window);

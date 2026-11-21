@@ -4,7 +4,8 @@ import { guestPage } from "../browser/layer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { newChat } from "../home/start";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
 import { settingsOrigin, settingsPageOf } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
@@ -51,13 +52,13 @@ function scrollsSideways(from: EventTarget | null, dx: number): boolean {
   return false;
 }
 
-/** The traffic lights' x on the tab bar's row, the same in every sidebar mode [D48]. The real lights are 60px wide, not the board's 52. */
-const LIGHTS_X = 13;
+/** The traffic lights' x on the titlebar row, the same in every sidebar mode [D34 D48]. */
+const LIGHTS_X = 16;
 
 /**
- * Back and Forward by their buttons, keys, mouse buttons and menu items, the same pair in the app and Settings, each walking
- * its own history, then a rule and the sidebar toggle, after the traffic lights in every sidebar mode (titlebar-nav)
- * [D926 D933 D934]. The toggle steps open, strip, hidden, and open again [D654 D800].
+ * The sidebar toggle after the traffic lights, then Back and Forward by their buttons, keys, mouse buttons and menu items,
+ * the same pair in the app and Settings, each walking its own history: at the shown sidebar's end, or after the toggle
+ * with New chat while it's hidden (titlebar-nav) [D34 D35 D926]. The toggle steps open, strip, hidden [D800].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, collapse, toggleSidebar, canToggle } = useSidebar();
@@ -166,7 +167,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // Back, Forward, a rule, then the toggle; Settings holds the panel open, so it has no toggle [D34 D926].
+  // The toggle, Back and Forward, then New chat while the sidebar is hidden; Settings holds the panel open, so it has no toggle [D34 D35 D926].
   return (
     <>
       {chip && (
@@ -176,20 +177,24 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       )}
       <div className="titlebar-nav app-no-drag fixed z-20 flex items-center gap-0.5">
         <TitlebarTips>
-          <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
-            <ArrowLeft />
-          </TooltipIconButton>
-          <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
-            <ArrowRight />
-          </TooltipIconButton>
           {canToggle && (
-            <>
-              <span aria-hidden className="titlebar-nav-rule" />
-              {/* Its name says what a click does; aria-expanded would draw an open fill. */}
-              <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
-                {open ? <Sidebar /> : <SidebarFloatingLeft />}
-              </TooltipIconButton>
-            </>
+            // Its name says what a click does; aria-expanded would draw an open fill.
+            <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+              {open ? <Sidebar /> : <SidebarFloatingLeft />}
+            </TooltipIconButton>
+          )}
+          <div className="titlebar-history flex">
+            <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
+              <ArrowLeft />
+            </TooltipIconButton>
+            <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
+              <ArrowRight />
+            </TooltipIconButton>
+          </div>
+          {!open && (
+            <TooltipIconButton look="strip" tooltip="New chat" onClick={newChat}>
+              <ComposeEditSquare />
+            </TooltipIconButton>
           )}
         </TitlebarTips>
       </div>

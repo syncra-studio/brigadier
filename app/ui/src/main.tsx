@@ -135,9 +135,9 @@ function App() {
   );
 }
 
-// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches. This shell
-// [D823]: the titlebar row on top, then one frame holding the sidebar and the page's rounded panel; all of it the frame's grey but that panel [D830].
-// Settings keeps the panel open with its nav in place of the sessions, and no foot, as in the old app [D2004].
+// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches. The shell
+// [D69]: no frame, the sidebar flush at the window's start and the main area from its edge to the window's end, the
+// titlebar row across both. Settings keeps the panel open with its nav in place of the sessions, and no foot [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
@@ -150,13 +150,13 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   const titled = useShown(rows)?.find((each) => each.id === active);
   return (
     <div
-      className="fixed inset-0 bg-card px-2 pt-tab-bar pb-2"
+      className="fixed inset-0"
       // A session row under the pointer or focus: its rows are fetched before the click [D477].
       onPointerOver={(event) => peekRow(event.target, REST_MS)}
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined} className="rounded-surface bg-card ring-1 ring-glass-stroke">
+      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined}>
         {settings !== undefined ? (
           <SidebarPanel>
             <SettingsNav current={settings} />
@@ -177,7 +177,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         />
         )}
         {/* Settings' page is on the nav's colour, one line between them [D898]. */}
-        <div className={cx("flex min-w-0 flex-1 flex-col overflow-clip", settings === undefined ? "page-panel rounded-surface bg-background ring-1 ring-glass-stroke" : "border-s border-divider")}>{children}</div>
+        <div className={cx("flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar", settings === undefined ? "main-surface" : "border-s border-divider bg-card")}>{children}</div>
         {settings === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} home={page !== undefined} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
