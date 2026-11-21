@@ -33,7 +33,8 @@
   --color-muted: #393939;
   /* A resize handle's line while hovered or dragged: a strong border [D41 D188]. */
   --color-resize-line: rgb(255 255 255 / 15.6%);
-  /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
+  /* The text, in hex for main, and the secondary text; --color-placeholder is the latter at 46%, #676767 on
+     the composer. */
   --color-foreground: #dfdfdf;
   /* The chat's title in the titlebar and the front tab's title, white [D196 D44]. */
   --color-chat-title: #ffffff;
@@ -234,7 +235,7 @@
   --color-chat-link: #3c66bf;
   --color-code-card: #2a2a2a;
   --color-code-card-edge: #333333;
-  --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
+  --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 46%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
   --color-rail-line: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
@@ -555,8 +556,8 @@
   /* An image attachment's thumbnail. */
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
-  /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
-  --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
+  /* The composer card's edge: an inner glow alone (#FFFFFF33, blur 1), no stroke [D1]. */
+  --shadow-composer: var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The summary card's edge, a hairline inside, and its faint shadow [D136]. */
   --shadow-summary: inset 0 0 0 0.5px var(--color-summary-edge), 0 4px 16px rgb(0 0 0 / 5%);
