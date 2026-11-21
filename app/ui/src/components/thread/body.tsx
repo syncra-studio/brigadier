@@ -12,7 +12,7 @@ import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
 import type { Draft } from "../composer/draft";
-import { PASTE_LABEL } from "../../shell/attachment-tab";
+import { PASTE_LABEL, PR_FIX } from "../../shell/attachment-tab";
 import { openAttachment } from "../../shell/tab-store";
 import { STEPS } from "./activity-row";
 import { ApprovalRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
@@ -37,7 +37,9 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
   const sent = session && above.length > 0 && (
     <SentAttachments files={above.map((file) => ({ ...file, url: at(file.id) }))} onOpen={(file) => openAttachment(session, file.id, file.pasted ? PASTE_LABEL : file.name)} />
   );
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={brigade ? <>{sent}<BrigadeMessagePill /></> : sent} owner={session} parts={draft?.parts} />;
+  // A message asking to repair a PR says so over it, "PR fix" [D171].
+  const fix = draft?.parts.some((part) => typeof part !== "string" && part.kind === "paste" && PR_FIX.test(part.preview ?? "")) && <span className="w-fit text-sm text-muted-foreground">PR fix</span>;
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={brigade || fix ? <>{sent}{brigade && <BrigadeMessagePill />}{fix}</> : sent} owner={session} parts={draft?.parts} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>

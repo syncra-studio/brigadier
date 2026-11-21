@@ -10,9 +10,12 @@ const KEEP_AFTER_MS = 500;
 /** The composer's pasted text: the label that opens editable while it's still the draft's. */
 export const PASTE_LABEL = "Pasted text";
 /** A PR brought to the agent is a pasted text by its own name, its chip's and its tab's [D692, D696]. */
-export const prPasteLabel = (n: number) => `Pull request #${n}`;
+/** A PR's composer chip [D171]: "PR owner/name#n", or its repair's, "Merge conflicts – PR #n", "2 failing checks · build +1 more". */
+export const PR_CHIP = /^PR \S*#\d+$|^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;
+/** A chip that asks to repair a PR: its sent message is a "PR fix" [D171]. */
+export const PR_FIX = /^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;
 /** Whether a tab of this label is a pasted text: "Pasted text" or a PR's. */
-export const isPasteLabel = (label: string) => label === PASTE_LABEL || /^Pull request #\d+$/.test(label);
+export const isPasteLabel = (label: string) => label === PASTE_LABEL || PR_CHIP.test(label);
 
 /**
  * An attachment in its own tab, as the old app opened a pasted text or a text file in one, and now every file that

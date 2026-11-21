@@ -7,11 +7,14 @@ import { showToast } from "../components/toast";
 import { useDaemon } from "../daemon";
 import { ChevronDown, X } from "../icons";
 import { useHost } from "../landing/host";
-import { codeFirst } from "../landing/pr-tab";
+import { prAct } from "../landing/pr-act";
+import { MergeDialog } from "../landing/pr-dialogs";
+import { codeFirst, mergeBlocked } from "../landing/pr-tab";
 import type { PullRequest } from "../landing/pull-requests";
 import { ago, STATE_WORDS } from "../landing/pr-words";
-import { type Focus, sendToAgent } from "../landing/send-to-agent";
+import { askInChat, type Focus, sendToAgent } from "../landing/send-to-agent";
 import { errorText, run } from "../onboarding/api";
+import { pastedRef } from "../pull-requests/route";
 import { CardSection, WarnLine } from "./card";
 import { Counts, Line, PR_LOOK, ROW, ROW_HOVER, Rows } from "./source/rows";
 import type { KeptPrs, Pr } from "./types";
@@ -25,13 +28,26 @@ const REPAIRS: [Focus, string][] = [
 
 /**
  * A PR's row [D143 D167 D177]: its state's icon, "PR #n" and its title, its state word and age; hovered, its
- * menu: View (its tab), Copy link, Open in browser, Code changes (its tab's Code) and Repair ▸, each our Send to agent
- * with that focus: the PR in the session's composer, nothing sent. No GitHub writes from here.
+ * menu: View (its tab), Copy link, Open in browser, Code changes (its tab's Code), Status ▸ (ready or draft, close or
+ * reopen, on GitHub), Repair ▸, each our Send to agent with that focus, Merge (the PR tab's dialog) and Add to chat (the
+ * PR in the session's composer, nothing sent).
  */
 function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; nowMs: number; onView?: (pr: Pr, code?: boolean) => void }) {
   const host = useHost(owner ?? "");
   const { rows, projects } = useDaemon();
   const [read, setRead] = useState<PullRequest | null>(null);
+  const [merging, setMerging] = useState<PullRequest | null>(null);
+  const ref = pr.url ? pastedRef(pr.url) : null;
+  const fresh = () => run(["host", host, "view", target]).then((live) => live.pr as PullRequest);
+  const status = (verb: "ready" | "draft" | "close" | "reopen") =>
+    ref && prAct(verb, ref).catch((cause: Error) => showToast(cause.message || "Couldn’t complete the pull request action", { tone: "error" }));
+  const merge = () =>
+    fresh()
+      .then((live) => {
+        const why = mergeBlocked(live);
+        return why ? showToast(why, { tone: "error" }) : setMerging({ ...live, ref: live.ref ?? ref ?? undefined });
+      })
+      .catch((cause) => showToast(errorText(cause), { tone: "error" }));
   const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
   const { Icon, tint } = PR_LOOK[state];
   const target = pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number);
@@ -43,6 +59,7 @@ function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; now
       .then((pull: PullRequest) => sendToAgent(pull, host, target, rows ?? [], projects ?? [], () => {}, focus))
       .catch((cause) => showToast(`Couldn't send #${pr.number} to the agent: ${errorText(cause)}`, { tone: "error" }));
   return (
+    <>
     <DropdownMenu modal={false} onOpenChange={(open) => open && kept()}>
       <DropdownMenuTrigger openOnHover delay={300} className={cx(ROW, ROW_HOVER, "cursor-pointer data-popup-open:bg-summary-row-hover")}>
         <span aria-hidden className={cx("flex w-5 shrink-0 items-center justify-center svg:size-4", tint)}>
@@ -68,6 +85,18 @@ function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; now
               Code changes
               {read && <Counts added={read.additions} removed={read.deletions} />}
             </DropdownMenuItem>
+            {ref && pr.state === "open" && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Status</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => void status(pr.draft ? "ready" : "draft")}>{pr.draft ? "Mark ready" : "Convert to draft"}</DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => void status("close")}>
+                    Close
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            {ref && pr.state === "closed" && <DropdownMenuItem onClick={() => void status("reopen")}>Reopen</DropdownMenuItem>}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Repair</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -78,10 +107,14 @@ function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; now
                 ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            {ref && pr.state === "open" && !pr.draft && <DropdownMenuItem onClick={() => void merge()}>Merge</DropdownMenuItem>}
+            <DropdownMenuItem onClick={() => void (read ? Promise.resolve(read) : fresh()).then((pull) => askInChat(owner, pull, { focus: "pr" })).catch((cause) => showToast(errorText(cause), { tone: "error" }))}>Add to chat</DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+    {merging && <MergeDialog pr={merging} open onOpenChange={(open) => !open && setMerging(null)} onDone={() => {}} />}
+    </>
   );
 }
 

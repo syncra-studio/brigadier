@@ -6,14 +6,13 @@ import { daemonSource } from "../projects/store";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { putBack } from "../session/side";
 import { base64, stored } from "../session/files";
-import { prPasteLabel } from "../shell/attachment-tab";
 import { CHAT, openTab, selectTab } from "../shell/tab-store";
 import { draftKey, newSession, setHomeDraft } from "../home/start";
 import type { PullRequest } from "./pull-requests";
 
-/** What a summary card PR's Repair asks for [D167]; none, the PR as Send to agent hands it. */
-export type Focus = "comments" | "checks" | "conflicts" | "everything";
-const ASKS: Record<Focus, string> = {
+/** What a summary card PR's Repair asks for [D167]; "pr" (or none), the PR as Send to agent and Add to chat hand it. */
+export type Focus = "comments" | "checks" | "conflicts" | "everything" | "pr";
+const ASKS: Record<Exclude<Focus, "pr">, string> = {
   comments: "Address the review comments.",
   checks: "Fix the failing checks.",
   conflicts: "Resolve the merge conflicts with the base branch.",
@@ -26,7 +25,7 @@ export function prText(pr: PullRequest, focus?: Focus): string {
   // Line comments (`r`) and reviews' own words (`v`), as Rust numbers them; not the ones the host hides.
   const reviews = focus === "checks" || focus === "conflicts" ? [] : pr.comments.filter((comment) => (comment.path || comment.id.startsWith("v")) && !comment.minimized);
   const text = [
-    focus && ASKS[focus],
+    focus && focus !== "pr" && ASKS[focus],
     `PR #${pr.number} "${pr.title}" (${pr.url}), ${pr.branch} into ${pr.base}.`,
     failing.length > 0 && `Failing checks: ${failing.join(", ")}.`,
     reviews.length > 0 &&
@@ -35,9 +34,18 @@ export function prText(pr: PullRequest, focus?: Focus): string {
   return text.filter(Boolean).join("\n\n");
 }
 
+/** A PR's chip's name, by what it asks [D171]. */
+function chipName(pr: PullRequest, focus?: Focus): string {
+  const failing = pr.checks.filter((check) => check.state === "failed");
+  if (focus === "conflicts") return `Merge conflicts – PR #${pr.number}`;
+  if (focus === "comments") return `Review comments – PR #${pr.number}`;
+  if (focus === "checks" && failing.length) return `${failing.length} failing check${failing.length === 1 ? "" : "s"} · ${failing[0]!.name}${failing.length > 1 ? ` +${failing.length - 1} more` : ""}`;
+  return `PR ${pr.repo ?? ""}#${pr.number}`;
+}
+
 /** The PR in `owner`'s composer, once, as an inline chip named "Pull request #n" whose text is `prText` [D692]: the composer's own pasted-text chip, so a click opens that text in its tab. */
 async function withChip(owner: string, pr: PullRequest, key = owner, focus?: Focus): Promise<Draft> {
-  const name = prPasteLabel(pr.number);
+  const name = chipName(pr, focus);
   await loadDraft(run, key);
   const draft = draftOf(key) ?? EMPTY_DRAFT;
   if (draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) return draft;
