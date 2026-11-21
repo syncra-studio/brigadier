@@ -4,7 +4,10 @@ import { FileTypeIcon } from "../components/composer/attachments";
 import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
+import { showToast } from "../components/toast";
+import { errorText, run } from "../onboarding/api";
+import { openPrDialog } from "./create-pr";
 import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
 import { Branch, CheckCircle, ChevronDown, Dot, DotsHorizontal, Spinner, Warning, X } from "../icons";
@@ -12,7 +15,7 @@ import { Offline } from "./source/branch";
 import type { SourceData, SourceOps } from "./source/data";
 import { Counts, Line, Rows } from "./source/rows";
 import { useBranchPicker } from "./branch-picker";
-import type { KeptPrs } from "./types";
+import type { KeptPrs, Pr } from "./types";
 
 /** Sections folded by hand, by key, for every session's card, kept across restarts [D138]. */
 const FOLDS = "summary-folds";
@@ -101,9 +104,28 @@ const TRY = "shrink-0 cursor-pointer rounded-sm text-link hover:underline focus-
  * The card's Changes section [D140 D141 D148 D149]: one row, "project · branch" with its +/− counts,
  * opening Review; its "…" copies the branch and, in your own folder, switches it (the composer's quick pick). A gone
  * folder, a read that failed and the checkout's notes are rows under it; disconnected, "Offline · 14:32" takes the
- * counts' place [D30, D1206]. Without `ops` (the gallery) it moves nothing.
+ * counts' place [D30, D1206]. Without `ops` (the gallery) it moves nothing. A session's branch with a remote also has
+ * Compare branch, Create pull request, Attach pull request and View PR [D168 D169].
  */
-export function ChangesCard({ data, nowMs, project = null, ops, onReview }: { data: SourceData; nowMs: number; project?: string | null; ops?: SourceOps; onReview?: () => void }) {
+export function ChangesCard({
+  data,
+  nowMs,
+  project = null,
+  ops,
+  onReview,
+  owner,
+  prs = [],
+  onViewPr,
+}: {
+  data: SourceData;
+  nowMs: number;
+  project?: string | null;
+  ops?: SourceOps;
+  onReview?: () => void;
+  owner?: string;
+  prs?: readonly Pr[];
+  onViewPr?: (pr: Pr) => void;
+}) {
   const { source } = data;
   const offline = data.offline ?? false;
   const branchRow = useRef<HTMLDivElement>(null);
@@ -156,6 +178,8 @@ export function ChangesCard({ data, nowMs, project = null, ops, onReview }: { da
   const detached = data.truth?.detached;
   const branch = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
   const note = noteOf(data);
+  // The branch's own open PRs.
+  const mine = prs.filter((pr) => pr.state === "open" && (!pr.branch || pr.branch === source.branch));
   const end = offline ? <Offline readAtMs={data.readAtMs ?? null} /> : (added > 0 || removed > 0) && <Counts added={added} removed={removed} />;
   return (
     <CardSection title="Changes" fold="changes">
@@ -171,6 +195,25 @@ export function ChangesCard({ data, nowMs, project = null, ops, onReview }: { da
                 Copy branch
               </DropdownMenuItem>
               {folder && <DropdownMenuItem onClick={() => open("branch")}>Switch branch</DropdownMenuItem>}
+              {owner && source.remote && (
+                <>
+                  <DropdownMenuSeparator />
+                  {source.branch && (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        run(["host", owner, "compare", "", source.branch!])
+                          .then((reply) => window.brigadier?.openLink(String(reply.url)))
+                          .catch((cause) => showToast(errorText(cause), { tone: "error" }))
+                      }
+                    >
+                      Compare branch
+                    </DropdownMenuItem>
+                  )}
+                  {!mine.length && <DropdownMenuItem onClick={() => openPrDialog({ kind: "create", owner, repo: project, branch: source.branch ?? null, changed: uncommitted.length > 0 })}>Create pull request</DropdownMenuItem>}
+                  <DropdownMenuItem onClick={() => openPrDialog({ kind: "attach", owner })}>Attach pull request</DropdownMenuItem>
+                  {mine.length > 0 && <DropdownMenuItem onClick={() => onViewPr?.(mine[0]!)}>{mine.length > 1 ? "View PRs" : "View PR"}</DropdownMenuItem>}
+                </>
+              )}
             </RowMenu>
           }
         >

@@ -1,3 +1,4 @@
+import { PrDialogHost } from "./panel/create-pr";
 import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -375,6 +376,7 @@ createRoot(document.getElementById("root")!).render(
         <GlobalSearch />
         <Toaster className="top-titlebar pt-2" />
         <ImageViewerHost />
+        <PrDialogHost />
       </>
     )}
   </TooltipProvider>,

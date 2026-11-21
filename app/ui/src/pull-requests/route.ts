@@ -38,7 +38,7 @@ export function prName(ref: string): string {
 /** A PR named by a pasted link or `owner/name#n`, as its ref; null for anything else [D160]. */
 export function pastedRef(text: string): string | null {
   const t = text.trim();
-  const url = /^https?:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(t);
+  const url = /^(?:https?:\/\/)?([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(t);
   if (url) return `${url[1]}/${url[2]}/${url[3]}#${url[4]}`;
   const short = /^([\w.-]+)\/([\w.-]+)#(\d+)$/.exec(t);
   return short ? `github.com/${short[1]}/${short[2]}#${short[3]}` : null;

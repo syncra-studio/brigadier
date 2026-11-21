@@ -52,14 +52,15 @@ impl Pr {
             }
             false => false,
         };
-        let base = c.base.unwrap_or(&self.base);
-        if base.is_empty() {
-            return err("Choose the branch it merges into.");
-        }
+        let base = c.base.map(String::from).unwrap_or_else(|| self.landing());
         let gh = gh(repo, self.account.as_deref()).ok_or_else(|| io::Error::other(super::NO_GH))?;
         let at = format!("{}/{}", repo.host, repo.path);
         let mut command = gh.command();
-        command.args(["pr", "create", "-R", &at, "--base", base, "--head", head]);
+        command.args(["pr", "create", "-R", &at, "--head", head]);
+        // No base known: gh lands it into the repository's default branch.
+        if !base.is_empty() {
+            command.args(["--base", &base]);
+        }
         command.args(["--title", c.title, "--body-file", "-"]);
         if c.draft {
             command.arg("--draft");
@@ -118,18 +119,47 @@ impl Pr {
         Ok(())
     }
 
+    /// The base a PR of the session's lands into: its own, else the push remote's default branch as
+    /// git last fetched it; empty when neither is known.
+    pub fn landing(&self) -> String {
+        if !self.base.is_empty() {
+            return self.base.clone();
+        }
+        let never = AtomicBool::new(false);
+        let head = format!("refs/remotes/{}/HEAD", self.remote);
+        let out = crate::git::read(
+            &self.checkout.root,
+            &["symbolic-ref", "--quiet", "--short", &head],
+            &never,
+        );
+        let name = out
+            .map(|o| String::from_utf8_lossy(&o).trim().to_string())
+            .unwrap_or_default();
+        name.strip_prefix(&format!("{}/", self.remote))
+            .unwrap_or_default()
+            .to_string()
+    }
+
     /// The host's page comparing `head` to `base` [D169].
     pub fn compare(&self, base: &str, head: &str) -> io::Result<String> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's branches can be compared here.");
         };
         let encode = crate::adapters::encode;
-        Ok(format!(
-            "{}/compare/{}...{}",
-            repo.url(),
-            encode(base),
-            encode(head)
-        ))
+        let base = match base.is_empty() {
+            true => self.landing(),
+            false => base.to_string(),
+        };
+        // No base known: GitHub compares the branch with the repository's default one.
+        Ok(match base.is_empty() {
+            true => format!("{}/compare/{}", repo.url(), encode(head)),
+            false => format!(
+                "{}/compare/{}...{}",
+                repo.url(),
+                encode(&base),
+                encode(head)
+            ),
+        })
     }
 
     /// What the message writer reads to name a PR: the branch's commits past its base and what's

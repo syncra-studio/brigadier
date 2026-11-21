@@ -359,7 +359,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       {folderChat ? (
         <FolderChanges repos={touched ?? []} onReview={(repo) => (pickRepo(owner, repo), openReview(owner))} />
       ) : (
-        <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} />
+        <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} owner={owner} prs={prs} onViewPr={(pr) => openPr(owner, pr)} />
       )}
       {/* shortcut: a folder chat's repo PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
       <PrsCard

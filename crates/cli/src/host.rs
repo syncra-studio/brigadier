@@ -180,6 +180,7 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
     let word = |i: usize| arg(args, i);
     let mut done = match verb {
         "create" => create(data, id, args)?,
+        "base" => json!({"base": host::pr(data, id)?.landing()}),
         "compare" => json!({"url": host::pr(data, id)?.compare(word(3)?, word(4)?)?}),
         "attach" | "detach" => {
             let (at, n) = named(args)?;
