@@ -160,10 +160,13 @@ fn named(args: &[String]) -> io::Result<(String, u64)> {
         .ok_or_else(|| io::Error::other("A PR is named host/owner/name#n."))
 }
 
-/// What a write says, from stdin.
-fn said(required: bool) -> io::Result<String> {
+/// What a write says: `--text T`, else stdin. The app's daemon runs verbs in-process, with no stdin of theirs.
+fn said(args: &[String], required: bool) -> io::Result<String> {
     let mut text = String::new();
-    io::Read::read_to_string(&mut io::stdin(), &mut text)?;
+    match super::flag(args, "--text") {
+        Some(t) => text = t.to_string(),
+        None => _ = io::Read::read_to_string(&mut io::stdin(), &mut text)?,
+    }
     match required && text.trim().is_empty() {
         true => Err(io::Error::other("Write something first.")),
         false => Ok(text.trim_end().to_string()),
@@ -195,8 +198,8 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
                 "generated" => {
                     return Ok(Some(json!({"ok": true, "paths": pr.generated(&at, n)?})));
                 }
-                "comment" => pr.comment(&at, n, &said(true)?)?,
-                "comment-edit" => pr.comment_edit(&at, word(4)?, &said(true)?)?,
+                "comment" => pr.comment(&at, n, &said(args, true)?)?,
+                "comment-edit" => pr.comment_edit(&at, word(4)?, &said(args, true)?)?,
                 "comment-delete" => pr.comment_delete(&at, word(4)?)?,
                 "react" => {
                     let on = match word(6)? {
@@ -209,11 +212,11 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
                 "edit" => match super::flag(args, "--title") {
                     Some(title) => pr.edit(&at, n, Some(title), None)?,
                     None if super::has(args, "--body") => {
-                        pr.edit(&at, n, None, Some(&said(false)?))?
+                        pr.edit(&at, n, None, Some(&said(args, false)?))?
                     }
                     None => return Err(io::Error::other(super::USAGE)),
                 },
-                "reply" => pr.reply(&at, n, word(4)?, &said(true)?)?,
+                "reply" => pr.reply(&at, n, word(4)?, &said(args, true)?)?,
                 "resolve" | "unresolve" => pr.resolve(&at, word(4)?, verb == "resolve")?,
                 "viewed" | "unviewed" => pr.viewed(&at, n, word(4)?, verb == "viewed")?,
                 "pending" => {
@@ -222,8 +225,19 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
                             .parse::<u64>()
                             .map_err(|_| io::Error::other("not a line"))
                     };
-                    let start = args.get(7).map(|_| line(7)).transpose()?;
-                    pr.pending(&at, n, word(4)?, (line(5)?, start), word(6)?, &said(true)?)?
+                    let start = args
+                        .get(7)
+                        .filter(|a| *a != "--text")
+                        .map(|_| line(7))
+                        .transpose()?;
+                    pr.pending(
+                        &at,
+                        n,
+                        word(4)?,
+                        (line(5)?, start),
+                        word(6)?,
+                        &said(args, true)?,
+                    )?
                 }
                 "review" => {
                     let verdict = match word(4)? {
@@ -233,7 +247,7 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
                         _ => return Err(io::Error::other(super::USAGE)),
                     };
                     // Approve may say nothing; Comment and Request changes say why [D166].
-                    let body = said(!matches!(verdict, Verdict::Approve))?;
+                    let body = said(args, !matches!(verdict, Verdict::Approve))?;
                     pr.review(&at, n, verdict, &body)?
                 }
                 "review-discard" => pr.review_discard(&at, n)?,
