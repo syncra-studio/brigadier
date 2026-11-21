@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
+import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import {
   DropdownMenu,
@@ -14,10 +15,12 @@ import {
 } from "../components/menu";
 import { NavHeader, NavList, NavSection } from "../components/nav";
 import { HomeMark } from "../sidebar/strip";
+import { useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { ask, useDaemon } from "../daemon";
 import { Check, MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { SettingsSlider } from "../icons/sidebar";
+import { PullRequestOpen } from "../landing/icons";
 import { useStored } from "../sidebar/sidebar";
 import { PrNavRow } from "./nav-row";
 import { openPrPage, pastedRef, pinned, type PrRow, recents } from "./route";
@@ -71,6 +74,12 @@ export function useSections(queries: string[]): { read: Read | null; again: () =
     return () => removeEventListener("focus", focus);
   }, [daemon, key]);
   return { read, again };
+}
+
+/** The page with no PR open: pick one from the sidebar's list, or open the sidebar first while it's folded or hidden. */
+export function PrPageEmpty() {
+  const { open } = useSidebar();
+  return <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail={open ? "Choose one from the sidebar to review its changes" : "Expand the sidebar to choose one"} className="m-auto" />;
 }
 
 export function PullRequestsNav({ current }: { current: string }) {

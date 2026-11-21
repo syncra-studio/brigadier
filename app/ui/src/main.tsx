@@ -13,8 +13,7 @@ import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
 import { newChat, newSession, REVIEW_DRAFT, reviewTitle, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
-import { PullRequestOpen } from "./landing/icons";
-import { PullRequestsNav } from "./pull-requests/nav";
+import { PrPageEmpty, PullRequestsNav } from "./pull-requests/nav";
 import { useReviewTab } from "./pull-requests/review";
 import { prPageOf, reviewChats } from "./pull-requests/route";
 import { Chat, Key } from "./icons";
@@ -137,7 +136,7 @@ function App() {
             <HomeDraft />
           </Home>
         ) : (
-          <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail="Choose one from the sidebar to review its changes" className="m-auto" />
+          <PrPageEmpty />
         )}
       </Shell>
     );
