@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { cx } from "../components/cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../components/icon-button";
 import { ResizeHandle } from "../components/resize-handle";
+import { Sidebar } from "../icons";
 import { useDaemon } from "../daemon";
 import { FilesView, useFilesAhead } from "../files/views";
 import { useHomeDraft, useStart } from "../home/start";
-import { Folders } from "../icons/sidebar";
 import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
@@ -31,11 +31,12 @@ export function useHasPanel(owner: string): boolean {
   return (row ?? starting)?.project !== null;
 }
 
-/** The toggle as drawn: apps-sdk-ui's Folders [D880], a titlebar control as the sidebar foot's [D833], always lit, open or closed (owner). */
+/** The toggle as drawn: 32 round at the row's end, pressed while open [D40]. */
 export function PanelToggleButton({ open, ...props }: { open: boolean } & Omit<TooltipIconButtonProps, "tooltip">) {
   return (
-    <TooltipIconButton look="strip" className="drop-shadow-toggle-glow" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
-      <Folders />
+    <TooltipIconButton look="round" tooltip="Files" shortcut={keysOf("show-files")[0]} pressed={open} aria-controls="right-panel-content" {...props}>
+      {/* The sidebar's icon, mirrored [D40]. */}
+      <Sidebar className="-scale-x-100" />
     </TooltipIconButton>
   );
 }

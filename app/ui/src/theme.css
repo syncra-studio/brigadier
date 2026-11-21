@@ -329,7 +329,6 @@
   /* The titlebar row, 46 tall [D34]: its controls, tabs and the traffic lights on its middle line (main.ts reads it)
      [D832]. Tabs from the controls' top down to the row's foot, their content kept on the line by their foot (session-tab) [D848 D937]. */
   --spacing-tab-bar: 2.875rem;
-  --spacing-tab-front: calc(var(--spacing-tab-bar) - var(--spacing) * 1.25);
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
   /* The sidebar toggle's start, 88 past the traffic lights at 16 (titlebar-nav) [D34]; with none (Windows,
@@ -338,30 +337,23 @@
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
-  /* Safari's tabs [D3113]: they fill the row evenly, the one in front never under Safari's ~194pt so its title shows,
-     the others shrinking down to their icon, then the strip scrolls; below 88px a tab shows its icon alone, below 64px
-     no × either. The house is Chrome's pinned tab, its icon alone in 48px wherever it shows, so it holds its place
-     between a session and its project's page [D834 D848 D875]. */
-  --spacing-session-tab-front: 12rem;
-  --spacing-session-tab-icon: 2.5rem;
-  --spacing-home-tab: 3rem;
-  /* Under its content, the foot where the front tab meets the frame: above it the titlebar's strip buttons' 30px
-     (h-7.5), the content on the row's middle line, as Chrome's [D937]. */
-  --spacing-session-tab-foot: 0.3125rem;
-  /* A hovered tab's fill and the front tab's shape in from its sides alike, so a separator is as far from either [D857]. */
-  --spacing-session-tab-inset: 0.125rem;
-  /* Chrome's separator between two tabs in back, as the floating design's (Safari's) [D437 D840 D848]. */
+  /* The tabs [D44]: an even share of the row from 90 to 240 each, then the strip scrolls under 40 fades at its
+     edges. Each tab's box takes the 2 between fills, a 1×12 rule in it. The house, Chrome's pinned tab, its icon alone
+     wherever it shows, so it holds its place between a session and its project's page [D834 D848 D875]. */
+  --spacing-session-tab-min: 5.625rem;
+  --spacing-session-tab-max: 15rem;
+  --spacing-session-tab-fade: 2.5rem;
+  --spacing-home-tab: 2.375rem;
+  --spacing-session-tab-inset: 1px;
   --spacing-session-tab-rule: 1px;
-  --spacing-session-tab-rule-height: 1rem;
-  --container-tab-icon: 5.5rem;
-  --container-tab-close: 4rem;
+  --spacing-session-tab-rule-height: 0.75rem;
+  /* A title fades out over its end. */
+  --spacing-tab-title-fade: 1.5rem;
   --container-new-tab: 28rem;
   /* The Pull requests tab's bar below this folds its chips into menus [D609]. */
   --container-pr-bar: 64rem;
-  /* The active tab's lift (the new design's). */
-  --shadow-session-tab: 0 1px 3px #00000040;
-  /* Chrome's tab motion: a short ease out [D848]. */
-  --ease-session-tab: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* The tabs' motion [D49]. */
+  --ease-session-tab: cubic-bezier(0.3333, 0.6667, 0.6667, 1);
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
   --container-reading: 46rem;
@@ -506,8 +498,6 @@
 
   --radius-sm: 0.375rem;
   --radius-session-tab: 0.5rem;
-  /* Chrome's tab's top corners [D848 D936]. */
-  --radius-session-tab-top: 0.5625rem;
   --radius-xs: 0.1875rem;
   --radius-checkbox: 0.3125rem;
   --radius-icon-button: 0.625rem;
@@ -547,7 +537,6 @@
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
   /* The new design's menu shadow. */
   --shadow-overlay: 0 10px 32px #00000080;
-  --drop-shadow-toggle-glow: 0 0 8px #ffffffa6;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
@@ -585,7 +574,7 @@
   /* Menus, popovers and dialogs open and close faster than other motion. */
   --duration-popup-fast: 100ms;
   --duration-session-tab: 200ms;
-  --duration-session-tab-rule: 150ms;
+  --duration-session-tab-close: 100ms;
   --duration-input-focus: 80ms;
   --blur-material: 24px;
   /* Behind a menu or the hover card (the new design's). */
@@ -691,7 +680,6 @@
   --opacity-picker-none: 30%;
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
-  --opacity-tab-close: 60%;
   /* Back and Forward with nowhere to go. */
   --opacity-titlebar-nowhere: 40%;
   --opacity-switch-disabled: 60%;
@@ -1598,7 +1586,7 @@
   display: none;
 }
 
-/* The tab bar [D360]: Chrome's tab strip [D848]. */
+/* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
   /* Until the tabs read on opening have drawn, they don't grow in [D423]. */
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
@@ -1610,23 +1598,9 @@
   }
 }
 
-/* The front tab's shape on its way from the last front tab to this one, placed each frame (tab-glide.ts) [D834 D856]. */
-@utility session-tab-glide {
-  position: absolute;
-  left: attr(data-x px);
-  top: attr(data-y px);
-  width: attr(data-w px);
-  height: attr(data-h px);
-  pointer-events: none;
-  &[hidden] {
-    display: none;
-  }
-}
-
-/* Safari's widths [D3113]: every tab but the house an even share of the tab area (its container) less "+" and the
-   group labels, down to its icon, then the strip scrolls. A tab in front in the list keeps at least
-   --spacing-session-tab-front, the others sharing what's left, so choosing one widens it; with none in front (a
-   project's page) all share alike. The row is as wide as its tabs, so "+" slides as one grows in or shrinks out [D835]. */
+/* The widths [D44]: every tab but the house and Chat an even share of the tab area (its container) less "+", the
+   group labels and Chat (its width, data-chat), from 90 up to 240, then the strip scrolls. Chat is as wide as its
+   title, 90 to 240, and stays put. The row is as wide as its tabs, so "+" follows the last [D835]. */
 @utility session-tab-list {
   position: relative;
   /* The project page's house is its first tab here; a session's sits before the list. */
@@ -1636,38 +1610,49 @@
   }
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - var(--session-tab-pinned) * var(--spacing-home-tab));
+  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - var(--session-tab-pinned) * var(--spacing-home-tab) - attr(data-chat px, 0px));
   --session-tab-count: max(attr(data-count type(<number>), 1) - var(--session-tab-pinned), 1);
-  --session-tab-width: max(var(--spacing-session-tab-icon), var(--session-tab-room) / var(--session-tab-count));
-  --session-tab-front-width: var(--session-tab-width);
-  &:has(.session-tab[data-active]:not([data-closing])) {
-    --session-tab-front-width: min(var(--session-tab-room), max(var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-front)));
-    --session-tab-width: max(var(--spacing-session-tab-icon), (var(--session-tab-room) - var(--session-tab-front-width)) / max(var(--session-tab-count) - 1, 1));
-  }
+  --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
     opacity: 0;
   }
 }
 
-/* A tab, Chrome's: one box whether in front or not, its content on the row's middle line above the foot where the
-   front one's shape (session-tab-shape) meets the frame; a hovered one in back an inset rounded fill clear of the frame
-   and of a front neighbour's flares (::after) [D832 D841 D848]. */
+/* The strip scrolled: 40 fades at the edges it hides tabs under [D44]. */
+@utility tab-scroll {
+  --edge-size-x: var(--spacing-session-tab-fade);
+}
+
+/* A title too long for its tab fades out at its end, no "…" [D44]. */
+@utility tab-title {
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--spacing-tab-title-fade)), transparent);
+}
+
+/* A tab [D44]: 32 tall, its rounded fill in front and while hovered (::after), 2 between two fills where a
+   1×12 rule stands between two tabs in back (::before). */
 @utility session-tab {
   position: relative;
   height: 100%;
-  padding-bottom: var(--spacing-session-tab-foot);
   font-size: var(--text-label);
   line-height: var(--text-label--line-height);
   font-weight: 430;
   flex: 0 0 var(--session-tab-width);
-  /* Chrome's: a new tab grows in and a closed one shrinks out while the others make room; choosing one is instant. */
+  /* A new tab grows in, a closed one shrinks out faster, while the others make room [D49]. */
   transition:
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
-    padding var(--duration-session-tab) var(--ease-session-tab),
+    max-width var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
-  &[data-active] {
-    flex-basis: var(--session-tab-front-width);
+  &[data-tab-id="chat"] {
+    flex: 0 0 auto;
+    min-width: var(--spacing-session-tab-min);
+    max-width: var(--spacing-session-tab-max);
+  }
+  &[data-tab-id="chat"][data-closing] {
+    min-width: 0;
+    max-width: 0;
   }
   /* Each held at its width after a close with the pointer, until it leaves the row (tab-bar.tsx). */
   &[data-frozen] {
@@ -1676,61 +1661,45 @@
   &[data-home] {
     flex-basis: var(--spacing-home-tab);
   }
-  /* The front tab stays in view: scrolled past, it holds at the strip's edge and the others pass under it [D834]. */
-  &[data-active] {
-    position: sticky;
-    inset-inline: 0;
-    z-index: 1;
-    /* Brought into view (tab-bar.tsx), it's measured at its own place. */
-    &[data-measuring] {
-      position: relative;
-    }
-  }
   &::after {
     content: "";
     position: absolute;
-    /* Its content box, the titlebar's strip button's hover (h-7.5 rounded-icon-button) [D925 D930 D937]. */
-    inset: 0 var(--spacing-session-tab-inset) var(--spacing-session-tab-foot);
+    inset-block: 0;
+    inset-inline: var(--spacing-session-tab-inset);
     z-index: -1;
-    border-radius: var(--radius-icon-button);
-    /* The titlebar buttons' hover fill (+, summary, Files) [D938]. */
+    border-radius: var(--radius-session-tab);
     background-color: var(--color-fill);
     opacity: 0;
-    transition: opacity var(--duration-session-tab-rule);
     pointer-events: none;
   }
-  &:hover:not([data-active], [data-closing])::after {
+  &:is([data-active], :hover):not([data-closing])::after {
     opacity: 1;
-  }
-  /* Chosen, its fill goes at once: none shows over the front shape gliding in [D856]. */
-  &[data-active]::after {
-    transition: none;
   }
   &[data-fresh] {
     @starting-style {
       flex-basis: 0;
-      padding-inline: 0;
       opacity: 0;
     }
   }
   &[data-closing] {
     flex-basis: 0;
-    padding-inline: 0;
     opacity: 0;
     overflow: hidden;
+    transition-duration: var(--duration-session-tab-close);
   }
-  /* Chrome's separator between two tabs in back, on their shared edge; none beside the front tab (no data-separator)
-     or a hovered one, either side; it only fades, so nothing moves [D437 D840]. */
+  /* The rule between two tabs in back, on their shared edge; none beside the front tab (no data-separator) or a hovered
+     one, either side [D437 D840]. */
   &::before {
     content: "";
     position: absolute;
-    inset-inline-end: calc(var(--spacing-session-tab-rule) / -2);
+    inset-block: 0;
+    margin-block: auto;
+    /* Inside its tab: past its edge the strip would scroll by it. */
+    inset-inline-end: 0;
     height: var(--spacing-session-tab-rule-height);
     width: var(--spacing-session-tab-rule);
-    border-radius: var(--spacing-session-tab-rule);
-    background: var(--color-fill);
+    background: var(--color-border);
     opacity: 0;
-    transition: opacity var(--duration-session-tab-rule);
     pointer-events: none;
   }
   &[data-separator]::before {
@@ -1742,17 +1711,12 @@
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
-    &::before,
-    &::after {
-      transition: none;
-    }
   }
 }
 
-/* "+": the titlebar's strip button as is (summary, Files), as far past the last tab's separator as a hovered tab's
-   fill is from one, on the tabs' content line [D857 D860 D924 D928]. */
+/* "+", 28 square, a little past the last tab [D44]. */
 .session-tab-new {
-  margin-inline-start: calc(var(--spacing-session-tab-inset) - var(--spacing) * 2);
+  margin-inline-start: calc(var(--spacing) * -1);
 }
 
 /* Between the tabs and "+", its gap taken back: nothing, or with no tabs (New chat) all the room, so "+" slides to the
@@ -1769,65 +1733,14 @@
   }
 }
 
-/* The front tab's shape, Chrome's: the frame's fill and edge with rounded top corners, open at its foot into the frame
-   below, its foot's corners flaring out to the frame's edge (::after). Each tab draws its own, shown in front only,
-   so choosing a tab moves nothing [D832 D847 D848]. */
-@utility session-tab-shape {
-  --flare: var(--radius-control);
-  --stroke: 1px;
-  --edge: var(--color-glass-stroke);
-  position: absolute;
-  inset-block: 0;
-  inset-inline: var(--spacing-session-tab-inset);
-  z-index: -1;
-  display: none;
-  border-start-start-radius: var(--radius-session-tab-top);
-  border-start-end-radius: var(--radius-session-tab-top);
-  background-color: var(--color-card);
-  pointer-events: none;
-  [data-active] > & {
-    display: block;
-  }
-  /* While the one shape glides to it (tab-glide.ts), the front tab's own waits [D856]. */
-  [data-gliding] .session-tab[data-active] > & {
-    display: none;
-  }
-  /* Its edge: down its sides to where the flares take over, so each side meets the frame in the one curve [D832]. */
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 var(--flare);
-    border: var(--stroke) solid var(--edge);
-    border-bottom: 0;
-    border-start-start-radius: inherit;
-    border-start-end-radius: inherit;
-  }
-  /* The flares, the same quarter circle mirrored: tangent to the side's 1px edge, ending on the frame's 1px top edge. */
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    inset-inline: calc(var(--stroke) - var(--flare));
-    height: var(--flare);
-    /* The stroke over the fill, as the frame's edge is over the frame: where the two meet they're one colour. */
-    background:
-      radial-gradient(circle at 0 0, transparent calc(var(--flare) - var(--stroke)), var(--edge) 0 var(--flare), transparent 0) left / var(--flare) 100% no-repeat,
-      radial-gradient(circle at 100% 0, transparent calc(var(--flare) - var(--stroke)), var(--edge) 0 var(--flare), transparent 0) right / var(--flare) 100% no-repeat,
-      radial-gradient(circle at 0 0, transparent calc(var(--flare) - var(--stroke)), var(--color-card) 0) left / var(--flare) 100% no-repeat,
-      radial-gradient(circle at 100% 0, transparent calc(var(--flare) - var(--stroke)), var(--color-card) 0) right / var(--flare) 100% no-repeat;
-  }
-}
-
-/* An agent's tab group, as Chrome's tab group that Claude in Chrome drives in the owner's recording [D793 D794 D894]: a
-   small label in the group's colour, its words fading out at its end when cut; one 2px line in that colour from the
-   label's start along the foot of the group's tabs; the group's front tab outlined in it instead, flares and all. */
+/* An agent's tab group, as Chrome's tab group that Claude in Chrome drives in the owner's recording [D793 D794 D894], in
+   the tab strip [D74]: a small label in the group's colour, its words fading out at its end when cut; one 2px line in
+   that colour from the label's start along the foot of the group's tabs. */
 .browser-tab-group {
   position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
-  /* On the row's middle line, as the tabs in back (tab-bar.tsx's LOOK) [D832]. */
-  margin-bottom: var(--spacing);
   max-width: 7rem;
   height: var(--spacing-control-md);
   padding-inline: 2px;
@@ -1848,12 +1761,12 @@
   & [data-cut] {
     mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
   }
-  /* The line starts under the label and runs down at the strip's foot, where the tabs' runs. */
+  /* The line starts under the label and runs on at the tabs' foot. */
   &::after {
     content: "";
     position: absolute;
     inset-inline: 2px 0;
-    bottom: calc(var(--spacing) * -1);
+    bottom: 0;
     height: 2px;
     border-start-start-radius: 1px;
     border-end-start-radius: 1px;
@@ -1865,34 +1778,8 @@
 .browser-tab-group[aria-expanded="false"]::after {
   display: none;
 }
-.session-tab[data-agent-group]:not([data-active]) {
+.session-tab[data-agent-group] {
   background: linear-gradient(var(--color-agent-group) 0 0) bottom / 100% 2px no-repeat;
-}
-/* Its outline grows in as the gliding grey shape lands on it (tab-glide.ts), from that 1px grey to the group's 2px. */
-.session-tab[data-agent-group] > .session-tab-shape {
-  --stroke: 2px;
-  --edge: var(--color-agent-group);
-  animation: group-edge-in var(--duration-session-tab) var(--ease-session-tab);
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
-@keyframes group-edge-in {
-  from {
-    --stroke: 1px;
-    --edge: var(--color-glass-stroke);
-  }
-}
-/* Registered so they interpolate. */
-@property --stroke {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 1px;
-}
-@property --edge {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: transparent;
 }
 
 /* Home's mark brightening under the pointer. */
@@ -2024,10 +1911,10 @@
 @keyframes edge-fade-x {
   from {
     --edge-start: 0px;
-    --edge-end: var(--spacing-group-fade);
+    --edge-end: var(--edge-size-x, var(--spacing-group-fade));
   }
   to {
-    --edge-start: var(--spacing-group-fade);
+    --edge-start: var(--edge-size-x, var(--spacing-group-fade));
     --edge-end: 0px;
   }
 }

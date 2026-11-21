@@ -13,11 +13,11 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../components/menu";
-import { Copy, Pencil, Pin, Spinner, Unpin } from "../icons";
+import { Copy, FolderOpen, Pencil, Pin, Spinner, Unpin } from "../icons";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { DeleteMenuItem } from "../sessions/archived";
 import { ForkMenuItem } from "../session/fork";
-import { useFolderChat } from "../daemon";
+import { ask, useFolderChat } from "../daemon";
 import { showToast } from "../components/toast";
 import { keysOf } from "../shortcuts";
 import { pin } from "./actions";
@@ -59,6 +59,13 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
           {copies.map(([what, value]) => value && <DropdownMenuItem key={what} onClick={() => copyWithToast(value, what)}>Copy {what}</DropdownMenuItem>)}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
+      {/* Its working directory [D37]; Rust's Files reveal of the checkout itself (""). */}
+      {row.project && row.folder && !folder && (
+        <DropdownMenuItem onClick={() => ask({ op: "run", args: ["source", row.id, "reveal", ""] }, (reply) => !reply.ok && showToast(`Couldn't reveal ${row.title}: ${String(reply.error)}`, { tone: "error" }))}>
+          <FolderOpen />
+          Reveal in Finder
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
       {/* Off for a folder chat: delete's check doesn't see its repos' branches yet [D494, D3102]. */}

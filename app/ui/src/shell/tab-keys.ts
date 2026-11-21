@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { allProfiles, switchProfile } from "../browser/profiles";
 import { matches } from "../shortcuts";
@@ -40,4 +40,32 @@ export function useTabKeys(home: string, archived: boolean, peek?: string, famil
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [home, archived, peek, family]);
+}
+
+// shortcut: the wait before the badges show is our own pick; it keeps ⌘T and the like from flashing them.
+const HOLD_MS = 250;
+/** ⌘ held alone for a moment, for the tabs' ⌘1…⌘9 badges [D48]; any other key, letting go or leaving the window ends it. */
+export function useCommandHeld(): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    let timer = 0;
+    const end = () => {
+      clearTimeout(timer);
+      setHeld(false);
+    };
+    const onDown = (event: KeyboardEvent) => {
+      end();
+      if (event.key === "Meta" && !event.altKey && !event.ctrlKey && !event.shiftKey) timer = window.setTimeout(() => setHeld(true), HOLD_MS);
+    };
+    window.addEventListener("keydown", onDown, true);
+    window.addEventListener("keyup", end, true);
+    window.addEventListener("blur", end);
+    return () => {
+      end();
+      window.removeEventListener("keydown", onDown, true);
+      window.removeEventListener("keyup", end, true);
+      window.removeEventListener("blur", end);
+    };
+  }, []);
+  return held;
 }

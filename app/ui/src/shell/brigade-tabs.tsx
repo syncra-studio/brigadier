@@ -7,7 +7,7 @@ import { Chat, SidebarError } from "../icons";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
-import { BUTTON, LOOK, noAutoscroll, Shape, TAB, TITLE } from "./chat-tab";
+import { BUTTON, Keycap, LOOK, noAutoscroll, TAB, TITLE } from "./chat-tab";
 import { openSibling, SIBLING } from "./tab-store";
 
 /*
@@ -41,16 +41,16 @@ export function BrigadeGroupLabel({ family, folded, onFold }: { family: readonly
 }
 
 /** Another of the family's tabs: its icon, title and mark; a click opens its session, as its row does. No ×: it's a session. */
-export function SiblingTab({ row, separator, folded }: { row: SessionRow; separator: boolean; folded: boolean }) {
+export function SiblingTab({ row, separator, folded, keycap }: { row: SessionRow; separator: boolean; folded: boolean; keycap?: string | undefined }) {
   const words = useStatusWords(row);
   const title = row.title || "New session";
   return (
     <div data-tab-id={SIBLING + row.id} data-separator={separator || undefined} data-closing={folded || undefined} aria-hidden={folded || undefined} inert={folded} data-agent-group className={cx(TAB, LOOK(false))}>
-      <Shape />
       <button type="button" role="tab" data-sibling aria-selected={false} tabIndex={-1} title={words ? `${title} · ${words}` : title} onMouseDown={noAutoscroll} onClick={() => openSibling(row.id)} className={BUTTON}>
-        {row.mark === "amber" ? <SidebarError className="size-icon-sm shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-sm shrink-0" /> : <Chat className="size-icon-sm shrink-0" />}
+        {row.mark === "amber" ? <SidebarError className="size-icon-md shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-md shrink-0" /> : <Chat className="size-icon-md shrink-0" />}
         <span className={TITLE}>{title}</span>
-        {row.mark && row.mark !== "amber" && <RowMark mark={row.mark} label={words ?? ""} />}
+        {row.mark && row.mark !== "amber" && !keycap && <RowMark mark={row.mark} label={words ?? ""} />}
+        <Keycap keycap={keycap} />
       </button>
     </div>
   );
