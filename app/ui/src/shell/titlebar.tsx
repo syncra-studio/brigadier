@@ -5,7 +5,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
 import { newChat } from "../home/start";
-import { ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
 import { settingsOrigin, settingsPageOf } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
@@ -166,7 +166,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // The toggle, Back and Forward (chevrons), then New chat while the sidebar is hidden; Settings holds the panel open, so it has no toggle [D34 D35 D926].
+  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is hidden; Settings holds the panel open, so it has no toggle [D34 D35 D926].
   return (
     <>
       {chip && (
@@ -184,10 +184,10 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
           )}
           <div className="titlebar-history flex">
             <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
-              <ChevronLeft />
+              <ArrowLeft />
             </TooltipIconButton>
             <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
-              <ChevronRight />
+              <ArrowRight />
             </TooltipIconButton>
           </div>
           {!open && (
