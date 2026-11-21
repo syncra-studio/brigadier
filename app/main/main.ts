@@ -194,7 +194,9 @@ function openWindow(): void {
     titleBarStyle: "hidden",
     // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar). The
     // sidebar moves them onto the tab bar's line once it shows (traffic-lights).
-    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 } } : {}),
+    // acceptFirstMouse: a click on the window while another app is in front acts as well as bringing it forward;
+    // without it a click on the chat's "…" over a window already showing its tooltip did nothing [D211].
+    ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 }, acceptFirstMouse: true } : {}),
     // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
     ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeFrame, symbolColor: themeForeground } } : {}),
     webPreferences: {
