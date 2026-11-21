@@ -8,7 +8,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { showToast } from "../components/toast";
 import { setHomeDraft } from "../home/start";
 import { store } from "../onboarding/api";
-import { Archive, Chat, House, Pencil, SidebarError, X } from "../icons";
+import { Archive, Chat, Pencil, SidebarError, X } from "../icons";
 import { BrigadeGlyph } from "../sessions/brigade";
 import { useMark } from "../session/turn";
 import { rename } from "../sidebar/actions";
@@ -17,7 +17,7 @@ import { RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { CHAT, closeOthers, closeRight, selectTab } from "./tab-store";
 
-/* The tabs that aren't a session's own: its Chat tab, the draft's and the house (tab-bar.tsx) [D848]. */
+/* The tabs that aren't a session's own: its Chat tab and the draft's (tab-bar.tsx) [D848]. */
 // A tab [D44]: 32 tall on the row's middle line, its fill (session-tab's ::after) in front and on hover only.
 export const TAB = "session-tab app-no-drag group/tab flex min-w-0 items-center select-none";
 export const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground");
@@ -26,8 +26,6 @@ export const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center ga
 export const TITLE = "tab-title min-w-0 flex-1 text-start";
 // Room for × where it shows: in front always, in back on hover [D44].
 export const TITLE_CLOSABLE = "group-hover/tab:me-5 group-data-active/tab:me-5";
-// The house, Chrome's pinned tab: its icon alone [D848].
-export const PINNED = "flex h-full w-full cursor-pointer items-center justify-center rounded-session-tab focus-visible:focus-ring";
 // ×: a 20 square 7 from the end, its 14 glyph, its own hover square; on the front tab always, others on hover [D44].
 export const CLOSE = cx(
   "pointer-events-none absolute end-1.75 inset-y-0 my-auto flex size-5 cursor-pointer items-center justify-center rounded-sm opacity-0 hover:bg-fill hover:text-foreground focus-visible:focus-ring focus-visible:opacity-100",
@@ -137,8 +135,8 @@ export function ChatTab({ owner, row, active, separator, order, grouped = false,
   );
 }
 
-/** The Chat tab before there's a session to act on: Home's draft, or a row not read yet. New chat with no tabs, or a
- *  project's page with nothing current, has none: it shrinks out as the others do and grows back with them [D831 D836 D850]. */
+/** The Chat tab before there's a session to act on: Home's draft, or a row not read yet. New chat with no tabs has none:
+ *  it shrinks out as the others do and grows back with them [D831 D836]. */
 export function BlankChatTab({ owner, active, closing, separator, onClose, keycap }: { owner: string; active: boolean; closing: boolean; separator: boolean; onClose?: (() => void) | undefined; keycap?: string | undefined }) {
   return (
     <div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} data-closing={closing || undefined} aria-hidden={closing || undefined} inert={closing} className={cx(TAB, LOOK(active))}>
@@ -153,21 +151,6 @@ export function BlankChatTab({ owner, active, closing, separator, onClose, keyca
           <X className="size-icon-sm" />
         </button>
       )}
-    </div>
-  );
-}
-
-/** The house, Chrome's pinned tab, fixed first in a session and in a project: its project's page, in front there [D819
- *  D828 D829 D848], as a tab [D70]. Outside the tablist, as it opens a page rather than a tab; the same box
- *  everywhere, so it holds its place between a session and its project's page [D834]. */
-export function HouseTab({ active, separator, onOpen }: { active: boolean; separator: boolean; onOpen: () => void }) {
-  return (
-    <div className="flex h-8 w-home-tab shrink-0">
-      <div data-home data-active={active || undefined} data-separator={separator || undefined} className={cx(TAB, LOOK(active))}>
-        <button type="button" title="Home" aria-label="Home" aria-current={active ? "page" : undefined} onMouseDown={noAutoscroll} onClick={onOpen} className={PINNED}>
-          <House className="size-icon-md shrink-0" />
-        </button>
-      </div>
     </div>
   );
 }

@@ -29,9 +29,8 @@ import { openRemoveProject, plural } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
 
 /*
- * A project's page's Settings tab [D780, D782]: everything set for one project, as the page's other tabs list their
- * rows: one list, then Plugins, open by default and collapsible; search finds across the page [D785 D874]. Each row
- * saves as it changes [D30], Rust's record holding it (nothing written into the repo, D211); a refusal shows its reason
+ * A project's page, its settings [D176 D780 D782]: everything set for one project in one list, then Plugins, open
+ * by default and collapsible; search finds across the page [D785 D874]. Each row saves as it changes [D30], Rust's record holding it (nothing written into the repo, D211); a refusal shows its reason
  * under its row. Remove project is last, apart.
  */
 

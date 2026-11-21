@@ -9,7 +9,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeRight, closeTab, pageKey, rereadHome, selectTab, setCurrent, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeRight, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -56,7 +56,7 @@ export const draftKey = (d: Pick<HomeDraft, "locked" | "project"> = draft.get())
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
   setHomeDraft({ ...(project ? { project, chat: false, locked: true } : { locked: false }), focus: draft.get().focus + 1 });
-  // By its own key: from a project's page, Home's tabs are still the page's [D875].
+  // By its own key: Home's tabs may still be another project's.
   selectTab(draftKey(), CHAT);
   window.location.hash = "";
 }
@@ -68,13 +68,12 @@ export function newChat(): void {
   window.location.hash = "";
 }
 
-/** A project's draft closed with its Chat tab's ×: its tabs and words go, and its page shows [D865 D866]. */
+/** A project's draft closed with its Chat tab's ×: its tabs and words go, and New chat shows [D865 D866 D179]. */
 export function dropDraft(project: string): void {
   const key = draftKey({ locked: true, project });
   closeRight(key, CHAT);
   keepDraft(daemonRun, key, EMPTY_DRAFT);
-  setCurrent(project, null);
-  window.location.hash = `#project/${encodeURIComponent(project)}`;
+  newChat();
 }
 
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */
@@ -181,8 +180,8 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
   setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
-  // Its PR tab closes on Home, or on the project's page it was opened from: the session has the PR's page instead [D699 D875].
-  for (const owner of place.pr ? [HOME_DRAFT, pageKey(place.pr.project)] : []) {
+  // Its PR tab closes on Home: the session has the PR's page instead [D699].
+  for (const owner of place.pr ? [HOME_DRAFT] : []) {
     const tab = tabsOf(owner).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
     if (tab) closeTab(owner, tab.id);
   }

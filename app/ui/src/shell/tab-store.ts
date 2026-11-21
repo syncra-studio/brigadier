@@ -52,32 +52,17 @@ const listeners = new Set<() => void>();
 let homeKey = HOME;
 let homeAt: string | null = null;
 const own = (owner: string) => (owner === HOME ? homeKey : owner);
-/** A project's page has tabs of its own, apart from its draft's, so what "+" opens there never shows in New session [D859 D875].
- *  shortcut: Rust takes it as any Home's `@home:<id>`, so a project whose id is `<p>--page` would share it; give the page a key of its own in Rust if ids ever end so. */
-export const pageKey = (project: string): string => `${HOME}:${project}--page`;
-export function setHomeTabs(project: string | null, page = false): void {
+export function setHomeTabs(project: string | null): void {
   homeAt = project;
-  homeKey = project ? (page ? pageKey(project) : `${HOME}:${project}`) : HOME;
+  homeKey = project ? `${HOME}:${project}` : HOME;
   for (const listener of listeners) listener();
 }
-/** The project Home's tabs are, its page's or its draft's, or null for New chat's own [D863]. */
+/** The project Home's tabs are its draft's, or null for New chat's own [D863]. */
 export const homeProject = (): string | null => homeAt;
 export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, homeProject);
-/** What a project's page shows after its house: the session last shown in that project, its draft (HOME) or the page's
- *  own tabs (pageKey) [D849 D850 D875]; none once its draft is dropped. */
-const currents = new Map<string, string>();
-export function setCurrent(project: string, owner: string | null): void {
-  if (currents.get(project) === (owner ?? undefined)) return;
-  if (owner) currents.set(project, owner);
-  else currents.delete(project);
-  for (const listener of listeners) listener();
-}
-/** The last place used in each project: a session, its draft (HOME), its page ("") or a tab of its page (pageKey), where a
- *  click on it goes back to [D865 D875]. */
+/** The last place used in each project, a session or its draft (HOME), where a click on it goes back to [D865]. */
 const places = new Map<string, string>();
 export const setPlace = (project: string, at: string): void => void places.set(project, at);
-/** Whether a tab of the page was in front when the project was left: the page opens on it again [D865 D875]. */
-export const pageTabLast = (project: string): boolean => places.get(project) === pageKey(project);
 /** Where a click on `project` goes: its last place, a session `live` still holds or its draft, else its page (null);
  *  its page too when that place is where `hash` already is. */
 export function placeOf(project: string, live: (id: string) => boolean, hash: string): string | null {
@@ -85,7 +70,6 @@ export function placeOf(project: string, live: (id: string) => boolean, hash: st
   if (at === HOME) return hash === "" && homeProject() === project ? null : HOME;
   return at && live(at) && hash !== `#thread/${encodeURIComponent(at)}` ? at : null;
 }
-export const useCurrent = (project: string | null): string | undefined => useSyncExternalStore(subscribe, () => (project ? currents.get(project) : undefined));
 const opened = new Set<string>();
 
 function slotOf(owner: string): Slot {

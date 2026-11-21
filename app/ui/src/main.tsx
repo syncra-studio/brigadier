@@ -11,7 +11,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -36,7 +36,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { CHAT, HOME, pageTabLast, selectTab, setHomeTabs } from "./shell/tab-store";
+import { HOME, setHomeTabs } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -109,12 +109,10 @@ function App() {
   }
   const page = projectPageOf(hash);
   if (page !== null) {
-    // Its Home tab under the project's Home tab bar [D780 D819 D820].
+    // Its settings, with no tab bar, as Settings' [D176 D179].
     return (
       <Shell hash={hash} active={null} rows={rows} page={page}>
-        <Home page={page}>
-          <ProjectPage id={page} />
-        </Home>
+        <ProjectPage id={page} />
       </Shell>
     );
   }
@@ -144,8 +142,8 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   const [open, setOpen] = useStored("sidebar.open", true);
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   useSeen(rows?.find((row) => row.id === active));
-  // One tab bar for every page but Settings, kept as the page changes so its tabs change smoothly: the old ones shrink
-  // out, the new grow in, the house holds its place [D836 D854]. It shows a rename or an archive at once [D30].
+  // One tab bar for every page but Settings and a project's, kept as the page changes so its tabs change smoothly: the
+  // old ones shrink out, the new grow in [D836 D854 D179]. It shows a rename or an archive at once [D30].
   const titled = useShown(rows)?.find((each) => each.id === active);
   const home = active === null && page === undefined && settings === undefined;
   const rail = (squares?: ReactNode) => (
@@ -183,7 +181,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         )}
         {/* Settings' page is the main area too. */}
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
-        {settings === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} home={page !== undefined} />}
+        {settings === undefined && page === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
@@ -197,20 +195,12 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   );
 }
 
-// Home is a new session's draft [D161], or a project's page, whose Home tab it is: the same project's tabs [D706 D819 D820].
-function Home({ page, children }: { page?: string; children: ReactNode }) {
+// Home is a new session's draft [D161]: a project's has that project's tabs [D706].
+function Home({ children }: { children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
   // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
   const locked = useHomeDraft().locked === true;
-  // A project's page its own, apart from its draft's [D875].
-  useLayoutEffect(() => (page ? setHomeTabs(page, true) : setHomeTabs(locked ? project : null)), [page, project, locked]);
-  // Opening a project's page shows its Home tab in front, the page's tabs kept beside it as left, or the tab of it last
-  // in front when the project was left there [D836 D837 D865]; its tabs read the project as Home's do [D279].
-  useLayoutEffect(() => {
-    if (!page) return;
-    setHomeDraft({ project: page, chat: false, locked: true });
-    if (!pageTabLast(page)) selectTab(HOME, CHAT);
-  }, [page]);
+  useLayoutEffect(() => setHomeTabs(locked ? project : null), [project, locked]);
   return (
     <>
       <TabbedMain owner={HOME} archived={false}>

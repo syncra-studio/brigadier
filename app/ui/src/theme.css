@@ -356,12 +356,10 @@
      overlay's env values; with none, as under the dev flag, the board's 138px). */
   --spacing-caption: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 8.625rem)) - var(--spacing));
   /* The tabs [D44]: an even share of the row from 90 to 240 each, then the strip scrolls under 40 fades at its
-     edges. Each tab's box takes the 2 between fills, a 1×12 rule in it. The house, Chrome's pinned tab, its icon alone
-     wherever it shows, so it holds its place between a session and its project's page [D834 D848 D875]. */
+     edges. Each tab's box takes the 2 between fills, a 1×12 rule in it. */
   --spacing-session-tab-min: 5.625rem;
   --spacing-session-tab-max: 15rem;
   --spacing-session-tab-fade: 2.5rem;
-  --spacing-home-tab: 2.375rem;
   --spacing-session-tab-inset: 1px;
   --spacing-session-tab-rule: 1px;
   --spacing-session-tab-rule-height: 0.75rem;
@@ -1628,26 +1626,17 @@
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
     transition: none;
   }
-  /* The house's rule sits beside Chat, which isn't its sibling either, or with no Chat beside the strip's first tab [D840 D857 D875]. */
-  &:has([role="tablist"] > .session-tab:first-child:hover, [role="tablist"] > [data-closing]:first-child + * > .session-tab:first-child:hover) [data-home]::before {
-    opacity: 0;
-  }
 }
 
-/* The widths [D44]: every tab but the house and Chat an even share of the tab area (its container) less "+", the
+/* The widths [D44]: every tab but Chat an even share of the tab area (its container) less "+", the
    group labels and Chat (its width, data-chat), from 90 up to 240, then the strip scrolls. Chat is as wide as its
    title, 90 to 240, and stays put. The row is as wide as its tabs, so "+" follows the last [D835]. */
 @utility session-tab-list {
   position: relative;
-  /* The project page's house is its first tab here; a session's sits before the list. */
-  --session-tab-pinned: 0;
-  &[data-home] {
-    --session-tab-pinned: 1;
-  }
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - var(--session-tab-pinned) * var(--spacing-home-tab) - attr(data-chat px, 0px));
-  --session-tab-count: max(attr(data-count type(<number>), 1) - var(--session-tab-pinned), 1);
+  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - attr(data-chat px, 0px));
+  --session-tab-count: max(attr(data-count type(<number>), 1), 1);
   --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
@@ -1693,9 +1682,6 @@
   /* Each held at its width after a close with the pointer, until it leaves the row (tab-bar.tsx). */
   &[data-frozen] {
     flex-basis: attr(data-frozen px);
-  }
-  &[data-home] {
-    flex-basis: var(--spacing-home-tab);
   }
   &::after {
     content: "";

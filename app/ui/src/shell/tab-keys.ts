@@ -4,14 +4,11 @@ import { allProfiles, switchProfile } from "../browser/profiles";
 import { matches } from "../shortcuts";
 import { newId } from "../session/store";
 import { blocked } from "./titlebar";
-import { closeOthers, HOME, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
+import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
-/** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here.
- *  On a project's page the row is `peek`'s, the session or draft current there: they act on it and open it, as a click
- *  does; with neither, on the page's own tabs, never the draft's [D849 D859 D875]. */
-export function useTabKeys(home: string, archived: boolean, peek?: string, family: readonly string[] = []): void {
+/** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here. */
+export function useTabKeys(owner: string, archived: boolean, family: readonly string[] = []): void {
   useEffect(() => {
-    const owner = peek ?? home;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || blocked()) return;
       const is = (id: string) => matches(event, id);
@@ -32,14 +29,11 @@ export function useTabKeys(home: string, archived: boolean, peek?: string, famil
       if (!run) return;
       event.preventDefault();
       event.stopPropagation();
-      const at = window.location.hash;
       run();
-      // The draft's page is Home's, already in the page's project [D875]; a Brigade's tab already went to its session [D3108].
-      if (peek && window.location.hash === at) window.location.hash = peek.startsWith(HOME) ? "" : `#thread/${encodeURIComponent(peek)}`;
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [home, archived, peek, family]);
+  }, [owner, archived, family]);
 }
 
 // shortcut: the wait before the badges show is our own pick; it keeps ⌘T and the like from flashing them.
