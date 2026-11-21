@@ -42,7 +42,7 @@ function KeepAwakeMenu() {
   return (
     <Popover>
       <PopoverTrigger
-        render={<TooltipIconButton look="foot" side="right" tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
+        render={<TooltipIconButton look="rail" side="right" tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
       >
         <Lightbulb className={cx(on && "text-foreground")} />
       </PopoverTrigger>
@@ -123,7 +123,7 @@ function UsageMenu() {
       <PopoverTrigger
         render={
           <TooltipIconButton
-            look="foot"
+            look="rail"
             side="right"
             tooltip={top?.limit ? `Usage · ${top.label} ${used}% used` : "Usage"}
             dot={alert === "destructive" ? "bg-destructive" : alert === "warning" ? "bg-warning" : undefined}
@@ -184,7 +184,7 @@ const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item
 
 /**
  * The strip's foot, today's strip order top to bottom: updates (only while there are some), Usage, Keep awake, Feedback,
- * Settings, lit while `settings` shows [D56 D57 D18 D19]; smaller and closer than the strip's top [D190], under a rule
+ * Settings, lit while `settings` shows [D56 D57 D18 D19]; the top's size, closer together [D190 D204], under a rule
  * while the top reaches it [D191].
  */
 export function StripFoot({ settings = false }: { settings?: boolean }) {
@@ -197,10 +197,10 @@ export function StripFoot({ settings = false }: { settings?: boolean }) {
       <UsageMenu />
       <KeepAwakeMenu />
       {/* Feedback sits in the foot [new-design]. */}
-      <TooltipIconButton look="foot" side="right" tooltip="Send Feedback" onClick={() => openFeedback()}>
+      <TooltipIconButton look="rail" side="right" tooltip="Send Feedback" onClick={() => openFeedback()}>
         <FeedbackGlyph />
       </TooltipIconButton>
-      <TooltipIconButton look="foot" side="right" tooltip="Settings" shortcut={keysOf("settings")[0]} pressed={settings} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
+      <TooltipIconButton look="rail" side="right" tooltip="Settings" shortcut={keysOf("settings")[0]} pressed={settings} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
         <Settings />
       </TooltipIconButton>
     </div>
