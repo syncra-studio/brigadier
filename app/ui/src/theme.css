@@ -1797,16 +1797,9 @@
     &::after {
       content: none;
     }
-    /* Its icon, title and "…" one button: hover or its menu open fills them, an icon button's 28 tall fill [D211 D213]. */
     & > button {
-      height: calc(var(--spacing) * 7);
       padding-inline-start: calc(var(--spacing) * 2);
       gap: calc(var(--spacing) * 4);
-      border-radius: var(--radius-icon-button);
-      &:hover,
-      &[aria-expanded="true"] {
-        background-color: var(--color-fill);
-      }
     }
     /* Cut with "…", its own "…" button 7 past it (the tab's end padding) [D200]. */
     & .tab-title {
@@ -1844,8 +1837,8 @@
     overflow: hidden;
     transition-duration: var(--duration-session-tab-close);
   }
-  /* The rule between two tabs in back, on their shared edge; none beside the front tab (no data-separator) or a hovered
-     one, either side [D437 D840]. */
+  /* The rule between two tabs in back, on their shared edge, and between the last one in back and "+"; none beside the
+     front tab (no data-separator) or a hovered one, either side [D437 D840 D215]. */
   &::before {
     content: "";
     position: absolute;

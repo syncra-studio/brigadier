@@ -388,7 +388,7 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
                           </ContextMenuContent>
                         </ContextMenu>
                       )}
-                      <OtherTab owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && index < tabs.length - 1 && tabs[index + 1]?.id !== active} closing={closing || folded(driver)} entering={presence.entering.has(tab.id)} order={order} keycap={closing ? undefined : keycap(tab.id)} onClose={() => closeHere(tab.id)} />
+                      <OtherTab owner={owner} tab={tab} index={Math.max(index, 0)} last={tabs.length - 1} selected={selected} separator={!selected && !closing && (index === tabs.length - 1 || tabs[index + 1]?.id !== active)} closing={closing || folded(driver)} entering={presence.entering.has(tab.id)} order={order} keycap={closing ? undefined : keycap(tab.id)} onClose={() => closeHere(tab.id)} />
                     </Fragment>
                   );
                 })}
