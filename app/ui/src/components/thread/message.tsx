@@ -39,10 +39,10 @@ export function sentAt(ms: number, now = Date.now()): string {
   return `${fullDate.format(at)} at ${clock}`;
 }
 
-/** "Today 3:36 PM", else as the bubble's time says it: centred above a message, as the old app's time separator. */
+/** "Today 3:36 PM", else as the bubble's time says it: centred above a message, in the rows' grey [D106]. */
 function TimeSeparator({ at }: { at: number }) {
   const today = new Date(at).toDateString() === new Date().toDateString();
-  return <p className="self-stretch pt-2 pb-4 text-center text-sm text-muted-foreground">{today ? `Today ${sentAt(at)}` : sentAt(at)}</p>;
+  return <p className="self-stretch pb-3 text-center text-sm leading-5.25 text-row-foreground">{today ? `Today ${sentAt(at)}` : sentAt(at)}</p>;
 }
 
 /** A gap before a user's message that a time separator marks (the old app's). */

@@ -18,7 +18,7 @@ export function ThreadLine({ icon: Glyph, tip, live, children }: { icon?: Icon; 
     <LabeledDivider role="status">
       <span className="min-w-0 text-center wrap-break-word">
         <span className={cx("min-w-0", live && "shimmer")}>
-          {Glyph && <span className="me-1.5 w-icon-sm cap-box"><Glyph className="size-icon-sm" /></span>}
+          {Glyph && <span className="me-2 w-icon-sm cap-box"><Glyph className="size-icon-sm" /></span>}
           {children}
           {tip && <InfoTip text={tip} />}
         </span>
@@ -31,7 +31,7 @@ export function ThreadLine({ icon: Glyph, tip, live, children }: { icon?: Icon; 
 export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?: string; children: ReactNode }) {
   return (
     <LabeledDivider role="status">
-      <span className="flex max-w-4/5 min-w-0 items-start gap-1.5 text-center">
+      <span className="flex max-w-4/5 min-w-0 items-start gap-2 text-center">
         <Glyph className="mt-0.5 size-icon-sm shrink-0" />
         <span className="min-w-0 wrap-break-word">
           {children}

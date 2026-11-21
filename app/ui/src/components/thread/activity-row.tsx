@@ -7,8 +7,8 @@ import { useKept } from "../../thread/kept";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { cx } from "../cx";
 
-/** One 21px line of 60% words, as wide as its words, cut at the column's edge. */
-export const ROW = "flex w-fit max-w-full min-h-5.25 min-w-0 items-center gap-1.5 text-sm leading-5.25 text-row-foreground";
+/** One 21px line of 60% words, 8 after its 16 icon, as wide as its words, cut at the column's edge. */
+export const ROW = "flex w-fit max-w-full min-h-5.25 min-w-0 items-center gap-2 text-sm leading-5.25 text-row-foreground";
 /** A row that opens: it turns white while hovered or focused. */
 export const TOGGLE = "group cursor-pointer rounded-control text-start hover:text-foreground focus-visible:text-foreground focus-visible:focus-ring";
 /** An opened group's or batch's rows: 12 under it and apart, each at its words' start, on a rule under its icon [D95]. */

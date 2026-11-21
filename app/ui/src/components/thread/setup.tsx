@@ -50,7 +50,7 @@ function Card({ keep, setup, phase }: { keep: string; setup: Setup; phase: Setup
                   <Icon className={cx("size-4 shrink-0", step.state === "running" && "animate-spin")} />
                   <span className={cx("min-w-0 truncate", step.state === "failed" && "text-destructive", step.state === "running" && "shimmer")}>{words(step)}</span>
                 </span>
-                <ErrorLine error={error} size="sm" className="ps-5.5 break-words" />
+                <ErrorLine error={error} size="sm" className="ps-6 break-words" />
               </div>
             );
           })}

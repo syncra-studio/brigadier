@@ -135,7 +135,7 @@ export function ToolRow({
     return (
       <div className="flex min-w-0 flex-col">
         <div className={ROW}>{head}</div>
-        <div className={cx(DETAIL, "ps-5.5")}>{steps}</div>
+        <div className={cx(DETAIL, "ps-6")}>{steps}</div>
       </div>
     );
   }
@@ -148,7 +148,7 @@ export function ToolRow({
           {approval && <Allowed approval={approval} />}
           {skill ? (
             <>
-              {steps && <div className={cx(DETAIL, "ps-5.5")}>{steps}</div>}
+              {steps && <div className={cx(DETAIL, "ps-6")}>{steps}</div>}
               {output && <ToolBox title="Output">{output}</ToolBox>}
             </>
           ) : command ? (

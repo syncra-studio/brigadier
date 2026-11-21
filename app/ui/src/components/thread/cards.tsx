@@ -191,14 +191,13 @@ export function CompactionDivider({ progress: reported = "done" }: { progress?: 
   );
 }
 
-/** Something the app or agent wants seen, centred after its icon; an error in red, announced as it comes. */
+/** Something the app or agent wants seen after its icon, a row [D120]; an error in red, announced as it comes. */
 export function NoticeRow({ level, text, link }: { level: "info" | "warning" | "error"; text: string; link?: ReactNode }) {
   const error = level === "error";
   return (
-    // Centred, wrapped lines too (D150). The icon is inline before the first word, so it stays beside the words,
-    // centred on its capitals (D151).
-    <p role={error ? "alert" : undefined} className={cx("text-center text-sm leading-5.25 wrap-anywhere", error ? "whitespace-pre-wrap text-destructive" : "text-row-foreground")}>
-      <span className="me-1.5 w-4 cap-box">
+    // The icon is inline before the first word, so it stays beside the words, centred on its capitals (D151).
+    <p role={error ? "alert" : undefined} className={cx("text-sm leading-5.25 wrap-anywhere", error ? "whitespace-pre-wrap text-destructive" : "text-row-foreground")}>
+      <span className="me-2 w-4 cap-box">
         {error ? <ExclamationMarkCircle className="size-4" /> : level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4" />}
       </span>
       {text}

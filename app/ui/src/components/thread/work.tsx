@@ -87,7 +87,7 @@ export function GroupRow({ item, members, open, onToggle }: { item: Group; membe
 export function ThoughtRow({ item }: { item: Extract<Item, { kind: "reasoning" }> }) {
   const words = item.heading || item.text.replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim() || "Thought";
   return (
-    <OpeningRow keep={item.id} detail={<div className="ps-5.5"><Markdown text={item.text} keep={item.id} /></div>}>
+    <OpeningRow keep={item.id} detail={<div className="ps-6"><Markdown text={item.text} keep={item.id} /></div>}>
       <StepIcon icon={Lightbulb} />
       <Words verb={words} />
     </OpeningRow>

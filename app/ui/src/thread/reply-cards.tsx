@@ -59,8 +59,8 @@ export function replyCard(language: string, json: string, keep: string): ReactNo
   return isMessage(spec) ? <MessageCard {...spec} keep={keep} /> : null;
 }
 
-/** The frame a reply's words for a person sit in: quiet, large corners, the reply's own font [D520]. */
-const FRAME = "my-3 rounded-alert border border-border bg-code-surface first:mt-0 last:mb-0";
+/** The frame a reply's words for a person sit in, the code card's [D122]: large corners, the reply's own font [D520]. */
+const FRAME = "my-3 rounded-thread border border-code-card-edge bg-code-card first:mt-0 last:mb-0";
 
 /** A draft's first lines as one line, its markdown marks dropped, for its folded row. */
 const peek = (text: string) =>
@@ -85,7 +85,7 @@ export function Draft({ keep, icon, title, text, live = false, children }: { kee
         aria-expanded={open}
         data-kept={keep}
         onClick={() => setOpen(!open)}
-        className="flex h-control-md w-full cursor-pointer items-center gap-1.5 rounded-alert ps-4 pe-2 text-start text-xs text-muted-foreground focus-visible:focus-ring"
+        className="flex h-control-md w-full cursor-pointer items-center gap-1.5 rounded-thread ps-4 pe-2 text-start text-xs text-muted-foreground focus-visible:focus-ring"
       >
         {icon}
         <span className="max-w-1/2 shrink-0 truncate font-medium text-foreground">{title}</span>
