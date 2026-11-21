@@ -5,13 +5,13 @@ import { ask, useDaemon } from "../daemon";
 import { HOME_DRAFT } from "../session/draft";
 import { putBack } from "../session/side";
 import { closeTab, HOME, openTab, tabsOf, useTabsRead } from "../shell/tab-store";
-import { openPrPage, type PrRow, reviewChats } from "./route";
+import { liveReviewChat, openPrPage, type PrRow } from "./route";
 
 export const ASK = "Review this pull request.";
 
 /** The row menu's Review [D161 D174]: the PR's review chat with the ask in its composer, nothing sent. */
 export function openReview(row: PrRow): void {
-  putBack(reviewChats.get()[row.ref] ?? HOME_DRAFT, ASK, false);
+  putBack(liveReviewChat(row.ref) ?? HOME_DRAFT, ASK, false);
   openPrPage(row);
 }
 

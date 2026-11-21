@@ -1,3 +1,4 @@
+import { rowNow } from "../daemon";
 import { store } from "../onboarding/api";
 
 /*
@@ -59,6 +60,12 @@ export const pinned = kept<PrRow[]>("pullRequests.pinned", []);
 export const recents = kept<PrRow[]>("pullRequests.recents", []);
 /** Each PR's review chat, by ref: the session its first message started [D162]. */
 export const reviewChats = kept<Record<string, string>>("pullRequests.chats", {});
+
+/** PR `ref`'s review chat unless it's archived: the page then shows the review draft, whose send starts a new one. */
+export function liveReviewChat(ref: string): string | undefined {
+  const chat = reviewChats.get()[ref];
+  return chat && !rowNow(chat)?.archived ? chat : undefined;
+}
 
 const RECENTS = 10;
 

@@ -411,6 +411,9 @@ export const connected = (): Promise<void> =>
     check();
   });
 
+/** Session `id`'s row as last listed, outside React. */
+export const rowNow = (id: string): Row | undefined => view.rows?.find((row) => row.id === id);
+
 export const useDaemon = (): View =>
   useSyncExternalStore(
     (listener) => {
