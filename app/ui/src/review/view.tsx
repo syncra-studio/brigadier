@@ -4,8 +4,9 @@ import { ask, useDaemon } from "../daemon";
 import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
 import { HOME, openFile, setTabScope } from "../shell/tab-store";
+import { PrSource, type SourcePr } from "./pr-source";
 import { ReviewTab } from "./review-tab";
-import type { FileContents, Review, ReviewFile, ReviewScope } from "./types";
+import type { FileContents, PatchContents, Review, ReviewFile, ReviewScope } from "./types";
 
 /**
  * The Review tab on Rust's git [D1035, D1036]: the scope's files and counts first, then each file's patch, a large
@@ -25,7 +26,9 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     if (repo) setScope((now) => (now === "last" ? "branch" : now));
   }, [repo]);
   const [review, setReview] = useState<Review | null>(null);
-  const [contents, setContents] = useState<ReadonlyMap<string, FileContents | { error: string }>>(new Map());
+  const [contents, setContents] = useState<ReadonlyMap<string, FileContents | PatchContents | { error: string }>>(new Map());
+  // A PR picked under Pull requests: its host's diff in the scope's place [D172].
+  const [pr, setPr] = useState<SourcePr | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
@@ -58,6 +61,16 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     if (!checkout || !daemon) return;
     const at = ++read.current;
     setLoading(true);
+    if (pr)
+      // Read as the Pull Requests page reads any PR: the repository's open PRs aren't all the session's own.
+      return void ask({ op: "run", args: ["host", "@", "files", pr.ref] }, (reply) => {
+        if (read.current !== at) return;
+        setLoading(false);
+        if (!reply.ok) return setError(String(reply.error));
+        setError(null);
+        setReview(reply.files);
+        setContents(new Map(reply.files.files.map((file: ReviewFile & PatchContents) => [file.path, { patch: file.patch }])));
+      });
     ask({ op: "run", args: sourceArgs(checkout, "review", scope) }, (reply) => {
       if (read.current !== at) return;
       setLoading(false);
@@ -71,7 +84,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       setContents((now) => new Map([...now].filter(([path]) => next.files.some((file) => file.path === path && !file.large))));
       for (const file of next.files) if (!file.large) load(file, at, next.turn);
     });
-  }, [key, daemon, scope, git.version, tick, row?.sent, row?.finished]);
+  }, [key, daemon, scope, pr, git.version, tick, row?.sent, row?.finished]);
 
   // shortcut: Branch since base asks every few seconds, while the window shows, whether the base moved; a watch of
   // the base's ref would be instant.
@@ -98,8 +111,9 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   }, [review, contents, target]);
 
   // Another scope's diff isn't shown under this one's loading or error.
-  const show = (next: ReviewScope) => {
+  const show = (next: ReviewScope, picked: SourcePr | null = null) => {
     setScope(next);
+    setPr(picked);
     setReview(null);
     setContents(new Map());
     setError(null);
@@ -131,6 +145,8 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       onRemoveComment={(id) => dropChips(owner, [id])}
       target={target}
       {...(owner === HOME ? {} : kept)}
+      picked={pr && `#${pr.number} ${pr.title}`}
+      sources={owner !== HOME && !repo && <PrSource owner={owner} picked={pr} onPick={(picked) => show(scope, picked)} />}
       />
     </div>
   );

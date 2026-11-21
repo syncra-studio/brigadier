@@ -18,7 +18,7 @@ const PAGE: u32 = 30;
 const KEPT: usize = 20;
 
 /// A row's fields: a bare row [D613].
-const ROW: &str = "number url title state isDraft createdAt updatedAt additions deletions author { login avatarUrl }";
+const ROW: &str = "number url title state isDraft headRefName baseRefName createdAt updatedAt additions deletions author { login avatarUrl }";
 
 fn path(dir: &Path) -> PathBuf {
     dir.join("pr").join("search.json")
@@ -371,6 +371,7 @@ fn row(pr: &Value) -> Value {
         .map(|(repo, n)| format!("{repo}#{n}"));
     json!({"number": pr["number"], "ref": named, "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "draft": pr["isDraft"],
+        "head": pr["headRefName"], "base": pr["baseRefName"],
         "author": pr["author"]["login"], "additions": pr["additions"], "deletions": pr["deletions"],
         "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),
         "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms)})
