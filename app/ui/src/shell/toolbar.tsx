@@ -66,7 +66,7 @@ export function Toolbar({ owner }: { owner: string }) {
   if (home && !panel) return null;
   // On every platform, on Windows just before the caption buttons [D60].
   return (
-    <div className="app-no-drag flex shrink-0 items-center gap-1.5">
+    <div className="app-no-drag flex shrink-0 items-center gap-2">
       <TitlebarTips>
         {!home && <ContextButton owner={owner} className={cx(fold(onChat), enter)} />}
         {panel && <RightPanelToggle owner={owner} className={enter} />}

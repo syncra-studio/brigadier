@@ -32,8 +32,8 @@ import { Toolbar } from "./toolbar";
 const CLOSING_MS = 100;
 
 // The titlebar row: across the window's top from its start edge, everything on its middle
-// line [D43 D44 D48 D823].
-const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 pe-2 win:pe-caption";
+// line, its last button 8 from the window's end [D43 D44 D48 D823 D40].
+const BAR = "app-drag titlebar-clear fixed start-0 end-2 top-0 flex h-tab-bar items-center gap-2 win:pe-caption";
 // A press is a click until it moves: a drag that started on the press would take the click.
 const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerActivationConstraints.Distance({ value: 5 })] })];
 /** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
