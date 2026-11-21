@@ -82,6 +82,9 @@ const EMOJI: Record<string, string> = { THUMBS_UP: "👍", THUMBS_DOWN: "👎", 
 export function Reactions({ pr, subject, reactions = [], onChanged }: { pr: PullRequest; subject: string; reactions?: PrReaction[]; onChanged: () => void }) {
   const [shown, setShown] = useState<PrReaction[] | null>(null);
   const now = shown ?? reactions;
+  // A read with other reactions (anyone's) replaces what was shown at once [D30].
+  const read = JSON.stringify(reactions);
+  useEffect(() => setShown(null), [read]);
   const [picking, setPicking] = useState(false);
   const toggle = (content: string) => {
     setPicking(false);
