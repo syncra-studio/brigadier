@@ -383,12 +383,11 @@
   --spacing-summary-room: calc(var(--spacing) * 38.5);
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
-  /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
-     room under it; a folded code block's 10 lines, drawn whole but cut there while it searches (the old app's). */
+  /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), over the thread's top
+     [D205]; a folded code block's 10 lines, drawn whole but cut there while it searches (the old app's). */
   --spacing-find-row: 2.75rem;
   --spacing-thread-find: 24rem;
   --container-thread-find-max: 70vw;
-  --spacing-thread-find-top: calc(var(--spacing-find-row) + 1.5rem);
   /* The Browser tab (the old app's): its address field at its widest, the site information popover, the ⋯ menu and its
      rows, the menu's zoom stepper and its 100%, and the page's find bar. */
   --spacing-browser-address: 48.125rem;

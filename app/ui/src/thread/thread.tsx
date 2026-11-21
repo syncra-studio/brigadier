@@ -40,7 +40,7 @@ function Loading() {
     return () => clearTimeout(timer);
   }, []);
   return (
-    <div role="status" className={`${COLUMN} pt-thread-find-top`}>
+    <div role="status" className={`${COLUMN} pt-8`}>
       <span className="sr-only">Loading conversation</span>
       {late && <Placeholder />}
     </div>
@@ -371,8 +371,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           <div className={`${COLUMN} pb-8`}>
             {after !== null && <Newer after={after} newer={source.newer} />}
             {thinking && <div className="pt-3"><ThinkingLine /></div>}
-            {/* With no rows yet, the footer is the first row: its gap clears find's bar, as a first row's does (rows.tsx). */}
-            {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-3" : "pt-thread-find-top"} empty:hidden`}>{footer}</div>}
+            {/* With no rows yet, the footer is the first row, with a first row's gap (rows.tsx). */}
+            {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-3" : "pt-8"} empty:hidden`}>{footer}</div>}
             <Spacer space={space} />
           </div>
           <div data-end aria-hidden className="end-snap-target" />
