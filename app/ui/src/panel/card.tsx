@@ -6,7 +6,8 @@ import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { TooltipIconButton } from "../components/icon-button";
-import { Branch, ChevronDown, DotsHorizontal, Warning } from "../icons";
+import { useDaemon } from "../daemon";
+import { Branch, CheckCircle, ChevronDown, Dot, DotsHorizontal, Spinner, Warning, X } from "../icons";
 import { Offline } from "./source/branch";
 import type { SourceData, SourceOps } from "./source/data";
 import { Counts, Line, Rows } from "./source/rows";
@@ -198,6 +199,33 @@ export function FolderChanges({ repos, onReview }: { repos: TouchedRepo[]; onRev
           {repo.name} · {repo.branch ?? "…"}
         </Line>
       ))}
+    </CardSection>
+  );
+}
+
+/** A plan step's mark by its status, as the CLIs write it: done, under way, given up, or still to do. */
+const STEP: Record<string, ReactNode> = {
+  completed: <CheckCircle />,
+  in_progress: <Spinner className="animate-spin motion-reduce:animate-none" />,
+  cancelled: <X />,
+};
+
+/**
+ * The Plan, from the agent's own to-do list as its CLI last wrote it (Claude Code's TodoWrite, OpenCode's
+ * todowrite, Codex's update_plan) [D144]: a row a step, done ones muted. Nothing when it wrote none.
+ */
+export function PlanCard({ owner }: { owner: string }) {
+  const plan = useDaemon().rows?.find((row) => row.id === owner)?.plan;
+  if (!plan?.length) return null;
+  return (
+    <CardSection title="Plan" fold="plan" count={plan.length}>
+      <Rows items={plan}>
+        {(step, index) => (
+          <Line key={index} icon={STEP[step.status] ?? <Dot />} title={step.text} className={cx(step.status !== "in_progress" && step.status !== "pending" && "text-muted-foreground")}>
+            {step.text}
+          </Line>
+        )}
+      </Rows>
     </CardSection>
   );
 }

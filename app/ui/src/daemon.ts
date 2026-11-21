@@ -36,8 +36,8 @@ export type Row = {
   works?: boolean;
   /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
   background?: Job[];
-  /** Something has run in its background: the card keeps its Background history button [D200]. */
-  background_ran?: boolean;
+  /** Something has run in its background: the card keeps its Background history button [D200]. */ background_ran?: boolean;
+  /** Its agent's to-do list as its CLI's todo or plan tool last wrote it [D144]. */ plan?: { text: string; status: string }[] | null;
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
   /** It holds its project's own folder, unarchived: Local checkout can't start there again [D306]. */

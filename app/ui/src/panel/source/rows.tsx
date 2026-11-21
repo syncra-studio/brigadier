@@ -54,7 +54,7 @@ export function Line({ icon, end, onClick, action, title, className, children }:
 }
 
 /** The list: the first 5, then "Show N more", 5 at a time [D139]. */
-export function Rows<T>({ items, children }: { items: readonly T[]; children: (item: T) => ReactNode }) {
+export function Rows<T>({ items, children }: { items: readonly T[]; children: (item: T, index: number) => ReactNode }) {
   const [shown, setShown] = useState(5);
   return (
     <>

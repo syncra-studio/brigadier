@@ -218,6 +218,11 @@ impl Agent {
             "compact" => emit(json!({"t": "compact"})),
             // `ctx:N`: its context now holds N thousand tokens [D88].
             "ctx" => emit(json!({"t": "context", "used": n * 1000})),
+            // `todo:N`: its to-do list of N steps, the first done and the next under way [D144].
+            "todo" => emit(
+                json!({"t": "plan", "steps": (0..n).map(|i| json!({"text": format!("Step {}", i + 1),
+                "status": match i { 0 => "completed", 1 => "in_progress", _ => "pending" }})).collect::<Vec<_>>()}),
+            ),
             // The notices' signals [D487]: its own retries, a reroute, a turn failing for a cause,
             // a reply held for checks, an action its rule turned down.
             "retry" => {

@@ -258,6 +258,9 @@ impl Adapter for Fake {
                 v["opens"] == true,
             )],
             "deny" => vec![Event::Denied],
+            "plan" => vec![Event::Plan(
+                v["steps"].as_array().cloned().unwrap_or_default(),
+            )],
             "limits" => serde_json::from_value(v["windows"].clone()).map_or_else(
                 |_| vec![Event::Unknown(line.into())],
                 |l| vec![Event::Limits(l)],

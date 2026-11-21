@@ -8,7 +8,7 @@ import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
-import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, summaryReady, type TouchedRepo } from "../panel/card";
+import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, PlanCard, summaryReady, type TouchedRepo } from "../panel/card";
 import { PrsCard } from "../panel/card-prs";
 import { pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
@@ -368,6 +368,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
         offline={shown.offline}
         onPr={(pr) => (folderChat ? pr.url && openLink(pr.url) : openPr(owner, pr))}
       />
+      <PlanCard owner={owner} />
       <WorkersCard owner={owner} />
       <SubagentsCard owner={owner} />
       <BackgroundCard owner={owner} />

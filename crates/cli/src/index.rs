@@ -320,6 +320,7 @@ impl Index {
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
+            row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
             row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]
             row["created"] = json!(e.spec.as_ref().map(|s| s.created)); // when it was made: a Brigade's fixed order [D33]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
