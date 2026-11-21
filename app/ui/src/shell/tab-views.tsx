@@ -134,6 +134,9 @@ function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
  * The page under the tab bar: the chat, which stays as it was (scrolled, its draft typed) under the open tabs, each
  * keeping its place too, with only the one in front showing. Beside it, the right panel's mount point.
  */
+const REVIEW = "@";
+const isRef = (target?: string) => /^[^/#]+\/[^/#]+\/[^/#]+#\d+$/.test(target ?? "");
+
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);
   // Home's tabs read the picked project's repository until the first message makes its session [D279].
@@ -154,8 +157,9 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}
           >
             {/* Each kind until it's wired: the terminal comes later [D361]. */}
-            <HostOf.Provider key={host} value={host}>
-              {owner === HOME && !host && (tab.kind === "pr" || tab.kind === "actions") ? (
+            {/* A PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
+            <HostOf.Provider key={host} value={tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
+              {owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (
                 <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={tab.target === "list" ? "Pull requests" : TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
               ) : tab.kind === "file" ? (
                 <FileTab key={tab.target} tab={tab} active={tab.id === active} />

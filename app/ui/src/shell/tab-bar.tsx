@@ -176,7 +176,8 @@ function useTabPresence(tabs: readonly Tab[]) {
 
 /** The one bar atop every page but Settings and a project's [D360 D854 D179]: the Chat tab, the tabs it opened, "+", the
  *  toolbar. Click shows, drag reorders, middle-click or Delete closes; the title, rename and ⋯ live on the Chat tab. */
-export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRow | undefined; offline: boolean }): ReactNode {
+/** `title`: a draft's Chat tab's, a PR's review chat's [D162]. */
+export function TabBar({ owner, row, offline, title }: { owner: string; row?: SessionRow | undefined; offline: boolean; title?: string }): ReactNode {
   const tabsProject = useTabsProject();
   const project = owner === HOME ? tabsProject : (row?.project ?? null);
   const now = useTabs(owner);
@@ -314,7 +315,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       <Plus />
     </TooltipIconButton>
   );
-  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} plain={bare} separator={active !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== active)} order={order} grouped={family.length > 0} keycap={bare ? undefined : keycap(CHAT)} /> : <BlankChatTab owner={owner} project={project} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} keycap={bare ? undefined : keycap(CHAT)} />;
+  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} plain={bare} separator={active !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== active)} order={order} grouped={family.length > 0} keycap={bare ? undefined : keycap(CHAT)} /> : <BlankChatTab owner={owner} project={project} title={title} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} keycap={bare ? undefined : keycap(CHAT)} />;
   // A pill on the row [D71].
   const reconnecting = offline && <span role="status" className="flex h-7 shrink-0 items-center rounded-capsule bg-fill px-3 text-label text-warning">Reconnecting…</span>;
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].

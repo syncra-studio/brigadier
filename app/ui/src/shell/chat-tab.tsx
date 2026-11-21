@@ -167,10 +167,9 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
 }
 
 /** The Chat tab before there's a session to act on: Home's draft, New chat in its project, or a session whose row isn't
- *  read yet, blank until its title lands [D102]. No ×, as no chat tab has [D45 D197]. With no other tab there's none:
+ *  read yet, blank until its title lands [D102]; a PR's review draft is named for it [D197]. No ×, as no chat tab has [D45 D197]. With no other tab there's none:
  *  it shrinks out as the others do and grows back with them [D831 D836 D196]. */
-export function BlankChatTab({ owner, project, active, closing, separator, keycap }: { owner: string; project: string | null; active: boolean; closing: boolean; separator: boolean; keycap?: string | undefined }) {
-  const title = owner === HOME ? "New chat" : "";
+export function BlankChatTab({ owner, project, title = owner === HOME ? "New chat" : "", active, closing, separator, keycap }: { owner: string; project: string | null; title?: string | undefined; active: boolean; closing: boolean; separator: boolean; keycap?: string | undefined }) {
   return (
     <div data-tab-id={CHAT} data-separator={separator || undefined} data-active={active || undefined} data-closing={closing || undefined} aria-hidden={closing || undefined} inert={closing} className={cx(TAB, LOOK(active))}>
       <button type="button" role="tab" aria-selected={active} tabIndex={active ? 0 : -1} title={title} onMouseDown={noAutoscroll} onClick={() => selectTab(owner, CHAT)} className={BUTTON}>

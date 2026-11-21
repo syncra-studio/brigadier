@@ -38,6 +38,8 @@ function useGreeting(on: boolean): string {
 }
 
 export type HomeProps = {
+  /** A PR's review chat not started yet: "owner/repo #n", its heading, with no project to pick [D162]. */
+  review?: string;
   /** The name onboarding asked for; no greeting without one. */
   name: string;
   /** undefined while the projects load. */
@@ -142,13 +144,15 @@ export function HomeView(props: HomeProps) {
       {/* The hero ends a little above the middle and the composer sits at the bottom; each takes half the height. */}
       <div className="flex min-h-fit grow basis-0 flex-col items-center justify-end gap-6 px-4 pb-11 select-none">
         <BrigadierMark spinOnHover className="hero-mark size-16 text-foreground opacity-60 hover:opacity-100" />
-        {name && (
+        {name && !props.review && (
           <p className="-mb-3 text-center text-base text-muted-foreground">
             {salutation}, {name}
           </p>
         )}
         <h1 className="text-center font-display text-hero font-normal tracking-hero">
-          {project && projects ? (
+          {props.review ? (
+            `Reviewing ${props.review}`
+          ) : project && projects ? (
             <>
               What should we build in{" "}
               <ProjectPicker heading projects={projects} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
@@ -210,7 +214,7 @@ export function HomeView(props: HomeProps) {
                 </RailItem>
               )}
               {/* The model strip takes its slot while open; it comes back once the strip has folded [D83]. */}
-              <RailItem label="Composer utility bar" shown={!(strip.present && props.model)}>
+              <RailItem label="Composer utility bar" shown={!(strip.present && props.model) && !props.review}>
                 {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
                 <UtilityBar className={projects ? undefined : "invisible"}>
                   <ProjectPicker projects={projects ?? []} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
@@ -237,7 +241,7 @@ export function HomeView(props: HomeProps) {
           <ComposerField
             ref={field}
             initial={props.initial}
-            placeholder="Do anything"
+            placeholder={props.review ? "Ask about this pull request" : "Do anything"}
             autoFocus
             attachments={files.attachments}
             onAttach={files.attach}

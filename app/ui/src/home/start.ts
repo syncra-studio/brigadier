@@ -9,7 +9,8 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeTab, openTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
+import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -48,12 +49,16 @@ export type HomeDraft = {
   pr?: PrStart;
   /** A chat's "New chat in this worktree": this draft only works in that worktree, the remembered `workIn` untouched [D152]. */
   once?: { project: string; worktree: string; name: string };
+  /** A PR's review chat not started yet, on the Pull Requests page: its ref [D162]. */
+  review?: string;
 };
 const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
 export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft.get(), ...change });
 /** Where the draft's words are kept: a project's New session has its own, apart from New chat's [D863]. */
-export const draftKey = (d: Pick<HomeDraft, "locked" | "project"> = draft.get()) => (d.locked && d.project ? `${HOME_DRAFT}:${d.project}` : HOME_DRAFT);
+export const draftKey = (d: Pick<HomeDraft, "locked" | "project" | "review"> = draft.get()) => (d.review ? REVIEW_DRAFT : d.locked && d.project ? `${HOME_DRAFT}:${d.project}` : HOME_DRAFT);
+/** Review chats' draft and tabs, one for every PR not yet asked about; in no project [D162]. */
+export const REVIEW_DRAFT = `${HOME_DRAFT}:review`;
 
 /** Home in `project` (⌘N in a session's project, a project picked in ⌘K), with the cursor in the field [D184]. */
 export function newSession(project?: string | null): void {
@@ -98,6 +103,8 @@ export type Starting = {
   fork?: { source: string; where: string };
   /** Starting in a new worktree from `base`, so its setup shows before Rust's first word on it [D77]. */
   worktree?: { base: string };
+  /** Run once Rust delivered it. */
+  then?: () => void;
 };
 const starting = store<ReadonlyMap<string, Starting>>(new Map());
 // Each start's title, kept past the start: Rust's row is untitled until its index reads the first message, after the thread has it.
@@ -125,6 +132,7 @@ function land(id: string, reply: Record<string, any>): void {
   if (result === "delivered") {
     // Kept until Rust's row has it and, when open, its thread has the turn (useStartingRows).
     put(id, { asking: false, unknown: false, outcome: "delivered", error: undefined });
+    get(id)!.then?.();
     // It read "not found" before Rust had it: only the open thread is asked again [D40].
     if (isOpen(id)) openThread(id);
     return;
@@ -149,7 +157,7 @@ export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toS
 export type PrStart = { project: string; number: number; title: string; url: string; branch: string; base: string; fork: boolean; tab: string };
 
 /** Where a project's session works: `base` for a new worktree, `worktree` for an existing one, `pr` a PR's branch. */
-export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; pr?: PrStart };
+export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; pr?: PrStart; review?: string };
 
 const placeArgs = ({ workIn, base, worktree, pr }: Place): string[] =>
   workIn === "local"
@@ -168,14 +176,14 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const id = sessionId();
   const cid = newId();
   const key = draftKey();
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text, "--cid", cid, ...(place.pr ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", place.review ? reviewText(text, place.review) : text, "--cid", cid, ...(place.pr || place.review ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
   if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", parts);
-  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }) };
+  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
@@ -187,10 +195,25 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   }
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, key, EMPTY_DRAFT);
-  window.location.hash = `#thread/${encodeURIComponent(id)}`;
+  window.location.hash = place.review ? prPageHash(place.review) : `#thread/${encodeURIComponent(id)}`;
   // A PR's session has Chat and the PR's page only: Home's tabs stay on Home [D706].
   if (place.pr) runStart(entry);
   else carryHome(id, () => runStart(entry));
+}
+
+export const reviewTitle = (ref: string) => `Reviewing ${prName(ref)}`;
+// shortcut: the PR rides in the first message as its link, not a PR chip; a chip once the composer's PR chips exist [D171].
+const reviewText = (text: string, ref: string) => `${text}\n\n${ref.replace(/^([^#]+)#(\d+)$/, "https://$1/pull/$2")}`;
+
+/** A review chat stays on the Pull Requests page as the PR's, its PR tab carried from the draft's, then kept by Rust [D162]. */
+function reviewStarted(id: string, ref: string): () => void {
+  reviewChats.set({ ...reviewChats.get(), [ref]: id });
+  return () => {
+    // Named as a review chat, not after its first message.
+    ask({ op: "run", args: ["rename", id, reviewTitle(ref)] }, () => {});
+    openTab(id, "pr", ref);
+    openThread(id);
+  };
 }
 
 /** Forks session `source` at answer `at` and opens the fork at once, pending, under the title Rust gives it [D30, D1063]. */

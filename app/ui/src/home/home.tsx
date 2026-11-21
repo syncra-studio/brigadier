@@ -24,6 +24,7 @@ import { SetUpAgentDialog } from "../session/set-up";
 import { discard, draftKey, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
+import { prName } from "../pull-requests/route";
 
 /** A `models --project` group: the agent's levels, the one a new session there starts on, and whether it's held. */
 type LevelGroup = ModelGroup & { levels: PermissionLevel[]; level: PermissionLevel | null; held: boolean };
@@ -52,7 +53,9 @@ export function HomeDraft() {
     before.current = null;
     setHomeDraft({ project: added.id, chat: false });
   }, [added]);
-  const project = useHomeProject();
+  // A PR's review chat is in no project: the agent reads the PR through gh [D162].
+  const home = useHomeProject();
+  const project = draft.review ? null : home;
   const openPlace = useOpenPlace();
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
@@ -134,6 +137,7 @@ export function HomeDraft() {
         // and again on another draft's words: the composer reads `initial` as it mounts [D863].
         key={`${key}:${draft.pr ? draft.focus : 0}`}
         name={name}
+        review={draft.review && prName(draft.review)}
         projects={projects}
         project={project}
         locked={draft.locked}
@@ -172,7 +176,7 @@ export function HomeDraft() {
         onDraft={(text) => keepDraft(daemonRun, key, text)}
         loadDraft={() => loadDraft(daemonRun, key)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />
       <SetUpAgentDialog
         name={setUp}

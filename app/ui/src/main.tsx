@@ -11,7 +11,11 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, REVIEW_DRAFT, reviewTitle, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { PullRequestOpen } from "./landing/icons";
+import { PullRequestsNav } from "./pull-requests/nav";
+import { useReviewTab } from "./pull-requests/review";
+import { prPageOf, reviewChats } from "./pull-requests/route";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
 import { intro, loadProfile, useProfile } from "./onboarding/api";
@@ -72,6 +76,7 @@ function App() {
   const open = hash.startsWith("#thread/") ? decodeURIComponent(hash.slice("#thread/".length)) : null;
   // Rust's rows, with the sessions Home is still starting [D30].
   const rows = useStartingRows(open);
+  const chats = reviewChats.use();
   // File › New Session (⌘N): Home in the open session's project [D184].
   useEffect(() => window.brigadier?.onMenu((command) => command === "new-session" && newSession(rows?.find((row) => row.id === open)?.project)), [rows, open]);
   const profile = useProfile();
@@ -116,6 +121,25 @@ function App() {
       </Shell>
     );
   }
+  const prs = prPageOf(hash);
+  if (prs !== null) {
+    // A PR's review chat once its first message went, else its draft beside the PR's tab; no PR, the page's empty state [D159 D162].
+    const chat = prs ? chats[prs] : undefined;
+    const live = chat && rows?.some((row) => row.id === chat && !row.archived);
+    return (
+      <Shell hash={hash} active={live ? chat : null} rows={rows} prs={prs}>
+        {live ? (
+          <SessionThread id={chat} rows={rows} offline={daemon === null} />
+        ) : prs ? (
+          <Home review={prs}>
+            <HomeDraft />
+          </Home>
+        ) : (
+          <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail="Choose one from the sidebar to review its changes" className="m-auto" />
+        )}
+      </Shell>
+    );
+  }
   if (open !== null) {
     return (
       <Shell hash={hash} active={open} rows={rows}>
@@ -135,7 +159,7 @@ function App() {
 // The strip and sidebar beside every screen after onboarding [D173, D174]; shown and its width kept across launches. The
 // shell [D69]: no frame, the strip and sidebar flush at the window's start and the main area from its edge to the window's
 // end, the titlebar row across both. Settings keeps the sidebar shown with its nav in place of the sessions [D2004].
-function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
+function Shell({ hash, active, rows, settings, page, prs, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; prs?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
   const projects = useProjects();
@@ -145,9 +169,9 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
   // One tab bar for every page but Settings and a project's, kept as the page changes so its tabs change smoothly: the
   // old ones shrink out, the new grow in [D836 D854 D179]. It shows a rename or an archive at once [D30].
   const titled = useShown(rows)?.find((each) => each.id === active);
-  // The pull requests' page isn't built yet: its hash shows Home meanwhile, the strip lighting Pull Requests [D194].
+  // The Pull Requests page lights its strip button [D194].
   const pulls = hash.startsWith("#pull-requests");
-  const home = active === null && page === undefined && settings === undefined && !pulls;
+  const home = active === null && page === undefined && settings === undefined && prs === undefined;
   const rail = (squares?: ReactNode) => (
     <Strip home={home} pulls={pulls} settings={settings}>
       {squares}
@@ -166,6 +190,10 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           <SidebarPanel rail={rail()}>
             <SettingsNav current={settings} />
           </SidebarPanel>
+        ) : prs !== undefined ? (
+          <SidebarPanel rail={rail()}>
+            <PullRequestsNav current={prs} />
+          </SidebarPanel>
         ) : (
         <AppSidebar
           rows={rows}
@@ -182,7 +210,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
         )}
         {/* Settings' page is the main area too. */}
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
-        {settings === undefined && page === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} />}
+        {settings === undefined && page === undefined && prs !== "" && <TabBar owner={active ?? HOME} row={active ? titled : undefined} title={prs ? reviewTitle(prs) : undefined} offline={daemon === null} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
@@ -197,11 +225,15 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
 }
 
 // Home is a new session's draft [D161]: a project's has that project's tabs [D706].
-function Home({ children }: { children: ReactNode }) {
+function Home({ review, children }: { review?: string; children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
-  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
+  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863]; a PR's review chat, the review draft's [D162].
   const locked = useHomeDraft().locked === true;
-  useLayoutEffect(() => setHomeTabs(locked ? project : null), [project, locked]);
+  useLayoutEffect(() => {
+    setHomeDraft({ review });
+    setHomeTabs(review ? null : locked ? project : null, review ? REVIEW_DRAFT : undefined);
+  }, [project, locked, review]);
+  useReviewTab(review);
   return (
     <>
       <TabbedMain owner={HOME} archived={false}>

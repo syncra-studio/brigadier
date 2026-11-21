@@ -52,9 +52,10 @@ const listeners = new Set<() => void>();
 let homeKey = HOME;
 let homeAt: string | null = null;
 const own = (owner: string) => (owner === HOME ? homeKey : owner);
-export function setHomeTabs(project: string | null): void {
+/** `key`: tabs of a draft in no project kept apart from New chat's, a PR's review chat's [D162]. */
+export function setHomeTabs(project: string | null, key?: string): void {
   homeAt = project;
-  homeKey = project ? `${HOME}:${project}` : HOME;
+  homeKey = key ?? (project ? `${HOME}:${project}` : HOME);
   for (const listener of listeners) listener();
 }
 /** The project Home's tabs are its draft's, or null for New chat's own [D863]. */
