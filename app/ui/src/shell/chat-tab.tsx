@@ -134,7 +134,7 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
         {/* Never at the row's end [D200]: right after the plain title, or in the tab where another's × is. */}
         {!archived && !keycap && (
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip="Chat actions" className="shrink-0" /> : <button type="button" aria-label="Chat actions" className={CLOSE} />}>
+            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="chat" tooltip="Chat actions" className="shrink-0" /> : <button type="button" aria-label="Chat actions" className={CLOSE} />}>
               <DotsHorizontal className={plain ? undefined : "size-icon-sm"} />
             </DropdownMenuTrigger>
             {/* The Chat actions [D37]: New chat in this worktree, a one-off [D152], then the row's menu [D185]. */}

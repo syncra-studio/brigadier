@@ -15,7 +15,7 @@ function Drawn({ tooltip, className, inert, children }: { tooltip: string; class
   return (
     <Tooltip>
       <TooltipTrigger render={<span inert={inert} className={cx("app-no-drag flex", className)} />}>
-        <TooltipIconButton look="bar" tip={false} tooltip={tooltip} disabled>
+        <TooltipIconButton look="chat" tip={false} tooltip={tooltip} disabled>
           {children}
         </TooltipIconButton>
       </TooltipTrigger>
@@ -42,7 +42,7 @@ function ContextButton({ owner, className }: { owner: string; className: string 
     );
   return (
     <span inert={!onChat} className={cx("app-no-drag flex", className)}>
-      <TooltipIconButton look="bar" tooltip="Toggle pinned summary" data-summary-toggle pressed={shown} onClick={toggle}>
+      <TooltipIconButton look="chat" tooltip="Toggle pinned summary" data-summary-toggle pressed={shown} onClick={toggle}>
         <Tasks />
       </TooltipIconButton>
     </span>
