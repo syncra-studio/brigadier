@@ -112,7 +112,7 @@ export function WorkerBrief({ id, text }: { id: string; text: string }) {
   );
 }
 
-/** "Working for 1m 2s" while it works, "Worked for 3m 10s" once finished, "Ended after 3m 10s" when ended, over a hairline. */
+/** "Working for 1m 2s" while it works, "Worked for 3m 10s" once finished, "Ended after 3m 10s" when ended, with no hairline as the thread's [D93]. */
 function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] }) {
   const done = finished(worker);
   const now = useSecond(!done);
@@ -122,7 +122,7 @@ function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] 
   // Held before its first turn, it hasn't worked yet: Needs you or Limit until says why.
   if (turns.length === 0 && waiting(worker)) return null;
   return (
-    <div data-slot="worker-work-header" className="border-b border-border pb-2 text-sm text-faint-foreground tabular-nums">
+    <div data-slot="worker-work-header" className="text-sm text-faint-foreground tabular-nums">
       {worker.kind === "stopped" ? `Ended after ${took}` : done ? `Worked for ${took}` : `Working for ${took}`}
     </div>
   );
