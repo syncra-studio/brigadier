@@ -187,7 +187,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, once: undefined, model, ...(project && { project }) });
+  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, once: undefined, model, ...(project && !place.review && { project }) });
   // Its PR tab closes on Home: the session has the PR's page instead [D699].
   for (const owner of place.pr ? [HOME_DRAFT] : []) {
     const tab = tabsOf(owner).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);

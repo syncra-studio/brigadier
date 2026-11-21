@@ -25,6 +25,7 @@ import { discard, draftKey, retry, setHomeDraft, start, useHomeDraft, useHomePro
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 import { prName } from "../pull-requests/route";
+import { useReviewProject } from "../pull-requests/review";
 
 /** A `models --project` group: the agent's levels, the one a new session there starts on, and whether it's held. */
 type LevelGroup = ModelGroup & { levels: PermissionLevel[]; level: PermissionLevel | null; held: boolean };
@@ -53,9 +54,10 @@ export function HomeDraft() {
     before.current = null;
     setHomeDraft({ project: added.id, chat: false });
   }, [added]);
-  // A PR's review chat is in no project: the agent reads the PR through gh [D162].
+  // A PR's review chat is in the project of its repository when there's one, else in none, the agent reading it through gh [D162 D198].
   const home = useHomeProject();
-  const project = draft.review ? null : home;
+  const reviewIn = useReviewProject(draft.review);
+  const project = draft.review ? (projects?.find((each) => each.id === reviewIn) ?? null) : home;
   const openPlace = useOpenPlace();
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
@@ -65,7 +67,9 @@ export function HomeDraft() {
   const id = project?.id;
   // A folder of repos has no placement: each chat works in its own folder and claims copies there [D494].
   const once = draft.once?.project === project?.id ? draft.once : undefined;
-  const workIn = project?.kind === "folder" ? "worktree" : once ? "existing" : draft.workIn;
+  // A review reads the local checkout, or a worktree from it while a session holds it.
+  const held = (place: string) => rows?.some((row) => row.project === place && row.local && !row.archived);
+  const workIn = draft.review ? (id && held(id) ? "worktree" : "local") : project?.kind === "folder" ? "worktree" : once ? "existing" : draft.workIn;
   // Trust this folder? asks about the project Home is drafted in [D167].
   useEffect(() => {
     enterProject(id ?? null);
@@ -138,7 +142,8 @@ export function HomeDraft() {
         key={`${key}:${draft.pr ? draft.focus : 0}`}
         name={name}
         review={draft.review && prName(draft.review)}
-        projects={projects}
+        // Its project is looked up first: until then it can't start.
+        projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
         locked={draft.locked}
         // Picking a project is switching to it: its last place, as its sidebar row or strip square [D886 D891]; only an unlocked picker opens.
