@@ -20,7 +20,8 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const host = useHost(owner);
   // `n`, or `owner/name#n` for another repository's PR [D213].
   const hash = target.lastIndexOf("#");
-  const repo = hash < 0 ? null : target.slice(0, hash);
+  // A full name's host goes: rows name their repository `owner/name`.
+  const repo = hash < 0 ? null : target.slice(0, hash).split("/").slice(-2).join("/");
   const number = Number(target.slice(hash + 1));
   const { daemon, rows } = useDaemon();
   const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);

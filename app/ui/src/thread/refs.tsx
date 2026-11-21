@@ -7,6 +7,8 @@ import { ask, useDaemon } from "../daemon";
 import { STATE_WORDS } from "../landing/pr-words";
 import { openPr } from "../panel/open";
 import { PR_LOOK } from "../panel/source/rows";
+import { PrHoverCard } from "../pull-requests/hover-card";
+import { pastedRef } from "../pull-requests/route";
 import type { Pr } from "../panel/types";
 import { openChip, useListedCommands } from "../session/commands";
 import { daemonRun } from "../session/composer";
@@ -126,9 +128,11 @@ function FileRef({ word, open }: { word: string; open: () => void }) {
 function PrRef({ owner, pr }: { owner: string; pr: Pr }) {
   const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
   const { Icon, tint } = PR_LOOK[state];
-  return (
-    <button type="button" data-slot="composer-chip" title={`${pr.title} · ${STATE_WORDS[state]}`} onClick={() => openPr(owner, pr)} className="inline cursor-pointer rounded-xs text-link focus-visible:focus-ring">
+  const ref = pr.url && pastedRef(pr.url);
+  const link = (
+    <button type="button" data-slot="composer-chip" title={ref ? undefined : `${pr.title} · ${STATE_WORDS[state]}`} onClick={() => openPr(owner, pr)} className="inline cursor-pointer rounded-xs text-link focus-visible:focus-ring">
       <Icon className={`mr-0.5 inline-block size-icon-sm align-icon ${tint}`} />#{pr.number}
     </button>
   );
+  return ref ? <PrHoverCard refName={ref}>{link}</PrHoverCard> : link;
 }

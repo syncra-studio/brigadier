@@ -8,6 +8,8 @@ import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { RefWord, remarkRefs } from "./refs";
+import { PrHoverCard } from "../pull-requests/hover-card";
+import { pastedRef } from "../pull-requests/route";
 
 // Every line break kept, as written: the user's text and the agents' answers alike [D140].
 const plugins = [remarkGfm, remarkBreaks, remarkRefs];
@@ -249,6 +251,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
   // A new window's open goes to the browser (main.ts); a plain click's navigation is refused there.
   a: ({ node: _, href, ...link }) => {
     if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
+    const pr = href && pastedRef(href);
+    if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
     if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
     return <RefWord word={href} plain={<a href={href} {...link} />} />;
   },

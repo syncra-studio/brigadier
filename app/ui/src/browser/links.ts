@@ -1,3 +1,4 @@
+import { pastedRef } from "../pull-requests/route";
 import { getSettings } from "../settings/api";
 import { HOME, openTab } from "../shell/tab-store";
 
@@ -51,6 +52,10 @@ export function installLinks(): void {
     // A link being edited (a note's) is the editor's: a click puts the caret there.
     if (event.defaultPrevented || event.button !== 0 || !link || link.isContentEditable || !/^https?:\/\//i.test(link.href)) return;
     event.preventDefault();
+    // A PR's link opens its tab in the session in front; ⌘-click its page [D162].
+    const pr = !swapped(event) && pastedRef(link.href);
+    const owner = sessionInFront();
+    if (pr && owner) return void openTab(owner, "pr", pr);
     openLink(link.href, { swap: swapped(event) });
   });
 }
