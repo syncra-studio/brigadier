@@ -13,7 +13,8 @@ import { StripFoot } from "./foot";
 /**
  * The strip, the rail, always at the window's start [D11]: the logo (Home), Search (⌘K), Plugins and Pull Requests;
  * while the sidebar is hidden, a rule, then the squares and their lists (`children`) [D189 D194 D55 D58]. That part scrolls
- * under a fade once it reaches the foot, which a rule then sets apart [D191]; the foot at the bottom [D56].
+ * under a fade once it reaches the foot, which a rule then sets apart [D191]; the foot at the bottom, its last button 4 from
+ * the window's foot [D56].
  */
 export function Strip({ home, pulls, settings, children }: {
   /** Home shows. */
@@ -26,7 +27,7 @@ export function Strip({ home, pulls, settings, children }: {
 }) {
   const { open } = useSidebar();
   return (
-    <nav aria-label="Strip" className="rail strip-timeline flex h-full shrink-0 flex-col items-center pt-tab-bar pb-2">
+    <nav aria-label="Strip" className="rail strip-timeline flex h-full shrink-0 flex-col items-center pt-tab-bar pb-1">
       <div className="strip-scroll scroll-edge-fade edge-fade-group hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pt-1.25">
         <TooltipIconButton look="rail" side="right" tooltip="Home" pressed={home} onClick={newChat}>
           <BrigadierMark className="size-icon-mark text-foreground" />
