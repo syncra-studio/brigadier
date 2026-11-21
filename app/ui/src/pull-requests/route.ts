@@ -1,4 +1,4 @@
-import { rowNow } from "../daemon";
+import { view } from "../daemon";
 import { store } from "../onboarding/api";
 
 /*
@@ -64,7 +64,7 @@ export const reviewChats = kept<Record<string, string>>("pullRequests.chats", {}
 /** PR `ref`'s review chat unless it's archived: the page then shows the review draft, whose send starts a new one. */
 export function liveReviewChat(ref: string): string | undefined {
   const chat = reviewChats.get()[ref];
-  return chat && !rowNow(chat)?.archived ? chat : undefined;
+  return chat && !view.rows?.find((row) => row.id === chat)?.archived ? chat : undefined;
 }
 
 const RECENTS = 10;

@@ -69,7 +69,7 @@ export type View = {
   projects?: Project[];
 };
 
-let view: View = { daemon: undefined };
+export let view: View = { daemon: undefined };
 let port: MessagePort | undefined;
 let bytes = new Uint8Array();
 // Chunks come after `bytes`; `held` counts both.
@@ -410,9 +410,6 @@ export const connected = (): Promise<void> =>
     listeners.add(check);
     check();
   });
-
-/** Session `id`'s row as last listed, outside React. */
-export const rowNow = (id: string): Row | undefined => view.rows?.find((row) => row.id === id);
 
 export const useDaemon = (): View =>
   useSyncExternalStore(
