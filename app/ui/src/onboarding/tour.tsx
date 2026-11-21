@@ -15,9 +15,9 @@ type Step = { target: string; side: Side; title: string; line: string };
 
 /** The app as it is today, in the order a first-time user meets it; a step whose part isn't on screen shows centred. */
 const STEPS: readonly Step[] = [
-  { target: '[data-slot="sidebar-panel"]', side: "right", title: "Projects and sessions", line: "Your projects and their sessions live here; View, beside Search, lists them by project or by session." },
+  { target: '[data-slot="sidebar-panel"]', side: "right", title: "Projects and sessions", line: "New chat starts one; a project opens and closes its sessions under it. The filter at the top lists them by project or by session, and Search beside it finds any." },
   { target: '[data-slot="composer"]', side: "top", title: "Start a session", line: "Type a task and send it; the pickers set the project, its worktree and branch, what the agent may do unasked and the model, and ⌘N starts one from anywhere." },
-  { target: ".strip-squares > *, [data-project-id], [data-row-id]", side: "right", title: "Working or needs you", line: "By a project or session, a spinner means an agent is working, a blue ring that it needs your answer, and a blue dot that there's news." },
+  { target: ".strip-squares > *, [data-project-id], [data-row-id]", side: "right", title: "Working or needs you", line: "By a session, a spinner means an agent is working, and a dot that there's news or it needs your answer; a closed project shows the dot for its sessions." },
   { target: ":has(> .session-tab-list)", side: "bottom", title: "Tabs", line: "After its project's house tab, the open session has its own tabs, its chat first; + opens a web page, a terminal or a note beside them." },
   { target: ".session-tab[data-home]", side: "bottom", title: "The project's page", line: "The house tab is the project's page, with every session in it as a list or a board." },
   { target: ".titlebar-nav", side: "bottom", title: "Back, Forward and the sidebar", line: "The first button shows or hides the sidebar, the strip staying, and Back and Forward retrace where you've been." },

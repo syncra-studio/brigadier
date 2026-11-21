@@ -210,9 +210,9 @@ export function SettingsView({ page }: { page: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-  // The page beside the nav, on the nav's colour, no dark panel (settings-surface) [D898].
+  // The page beside the nav, on the main area's colour.
   return (
-    <main className="flex min-h-0 flex-1 overflow-clip settings-surface">
+    <main className="flex min-h-0 flex-1 overflow-clip">
       <Page key={page} detail={detail} />
     </main>
   );

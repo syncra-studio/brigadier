@@ -11,7 +11,7 @@ import { Archive, ArrowUpRight, Chats } from "../icons";
 import { useOpenPlace } from "../projects/page";
 import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
-import { ProjectBadge, RowMark } from "./row";
+import { ProjectBadge, SidebarMark } from "./row";
 import { type Project, type SessionRow, useStatusWords } from "./words";
 
 /*
@@ -63,7 +63,7 @@ function Line({ row, pick, active, offline, onOpen }: Rows & { row: SessionRow; 
       <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className="pe-1.5" onClick={() => pick(() => onOpen(row.id))}>
         <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
         <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
-          <RowMark mark={mark} label={words ?? ""} />
+          <SidebarMark mark={mark} label={words ?? ""} />
         </span>
       </NavRow>
     </li>

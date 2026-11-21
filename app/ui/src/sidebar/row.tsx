@@ -3,16 +3,15 @@ import { type MouseEvent, type ReactNode, useState } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
 import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
-import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
-import { BrigadeGlyph } from "../sessions/brigade";
-import { BranchAlt, ChevronRight, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarWorking } from "../icons";
+import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { Comment, Pin, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking, Unpin } from "../icons";
 import { prList } from "../landing/pr-chip";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
+import { pin } from "./actions";
 import { RowMenuItems } from "./menu";
 import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -111,10 +110,37 @@ export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
 
 /**
- * A session on one line: with `badged` (the one list) its project's badge first, or without one the chat
- * badge View's menu shows, then its title and one mark. Resting on it, or focusing it, opens a card beside the sidebar with the title, the mark in plain
- * words and the project. The row you are looking at (`active`) draws its thread's mark (`useMark`).
- * Its actions are in a ⋯ menu over its end on hover, with Archive beside it, and on a right-click [D185].
+ * A sidebar row's one trailing mark, and nothing else [D63]: a spinner while it runs, a small dot when it has
+ * something new or needs you. `label` names it.
+ */
+export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
+  if (mark === "working")
+    return (
+      <span role="status" aria-label={label} className={ROW_SLOT}>
+        <SidebarSpinner className="size-icon-sm text-foreground motion-safe:animate-row-spin" />
+      </span>
+    );
+  if (mark === "needs" || mark === "amber" || mark === "unread")
+    return (
+      <span className={ROW_SLOT}>
+        <span role="img" aria-label={label} className="size-1.5 rounded-capsule bg-primary" />
+      </span>
+    );
+  return null;
+}
+
+const ROW_SLOT = "flex h-5 w-5.25 shrink-0 items-center justify-center";
+// Hovered or focused, a row's mark gives way to its actions over its end, the title making room for them.
+export const HIDE_ON_HOVER = "group-hover/row:hidden group-has-focus-visible/row:hidden group-has-data-popup-open/row:hidden";
+export const ROOM_FOR_ONE = "group-hover/row:pe-8 group-has-focus-visible/row:pe-8 group-has-data-popup-open/row:pe-8";
+export const ROOM_FOR_TWO = "group-hover/row:pe-14 group-has-focus-visible/row:pe-14 group-has-data-popup-open/row:pe-14";
+
+/**
+ * A session on one line [D31]: with `badged` (the one list) its project's badge first, or without one the chat
+ * badge View's menu shows; `indent`, under its project, at the project name's x; then its title and its mark. Resting on
+ * it, or focusing it, opens a card beside the sidebar with the title, the mark in plain words and the project. The row you
+ * are looking at (`active`) draws its thread's mark (`useMark`). Hovered, Pin (where pins apply) and Archive show over its
+ * end; its actions are on a right-click [D185].
  */
 export function SessionRowItem({
   row,
@@ -123,10 +149,7 @@ export function SessionRowItem({
   active,
   badged = false,
   canPin = true,
-  nested = false,
-  forked = false,
-  sub = false,
-  fold,
+  indent = false,
   offline = false,
   picked = false,
   menu,
@@ -141,13 +164,8 @@ export function SessionRowItem({
   active: boolean;
   badged?: boolean;
   canPin?: boolean;
-  nested?: boolean;
-  /** A fork, under its source: the fork mark before its title, one step further in [D48]. */
-  forked?: boolean;
-  /** A Brigade's sub-session, under its boss [D189]. */
-  sub?: boolean;
-  /** A Brigade with sessions: they fold under it, and folded it shows their most pressing mark. */
-  fold?: { open: boolean; toggle: () => void; marks: Mark[] };
+  /** Under its project's row. */
+  indent?: boolean;
   /** The daemon is gone: the mark is its last known one, dimmed. */
   offline?: boolean;
   onOpen: (id: string) => void;
@@ -159,13 +177,13 @@ export function SessionRowItem({
   /** A click with its keys, in place of opening it. */
   onClick?: (event: MouseEvent) => void;
 }) {
-  const own = useMark(row, active);
-  const mark = fold && !fold.open ? [own, ...fold.marks].toSorted((a, b) => URGENT.indexOf(a) - URGENT.indexOf(b))[0]! : own;
+  const mark = useMark(row, active);
   const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
-  // Archived rows bring their own menu (Restore, Delete…) and no Archive.
+  // Archived rows bring their own menu (Restore, Delete…), and no Pin or Archive.
   const live = !menu && !row.archived;
+  const pins = live && canPin;
   const items = menu ?? <RowMenuItems row={row} canPin={canPin} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
@@ -177,31 +195,15 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live ? "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16" : "group-hover/row:pe-7 group-has-focus-visible/row:pe-7 group-has-aria-expanded/row:pe-7", nested && (sub ? "ps-15" : forked ? "ps-10" : "ps-8"), !nested && forked && "ps-4", !nested && sub && "ps-15")}
-                onKeyDown={(event) => {
-                  if (fold && (event.key === "ArrowRight") !== fold.open && ["ArrowRight", "ArrowLeft"].includes(event.key)) fold.toggle();
-                }}
-                onClick={(event) => {
-                  if (fold && (event.target as Element).closest('[data-slot="row-fold"]')) return fold.toggle();
-                  if (onClick) onClick(event);
-                  else onOpen(row.id);
-                }}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live && (pins ? ROOM_FOR_TWO : ROOM_FOR_ONE), indent && "ps-8")}
+                onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
               />
             }
           >
-            {badged && !sub && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />)}
-            {row.brigade && !fold && <BrigadeGlyph aria-label="Brigade" className="size-icon-md shrink-0 text-muted-foreground" />}
-            {/* Hovered, the mark is the fold's chevron, as on a project folder [D196]; ← and → fold it too. */}
-            {fold && (
-              <span data-slot="row-fold" title={fold.open ? "Hide its sessions" : "Show its sessions"} className="-m-0.5 flex size-icon-lg shrink-0 items-center justify-center rounded-xs text-muted-foreground hover:bg-fill">
-                <BrigadeGlyph aria-label="Brigade" className="size-icon-md group-hover/row:hidden" />
-                <ChevronRight className={cx("hidden size-icon-sm group-hover/row:block", fold.open && "rotate-90")} />
-              </span>
-            )}
-            {forked && <BranchAlt aria-label="Fork" className="size-icon-sm shrink-0 text-muted-foreground" />}
+            {badged && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <ProjectBadge name={null} tone={undefined} />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
-            <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
-              <RowMark mark={mark} label={label} />
+            <span className={cx("flex shrink-0 empty:hidden", live && HIDE_ON_HOVER, offline && "opacity-disabled")}>
+              <SidebarMark mark={mark} label={label} />
             </span>
           </TooltipTrigger>
           <BaseTooltip.Portal>
@@ -234,15 +236,17 @@ export function SessionRowItem({
             </BaseTooltip.Positioner>
           </BaseTooltip.Portal>
         </Tooltip>
-        <RowActionsSlot>
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={<RowAction aria-label={`Actions for ${title}`} />}>
-              <DotsHorizontal />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">{items}</DropdownMenuContent>
-          </DropdownMenu>
-          {live && <ArchiveRowAction row={row} />}
-        </RowActionsSlot>
+        {live && (
+          <RowActionsSlot>
+            {pins && (
+              <Tooltip>
+                <TooltipTrigger render={<RowAction aria-label={row.pinned ? "Unpin" : "Pin"} onClick={() => pin(row, !row.pinned)} />}>{row.pinned ? <Unpin /> : <Pin />}</TooltipTrigger>
+                <TooltipContent side="bottom">{row.pinned ? "Unpin" : "Pin"}</TooltipContent>
+              </Tooltip>
+            )}
+            <ArchiveRowAction row={row} />
+          </RowActionsSlot>
+        )}
       </ContextMenuTrigger>
       <ContextMenuContent>{items}</ContextMenuContent>
     </ContextMenu>

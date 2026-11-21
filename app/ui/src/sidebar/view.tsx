@@ -63,13 +63,13 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, Filter [D853], after the sidebar's search field [D934]; before it, how many projects show while anything is left out. */
+/** The View button, Filter, in the sidebar's header before Search [D23]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (
     <>
       {!show.all && <span className="me-1 text-xs whitespace-nowrap text-marker-foreground">{shown === 1 ? "1 project" : `${shown} projects`}</span>}
-      <PopoverTrigger render={<TooltipIconButton tooltip="View" look="strip" side="bottom" data-filtered={!show.all || undefined} className="data-filtered:bg-fill data-filtered:text-foreground" />}>
+      <PopoverTrigger render={<TooltipIconButton tooltip="View" look="head" side="bottom" data-filtered={!show.all || undefined} className="data-filtered:bg-fill data-filtered:text-foreground" />}>
         <Filter />
       </PopoverTrigger>
     </>
@@ -95,7 +95,7 @@ function SubMenu({ icon, title, wide = false, children }: { icon: ReactNode; tit
 const CHECK = <Check className="size-icon-md" />;
 
 /**
- * Around the search field and the lists: Organize sidebar (By projects or By sessions [D806]), Sort by (your last
+ * Around the sidebar's header: Organize sidebar (By projects or By sessions [D806]), Sort by (your last
  * message, or anyone's last activity) and Show (each project, then chats without one, ticked, with counts, and
  * Show all while any is unticked [D440, D50]), each its own menu beside the row, then Add project [D655].
  */

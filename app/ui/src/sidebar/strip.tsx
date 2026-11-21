@@ -57,7 +57,7 @@ export function Strip({ home, page, settings, front, children }: {
         </TooltipIconButton>
       </div>
       {!open && children ? <Squares>{children}</Squares> : <div className="flex-1" />}
-      <StripFoot />
+      <StripFoot settings={settings !== undefined && settings !== "plugins"} />
     </nav>
   );
 }

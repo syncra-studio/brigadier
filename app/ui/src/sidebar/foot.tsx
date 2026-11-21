@@ -182,8 +182,8 @@ function UsageMenu() {
 
 const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item px-2 text-sm";
 
-/** The strip's foot, today's strip order top to bottom: updates (only while there are some), Usage, Keep awake, Feedback, Settings [D56 D57 D18 D19]. */
-export function StripFoot() {
+/** The strip's foot, today's strip order top to bottom: updates (only while there are some), Usage, Keep awake, Feedback, Settings, lit while `settings` shows [D56 D57 D18 D19]. */
+export function StripFoot({ settings = false }: { settings?: boolean }) {
   // An offer on a job is open [D386].
   const offered = useRoutingDot();
   return (
@@ -195,7 +195,7 @@ export function StripFoot() {
       <TooltipIconButton look="rail" side="right" tooltip="Send Feedback" onClick={() => openFeedback()}>
         <FeedbackGlyph />
       </TooltipIconButton>
-      <TooltipIconButton look="rail" side="right" tooltip="Settings" shortcut={keysOf("settings")[0]} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
+      <TooltipIconButton look="rail" side="right" tooltip="Settings" shortcut={keysOf("settings")[0]} pressed={settings} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
         <Settings />
       </TooltipIconButton>
     </div>

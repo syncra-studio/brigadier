@@ -1,41 +1,35 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "../components/empty-state";
-import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
-import { DropdownMenuItem } from "../components/menu";
 import { NavList, NavRow, NavSection } from "../components/nav";
-import { RowAction, RowActionsSlot } from "../components/row-action";
+import { RowAction } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
-import { BrigadierMark } from "../onboarding/mark";
-import { newSession } from "../home/start";
-import { useOpenPlace } from "../projects/page";
+import { ComposeEditSquare, MagnifyingGlassSearch, Plus } from "../icons";
+import { openSearch } from "../palette/palette";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection, DeleteAsk } from "../sessions/archived";
 import { LabelAsk } from "./labels";
-import { pinProject, type Project } from "../projects/projects";
+import type { Project } from "../projects/projects";
 import { openAddProject, setShowProject } from "../projects/store";
-import { matches } from "../shortcuts";
+import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, attentionOf, ChatsFlyout, NoProjects, ProjectSquare, SessionSquare } from "./flyout";
 import { RenameDialog } from "./menu";
-import { SearchResults, useSidebarSearch } from "./search";
-import { NeedYouPill } from "./pill";
-import { CARD_DELAY_MS, ProjectBadge, RowMark, SessionRowItem } from "./row";
+import { ProjectAsk, ProjectRow } from "./project-row";
+import { SessionRowItem, SidebarMark } from "./row";
 import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { SessionRow } from "./words";
 
 /*
- * The app's sidebar [D173, D174], its search field and New chat [D846, D868], picked in View's Organize sidebar [D806]. By projects:
- * Pinned projects, Projects by name, each opening its page, and Chats, the sessions in no project; no other
- * session and nothing archived shows [D808, D809, D812]. By sessions: Pinned sessions, Open, every
- * project's and none, each with its project's badge, and Archived [D803]. Rows go by the user's last send,
- * newest first, so a row never moves while it works; or, picked in View, by anyone's last activity [D810].
- * Mode, order and folds are this window's view, kept in localStorage; a pin is Rust's.
+ * The app's sidebar [D22–D33 D59–D66]: its name with View and ⌘K's search, New chat, then what View's Organize
+ * sidebar picks [D806]. By projects: Pinned projects, Projects by name, each opening and closing its sessions under it
+ * [D30], and Chats, the sessions in no project. By sessions: Pinned sessions, Recents, every live one with its project's
+ * badge [D32], and Archived [D803]. Rows go by the user's last send, newest first, so a row never moves while it works; or,
+ * picked in View, by anyone's last activity [D810]. Mode, order and folds are this window's view, kept in localStorage; a
+ * pin is Rust's.
  */
 
 
@@ -55,7 +49,7 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 }
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
-const LIST = "scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2";
+const LIST = "scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pb-2";
 
 export function AppSidebar({
   rows,
@@ -104,7 +98,7 @@ export function AppSidebar({
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a row [D189].
+  // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a plain row [D189 D63].
   const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(storeKey, projects);
@@ -116,29 +110,27 @@ export function AppSidebar({
   // By projects pins projects, not sessions [D808].
   const pinsSessions = grouping === "none";
   const pinned = (pinsSessions && kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || bySort(a, b))) || [];
-  const rest = underSources(kept?.filter((each) => !(pinsSessions && each.pinned)).toSorted(bySort), (id) => isOpen(`brigade:${id}`));
-  const forked = new Set(rest?.filter((each) => each.forkOf && rest.some((source) => source.id === each.forkOf)).map((each) => each.id));
+  const rest = kept?.filter((each) => !(pinsSessions && each.pinned)).toSorted(bySort);
   const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
-  // Typing searches in the list's place; Archived and the pill wait until the field is empty [D846].
-  const search = useSidebarSearch(byName, kept ?? [], [...(shown ?? []), ...archived], offline, onOpen);
   const pinnedProjects = byName.filter((project) => project.pinned).toSorted((a, b) => b.pinned! - a.pinned!);
   const unpinnedProjects = byName.filter((project) => !project.pinned);
-  // From every live session, a folded Brigade's too.
-  const attentionIn = (project: string) => attentionOf(kept?.filter((each) => each.project === project) ?? [], active);
-  // Its sessions not archived [D844].
-  const countIn = (project: string) => shown?.filter((each) => each.project === project).length ?? 0;
-  // Each section's rows top to bottom, keyed by what folds them: the order a picked range and the pill count.
+  const chatsIn = (project: string) => rest?.filter((each) => each.project === project) ?? [];
+  // From every live session in it.
+  const attentionIn = (project: string) => attentionOf(chatsIn(project), active);
+  // Each section's rows top to bottom, keyed by what folds them: the order a picked range and ⌥⌘A go by.
   const sections: [string[], SessionRow[]][] =
     grouping === "none"
       ? [
           [["pinned"], pinned],
           [["open"], rest ?? []],
         ]
-      : [[["none"], homeless]];
+      : [
+          ...pinnedProjects.map((project): [string[], SessionRow[]] => [["pinned", `project:${project.id}`], chatsIn(project.id)]),
+          ...unpinnedProjects.map((project): [string[], SessionRow[]] => [["projects", `project:${project.id}`], chatsIn(project.id)]),
+          [["none"], homeless],
+        ];
   const order = sections.flatMap(([, each]) => each);
-  // ⌥⌘A goes through every live session, By projects too, where most aren't rows.
-  const cycle = pinsSessions ? order : (rest ?? []);
   // The open session's keys work even with its project left out by View.
   const activeRow = shown?.find((each) => each.id === active);
   useArchiveKeys(shown ?? [], active, onNewSession);
@@ -155,8 +147,8 @@ export function AppSidebar({
   }, [activeRow?.id]);
   // ⌥⌘A: the next session waiting on you below the open one, wrapping once [D185].
   const nextNeedingYou = () => {
-    const at = cycle.findIndex((each) => each.id === active);
-    const next = [...cycle.slice(at + 1), ...cycle.slice(0, Math.max(at, 0))].find((each) => each.mark === "needs");
+    const at = order.findIndex((each) => each.id === active);
+    const next = [...order.slice(at + 1), ...order.slice(0, Math.max(at, 0))].find((each) => each.mark === "needs");
     if (!next) return;
     onOpen(next.id);
     reveal(next.id);
@@ -177,13 +169,7 @@ export function AppSidebar({
     return () => removeEventListener("keydown", onKeyDown);
   });
 
-  // A Brigade folds its sessions under it; folded, its mark is the most pressing of theirs and its own [D189].
-  const foldOf = (each: SessionRow) => {
-    const subs = kept?.filter((sub) => sub.boss === each.id) ?? [];
-    const key = `brigade:${each.id}`;
-    return subs.length === 0 ? undefined : { open: isOpen(key), toggle: () => setOpen(key, !isOpen(key)), marks: subs.map((sub) => sub.mark) };
-  };
-  const row = (each: SessionRow, layout: { badged?: boolean; nested?: boolean }) => (
+  const row = (each: SessionRow, layout: { badged?: boolean; indent?: boolean }) => (
     <SessionRowItem
       key={each.id}
       row={each}
@@ -196,17 +182,19 @@ export function AppSidebar({
       picked={picks.has(each.id)}
       onClick={(event) => clickRow(event, each, order, active, onOpen)}
       onRename={setRenaming}
-      forked={forked.has(each.id)}
-      sub={Boolean(each.boss && rest?.some((boss) => boss.id === each.boss))}
-      fold={foldOf(each)}
       {...layout}
     />
   );
-  const view = <ViewTrigger projects={projects} show={show} />;
   const listed = { active, offline, onOpen };
-  const projectRow = (project: Project) => (
-    <ProjectRow key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} count={countIn(project.id)} />
-  );
+  const projectRow = (project: Project) => {
+    const key = `project:${project.id}`;
+    const chats = chatsIn(project.id);
+    return (
+      <ProjectRow key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
+        {chats.map((each) => row(each, { indent: true }))}
+      </ProjectRow>
+    );
+  };
   // Add project shows a project already added here: by projects, unfolded, in view [D165].
   useEffect(() => {
     setShowProject((id, group) => {
@@ -216,11 +204,6 @@ export function AppSidebar({
       requestAnimationFrame(() => document.querySelector(`[data-project-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
     });
   });
-  // Counted where its sections are unfolded, without the open session [D200].
-  const attention = sections
-    .filter(([keys]) => keys.every(isOpen))
-    .flatMap(([, each]) => each)
-    .filter((each) => each.id !== active && (each.mark === "needs" || each.mark === "amber"));
 
   return (
     <SidebarPanel
@@ -234,7 +217,7 @@ export function AppSidebar({
                   project={each.project === null ? undefined : projectOf.get(each.project)}
                   tone={projects.findIndex((project) => project.id === each.project)}
                   active={each.id === active}
-                  attention={attentionOf(kept?.filter((row) => row.id === each.id || (row.boss === each.id && !isOpen(`brigade:${each.id}`))) ?? [], active)}
+                  attention={attentionOf([each], active)}
                   onOpen={onOpen}
                 />
               ))
@@ -246,109 +229,96 @@ export function AppSidebar({
         </>,
       )}
     >
-      {/* The card's top, under the tab bar [D48]: the name and New chat, room under it [D864], then the search field and View [D846, D868, D934]; ⌘K's palette stays. */}
-      <div className="flex shrink-0 px-2.5 pt-3 pb-4">
-        <h1 className="flex h-7.5 min-w-0 flex-1 items-center gap-2 overflow-clip ps-1.5 text-nav-title font-semibold whitespace-nowrap">
-          <button type="button" aria-label="Home" className="shrink-0 cursor-pointer rounded-xs focus-visible:focus-ring" onClick={onNewChat}>
-            <BrigadierMark className="block size-icon-mark" />
-          </button>
-          <span className="min-w-0 truncate">Brigadier</span>
-        </h1>
-        <TooltipIconButton tooltip="New chat" look="strip" side="bottom" pressed={home} onClick={onNewChat}>
-          <ComposeEditSquare />
-        </TooltipIconButton>
-      </div>
+      {/* The header under the titlebar row: the name, no logo or chevron, then View and ⌘K's search [D22 D23 D24 D59]. */}
       <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
-        <div className="flex shrink-0 items-center gap-1 px-2.5 pb-2.5">
-          <div className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 rounded-capsule bg-control ps-2.5 pe-1 has-focus-visible:focus-ring">
-            <MagnifyingGlassSmSearch className="size-icon-sm shrink-0 text-placeholder" />
-            <input
-              aria-label="Search"
-              placeholder="Search"
-              value={search.q}
-              onChange={(event) => search.setQ(event.target.value)}
-              onKeyDown={search.onKeyDown}
-              className="min-w-0 flex-1 self-stretch bg-transparent text-label text-foreground outline-none placeholder:text-placeholder"
-            />
-          </div>
-          {view}
-        </div>
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          <div ref={list} className={LIST}>
-            {rest === undefined ? (
-              <Loading />
-            ) : search.query ? (
-              <SearchResults search={search} projects={projects} offline={offline} project={projectRow} session={(each) => row(each, { badged: true })} />
-            ) : (
-              <>
-                {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
-                  <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
-                    <NavList className="gap-1">{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
-                  </NavSection>
-                )}
-                <NavSection
-                  title={grouping === "none" ? "Open" : "Projects"}
-                  open={isOpen(grouping === "none" ? "open" : "projects")}
-                  onOpenChange={(open) => setOpen(grouping === "none" ? "open" : "projects", open)}
-                  actions={
-                    grouping === "project" && (
-                      <Tooltip>
-                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
-                          <Plus />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Add project</TooltipContent>
-                      </Tooltip>
-                    )
-                  }
-                >
-                  {grouping === "none" ? (
-                    <NavList className="gap-1">
-                      {rest.map((each) => row(each, { badged: true }))}
-                      {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
-                    </NavList>
-                  ) : (
-                    <NavList className="gap-1">
-                      {unpinnedProjects.map(projectRow)}
-                      {projects.length === 0 && (
-                        <EmptyState
-                          as="li"
-                          title={<NoProjects onAdd={() => openAddProject()} />}
-                        />
-                      )}
-                    </NavList>
-                  )}
-                </NavSection>
-                {/* Sessions with no project, the one place By projects lists sessions; shown while ticked in View, empty or not [D224, D655, D812]. */}
-                {grouping === "project" && !show.hideChats && (
-                  <NavSection
-                    title="Chats"
-                    open={isOpen("none")}
-                    onOpenChange={(open) => setOpen("none", open)}
-                    actions={
-                      <Tooltip>
-                        <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
-                          <Plus />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">New chat</TooltipContent>
-                      </Tooltip>
-                    }
-                  >
-                    <NavList>
-                      {homeless.map((each) => row(each, {}))}
-                      {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
-                    </NavList>
-                  </NavSection>
-                )}
-              </>
-            )}
-          </div>
-          {!search.query && <NeedYouPill list={list} ids={attention.map((each) => each.id)} waiting={attention.some((each) => each.mark === "needs")} />}
+        <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-4 pe-3">
+          <h1 className="min-w-0 flex-1 truncate text-nav-title font-semibold">Brigadier</h1>
+          <ViewTrigger projects={projects} show={show} />
+          <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="head" side="bottom" onClick={openSearch}>
+            <MagnifyingGlassSearch />
+          </TooltipIconButton>
         </div>
       </ViewMenu>
+      <div ref={list} className={LIST}>
+        {/* New chat, the first row [D25]. */}
+        <NavList>
+          <li>
+            <NavRow aria-current={home ? "page" : undefined} onClick={onNewChat}>
+              <ComposeEditSquare />
+              New chat
+            </NavRow>
+          </li>
+        </NavList>
+        {rest === undefined ? (
+          <Loading />
+        ) : (
+          <>
+            {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
+              <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                <NavList>{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
+              </NavSection>
+            )}
+            {grouping === "none" ? (
+              <NavSection
+                title="Recents"
+                open={isOpen("open")}
+                onOpenChange={(open) => setOpen("open", open)}
+                steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label="A session needs your attention" />}
+              >
+                <NavList>
+                  {rest.map((each) => row(each, { badged: true }))}
+                  {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
+                </NavList>
+              </NavSection>
+            ) : (
+              <NavSection
+                title="Projects"
+                open={isOpen("projects")}
+                onOpenChange={(open) => setOpen("projects", open)}
+                actions={
+                  <Tooltip>
+                    <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                      <Plus />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Add project</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <NavList>
+                  {unpinnedProjects.map(projectRow)}
+                  {projects.length === 0 && <EmptyState as="li" title={<NoProjects onAdd={() => openAddProject()} />} />}
+                </NavList>
+              </NavSection>
+            )}
+            {/* Sessions with no project; shown while ticked in View, empty or not [D224, D655, D812]. */}
+            {grouping === "project" && !show.hideChats && (
+              <NavSection
+                title="Chats"
+                open={isOpen("none")}
+                onOpenChange={(open) => setOpen("none", open)}
+                actions={
+                  <Tooltip>
+                    <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
+                      <Plus />
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">New chat</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <NavList>
+                  {homeless.map((each) => row(each, {}))}
+                  {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
+                </NavList>
+              </NavSection>
+            )}
+          </>
+        )}
+      </div>
       <ArchiveAsk />
       <DeleteAsk />
       <LabelAsk />
-      {pinsSessions && !search.query && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
+      <ProjectAsk />
+      {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
     </SidebarPanel>
   );
@@ -363,71 +333,4 @@ function Loading() {
       ))}
     </div>
   );
-}
-
-/**
- * A project: a click opens its page; hovered, New session starts one and Pin toggles its pin, as a right-click does.
- * Unpin stays visible on pinned rows. Its count and blue mark are its sessions' [D808, D844, D872, D873].
- */
-function ProjectRow({ project, tone, current, attention, count }: { project: Project; tone: number; current: boolean; attention: boolean; count: number }) {
-  const open = useOpenPlace();
-  const label = useRef<HTMLSpanElement>(null);
-  // Its name in a tip only when the row cuts it.
-  const [cut, setCut] = useState(false);
-  const measure = () => setCut((label.current?.scrollWidth ?? 0) > (label.current?.clientWidth ?? 0));
-  const items = (
-    <DropdownMenuItem onClick={() => pinProject(project, !project.pinned)}>
-      {project.pinned ? <Unpin /> : <Pin />}
-      {project.pinned ? "Unpin" : "Pin"}
-    </DropdownMenuItem>
-  );
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger render={<li data-project-id={project.id} className="group/row relative" />}>
-        <Tooltip>
-          <TooltipTrigger
-            delay={CARD_DELAY_MS}
-            render={<NavRow aria-current={current ? "page" : undefined} className={cx(project.pinned ? "pe-7" : "pe-1.5", "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-aria-expanded/row:pe-16")} onPointerEnter={measure} onFocus={measure} onClick={() => open(project.id)} />}
-          >
-            {/* Its logo, else its initials, as View's menu shows it [D650]. */}
-            <ProjectBadge id={project.id} name={project.name} tone={tone} />
-            <span ref={label} className="min-w-0 flex-1 truncate">{project.name}</span>
-            {/* One blue mark for every kind, then how many sessions it holds [D844]. */}
-            <span className="flex shrink-0 items-center gap-1.5 group-hover/row:hidden group-has-focus-visible/row:hidden group-has-aria-expanded/row:hidden">
-              {attention && <RowMark mark="unread" label="A session needs your attention" />}
-              <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
-            </span>
-          </TooltipTrigger>
-          {cut && <TooltipContent side="right" className="wrap-anywhere">{project.name}</TooltipContent>}
-        </Tooltip>
-        <RowActionsSlot className="end-8.5">
-          <Tooltip>
-            <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSession(project.id)} />}>
-              <ComposeEditSquare />
-            </TooltipTrigger>
-            <TooltipContent side="bottom">New session</TooltipContent>
-          </Tooltip>
-        </RowActionsSlot>
-        <RowActionsSlot className={project.pinned ? "pointer-events-auto opacity-100" : undefined}>
-          <Tooltip>
-            <TooltipTrigger render={<RowAction aria-label={`${project.pinned ? "Unpin" : "Pin"} ${project.name}`} onClick={() => pinProject(project, !project.pinned)} />}>
-              {project.pinned ? <Unpin /> : <Pin />}
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{project.pinned ? "Unpin" : "Pin"}</TooltipContent>
-          </Tooltip>
-        </RowActionsSlot>
-      </ContextMenuTrigger>
-      <ContextMenuContent>{items}</ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
-/** Each fork right under its source, the list's order otherwise [D48]. */
-function underSources(list: SessionRow[] | undefined, open: (id: string) => boolean): SessionRow[] | undefined {
-  if (!list) return list;
-  const here = new Set(list.map((each) => each.id));
-  // A Brigade's sub-sessions sit under it, oldest first, folding with it [D189].
-  const subs = (each: SessionRow) => (each.brigade && open(each.id) ? list.filter((sub) => sub.boss === each.id).toSorted((a, b) => a.sent - b.sent) : []);
-  const under = (each: SessionRow): SessionRow[] => [each, ...subs(each).flatMap(under), ...list.filter((fork) => fork.forkOf === each.id).flatMap(under)];
-  return list.filter((each) => !(each.forkOf && here.has(each.forkOf)) && !(each.boss && here.has(each.boss))).flatMap(under);
 }

@@ -75,6 +75,15 @@ export function SidebarWorking(props: IconProps) {
   );
 }
 
+/** A sidebar row's running mark, our own: a light ring with a short gap [D63]; callers spin it. */
+export function SidebarSpinner(props: IconProps) {
+  return (
+    <svg width="1em" height="1em" viewBox="0 0 16 16" fill="none" aria-hidden {...props}>
+      <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" pathLength="100" strokeDasharray="82 18" />
+    </svg>
+  );
+}
+
 export function Pin(props: IconProps) {
   return (
     <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>

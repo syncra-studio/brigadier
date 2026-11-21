@@ -1,15 +1,10 @@
 // Fork on Fake data, unwired [D48, D388, D1069, D1071, D1079]: the icon on an answer, its menu in each kind of
-// session, each worktree-row wording, the agent submenu and vendor confirm, the pending fork, the "Forked from"
-// line and a nested fork.
-import { useState } from "react";
-
-import { NavList } from "../src/components/nav";
+// session, each worktree-row wording, the agent submenu and vendor confirm, the pending fork and the "Forked from"
+// line.
 import { type ForkOffer, ForkMenu } from "../src/components/thread/fork-menu";
 import { type ForkOrigin, ForkedFrom } from "../src/components/thread/forked-from";
 import { AnswerMarks } from "../src/components/thread/message";
 import { SetupRow } from "../src/components/thread/setup";
-import { SessionRowItem } from "../src/sidebar/row";
-import type { Project, SessionRow } from "../src/sidebar/words";
 import type { Setup } from "../src/thread/item";
 import { Row, Section, State } from "./parts";
 import { useAgents } from "./pickers";
@@ -43,16 +38,8 @@ const ORIGINS: [string, ForkOrigin][] = [
   ["started from a summary", { source: { id: "s1", title: "Login" }, where: "worktree", summary: true, leftOut: [] }],
   ["big files left out", { source: { id: "s1", title: "Login" }, where: "worktree", summary: false, leftOut: ["data/dump.sql", "vendor/sdk"] }],
 ];
-const PROJECT: Project = { id: "p1", name: "brigadier", folder: "/Users/demo/code/brigadier" };
-const row = (id: string, title: string): SessionRow => ({ id, title, state: "idle", mark: null, resets: null, sent: 0, finished: 0, project: "p1" });
-const NESTED: [SessionRow, boolean][] = [
-  [row("n1", "Login"), false],
-  [row("n2", "Fork of Login"), true],
-  [row("n3", "Rate limit the exports"), false],
-];
 
 export function ForkGallery() {
-  const [active, setActive] = useState("n2");
   return (
     <Section title="Fork">
       <Row name="the icon on an answer, after Copy · session · chat · forking">
@@ -96,22 +83,6 @@ export function ForkGallery() {
         ))}
         <State label="a chat's source deleted">
           <ForkedFrom origin={{ source: null, where: null, summary: false, leftOut: [] }} chat onOpen={noop} />
-        </State>
-      </Row>
-      <Row name="a fork nested under its source">
-        <State label="sidebar · grouped by project">
-          <NavList className="w-60">
-            {NESTED.map(([each, forked]) => (
-              <SessionRowItem key={each.id} row={each} project={PROJECT} active={each.id === active} nested forked={forked} onOpen={setActive} onRename={noop} />
-            ))}
-          </NavList>
-        </State>
-        <State label="one list">
-          <NavList className="w-60">
-            {NESTED.map(([each, forked]) => (
-              <SessionRowItem key={each.id} row={each} project={PROJECT} tone={0} active={each.id === active} badged forked={forked} onOpen={setActive} onRename={noop} />
-            ))}
-          </NavList>
         </State>
       </Row>
     </Section>

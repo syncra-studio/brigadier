@@ -9,8 +9,8 @@ import { cx } from "./cx";
  */
 
 /**
- * A navigation row: icon, label, then anything at its end. Hovered or current (`aria-current`, `data-active`),
- * it is filled. Inside a `group/row` it stays filled while the pointer is anywhere in the row, its hover
+ * A navigation row (30 tall, r10): icon, label, then anything at its end. Hovered or current
+ * (`aria-current`, `data-active`), it is filled; current, its words are white. Inside a `group/row` it stays filled while the pointer is anywhere in the row, its hover
  * actions (RowActionsSlot) too.
  */
 export function NavRow({ className, ...props }: ComponentProps<"button">) {
@@ -18,8 +18,8 @@ export function NavRow({ className, ...props }: ComponentProps<"button">) {
     <button
       type="button"
       className={cx(
-        "relative flex min-h-nav-row w-full min-w-0 cursor-pointer items-center gap-2 rounded-nav ps-2 pe-1.5 text-start text-sm text-strip-foreground",
-        "hover:bg-fill group-hover/row:bg-fill group-has-data-popup-open/row:bg-fill focus-visible:focus-ring page-current:bg-selection data-active:bg-selection svg:shrink-0 svg:size-icon-md",
+        "relative flex min-h-nav-row w-full min-w-0 cursor-pointer items-center gap-2 rounded-row ps-2 pe-1.5 text-start text-sm text-foreground",
+        "hover:bg-fill group-hover/row:bg-fill group-has-data-popup-open/row:bg-fill focus-visible:focus-ring page-current:bg-selection page-current:text-primary data-active:bg-selection data-active:text-primary svg:shrink-0 svg:size-icon-md",
         className,
       )}
       {...props}
@@ -37,10 +37,8 @@ export function NavHeader({ title, actions }: { title: ReactNode; actions?: Reac
   );
 }
 
-const TITLE = "text-sm font-medium";
-// The title's rest look: faint, its hover (as the thread's work header) white.
-const FAINT = "text-faint-foreground opacity-nav-title";
-const LIT = "transition-all group-hover/title:text-foreground group-hover/title:opacity-100 group-focus-visible/title:text-foreground group-focus-visible/title:opacity-100";
+// A section's title: tertiary grey, hovered too [D27].
+const TITLE = "text-sm font-medium text-faint-foreground";
 // Shown while the section is hovered or holds focus.
 const ON_HOVER = "opacity-0 group-focus-within/section:opacity-100 group-hover/section:opacity-100";
 
@@ -78,7 +76,7 @@ export function NavSection({
   return (
     <section aria-labelledby={title ? id : undefined} className={cx("group/section flex flex-col", scrollList && "min-h-0")}>
       {title && (
-        <div className="flex min-h-6 shrink-0 items-center gap-1 ps-2 pe-1.5 pb-1">
+        <div className="mb-1 flex h-section-title shrink-0 items-center gap-1 ps-2 pe-1.5">
           {onOpenChange ? (
             <button
               id={id}
@@ -87,8 +85,8 @@ export function NavSection({
               onClick={() => onOpenChange(!open)}
               className={cx("group/title flex min-w-0 cursor-pointer items-center gap-1 rounded-xs focus-visible:focus-ring", TITLE)}
             >
-              <span className={cx("truncate", LIT, FAINT)}>{title}</span>
-              <span className={cx("flex", LIT, FAINT)}>
+              <span className="truncate">{title}</span>
+              <span className="flex">
                 <ChevronDown
                   className={cx(
                     "size-icon-sm shrink-0 transition-all motion-reduce:transition-none",
@@ -99,7 +97,7 @@ export function NavSection({
               </span>
             </button>
           ) : (
-            <h2 id={id} className={cx("truncate", TITLE, FAINT)}>
+            <h2 id={id} className={cx("truncate", TITLE)}>
               {title}
             </h2>
           )}

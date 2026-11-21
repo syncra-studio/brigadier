@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
-import { cx } from "./components/cx";
 import { SidebarPanel, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
@@ -182,8 +181,8 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           rail={rail}
         />
         )}
-        {/* Settings' page is on the nav's colour, one line between them [D898]. */}
-        <div className={cx("flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar", settings === undefined ? "main-surface" : "border-s border-divider bg-card")}>{children}</div>
+        {/* Settings' page is the main area too. */}
+        <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
         {settings === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} home={page !== undefined} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />

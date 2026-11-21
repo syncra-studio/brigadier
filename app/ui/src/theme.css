@@ -415,6 +415,8 @@
   --container-palette: 40rem;
   /* Sidebar and Settings navigation rows, and the sidebar panel's header. */
   --spacing-nav-row: 1.875rem;
+  /* A sidebar section's title row [D27]. */
+  --spacing-section-title: 1.5625rem;
   --spacing-nav-header: 3.25rem;
   /* Every panel's top bar, its bottom edge included: the project page's, Files', a worker's, the browser's toolbar, a
      file's and Review's, so side by side their bottom edges are one line [D839 D842]. */
@@ -524,6 +526,8 @@
   --radius-capsule: 9999px;
   /* Sidebar and Settings navigation rows; a Settings card. */
   --radius-nav: 0.78125rem;
+  /* A sidebar row [D28 D31]. */
+  --radius-row: 0.625rem;
   --radius-settings: 0.875rem;
   /* A dialog's card, and a confirm's rounder one (D46). */
   --radius-sheet: 1rem;
@@ -691,9 +695,8 @@
   --opacity-switch-disabled: 60%;
   --opacity-spinner-track: 25%;
   --opacity-dialog-close: 70%;
-  /* A disabled checkbox row; a sidebar section's title. */
+  /* A disabled checkbox row. */
   --opacity-row-disabled: 60%;
-  --opacity-nav-title: 75%;
   --opacity-toast-close: 80%;
   --scale-press: 90%;
   --scale-press-button: 95%;
@@ -1476,11 +1479,6 @@
     /* Above the scroll fades (z-10), which would otherwise wash it out at the page's foot [D433]. */
     z-index: 11;
   }
-}
-
-/* Settings' page, on the nav's colour [D898]: what draws on the page's background (its fades, sticky heads) draws on it. */
-@utility settings-surface {
-  --color-background: var(--color-card);
 }
 
 /* The main area [D69]: from the sidebar's edge to the window's end and foot, a hairline and a rounded top
