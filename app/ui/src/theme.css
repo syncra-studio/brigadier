@@ -741,8 +741,9 @@
 }
 
 @layer base {
+  /* Text on a Mac: grayscale smoothing, lighter than Chromium's default [D1]. */
   body {
-    @apply select-none;
+    @apply select-none antialiased;
   }
   input,
   textarea,
