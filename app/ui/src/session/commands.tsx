@@ -10,6 +10,7 @@ import { ask } from "../daemon";
 import { isPasteLabel, PASTE_LABEL } from "../shell/attachment-tab";
 import { openAttachment, openFile, openTab, selectTab } from "../shell/tab-store";
 import type { Runner } from "./composer";
+import { openSettings } from "../settings/shell";
 import { HOME_DRAFT } from "./draft";
 import { urlOf } from "./files";
 
@@ -89,6 +90,7 @@ export function openChip(owner: string, kind: OpenKind, id: string, command?: Sl
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
   if (kind === "tab") return selectTab(owner, id);
   if (kind === "note") return openTab(owner, "note", id);
+  if (kind === "plugin") return openSettings("plugins");
   if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].

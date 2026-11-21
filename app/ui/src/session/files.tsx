@@ -157,6 +157,7 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
     </AttachmentsContext>
   );
   attachers.set(owner, attach);
+  fields.set(owner, field);
   return { attachments: files.all, tileIds: files.tiles, tiles, attach, sent, restore, mentions, hold, onDrop, onDragOver, tilesRow };
 }
 
@@ -180,8 +181,11 @@ function insert(field: RefObject<ComposerFieldHandle | null>, chip: Chip): void 
   now.set([...parts, ...(apart ? [" "] : []), chip, " "]);
 }
 
-/** Each open composer's attach, so a drop on its thread reaches it. */
+/** Each open composer's attach, so a drop on its thread reaches it, and its field, for the summary card's Sources + [D155]. */
 const attachers = new Map<string, (id: string, file: File, inText: boolean) => void>();
+const fields = new Map<string, RefObject<ComposerFieldHandle | null>>();
+export const chipInto = (owner: string, chip: Chip) => insert(fields.get(owner) ?? { current: null }, chip);
+export const attachInto = (owner: string, files: File[]) => files.forEach((file) => attachers.get(owner)?.(crypto.randomUUID(), file, false));
 
 /**
  * Files dropped on session `owner`'s thread attach to its composer; a folder there adds a project, as on the rest of the

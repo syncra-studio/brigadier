@@ -10,7 +10,7 @@
  * it goes when the draft holding it is sent or cleared, so undo can bring the chip back.
  */
 export type Chip =
-  | { kind: "mention"; id: string; type: "file" | "folder" | "chat" | "worker" | "tab" | "note"; label: string }
+  | { kind: "mention"; id: string; type: "file" | "folder" | "chat" | "worker" | "tab" | "note" | "plugin"; label: string }
   | { kind: "command"; id: string; type: "command" | "skill" | "mcp"; label: string }
   | { kind: "image"; attachmentId: string }
   /** `preview`: the paste's first words, for its chip. */

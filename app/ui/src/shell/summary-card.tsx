@@ -10,6 +10,7 @@ import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
 import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, PlanCard, summaryReady, type TouchedRepo } from "../panel/card";
 import { PrsCard } from "../panel/card-prs";
+import { SourcesCard } from "../panel/card-sources";
 import { pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
@@ -372,6 +373,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       <WorkersCard owner={owner} />
       <SubagentsCard owner={owner} />
       <BackgroundCard owner={owner} />
+      <SourcesCard owner={owner} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

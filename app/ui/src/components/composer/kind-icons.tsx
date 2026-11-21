@@ -1,5 +1,6 @@
 import { Chat, CodeSquareSlash, Document, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
+import { Plugin } from "../../icons/settings";
 import { WorkerGlyph } from "../../icons/worker-glyphs";
 import { ProviderMark } from "./model-picker";
 
@@ -51,13 +52,14 @@ export function noteName(label: string): { emoji: string | null; name: string } 
 export const NOTE_TONE = "text-warning";
 
 /** A mention's icon, in a menu row or its chip: a file's badge, a folder, a chat, a worker's glyph, a note's emoji or page. `className` sizes it (a menu row's own size otherwise). */
-export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct" | "tab" | "note"; id?: string; label: string; className?: string }) {
+export function MentionKindIcon({ type, id, label, className }: { type: "file" | "folder" | "chat" | "worker" | "direct" | "tab" | "note" | "plugin"; id?: string; label: string; className?: string }) {
   if (type === "note") {
     const { emoji } = noteName(label);
     if (emoji) return <span aria-hidden className={cx("inline-flex items-center justify-center leading-none", className ?? "size-icon-md")}>{emoji}</span>;
     return <Document aria-hidden className={cx(NOTE_TONE, className)} />;
   }
   if (type === "tab") return <Globe aria-hidden className={cx("text-muted-foreground", className)} />;
+  if (type === "plugin") return <Plugin aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "worker" || type === "direct") return <WorkerGlyph id={id ?? label} className={className} />;
   if (type === "chat") return <Chat aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "folder") return <Folder aria-hidden className={cx("text-muted-foreground", className)} />;
