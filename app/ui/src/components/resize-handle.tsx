@@ -75,7 +75,7 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, e
       onLostPointerCapture={stop}
       className={cx("group/resize absolute top-0 bottom-0 z-10 flex w-resize-handle cursor-col-resize justify-center", end ? "end-0 translate-x-1/2 rtl:-translate-x-1/2" : "start-0 -translate-x-1/2 rtl:translate-x-1/2")}
     >
-      <span className="w-px bg-input opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
+      <span className="w-px bg-resize-line opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
     </div>
   );
 }

@@ -26,6 +26,8 @@
   --color-selection: rgb(255 255 255 / 7.8%);
   /* The rail and sidebar divider and a close button's hover; a card's edge while its handle is dragged [D16]. */
   --color-muted: #393939;
+  /* A resize handle's line while hovered or dragged, the splitter [D41]. */
+  --color-resize-line: #4d4d4d;
   /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
   --color-foreground: #dfdfdf;
   --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
@@ -419,9 +421,9 @@
   --spacing-nav-search: 2.25rem;
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
-  /* The right panels: their default width and range; the content's least room beside them and the sidebar. */
-  --spacing-sidebar: 18rem;
-  --spacing-sidebar-min: 11.75rem;
+  /* The right panels: their default width and range, 320 the least [D41]; the content's least room beside them and the sidebar. */
+  --spacing-sidebar: 24rem;
+  --spacing-sidebar-min: 20rem;
   --spacing-sidebar-max: 29.25rem;
   --spacing-sidebar-thread-min: 20rem;
   /* The left sidebar: 279 wide, dragged between 238 and 468 [D21]. */
@@ -538,6 +540,8 @@
   /* The new design's menu shadow. */
   --shadow-overlay: 0 10px 32px #00000080;
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
+  /* The right panel's soft edge over the chat [D41]. */
+  --shadow-panel-edge: -8px 0 16px -8px rgb(0 0 0 / 18%);
   --shadow-find: 0 0 0 0.5px oklch(1 0 0 / 8.2%), 0 8px 16px -4px oklch(0 0 0 / 12%);
   --shadow-thumb: 0 1px 2px oklch(0 0 0 / 20%);
   /* A mockup's floating note box and a pin's white ring (the old app's). */
@@ -1437,7 +1441,7 @@
     )
   );
 }
-/* The right panel's start edge: the old app's hairline, fading with its slide. */
+/* The right panel's start edge: a hairline and soft shadow over the chat [D41], fading with its slide. */
 @utility start-hairline {
   &::before {
     content: "";
@@ -1446,6 +1450,7 @@
     inset-inline-start: 0;
     width: 0.5px;
     background: var(--color-divider);
+    box-shadow: var(--shadow-panel-edge);
     pointer-events: none;
     z-index: 1;
   }
@@ -1471,12 +1476,24 @@
 /* The main area [D69]: from the sidebar's edge to the window's end and foot, a hairline and a rounded top
    corner at its start; with the sidebar hidden it blends into the strip, no line [D20]. */
 @utility main-surface {
+  position: relative;
   background-color: var(--color-background);
   border-inline-start: 0.5px solid var(--color-border);
   border-start-start-radius: var(--radius-surface);
   transition: border-color var(--duration-fold) var(--ease-sidebar);
   [data-state="collapsed"] > & {
     border-color: transparent;
+  }
+  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]. */
+  &:has([data-slot="right-panel"][data-state="expanded"])::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: var(--spacing-tab-bar);
+    height: 0.5px;
+    background: var(--color-divider);
+    pointer-events: none;
+    z-index: 11;
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;

@@ -97,6 +97,7 @@ export function RightPanelSlot({ owner }: { owner: string }) {
   return (
     <aside
       aria-label="Files"
+      data-slot="right-panel"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
       className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}

@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle } from "../icons";
+import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle, RobotHead } from "../icons";
 import { TeamGlyph } from "../icons/worker-glyphs";
 import { Clock, PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
@@ -31,7 +31,8 @@ export const TAB_KINDS = {
   browser: { name: "Browser", icon: Globe },
   mockup: { name: "Mockup", icon: ImageSquare },
   workers: { name: "Workers", icon: TeamGlyph },
-  subagents: { name: "Subagents", icon: TeamGlyph },
+  // A CLI's own subagents a robot; Workers keep their glyph [D131].
+  subagents: { name: "Subagents", icon: RobotHead },
 } satisfies Record<string, { name: string; icon: ComponentType<{ className?: string }> }>;
 export type TabKind = keyof typeof TAB_KINDS;
 /**

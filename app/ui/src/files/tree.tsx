@@ -4,9 +4,8 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
-import { Input } from "../components/input";
 import { Skeleton } from "../components/skeleton";
-import { ChevronDown, ChevronRight, FolderOpen } from "../icons";
+import { ChevronDown, ChevronRight, FolderOpen, MagnifyingGlassSmSearch } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { LETTERS, type FileStatus } from "../panel/status";
 import { PLAIN_FIELD } from "./field";
@@ -185,30 +184,35 @@ export function FileTree({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-panel-header shrink-0 items-center border-b border-divider px-3">
-        <Input
-          ref={search}
-          aria-label="Search files"
-          placeholder="Search files"
-          {...PLAIN_FIELD}
-          value={query}
-          onChange={(event) => {
-            const value = event.target.value;
-            setQuery(value);
-            setActive(0);
-            onQuery(value.trim());
-          }}
-          onKeyDown={(event) => {
-            if (!found) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              const step = event.key === "ArrowDown" ? 1 : -1;
-              setActive((index) => Math.min(found.length - 1, Math.max(0, index + step)));
-            } else if (event.key === "Enter") {
-              const path = found[active];
-              if (path) onOpen(path, true);
-            }
-          }}
-        />
+        {/* The Filter files pill [D42]. */}
+        <label className="flex h-control-md min-w-0 flex-1 items-center gap-2 rounded-capsule border border-input px-3 has-focus-visible:focus-ring">
+          <MagnifyingGlassSmSearch aria-hidden className="size-icon-md shrink-0 text-muted-foreground" />
+          <input
+            ref={search}
+            aria-label="Filter files"
+            placeholder="Filter files…"
+            {...PLAIN_FIELD}
+            className="min-w-0 flex-1 cursor-text bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            value={query}
+            onChange={(event) => {
+              const value = event.target.value;
+              setQuery(value);
+              setActive(0);
+              onQuery(value.trim());
+            }}
+            onKeyDown={(event) => {
+              if (!found) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setActive((index) => Math.min(found.length - 1, Math.max(0, index + step)));
+              } else if (event.key === "Enter") {
+                const path = found[active];
+                if (path) onOpen(path, true);
+              }
+            }}
+          />
+        </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {listing.state === "loading" ? (
@@ -236,7 +240,7 @@ export function FileTree({
                       onClick={() => onOpen(path, false)}
                       onDoubleClick={() => onOpen(path, true)}
                       onPointerMove={() => setActive(index)}
-                      className="flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm focus-visible:focus-ring data-active:bg-muted"
+                      className="flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm focus-visible:focus-ring data-active:bg-selection"
                     >
                       <FileIcon name={path} />
                       <span className="shrink-0">{baseName(path)}</span>
@@ -278,16 +282,16 @@ const TreeRow = memo(function TreeRow({ row, selected, onToggle, onOpen, onRevea
           // Each level indents by one step of the spacing scale (tree-indent, theme.css).
           data-depth={row.depth}
           className={cx(
-            "tree-indent flex h-control-sm w-full cursor-pointer items-center gap-1.5 rounded-control pe-2 text-start text-sm hover:bg-muted focus-visible:focus-ring",
+            "tree-indent flex h-control-sm w-full cursor-pointer items-center gap-1.5 rounded-control pe-2 text-start text-sm hover:bg-selection focus-visible:focus-ring",
             mark ? mark.className : "text-foreground",
             row.ignored && "opacity-ignored",
-            selected && "bg-muted",
+            selected && "bg-selection",
           )}
         >
           {folder ? (
-            row.open ? <ChevronDown className="size-icon-xs shrink-0" /> : <ChevronRight className="size-icon-xs shrink-0" />
+            row.open ? <ChevronDown className="size-icon-md shrink-0" /> : <ChevronRight className="size-icon-md shrink-0" />
           ) : (
-            <FileIcon name={row.path} size="xs" />
+            <FileIcon name={row.path} />
           )}
           <span className={cx("min-w-0 flex-1 truncate", !folder && row.status === "deleted" && "line-through")}>{row.name}</span>
           {mark &&
