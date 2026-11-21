@@ -157,7 +157,7 @@ export function UserBubble({
         {files}
         {/* A message of only files (a paste, an image) has no bubble under them. */}
         {(text.trim() !== "" || chips || !files) && (
-        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-composer px-3.5 py-2.25 text-foreground shadow-composer", dimmed && "opacity-row-disabled")}>
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-bubble px-3.5 py-2.25 text-foreground shadow-composer", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             {chips ? (
               <AttachmentsContext value={chips.files}>

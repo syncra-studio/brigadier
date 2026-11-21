@@ -7,45 +7,51 @@
 @theme static {
   --*: initial;
 
-  /* The old page, oklch(0.21 0.002 106), in hex: main reads this line for the window, and Electron can't parse oklch. */
-  --color-background: #181817;
-  /* The window around the floating sidebar and panels: the old chrome, a step lighter than the page. */
-  --color-chrome: color-mix(in oklab, var(--color-foreground) 7%, var(--color-background));
-  /* The floating sidebar, strip, right panel and summary card: the old sidebar (page 65% over chrome), in hex for main. */
-  --color-card: #1d1d1c;
-  /* Menus and the hover card: the old popover, opaque [D655], and its edge. */
-  --color-popover: oklch(0.297 0.002 106);
-  --color-popover-edge: oklch(0.985 0.002 106 / 10%);
-  /* The glass: a pill's fill (control-fill) and edge (glass-stroke), and the active tab and picked row (selection). */
-  --color-control: oklch(0.985 0.002 106 / 6%);
-  --color-glass-stroke: oklch(0.985 0.002 106 / 8%);
-  --color-selection: oklch(0.985 0.002 106 / 10%);
-  /* A card's edge while its resize handle is hovered or dragged [D16]. */
-  --color-muted: oklch(0.315 0.004 106);
-  /* The old foreground, oklch(0.985 0.002 106), in hex for main, and muted-foreground; --color-placeholder is the latter at 60%. */
-  --color-foreground: #fafaf9;
-  --color-muted-foreground: oklch(0.708 0.004 106);
-  --color-primary: oklch(0.922 0.002 106);
-  --color-primary-fg: oklch(0.255 0.003 106);
-  --color-destructive: oklch(0.704 0.191 22.216);
-  --color-warning: oklch(0.769 0.165 62);
+  /* The page, in hex as main reads this line for the window [D1]. */
+  --color-background: #181818;
+  /* The window around the sidebar and panels, as the card. */
+  --color-chrome: var(--color-card);
+  /* Sidebar, strip, right panel and window fill: an opaque sidebar, in hex for main (vibrancy comes later). */
+  --color-card: #262626;
+  /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
+  --color-popover: #2d2d2d;
+  --color-popover-edge: rgb(255 255 255 / 12%);
+  /* A pill's fill (a secondary button's), its edge (border), the active tab and picked row (ghost hover). */
+  --color-control: rgb(255 255 255 / 5.2%);
+  --color-glass-stroke: rgb(255 255 255 / 8.4%);
+  --color-selection: rgb(255 255 255 / 7.8%);
+  /* The rail and sidebar divider and a close button's hover; a card's edge while its handle is dragged [D16]. */
+  --color-muted: #393939;
+  /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
+  --color-foreground: #dfdfdf;
+  --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  /* A primary button: white, with near-black ink. */
+  --color-primary: #ffffff;
+  --color-primary-fg: #0d0d0d;
+  /* Error text, the "Full access" and warning orange, and success. */
+  --color-destructive: #ff6764;
+  --color-warning: #e25507;
   --color-success: oklch(0.765 0.15 155);
-  --color-border: oklch(0.985 0.002 106 / 10%);
-  --color-divider: oklch(0.985 0.002 106 / 8%);
+  /* The default border, on edges and the lines between parts. */
+  --color-border: rgb(255 255 255 / 8.4%);
+  --color-divider: rgb(255 255 255 / 8.4%);
   /* Find's marks: every match washed yellow, the one gone to orange; the text keeps its colour. */
   --color-find-match: oklch(0.86 0.17 95 / 38%);
   --color-find-match-active: oklch(0.66 0.18 50 / 85%);
-  --color-input: oklch(0.985 0.002 106 / 15%);
-  --color-ring: oklch(0.556 0.004 106);
+  /* A field's edge and the focus ring: a strong border and focus blue. */
+  --color-input: rgb(255 255 255 / 15.6%);
+  --color-ring: #0285ff;
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   --color-live-text: color-mix(in oklab, var(--color-foreground) 38.5%, transparent);
   --color-live-text-highlight: color-mix(in oklab, var(--color-foreground) 75%, transparent);
-  --color-link: oklch(0.618 0.127 259.6);
-  --color-toggle-on: oklch(0.63 0.18 259);
+  /* Accent text, and the accent for a switch that's on. */
+  --color-link: #83c3ff;
+  --color-toggle-on: #339cff;
   /* An agent's tab group, the orange of Claude in Chrome's group in the owner's recording (#fda86c) [D894]. */
   --color-agent-group: #fda86c;
   --color-primary-hover: color-mix(in oklab, var(--color-primary) 90%, transparent);
-  --color-destructive-fill: var(--color-destructive);
+  /* Danger red, a destructive button's fill. */
+  --color-destructive-fill: #e02e2a;
   --color-destructive-fill-hover: color-mix(in oklab, var(--color-destructive) 90%, transparent);
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
@@ -81,16 +87,17 @@
   --color-timeline-title: color-mix(in oklab, var(--color-foreground) 90%, transparent);
   /* The text's own colour, faint: a key hint on any button. */
   --color-current-wash: color-mix(in oklab, currentColor 12%, transparent);
-  /* Faint foreground washes for quiet controls, lightest to strongest. */
-  --color-fill-subtle: color-mix(in oklab, var(--color-foreground) 5%, transparent);
-  --color-fill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
-  --color-fill-hover: color-mix(in oklab, var(--color-foreground) 10%, transparent);
+  /* White washes for quiet controls: secondary button, ghost hover (row, tab, pressed), pressed. */
+  --color-fill-subtle: rgb(255 255 255 / 5.2%);
+  --color-fill: rgb(255 255 255 / 7.8%);
+  --color-fill-hover: rgb(255 255 255 / 12%);
   /* The old feedback note's field, and its words while they're written up. */
   --color-feedback-field: color-mix(in oklab, var(--color-muted) 60%, transparent);
   --color-feedback-working: color-mix(in oklab, var(--color-foreground) 80%, transparent);
-  --color-fill-active: color-mix(in oklab, var(--color-foreground) 16%, transparent);
-  --color-toolbar-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
-  --color-strip-foreground: color-mix(in oklab, var(--color-foreground) 85%, transparent);
+  /* Ghost active; a toolbar's and the strip's idle icons. */
+  --color-fill-active: rgb(255 255 255 / 16%);
+  --color-toolbar-foreground: rgb(255 255 255 / 51%);
+  --color-strip-foreground: var(--color-toolbar-foreground);
   --color-kbd-border: color-mix(in oklab, var(--color-border) 60%, transparent);
   --color-input-disabled: color-mix(in oklab, var(--color-input) 80%, transparent);
   --color-invalid: color-mix(in oklab, var(--color-destructive) 50%, transparent);
@@ -111,7 +118,7 @@
   --color-ansi-black: oklch(0.315 0.004 106);
   --color-ansi-red: var(--color-destructive);
   --color-ansi-green: var(--color-success);
-  --color-ansi-yellow: var(--color-warning);
+  --color-ansi-yellow: oklch(0.769 0.165 62);
   --color-ansi-blue: var(--color-link);
   --color-ansi-magenta: oklch(0.72 0.16 320);
   --color-ansi-cyan: oklch(0.74 0.12 200);
@@ -124,8 +131,8 @@
   --color-ansi-bright-magenta: oklch(0.81 0.13 320);
   --color-ansi-bright-cyan: oklch(0.84 0.1 200);
   --color-ansi-bright-white: var(--color-foreground);
-  /* A select's pill at rest, fainter than fill-subtle. */
-  --color-fill-faint: color-mix(in oklab, var(--color-foreground) 3%, transparent);
+  /* A select's pill at rest: a tertiary button. */
+  --color-fill-faint: rgb(255 255 255 / 2.9%);
   /* Behind an open dialog: the page, dimmed. */
   --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
   /* The image viewer's backdrop: near-black, so the image reads as itself. */
@@ -149,12 +156,12 @@
   --color-setup-connected: color-mix(in oklab, var(--color-success) 10%, transparent);
   /* Its project cards' hover (muted/60). */
   --color-setup-card-hover: color-mix(in oklab, var(--color-muted) 60%, transparent);
-  /* The Full access permission level: its pill, row and confirm (the old theme's --full-access). */
-  --color-full-access: oklch(0.72 0.19 45);
+  /* The Full access permission level: its pill, row and confirm, the warning orange. */
+  --color-full-access: var(--color-warning);
   /* Claude's mark on its agent card, the old theme's --brand-claude; its adapter names it. */
   --color-brand-claude: oklch(0.672 0.131 38.8);
-  /* An unchosen segment, a sidebar section's title. */
-  --color-faint-foreground: color-mix(in oklab, var(--color-foreground) 50%, transparent);
+  /* An unchosen segment, a sidebar section's title: tertiary text. */
+  --color-faint-foreground: rgb(255 255 255 / 50%);
   /* A progress bar: filling, and stopped. */
   --color-progress: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   --color-progress-cancelled: color-mix(in oklab, var(--color-foreground) 20%, transparent);
@@ -204,8 +211,9 @@
   --color-glyph-8: oklch(0.82 0.15 115);
   /* The line between a split button's halves (the old border-background/40). */
   --color-split-edge: color-mix(in oklab, var(--color-background) 40%, transparent);
-  /* The composer card, and a field's placeholder in it. */
-  --color-composer: color-mix(in oklab, var(--color-foreground) 15.5%, var(--color-background));
+  /* The composer, the user's message bubble and a field's placeholder. */
+  --color-composer: #343434;
+  --color-bubble: #2f2f2e;
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */

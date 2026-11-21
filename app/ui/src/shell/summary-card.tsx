@@ -91,7 +91,7 @@ export function useCardToggle(owner: string) {
 // The card itself, pinned or floating.
 // The new design's floating card: the card colour, the panel's corners, the glass edge; the old card's 18.75rem (300px) wide [D592].
 // The composer's fill and edge [D843].
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-composer py-2.5 shadow-composer";
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-popover py-2.5 shadow-composer";
 
 /** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
