@@ -11,6 +11,8 @@ import { cx } from "../cx";
 export const ROW = "flex w-fit max-w-full min-h-5.25 min-w-0 items-center gap-1.5 text-sm leading-5.25 text-row-foreground";
 /** A row that opens: it turns white while hovered or focused. */
 export const TOGGLE = "group cursor-pointer rounded-control text-start hover:text-foreground focus-visible:text-foreground focus-visible:focus-ring";
+/** An opened group's or batch's rows: 12 under it and apart, each at its words' start, on a rule under its icon [D95]. */
+export const STEPS = "ms-2 mt-3 flex min-w-0 flex-col gap-3 border-s border-divider ps-3.75 *:shrink-0";
 /** What an opened row shows, under it. */
 export const DETAIL = "flex min-w-0 flex-col gap-1 py-1 text-sm text-row-foreground";
 

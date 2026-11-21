@@ -14,6 +14,7 @@ import { SentAttachments } from "../composer/attachments";
 import type { Draft } from "../composer/draft";
 import { PASTE_LABEL } from "../../shell/attachment-tab";
 import { openAttachment } from "../../shell/tab-store";
+import { STEPS } from "./activity-row";
 import { ApprovalRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
 import { Plug, ShieldExclamation } from "../../icons";
@@ -62,10 +63,9 @@ export function GroupLine({ item, turn, open, steps, live, members, onToggle }: 
   return (
     <>
       {now || <GroupRow item={item} members={ended} open={open} onToggle={onToggle} />}
-      {/* Opened: up to 14rem of its steps 4px apart, then they scroll, their edges fading while there is more (the old app's),
-          indented on a guide line under the line's icon [D762]. */}
+      {/* Opened: all its steps 12 apart, under the words, on a guide line under the line's icon [D95, D762]. */}
       {open && steps.length > 0 && (
-        <div className="ms-2 mt-1 flex max-h-group-list min-w-0 scroll-edge-fade edge-fade-group flex-col gap-1 overflow-y-auto border-s border-divider ps-3 *:shrink-0">
+        <div className={STEPS}>
           {/* Each step marked, for find to go to a match in it. */}
           {steps.map((step) => (
             <div key={step.id} data-step={step.id}>

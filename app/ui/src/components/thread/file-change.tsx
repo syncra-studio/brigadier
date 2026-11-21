@@ -21,7 +21,7 @@ const MAX_DIFF_LINES = 5000;
 export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
- * One changed file: "Edited blocks.ts", then its counts (+7 −2, coloured while hovered) and a red dot for a
+ * One changed file: "Edited blocks.ts", then its counts (+7 −2, green and red) and a red dot for a
  * deleted file. A finished one opens to its diff; one without a diff opens the file in the Review tab. A declined change reads "Rejected".
  */
 export function FileChangeRow({ keep, change, progress, approval }: { keep: string; change: FileChange; progress: Progress; approval?: PendingApproval }) {
@@ -87,10 +87,10 @@ function useReviewSession() {
   return useDaemon().rows?.find((row) => row.id === id)?.project ? id : undefined;
 }
 
-/** "+7 −2". Quiet: grey until its row is hovered; a zero stays grey. */
+/** "+7 −2", always green and red, a zero grey [D98]. Quiet: the row's mono figures. */
 function Counts({ added, removed, quiet = false }: { added: number; removed: number; quiet?: boolean }) {
-  const plus = added === 0 ? undefined : quiet ? "group-hover:text-success" : "text-success";
-  const minus = removed === 0 ? undefined : quiet ? "group-hover:text-destructive" : "text-destructive";
+  const plus = added === 0 ? undefined : "text-success";
+  const minus = removed === 0 ? undefined : "text-destructive";
   return (
     <span className={cx("shrink-0 tabular-nums", quiet ? "font-mono text-xs" : "text-xs text-muted-foreground")}>
       <span className={plus}>+{added}</span> <span className={minus}>−{removed}</span>
