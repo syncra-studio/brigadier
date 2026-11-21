@@ -184,8 +184,8 @@ export function FileTree({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-panel-header shrink-0 items-center border-b border-divider px-3">
-        {/* The Filter files pill [D42]. */}
-        <label className="flex h-control-md min-w-0 flex-1 items-center gap-2 rounded-capsule border border-input px-3 has-focus-visible:focus-ring">
+        {/* The Filter files pill, 28 tall [D42 D209]. */}
+        <label className="flex h-control-sm min-w-0 flex-1 items-center gap-2 rounded-capsule border border-input px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSmSearch aria-hidden className="size-icon-md shrink-0 text-muted-foreground" />
           <input
             ref={search}
