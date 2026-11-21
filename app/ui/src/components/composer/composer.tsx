@@ -11,11 +11,18 @@ import { ComposerField, type ComposerFieldHandle } from "./field";
 import { ComposerRail } from "./rail";
 
 /**
- * The composer's column under the thread (below its scroller, not over it): the reading width, its card's
- * bottom as far up the page's panel as the panel is in the frame [D55 D823]. What sits above the card (the rail, a decision) stacks in it too.
+ * The composer's column under the thread (below its scroller, not over it): the thread's column, its card's edges on
+ * the thread's text edges [D208], its bottom as far up the page's panel as the panel is in the frame
+ * [D55 D823]. What sits above the card (the rail, a decision) stacks in it too.
  */
 export function Composer({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="composer" className={cx("mx-auto flex w-full max-w-reading shrink-0 flex-col px-4 pb-3", className)} {...props} />;
+  // A block in a full-width box inside the thread's scrollbar gutters, as the thread's rows are, so its box-content column
+  // fills the same width theirs does.
+  return (
+    <div className="w-full shrink-0 px-scrollbar pb-3">
+      <div data-slot="composer" className={cx("mx-auto box-content flex max-w-reading flex-col px-4", className)} {...props} />
+    </div>
+  );
 }
 
 /** A click in the card's empty space puts the cursor in its field, as a click in the text would. */

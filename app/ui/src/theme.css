@@ -379,6 +379,8 @@
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
   --container-reading: 46rem;
+  /* A scrollbar's width, held on both sides of the thread (scroll-gutter-both) and so beside the composer too [D208]. */
+  --spacing-scrollbar: calc(var(--spacing) * 2.5);
   /* How far the reading column moves aside for the pinned summary card, keeping its width [D135]. */
   --spacing-summary-room: calc(var(--spacing) * 38.5);
   /* A Settings page's column (the old app's). */
@@ -776,8 +778,8 @@
    either turns these rules off. */
 @layer components {
   ::-webkit-scrollbar {
-    width: --spacing(2.5);
-    height: --spacing(2.5);
+    width: var(--spacing-scrollbar);
+    height: var(--spacing-scrollbar);
   }
   ::-webkit-scrollbar-track,
   ::-webkit-scrollbar-corner {
