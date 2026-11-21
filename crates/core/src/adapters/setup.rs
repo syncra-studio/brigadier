@@ -63,6 +63,13 @@ pub fn refresh() -> Login {
 
 /// A binary in its installer's folders under HOME first, then on the login PATH.
 pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
+    // A test instance's gh stand-in (a guard that fakes writes); never the real app's data folder.
+    if bin == "gh"
+        && std::env::var_os("BRIGADIER_DATA").is_some_and(|d| Path::new(&d) != crate::default_data_dir())
+        && let Some(gh) = std::env::var_os("BRIGADIER_GH")
+    {
+        return Some(gh.into());
+    }
     let home = super::home_path("");
     let path = login().path;
     folders
