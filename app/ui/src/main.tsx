@@ -126,7 +126,8 @@ function App() {
   if (prs !== null) {
     // A PR's review chat once its first message went, else its draft beside the PR's tab; no PR, the page's empty state [D159 D162].
     const chat = prs ? chats[prs] : undefined;
-    const live = chat && rows?.some((row) => row.id === chat && !row.archived);
+    // Before the rows are read it's taken as live, so a send in that moment can't start a second review chat.
+    const live = chat && (rows ? rows.some((row) => row.id === chat && !row.archived) : true);
     return (
       <Shell hash={hash} active={live ? chat : null} rows={rows} prs={prs}>
         {live ? (
