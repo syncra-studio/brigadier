@@ -4,7 +4,6 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../componen
 import { cx } from "../components/cx";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { Kbd } from "../components/kbd";
-import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { showToast } from "../components/toast";
 import { newChatIn, setHomeDraft } from "../home/start";
@@ -107,50 +106,71 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
   const title = row.title || (row.state === "starting" ? "" : "Chat");
   const working = useMark(row, true) === "working" && !archived;
   const startRename = archived ? undefined : () => setRenaming(true);
+  const label = archived ? `${title} (Archived)` : words ? [title, words].filter(Boolean).join(" · ") : title;
+  const icon = archived ? <Archive className="size-icon-md shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-md shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-md shrink-0" /> : <ProjectIcon project={row.project} />;
+  const middleLeaves = (event: ReactMouseEvent) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    leave(row);
+  };
+  // The chat's actions [D37]: New chat in this worktree, a one-off [D152], then the row's menu [D185].
+  const actions = (
+    <DropdownMenuContent align={plain ? "start" : "end"}>
+      {row.project && row.folder && (
+        <>
+          <DropdownMenuItem onClick={() => newChatIn(row.project!, row.folder!, row.title)}>
+            <ChatCompose />
+            New chat in this worktree
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+      <RowMenuItems row={row} onRename={() => setRenaming(true)} />
+    </DropdownMenuContent>
+  );
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div data-tab-id={CHAT} data-plain={plain || undefined} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} className={cx(TAB, LOOK(active))} />}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={active}
-          tabIndex={active ? 0 : -1}
-          title={archived ? `${title} (Archived)` : words ? [title, words].filter(Boolean).join(" · ") : title}
-          onMouseDown={noAutoscroll}
-          onMouseUp={(event) => {
-            if (event.button !== 1) return;
-            event.preventDefault();
-            leave(row);
-          }}
-          onClick={() => selectTab(owner, CHAT)}
-          onDoubleClick={startRename}
-          className={BUTTON}
-        >
-          {archived ? <Archive className="size-icon-md shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-md shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-md shrink-0" /> : <ProjectIcon project={row.project} />}
-          <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>
-          {working && !keycap && <RowMark mark="working" label={words ?? ""} />}
-          <Keycap keycap={keycap} />
-        </button>
-        {/* Never at the row's end [D200]: right after the plain title, or in the tab where another's × is. */}
-        {!archived && !keycap && (
+        {plain && !archived ? (
+          // The plain title is one button with its icon and "…": a click anywhere on it opens Chat actions [D211].
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="chat" tooltip="Chat actions" className="shrink-0" /> : <button type="button" aria-label="Chat actions" className={CLOSE} />}>
-              <DotsHorizontal className={plain ? undefined : "size-icon-sm"} />
+            <DropdownMenuTrigger render={<button type="button" title={label} onMouseDown={noAutoscroll} onMouseUp={middleLeaves} className={BUTTON} />}>
+              {icon}
+              <span className={TITLE}>{title}</span>
+              {working && <RowMark mark="working" label={words ?? ""} />}
+              <DotsHorizontal className="size-icon-md shrink-0" />
             </DropdownMenuTrigger>
-            {/* The Chat actions [D37]: New chat in this worktree, a one-off [D152], then the row's menu [D185]. */}
-            <DropdownMenuContent align={plain ? "start" : "end"}>
-              {row.project && row.folder && (
-                <>
-                  <DropdownMenuItem onClick={() => newChatIn(row.project!, row.folder!, row.title)}>
-                    <ChatCompose />
-                    New chat in this worktree
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              <RowMenuItems row={row} onRename={() => setRenaming(true)} />
-            </DropdownMenuContent>
+            {actions}
           </DropdownMenu>
+        ) : (
+          <>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              title={label}
+              onMouseDown={noAutoscroll}
+              onMouseUp={middleLeaves}
+              onClick={() => selectTab(owner, CHAT)}
+              onDoubleClick={startRename}
+              className={BUTTON}
+            >
+              {icon}
+              <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>
+              {working && !keycap && <RowMark mark="working" label={words ?? ""} />}
+              <Keycap keycap={keycap} />
+            </button>
+            {/* In the tab where another's × is, never at the row's end [D200]. */}
+            {!archived && !keycap && (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger render={<button type="button" aria-label="Chat actions" className={CLOSE} />}>
+                  <DotsHorizontal className="size-icon-sm" />
+                </DropdownMenuTrigger>
+                {actions}
+              </DropdownMenu>
+            )}
+          </>
         )}
       </ContextMenuTrigger>
       <ContextMenuContent>

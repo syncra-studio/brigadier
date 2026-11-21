@@ -1797,9 +1797,16 @@
     &::after {
       content: none;
     }
+    /* Its icon, title and "…" one button: hover or its menu open fills them, an icon button's 28 tall fill [D211 D213]. */
     & > button {
+      height: calc(var(--spacing) * 7);
       padding-inline-start: calc(var(--spacing) * 2);
       gap: calc(var(--spacing) * 4);
+      border-radius: var(--radius-icon-button);
+      &:hover,
+      &[aria-expanded="true"] {
+        background-color: var(--color-fill);
+      }
     }
     /* Cut with "…", its own "…" button 7 past it (the tab's end padding) [D200]. */
     & .tab-title {
