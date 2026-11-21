@@ -40,7 +40,7 @@ const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerAc
 const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
 
 /** A file tab is named by its file, a PR tab by its number; a Review, Mockup, Workers or Subagents tab keeps its kind's name, whatever it shows. */
-const pathName = (tab: Tab) => (tab.target === undefined || ["review", "mockup", "workers", "subagents"].includes(tab.kind) ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
+const pathName = (tab: Tab) => (tab.target === undefined || ["review", "mockup", "workers", "subagents"].includes(tab.kind) ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
 const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/")[1] ?? TAB_KINDS.attachment.name) : pathName(tab));
 
 function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {

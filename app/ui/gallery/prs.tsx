@@ -1,6 +1,5 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 
-import { PrListView, type View } from "../src/landing/pr-list";
 import type { Sends } from "../src/landing/pr-parts";
 import { PrTab } from "../src/landing/pr-tab";
 import type { PrCheck, PullRequest } from "../src/landing/pull-requests";
@@ -29,20 +28,6 @@ const CLOSED: [number, string][] = [
   [838, "A context refresh while workers run leaves one live work block, and a follow-up to a paused or stopped block goes right in"],
   [844, "An app preview started with pnpm tauri:dev now reads as ready once its window opens"],
 ];
-
-const row = (number: number, title: string, state: Pr["state"], draft = false): Pr => ({
-  number,
-  title,
-  state,
-  draft,
-  health: "ready",
-  failed: 0,
-  author: "stephen-golban",
-  createdAtMs: WEEK,
-  updatedAtMs: WEEK,
-});
-const OPEN_ROWS = [row(862, "Rebuild the in-app browser on Electron", "open", true)];
-const CLOSED_ROWS = CLOSED.map(([n, t]) => row(n, t, "merged"));
 
 const checks = (names: string[], state: PrCheck["state"]): PrCheck[] => names.map((name) => ({ id: name, name, state, durationMs: null, logTail: null, url: null }));
 const PASS_8 = checks(["Clippy (Windows)", "Computer use live test (Linux)", "Linux app, launch smoke check", "Format, bindings, typecheck, lint", "App tests", "Rust tests (Linux)", "Clippy (Linux)", "Approval before code"], "passed");
@@ -148,8 +133,6 @@ const REVIEWED: PullRequest = {
 };
 
 const SENDS: Sends = { now: NOW, offline: false, onOpen: () => {}, onChanged: () => {} };
-type Found = { query: string; okAt: number | null; error: string | null; prs: Pr[]; next: string | null };
-const found = (prs: Pr[], more = false): Found => ({ query: "", okAt: NOW - 120_000, error: null, prs, next: more ? "next" : null });
 
 function Still({ name, children, height = "h-160" }: { name: string; children: ReactNode; height?: string }) {
   return (
@@ -159,54 +142,12 @@ function Still({ name, children, height = "h-160" }: { name: string; children: R
   );
 }
 
-function List({ list, closed = false, view = "all", busy = false }: { list: Found | null; closed?: boolean; view?: View; busy?: boolean }) {
-  const [v, setV] = useState<View>(view);
-  const [c, setC] = useState(closed);
-  const [linked, setLinked] = useState(false);
-  const [text, setText] = useState("");
-  return (
-    <PrListView
-      found={list}
-      now={NOW}
-      view={v}
-      linked={linked}
-      closed={c}
-      text={text}
-      busy={busy}
-      more={false}
-      sessions={[]}
-      onView={setV}
-      onLinked={setLinked}
-      onClosed={setC}
-      onText={setText}
-      onRefresh={() => {}}
-      onMore={() => {}}
-      onOpen={() => {}}
-    />
-  );
-}
-
 const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onFix={() => {}} onReview={() => {}} onAddToChat={() => {}} />;
 
-/** The Pull requests tab and a Pull request tab, on sample PRs [D609, D613]. */
+/** A Pull request tab, on sample PRs [D609, D613]. */
 export function PrsGallery() {
   return (
-    <Section title="Pull requests in this layout">
-      <Still name="list-open">
-        <List list={found(OPEN_ROWS)} />
-      </Still>
-      <Still name="list-closed">
-        <List list={found(CLOSED_ROWS, true)} closed />
-      </Still>
-      <Still name="list-empty">
-        <List list={found([])} view="review" />
-      </Still>
-      <Still name="list-loading">
-        <List list={null} busy />
-      </Still>
-      <Still name="list-error">
-        <List list={{ ...found([]), okAt: null, error: "gh: Could not resolve to a Repository" }} />
-      </Still>
+    <Section title="Pull request tab">
       <Still name="pr-merged" height="h-220">
         {tab(base)}
       </Still>

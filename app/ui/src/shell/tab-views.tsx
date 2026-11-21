@@ -10,9 +10,7 @@ import { FileViewer } from "../files/viewer";
 import { useHomeProject } from "../home/start";
 import { Actions } from "../landing/actions";
 import { HostOf } from "../landing/host";
-import { PullRequestOpen } from "../landing/icons";
 import { LivePrTab } from "../landing/live";
-import { PrList } from "../landing/pr-list";
 import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
 import { ago } from "../panel/words";
@@ -51,9 +49,6 @@ function Card({ why, children }: { why: string | null; children: ReactNode }) {
 
 /** The old app's New tab, under the browser's toolbar: what's picked replaces it [D361, D388, D244, D508]. */
 function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; archived: boolean; active: boolean }) {
-  // Before the first message they read the picked project's repository; a chat with no project has none [D279].
-  const home = useHomeProject();
-  const noRepo = owner === HOME && home === null;
   const shut = archived ? "This session is archived." : null;
   return (
     <div data-slot="new-tab-page" className="@container w-full min-w-0 overflow-y-auto px-5 py-8 text-label text-foreground">
@@ -75,14 +70,6 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
                 <Document className={ICON} />
               </span>
               <span className={LABEL}>New note</span>
-            </button>
-          </Card>
-          <Card why={noRepo ? "Choose a project to see its pull requests." : null}>
-            <button type="button" disabled={noRepo} onClick={() => replaceTab(owner, tab.id, "pr", "list")} className={TOOL}>
-              <span className={TOP}>
-                <PullRequestOpen className={ICON} />
-              </span>
-              <span className={LABEL}>Pull requests</span>
             </button>
           </Card>
         </div>
@@ -160,15 +147,11 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             {/* A PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
             <HostOf.Provider key={host} value={tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
               {owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (
-                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={tab.target === "list" ? "Pull requests" : TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
+                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
               ) : tab.kind === "file" ? (
                 <FileTab key={tab.target} tab={tab} active={tab.id === active} />
               ) : tab.kind === "pr" ? (
-                tab.target === "list" ? (
-                  <PrList owner={owner} />
-                ) : (
-                  <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
-                )
+                <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
               ) : tab.kind === "review" ? (
                 <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
               ) : tab.kind === "attachment" ? (
