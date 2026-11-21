@@ -57,7 +57,19 @@ export type PullRequest = {
   mergeState: string | null;
   /** It's the session's own branch's: Files changed shows the Review tab's branch diff [D204]. */
   onBranch: boolean;
+  /** For the PR page's writes [D164]: its name `host/owner/name#n`, its node, who reads it and what they may do. */
+  ref?: string;
+  node?: string;
+  viewer?: string | null;
+  canEdit?: boolean;
+  authored?: boolean;
+  reactions?: PrReaction[];
+  /** The viewer's review not submitted yet: its comments only they see. */
+  pending?: { id: string; count: number } | null;
+  autoMerge?: { method: string; by: string | null } | null;
 };
+
+export type PrReaction = { content: string; count: number; mine: boolean };
 
 export type PrCommit = { sha: string; message: string; author: string | null; atMs: number | null };
 export type PrReviewer = { login: string; state: "approved" | "changes" | "commented" | "requested" };
@@ -75,6 +87,14 @@ export type PrComment = {
   url: string | null;
   bot?: boolean;
   minimized?: string | null;
+  /** For edits, deletes, reactions and replies [D165 D166]. */
+  node?: string;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  reactions?: PrReaction[];
+  thread?: string | null;
+  resolved?: boolean | null;
+  pending?: boolean;
 };
 
 /** A review's line thread: its comments by id, folded as GitHub folds a resolved or outdated one. */
@@ -124,4 +144,4 @@ export type PrEvent = {
 
 /** A PR's Files changed as Rust reads it from the host (`host <id> files <n>`) and keeps it [D231]: each file with
  * the host's patch, read at `head`; `total` is how many files changed, more than the list when the host cut it. */
-export type PrFiles = Omit<Review, "files"> & { head: string; total: number; checkedAtMs: number; files: (ReviewFile & PatchContents)[] };
+export type PrFiles = Omit<Review, "files"> & { head: string; total: number; checkedAtMs: number; files: (ReviewFile & PatchContents & { viewed?: "viewed" | "unviewed" | "dismissed" | null })[] };

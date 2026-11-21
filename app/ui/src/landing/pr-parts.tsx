@@ -12,6 +12,8 @@ export type Sends = {
   now: number;
   offline: boolean;
   onOpen: (url: "pr" | { check: string } | { comment: string } | { url: string }) => void;
+  /** A write went, or GitHub refused it: read the PR again. */
+  onChanged: () => void;
 };
 
 const STATE_ICONS = {

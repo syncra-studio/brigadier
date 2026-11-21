@@ -96,3 +96,15 @@ export async function sendToAgent(pr: PullRequest, owner: string, target: string
   setHomeDraft({ chat: false, workIn: "worktree", pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
   newSession(project);
 }
+
+/**
+ * The PR tab's Review, Fix, Fix all and Add to chat [D162 D165 D174]: the ask in the chat beside the tab (its owner's
+ * composer: the session's, or Home's review draft), nothing sent. `focus` puts the PR's part in as its chip; `text`
+ * goes in as words.
+ */
+export async function askInChat(owner: string, pr: PullRequest | null, ask: { focus?: Focus; text?: string }): Promise<void> {
+  const key = owner === HOME_DRAFT ? draftKey() : owner;
+  const draft = pr && ask.focus ? await withChip(owner, pr, key, ask.focus) : undefined;
+  putBack(owner, ask.text ?? "", false, draft);
+  selectTab(owner, CHAT);
+}

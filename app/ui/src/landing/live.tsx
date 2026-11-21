@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { openLink } from "../browser/links";
 import { ask, useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
-import { sendToAgent } from "./send-to-agent";
+import { ASK } from "../pull-requests/review";
+import { askInChat } from "./send-to-agent";
 import { useHost } from "./host";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
@@ -12,8 +13,8 @@ import type { PullRequest } from "./pull-requests";
 /**
  * The live Pull requests tab [D204, D207]: PR `number`'s last read, kept in the session's folder, painted at once, then
  * read again only when it's older than the watch's pace, on focus likewise, and on Check again [D208]. The watch reads
- * it while the tab is open, and its row says so, which brings the kept read in again. Send to agent opens the New chat page on
- * the PR's branch with the PR in its composer [D674, D675, D699].
+ * it while the tab is open, and its row says so, which brings the kept read in again. Review, Fix and Add to chat ask in the
+ * chat beside it, nothing sent [D162 D165 D174]; every write reads it again.
  */
 export function LivePrTab({ owner, target }: { owner: string; target: string }) {
   const host = useHost(owner);
@@ -21,13 +22,11 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const hash = target.lastIndexOf("#");
   const repo = hash < 0 ? null : target.slice(0, hash);
   const number = Number(target.slice(hash + 1));
-  const { daemon, rows, projects } = useDaemon();
+  const { daemon, rows } = useDaemon();
   const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
-  const [sending, setSending] = useState<string | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
   const latest = useRef<PullRequest>(undefined);
   latest.current = pr;
   // A newer read never gives way to an older one.
@@ -79,12 +78,14 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       row={row}
       error={error}
       checking={checking}
-      sending={sending}
-      failed={failed}
       onCheck={read}
+      onReview={() => void askInChat(owner, null, { text: ASK })}
+      onFix={(focus, check) => pr && askInChat(owner, check ? { ...pr, checks: pr.checks.filter((each) => each.id === check) } : pr, { focus }).catch((cause) => setError(errorText(cause)))}
+      onAddToChat={(c) => void askInChat(owner, null, { text: `${c.author}${c.path ? ` on ${c.path}${c.line === null ? "" : `:${c.line}`}` : ""} (${c.url ?? pr?.url}):\n${c.body.split("\n").map((line) => `> ${line}`).join("\n")}\n\n` })}
       sends={{
         now: Date.now(),
         offline: !daemon,
+        onChanged: read,
         onOpen: (what) => {
           const url =
             what === "pr"
@@ -96,14 +97,6 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
                   : pr?.comments.find((c) => c.id === what.comment)?.url;
           if (url) openLink(url);
         },
-      }}
-      onSendToAgent={() => {
-        if (!pr || sending) return;
-        setFailed(null);
-        setSending("Send to agent");
-        sendToAgent(pr, host, target, rows ?? [], projects ?? [], setSending)
-          .catch((cause) => setFailed(`Couldn't send #${number} to the agent: ${errorText(cause)}`))
-          .finally(() => setSending(null));
       }}
     />
   );

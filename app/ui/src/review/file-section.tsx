@@ -32,8 +32,8 @@ export type FileProps = {
   /** None where the file isn't in a checkout here (a PR's): no Open in then. */
   onOpenIn?: (path: string, where: OpenIn) => void;
   comments: readonly DiffComment[];
-  /** None where a comment couldn't reach the agent: no line picking then. */
-  onComment?: (comment: DiffComment) => void;
+  /** None where a comment couldn't reach the agent: no line picking then. A promise keeps the box open until it lands. */
+  onComment?: (comment: DiffComment) => void | Promise<void>;
   onRemoveComment: (id: string) => void;
   /** The comment being written on this file, kept through a restart (D1195), and where its changes go. */
   draft?: { range: LineRange; text: string } | null;
@@ -42,6 +42,10 @@ export type FileProps = {
   onSides?: () => Promise<Sides>;
   /** GitHub's file card (a PR's Files changed) [D262]: bordered, the fold chevron first and always shown. */
   card?: boolean;
+  /** A PR's own: its review threads under their lines, what sits over the diff, and its header's end [D166]. */
+  notes?: readonly { side: "additions" | "deletions"; line: number; key: string; node: ReactNode }[];
+  above?: ReactNode;
+  end?: ReactNode;
 };
 
 /** A changed file's "Open in" menu (old OpenInMenu): a file tab, its default app, or Finder. */
@@ -97,7 +101,9 @@ export function FileSection(props: FileProps) {
           {props.onOpenIn && <OpenInMenu file={file} onOpenIn={props.onOpenIn} />}
           {!card && fold}
         </span>
+        {props.end}
       </header>
+      {!collapsed && props.above}
       {!collapsed && <FileBody {...props} />}
     </section>
   );
@@ -106,9 +112,9 @@ export function FileSection(props: FileProps) {
 const muted = (text: ReactNode) => <p className="px-3 py-2 text-sm text-muted-foreground">{text}</p>;
 
 /** What sits under a line: a waiting comment, or the box being written. */
-type Note = { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange };
+type Note = { kind: "comment"; comment: DiffComment } | { kind: "box"; range: LineRange } | { kind: "node"; node: ReactNode };
 
-function FileBody({ file, contents, look, connected, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft, onSides }: FileProps) {
+function FileBody({ file, contents, look, connected, onRetry, comments, onComment, onRemoveComment, draft: kept, onDraft, onSides, notes: extra }: FileProps) {
   const [draft, setRange] = useState<LineRange | null>(kept?.range ?? null);
   const setDraft = (range: LineRange | null) => {
     setRange(range);
@@ -128,9 +134,10 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
     if (!sides && !patch) return [];
     const all: DiffNote<Note>[] = [];
     for (const comment of comments) all.push({ side: comment.side, lineNumber: comment.end, metadata: { kind: "comment", comment } });
+    for (const note of extra ?? []) all.push({ side: note.side, lineNumber: note.line, metadata: { kind: "node", node: note.node } });
     if (draft) all.push({ side: draft.endSide ?? draft.side ?? "additions", lineNumber: draft.end, metadata: { kind: "box", range: draft } });
     return all;
-  }, [sides, patch, comments, draft]);
+  }, [sides, patch, comments, draft, extra]);
   if (file.binary) return muted("Binary file not shown");
   if (contents && "error" in contents) {
     return (
@@ -160,7 +167,9 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
   // A host's patch has no whole file to quote: its comments go with a review, not as chips [D262].
   const sideLines = (side: "additions" | "deletions") => (sides ? (side === "additions" ? sides.after : sides.before).split("\n") : []);
   const render = ({ metadata }: DiffNote<Note>) =>
-    metadata.kind === "comment" ? (
+    metadata.kind === "node" ? (
+      <div className="p-2 font-sans">{metadata.node}</div>
+    ) : metadata.kind === "comment" ? (
       <CommentNote comment={metadata.comment} onRemove={() => onRemoveComment(metadata.comment.id)} />
     ) : (
       <CommentBox
@@ -173,8 +182,9 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
           const side = metadata.range.side ?? "additions";
           const start = Math.min(metadata.range.start, metadata.range.end);
           const end = Math.max(metadata.range.start, metadata.range.end);
-          onComment?.({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: sideLines(side).slice(start - 1, end).join("\n"), text });
-          setDraft(null);
+          const sent = onComment?.({ id: crypto.randomUUID(), path: file.path, side, start, end, excerpt: sideLines(side).slice(start - 1, end).join("\n"), text });
+          if (sent) sent.then(() => setDraft(null), () => {});
+          else setDraft(null);
         }}
       />
     );

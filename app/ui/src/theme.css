@@ -862,6 +862,40 @@
 /* A user's message cut 20 lines down, or further, to the end of a code block crossing that line (message.tsx
    measures it). */
 /* Not styled or painted while off screen, sized as last drawn: a PR's hundreds of open diff cards [D656]. */
+/* A PR's Summary [D165]: one column of heading, PR details and the rest; from 800 wide two, the details 300 wide on
+   the right beside both. */
+@utility pr-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  column-gap: --spacing(10);
+  padding-top: --spacing(2);
+  & > [data-pr-heading] {
+    padding-bottom: --spacing(4.5);
+  }
+  & > [data-pr-body] {
+    padding-top: --spacing(5);
+  }
+  /* Its wrapper is the `pr-page` container. */
+  @container pr-page (width >= 800px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: min-content 1fr;
+    row-gap: --spacing(5);
+    padding-top: --spacing(8);
+    & > [data-pr-heading],
+    & > [data-pr-body] {
+      grid-column-start: 1;
+      padding: 0;
+    }
+    & > [data-pr-aside] {
+      grid-column-start: 2;
+      grid-row: 1 / span 2;
+      width: 300px;
+      padding-top: --spacing(1.5);
+    }
+  }
+}
+
 @utility drawn-when-seen {
   content-visibility: auto;
   contain-intrinsic-size: auto 20rem;

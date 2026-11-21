@@ -147,7 +147,7 @@ const REVIEWED: PullRequest = {
   files: 6,
 };
 
-const SENDS: Sends = { now: NOW, offline: false, onOpen: () => {} };
+const SENDS: Sends = { now: NOW, offline: false, onOpen: () => {}, onChanged: () => {} };
 type Found = { query: string; okAt: number | null; error: string | null; prs: Pr[]; next: string | null };
 const found = (prs: Pr[], more = false): Found => ({ query: "", okAt: NOW - 120_000, error: null, prs, next: more ? "next" : null });
 
@@ -186,7 +186,7 @@ function List({ list, closed = false, view = "all", busy = false }: { list: Foun
   );
 }
 
-const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onSendToAgent={() => {}} />;
+const tab = (pr: PullRequest) => <PrTab owner="gallery" target={String(pr.number)} pr={pr} row={undefined} checking={false} sends={SENDS} onCheck={() => {}} onFix={() => {}} onReview={() => {}} onAddToChat={() => {}} />;
 
 /** The Pull requests tab and a Pull request tab, on sample PRs [D609, D613]. */
 export function PrsGallery() {

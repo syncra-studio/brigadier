@@ -7,7 +7,7 @@ import { putBack } from "../session/side";
 import { closeTab, HOME, openTab, tabsOf, useTabsRead } from "../shell/tab-store";
 import { openPrPage, type PrRow, reviewChats } from "./route";
 
-const ASK = "Review this pull request.";
+export const ASK = "Review this pull request.";
 
 /** The row menu's Review [D161 D174]: the PR's review chat with the ask in its composer, nothing sent. */
 export function openReview(row: PrRow): void {

@@ -1,7 +1,8 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { Button } from "../components/button";
+import { Checkbox } from "../components/checkbox";
 import { ErrorLine } from "../components/error-line";
 import { NavRow } from "../components/nav";
 import { Skeleton } from "../components/skeleton";
@@ -14,11 +15,24 @@ import { FileSection } from "../review/file-section";
 import type { DiffComment } from "../review/types";
 import { SearchField } from "../settings/archived-toolbar";
 import { useHost } from "./host";
-import type { PrFiles as Files, PullRequest } from "./pull-requests";
+import { prAct, said } from "./pr-act";
+import type { Sends } from "./pr-parts";
+import { ThreadCard } from "./pr-thread";
+import type { PrComment, PrFiles as Files, PrThread, PullRequest } from "./pull-requests";
 import { FRESH_MS } from "./pr-words";
 
 const NONE = () => {};
 const LOOK = { numbered: true, split: false, wrap: true, words: true, columns: true };
+const SPLIT = { ...LOOK, split: true };
+
+/** The Changes options, held by the toolbar [D166]. */
+export type ChangesLook = { split: boolean; tree: boolean; generated: boolean };
+
+/** A `.gitattributes` pattern as a test on a path: `*` within a folder, `**` across them, a bare name anywhere. */
+const globTest = (glob: string) => {
+  const body = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*").replace(/\?/g, "[^/]");
+  return new RegExp(glob.includes("/") ? `^${body.replace(/^\//, "")}$` : `(^|/)${body}$`);
+};
 
 type File = Files["files"][number];
 
@@ -39,13 +53,19 @@ export function PrFiles({
   target,
   pr,
   tick,
+  sends,
+  look,
   onOpen,
+  onAddToChat,
 }: {
   owner: string;
   target: string;
   pr: PullRequest;
   tick: number;
+  sends: Sends;
+  look: ChangesLook;
   onOpen: () => void;
+  onAddToChat: (comment: PrComment) => void;
 }) {
   const { daemon } = useDaemon();
   const host = useHost(owner);
@@ -119,21 +139,79 @@ export function PrFiles({
     requestAnimationFrame(() => requestAnimationFrame(card));
   };
   const cut = files && files.total > files.files.length;
+  // GitHub's generated files, as the repository's .gitattributes marks them: hidden unless the options show them.
+  const [generated, setGenerated] = useState<RegExp[]>([]);
+  useEffect(() => {
+    if (!daemon || !pr.ref) return;
+    ask({ op: "run", args: ["host", "@", "generated", pr.ref] }, (reply) => reply.ok && setGenerated((reply.paths as string[]).map(globTest)));
+  }, [daemon, pr.ref, pr.head]);
+  const shownFiles = (files?.files ?? []).filter((file) => look.generated || !generated.some((test) => test.test(file.path)));
+  // Viewed as pressed, until the next read says what GitHub kept.
+  const [viewed, setViewed] = useState<Record<string, boolean>>({});
+  useEffect(() => setViewed({}), [files]);
+  const markViewed = (path: string, on: boolean) => {
+    setViewed((now) => ({ ...now, [path]: on }));
+    if (on) setFolded((now) => new Set(now).add(path));
+    prAct(on ? "viewed" : "unviewed", pr.ref!, path).catch((cause: Error) => {
+      setViewed((now) => ({ ...now, [path]: !on }));
+      showToast(cause.message, { tone: "error" });
+    });
+  };
+  // Each file's review threads, by the line their first comment is on; outdated ones (no line) over its diff.
+  const comments = useMemo(() => new Map(pr.comments.map((comment) => [comment.id, comment])), [pr.comments]);
+  const threads = useMemo(() => {
+    const by = new Map<string, { thread: PrThread; line: number | null }[]>();
+    for (const item of pr.timeline ?? []) {
+      if (item.kind !== "review") continue;
+      for (const thread of item.threads) {
+        const first = comments.get(thread.comments[0] ?? "");
+        if (!thread.path || !first) continue;
+        by.set(thread.path, [...(by.get(thread.path) ?? []), { thread, line: first.line }]);
+      }
+    }
+    return by;
+  }, [pr.timeline, comments]);
+  const card = (thread: PrThread) => <ThreadCard key={thread.id} pr={pr} thread={thread} comments={comments} sends={sends} onAddToChat={onAddToChat} bare />;
 
   return (
     <div data-slot="pr-files" className="flex min-h-0 flex-1 gap-4 px-5 pt-3">
-      <FileTree files={files?.files ?? []} current={current} onPick={go} />
+      {look.tree && <FileTree files={shownFiles} current={current} onPick={go} />}
       <div className="flex min-w-0 flex-1 flex-col">
         <ErrorLine size="sm" error={error} className="shrink-0 pb-3" />
         <div ref={list} data-slot="pr-diffs" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5">
           {!files ? (
             !error && <FilesLoading />
           ) : files.files.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No changes</p>
+            <p className="text-sm text-muted-foreground">No changed files</p>
           ) : (
-            files.files
-              .slice(0, limit)
-              .map((file) => <PrFile key={file.path} file={file} collapsed={folded.has(file.path)} connected={Boolean(daemon)} acts={acts} />)
+            shownFiles.slice(0, limit).map((file) => {
+              const mine = threads.get(file.path) ?? [];
+              const isViewed = viewed[file.path] ?? file.viewed === "viewed";
+              return (
+                <PrFile
+                  key={file.path}
+                  file={file}
+                  collapsed={folded.has(file.path)}
+                  connected={Boolean(daemon)}
+                  acts={acts}
+                  split={look.split}
+                  notes={mine.flatMap(({ thread, line }) => (line === null ? [] : [{ side: "additions" as const, line, key: thread.id, node: card(thread) }]))}
+                  above={mine.some(({ line }) => line === null) && <div className="flex flex-col gap-2 border-b border-border p-2">{mine.filter(({ line }) => line === null).map(({ thread }) => card(thread))}</div>}
+                  end={
+                    <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                      {mine.length > 0 && <span title={`${mine.length} comment thread${mine.length === 1 ? "" : "s"} in this file`}>{mine.length} 💬</span>}
+                      {pr.ref && (
+                        <label title={isViewed ? "Mark as unviewed" : "Mark as viewed"} className="flex cursor-pointer items-center gap-1.5">
+                          <Checkbox aria-label={`Mark ${file.path} as ${isViewed ? "unviewed" : "viewed"}`} checked={isViewed} onCheckedChange={(on) => markViewed(file.path, on)} />
+                          Viewed
+                        </label>
+                      )}
+                    </span>
+                  }
+                  onComment={pr.ref && pr.state !== "merged" && pr.state !== "closed" ? (c) => prAct("pending", pr.ref!, c.path, String(c.end), c.side === "additions" ? "RIGHT" : "LEFT", ...(c.start !== c.end ? [String(c.start)] : []), ...said(c.text)).then(sends.onChanged, (cause: Error) => (showToast(cause.message || "GitHub could not post this comment", { tone: "error" }), Promise.reject(cause))) : undefined}
+                />
+              );
+            })
           )}
           {files && limit < files.files.length && (
             <Button variant="soft" size="sm" className="self-start" onClick={() => setLimit((now) => now + PAGE)}>
@@ -156,14 +234,20 @@ export function PrFiles({
 
 type Acts = { toggle: (path: string) => void; sides: (path: string) => Promise<Sides> };
 
-/** One file's card, drawn again only when its own fold or connection change. */
-const PrFile = memo(function PrFile({ file, collapsed, connected, acts }: { file: File; collapsed: boolean; connected: boolean; acts: Acts }) {
+type Extra = Pick<Parameters<typeof FileSection>[0], "notes" | "above" | "end" | "onComment">;
+
+/** One file's card, drawn again only when its own fold, connection, threads or look change. */
+const PrFile = memo(function PrFile({ file, collapsed, connected, acts, split, notes, above, end, onComment }: { file: File; collapsed: boolean; connected: boolean; acts: Acts; split: boolean; above?: ReactNode } & Extra) {
   return (
     <FileSection
       card
       file={file}
       contents={file}
-      look={LOOK}
+      look={split ? SPLIT : LOOK}
+      notes={notes}
+      above={above}
+      end={end}
+      onComment={onComment}
       collapsed={collapsed}
       onToggle={() => acts.toggle(file.path)}
       connected={connected}

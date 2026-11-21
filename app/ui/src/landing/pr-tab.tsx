@@ -1,37 +1,56 @@
-import { Tabs } from "@base-ui/react/tabs";
 import { useState } from "react";
 
 import { Button } from "../components/button";
+import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
-import { TooltipIconButton } from "../components/icon-button";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
+import { Segmented } from "../components/segmented";
 import { Skeleton } from "../components/skeleton";
-import { ArrowUpRight, Branch, Folder } from "../icons";
+import { showToast } from "../components/toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
+import { ArrowUpRight, ChevronDown, DotsHorizontal, Link } from "../icons";
+import { SettingsSlider } from "../icons/sidebar";
 import type { Pr } from "../panel/types";
-import { Sparkles } from "./icons";
-import { PrFiles } from "./pr-files";
-import { Avatar, CheckAgain, type Sends, StateIcon } from "./pr-parts";
+import { PullRequestClosed, PullRequestDraft, PullRequestOpen, Sparkles } from "./icons";
+import { prAct } from "./pr-act";
+import { MergeDialog, SubmitReviewDialog } from "./pr-dialogs";
+import { type ChangesLook, PrFiles } from "./pr-files";
+import { CheckAgain, type Sends } from "./pr-parts";
 import { Summary } from "./pr-summary";
-import type { PullRequest } from "./pull-requests";
+import type { PrComment, PullRequest } from "./pull-requests";
 
-const TAB = cx(
-  "relative flex h-9 cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring",
-  "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full data-active:text-foreground data-active:after:bg-foreground",
-);
-const COLUMN = "w-full px-5";
-
-/**
- * A pull request in a main-area tab [D204, D609, D613]: its title, state and number, Open on the host and
- * Check again; who, which repository and which branches on one line, each opening its page, all of it selectable
- * [D656]; then Summary (labels, reviewers, checks, the description and review comments) and Code, the PR's diff as
- * its host has it [D231, D262], kept as it was between switches. Beside the tabs, its one action, the Start
- * workspace: Send to agent, which opens the New chat page on the PR's branch with the PR waiting in its composer
- * [D673, D674, D675, D699]; merging and reviewing are on the host or through the agent. It paints its last read at once; when a
- * read fails, the last one stays with why [D207, D208, D1009].
- */
-/** PRs whose tab opens on Code: the summary card's Code changes [D167]. shortcut: a tab already open stays where it is. */
+/** PRs whose tab opens on Changes: the summary card's Code changes [D167]. shortcut: a tab already open stays where it is. */
 export const codeFirst = new Set<string>();
 
+/** Why Merge can't be pressed now; null when it can [D164]. */
+export function mergeBlocked(pr: PullRequest): string | null {
+  if (pr.state === "closed") return "Reopen this pull request before merging";
+  if (pr.state === "draft") return "Mark this pull request ready for review before merging";
+  if (pr.blockers?.conflicts || pr.mergeState === "dirty") return "Resolve merge conflicts before merging";
+  if (pr.checks.some((check) => check.state === "failed")) return "Fix failing checks before merging";
+  if (pr.checks.some((check) => check.state === "running")) return "Wait for checks to finish before merging";
+  if (pr.mergeState === "blocked") return "This pull request can’t be merged yet";
+  if (!pr.mergeState || pr.mergeState === "unknown") return "GitHub is still checking whether this can be merged";
+  return null;
+}
+
+/** A toolbar button, its reason why not as its tooltip while it can't be pressed. */
+function Why({ why, children }: { why: string | null; children: React.ReactElement }) {
+  if (!why) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="flex" />}>{children}</TooltipTrigger>
+      <TooltipContent>{why}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * A pull request in a tab [D164]: its toolbar (Summary | Changes +a −d, Refresh, then Review, Approve and
+ * the Merge split button with auto-merge, and its … menu: Copy link, Open in GitHub, draft or ready, Close or Reopen),
+ * then Summary or Changes. It paints its last read at once; when a read fails, the last one stays with why [D1009].
+ */
 export function PrTab({
   owner,
   target,
@@ -39,14 +58,14 @@ export function PrTab({
   row,
   error,
   checking,
-  sending = null,
-  failed = null,
   sends,
   onCheck,
-  onSendToAgent,
+  onFix,
+  onReview,
+  onAddToChat,
 }: {
   owner: string;
-  /** Its tab's target: `n`, or `owner/name#n` for another repository's [D213]. */
+  /** Its tab's target: `n`, `owner/name#n`, or `host/owner/name#n` [D213]. */
   target: string;
   /** undefined until its first read lands. */
   pr: PullRequest | undefined;
@@ -55,38 +74,40 @@ export function PrTab({
   error?: string;
   /** A read under way. */
   checking: boolean;
-  /** Send to agent under way: what it's doing, as its button says. */
-  sending?: string | null;
-  /** Why the last Send to agent didn't go, said under the header. */
-  failed?: string | null;
   sends: Sends;
   onCheck: () => void;
-  onSendToAgent: () => void;
+  onFix: (focus: "checks" | "conflicts" | "comments", check?: string) => void;
+  onReview: () => void;
+  onAddToChat: (comment: PrComment) => void;
 }) {
-  // Check again reads Code again too, when it's open [D231].
+  // Refresh reads Changes again too, when it's open [D231].
   const [tick, setTick] = useState(0);
   const check = () => {
     onCheck();
     setTick((n) => n + 1);
   };
-  // Code is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
-  const [tab, setTab] = useState(() => (codeFirst.delete(target) ? "code" : "summary"));
+  // Changes is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
+  const [tab, setTab] = useState<"summary" | "code">(() => (codeFirst.delete(target) ? "code" : "summary"));
   const [coded, setCoded] = useState(tab === "code");
+  const [merging, setMerging] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [look, setLook] = useState<ChangesLook>({ split: false, tree: true, generated: false });
   const again = <CheckAgain busy={checking} offline={sends.offline} onClick={check} />;
   if (!pr) {
     return (
-      <div data-slot="pr-tab" className="min-h-0 flex-1 overflow-y-auto">
-        <div className={cx(COLUMN, "flex flex-col gap-4 py-5")}>
-          <div className="flex min-h-control-sm items-center gap-2">
-            <h2 className="min-w-0 flex-1 truncate font-display text-xl font-medium">{row ? row.title : <Skeleton className="h-5 w-2/3" />}</h2>
-            {again}
-          </div>
+      <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
+        <div className="flex h-panel-header shrink-0 items-center gap-1 border-b border-border px-2">
+          <span className="flex-1" />
+          {again}
+        </div>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 pt-8">
+          {row ? <h1 className="font-display text-2xl font-medium">{row.title}</h1> : <Skeleton className="h-6 w-2/3" />}
           {error ? (
             <ErrorLine error={error} />
           ) : (
-            <div aria-label="Loading pull request" className="flex flex-col gap-3">
+            <div aria-label="Loading pull request details" className="flex flex-col gap-3">
               <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
             </div>
           )}
@@ -94,94 +115,145 @@ export function PrTab({
       </div>
     );
   }
-  const repo = pr.repo ?? target.split("#")[0];
-  const links = pr.links;
+  const act = (verb: "close" | "reopen" | "draft" | "ready" | "automerge", ...rest: string[]) => {
+    setBusy(true);
+    prAct(verb, pr.ref!, ...rest)
+      .catch((cause: Error) => showToast(cause.message || "GitHub could not update this pull request", { tone: "error" }))
+      .finally(() => (setBusy(false), sends.onChanged()));
+  };
+  const live = pr.state === "open" || pr.state === "draft";
+  const pending = pr.pending?.count ?? 0;
+  const blocked = mergeBlocked(pr);
+  const writable = Boolean(pr.ref);
+  const tabs = [
+    { value: "summary" as const, label: "Summary" },
+    {
+      value: "code" as const,
+      label: (
+        <span className="flex items-center gap-1.5">
+          Changes
+          <span className="text-xs text-success tabular-nums">+{pr.additions}</span>
+          <span className="text-xs text-destructive tabular-nums">−{pr.deletions}</span>
+        </span>
+      ),
+    },
+  ];
   return (
     <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
-      <Tabs.Root
-        value={tab}
-        onValueChange={(next: string) => {
-          setTab(next);
-          if (next === "code") setCoded(true);
-        }}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <header className={cx(COLUMN, "flex flex-col gap-2.5 pt-4")}>
-          <div className="flex items-start gap-2">
-            <h2 className="min-w-0 flex-1 select-text font-display text-xl leading-snug font-medium tracking-tight break-words">{pr.title}</h2>
-            <span className="flex h-control-sm shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <StateIcon state={pr.state} />#{pr.number}
-            </span>
-            <TooltipIconButton tooltip={`Open on ${pr.host}`} size="icon-md" onClick={() => sends.onOpen("pr")}>
-              <ArrowUpRight />
-            </TooltipIconButton>
-            {again}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground select-text">
-            <span className="flex items-center gap-1.5 text-foreground">
-              <Avatar login={pr.openedBy} at={pr.checkedAtMs} />
-              <Link href={links?.author}>{pr.openedBy}</Link>
-            </span>
-            {repo && (
-              <span className="flex items-center gap-1.5">
-                <Folder className="size-icon-sm" />
-                <Link href={links?.repo}>{repo}</Link>
-              </span>
-            )}
-            <span className="flex min-w-0 items-center gap-1.5">
-              <Branch className="size-icon-sm shrink-0" />
-              <span className="min-w-0 break-all">
-                <Link href={links?.branch}>{pr.branch}</Link> → {pr.base}
-              </span>
-            </span>
-          </div>
-          {/* Why the last read or Send to agent didn't go: what shows is the last read that did [D1009]. */}
-          <ErrorLine error={failed ?? error ?? pr.problem} />
-          <div className="flex items-center gap-4 border-b border-divider">
-            <Tabs.List className="flex flex-1 gap-4">
-              <Tabs.Tab value="summary" className={TAB}>
-                Summary
-              </Tabs.Tab>
-              <Tabs.Tab value="code" className={TAB}>
-                Code <span className="text-xs text-muted-foreground tabular-nums">{pr.files}</span>
-              </Tabs.Tab>
-            </Tabs.List>
-            <span className="flex items-center pb-1">
-              <Button size="sm" disabled={sending !== null || sends.offline} onClick={onSendToAgent}>
-                <Sparkles />
-                {sending ?? "Send to agent"}
+      <div role="toolbar" aria-label="Pull request actions" className="flex h-panel-header shrink-0 items-center gap-1 border-b border-border px-2">
+        <Segmented
+          label="Pull request content"
+          value={tab}
+          options={tabs}
+          onChange={(next) => {
+            setTab(next);
+            if (next === "code") setCoded(true);
+          }}
+        />
+        {again}
+        {tab === "code" && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger aria-label="Changes options" render={<Button size="icon-md" variant="ghost" />}>
+              <SettingsSlider />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup value={look.split ? "split" : "unified"} onValueChange={(value: string) => setLook({ ...look, split: value === "split" })}>
+                <DropdownMenuRadioItem value="unified">Unified</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="split">Split</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem checked={look.tree} onCheckedChange={(tree: boolean) => setLook({ ...look, tree })}>
+                File tree
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem checked={look.generated} onCheckedChange={(generated: boolean) => setLook({ ...look, generated })}>
+                Generated files
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <span className="flex-1" />
+        {writable && live && (
+          <>
+            <Button size="sm" variant="ghost" onClick={onReview}>
+              <Sparkles />
+              Review
+            </Button>
+            {(!pr.authored || pending > 0) && (
+              <Button size="sm" variant="outline" onClick={() => setReviewing(true)}>
+                {pr.authored ? "Submit review" : pending ? `Approve · ${pending}` : "Approve"}
               </Button>
-            </span>
-          </div>
-        </header>
-        <div className="relative min-h-0 flex-1">
-          <Tabs.Panel value="summary" className="absolute inset-0 overflow-y-auto">
-            <div className={cx(COLUMN, "py-4")}>
-              <Summary pr={pr} sends={sends} />
+            )}
+            <div className="flex items-center gap-px">
+              <Why why={blocked}>
+                <Button size="sm" className="rounded-e-none" disabled={Boolean(blocked) || busy} onClick={() => setMerging(true)}>
+                  Merge
+                </Button>
+              </Why>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger aria-label="Merge options" render={<Button size="sm" className="rounded-s-none px-1.5" disabled={busy} />}>
+                  <ChevronDown />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {pr.autoMerge ? (
+                    <DropdownMenuItem onClick={() => act("automerge", "off")}>Disable auto-merge</DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled={pr.state !== "open"} onClick={() => act("automerge", "on", "squash")}>
+                      Enable auto-merge
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </Tabs.Panel>
-          <Tabs.Panel
-            value="code"
-            keepMounted
-            inert={tab !== "code"}
-            // Invisible, not `hidden`: display none would lay every diff out again on each return.
-            render={(props) => <div {...props} hidden={false} />}
-            className={(state) => cx("absolute inset-0 flex flex-col", state.hidden && "invisible")}
-          >
-            {coded && <PrFiles owner={owner} target={target} pr={pr} tick={tick} onOpen={() => sends.onOpen("pr")} />}
-          </Tabs.Panel>
+          </>
+        )}
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger aria-label="More" render={<Button size="icon-md" variant="ghost" />}>
+            <DotsHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => copyWithToast(pr.url, "link")}>
+              <Link />
+              Copy link
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => sends.onOpen("pr")}>
+              <ArrowUpRight />
+              Open in GitHub
+            </DropdownMenuItem>
+            {writable && live && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => act(pr.state === "draft" ? "ready" : "draft")}>
+                  {pr.state === "draft" ? <PullRequestOpen /> : <PullRequestDraft />}
+                  {pr.state === "draft" ? "Mark ready" : "Convert to draft"}
+                </DropdownMenuItem>
+              </>
+            )}
+            {writable && pr.state !== "merged" && (
+              <DropdownMenuItem variant={live ? "destructive" : "default"} onClick={() => act(live ? "close" : "reopen")}>
+                {live ? <PullRequestClosed /> : <PullRequestOpen />}
+                {live ? "Close" : "Reopen"}
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {/* Why the last read didn't go: what shows is the last read that did [D1009]. */}
+      <ErrorLine error={error ?? pr.problem} className="px-6 pt-3" />
+      <div className="relative min-h-0 flex-1">
+        <div hidden={tab !== "summary"} className="absolute inset-0 overflow-y-auto">
+          <Summary pr={pr} sends={sends} onFix={onFix} onAddToChat={onAddToChat} />
         </div>
-      </Tabs.Root>
+        {/* Invisible, not hidden: display none would lay every diff out again on each return. */}
+        <div inert={tab !== "code"} className={cx("absolute inset-0 flex flex-col", tab !== "code" && "invisible")}>
+          {coded && <PrFiles owner={owner} target={target} pr={pr} tick={tick} sends={sends} look={look} onOpen={() => sends.onOpen("pr")} onAddToChat={onAddToChat} />}
+        </div>
+      </div>
+      {writable && (
+        <>
+          <MergeDialog pr={pr} open={merging} onOpenChange={setMerging} onDone={sends.onChanged} />
+          <SubmitReviewDialog pr={pr} open={reviewing} onOpenChange={setReviewing} onDone={sends.onChanged} />
+        </>
+      )}
     </div>
   );
 }
-
-/** A header word that opens its page on the host, as every link does (Settings › Browser) [D656]; plain without one. */
-const Link = ({ href, children }: { href?: string | null; children: string }) =>
-  href ? (
-    <a href={href} draggable={false} className="hover:text-foreground hover:underline">
-      {children}
-    </a>
-  ) : (
-    children
-  );

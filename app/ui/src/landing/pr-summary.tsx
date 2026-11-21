@@ -1,289 +1,371 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
-import { Badge } from "../components/badge";
+import { Button } from "../components/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
-import { CheckCircle, ChevronRight, Minus } from "../icons";
-import { Markdown } from "../thread/markdown";
-import { Clock, XCircle } from "./icons";
+import { copyWithToast } from "../components/copy-button";
+import { cx } from "../components/cx";
+import { ErrorLine } from "../components/error-line";
+import { Input } from "../components/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
+import { Segmented } from "../components/segmented";
+import { Textarea } from "../components/textarea";
+import { Branch, Check, ChevronDown, ChevronRight, Copy, Pencil } from "../icons";
+import { Eye } from "../icons/settings";
+import { Commit } from "../icons/thread";
+import { prAct, said } from "./pr-act";
+import { PrAside } from "./pr-aside";
+import { Body, CommentCard, Reactions, Writer } from "./pr-comment";
 import { Avatar, type Sends } from "./pr-parts";
-import { ago } from "./pr-words";
-import type { PrCheck, PrComment, PrThread, PullRequest } from "./pull-requests";
+import { ThreadCard } from "./pr-thread";
+import { ago, STATE_WORDS } from "./pr-words";
+import type { PrComment, PrItem, PullRequest } from "./pull-requests";
 
-/** A body's HTML as GitHub shows it, for our Markdown: an `<a>` its link, a line break its own, other tags gone, their
- * text kept. */
-// shortcut: tags are dropped, not drawn (an <img> or <sup> badge goes), and HTML inside code is treated the same,
-// until a body needs more of GitHub's HTML.
-const untagged = (html: string) =>
-  html
-    .replace(/<a\s[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?[a-z][^>]*>/gi, "");
+const PILL = {
+  open: "bg-success-wash text-success",
+  draft: "bg-fill text-muted-foreground",
+  merged: "bg-tag-purple-wash text-pr-purple",
+  closed: "bg-destructive-wash text-destructive",
+};
 
-/**
- * A comment's words as GitHub shows them [D260]: its HTML comments hidden (bots' markers), each `<details>` a fold
- * opened by its `<summary>`, closed unless it says `open`, and the rest drawn by our Markdown.
- */
-function Body({ text, keep }: { text: string; keep: string }) {
-  const parts: ReactNode[] = [];
-  let rest = text.replace(/<!--[\s\S]*?-->/g, "");
-  for (let n = 0; ; n++) {
-    const start = rest.search(/<details[\s>]/i);
-    if (start < 0) break;
-    // Its own </details>, past any folds inside it.
-    const tags = /<(\/?)details[\s>]/gi;
-    tags.lastIndex = start + 1;
-    let depth = 1;
-    let end = rest.length;
-    for (let tag; depth > 0 && (tag = tags.exec(rest)); ) {
-      depth += tag[1] ? -1 : 1;
-      if (depth === 0) end = tag.index;
-    }
-    const inner = rest.slice(start, end).replace(/^<details[^>]*>/i, "");
-    const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(inner);
-    const before = untagged(rest.slice(0, start)).trim();
-    if (before) parts.push(<Markdown key={`m${n}`} text={before} keep={`${keep}:${n}`} />);
-    parts.push(
-      <Collapsible key={`d${n}`} defaultOpen={/^<details[^>]*\bopen\b/i.test(rest.slice(start))} className="my-1">
-        <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 rounded-control text-start font-medium hover:text-foreground focus-visible:focus-ring">
-          <ChevronRight className="size-icon-xs shrink-0 transition-transform group-data-panel-open:rotate-90" />
-          {untagged(summary?.[1] ?? "Details").trim()}
-        </CollapsibleTrigger>
-        <CollapsibleContent className="ps-4">
-          <Body text={summary ? inner.slice(summary.index + summary[0].length) : inner} keep={`${keep}:${n}d`} />
-        </CollapsibleContent>
-      </Collapsible>,
-    );
-    rest = rest.slice(end).replace(/^<\/details>/i, "");
-  }
-  const after = untagged(rest).trim();
-  if (after) parts.push(<Markdown key="end" text={after} keep={`${keep}:end`} />);
-  return parts;
-}
-
-const Who = ({ login, bot }: { login: string | null; bot?: boolean }) => (
-  <>
-    <span className="font-medium text-foreground">{login ?? "ghost"}</span>
-    {bot && (
-      <Badge variant="outline" className="ms-1 align-middle">
-        Bot
-      </Badge>
-    )}
-  </>
-);
-
-/** A comment's box: who, what they did and when, Author or Bot, and the words. */
-function CommentBox({ comment, did = "commented", at, author }: { comment: PrComment; did?: string; at: string; author: string }) {
-  const where = comment.path && (comment.line === null ? comment.path : `${comment.path}:${comment.line}`);
+/** A value in the header that copies itself on a press: #n and the branches. */
+function CopyChip({ value, label, children, mono }: { value: string; label: string; children: ReactNode; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <div className="min-w-0 flex-1 overflow-clip rounded-surface border border-border">
-      <div className="flex min-h-control-md items-center gap-2 border-b border-border bg-fill-subtle px-3 py-1 text-xs text-muted-foreground">
-        <span className="shrink-0">
-          <Who login={comment.author} bot={comment.bot} />
-        </span>
-        <span className="shrink-0">
-          {did} {at}
-        </span>
-        {where && <span className="min-w-0 truncate font-mono">{where}</span>}
-        <span className="flex-1" />
-        {comment.author === author && <Badge variant="outline">Author</Badge>}
-      </div>
-      <div className="px-3 py-2 text-sm">
-        <Body text={comment.body.trim() || "_No description provided._"} keep={`pr-${comment.id}`} />
-      </div>
-    </div>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        copyWithToast(value, label.toLowerCase());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={cx("group/chip flex h-6 max-w-60 min-w-0 cursor-pointer items-center gap-1 rounded-control bg-fill px-1.5 text-xs text-foreground hover:bg-muted focus-visible:focus-ring svg:size-icon-xs", mono && "font-mono")}
+    >
+      <span className="truncate">{children}</span>
+      <span className="hidden text-muted-foreground group-hover/chip:flex">{copied ? <Check /> : <Copy />}</span>
+    </button>
   );
 }
 
-/** A row on the timeline's line: its icon, what happened and when, and an action at its end. */
-function EventLine({ icon, at, children, end }: { icon: ReactNode; at: string; children: ReactNode; end?: ReactNode }) {
+/** The title: an Edit beside it for who may, opening it in place; Save sends it to GitHub [D165]. */
+function Title({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    if (!editing?.trim() || editing.trim() === pr.title) return setEditing(null);
+    setBusy(true);
+    setError(null);
+    prAct("edit", pr.ref!, "--title", editing.trim())
+      .then(() => setEditing(null), (cause: Error) => setError(cause.message))
+      .finally(() => (setBusy(false), sends.onChanged()));
+  };
+  if (editing !== null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Input
+          aria-label="Pull request title"
+          autoFocus
+          value={editing}
+          disabled={busy}
+          onChange={(event) => setEditing(event.target.value)}
+          onKeyDown={(event) => (event.key === "Enter" ? save() : event.key === "Escape" && setEditing(null))}
+          className="text-xl"
+        />
+        <ErrorLine error={error} />
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
+            Cancel
+          </Button>
+          <Button size="sm" disabled={busy || !editing.trim()} onClick={save}>
+            Save
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="flex min-h-control-sm items-center gap-3 text-sm text-muted-foreground">
-      <span aria-hidden className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted svg:size-icon-sm">
+    <h1 className="group/title font-display text-2xl leading-tight font-medium tracking-tight break-words">
+      {pr.title}
+      {pr.canEdit && (
+        <button type="button" aria-label="Edit title" title="Edit title" onClick={() => setEditing(pr.title)} className="ms-2 inline-flex size-6 cursor-pointer items-center justify-center rounded-control align-middle text-muted-foreground opacity-0 group-hover/title:opacity-100 hover:bg-fill hover:text-foreground focus-visible:opacity-100 focus-visible:focus-ring svg:size-icon-sm">
+          <Pencil />
+        </button>
+      )}
+    </h1>
+  );
+}
+
+/** The heading: title, then state, #n, who opened it and when, From → Into [D165]. */
+function Heading({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  return (
+    <>
+      <Title pr={pr} sends={sends} />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
+        <span className={cx("flex h-6 items-center rounded-capsule px-2 text-xs font-medium", PILL[pr.state])}>{STATE_WORDS[pr.state]}</span>
+        <CopyChip value={`#${pr.number}`} label={`Copy pull request number #${pr.number}`}>
+          #{pr.number}
+        </CopyChip>
+        <span className="flex items-center gap-1.5">
+          <Avatar login={pr.openedBy} at={pr.checkedAtMs} size="size-4" />
+          <span className="text-foreground">{pr.openedBy}</span>
+          Opened {ago(pr.openedAtMs, sends.now)} ·
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          From
+          <CopyChip value={pr.branch} label={`Copy source branch ${pr.branch}`} mono>
+            {pr.branch}
+          </CopyChip>
+          Into
+          <CopyChip value={pr.base} label={`Copy target branch ${pr.base}`} mono>
+            {pr.base}
+          </CopyChip>
+        </span>
+      </div>
+    </>
+  );
+}
+
+/** The description: drawn as GitHub has it; Edit opens Write | Preview, Save sends it [D165]. */
+function Description({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [mode, setMode] = useState<"write" | "preview">("write");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    setBusy(true);
+    setError(null);
+    prAct("edit", pr.ref!, "--body", ...said(editing ?? ""))
+      .then(() => setEditing(null), (cause: Error) => setError(cause.message))
+      .finally(() => (setBusy(false), sends.onChanged()));
+  };
+  if (editing !== null) {
+    return (
+      <section className="flex flex-col gap-2">
+        <Segmented label="Description editor mode" value={mode} options={[{ value: "write", label: "Write" }, { value: "preview", label: "Preview" }]} onChange={setMode} className="self-start" />
+        {mode === "write" ? (
+          <Textarea aria-label="Pull request description" rows={10} autoFocus value={editing} disabled={busy} onChange={(event) => setEditing(event.target.value)} />
+        ) : (
+          <div className="min-h-40 rounded-control border border-border px-3 py-2 text-sm">{editing.trim() ? <Body text={editing} keep={`pr-${pr.id}-preview`} /> : <p className="text-muted-foreground">Nothing to preview</p>}</div>
+        )}
+        <ErrorLine error={error} />
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
+            Cancel
+          </Button>
+          <Button size="sm" disabled={busy} onClick={save}>
+            Save
+          </Button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="group/description relative flex flex-col gap-3 text-sm">
+      {pr.canEdit && (
+        <Button size="xs" variant="outline" className="absolute end-0 top-0 opacity-0 group-hover/description:opacity-100 focus-visible:opacity-100" onClick={() => (setMode("write"), setEditing(pr.body ?? ""))}>
+          Edit
+        </Button>
+      )}
+      {pr.body?.trim() ? <Body text={pr.body} keep={`pr-${pr.id}-body`} /> : <p className="text-muted-foreground">No description provided</p>}
+      {pr.node && <Reactions pr={pr} subject={pr.node} reactions={pr.reactions} onChanged={sends.onChanged} />}
+    </section>
+  );
+}
+
+const FILTERS = [
+  { value: "all", label: "All activity" },
+  { value: "comments", label: "All comments" },
+  { value: "human", label: "Human comments" },
+  { value: "commits", label: "Commits" },
+] as const;
+type Filter = (typeof FILTERS)[number]["value"];
+
+/** A line on the Activity timeline: its icon, who did what and when. */
+function EventLine({ icon, children, at, sends }: { icon: ReactNode; children: ReactNode; at: number | null; sends: Sends }) {
+  return (
+    <div className="flex min-h-6 items-center gap-3 text-sm text-muted-foreground">
+      <span aria-hidden className="flex size-6 shrink-0 items-center justify-center svg:size-icon-sm">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        {children} <span className="text-xs whitespace-nowrap">{at}</span>
+        {children}
+        {at !== null && <span className="ms-1.5 text-xs whitespace-nowrap">{ago(at, sends.now)}</span>}
       </span>
-      {end}
     </div>
   );
 }
 
-/** A comment GitHub hides ("marked as outdated"), opened on a click. */
-function Hidden({ reason, children }: { reason: string; children: ReactNode }) {
-  return (
-    <Collapsible className="flex min-w-0 flex-1 flex-col gap-2">
-      <div className="flex min-h-control-md items-center gap-2 rounded-surface border border-border px-3 text-sm text-muted-foreground italic">
-        <span className="flex-1">This comment was marked as {reason}.</span>
-        <CollapsibleTrigger className="group cursor-pointer rounded-control px-1.5 py-0.5 text-xs not-italic hover:text-foreground focus-visible:focus-ring">
-          <span className="group-data-panel-open:hidden">Show comment</span>
-          <span className="hidden group-data-panel-open:inline">Hide comment</span>
-        </CollapsibleTrigger>
-      </div>
-      <CollapsibleContent>{children}</CollapsibleContent>
-    </Collapsible>
-  );
-}
+const Actor = ({ who }: { who: string | null }) => <span className="font-medium text-foreground">{who ?? "Someone"}</span>;
 
-/** A review's line thread, folded when resolved or outdated, as GitHub's. */
-function Thread({ thread, comments, author, sends }: { thread: PrThread; comments: Map<string, PrComment>; author: string; sends: Sends }) {
-  const said = thread.comments.flatMap((id) => comments.get(id) ?? []);
-  const folded = thread.resolved || thread.outdated;
-  return (
-    <Collapsible defaultOpen={!folded} className="overflow-clip rounded-surface border border-border">
-      <CollapsibleTrigger className="group flex min-h-control-md w-full cursor-pointer items-center gap-2 px-3 text-start text-xs hover:bg-fill-subtle focus-visible:focus-ring">
-        <ChevronRight className="size-icon-xs shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
-        <span className="min-w-0 truncate font-mono text-foreground">{thread.path}</span>
-        {thread.outdated && <Badge variant="outline">Outdated</Badge>}
-        {thread.resolved && <Badge variant="outline">Resolved</Badge>}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-3 border-t border-border p-3">
-        {said.map((comment) => (
-          <CommentBox key={comment.id} comment={{ ...comment, path: null }} at={ago(comment.atMs, sends.now)} author={author} />
-        ))}
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-const REVIEW_WORDS = {
-  approved: "approved these changes",
-  changes: "requested changes",
-  commented: "reviewed",
-  dismissed: "reviewed",
+const DID: Partial<Record<PrItem["kind"], string>> = {
+  closed: "closed this pull request",
+  reopened: "reopened this pull request",
+  ready: "marked this pull request as ready for review",
+  draft: "converted this pull request to draft",
+  force_pushed: "force-pushed the branch",
+  merged: "merged this pull request",
 };
 
-const SECTION = "flex flex-col gap-2 border-b border-divider pb-4";
-const H3 = "text-sm font-medium text-foreground";
-const QUIET = "text-xs text-muted-foreground";
-
-const VERDICT = {
-  approved: { words: "Approved", tint: "text-success" },
-  changes: { words: "Changes requested", tint: "text-destructive" },
-  commented: { words: "Commented", tint: "text-muted-foreground" },
-  requested: { words: "Review requested", tint: "text-muted-foreground" },
-};
-
-const GROUPS: { state: PrCheck["state"]; words: string; icon: ReactNode }[] = [
-  { state: "running", words: "Pending", icon: <Clock className="text-pr-yellow" /> },
-  { state: "failed", words: "Failed or cancelled", icon: <XCircle className="text-destructive" /> },
-  { state: "passed", words: "Passed", icon: <CheckCircle className="text-success" /> },
-  { state: "skipped", words: "Skipped or neutral", icon: <Minus className="text-muted-foreground" /> },
-];
-
-const FOLD = "group flex h-control-md w-full cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-fill-subtle focus-visible:focus-ring svg:size-icon-sm";
-
-/**
- * The checks [D609]: one folded line of counts by group; opened, each group folds with its checks, each opening its
- * run on the host.
- */
-function Checks({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  const groups = GROUPS.map((g) => ({ ...g, checks: pr.checks.filter((c) => c.state === g.state) })).filter((g) => g.checks.length);
-  if (!groups.length) return <p className="px-2 text-sm text-muted-foreground">No checks reported</p>;
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className={FOLD}>
-        <span className="flex">{groups[0].icon}</span>
-        <span className="flex min-w-0 flex-1 flex-wrap gap-x-2 text-muted-foreground">
-          {groups.map((g) => (
-            <span key={g.state}>
-              {g.checks.length} {g.words}
+/** One timeline entry, in words [D165]. */
+function Entry({ item, pr, comments, sends, filter, onAddToChat }: { item: PrItem; pr: PullRequest; comments: Map<string, PrComment>; sends: Sends; filter: Filter; onAddToChat: (c: PrComment) => void }) {
+  const talk = filter === "comments" || filter === "human";
+  if (filter === "commits" && item.kind !== "commits") return null;
+  if (talk && item.kind !== "comment" && item.kind !== "review") return null;
+  if (filter === "human" && item.bot) return null;
+  switch (item.kind) {
+    case "commits":
+      return (
+        <Collapsible>
+          <CollapsibleTrigger className="group flex min-h-6 w-full cursor-pointer items-center gap-3 rounded-control text-start text-sm text-muted-foreground hover:text-foreground focus-visible:focus-ring">
+            <span className="flex size-6 items-center justify-center svg:size-icon-sm">
+              <Commit />
             </span>
-          ))}
-        </span>
-        <ChevronRight className="text-muted-foreground transition-transform group-data-panel-open:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-1 pt-1">
-        {groups.map((g) => (
-          <Collapsible key={g.state} defaultOpen>
-            <CollapsibleTrigger className={FOLD}>
-              <span className="flex">{g.icon}</span>
-              <span className="flex-1 text-foreground">{g.words}</span>
-              <span className="text-muted-foreground tabular-nums">{g.checks.length}</span>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <ul className="ms-6 flex flex-col">
-                {g.checks.map((check) => (
-                  <li key={check.id} className="flex min-h-8 items-center gap-2">
-                    <button type="button" onClick={() => sends.onOpen({ check: check.id })} className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-fill-subtle focus-visible:focus-ring svg:size-icon-sm">
-                      <span className="flex">{g.icon}</span>
-                      <span className="min-w-0 flex-1">{check.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </CollapsibleContent>
-          </Collapsible>
+            {item.commits.length} commit{item.commits.length === 1 ? "" : "s"}
+            <ChevronRight className="size-icon-xs transition-transform group-data-panel-open:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="ms-9 flex flex-col gap-1 pt-1">
+              {item.commits.map((commit) => (
+                <li key={commit.sha} className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-foreground">{commit.message.split("\n")[0]}</span>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">{commit.sha.slice(0, 7)}</span>
+                </li>
+              ))}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      );
+    case "comment": {
+      const comment = comments.get(item.id);
+      return comment ? <CommentCard pr={pr} comment={comment} sends={sends} onAddToChat={onAddToChat} /> : null;
+    }
+    case "review": {
+      const body = item.said ? comments.get(item.id) : undefined;
+      const words = item.state === "approved" ? "approved these changes" : item.state === "changes" ? "requested changes" : "reviewed";
+      return (
+        <div className="flex flex-col gap-2">
+          {body ? (
+            <CommentCard pr={pr} comment={body} did={words} sends={sends} onAddToChat={onAddToChat} />
+          ) : (
+            <EventLine icon={item.state === "approved" ? <Check className="text-success" /> : <Eye />} at={item.atMs} sends={sends}>
+              <Actor who={item.actor} /> {words}
+            </EventLine>
+          )}
+          {item.threads.length > 0 && (
+            <div className="ms-9 flex flex-col gap-2">
+              {item.threads.map((thread) => (
+                <ThreadCard key={thread.id} pr={pr} thread={thread} comments={comments} sends={sends} onAddToChat={onAddToChat} />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    case "requested":
+      return (
+        <EventLine icon={<Eye />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> requested a review from {item.who.filter(Boolean).join(", ")}
+        </EventLine>
+      );
+    case "dismissed":
+      return (
+        <EventLine icon={<Eye />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> dismissed {item.who ?? "a"} review
+        </EventLine>
+      );
+    case "deployed":
+      return (
+        <EventLine icon={<ChevronRight />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> deployed to {item.env ?? "an environment"}
+        </EventLine>
+      );
+    case "mentioned":
+      return (
+        <EventLine icon={<ChevronRight />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> mentioned this in {item.url ? <button type="button" className="cursor-pointer text-foreground hover:underline" onClick={() => sends.onOpen({ url: item.url! })}>#{item.number} {item.title}</button> : `#${item.number}`}
+        </EventLine>
+      );
+    case "deleted":
+      return (
+        <EventLine icon={<Branch />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> deleted the {item.branch ?? "head"} branch
+        </EventLine>
+      );
+    default:
+      return (
+        <EventLine icon={<Branch />} at={item.atMs} sends={sends}>
+          <Actor who={item.actor} /> {DID[item.kind]}
+        </EventLine>
+      );
+  }
+}
+
+/** Activity: its filter, opened by, the timeline, auto-merge, then Leave a comment [D165]. */
+function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; onAddToChat: (c: PrComment) => void }) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
+  const items = pr.timeline ?? [];
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <h2 className="flex-1 text-base font-medium">Activity</h2>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
+            {FILTERS.find((each) => each.value === filter)!.label}
+            <ChevronDown className="size-icon-xs" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup value={filter} onValueChange={(value: Filter) => setFilter(value)}>
+              {FILTERS.map((each) => (
+                <DropdownMenuRadioItem key={each.value} value={each.value}>
+                  {each.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="flex flex-col gap-4">
+        {filter === "all" && (
+          <EventLine icon={<Avatar login={pr.openedBy} at={pr.checkedAtMs} size="size-5" />} at={pr.openedAtMs} sends={sends}>
+            <Actor who={pr.openedBy} /> opened this pull request
+          </EventLine>
+        )}
+        {items.map((item) => (
+          <Entry key={item.id} item={item} pr={pr} comments={comments} sends={sends} filter={filter} onAddToChat={onAddToChat} />
         ))}
-      </CollapsibleContent>
-    </Collapsible>
+        {filter === "all" && pr.autoMerge && (
+          <EventLine icon={<Check className="text-success" />} at={null} sends={sends}>
+            Automerge enabled — the branch will merge when all requirements are met.
+          </EventLine>
+        )}
+      </div>
+      <Writer label="Leave a comment" placeholder="Leave a comment" verb="Post comment" mentions={pr.ref} onSend={(text) => prAct("comment", pr.ref!, ...said(text)).finally(sends.onChanged)} />
+    </section>
   );
 }
 
 /**
- * A pull request's Summary [D609, D613, D614]: its labels, reviewers and checks, the description and the
- * review comments by line. No general comments or Add a comment [D656].
+ * A pull request's Summary [D164 D165]: up to 6xl wide, at 800 and over two columns, the heading and then
+ * the description and Activity on the left, PR details on the right (300 wide); one column under that.
  */
-export function Summary({ pr, sends }: { pr: PullRequest; sends: Sends }) {
-  const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
-  const reviews = (pr.timeline ?? []).filter((item) => item.kind === "review").filter((item) => item.said || item.threads.length);
-  const said = (comment: PrComment, box: ReactNode) => (
-    <div key={comment.id} className="flex gap-3">
-      <Avatar login={comment.author} at={pr.checkedAtMs} size="size-6" />
-      {comment.minimized ? <Hidden reason={comment.minimized}>{box}</Hidden> : box}
-    </div>
-  );
+export function Summary({ pr, sends, onFix, onAddToChat }: { pr: PullRequest; sends: Sends; onFix: (focus: "checks" | "conflicts" | "comments", check?: string) => void; onAddToChat: (c: PrComment) => void }) {
   return (
-    <div className="flex flex-col gap-4">
-      {!!pr.labels?.length && (
-        <ul aria-label="Labels" className="flex flex-wrap gap-1.5">
-          {pr.labels.map((label) => (
-            <li key={label} className="rounded-control bg-muted px-2 py-1 text-xs text-foreground">
-              {label}
-            </li>
-          ))}
-        </ul>
-      )}
-      <section className={SECTION}>
-        <h3 className={H3}>Reviewers</h3>
-        {pr.reviewers.length ? (
-          pr.reviewers.map((r) => (
-            <div key={r.login} className="flex items-center gap-2 text-xs">
-              <Avatar login={r.login} at={pr.checkedAtMs} />
-              <span className="min-w-0 flex-1 truncate text-foreground">{r.login}</span>
-              <span className={VERDICT[r.state].tint}>{VERDICT[r.state].words}</span>
-            </div>
-          ))
-        ) : (
-          <p className={QUIET}>No reviews yet</p>
-        )}
-      </section>
-      <section className={SECTION}>
-        <div className="-mx-2">
-          <Checks pr={pr} sends={sends} />
+    <div className="@container/pr-page">
+      <div className="pr-page relative mx-auto w-full max-w-6xl min-w-0 px-6 pb-4">
+        <div data-pr-heading className="relative flex min-w-0 flex-col gap-2 select-text">
+          <Heading pr={pr} sends={sends} />
         </div>
-      </section>
-      <section className="text-sm">{pr.body?.trim() ? <Body text={pr.body} keep={`pr-${pr.id}-body`} /> : <p className="text-muted-foreground">No description provided.</p>}</section>
-      <section className="flex flex-col gap-3">
-        <h3 className={H3}>Review comments</h3>
-        {reviews.length ? (
-          reviews.map((review) => {
-            const body = review.said ? comments.get(review.id) : undefined;
-            return (
-              <div key={review.id} className="flex flex-col gap-2">
-                {body && said(body, <CommentBox comment={body} did={REVIEW_WORDS[review.state]} at={ago(body.atMs, sends.now)} author={pr.openedBy} />)}
-                <div className="ms-9 flex flex-col gap-2">
-                  {review.threads.map((thread) => (
-                    <Thread key={thread.id} thread={thread} comments={comments} author={pr.openedBy} sends={sends} />
-                  ))}
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <p className={QUIET}>No inline review comments.</p>
-        )}
-      </section>
+        <div data-pr-aside className="min-w-0">
+          <PrAside pr={pr} sends={sends} onFix={onFix} />
+        </div>
+        <div data-pr-body className="flex min-w-0 flex-col gap-8 select-text">
+          <Description pr={pr} sends={sends} />
+          <Activity pr={pr} sends={sends} onAddToChat={onAddToChat} />
+        </div>
+      </div>
     </div>
   );
 }
