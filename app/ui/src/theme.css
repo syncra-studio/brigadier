@@ -2166,13 +2166,13 @@
   color: attr(data-colour type(<color>), currentcolor);
 }
 
-/* A summary row's hover actions, over its words from transparent to the row's colour (the old app's
-   row-backing and row-backing-washed); washed, it is the card row's hover wash. */
+/* A summary row's hover actions, over its words from transparent to the row's colour (the old app's row-backing). */
 @utility row-backing {
   background-image: linear-gradient(to right, transparent, var(--row-backing, var(--color-popover)) calc(var(--spacing) * 4));
 }
-@utility row-backing-washed {
-  --row-backing: var(--color-muted);
+/* Over a summary card row's hover wash [D139]. */
+@utility row-backing-hover {
+  --row-backing: var(--color-summary-row-hover);
 }
 
 /* A message rail tick's line: its width grows by `data-grow` (0–1, the fisheye) toward the hovered size. */

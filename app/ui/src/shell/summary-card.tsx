@@ -8,17 +8,19 @@ import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
-import { AttachmentsCard, type CardFile, FolderCard, GitCard, summaryReady, type TouchedRepo } from "../panel/card";
+import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, summaryReady, type TouchedRepo } from "../panel/card";
+import { PrsCard } from "../panel/card-prs";
 import { pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
+import { openLink } from "../browser/links";
 import { useSource } from "../panel/source/view";
 import { useSettings } from "../settings/api";
 import { WorkersCard } from "../workers/live";
 import { SubagentsCard } from "../workers/subagents";
 import { useHasPanel } from "./right-panel";
-import { CHAT, HOME, openAttachment, openTab, useTabs } from "./tab-store";
+import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
 
 /*
  * The summary card [D132–D137]: pinned at the thread pane's top end, 8 from its edges.
@@ -346,15 +348,29 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       live = false;
     };
   }, [owner, has, folderChat, updated, picked]);
-  const workers = <><WorkersCard owner={owner} /><SubagentsCard owner={owner} /><BackgroundCard owner={owner} /></>;
-  // Not drawn until its data is in: no skeleton first.
+  // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, each with its repo's name.
+  const kept = shown.kept ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
+  const prs = folderChat ? (touched ?? []).flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name }))) : (shown.prs ?? kept?.prs ?? []);
+  // Not drawn until its data is in: no skeleton first. In this order [D128].
   const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
     <>
       {folderChat ? (
-        <FolderCard project={project} repos={touched ?? []} onReview={(repo) => (pickRepo(owner, repo), openReview(owner))} workers={workers} />
+        <FolderChanges repos={touched ?? []} onReview={(repo) => (pickRepo(owner, repo), openReview(owner))} />
       ) : (
-        <GitCard data={shown} project={project} session={owner} ops={ops} nowMs={Date.now()} onPr={(pr) => openPr(owner, pr)} onPrs={() => openTab(owner, "pr", "list")} onReview={() => openReview(owner)} workers={workers} />
+        <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} />
       )}
+      {/* shortcut: a folder chat's repo PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
+      <PrsCard
+        owner={folderChat ? null : owner}
+        prs={prs}
+        kept={folderChat ? null : kept}
+        nowMs={Date.now()}
+        offline={shown.offline}
+        onPr={(pr) => (folderChat ? pr.url && openLink(pr.url) : openPr(owner, pr))}
+      />
+      <WorkersCard owner={owner} />
+      <SubagentsCard owner={owner} />
+      <BackgroundCard owner={owner} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </>
   ) : null;

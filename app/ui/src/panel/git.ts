@@ -145,7 +145,7 @@ function watch(target: Target, tries = 0): void {
     if (!reply.ok) {
       readTruth();
       // A checkout never read may still be in the making (a fork's worktree): it's asked again for a few seconds before
-      // that's an error, so its first read needs no Try again. A gone one shows Gone from its truth meanwhile.
+      // that's an error, so its first read needs no Try again. A gone one shows its row from its truth meanwhile.
       if (reply.error !== "disconnected" && !git.head && tries < 10) return void setTimeout(() => re === mine && git.target === target && watch(target, tries + 1), 1000);
       return set({ error: reply.error === "disconnected" ? git.error : String(reply.error) });
     }

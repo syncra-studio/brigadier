@@ -29,6 +29,9 @@ const COLUMN = "w-full px-5";
  * [D673, D674, D675, D699]; merging and reviewing are on the host or through the agent. It paints its last read at once; when a
  * read fails, the last one stays with why [D207, D208, D1009].
  */
+/** PRs whose tab opens on Code: the summary card's Code changes [D167]. shortcut: a tab already open stays where it is. */
+export const codeFirst = new Set<string>();
+
 export function PrTab({
   owner,
   target,
@@ -67,8 +70,8 @@ export function PrTab({
     setTick((n) => n + 1);
   };
   // Code is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
-  const [tab, setTab] = useState("summary");
-  const [coded, setCoded] = useState(false);
+  const [tab, setTab] = useState(() => (codeFirst.delete(target) ? "code" : "summary"));
+  const [coded, setCoded] = useState(tab === "code");
   const again = <CheckAgain busy={checking} offline={sends.offline} onClick={check} />;
   if (!pr) {
     return (

@@ -11,12 +11,22 @@ import { CHAT, openTab, selectTab } from "../shell/tab-store";
 import { draftKey, newSession, setHomeDraft } from "../home/start";
 import type { PullRequest } from "./pull-requests";
 
-/** The PR as the agent reads it [D675]: the PR, its failing checks and its review comments. */
-export function prText(pr: PullRequest): string {
-  const failing = pr.checks.filter((check) => check.state === "failed").map((check) => check.name);
+/** What a summary card PR's Repair asks for [D167]; none, the PR as Send to agent hands it. */
+export type Focus = "comments" | "checks" | "conflicts" | "everything";
+const ASKS: Record<Focus, string> = {
+  comments: "Address the review comments.",
+  checks: "Fix the failing checks.",
+  conflicts: "Resolve the merge conflicts with the base branch.",
+  everything: "Fix the failing checks, address the review comments and resolve any merge conflicts.",
+};
+
+/** The PR as the agent reads it [D675]: the PR, its failing checks and its review comments; with a `focus`, only its part and the ask. */
+export function prText(pr: PullRequest, focus?: Focus): string {
+  const failing = focus === "comments" || focus === "conflicts" ? [] : pr.checks.filter((check) => check.state === "failed").map((check) => check.name);
   // Line comments (`r`) and reviews' own words (`v`), as Rust numbers them; not the ones the host hides.
-  const reviews = pr.comments.filter((comment) => (comment.path || comment.id.startsWith("v")) && !comment.minimized);
+  const reviews = focus === "checks" || focus === "conflicts" ? [] : pr.comments.filter((comment) => (comment.path || comment.id.startsWith("v")) && !comment.minimized);
   const text = [
+    focus && ASKS[focus],
     `PR #${pr.number} "${pr.title}" (${pr.url}), ${pr.branch} into ${pr.base}.`,
     failing.length > 0 && `Failing checks: ${failing.join(", ")}.`,
     reviews.length > 0 &&
@@ -26,13 +36,13 @@ export function prText(pr: PullRequest): string {
 }
 
 /** The PR in `owner`'s composer, once, as an inline chip named "Pull request #n" whose text is `prText` [D692]: the composer's own pasted-text chip, so a click opens that text in its tab. */
-async function withChip(owner: string, pr: PullRequest, key = owner): Promise<Draft> {
+async function withChip(owner: string, pr: PullRequest, key = owner, focus?: Focus): Promise<Draft> {
   const name = prPasteLabel(pr.number);
   await loadDraft(run, key);
   const draft = draftOf(key) ?? EMPTY_DRAFT;
   if (draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) return draft;
   const id = crypto.randomUUID();
-  await run(["attach", owner, "add", id, `${name}.txt`, "--data", base64(new TextEncoder().encode(prText(pr)).buffer)]);
+  await run(["attach", owner, "add", id, `${name}.txt`, "--data", base64(new TextEncoder().encode(prText(pr, focus)).buffer)]);
   stored(owner, id, `${name}.txt`);
   const chip: Chip = { kind: "paste", attachmentId: id, preview: name };
   const next = { parts: [...draft.parts, chip, " "], attachmentIds: draft.attachmentIds };
@@ -41,9 +51,9 @@ async function withChip(owner: string, pr: PullRequest, key = owner): Promise<Dr
 }
 
 /** A session already on the PR: open on its chat with the PR in its composer, its page in a browser tab beside it [D699]. Nothing is sent [D675]. */
-async function open(session: string, pr: PullRequest): Promise<void> {
+async function open(session: string, pr: PullRequest, focus?: Focus): Promise<void> {
   // Its composer may be open already, having read its draft as it opened: it's handed the draft with the chip.
-  putBack(session, "", false, await withChip(session, pr));
+  putBack(session, "", false, await withChip(session, pr, session, focus));
   openTab(session, "browser", pr.url);
   selectTab(session, CHAT);
   window.location.hash = `#thread/${encodeURIComponent(session)}`;
@@ -66,9 +76,9 @@ async function cloned(repo: string, account: string | undefined): Promise<string
  * it's no project yet (with the GitHub account that read the PR [D631]). Never outside a project. `owner` is the PR
  * tab's (a session, or Home's project) and `target` its PR (`n`, or `owner/name#n`); `say` names each step on the button.
  */
-export async function sendToAgent(pr: PullRequest, owner: string, target: string, rows: readonly Row[], projects: readonly Project[], say: (words: string) => void): Promise<void> {
+export async function sendToAgent(pr: PullRequest, owner: string, target: string, rows: readonly Row[], projects: readonly Project[], say: (words: string) => void, focus?: Focus): Promise<void> {
   const on = rows.find((row) => !row.archived && row.prs?.prs.some((each) => each.url === pr.url));
-  if (on) return open(on.id, pr);
+  if (on) return open(on.id, pr, focus);
   // The tab's own project when it's that repository's PR; another repository's is looked up by its remote.
   const mine = rows.find((row) => row.id === owner)?.project ?? (projects.some((each) => each.id === owner) ? owner : null);
   const other = target.includes("#");
@@ -80,9 +90,9 @@ export async function sendToAgent(pr: PullRequest, owner: string, target: string
   }
   // A session already on the branch that the watch hasn't linked to the PR yet.
   const held = (await run(["host", project, "session", pr.fork ? `pr-${pr.number}` : pr.branch])).session as string | null;
-  if (held) return open(held, pr);
+  if (held) return open(held, pr, focus);
   // Home's files, its project draft's words [D863].
-  await withChip(HOME_DRAFT, pr, draftKey({ locked: true, project }));
+  await withChip(HOME_DRAFT, pr, draftKey({ locked: true, project }), focus);
   setHomeDraft({ chat: false, workIn: "worktree", pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
   newSession(project);
 }

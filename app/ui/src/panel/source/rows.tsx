@@ -2,32 +2,69 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { cx } from "../../components/cx";
 import { InfoTip } from "../../components/thread/tip";
-import { Warning, X } from "../../icons";
+import { Warning } from "../../icons";
 import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "../../landing/icons";
-import { STATE_WORDS } from "../../landing/pr-words";
-import type { Pr } from "../types";
+
+/** A card row, 28 tall at radius 6, and its hover wash [D139]. */
+export const ROW = "flex h-7 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-start text-label";
+export const ROW_HOVER = "hover:bg-summary-row-hover focus-visible:focus-ring";
 
 /**
- * One row of the card, the old card's 28px row [D1198, D1206]: an icon, the title and what ends it. `onClick`
- * makes it a button with the row's hover.
+ * One row of the card, 28 tall [D139]: an icon in a 20 wide slot, the words and what ends them.
+ * `onClick` makes it a button with the row's hover. `action`: what shows over its end on hover (a Stop, a "…"),
+ * the row keeping its hover meanwhile.
  */
-export function Line({ icon, end, onClick, className, children }: { icon?: ReactNode; end?: ReactNode; onClick?: () => void; className?: string; children: ReactNode }) {
+export function Line({ icon, end, onClick, action, title, className, children }: { icon?: ReactNode; end?: ReactNode; onClick?: () => void; action?: ReactNode; title?: string; className?: string; children: ReactNode }) {
   const Tag = onClick ? "button" : "div";
-  return (
+  const row = (
     <Tag
       {...(onClick && { type: "button" as const, onClick })}
+      title={title}
       className={cx(
-        "relative isolate flex min-h-7 w-full min-w-0 items-center gap-2 py-0.5 text-start text-label font-prose",
-        onClick && "cursor-pointer before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-control hover:before:bg-fill focus-visible:focus-ring",
+        ROW,
+        onClick && cx("cursor-pointer", ROW_HOVER),
+        Boolean(action) && "group-hover/row:bg-summary-row-hover group-has-data-popup-open/row:bg-summary-row-hover",
         className,
       )}
     >
-      {icon && <span aria-hidden className="flex min-w-icon-md shrink-0 items-center justify-center text-muted-foreground svg:size-icon-md">{icon}</span>}
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">{children}</span>
-      </span>
-      {end && <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground tabular-nums">{end}</span>}
+      {icon && <span aria-hidden className="flex min-w-5 shrink-0 items-center justify-center svg:size-4">{icon}</span>}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {end && (
+        <span className={cx("flex shrink-0 items-center gap-1.5 text-label text-muted-foreground tabular-nums", Boolean(action) && "group-hover/row:invisible group-has-focus-visible/row:invisible group-has-data-popup-open/row:invisible")}>
+          {end}
+        </span>
+      )}
     </Tag>
+  );
+  if (!action) return row;
+  return (
+    <div className="group/row relative min-w-0">
+      {row}
+      <span
+        data-slot="summary-row-action"
+        className={cx(
+          "row-backing row-backing-hover pointer-events-none absolute inset-y-0 end-0 flex items-center rounded-e-sm ps-4 pe-1 opacity-0 transition-opacity",
+          "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 has-data-popup-open:pointer-events-auto has-data-popup-open:opacity-100",
+        )}
+      >
+        {action}
+      </span>
+    </div>
+  );
+}
+
+/** The list: the first 5, then "Show N more", 5 at a time [D139]. */
+export function Rows<T>({ items, children }: { items: readonly T[]; children: (item: T) => ReactNode }) {
+  const [shown, setShown] = useState(5);
+  return (
+    <>
+      {items.slice(0, shown).map(children)}
+      {items.length > shown && (
+        <Line onClick={() => setShown(shown + 5)} className="text-muted-foreground">
+          Show {items.length - shown} more
+        </Line>
+      )}
+    </>
   );
 }
 
@@ -38,27 +75,6 @@ export const PR_LOOK = {
   merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
   closed: { Icon: PullRequestClosed, tint: "text-destructive" },
 };
-/** A PR's card row; `failing` (Rust's read: its checks fail) ends it in a red ✗ before its state, hidden while the row's Send to agent shows [D261]. */
-export function PrLine({ pr, failing = false, onClick }: { pr: Pr; failing?: boolean; onClick?: () => void }) {
-  const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
-  const { Icon, tint } = PR_LOOK[state];
-  const end = (
-    <span className={cx("flex items-center gap-1.5", failing && "group-hover/row:invisible group-has-focus-visible/row:invisible")}>
-      {failing && <X aria-label="Checks failed" className="size-icon-sm text-destructive" />}
-      <span className={tint}>{STATE_WORDS[state]}</span>
-    </span>
-  );
-  return (
-    <Line onClick={onClick} icon={<span className={cx("flex", tint)}><Icon /></span>} end={end}>
-      {/* One from another repository says which, short [D213]. */}
-      <span className="text-muted-foreground">
-        {pr.repo && `${pr.repo.slice(pr.repo.indexOf("/") + 1)} `}#{pr.number}
-      </span>{" "}
-      {pr.title}
-    </Line>
-  );
-}
-
 /** "+62 −8": lines added and removed, each only when there are some. */
 export function Counts({ added, removed }: { added: number; removed: number }) {
   return (

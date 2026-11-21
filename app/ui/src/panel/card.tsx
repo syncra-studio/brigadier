@@ -1,87 +1,83 @@
 import { type ReactNode, useId, useRef, useState } from "react";
 
 import { FileTypeIcon } from "../components/composer/attachments";
-import { ComposerPill } from "../components/composer/composer";
+import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { viewImage } from "../components/image-viewer";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../components/menu";
 import { TooltipIconButton } from "../components/icon-button";
-import { useDaemon } from "../daemon";
-import { Branch, ChevronDown } from "../icons";
-import { PullRequestOpen, Sparkles } from "../landing/icons";
+import { Branch, ChevronDown, DotsHorizontal, Warning } from "../icons";
 import { Offline } from "./source/branch";
-import { ReadError, type SourceData, type SourceOps } from "./source/data";
-import { Gone } from "./source/hero";
-import { Counts, Line, Note, PrLine } from "./source/rows";
-import { ago } from "../landing/pr-words";
+import type { SourceData, SourceOps } from "./source/data";
+import { Counts, Line, Rows } from "./source/rows";
 import { useBranchPicker } from "./branch-picker";
-import type { KeptPrs, Pr } from "./types";
-import { openLink } from "../browser/links";
-import { showToast } from "../components/toast";
-import { useHost } from "../landing/host";
-import type { PullRequest } from "../landing/pull-requests";
-import { sendToAgent } from "../landing/send-to-agent";
-import { errorText, run } from "../onboarding/api";
+import type { KeptPrs } from "./types";
 
-/** Sections folded or opened by hand, by key, for the app's lifetime: every session's card keeps them. */
-const folds = new Map<string, boolean>();
+/** Sections folded by hand, by key, for every session's card, kept across restarts [D138]. */
+const FOLDS = "summary-folds";
+const folds: Record<string, boolean> = JSON.parse(localStorage.getItem(FOLDS) ?? "{}");
 
 /**
- * One of the card's parts, a hairline under it as the old card's [D1075, D1198]; `end` ends its title row. With `fold`
- * (its key), its title folds it as the old card's SummarySection [D200]: the chevron after it shows on hover while
- * open and stays, turned, while folded, with `count` after the title; a `count` that grows opens it again.
+ * One of the card's parts, a section [D138]: its muted title folds it, a chevron after it on hover while open
+ * and turned while folded, with `count` after the title then; a hairline between sections, 20 in from the card's
+ * edges. `end` ends its title row (Sources' +, Background's history).
  */
-export function CardSection({ title, end, fold, count, children }: { title?: ReactNode; end?: ReactNode; fold?: string; count?: number; children?: ReactNode }) {
+export function CardSection({ title, fold, end, count, children }: { title: ReactNode; fold: string; end?: ReactNode; count?: number; children?: ReactNode }) {
   const body = useId();
-  const [kept, setKept] = useState(() => (fold ? folds.get(fold) : undefined));
-  const [was, setWas] = useState(count ?? 0);
-  if (count !== undefined && count !== was) {
-    setWas(count);
-    if (count > was) setKept(false);
-  }
-  const folded = Boolean(fold && children && kept);
+  const [folded, setFolded] = useState(() => folds[fold] ?? false);
   const toggle = () => {
-    if (fold) folds.set(fold, !folded);
-    setKept(!folded);
+    folds[fold] = !folded;
+    localStorage.setItem(FOLDS, JSON.stringify(folds));
+    setFolded(!folded);
   };
   return (
-    <section
-      data-folded={folded || undefined}
-      className={cx("relative flex flex-col pb-2 after:absolute after:inset-x-5 after:bottom-0 after:h-px after:origin-bottom after:scale-y-50 after:bg-divider last:pb-0 last:after:hidden", folded && "pb-0.5")}
-    >
-      {(title || end) && (
-        <header className="flex h-7 min-w-0 items-center gap-2 ps-5 pe-3.5 text-label text-muted-foreground">
-          {fold && children ? (
-            <button
-              type="button"
-              aria-expanded={!folded}
-              aria-controls={body}
-              onClick={toggle}
-              className="group/fold -ms-1 inline-flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-control py-0.5 ps-1 pe-1 text-start transition-colors hover:text-foreground focus-visible:focus-ring"
-            >
-              <span className="min-w-0 truncate">{title}</span>
-              {folded && count !== undefined && count > 0 && <span className="min-w-0 shrink truncate tabular-nums">· {count}</span>}
-              <ChevronDown
-                aria-hidden
-                className={cx(
-                  "size-icon-xs shrink-0 transition motion-reduce:transition-none",
-                  folded ? "-rotate-90" : "opacity-0 group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100",
-                )}
-              />
-            </button>
-          ) : (
-            <span className="min-w-0 flex-1 truncate">{title}</span>
-          )}
-          {end && <div className="flex shrink-0 items-center gap-0.5">{end}</div>}
-        </header>
-      )}
-      {children && (
-        <div id={body} hidden={folded} className="flex min-w-0 flex-col gap-0.5 px-5">
-          {children}
-        </div>
-      )}
+    <section className="relative flex flex-col py-2 first:pt-0 last:pb-0 not-first:before:absolute not-first:before:inset-x-2 not-first:before:top-0 not-first:before:h-px not-first:before:bg-divider">
+      <header className="mb-1 flex h-6 min-w-0 items-center gap-2 ps-2 pe-1 text-label text-muted-foreground">
+        <button
+          type="button"
+          aria-expanded={!folded}
+          aria-controls={body}
+          onClick={toggle}
+          className="group/fold inline-flex min-w-0 cursor-pointer items-center gap-1 rounded-sm text-start transition-colors hover:text-foreground focus-visible:focus-ring"
+        >
+          <span className="min-w-0 truncate">{title}</span>
+          {folded && count !== undefined && count > 0 && <span className="shrink-0 tabular-nums">· {count}</span>}
+          <ChevronDown
+            aria-hidden
+            className={cx(
+              "size-icon-xs shrink-0 transition motion-reduce:transition-none",
+              folded ? "-rotate-90" : "opacity-0 group-hover/fold:opacity-100 group-focus-visible/fold:opacity-100",
+            )}
+          />
+        </button>
+        <span className="flex-1" />
+        {end && <div className="flex shrink-0 items-center gap-0.5">{end}</div>}
+      </header>
+      <div id={body} hidden={folded} className="flex min-w-0 flex-col">
+        {children}
+      </div>
     </section>
   );
 }
+
+/** A row's "…": its menu over the row's end on hover [D141]. */
+export function RowMenu({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger render={<TooltipIconButton tooltip={label} size="icon-xs" className="text-muted-foreground hover:text-foreground" />}>
+        <DotsHorizontal />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** A warning on the card, as a row: the checkout's truth, the base behind, a read that failed [D149]. */
+export const WarnLine = ({ text, end }: { text: string; end?: ReactNode }) => (
+  <Line icon={<Warning />} end={end} title={text} className="text-warning">
+    {text}
+  </Line>
+);
 
 /**
  * The card's one note, every fact it has joined in one line [D1198]: the checkout on another branch than its record's
@@ -98,52 +94,56 @@ function noteOf(data: SourceData): { text: string; warn: boolean } | null {
 /** The card has something whole to show: the checkout's read, or why it can't read. Until then it isn't drawn at all. */
 export const summaryReady = (data: SourceData) => Boolean(data.truth?.missing || data.error || data.source);
 
+const TRY = "shrink-0 cursor-pointer rounded-sm text-link hover:underline focus-visible:focus-ring disabled:cursor-default disabled:opacity-disabled";
+
 /**
- * The summary card's git part, as the old card's [D64]: the project as a quiet title; the branch row, the composer's
- * picker pill opening the quick pick in the project's own folder, a worktree's branch plain text [D72, D242], with the +/− counts opening Review at its end (no uncommitted count, D1209) [D1273]; one note
- * line; a hairline, then the session's pull requests in GitHub's state words and colours, folding as the old card's
- * Background section, its button and each row opening the Pull requests tab [D1017, D1116, D200, D202], then the
- * Workers section [D65]. Disconnected, "Offline · 14:32" takes
- * the counts' place and the rest dims [D30, D1206]. Without `ops` (the gallery) it moves nothing.
+ * The card's Changes section [D140 D141 D148 D149]: one row, "project · branch" with its +/− counts,
+ * opening Review; its "…" copies the branch and, in your own folder, switches it (the composer's quick pick). A gone
+ * folder, a read that failed and the checkout's notes are rows under it; disconnected, "Offline · 14:32" takes the
+ * counts' place [D30, D1206]. Without `ops` (the gallery) it moves nothing.
  */
-export function GitCard({ data, nowMs, project = null, session = null, ops, onPr, onPrs, onReview, workers }: {
-  data: SourceData;
-  nowMs: number;
-  project?: string | null;
-  session?: string | null;
-  ops?: SourceOps;
-  onPr?: (pr: Pr) => void;
-  /** The section's own button: always the Pull requests list [D200, D454]. */
-  onPrs?: () => void;
-  onReview?: () => void;
-  /** The session's Workers section, after the PRs [D65]. */
-  workers?: ReactNode;
-}) {
+export function ChangesCard({ data, nowMs, project = null, ops, onReview }: { data: SourceData; nowMs: number; project?: string | null; ops?: SourceOps; onReview?: () => void }) {
   const { source } = data;
   const offline = data.offline ?? false;
-  // The watch's kept PRs [D1009], the session row's where the gallery has none.
-  const rows = useDaemon().rows;
-  const kept = data.kept ?? rows?.find((row) => row.id === session)?.prs ?? undefined;
-  const prs = data.prs ?? kept?.prs ?? [];
   const branchRow = useRef<HTMLDivElement>(null);
-  const pillRef = useRef<HTMLButtonElement>(null);
-  const { picker, folder, open, pickers } = useBranchPicker({ data, ops, nowMs, anchor: branchRow, trigger: pillRef });
+  const { folder, open, pickers } = useBranchPicker({ data, ops, nowMs, anchor: branchRow, trigger: branchRow });
 
   if (data.truth?.missing) {
+    const restoring = data.restoring ?? false;
     return (
-      <CardSection title={project}>
-        <div className="pb-2">
-          <Gone data={data} onRestore={ops?.restore} />
-        </div>
+      <CardSection title="Changes" fold="changes">
+        <WarnLine
+          text="This session's folder is gone"
+          end={
+            data.truth.restorable ? (
+              <button type="button" disabled={restoring || offline} onClick={ops?.restore} className={TRY}>
+                {restoring ? "Restoring…" : data.restoreError ? "Try again" : "Restore"}
+              </button>
+            ) : (
+              "Can't restore"
+            )
+          }
+        />
+        {data.restoreError && <WarnLine text={data.restoreError} />}
       </CardSection>
     );
   }
 
+  const failed = data.error && !offline && (
+    <WarnLine
+      text={`Couldn't read: ${data.error}`}
+      end={
+        <button type="button" onClick={ops?.retry} className={TRY}>
+          Try again
+        </button>
+      }
+    />
+  );
   // Shown only once its read is in (summaryReady), so it's drawn once whole; with no read, only why [D1307].
   if (!source) {
     return (
-      <CardSection title={project}>
-        {data.error && <ReadError error={data.error} onRetry={ops?.retry} />}
+      <CardSection title="Changes" fold="changes">
+        {failed}
       </CardSection>
     );
   }
@@ -153,84 +153,32 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
   const added = listed.reduce((sum, file) => sum + file.added, 0);
   const removed = listed.reduce((sum, file) => sum + file.removed, 0);
   const detached = data.truth?.detached;
-  const name = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
+  const branch = data.naming ?? source.branch ?? source.rebasing?.branch ?? (detached ? `Detached at ${detached}` : "…");
   const note = noteOf(data);
-  const first = prs.find((pr) => pr.state === "open") ?? prs[0];
-  // Its start lines up with the title's; offline it can't open [D30].
-  const pill = { "aria-label": `Branch: ${name}`, disabled: offline, className: "-ms-2 max-w-full" };
-  const label = (
-    <span className="flex min-w-0 items-center gap-1">
-      <Branch />
-      <span className="truncate text-foreground">{name}</span>
-      {folder && <ChevronDown className="size-icon-xs" />}
-    </span>
-  );
+  const end = offline ? <Offline readAtMs={data.readAtMs ?? null} /> : (added > 0 || removed > 0) && <Counts added={added} removed={removed} />;
   return (
-    <>
-      <CardSection title={project}>
-        {/* A watch that failed after its first read: the last read stays under it [D30]. */}
-        {data.error && !offline && <ReadError error={data.error} onRetry={ops?.retry} />}
-        <div ref={branchRow} className="flex min-w-0 items-center gap-2">
-          {/* The composer's pickers' pill [D72]; a worktree's branch has no menu, its copies in the tab's ⋯ [D242]. */}
-          {folder ? (
-            <ComposerPill ref={pillRef} {...pill} aria-expanded={picker === "branch"} onClick={() => open(picker ? null : "branch")}>
-              {label}
-            </ComposerPill>
-          ) : (
-            <span className="inline-flex h-control-sm min-w-0 items-center text-sm text-muted-foreground svg:size-icon-md svg:shrink-0">{label}</span>
-          )}
-          <span className="flex-1" />
-          {offline ? (
-            <Offline readAtMs={data.readAtMs ?? null} />
-          ) : (
-            (added > 0 || removed > 0) && (
-              <button type="button" aria-label="Review the changes" onClick={onReview} className="shrink-0 cursor-pointer rounded-control hover:underline focus-visible:focus-ring">
-                <Counts added={added} removed={removed} />
-              </button>
-            )
-          )}
-        </div>
-        {note && <Note text={note.text} warn={note.warn} />}
-      </CardSection>
-      {(first || kept?.error) && (
-        // As the old card's Background section [D200]: its title folds it, its own button opens the Pull requests tab.
-        <CardSection
-          title="Pull requests"
-          fold="pull-requests"
-          count={prs.length}
-          end={
-            first && (
-              <TooltipIconButton tooltip="Open pull requests" size="icon-xs" onClick={() => onPrs?.()}>
-                <PullRequestOpen />
-              </TooltipIconButton>
-            )
+    <CardSection title="Changes" fold="changes">
+      {failed}
+      <div ref={branchRow} className={cx(offline && "opacity-disabled")} inert={offline}>
+        <Line
+          icon={<Branch />}
+          end={end}
+          onClick={onReview}
+          action={
+            <RowMenu label="Branch actions">
+              <DropdownMenuItem disabled={!source.branch} onClick={() => source.branch && copyWithToast(source.branch, "branch name")}>
+                Copy branch
+              </DropdownMenuItem>
+              {folder && <DropdownMenuItem onClick={() => open("branch")}>Switch branch</DropdownMenuItem>}
+            </RowMenu>
           }
         >
-          <div className={cx("flex flex-col", offline && "opacity-disabled")} inert={offline}>
-            {/* Rust's order, open first [D256]: the first 5, then the rest in the Pull requests tab. */}
-            {prs.slice(0, 5).map((pr) =>
-              pr.state === "open" && pr.health === "failed" && session ? (
-                <div key={`${pr.repo ?? ""}#${pr.number}`} className="group/row relative min-w-0">
-                  <PrLine pr={pr} failing onClick={() => onPr?.(pr)} />
-                  <SendPr owner={session} pr={pr} />
-                </div>
-              ) : (
-                <PrLine key={`${pr.repo ?? ""}#${pr.number}`} pr={pr} onClick={() => onPr?.(pr)} />
-              ),
-            )}
-            {prs.length > 5 && (
-              <Line onClick={() => onPrs?.()} className="text-muted-foreground hover:text-foreground">
-                {prs.length - 5} more
-              </Line>
-            )}
-            {/* A watch read that failed: the last PRs stay above, with their age and why [D1009]. */}
-            {kept?.error && <Note warn text={["Couldn't check", kept.okAt && ago(kept.okAt, nowMs), kept.error.split("\n")[0]].filter(Boolean).join(" · ")} />}
-          </div>
-        </CardSection>
-      )}
-      {workers}
+          {project ? `${project} · ${branch}` : branch}
+        </Line>
+      </div>
+      {note && (note.warn ? <WarnLine text={note.text} /> : <Line title={note.text} className="text-muted-foreground">{note.text}</Line>)}
       {pickers}
-    </>
+    </CardSection>
   );
 }
 
@@ -238,71 +186,19 @@ export function GitCard({ data, nowMs, project = null, session = null, ops, onPr
 export type TouchedRepo = { name: string; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
 
 /**
- * A folder chat's card [D494, D544]: the project as its title, then each repo the chat changed, its name, branch and
- * +/− counts opening Review on that repo; their PRs, each with its repo's name, as the one-checkout card's; then the
- * Workers section. A repo claimed and never changed isn't shown.
+ * A folder chat's Changes [D494, D544, D151]: a row per repo it changed, "repo · branch" and its +/− counts, opening
+ * Review on that repo. A repo claimed and never changed isn't shown.
  */
-export function FolderCard({ project, repos, onReview, workers }: { project: string | null; repos: TouchedRepo[]; onReview: (repo: string) => void; workers?: ReactNode }) {
-  const prs = repos.flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name })));
+export function FolderChanges({ repos, onReview }: { repos: TouchedRepo[]; onReview: (repo: string) => void }) {
+  if (repos.length === 0) return null;
   return (
-    <>
-      <CardSection title={project}>
-        {repos.map((repo) => (
-          <div key={repo.name} className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-control-sm min-w-0 items-center gap-1 text-sm text-muted-foreground svg:size-icon-md svg:shrink-0">
-              <span className="shrink-0 text-foreground">{repo.name}</span>
-              <Branch />
-              <span className="truncate">{repo.branch ?? "…"}</span>
-            </span>
-            <span className="flex-1" />
-            <button type="button" aria-label={`Review the changes in ${repo.name}`} onClick={() => onReview(repo.name)} className="shrink-0 cursor-pointer rounded-control hover:underline focus-visible:focus-ring">
-              <Counts added={repo.added} removed={repo.removed} />
-            </button>
-          </div>
-        ))}
-      </CardSection>
-      {prs.length > 0 && (
-        <CardSection title="Pull requests" fold="pull-requests" count={prs.length}>
-          {/* shortcut: a repo's PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
-          {prs.map((pr) => (
-            <PrLine key={`${pr.repo}#${pr.number}`} pr={pr} onClick={pr.url ? () => openLink(pr.url!) : undefined} />
-          ))}
-        </CardSection>
-      )}
-      {workers}
-    </>
-  );
-}
-
-/**
- * A failing PR's Send to agent, over its card row's end on hover as the Background rows' Stop: the PR tab's own Send to
- * agent, with the PR read as that tab reads it [D261, D701]: its "Pull request #n" chip in the composer, nothing sent.
- */
-function SendPr({ owner, pr }: { owner: string; pr: Pr }) {
-  const host = useHost(owner);
-  const { rows, projects } = useDaemon();
-  const [sending, setSending] = useState(false);
-  const target = pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number);
-  const send = () => {
-    setSending(true);
-    run(["host", host, "view", target, "kept"])
-      .then((kept) => kept.pr ?? run(["host", host, "view", target]).then((read) => read.pr))
-      .then((read: PullRequest) => sendToAgent(read, host, target, rows ?? [], projects ?? [], () => {}))
-      .catch((cause) => showToast(`Couldn't send #${pr.number} to the agent: ${errorText(cause)}`, { tone: "error" }))
-      .finally(() => setSending(false));
-  };
-  return (
-    <span
-      data-slot="summary-row-action"
-      className={cx(
-        "row-backing pointer-events-none absolute inset-y-0 end-0 flex items-center ps-4 opacity-0 transition-opacity",
-        "group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100",
-      )}
-    >
-      <TooltipIconButton tooltip="Send to agent" aria-label={`Send #${pr.number} to agent`} disabled={sending} className="shrink-0 rounded-icon-button text-row-foreground hover:text-foreground" onClick={send}>
-        <Sparkles />
-      </TooltipIconButton>
-    </span>
+    <CardSection title="Changes" fold="changes">
+      {repos.map((repo) => (
+        <Line key={repo.name} icon={<Branch />} end={<Counts added={repo.added} removed={repo.removed} />} onClick={() => onReview(repo.name)}>
+          {repo.name} · {repo.branch ?? "…"}
+        </Line>
+      ))}
+    </CardSection>
   );
 }
 
@@ -311,7 +207,7 @@ export type CardFile = { id: string; name: string; label?: string | null; mime: 
 
 /**
  * The old card's "Attachments": the files the session's messages carried, each opening with one click, an image in
- * the viewer with the others beside it [D1048, D1274]. A name already taken gets " (2)" after it, as the old rows.
+ * the viewer with the others beside it [D1048, D1274, D151]. A name already taken gets " (2)" after it, as the old rows.
  */
 export function AttachmentsCard({ files, onOpen }: { files: readonly CardFile[]; onOpen: (file: CardFile, label: string) => void }) {
   if (files.length === 0) return null;
@@ -328,16 +224,18 @@ export function AttachmentsCard({ files, onOpen }: { files: readonly CardFile[];
   const images = files.filter((file) => file.mime.startsWith("image/"));
   const gallery = images.map((file) => ({ name: labels.get(file.id)!, url: file.url }));
   return (
-    <CardSection title="Attachments">
-      {files.map((file) => (
-        <Line
-          key={file.id}
-          icon={file.mime.startsWith("image/") ? <img src={file.url} alt="" draggable={false} className="size-icon-md rounded-xs object-cover" /> : <FileTypeIcon name={file.name} />}
-          onClick={() => (file.mime.startsWith("image/") ? viewImage(gallery, images.indexOf(file)) : onOpen(file, labels.get(file.id)!))}
-        >
-          {labels.get(file.id)}
-        </Line>
-      ))}
+    <CardSection title="Attachments" fold="attachments" count={files.length}>
+      <Rows items={files}>
+        {(file) => (
+          <Line
+            key={file.id}
+            icon={file.mime.startsWith("image/") ? <img src={file.url} alt="" draggable={false} className="size-4 rounded-xs object-cover" /> : <FileTypeIcon name={file.name} />}
+            onClick={() => (file.mime.startsWith("image/") ? viewImage(gallery, images.indexOf(file)) : onOpen(file, labels.get(file.id)!))}
+          >
+            {labels.get(file.id)}
+          </Line>
+        )}
+      </Rows>
     </CardSection>
   );
 }

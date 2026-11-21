@@ -6,16 +6,15 @@ import { ParentName } from "../components/thread/cards";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { CardSection } from "../panel/card";
-import { Counts, Line } from "../panel/source/rows";
-import { cx } from "../components/cx";
+import { Line } from "../panel/source/rows";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
 import { openTab } from "../shell/tab-store";
 import type { Item, Setup, StepKind, Turn } from "../thread/item";
-import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
+import { finished, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { WORKERS_LABEL, WorkerList } from "./list";
 import { BatchRow, StillRunningRow, TeamStepRow } from "./sentence";
-import { type Act, WorkerControls, WorkersStrip } from "./strip";
+import { WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
@@ -249,110 +248,40 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   );
 }
 
-/** How many workers at work still get a line each; more read as one row. */
-const WORKER_LINES = 3;
-
-const DONE: ReadonlySet<WorkerStateKind> = new Set(["done", "merged", "doneNotMerged"]);
-
-/** "1 done · 2 ended": the finished ones, as the old card's finishedWords. */
-function doneWords(workers: readonly Worker[]): string {
-  const gone = workers.filter((worker) => !onHand(worker));
-  const done = gone.filter((worker) => DONE.has(worker.kind)).length;
-  return [done > 0 && `${done} done`, gone.length > done && `${gone.length - done} ended`].filter(Boolean).join(" · ");
-}
-
 /**
- * A worker at work, as the old card's WorkerLineRow: its glyph, its name, its state in a soft word ("working",
- * shimmering; "paused") and its +N −N, under its pause/resume and End on hover [D3045]. The row opens it in the Workers tab.
+ * The card's one row for a session's workers or its CLI's own subagents [D142 D150]: up to 4 glyphs,
+ * those at work first, and "2 working", with "1 done" at its end when some finished; else "2 done". It opens their
+ * tab on the list; no controls here, they're in the composer strip and the thread.
  */
-function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
-  const { open } = useContext(WorkersPanel);
-  const here = onHand(worker);
-  const controls = here && act;
-  // A finished one reads only done or ended here; a paused one, paused.
-  const word = here ? lowerFirst(worker.kind === "working" ? (worker.now ?? worker.word) : worker.word) : DONE.has(worker.kind) ? "done" : "ended";
-  const changed = (worker.added ?? 0) + (worker.removed ?? 0) > 0;
-  return (
-    <div data-slot="workers-summary-worker" data-worker-state={worker.kind} className="group/row relative min-w-0">
-      <Line
-        onClick={() => open(worker.id)}
-        // The pointer on its controls is still on the row: the wash stays.
-        className={cx(controls && "group-hover/row:before:bg-fill group-has-focus-visible/row:before:bg-fill")}
-        icon={<WorkerGlyph id={worker.id} className="size-4" />}
-        end={
-          (changed || Boolean(worker.repos?.length)) && (
-            <span className={cx("flex items-center gap-1.5", controls && "group-hover/row:invisible group-has-focus-visible/row:invisible")}>
-              {/* A folder chat's worker: the repos it claimed, kept whole as the name truncates [D494]. */}
-              {worker.repos?.join(", ")}
-              {changed && <span className="text-2xs"><Counts added={worker.added ?? 0} removed={worker.removed ?? 0} /></span>}
-            </span>
-          )
-        }
-      >
-        {worker.name}
-        <span className={cx("text-muted-foreground", worker.kind === "working" && "shimmer")}> {word}</span>
-      </Line>
-      {controls && (
-        <span
-          data-slot="summary-row-action"
-          className="row-backing row-backing-washed pointer-events-none absolute inset-y-0 end-0 flex items-center ps-4 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100"
-        >
-          <WorkerControls worker={worker} act={act} />
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * The session's workers in the summary card, as the old card's WorkersSummary [D3045]: while a few work, a line each
- * (then what finished, muted); else one row of glyphs with "N working" or "1 done · 2 ended". A row opens the
- * Workers tab on the list, or on the worker [D81].
- */
-export function WorkersCard({ owner }: { owner: string }) {
-  return <TeamCard owner={owner} title={WORKERS_LABEL} workers={useWorkers(owner)} act={act(owner)} />;
-}
-
-/** The card's section for a session's workers or its CLI's own subagents, oldest first; with no `act`, no controls. */
-export function TeamCard({ owner, title, workers: all, act, tab }: { owner: string; title: string; workers: readonly Worker[]; act?: Act; tab?: TeamKind }) {
-  const workers = all.toReversed();
+export function TeamCard({ owner, title, workers, tab }: { owner: string; title: string; workers: readonly Worker[]; tab?: TeamKind }) {
   if (workers.length === 0) return null;
-  const active = workers.filter(onHand);
-  const ended = doneWords(workers);
-  // A few at work get a line each; so does a lone worker that finished.
-  const lined = active.length > 0 && active.length <= WORKER_LINES ? active : workers.length === 1 ? workers : [];
   return (
     <Opens owner={owner} tab={tab}>
-      <CardSection title={title}>
-        <WorkersRows workers={workers} active={active} lined={lined} ended={ended} act={act} />
+      <CardSection title={title} fold={tab ?? "workers"}>
+        <TeamLine workers={workers} />
       </CardSection>
     </Opens>
   );
 }
 
-function WorkersRows({ workers, active, lined, ended, act }: { workers: Worker[]; active: Worker[]; lined: Worker[]; ended: string; act?: Act }) {
+function TeamLine({ workers }: { workers: readonly Worker[] }) {
   const { open } = useContext(WorkersPanel);
-  if (lined.length > 0) {
-    const first = workers.find((worker) => !onHand(worker));
-    return (
-      <>
-        {lined.map((worker) => <WorkerLine key={worker.id} worker={worker} act={act} />)}
-        {ended && lined === active && first && (
-          <Line onClick={() => open(null)} icon={<WorkerGlyph id={first.id} className="size-4" />}>
-            <span className="text-muted-foreground">{ended}</span>
-          </Line>
-        )}
-      </>
-    );
-  }
+  const active = workers.filter(onHand);
+  const done = workers.length - active.length;
   const glyphs = (active.length > 0 ? active : workers).slice(0, 4);
   return (
     <Line
       onClick={() => open(null)}
-      icon={<span className="flex items-center gap-1.5">{glyphs.map((worker) => <WorkerGlyph key={worker.id} id={worker.id} className="size-4" />)}</span>}
-      end={active.length > 0 && ended ? ended : undefined}
+      icon={<span className="flex items-center gap-1">{glyphs.map((worker) => <WorkerGlyph key={worker.id} id={worker.id} className="size-4" />)}</span>}
+      end={active.length > 0 && done > 0 && `${done} done`}
+      className={active.length === 0 ? "text-muted-foreground" : undefined}
     >
-      {active.length > 0 ? `${active.length} working` : ended}
+      {active.length > 0 ? `${active.length} working` : `${done} done`}
     </Line>
   );
+}
+
+/** The session's workers in the summary card [D142]. */
+export function WorkersCard({ owner }: { owner: string }) {
+  return <TeamCard owner={owner} title={WORKERS_LABEL} workers={useWorkers(owner)} />;
 }

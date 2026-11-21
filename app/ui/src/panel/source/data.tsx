@@ -1,4 +1,3 @@
-import { ErrorLine } from "../../components/error-line";
 import type { Freshness, Truth } from "../git";
 import type { Branch, KeptPrs, Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
@@ -44,17 +43,3 @@ export type SourceOps = {
   /** Re-creates a session's gone folder from its branch [D180, D1187]. */
   restore?: () => void;
 };
-
-/** The checkout couldn't be read: the summary card's line, with Try again. */
-export function ReadError({ error, onRetry }: { error: string; onRetry?: () => void }) {
-  return (
-    <ErrorLine
-      error={`Couldn't read this checkout: ${error}`}
-      actions={
-        <button type="button" onClick={onRetry} className="shrink-0 cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-          Try again
-        </button>
-      }
-    />
-  );
-}
