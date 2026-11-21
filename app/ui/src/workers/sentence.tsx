@@ -1,18 +1,18 @@
 import { type FC, type ReactNode, useContext } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
-import { Chevron, DETAIL, ROW, TOGGLE } from "../components/thread/activity-row";
+import { Chevron, DETAIL, ROW, STEPS, TOGGLE } from "../components/thread/activity-row";
 import { cx } from "../components/cx";
 import { useKept } from "../thread/kept";
 import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
-import type { Merge } from "../thread/item";
 import { duration } from "../thread/words";
-import { Glyphs, lowerFirst, type Worker, WorkerName, WorkersPanel } from "./chip";
+import { WorkerGlyph } from "../icons/worker-glyphs";
+import { Glyphs, lowerFirst, onHand, type Worker, WorkerName, WorkersPanel } from "./chip";
 
 /*
- * How workers show in the thread, as the old app's TeamSentence and Briefs: sentences in the row recipe of the work,
- * never cards [D3010]. What happened to them ("Retry backoff and Progress bar started working") and what the lead
- * did to them ("Messaged Retry backoff", "You ended Retry backoff"); every name opens its worker.
+ * How workers show in the thread: sentences in the row recipe of the work, never cards [D3010]. One row per batch
+ * ("Retry backoff and Progress bar started working" [D103]) and what the lead did to them ("Messaged Retry
+ * backoff", "You ended Retry backoff"); every name opens its worker.
  */
 
 /**
@@ -71,64 +71,67 @@ export const Names: FC<{ workers: readonly Worker[]; glyph?: boolean }> = ({ wor
   );
 };
 
-/** A start's detail: each worker's brief, in a quiet box, and what routing picked for it in its place [D3018]. */
-export const Briefs: FC<{ workers: readonly Worker[] }> = ({ workers }) => (
-  <div className="flex flex-col gap-2">
-    {workers.map((worker) => (
-      <div key={worker.id} className="flex flex-col gap-1">
-        {workers.length > 1 && <WorkerName worker={worker} />}
-        <QuietBrief>{worker.brief}</QuietBrief>
-        {worker.receipt && <span>{worker.receipt}</span>}
-      </div>
-    ))}
-  </div>
-);
+/** "A", "A and B", "A, B and C"; past three, "A, B and 4 more": a batch row's words, its list naming each. */
+const said = (workers: readonly Worker[]) => {
+  const names = workers.map((worker) => worker.name);
+  const named = names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} more`] : names;
+  return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : (named[0] ?? "");
+};
 
-export type Lifecycle = "started" | "waiting" | "stopped" | "failed" | "finished";
+const FINISHED_KINDS: ReadonlySet<Worker["kind"]> = new Set(["merged", "doneNotMerged", "done"]);
 
-function verb(word: Lifecycle, workers: readonly Worker[], why: string | undefined): string {
-  const many = workers.length > 1;
-  switch (word) {
-    case "started":
+/** How the batch went: working while any is on hand, else finished, with errors when one failed. */
+function batchWords(workers: readonly Worker[]): string {
+  if (workers.some(onHand)) return "started working";
+  if (workers.some((worker) => worker.kind === "failed")) return "finished with errors";
+  return workers.some((worker) => FINISHED_KINDS.has(worker.kind)) ? "finished" : "stopped";
+}
+
+/** One agent's own outcome in the opened batch: a worker's merge said there alone [D175]. */
+function outcome(worker: Worker): string {
+  switch (worker.kind) {
+    case "working":
       return "started working";
-    case "waiting":
-      // A lone worker still waiting says what for ("is waiting for your approval").
-      return many ? "are waiting" : why ? `is ${lowerFirst(why)}` : "is waiting";
-    case "stopped":
-      return "stopped";
-    case "failed":
-      return "failed";
-    case "finished":
+    case "merged":
+      return `finished · ${worker.word}`;
+    case "doneNotMerged":
+      return "finished · Not merged";
+    case "done":
       return "finished";
+    default:
+      return lowerFirst(worker.word);
   }
 }
 
 /**
- * What happened to workers, as one sentence; "started" opens to their Briefs. `why`: what a lone waiting one waits for;
- * `merge`: whether a finished one merged its branch into its parent's [D97].
+ * Workers or subagents started together, one row per batch [D103]: their glyphs and "A and B started working",
+ * "… finished" once all are. Opened, a row each with how it went, which opens that one in its tab [D81, D175].
  */
-export const TeamSentence: FC<{ keep: string; word: Lifecycle; workers: readonly Worker[]; why?: string; merge?: Merge | null }> = ({ keep, word, workers, why, merge }) => {
-  const line = (
-    <>
-      <Glyphs workers={workers} />
-      {/* One line: a sentence too long for it truncates; its detail names every worker. */}
-      <span className="min-w-0 truncate">
-        <Names workers={workers} /> {verb(word, workers, why)}
-        {merge && (
-          <>
-            <span aria-hidden className="text-row-object"> · </span>
-            {merge.ok ? "Merged" : "Not merged"} into {merge.into}
-          </>
-        )}
-      </span>
-    </>
-  );
-  // A start opens to the briefs; with none to show (a CLI's own subagent), it stands alone.
-  if (word !== "started" || !workers.some((worker) => worker.brief)) return <div data-slot="task-row" data-kind={word} className={ROW}>{line}</div>;
+export const BatchRow: FC<{ keep: string; workers: readonly Worker[] }> = ({ keep, workers }) => {
+  const [open, setOpen] = useKept(keep);
+  const { open: show } = useContext(WorkersPanel);
   return (
-    <OpeningLine keep={keep} detail={<Briefs workers={workers} />}>
-      {line}
-    </OpeningLine>
+    <div data-slot="task-row" className="flex min-w-0 flex-col">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cx(ROW, TOGGLE)}>
+        <Glyphs workers={workers} />
+        <span className="min-w-0 truncate">
+          {said(workers)} {batchWords(workers)}
+        </span>
+        <Chevron />
+      </button>
+      {open && (
+        <div className={STEPS}>
+          {workers.map((worker) => (
+            <button key={worker.id} type="button" title={`Open ${worker.name}`} onClick={() => show(worker.id)} className={cx(ROW, TOGGLE)}>
+              <WorkerGlyph id={worker.id} className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">
+                {worker.name} {outcome(worker)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
 

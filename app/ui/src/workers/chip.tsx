@@ -127,9 +127,9 @@ export const WorkerName: FC<{ worker: Worker | null; glyph?: boolean }> = ({ wor
   );
 };
 
-/** The glyphs of a sentence's workers, up front: one each, the first four. */
+/** The glyphs of a sentence's workers, up front: one each, the first four, 2 apart [D103]. */
 export const Glyphs: FC<{ workers: readonly Worker[] }> = ({ workers }) => (
-  <span aria-hidden className="inline-flex shrink-0 items-center gap-1.5">
+  <span aria-hidden className="inline-flex shrink-0 items-center gap-0.5">
     {workers.slice(0, 4).map((worker) => (
       <WorkerGlyph key={worker.id} id={worker.id} className="size-4" />
     ))}

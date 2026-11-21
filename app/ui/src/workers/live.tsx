@@ -14,7 +14,7 @@ import { openTab } from "../shell/tab-store";
 import type { Item, Setup, StepKind, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { WORKERS_LABEL, WorkerList } from "./list";
-import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
+import { BatchRow, StillRunningRow, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
@@ -138,7 +138,8 @@ export function TeamRow({ item }: { item: TeamItem }) {
   const workers = useNamed(item.workers);
   const row =
     item.kind === "team" ? (
-      <TeamSentence keep={item.id} word={item.word} workers={workers} merge={item.merge} />
+      // Only a batch's start draws: how each ended shows in it opened, or in the Workers tab [D103, D175].
+      <BatchRow keep={item.id} workers={workers} />
     ) : item.kind === "team_step" ? (
       <TeamStepRow
         keep={item.id}

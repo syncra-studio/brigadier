@@ -4,12 +4,12 @@ import { threadSource, useThread } from "../daemon";
 import type { Item, Progress, Turn } from "../thread/item";
 import type { Worker, WorkerStateKind } from "./chip";
 import { Opens, TeamCard } from "./live";
-import { type Lifecycle, TeamSentence } from "./sentence";
+import { BatchRow } from "./sentence";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
- * The agent CLI's own subagents [D78, D115]: in the thread only "‹name› started working", then
- * "finished", "failed" or "stopped", each with its glyph; their steps live in the Subagents tab, which the name opens; the
+ * The agent CLI's own subagents [D78, D115]: in the thread one row per batch, "‹A› and ‹B› started working", then
+ * "finished" [D103]; their steps live in the Subagents tab, which each one's row in the opened batch opens; the
  * card counts them. They draw with the workers' parts, as workers that can't be paused or ended from here.
  */
 
@@ -17,12 +17,12 @@ export const SUBAGENTS_LABEL = "Subagents";
 
 type Agent = Extract<Item, { kind: "childAgent" }>;
 
-const STATES: Record<Progress, [WorkerStateKind, string, Lifecycle]> = {
-  pending: ["working", "Waiting", "waiting"],
-  running: ["working", "Working", "started"],
-  done: ["done", "Done", "finished"],
-  failed: ["failed", "Failed", "failed"],
-  cancelled: ["stopped", "Stopped", "stopped"],
+const STATES: Record<Progress, [WorkerStateKind, string]> = {
+  pending: ["working", "Waiting"],
+  running: ["working", "Working"],
+  done: ["done", "Done"],
+  failed: ["failed", "Failed"],
+  cancelled: ["stopped", "Stopped"],
 };
 
 /** A subagent's row as a worker: its row's id (its glyph never changes as its own id comes in), its task as its name. */
@@ -43,12 +43,12 @@ export function useAgents(owner: string): Agent[] {
   return useMemo(() => items.filter((item): item is Agent => item.kind === "childAgent" && !item.hidden), [items]);
 }
 
-/** Its row in the thread: "Find the parser started working", its name opening it in the Subagents tab [D81]. */
-export function SubagentRow({ item }: { item: Agent }) {
+/** A batch's row in the thread: "Find the parser and Count lines started working", each opening in the Subagents tab [D81, D103]. */
+export function SubagentRow({ items }: { items: readonly Agent[] }) {
   const owner = useThread()?.id ?? "";
   return (
     <Opens owner={owner} tab="subagents">
-      <TeamSentence keep={item.id} word={STATES[item.progress][2]} workers={[asSubagent(item)]} />
+      <BatchRow keep={items[0]!.id} workers={items.map(asSubagent)} />
     </Opens>
   );
 }

@@ -105,8 +105,8 @@ impl Thread {
         }
     }
 
-    /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>]`): the sentence
-    /// of how it ended and whether it merged back [D97], in its place.
+    /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>]`): how it ended
+    /// and whether it merged back [D97], in its place.
     pub(super) fn team_result(&mut self, rest: &str, ts: u64) {
         let (how, wid) = rest.split_once(':').unwrap_or(("finished", rest));
         // A worker's ask to its parent is no row in the parent's thread [D121].
@@ -123,6 +123,10 @@ impl Thread {
             "stopped" => "stopped",
             _ => "failed",
         };
-        self.team_row(json!({"kind": "team", "word": word, "workers": [wid], "merge": merge}));
+        // Hidden: its batch's row says it once all are done, its merge there opened or in the
+        // Workers tab [D103, D175]; the row stays as its wake's input.
+        self.team_row(
+            json!({"kind": "team", "word": word, "workers": [wid], "merge": merge, "hidden": true}),
+        );
     }
 }

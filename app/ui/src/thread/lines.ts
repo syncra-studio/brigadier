@@ -11,8 +11,8 @@ export type Line =
   | { type: "setup"; id: string; gap: Gap; setup: NonNullable<Session["setup"]> }
   /** A finished answer's actions, after the turn's rows. */
   | { type: "marks"; id: string; gap: Gap; item: Extract<Item, { kind: "message" }>; turn: Turn | undefined }
-  /** An item: `step` when it is one of an opened group's steps. */
-  | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean }
+  /** An item: `step` when it is one of an opened group's steps; `batch`, subagents started together, its item first. */
+  | { type: "item"; id: string; gap: Gap; item: Item; turn: Turn | undefined; step: boolean; actions?: boolean; batch?: Extract<Item, { kind: "childAgent" }>[] }
   /**
    * A group row. `steps`: what it shows opened, in one capped box; `live`: its running step or thinking, drawn under its line;
    * `members`: every step it holds, which its words say [D755].
@@ -180,6 +180,12 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     if (item.kind === "message" && item.role === "assistant" && item.final) {
       marks = { type: "marks", id: `${item.id}:marks`, gap: "step", item, turn };
+    }
+    // The CLI's subagents started one after another are one row [D103].
+    const last = out.at(-1);
+    if (item.kind === "childAgent" && last?.type === "item" && last.item.kind === "childAgent" && last.item.turnId === item.turnId) {
+      last.batch = [...(last.batch ?? [last.item]), item];
+      continue;
     }
     push({ type: "item", id: item.id, gap: gap(item, false), item, turn, step: false });
   }

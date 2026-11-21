@@ -189,7 +189,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
     case "question":
       return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && (turn?.status === "running" || turn?.held === true || (item.held === true && item.answer === null))} toParent={item.to === "parent"} />;
     case "childAgent":
-      return <SubagentRow item={item} />;
+      return <SubagentRow items={[item]} />;
     case "compaction":
       // Without a reported progress it draws as done (D71): nothing says it is still the live tail.
       return <CompactionDivider progress={item.progress} />;

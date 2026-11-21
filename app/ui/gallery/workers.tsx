@@ -6,7 +6,7 @@ import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import type { Item, Turn } from "../src/thread/item";
 import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
 import { WorkerList } from "../src/workers/list";
-import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
+import { BatchRow, StillRunningRow, TeamStepRow } from "../src/workers/sentence";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
@@ -158,20 +158,14 @@ export function WorkersGallery() {
       </Section>
 
       <Section title="Workers in the parent's thread">
-        <Row name="What happened to them">
+        <Row name="One row per batch">
           <Column>
-            <TeamSentence keep="g-ts-1" word="started" workers={[RETRY]} />
-            <TeamSentence keep="g-ts-2" word="started" workers={[RETRY, PROGRESS]} />
-            <TeamSentence keep="g-ts-3" word="started" workers={[RETRY, PROGRESS, HELD]} />
-            <TeamSentence keep="g-ts-5" word="started" workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!]} />
-            <TeamSentence keep="g-ts-w1" word="waiting" workers={[HELD]} why="Waiting for your approval" />
-            <TeamSentence keep="g-ts-w2" word="waiting" workers={[LIMIT]} why="Waiting for an answer" />
-            <TeamSentence keep="g-ts-w3" word="waiting" workers={[HELD, LIMIT]} />
-            <TeamSentence keep="g-ts-s" word="stopped" workers={[STATES[7]!]} />
-            <TeamSentence keep="g-ts-f" word="failed" workers={[STATES[6]!]} />
-            <TeamSentence keep="g-ts-m" word="finished" workers={[RETRY]} merge={{ into: "main", ok: true }} />
-            <TeamSentence keep="g-ts-nm" word="finished" workers={[PROGRESS]} merge={{ into: "main", ok: false }} />
-            <TeamSentence keep="g-ts-d" word="finished" workers={[STATES[9]!, STATES[10]!]} />
+            <BatchRow keep="g-ts-1" workers={[RETRY]} />
+            <BatchRow keep="g-ts-2" workers={[RETRY, PROGRESS]} />
+            <BatchRow keep="g-ts-3" workers={[RETRY, PROGRESS, HELD]} />
+            <BatchRow keep="g-ts-5" workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!]} />
+            <BatchRow keep="g-ts-f" workers={[STATES[6]!, STATES[9]!]} />
+            <BatchRow keep="g-ts-d" workers={[STATES[9]!, STATES[10]!]} />
           </Column>
         </Row>
         <Row name="What the lead did to them">

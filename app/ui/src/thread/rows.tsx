@@ -12,6 +12,7 @@ import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
 import { PeerRow } from "../peers/live";
 import { TeamRow } from "../workers/live";
+import { SubagentRow } from "../workers/subagents";
 import { LiveMockupRow } from "../mockup/live";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
@@ -48,6 +49,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <SwitchRow item={props.item} />
       ) : props.item.kind === "team" || props.item.kind === "team_step" || props.item.kind === "team_still" ? (
         <TeamRow item={props.item} />
+      ) : props.item.kind === "childAgent" ? (
+        <SubagentRow items={props.batch ?? [props.item]} />
       ) : props.item.kind === "mockup" ? (
         <LiveMockupRow {...props.item} />
       ) : props.item.kind === "peer" ? (
