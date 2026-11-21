@@ -87,6 +87,7 @@ impl Pr {
                     .into_iter()
                     .map(|(r, n)| (r.map(|r| r.to_ascii_lowercase()), n)),
             )
+            .chain(super::create::attached(&self.dir))
             .collect();
         let merged = |k: &Key| (old.iter()).find(|p| key(p) == *k && p["state"] == "merged");
         // Each repository's PRs under its own alias: the session's in its own block.

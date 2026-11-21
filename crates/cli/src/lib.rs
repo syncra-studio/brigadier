@@ -71,6 +71,8 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier browser <session|-> profiles|imports <op> ... [--profile ID] [--json]
        brigadier panel [open on|off | width <px>]
        brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name> | host <project> session <branch>
+       brigadier host <id>|@ (@: the Code Review page; ref = host/owner/name#n; (in): text on stdin) view|files <ref> [kept] | search <query>... | users <ref> <text> | stack|generated <ref> | comment <ref> (in) | comment-edit <ref> <node> (in) | comment-delete <ref> <node> | react <ref> <node> <content> on|off | edit <ref> --title T | --body (in) | reply <ref> <thread> (in) | resolve|unresolve <ref> <thread> | viewed|unviewed <ref> <path> | pending <ref> <path> <line> LEFT|RIGHT [<start>] (in) | review <ref> approve|comment|changes (in) | review-discard <ref>
+       brigadier host <id>|@ reviewers <ref> add|remove|rerequest <login|org/team>... | merge <ref> squash|merge|rebase --head <sha> | automerge <ref> on <method> | off | close|reopen|draft|ready <ref> | host <session> create [--branch NEW] [--commit] [--title T] [--message M] [--draft] [--base B] [--head H] | attach|detach <ref> | compare <base> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
@@ -137,7 +139,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
-    let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT);
+    // `host @`: the Code Review page, which names no folder [D159].
+    let page = cmd == "host" && args.get(1).is_some_and(|a| a == core::host::REVIEW);
+    let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT) && !page;
     for id in ids.iter().filter(checked) {
         let bare = id
             .strip_prefix("@home:")

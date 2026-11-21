@@ -11,6 +11,7 @@ pub mod accounts;
 mod actions;
 mod avatars;
 mod chip;
+mod create;
 mod github;
 mod prs;
 mod review;
@@ -18,8 +19,10 @@ mod search;
 mod timeline;
 mod touched;
 mod view;
+mod write;
 pub use actions::{kept_run, kept_runs};
 pub use chip::{chip, moved_on, opened};
+pub use create::Create;
 pub use github::{clone_github, github_repos};
 pub use prs::kept;
 pub use search::kept_search;
@@ -30,6 +33,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 pub use view::{kept_files, kept_view, tabbed};
+pub use write::{REVIEW, Verdict, qualified};
 
 /// A row's mark with its PRs' `chip` [D261]: a PR it shows failing its checks needs the user
 /// (amber), under a question or a turn at work.
@@ -399,20 +403,23 @@ fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
 /// Where `id`'s reads are kept: a session's folder, or a project's, whose tabs read its repository
 /// before a session there starts and which goes with the project [D279].
 pub fn dir(data: &Path, id: &str) -> std::path::PathBuf {
-    if let Target::Repo(sid, repo) = Target::session(id) {
+    match Target::session(id) {
+        // `@` alone is the Code Review page, never a session's repository (`<id>@<repo>`).
+        _ if id == REVIEW => data.join("review"),
         // A claimed repo's are kept beside its record [D494]; one never claimed has none.
-        return crate::folder::record_of(data, sid, repo)
-            .unwrap_or_else(|_| crate::session_dir(data, sid).join("repos"));
-    }
-    match crate::projects::get(data, id) {
-        Ok(_) => crate::projects::dir(data, id),
-        Err(_) => crate::session_dir(data, id),
+        Target::Repo(sid, repo) => crate::folder::record_of(data, sid, repo)
+            .unwrap_or_else(|_| crate::session_dir(data, sid).join("repos")),
+        _ if crate::projects::get(data, id).is_ok() => crate::projects::dir(data, id),
+        _ => crate::session_dir(data, id),
     }
 }
 
 /// The session's PR facts, from Rust's records and git, never from the client. A project's are
 /// its main checkout's, with no base and nothing it lands [D279].
 pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
+    if id == REVIEW {
+        return Ok(write::page(data));
+    }
     let project = crate::projects::get(data, id).is_ok();
     let target = match project {
         true => Target::Project(id),

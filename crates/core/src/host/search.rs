@@ -4,7 +4,7 @@
 
 use super::prs::mark;
 use super::view::{keep, read_kept};
-use super::{Kind, NO_GH, Pr, Repo, err, gh, graphql};
+use super::{Gh, Kind, NO_GH, Pr, Repo, accounts, err, gh, graphql, setup, token};
 use crate::adapters::iso_ms;
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -40,14 +40,19 @@ impl Pr {
     /// changed first unless it sorts, all in one read [D207]; each kept, with why when the read
     /// failed. With `after` (one query's last `next`), the next page joins the rows kept [D613].
     pub fn search(&self, queries: &[&str], after: Option<&str>) -> io::Result<Vec<Value>> {
-        let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
-            return err("Only GitHub's pull requests can be searched.");
+        // The Code Review page's: no repository, every row named whole [D159].
+        let page = Repo {
+            kind: Kind::GitHub,
+            host: String::new(),
+            path: String::new(),
         };
-        let read = self.search_hosts(repo, queries, after);
-        let home = if self.scope.len() > 1 {
-            repo.at("")
-        } else {
-            repo.clone()
+        let (read, home) = match self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) {
+            _ if self.id == super::REVIEW => (self.search_accounts(queries, after), page),
+            Some(repo) if self.scope.len() > 1 => {
+                (self.search_hosts(repo, queries, after), repo.at(""))
+            }
+            Some(repo) => (self.search_hosts(repo, queries, after), repo.clone()),
+            None => return err("Only GitHub's pull requests can be searched."),
         };
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
@@ -104,6 +109,19 @@ impl Pr {
         let gh = gh(repo, self.account.as_deref()).ok_or(NO_GH)?;
         let repos: Vec<String> = repos.iter().map(|r| format!("repo:{}", r.path)).collect();
         let scope = format!("{} is:pr", repos.join(" "));
+        self.search_as(&gh, repo, &scope, queries, after, many_hosts)
+    }
+
+    /// Every query in one GraphQL read as `gh`, each under `scope`.
+    fn search_as(
+        &self,
+        gh: &Gh,
+        repo: &Repo,
+        scope: &str,
+        queries: &[&str],
+        after: Option<&str>,
+        many_hosts: bool,
+    ) -> Result<(Value, Option<String>), String> {
         let from = after
             .map(|a| format!(", after: {}", json!(a)))
             .unwrap_or_default();
@@ -129,7 +147,7 @@ impl Pr {
             declared.join(", ")
         );
         let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let read = graphql(&gh, repo, &ask, &pairs);
+        let read = graphql(gh, repo, &ask, &pairs);
         if let Ok((data, _)) = &read {
             super::avatars::keep(&self.avatars, data);
         }
@@ -150,36 +168,87 @@ impl Pr {
         {
             hosts.entry(&repo.host).or_default().push(repo);
         }
-        if hosts.len() == 1 {
-            return self.search_host(hosts.values().next().unwrap(), queries, after, false);
+        let keys: Vec<String> = hosts.keys().map(|h| h.to_string()).collect();
+        let read = |host: &str, cursor: Option<&str>, many: bool| {
+            self.search_host(&hosts[host], queries, cursor, many)
+        };
+        each(&keys, read, queries, after)
+    }
+
+    /// The Code Review page's search [D159]: github.com with no repository scope, as every
+    /// account gh keeps there (each by its own token, so `@me` is each one), their rows merged; with
+    /// none whose token gh gives, gh as it runs.
+    fn search_accounts(
+        &self,
+        queries: &[&str],
+        after: Option<&str>,
+    ) -> Result<(Value, Option<String>), String> {
+        const HOST: &str = "github.com";
+        let path = setup::find("gh", &[]).ok_or(NO_GH)?;
+        let path = path.to_string_lossy().into_owned();
+        let mut ghs: BTreeMap<String, Gh> = (accounts::logins(&accounts::GH, HOST).into_iter())
+            .filter_map(|login| {
+                let token = Some(token(&path, HOST, &login)?);
+                Some((
+                    login,
+                    Gh {
+                        path: path.clone(),
+                        token,
+                    },
+                ))
+            })
+            .collect();
+        if ghs.is_empty() {
+            ghs.insert(String::new(), Gh { path, token: None });
+        }
+        let home = Repo {
+            kind: Kind::GitHub,
+            host: HOST.into(),
+            path: String::new(),
+        };
+        let keys: Vec<String> = ghs.keys().cloned().collect();
+        let read = |login: &str, cursor: Option<&str>, many: bool| {
+            self.search_as(&ghs[login], &home, "is:pr", queries, cursor, many)
+        };
+        each(&keys, read, queries, after)
+    }
+}
+
+/// Reads each source (a server, or an account) and merges their pages, one source's place in
+/// each a cursor of the map `after` names [D792]; one source is read as is.
+fn each(
+    keys: &[String],
+    read: impl Fn(&str, Option<&str>, bool) -> Result<(Value, Option<String>), String>,
+    queries: &[&str],
+    after: Option<&str>,
+) -> Result<(Value, Option<String>), String> {
+    {
+        if let [one] = keys {
+            return read(one, after, false);
         }
         let cursors: Value = after
             .map(serde_json::from_str)
             .transpose()
             .map_err(|_| "Refresh pull requests to search every host.".to_string())?
             .unwrap_or_else(|| {
-                hosts
-                    .keys()
-                    .map(|host| (host.to_string(), Value::Null))
+                keys.iter()
+                    .map(|host| (host.clone(), Value::Null))
                     .collect()
             });
         if !cursors.as_object().is_some_and(|map| {
             !map.is_empty()
                 && map.iter().all(|(host, cursor)| {
-                    hosts.contains_key(host.as_str()) && (cursor.is_null() || cursor.is_string())
+                    keys.contains(host) && (cursor.is_null() || cursor.is_string())
                 })
         }) {
             return Err("Refresh pull requests to search every host.".into());
         }
         let mut reads = Vec::new();
-        for (host, repos) in &hosts {
-            let Some(cursor) = cursors.get(*host) else {
+        for host in keys {
+            let Some(cursor) = cursors.get(host) else {
                 continue;
             };
-            reads.push((
-                *host,
-                self.search_host(repos, queries, cursor.as_str(), true),
-            ));
+            reads.push((host.as_str(), read(host, cursor.as_str(), true)));
         }
         // Keep the previous complete page on failure; never advance another host past missing rows.
         let mut data = json!({});
@@ -230,15 +299,18 @@ fn merge(lists: &[(&str, &Value)], query: &str, cursors: &Value) -> Value {
     });
     let mut next = cursors.clone();
     let mut used = BTreeMap::new();
-    let nodes: Vec<Value> = rows
-        .into_iter()
-        .take(PAGE as usize)
-        .map(|(host, _, pr, cursor)| {
-            next[host] = cursor.clone();
-            *used.entry(host).or_insert(0) += 1;
-            pr.clone()
-        })
-        .collect();
+    let mut nodes: Vec<Value> = Vec::new();
+    // A PR two accounts both find is one row; its place still moves on in each.
+    for (host, _, pr, cursor) in rows {
+        if nodes.len() == PAGE as usize {
+            break;
+        }
+        next[host] = cursor.clone();
+        *used.entry(host).or_insert(0) += 1;
+        if nodes.iter().all(|n| n["url"] != pr["url"]) {
+            nodes.push(pr.clone());
+        }
+    }
     for (host, list) in lists {
         let count = list["nodes"]
             .as_array()
@@ -292,7 +364,12 @@ fn sort_key(pr: &Value, by: &str, rank: usize) -> u64 {
 
 /// A found PR's row: its state, title, number, author, size and when it last changed [D613].
 fn row(pr: &Value) -> Value {
-    json!({"number": pr["number"], "title": pr["title"], "url": pr["url"],
+    // `host/owner/name#n`, as the Code Review page and every write name it [D159].
+    let named = (pr["url"].as_str())
+        .and_then(|u| u.strip_prefix("https://"))
+        .and_then(|u| u.split_once("/pull/"))
+        .map(|(repo, n)| format!("{repo}#{n}"));
+    json!({"number": pr["number"], "ref": named, "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "draft": pr["isDraft"],
         "author": pr["author"]["login"], "additions": pr["additions"], "deletions": pr["deletions"],
         "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),

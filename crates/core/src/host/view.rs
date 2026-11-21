@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 /// What the page reads beside the list's fields: GitHub's Conversation, its review threads and the
 /// timeline events it draws [D260]; its comments as `talk`, apart from the fields' count of them.
 // shortcut: its last 100 commits, comments and timeline items, 50 reviews and 50 threads, until a PR has more.
-const PAGE: &str = "body createdAt author { login avatarUrl url } repository { url } headRef { name } labels(first: 20) { nodes { name } } additions deletions changedFiles mergeStateStatus reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login avatarUrl } ... on Team { name } ... on Bot { login avatarUrl } } } } latestReviews(first: 20) { nodes { state author { login avatarUrl } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } talk: comments(last: 100) { nodes { databaseId body createdAt url isMinimized minimizedReason author { login avatarUrl __typename } } } reviews(last: 50) { nodes { databaseId state body submittedAt url isMinimized minimizedReason author { login avatarUrl __typename } } } reviewThreads(last: 50) { nodes { id isResolved isOutdated comments(first: 50) { nodes { databaseId path line originalLine body createdAt url author { login avatarUrl __typename } pullRequestReview { databaseId } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, REVIEW_DISMISSED_EVENT, DEPLOYED_EVENT, CROSS_REFERENCED_EVENT, MERGED_EVENT, HEAD_REF_DELETED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReviewRequestedEvent { id createdAt actor { login avatarUrl __typename } requestedReviewer { ... on User { login avatarUrl } ... on Team { name } ... on Bot { login avatarUrl } } } ... on ReviewDismissedEvent { id createdAt actor { login avatarUrl __typename } previousReviewState review { databaseId author { login avatarUrl } } pullRequestCommit { commit { oid } } } ... on DeployedEvent { id createdAt actor { login avatarUrl __typename } deployment { environment latestStatus { environmentUrl logUrl } } } ... on CrossReferencedEvent { id createdAt actor { login avatarUrl __typename } source { ... on PullRequest { number title url state isDraft } ... on Issue { number title url state } } } ... on MergedEvent { id createdAt actor { login avatarUrl __typename } commit { oid } mergeRefName } ... on HeadRefDeletedEvent { id createdAt actor { login avatarUrl __typename } headRefName } ... on ClosedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReopenedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReadyForReviewEvent { id createdAt actor { login avatarUrl __typename } } ... on ConvertToDraftEvent { id createdAt actor { login avatarUrl __typename } } } }";
+const PAGE: &str = "id viewerCanUpdate viewerDidAuthor reactionGroups { content viewerHasReacted reactors { totalCount } } autoMergeRequest { mergeMethod enabledBy { login } } pending: reviews(last: 1, states: PENDING) { nodes { id comments { totalCount } } } body createdAt author { login avatarUrl url } repository { url } headRef { name } labels(first: 20) { nodes { name } } additions deletions changedFiles mergeStateStatus reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login avatarUrl } ... on Team { name } ... on Bot { login avatarUrl } } } } latestReviews(first: 20) { nodes { state author { login avatarUrl } } } history: commits(last: 100) { totalCount nodes { commit { oid messageHeadline committedDate author { name user { login } } } } } talk: comments(last: 100) { nodes { id viewerCanUpdate viewerCanDelete reactionGroups { content viewerHasReacted reactors { totalCount } } databaseId body createdAt url isMinimized minimizedReason author { login avatarUrl __typename } } } reviews(last: 50) { nodes { id viewerCanUpdate reactionGroups { content viewerHasReacted reactors { totalCount } } databaseId state body submittedAt url isMinimized minimizedReason author { login avatarUrl __typename } } } reviewThreads(last: 50) { nodes { id isResolved isOutdated comments(first: 50) { nodes { id viewerCanUpdate viewerCanDelete reactionGroups { content viewerHasReacted reactors { totalCount } } databaseId path line originalLine body createdAt url author { login avatarUrl __typename } pullRequestReview { databaseId state } } } } } timelineItems(last: 100, itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_REQUESTED_EVENT, REVIEW_DISMISSED_EVENT, DEPLOYED_EVENT, CROSS_REFERENCED_EVENT, MERGED_EVENT, HEAD_REF_DELETED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT]) { nodes { __typename ... on HeadRefForcePushedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReviewRequestedEvent { id createdAt actor { login avatarUrl __typename } requestedReviewer { ... on User { login avatarUrl } ... on Team { name } ... on Bot { login avatarUrl } } } ... on ReviewDismissedEvent { id createdAt actor { login avatarUrl __typename } previousReviewState review { databaseId author { login avatarUrl } } pullRequestCommit { commit { oid } } } ... on DeployedEvent { id createdAt actor { login avatarUrl __typename } deployment { environment latestStatus { environmentUrl logUrl } } } ... on CrossReferencedEvent { id createdAt actor { login avatarUrl __typename } source { ... on PullRequest { number title url state isDraft } ... on Issue { number title url state } } } ... on MergedEvent { id createdAt actor { login avatarUrl __typename } commit { oid } mergeRefName } ... on HeadRefDeletedEvent { id createdAt actor { login avatarUrl __typename } headRefName } ... on ClosedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReopenedEvent { id createdAt actor { login avatarUrl __typename } } ... on ReadyForReviewEvent { id createdAt actor { login avatarUrl __typename } } ... on ConvertToDraftEvent { id createdAt actor { login avatarUrl __typename } } } }";
 
 /// `other`: another repository's `owner/name`, checked to be one (`slug`) [D213]. `what`: `json`
 /// for the page, `files.json` for its Files changed [D231].
@@ -91,7 +91,7 @@ impl Pr {
         let (repo, gh) = self.gh_repo(other)?;
         let repo = &repo;
         let query = format!(
-            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
+            "query($owner: String!, $name: String!) {{ viewer {{ login }} repository(owner: $owner, name: $name) {{ pullRequest(number: {number}) {{ ...F {PAGE} }} }} }} fragment F on PullRequest {{ {FIELDS} }}"
         );
         let (data, partial) = super::graphql(&gh, repo, &query, &[]).map_err(io::Error::other)?;
         super::avatars::keep(&self.avatars, &data);
@@ -111,7 +111,13 @@ impl Pr {
             r["state"] != "PENDING" && r["body"].as_str().is_some_and(|b| !b.trim().is_empty())
         });
         let threads = nodes(&pr["reviewThreads"]);
-        let lines = (threads.iter()).flat_map(|t| nodes(&t["comments"]));
+        // A line comment carries its thread, which Reply and Resolve name [D166].
+        let lines = (threads.iter()).flat_map(|t| {
+            nodes(&t["comments"]).into_iter().map(|mut c| {
+                (c["thread"], c["resolved"]) = (t["id"].clone(), t["isResolved"].clone());
+                c
+            })
+        });
         let mut comments: Vec<Value> = (nodes(&pr["talk"]).iter().map(|c| ("", c.clone())))
             .chain(lines.map(|c| ("r", c)))
             .chain(said.map(|c| ("v", c.clone())))
@@ -123,7 +129,12 @@ impl Pr {
                     // GitHub's own mark for an app's account: its Bot label.
                     "bot": bot(&c["author"]),
                     // Hidden as GitHub hides it ("outdated", "resolved"…), shown on a click.
-                    "minimized": hidden(&c)})
+                    "minimized": hidden(&c),
+                    // What the page's edit, delete, reactions, reply and resolve name [D165, D166].
+                    "node": c["id"], "canEdit": c["viewerCanUpdate"] == true,
+                    "canDelete": c["viewerCanDelete"] == true, "reactions": reactions(&c),
+                    "thread": c["thread"], "resolved": c["resolved"],
+                    "pending": c["pullRequestReview"]["state"] == "PENDING"})
             })
             .collect();
         comments.sort_by_key(|c| c["atMs"].as_u64());
@@ -194,6 +205,15 @@ impl Pr {
         }
         let view = json!({
             "id": number.to_string(), "number": number, "title": pr["title"], "url": pr["url"],
+            "ref": format!("{}/{}#{number}", repo.host, repo.path), "node": pr["id"],
+            "viewer": data["viewer"]["login"], "canEdit": pr["viewerCanUpdate"] == true,
+            "authored": pr["viewerDidAuthor"] == true, "reactions": reactions(pr),
+            // The viewer's review not yet sent, with its line comments [D166].
+            "pending": pr["pending"]["nodes"].get(0).map(|r| json!({"id": r["id"],
+                "count": r["comments"]["totalCount"]})),
+            "autoMerge": pr["autoMergeRequest"].as_object().map(|a| json!({
+                "method": a["mergeMethod"].as_str().map(str::to_lowercase),
+                "by": a["enabledBy"]["login"]})),
             "body": pr["body"], "host": repo.name(), "repo": repo.path, "state": state, "status": status,
             "labels": nodes(&pr["labels"]).iter().map(|l| l["name"].clone()).collect::<Vec<_>>(),
             "blockers": blocked.then(|| json!({"failedChecks": failed, "changesBy": changes_by,
@@ -249,6 +269,21 @@ impl Pr {
         for page in pages {
             files.extend(page?.iter().map(file));
         }
+        // Each file's Viewed mark, the viewer's own [D166]; none when it can't be read.
+        // shortcut: the first 100 files' marks, until a PR's review needs more.
+        let query = format!(
+            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ pullRequest(number: {number}) {{ files(first: 100) {{ nodes {{ path viewerViewedState }} }} }} }} }}"
+        );
+        if let Ok((data, _)) = super::graphql(&gh, &repo, &query, &[]) {
+            let marks = nodes(&data["repository"]["pullRequest"]["files"]);
+            for f in files.iter_mut() {
+                let mark = marks.iter().find(|m| m["path"] == f["path"]);
+                f["viewed"] = mark
+                    .and_then(|m| m["viewerViewedState"].as_str())
+                    .map(str::to_lowercase)
+                    .into();
+            }
+        }
         let sum = |key: &str| files.iter().filter_map(|f| f[key].as_u64()).sum::<u64>();
         let view = json!({"scope": "branch", "base": page["base"], "head": page["head"],
             "insertions": sum("insertions"), "deletions": sum("deletions"),
@@ -257,6 +292,104 @@ impl Pr {
         keep(&kept_path(&self.dir, other, number, "files.json"), &view);
         Ok(view)
     }
+}
+
+impl Pr {
+    /// People and teams `text` finds who can review PR `at`'s repository, for Request reviewers and
+    /// @mentions [D165]. Teams only where the owner is an organization.
+    pub fn users(&self, at: &str, text: &str) -> io::Result<Value> {
+        let (repo, gh) = self.gh_repo(Some(at))?;
+        let query = "query($owner: String!, $name: String!, $q: String!) { repository(owner: $owner, name: $name) { assignableUsers(query: $q, first: 20) { nodes { login name avatarUrl } } } organization(login: $owner) { teams(query: $q, first: 10) { nodes { slug name } } } }";
+        let (data, _) =
+            super::graphql(&gh, &repo, query, &[("q", text)]).map_err(io::Error::other)?;
+        super::avatars::keep(&self.avatars, &data);
+        let owner = repo.path.split('/').next().unwrap_or("");
+        let users = nodes(&data["repository"]["assignableUsers"])
+            .into_iter()
+            .map(|u| json!({"login": u["login"], "name": u["name"]}));
+        let teams = nodes(&data["organization"]["teams"]).into_iter().map(|t| {
+            json!({"login": format!("{owner}/{}", t["slug"].as_str().unwrap_or("")),
+                "name": t["name"], "team": true})
+        });
+        Ok(json!(users.chain(teams).collect::<Vec<_>>()))
+    }
+
+    /// PR `at#number`'s stack [D165]: the open PR its base is the head of, and the open ones built
+    /// on its head.
+    pub fn stack(&self, at: &str, number: u64) -> io::Result<Value> {
+        let (repo, gh) = self.gh_repo(Some(at))?;
+        let query = format!(
+            "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ pullRequest(number: {number}) {{ headRefName baseRefName }} }} }}"
+        );
+        let (data, partial) = super::graphql(&gh, &repo, &query, &[]).map_err(io::Error::other)?;
+        let pr = &data["repository"]["pullRequest"];
+        let (Some(head), Some(base)) = (pr["headRefName"].as_str(), pr["baseRefName"].as_str())
+        else {
+            return err(partial.unwrap_or_else(|| format!("#{number} couldn't be read.")));
+        };
+        const ROW: &str = "nodes { number title url state isDraft headRefName baseRefName }";
+        let query = format!(
+            "query($owner: String!, $name: String!, $head: String!, $base: String!) {{ repository(owner: $owner, name: $name) {{ below: pullRequests(headRefName: $base, states: OPEN, first: 5) {{ {ROW} }} above: pullRequests(baseRefName: $head, states: OPEN, first: 20) {{ {ROW} }} }} }}"
+        );
+        let (data, _) = super::graphql(&gh, &repo, &query, &[("head", head), ("base", base)])
+            .map_err(io::Error::other)?;
+        let row = |p: Value| {
+            json!({"ref": format!("{at}#{}", p["number"]), "number": p["number"],
+            "title": p["title"], "url": p["url"], "state": state_of(&p),
+            "head": p["headRefName"], "base": p["baseRefName"]})
+        };
+        let list = |key: &str| {
+            nodes(&data["repository"][key])
+                .into_iter()
+                .map(row)
+                .collect::<Vec<_>>()
+        };
+        Ok(json!({"below": list("below"), "above": list("above")}))
+    }
+
+    /// The paths PR `at#number`'s head marks `linguist-generated` in its `.gitattributes`, for
+    /// Changes' "filter generated" [D166]; none without one.
+    pub fn generated(&self, at: &str, number: u64) -> io::Result<Value> {
+        let (repo, gh) = self.gh_repo(Some(at))?;
+        let mut command = gh.command();
+        command.args([
+            "api",
+            "--hostname",
+            &repo.host,
+            "-H",
+            "Accept: application/vnd.github.raw",
+        ]);
+        command.arg(format!(
+            "repos/{}/contents/.gitattributes?ref=refs/pull/{number}/head",
+            repo.path
+        ));
+        let out = setup::run(&mut command, GH_SECS).map_err(io::Error::other)?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        if !out.status.success() {
+            return match failed(&out) {
+                why if why.contains("404") || why.contains("Not Found") => Ok(json!([])),
+                why => err(why),
+            };
+        }
+        let marked = (text.lines()).filter_map(|l| {
+            let mut words = l.split_whitespace();
+            let path = words.next().filter(|p| !p.starts_with('#'))?;
+            let on = words.any(|w| w == "linguist-generated" || w == "linguist-generated=true");
+            on.then(|| path.to_string())
+        });
+        Ok(json!(marked.collect::<Vec<_>>()))
+    }
+}
+
+/// A PR's, comment's or review's reactions that anyone gave, and whether the viewer did [D165].
+fn reactions(on: &Value) -> Vec<Value> {
+    (on["reactionGroups"].as_array().into_iter().flatten())
+        .filter(|g| g["reactors"]["totalCount"].as_u64().unwrap_or(0) > 0)
+        .map(|g| {
+            json!({"content": g["content"], "count": g["reactors"]["totalCount"],
+            "mine": g["viewerHasReacted"]})
+        })
+        .collect()
 }
 
 /// One check as the tab shows it.

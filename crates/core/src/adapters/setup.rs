@@ -65,7 +65,8 @@ pub fn refresh() -> Login {
 pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
     // A test instance's gh stand-in (a guard that fakes writes); never the real app's data folder.
     if bin == "gh"
-        && std::env::var_os("BRIGADIER_DATA").is_some_and(|d| Path::new(&d) != crate::default_data_dir())
+        && std::env::var_os("BRIGADIER_DATA")
+            .is_some_and(|d| Path::new(&d) != crate::default_data_dir())
         && let Some(gh) = std::env::var_os("BRIGADIER_GH")
     {
         return Some(gh.into());

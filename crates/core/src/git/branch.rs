@@ -114,6 +114,41 @@ pub fn switch(checkout: &Checkout, name: &str, remote: bool, stop: &AtomicBool) 
     }
 }
 
+/// Commits everything changed in the folder as `message` [D168]; false when there was nothing.
+pub fn commit_all(checkout: &Checkout, message: &str, stop: &AtomicBool) -> io::Result<bool> {
+    let changed = read(&checkout.root, &["status", "--porcelain"], stop)?;
+    if changed.is_empty() {
+        return Ok(false);
+    }
+    git(checkout, &["add", "-A"], stop)?;
+    git(checkout, &["commit", "--quiet", "-m", message], stop)?;
+    Ok(true)
+}
+
+/// Pushes `branch` to `remote` when it has no upstream or is ahead of it, setting it as the
+/// upstream [D168]; false when there was nothing to push.
+pub fn push(
+    checkout: &Checkout,
+    remote: &str,
+    branch: &str,
+    stop: &AtomicBool,
+) -> io::Result<bool> {
+    let ahead = read(
+        &checkout.root,
+        &["rev-list", "--count", "@{upstream}..HEAD"],
+        stop,
+    );
+    if ahead.is_ok_and(|n| String::from_utf8_lossy(&n).trim() == "0") {
+        return Ok(false);
+    }
+    check_name(checkout, branch)?;
+    if remote.starts_with('-') {
+        return err(format!("No remote {remote}."));
+    }
+    git(checkout, &["push", "--quiet", "-u", remote, branch], stop)?;
+    Ok(true)
+}
+
 /// Makes branch `name` from `from` (else what's checked out) and switches the folder to it.
 pub fn create(
     checkout: &Checkout,
