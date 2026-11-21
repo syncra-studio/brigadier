@@ -314,7 +314,8 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   const danger = "remove project".includes(words);
   return (
     <>
-      <div className="flex shrink-0 items-center px-6 py-4">
+      {/* The list's gutter and padding, so Open on GitHub ends where the rows do, scrolling or not [D183]. */}
+      <div className="scroll-gutter flex shrink-0 items-center overflow-hidden px-5 py-4">
         <div className="flex max-w-60 min-w-24 flex-1">
           <SearchField label="Search settings…" value={text} onChange={setText} />
         </div>
@@ -326,7 +327,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
           </Button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+      <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 pb-6">
         <ul aria-label="General">
           {shown.map(([id, , row]) => (
             <Keyed key={id}>{row}</Keyed>
