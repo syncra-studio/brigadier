@@ -2,7 +2,6 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "../components/button";
 import { CodeEditor } from "../components/code-editor";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -15,13 +14,10 @@ import { showToast } from "../components/toast";
 import { ProfileDisc } from "../browser/profile-mark";
 import { useDefaultProfile, useProfiles } from "../browser/profiles";
 import { useDaemon } from "../daemon";
-import { ArrowUpRight, ChevronDown, Copy, FolderOpen, Plus, Trash } from "../icons";
+import { ArrowUpRight, Copy, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
 import { SearchField } from "../settings/archived-toolbar";
-import { openSettings } from "../settings/shell";
-import type { Item, Plugins, Scope } from "../settings/plugins";
-import { PluginMark } from "../settings/plugins-marks";
 import { ProjectBadge } from "../sidebar/row";
 import { shortPath } from "./add-project";
 import { type Project, setProject } from "./projects";
@@ -29,8 +25,8 @@ import { openRemoveProject, plural } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
 
 /*
- * A project's page, its settings [D176 D780 D782]: everything set for one project in one list, then Plugins, open
- * by default and collapsible; search finds across the page [D785 D874]. Each row saves as it changes [D30], Rust's record holding it (nothing written into the repo, D211); a refusal shows its reason
+ * A project's page, its settings [D176 D780 D782]: everything set for one project in one list, no Plugins (Settings › Plugins, D185);
+ * search finds across the page [D785 D874]. Each row saves as it changes [D30], Rust's record holding it (nothing written into the repo, D211); a refusal shows its reason
  * under its row. Remove project is last, apart.
  */
 
@@ -44,9 +40,6 @@ export type SettingsSource = {
   accounts(id: string, local: boolean): Promise<GithubAccounts>;
   /** A folder of repositories' repositories, by path from its top [D494]. */
   repos(folder: string): Promise<string[]>;
-  /** The Plugins library, and a change to where one is on [D2043]. */
-  plugins(): Promise<Plugins>;
-  setScope(key: string, scope: Scope, on: boolean): Promise<Plugins>;
 };
 
 export const daemonSettings: SettingsSource = {
@@ -55,8 +48,6 @@ export const daemonSettings: SettingsSource = {
   save: setProject,
   accounts: (id, local) => run(["projects", "accounts", id, ...(local ? ["--local"] : [])]) as Promise<GithubAccounts>,
   repos: async (folder) => ((await run(["projects", "inspect", folder])).check?.repos ?? []) as string[],
-  plugins: () => run(["plugins"]) as Promise<Plugins>,
-  setScope: (key, scope, on) => run(["plugins", "set", key, JSON.stringify({ scope, on })]) as Promise<Plugins>,
 };
 
 /**
@@ -119,18 +110,12 @@ const Profile = ({ name, hue, before = "" }: { name: string; hue: number; before
   </span>
 );
 
-/** Whether a library item is on in this project: on everywhere, or here by name. */
-const onHere = (item: Item, id: string) => item.on && ("all" in item.scope || item.scope.projects.includes(id));
-
 export function ProjectSettings({ project, tone = 0, source }: { project: Project; tone?: number; source: SettingsSource }) {
-  const [pluginsOpen, setPluginsOpen] = useState(true);
   const [text, setText] = useState("");
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [github, setGithub] = useState<GithubAccounts | null>(null);
   const [checking, setChecking] = useState(true);
   const [repos, setRepos] = useState<string[] | null>(null);
-  const [plugins, setPlugins] = useState<Plugins | null>(null);
-  const [keptPlugins, setKeptPlugins] = useState<Set<string>>(() => new Set());
   const [files, setFiles] = useState(project.include);
   const [setup, setSetup] = useState(project.setup);
   useEffect(() => setFiles(project.include), [project.include.join("\n")]);
@@ -145,7 +130,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
     let live = true;
     setGithub(null);
     setRepos(null);
-    setErrors((now) => ({ ...now, repos: null, plugins: null }));
+    setErrors((now) => ({ ...now, repos: null }));
     const failed = (field: string) => (cause: unknown) => live && setErrors((now) => ({ ...now, [field]: errorText(cause) }));
     void source.accounts(project.id, true).then((reply) => live && setGithub((now) => now ?? reply), () => {});
     void source
@@ -153,7 +138,6 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
       .then((reply) => live && setGithub(reply), () => {})
       .finally(() => live && setChecking(false));
     if (folderKind) void source.repos(project.folder).then((list) => live && setRepos(list), failed("repos"));
-    void source.plugins().then((page) => live && setPlugins(page), failed("plugins"));
     return () => {
       live = false;
     };
@@ -182,26 +166,10 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
       setErrors((now) => ({ ...now, folder: errorText(cause) }));
     }
   };
-  // On here or not: from everywhere, it stays on in every other project.
-  const scopeHere = (item: Item, on: boolean) => {
-    const others = plugins!.projects.map((each) => each.id).filter((each) => each !== project.id);
-    const now = !item.on ? [] : "all" in item.scope ? [...others, project.id] : item.scope.projects;
-    const scope: Scope = on ? { projects: [...now.filter((each) => each !== project.id), project.id] } : { projects: now.filter((each) => each !== project.id) };
-    // A switch never removes its row until this project page is left [D871].
-    setKeptPlugins((kept) => new Set(kept).add(item.key));
-    setPlugins({ ...plugins!, items: plugins!.items.map((each) => (each.key === item.key ? { ...each, scope, on: item.on || on } : each)) });
-    setErrors((was) => ({ ...was, [item.key]: null }));
-    source.setScope(item.key, scope, item.on || on).then(setPlugins, (cause) => {
-      setPlugins({ ...plugins! });
-      setErrors((was) => ({ ...was, [item.key]: errorText(cause) }));
-    });
-  };
-
   const profiles = useProfiles();
   const fallback = useDefaultProfile();
   const account = project.github_account ?? "";
   const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : known ? "Can see this repository" : "Can't see this repository");
-  const library = plugins?.items.filter((item) => onHere(item, project.id) || ("projects" in item.scope && item.scope.projects.includes(project.id)) || item.found?.includes(project.id) || keptPlugins.has(item.key)) ?? [];
 
   // [key, words searched, row].
   const rows: [string, string, ReactNode][] = [
@@ -340,29 +308,9 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
       </Row>,
     ],
   ];
-  const pluginRows = library.map((item): [string, string, ReactNode] => [
-    item.key,
-    `${item.name} ${item.description}`,
-    <li key={item.key} className="border-b border-divider">
-      <div className="flex min-h-14 items-center gap-3 px-2 py-2.5 text-sm">
-        <PluginMark item={{ ...item, logo: item.catalog }} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium text-foreground">
-            {item.name} <span className="font-normal text-muted-foreground">· {item.kind === "skill" ? "Skill" : "MCP server"}</span>
-          </span>
-          <span className="truncate text-xs text-muted-foreground">{item.description || item.detail}</span>
-          <ErrorLine error={errors[item.key]} />
-        </div>
-        <span className="shrink-0 text-xs text-muted-foreground">{"all" in item.scope ? "In every project" : onHere(item, project.id) ? "Only some projects" : ""}</span>
-        <Switch aria-label={`${item.name} in ${project.name}`} checked={onHere(item, project.id)} onCheckedChange={(on) => scopeHere(item, on)} />
-      </div>
-    </li>,
-  ]);
-
   const words = text.trim().toLowerCase();
   const matches = ([, searched]: [string, string, ReactNode]) => searched.toLowerCase().includes(words);
   const shown = rows.filter(matches);
-  const shownPlugins = pluginRows.filter(matches);
   const danger = "remove project".includes(words);
   return (
     <>
@@ -384,29 +332,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
             <Keyed key={id}>{row}</Keyed>
           ))}
         </ul>
-        {(!words || shownPlugins.length > 0) && (
-          <Collapsible open={words ? true : pluginsOpen} onOpenChange={setPluginsOpen} className="pt-2">
-            <CollapsibleTrigger className="group flex h-8 cursor-pointer items-center gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:focus-ring">
-              Plugins
-              <ChevronDown className="size-icon-xs group-data-panel-closed:-rotate-90" />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <ul aria-label="Plugins">
-                {shownPlugins.map(([id, , row]) => (
-                  <Keyed key={id}>{row}</Keyed>
-                ))}
-                <li className="flex min-h-12 items-center gap-3 px-2 text-xs text-muted-foreground">
-                  {plugins !== null && library.length === 0 && <span>No plugins for this project yet.</span>}
-                  <ErrorLine error={errors.plugins} />
-                  <Button variant="link" size="inline" className="ms-auto" onClick={() => openSettings("plugins")}>
-                    Manage all plugins in Settings › Plugins
-                  </Button>
-                </li>
-              </ul>
-            </CollapsibleContent>
-          </Collapsible>
-        )}
-        {shown.length === 0 && shownPlugins.length === 0 && !danger && <EmptyState variant="centered" title="No matching settings" detail="Try other words." className="pt-24" />}
+        {shown.length === 0 && !danger && <EmptyState variant="centered" title="No matching settings" detail="Try other words." className="pt-24" />}
         {danger && (
           // Apart, last: nothing above it can lose anything [D782].
           <section className="mt-10 rounded-control border border-destructive-border p-1">

@@ -23,8 +23,6 @@ const fake = (reply: GithubAccounts): SettingsSource => ({
   check: async () => ({ kind: "invalid", reason: "" }),
   save: async () => {},
   repos: async () => [],
-  plugins: async () => ({ items: [], projects: [] }),
-  setScope: async () => ({ items: [], projects: [] }),
   // The local read at once, the probed one a moment later, as Rust answers.
   accounts: (_, local) => (local ? Promise.resolve({ ...reply, auto: null, logins: reply.logins.map((each) => ({ ...each, sees: null })) }) : new Promise((done) => setTimeout(() => done(reply), 800))),
 });
