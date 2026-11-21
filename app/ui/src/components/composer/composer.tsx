@@ -50,7 +50,8 @@ export function ComposerTools({ className, ...props }: ComponentProps<"div">) {
 /** The + button that opens the add menu (Files and more). */
 export function PlusButton(props: Omit<TooltipIconButtonProps, "tooltip" | "size" | "children">) {
   return (
-    <TooltipIconButton tooltip="Add files and more" size="icon-md" {...props}>
+    // A white + [D207].
+    <TooltipIconButton tooltip="Add files and more" look="bar" {...props}>
       <Plus />
     </TooltipIconButton>
   );
