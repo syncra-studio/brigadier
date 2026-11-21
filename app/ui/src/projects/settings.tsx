@@ -15,7 +15,7 @@ import { showToast } from "../components/toast";
 import { ProfileDisc } from "../browser/profile-mark";
 import { useDefaultProfile, useProfiles } from "../browser/profiles";
 import { useDaemon } from "../daemon";
-import { ChevronDown, Copy, FolderOpen, Plus, Trash } from "../icons";
+import { ArrowUpRight, ChevronDown, Copy, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
 import { SearchField } from "../settings/archived-toolbar";
@@ -366,10 +366,17 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
   const danger = "remove project".includes(words);
   return (
     <>
-      <div className="flex shrink-0 px-6 py-4">
+      <div className="flex shrink-0 items-center px-6 py-4">
         <div className="flex max-w-60 min-w-24 flex-1">
           <SearchField label="Search settings…" value={text} onChange={setText} />
         </div>
+        {/* Its repository's page, only when it's on GitHub [D183]. */}
+        {github?.github && github.url && (
+          <Button variant="outline" size="sm" className="ms-auto" onClick={() => window.open(github.url)}>
+            <ArrowUpRight />
+            Open on GitHub
+          </Button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
         <ul aria-label="General">
