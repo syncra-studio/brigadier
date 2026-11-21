@@ -105,7 +105,7 @@ export function PullRequestsNav({ current }: { current: string }) {
   );
   return (
     <>
-      <div className="shrink-0 pt-0.25">
+      <div className="shrink-0">
         <NavHeader
           title="Pull Requests"
           actions={

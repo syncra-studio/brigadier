@@ -81,11 +81,9 @@ export function SettingsNav({ current }: { current: string }) {
   };
   return (
     <>
-      {/* At the card's top, its title on the app sidebar's name line [D48]. */}
-      <div className="shrink-0 pt-0.25">
-        <NavHeader title="Settings" />
-      </div>
-      <div className="px-2 pb-2">
+      {/* Its title on the app sidebar's name line, and its rows on the sessions' insets, so a swap moves nothing [D48 D227]. */}
+      <NavHeader title="Settings" />
+      <div className="ps-2 pe-2.5 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
           <input
@@ -129,8 +127,8 @@ export function SettingsNav({ current }: { current: string }) {
           )}
         </label>
       </div>
-      {/* The scrollbar keeps its room; its last 2px, the thumb's clear border, go under the panel's clipped edge, so rows end 8px in as the old app's did. */}
-      <div className="scroll-edge-fade edge-fade-settings-nav scroll-gutter -me-0.5 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2">
+      {/* The scrollbar keeps its room, as the sessions' list's. */}
+      <div className="scroll-edge-fade edge-fade-settings-nav scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pt-1 pb-2">
         {results ? (
           results.length === 0 ? (
             <EmptyState title="No settings match." />
@@ -183,7 +181,7 @@ export function SettingsNav({ current }: { current: string }) {
         )}
       </div>
       {/* Back to the app, at the foot where the app's sidebar keeps Settings, leaving the title on the name line [D48]. */}
-      <div className="shrink-0 px-2 pb-2">
+      <div className="shrink-0 ps-2 pe-2.5 pb-2">
         <NavRow onClick={closeSettings}>
           <ArrowLeft className="text-quiet-foreground" />
           <span className="truncate">Back to app</span>

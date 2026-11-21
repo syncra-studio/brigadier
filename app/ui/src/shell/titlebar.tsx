@@ -166,7 +166,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is hidden; Settings holds the panel open, so it has no toggle [D34 D35 D926].
+  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is hidden; Settings holds the panel open, so its toggle hides [D34 D35 D926 D225].
   return (
     <>
       {chip && (
@@ -176,12 +176,11 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       )}
       <div className="titlebar-nav app-no-drag fixed z-20 flex items-center gap-0.5">
         <TitlebarTips>
-          {canToggle && (
-            // Its name says what a click does; aria-expanded would draw an open fill.
-            <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
-              {open ? <Sidebar /> : <SidebarFloatingLeft />}
-            </TooltipIconButton>
-          )}
+          {/* Its name says what a click does; aria-expanded would draw an open fill. Settings keeps its room, hidden, so Back
+              and Forward stay put going in and out [D225]. */}
+          <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" className={canToggle ? undefined : "invisible"} onClick={toggleSidebar}>
+            {open ? <Sidebar /> : <SidebarFloatingLeft />}
+          </TooltipIconButton>
           <div className="titlebar-history flex">
             <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
               <ArrowLeft />

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
+import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { NavList, NavRow, NavSection } from "../components/nav";
@@ -61,6 +62,7 @@ export function AppSidebar({
   onNewSession,
   onNewChat,
   rail,
+  nav,
   storeKey = "sidebar",
 }: {
   /** undefined until the first list arrives. */
@@ -78,6 +80,8 @@ export function AppSidebar({
   onNewChat: () => void;
   /** The strip, given its squares and lists, which only the sidebar has the rows for. */
   rail?: (squares: ReactNode) => ReactNode;
+  /** Settings' or Pull Requests' nav, shown in place of the sessions [D225]. */
+  nav?: ReactNode;
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
@@ -85,6 +89,11 @@ export function AppSidebar({
   const [sort, setSort] = useStored<Sort>(`${storeKey}.sort`, "sent");
   const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
+  // The last nav stays drawn while it fades out, then goes.
+  const lastNav = useRef(nav);
+  if (nav) lastNav.current = nav;
+  const [navGone, setNavGone] = useState(!nav);
+  if (nav && navGone) setNavGone(false);
   const list = useRef<HTMLDivElement>(null);
   const previousRows = useRef(rows);
   useEffect(() => {
@@ -226,96 +235,110 @@ export function AppSidebar({
         </>,
       )}
     >
-      {/* The header under the titlebar row: the name, no logo or chevron, then View and ⌘K's search [D22 D23 D24 D59]. */}
-      <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
-        <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-4 pe-3">
-          <h1 className="min-w-0 flex-1 truncate text-nav-title font-semibold">Brigadier</h1>
-          <ViewTrigger projects={projects} show={show} />
-          <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="head" side="bottom" onClick={openSearch}>
-            <MagnifyingGlassSearch />
-          </TooltipIconButton>
-        </div>
-      </ViewMenu>
-      <div ref={list} className={LIST}>
-        {/* New chat, the first row [D25], never lit: Home isn't a place in the list. */}
-        <NavList>
-          <li>
-            <NavRow onClick={onNewChat}>
-              <ComposeEditSquare />
-              New chat
-            </NavRow>
-          </li>
-        </NavList>
-        {rest === undefined ? (
-          <Loading />
-        ) : (
-          <>
-            {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
-              <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
-                <NavList>{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
-              </NavSection>
-            )}
-            {grouping === "none" ? (
-              <NavSection
-                title="Recents"
-                open={isOpen("open")}
-                onOpenChange={(open) => setOpen("open", open)}
-                steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label="A session needs your attention" />}
-              >
-                <NavList>
-                  {rest.map((each) => row(each, { badged: true }))}
-                  {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
-                </NavList>
-              </NavSection>
+      {/* The sessions and a page's nav share the one panel and crossfade: its column, width and edge stay [D225]. */}
+      <div className="grid min-h-0 flex-1 grid-rows-1">
+        <div inert={Boolean(nav)} className={cx("col-start-1 row-start-1 flex min-h-0 flex-col transition-opacity duration-200", Boolean(nav) && "opacity-0")}>
+          {/* The header under the titlebar row: the name, no logo or chevron, then View and ⌘K's search [D22 D23 D24 D59]. */}
+          <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
+            <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-4 pe-3">
+              <h1 className="min-w-0 flex-1 truncate text-nav-title font-semibold">Brigadier</h1>
+              <ViewTrigger projects={projects} show={show} />
+              <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="head" side="bottom" onClick={openSearch}>
+                <MagnifyingGlassSearch />
+              </TooltipIconButton>
+            </div>
+          </ViewMenu>
+          <div ref={list} className={LIST}>
+            {/* New chat, the first row [D25], never lit: Home isn't a place in the list. */}
+            <NavList>
+              <li>
+                <NavRow onClick={onNewChat}>
+                  <ComposeEditSquare />
+                  New chat
+                </NavRow>
+              </li>
+            </NavList>
+            {rest === undefined ? (
+              <Loading />
             ) : (
-              <NavSection
-                title="Projects"
-                open={isOpen("projects")}
-                onOpenChange={(open) => setOpen("projects", open)}
-                actions={
-                  <Tooltip>
-                    <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
-                      <Plus />
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Add project</TooltipContent>
-                  </Tooltip>
-                }
-              >
-                <NavList>
-                  {unpinnedProjects.map(projectRow)}
-                  {projects.length === 0 && <EmptyState as="li" title={<NoProjects onAdd={() => openAddProject()} />} />}
-                </NavList>
-              </NavSection>
+              <>
+                {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
+                  <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                    <NavList>{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
+                  </NavSection>
+                )}
+                {grouping === "none" ? (
+                  <NavSection
+                    title="Recents"
+                    open={isOpen("open")}
+                    onOpenChange={(open) => setOpen("open", open)}
+                    steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label="A session needs your attention" />}
+                  >
+                    <NavList>
+                      {rest.map((each) => row(each, { badged: true }))}
+                      {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
+                    </NavList>
+                  </NavSection>
+                ) : (
+                  <NavSection
+                    title="Projects"
+                    open={isOpen("projects")}
+                    onOpenChange={(open) => setOpen("projects", open)}
+                    actions={
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction header aria-label="Add project" onClick={() => openAddProject()} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Add project</TooltipContent>
+                      </Tooltip>
+                    }
+                  >
+                    <NavList>
+                      {unpinnedProjects.map(projectRow)}
+                      {projects.length === 0 && <EmptyState as="li" title={<NoProjects onAdd={() => openAddProject()} />} />}
+                    </NavList>
+                  </NavSection>
+                )}
+                {/* Sessions with no project; shown while ticked in View, empty or not [D224, D655, D812]. */}
+                {grouping === "project" && !show.hideChats && (
+                  <NavSection
+                    title="Chats"
+                    open={isOpen("none")}
+                    onOpenChange={(open) => setOpen("none", open)}
+                    actions={
+                      <Tooltip>
+                        <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
+                          <Plus />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">New chat</TooltipContent>
+                      </Tooltip>
+                    }
+                  >
+                    <NavList>
+                      {homeless.map((each) => row(each, {}))}
+                      {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
+                    </NavList>
+                  </NavSection>
+                )}
+              </>
             )}
-            {/* Sessions with no project; shown while ticked in View, empty or not [D224, D655, D812]. */}
-            {grouping === "project" && !show.hideChats && (
-              <NavSection
-                title="Chats"
-                open={isOpen("none")}
-                onOpenChange={(open) => setOpen("none", open)}
-                actions={
-                  <Tooltip>
-                    <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
-                      <Plus />
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">New chat</TooltipContent>
-                  </Tooltip>
-                }
-              >
-                <NavList>
-                  {homeless.map((each) => row(each, {}))}
-                  {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
-                </NavList>
-              </NavSection>
-            )}
-          </>
+          </div>
+          {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
+        </div>
+        {!navGone && (
+          <div
+            inert={!nav}
+            className={cx("col-start-1 row-start-1 flex min-h-0 animate-fade-in flex-col transition-opacity duration-200", !nav && "opacity-0")}
+            onTransitionEnd={(event) => event.target === event.currentTarget && !nav && setNavGone(true)}
+          >
+            {nav ?? lastNav.current}
+          </div>
         )}
       </div>
       <ArchiveAsk />
       <DeleteAsk />
       <LabelAsk />
       <ProjectAsk />
-      {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
       <RenameDialog row={renaming} onClose={() => setRenaming(null)} onRename={(title, branch) => renaming && rename(renaming, title, branch)} />
     </SidebarPanel>
   );

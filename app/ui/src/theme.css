@@ -435,7 +435,6 @@
   --spacing-nav-row: 1.875rem;
   /* A sidebar section's title row [D27]. */
   --spacing-section-title: 1.5625rem;
-  --spacing-nav-header: 3.25rem;
   /* Every panel's top bar, its bottom edge included: the project page's, Files', a worker's, the browser's toolbar, a
      file's and Review's, so side by side their bottom edges are one line [D839 D842]. */
   --spacing-panel-header: 3rem;
@@ -1623,10 +1622,6 @@
 /* Back and Forward's start: their 64px end 10px before the sidebar's edge, past the toggle's 32 and the 2px gaps. */
 @utility titlebar-history {
   margin-inline-start: max(0px, calc(var(--sidebar-shown, 0px) - var(--spacing-toggle-start) - var(--spacing) * 27));
-  /* Settings has no toggle before them. */
-  &:first-child {
-    margin-inline-start: max(0px, calc(var(--sidebar-shown, 0px) - var(--spacing-toggle-start) - var(--spacing) * 18.5));
-  }
   transition: margin var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;

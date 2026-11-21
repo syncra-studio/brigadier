@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
-import { SidebarPanel, SidebarProvider } from "./components/sidebar";
+import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
 import { hhmm } from "./thread/words";
@@ -188,15 +188,7 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
       onFocus={(event) => peekRow(event.target)}
     >
       <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined}>
-        {settings !== undefined ? (
-          <SidebarPanel rail={rail()}>
-            <SettingsNav current={settings} />
-          </SidebarPanel>
-        ) : prs !== undefined ? (
-          <SidebarPanel rail={rail()}>
-            <PullRequestsNav current={prs} />
-          </SidebarPanel>
-        ) : (
+        {/* One sidebar for every page: Settings' and Pull Requests' navs crossfade over the sessions in it [D2004 D225]. */}
         <AppSidebar
           rows={rows}
           projects={projects ?? []}
@@ -208,8 +200,8 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
           onNewSession={() => newSession(rows?.find((row) => row.id === active)?.project)}
           onNewChat={newChat}
           rail={rail}
+          nav={settings !== undefined ? <SettingsNav current={settings} /> : prs !== undefined ? <PullRequestsNav current={prs} /> : undefined}
         />
-        )}
         {/* Settings' page is the main area too. */}
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
         {settings === undefined && page === undefined && prs !== "" && <TabBar owner={active ?? HOME} row={active ? titled : undefined} title={prs ? reviewTitle(prs) : undefined} offline={daemon === null} />}
