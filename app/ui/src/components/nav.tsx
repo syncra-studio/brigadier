@@ -41,10 +41,12 @@ export function NavHeader({ title, actions }: { title: ReactNode; actions?: Reac
 const TITLE = "text-sm font-medium text-faint-foreground";
 // Shown while the section is hovered or holds focus.
 const ON_HOVER = "opacity-0 group-focus-within/section:opacity-100 group-hover/section:opacity-100";
+// Shown while the title row itself is: a row hovered below shows only the chevron.
+const ON_HEAD_HOVER = "opacity-0 group-focus-within/head:opacity-100 group-hover/head:opacity-100";
 
 /**
  * A section of the panel, titled unless set apart by its gap alone. With `onOpenChange` its title folds the
- * list away and opens it again; the chevron turns. `actions` show at the header's end while the section is
+ * list away and opens it again; the chevron turns. `actions` show at the header's end while the header is
  * hovered; `steadyEnd` shows after them always.
  */
 export function NavSection({
@@ -76,7 +78,7 @@ export function NavSection({
   return (
     <section aria-labelledby={title ? id : undefined} className={cx("group/section flex flex-col", scrollList && "min-h-0")}>
       {title && (
-        <div className="mb-1 flex h-section-title shrink-0 items-center gap-1 ps-2 pe-1.5">
+        <div className="group/head mb-1 flex h-section-title shrink-0 items-center gap-1 ps-2 pe-1.5">
           {onOpenChange ? (
             <button
               id={id}
@@ -102,7 +104,7 @@ export function NavSection({
             </h2>
           )}
           <div className="ms-auto flex shrink-0 items-center gap-0.5">
-            {actions && <div className={cx("flex items-center gap-0.5", !steadyActions && ON_HOVER)}>{actions}</div>}
+            {actions && <div className={cx("flex items-center gap-0.5", !steadyActions && ON_HEAD_HOVER)}>{actions}</div>}
             {steadyEnd}
           </div>
         </div>
