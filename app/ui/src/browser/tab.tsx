@@ -263,7 +263,8 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
 
   return (
     <div data-pane="browser" data-active={active || undefined} className="flex min-h-0 flex-1 flex-col">
-      <div data-slot="browser-toolbar" className="@container/browser-toolbar flex h-panel-header shrink-0 items-center gap-1.5 border-b border-border px-2">
+      {/* No line under it on the New tab page, only over a page [D216]. */}
+      <div data-slot="browser-toolbar" className={cx("@container/browser-toolbar flex h-panel-header shrink-0 items-center gap-1.5 px-2", !onNavigate && "border-b border-border")}>
         <NavigationCapsule
           disabled={!made}
           canGoBack={page?.canGoBack === true}
