@@ -103,7 +103,7 @@ export function MessageRail({ rows, items, list, scroller, box, away }: { rows: 
     const mine = ++jumps.current;
     away();
     const smooth = how.smooth && !reduced();
-    // Its row's top at the view's: the row's turn gap (24px, `pt-6`) lands the message 24px under it, the old app's.
+    // Its row's top at the view's: the row's turn gap (12px, `pt-3`) lands the message 12px under it.
     list.current?.scrollToIndex(entry.index, { align: "start", smooth });
     if (!how.flash) return;
     // shortcut: no second landing if rows above resize on the way, as the old app's had; add it if a jump is seen missing.

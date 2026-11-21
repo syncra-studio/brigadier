@@ -2,7 +2,7 @@ import { type ReactNode, useContext, useLayoutEffect, useMemo, useRef, useState 
 
 import type { Item } from "../../thread/item";
 
-import { ArrowDown, ChevronRightAlt, Trash, Undo } from "../../icons";
+import { ArrowDown, ChevronRightAlt, EditPencil, Trash } from "../../icons";
 import type { RewindOffer } from "./rewind";
 import { useKept } from "../../thread/kept";
 import { Markdown } from "../../thread/markdown";
@@ -66,8 +66,8 @@ export function datedAfter(previous: { sentAt?: number } | undefined, at: number
 }
 
 /**
- * The user's message, on the right, its Markdown with every line break kept. Hovered or focused, its time
- * and a copy button show under it; past 20 lines it folds with "Show more". `dated` puts when it was sent above it, centred. A message on its
+ * The user's message, on the right, its Markdown with every line break kept, in a bubble [D85]. Hovered or
+ * focused, its time, Copy and Edit (our rewind) show under it [D86]; past 20 lines it folds with "Show more". `dated` puts when it was sent above it, centred. A message on its
  * way looks sent at once [D449]; one whose delivery can't be proven yet is `unconfirmed` and says so in place of
  * its time [D300]. One that failed keeps its actions in view, with Discard, and says why on an ErrorLine with Try
  * again. `dimmed` greys it (a message the turn hasn't reached).
@@ -157,7 +157,7 @@ export function UserBubble({
         {files}
         {/* A message of only files (a paste, an image) has no bubble under them. */}
         {(text.trim() !== "" || chips || !files) && (
-        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-bubble px-3.5 py-2.25 text-foreground shadow-composer", dimmed && "opacity-row-disabled")}>
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-bubble px-4 py-2.5 text-chat text-chat-foreground", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             {chips ? (
               <AttachmentsContext value={chips.files}>
@@ -185,28 +185,30 @@ export function UserBubble({
           )}
         </div>
         )}
-        {/* Hover-only, its space kept so nothing shifts; a failed or unconfirmed message's stay in view. */}
+        {/* Hover-only, its space kept so nothing shifts; a failed or unconfirmed message's stay in view. 26 squares 2 apart,
+            4 under the bubble and 4 over the next row's gap, so the next row sits 46 under it [D84]. */}
         <div
           className={cx(
-            "-mt-1 flex items-center gap-1 text-muted-foreground",
+            "mb-1 flex items-center gap-0.5 text-muted-foreground",
             !failed && !unconfirmed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
           )}
         >
           {unconfirmed ? (
-            <span role="status" className="pe-1 text-xs">
+            <span role="status" className="pe-1.5 text-xs">
               Not confirmed yet · checked once reconnected
             </span>
           ) : (
-            time !== undefined && <span className="pe-1 text-xs tabular-nums">{sentAt(time)}</span>
+            time !== undefined && <span className="pe-1.5 text-xs tabular-nums">{sentAt(time)}</span>
           )}
-          <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} />
+          <CopyButton text={text} tooltip="Copy message" copiedDuration={1500} size="icon-answer" />
+          {/* Editing goes back to this message, its words in the composer again: our rewind [D86]. */}
           {rewind && (
-            <TooltipIconButton tooltip={rewind.blocked ?? "Rewind to here"} disabled={rewind.blocked !== undefined} onClick={rewind.open}>
-              <Undo />
+            <TooltipIconButton tooltip={rewind.blocked ?? "Edit message"} size="icon-answer" disabled={rewind.blocked !== undefined} onClick={rewind.open}>
+              <EditPencil />
             </TooltipIconButton>
           )}
           {failed && onDiscard && (
-            <TooltipIconButton tooltip="Discard message" onClick={onDiscard}>
+            <TooltipIconButton tooltip="Discard message" size="icon-answer" onClick={onDiscard}>
               <Trash />
             </TooltipIconButton>
           )}
@@ -231,8 +233,8 @@ export function UserBubble({
 }
 
 /**
- * The agent's message: `children` is the rendered reply. Under a turn's `final` answer its actions stay in
- * view: copy, and the time only on hover or focus. Commentary between the turn's steps, a steer's too, has none.
+ * The agent's message: `children` is the rendered reply, in the thread's text [D87]. Under a turn's `final` answer
+ * its actions. Commentary between the turn's steps, a steer's too, has none.
  */
 export function AssistantMessage({
   text,
@@ -252,13 +254,13 @@ export function AssistantMessage({
 }) {
   return (
     <div className="group/answer flex flex-col gap-1.5">
-      <div className="leading-relaxed wrap-break-word text-foreground">{children}</div>
+      <div data-chat className="text-chat wrap-break-word text-chat-foreground">{children}</div>
       {final && <AnswerMarks text={text} time={time} fork={fork} older={older} />}
     </div>
   );
 }
 
-/** A finished answer's actions: copy, save as a note, then fork where offered [D1069], the time only on hover or focus [D297]. */
+/** A finished answer's actions: copy, save as a note, then fork where offered [D1069], and its time [D102]. */
 export function AnswerMarks({ text, time, fork, older = false }: { text: string; time?: number; fork?: ReactNode; older?: boolean }) {
   return (
     // Only the latest answer keeps them in view; an older one's show on hover or focus [D82].
@@ -267,7 +269,7 @@ export function AnswerMarks({ text, time, fork, older = false }: { text: string;
       <SaveAsNote text={text} />
       {fork}
       {time !== undefined && (
-        <span className="ps-1 text-xs tabular-nums opacity-0 group-focus-within/answer:opacity-100 group-hover/answer:opacity-100">{sentAt(time)}</span>
+        <span className="ps-1.5 text-xs tabular-nums">{sentAt(time)}</span>
       )}
     </div>
   );

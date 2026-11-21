@@ -16,8 +16,11 @@ import { LiveMockupRow } from "../mockup/live";
 import type { Gap, Line } from "./lines";
 import "./markdown.css";
 
-// The first row clears find's bar (find.tsx), as the old app's did.
-const GAPS: Record<Gap, string> = { first: "pt-thread-find-top", turn: "pt-6", part: "pt-4", step: "pt-1" };
+// The first row clears find's bar (find.tsx), as the old app's did; then an even 12 between rows [D84].
+const GAPS: Record<Gap, string> = { first: "pt-thread-find-top", turn: "pt-3", part: "pt-3", step: "pt-1" };
+
+/** The column: 736 of text inside 16 each side, centred (box-content, so the reading width is the text's) [D84]. */
+export const COLUMN = "mx-auto box-content max-w-reading px-4";
 
 export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean; older?: boolean };
 
@@ -30,7 +33,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
   const gone = rewind?.gone("item" in props ? props.item.n : undefined, "turn" in props ? props.turn?.id : undefined);
   const fork = "turn" in props && props.turn && <ForkAction at={props.turn.id} />;
   return (
-    <div className={`mx-auto w-full max-w-reading px-6 ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
+    <div className={`${COLUMN} ${GAPS[props.gap]} ${gone ? "opacity-row-disabled" : ""}`} data-item={props.id}>
       {/* A row that throws while it's drawn leaves the rest of the thread standing (D490). */}
       <DrawBoundary summary={props.type === "item" && props.item.kind === "message" ? "This message couldn’t be shown" : "This part couldn’t be shown"}>
       {props.type === "setup" ? (

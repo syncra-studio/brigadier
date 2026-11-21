@@ -52,10 +52,13 @@
 .hljs-deletion {
   @apply bg-diff-removed text-destructive;
 }
-/* Each wash runs the block's full width, through its side padding (px-3), or its longest line's. */
+/* Each wash runs the block's full width, through its side padding (a diff card's px-3, a code card's px-5), or its longest line's. */
 .hljs-addition,
 .hljs-deletion {
-  @apply wash-line;
+  @apply wash-line-3;
+}
+[data-look="code"] :is(.hljs-addition, .hljs-deletion) {
+  @apply wash-line-5;
 }
 /* A diff card keeps the file change's look: hunk heads in link blue, file heads muted and italic. */
 [data-look="diff"] .hljs-meta {

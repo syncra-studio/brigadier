@@ -224,6 +224,11 @@
   /* The composer, the user's message bubble and a field's placeholder. */
   --color-composer: #343434;
   --color-bubble: #2f2f2e;
+  /* The thread: its text white, its links plain blue, a code card's and inline code's fill and edge [D87 D90 D91 D92]. */
+  --color-chat-foreground: #ffffff;
+  --color-chat-link: #3c66bf;
+  --color-code-card: #2a2a2a;
+  --color-code-card-edge: #333333;
   --color-placeholder: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
   /* The composer rail's cards (the old rail fill, 6% foreground ≈ card, at 70%), and a queued row's glyph. */
   /* The message rail's ticks: at rest, and in view or hovered (the old app's muted 40%, foreground 60%). */
@@ -285,8 +290,17 @@
   --text-badge--line-height: 1rem;
   --text-diff: 0.75rem;
   --text-diff--line-height: 1.35rem;
-  /* Inline code, a little smaller than the words around it. */
-  --text-code-inline: 0.85em;
+  /* Inline code, a little smaller than the words around it [D90]. */
+  --text-code-inline: 0.92em;
+  /* The thread's text, 14.5 on 23.5, and its headings, 1.5, 1.25 and 1.125 of it [D87 D88]. */
+  --text-chat: 0.90625rem;
+  --text-chat--line-height: 1.625;
+  --text-chat-h1: 1.5em;
+  --text-chat-h1--line-height: 1.3333;
+  --text-chat-h2: 1.25em;
+  --text-chat-h2--line-height: 1.4;
+  --text-chat-h3: 1.125em;
+  --text-chat-h3--line-height: 1.5556;
   /* A reply's line height (the old app's, Tailwind's relaxed). */
   --leading-relaxed: 1.625;
   /* A worker's chip in a line (the old app's, Tailwind's normal). */
@@ -534,7 +548,7 @@
   --radius-alert: 1.5rem;
   /* A user's message bubble; a thread card (approval); a shell box and a diff card. */
   --radius-bubble: 1.375rem;
-  --radius-thread: 1rem;
+  --radius-thread: 1.25rem;
   --radius-shell: 0.78125rem;
   --radius-composer: 1.375rem;
   /* An image attachment's thumbnail. */
@@ -1990,11 +2004,11 @@
   margin-top: -1px;
 }
 /* A diff line's wash in a code block: the block's full width through its px-3 padding, or its longest line's. */
-@utility wash-line {
+@utility wash-line-* {
   display: inline-block;
-  margin-inline: calc(var(--spacing) * -3);
-  padding-inline: calc(var(--spacing) * 3);
-  min-width: calc(100% + var(--spacing) * 6);
+  margin-inline: calc(var(--spacing) * -1 * --value(integer));
+  padding-inline: calc(var(--spacing) * --value(integer));
+  min-width: calc(100% + var(--spacing) * 2 * --value(integer));
 }
 
 /* ── First launch ───────────────────────────────────────────────────────────────────────────

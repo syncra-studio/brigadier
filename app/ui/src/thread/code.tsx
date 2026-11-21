@@ -41,21 +41,23 @@ const NAMES: Record<string, string> = {
 };
 const languageName = (language: string) => NAMES[language.toLowerCase()] ?? (language ? language[0]!.toUpperCase() + language.slice(1) : "Text");
 
-/** A reply's code block, or a file change's diff card: the same drawing, each in its own frame. */
+/** A reply's code block, a card [D92], or a file change's diff card: the same drawing, each in its own frame. */
 const LOOKS = {
   code: {
-    card: "my-3 rounded-thread bg-code-surface first:mt-0 last:mb-0",
-    head: "h-control-md gap-1.5 bg-code-surface pe-1.5 text-xs text-muted-foreground",
-    pre: "pb-3 text-code",
-    fade: "from-code-surface",
-    border: "",
+    card: "my-4.5 rounded-thread bg-code-card first:mt-0 last:mb-0",
+    head: "h-12 gap-2 ps-5 pe-1.5 text-sm text-chat-foreground",
+    pre: "px-5 pb-3 text-code",
+    fade: "from-code-card",
+    border: "border border-code-card-edge",
+    button: "icon-code",
   },
   diff: {
     card: "mt-1 rounded-shell",
-    head: "min-h-8 gap-2 bg-fill-subtle pe-1 text-sm text-action-hover",
-    pre: "text-diff",
+    head: "min-h-8 gap-2 bg-fill-subtle ps-3 pe-1 text-sm text-action-hover",
+    pre: "px-3 text-diff",
     fade: "from-background",
     border: "border border-border",
+    button: "icon-xs",
   },
 } as const;
 
@@ -96,29 +98,29 @@ export function CodeBlock({
   const canWrap = !prose && look === "code";
   return (
     <div data-look={look} className={cx("relative overflow-clip", frame.border, frame.card)}>
-      <div className={cx("flex items-center ps-3", frame.head)}>
+      <div className={cx("flex items-center", frame.head)}>
         {title ?? (
           <>
             <Code className="size-icon-sm" />
             <span className="font-medium">{languageName(language)}</span>
           </>
         )}
-        {long && <span>· {count.toLocaleString()} lines</span>}
+        {long && <span className="font-normal text-muted-foreground">· {count.toLocaleString()} lines</span>}
         {canWrap && (
           <TooltipIconButton
             tooltip={wrap ? "Don't wrap lines" : "Wrap lines"}
             pressed={wrap}
-            size="icon-xs"
+            size={frame.button}
             className="ms-auto aria-pressed:bg-fill-subtle aria-pressed:text-foreground"
             onClick={() => setWrap(!wrap)}
           >
             <ArrowCurvedLeft />
           </TooltipIconButton>
         )}
-        {!live && <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size="icon-xs" className={canWrap ? undefined : "ms-auto"} />}
+        {!live && <CopyButton text={code} tooltip="Copy" copiedTooltip={long ? `Copied ${count.toLocaleString()} lines` : "Copied"} size={frame.button} className={canWrap ? undefined : "ms-auto"} />}
       </div>
       <div className="relative">
-        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto px-3 font-mono", (prose || wrap) && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
+        <pre data-find-clip={cut || undefined} className={cx("overflow-x-auto font-mono", (prose || wrap) && "break-words whitespace-pre-wrap", frame.pre, cut && "max-h-code-folded overflow-y-hidden")}>
           {html === null ? <code>{shown}</code> : <code dangerouslySetInnerHTML={{ __html: html }} />}
         </pre>
         {long && !open && <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 h-11.5 bg-linear-to-t", frame.fade)} />}

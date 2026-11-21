@@ -11,6 +11,7 @@ import type { Pr } from "../panel/types";
 import { openChip, useListedCommands } from "../session/commands";
 import { daemonRun } from "../session/composer";
 import { openFile } from "../shell/tab-store";
+import { File } from "../icons";
 
 const SEG = String.raw`\.?[\w@-]+(?:\.[\w@-]+)*`;
 /**
@@ -59,8 +60,8 @@ const RefsContext = createContext<((word: string) => ReactNode) | null>(null);
 
 /**
  * An answer's refs: the files and folders its words name in the session's checkout (Rust's, asked once it's whole), its
- * PRs from the card's list, its sessions, its `/` commands and skills as the composer lists them. Each draws as the
- * composer's chip; anything the session doesn't know stays text [D251].
+ * PRs from the card's list, its sessions, its `/` commands and skills as the composer lists them. A file draws as a link
+ * [D113]; the rest as the composer's chip; anything the session doesn't know stays text [D251].
  */
 export function AnswerRefs({ text, done, children }: { text: string; done: boolean; children: ReactNode }) {
   const owner = useContext(SessionOfThread)?.id;
@@ -81,12 +82,7 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
   const value = useMemo(() => {
     if (!owner) return null;
     const commands = new Map((listed ?? []).map((command) => [command.id, command]));
-    const open = (kind: OpenKind, id: string, name?: string) => {
-      // A file's chip carries its line after a newline, which no path holds.
-      const [path, line] = id.split("\n");
-      if (kind === "file") return openFile(owner, path!, { line: line ? Number(line) : undefined, preview: false });
-      openChip(owner, kind, id, commands.get(id), daemonRun, name);
-    };
+    const open = (kind: OpenKind, id: string, name?: string) => openChip(owner, kind, id, commands.get(id), daemonRun, name);
     const chip = (each: Chip) => (
       <ChipContext value={{ onOpen: open, commands }}>
         <ComposerChip chip={each} />
@@ -103,7 +99,8 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
       if (row) return chip({ kind: "mention", id: row.id, type: row.worker ? "worker" : "chat", label: row.title || "New session" });
       const line = LINE.exec(word)?.[1]?.split(":")[1];
       const hit = found[word.replace(LINE, "")];
-      if (hit) return chip({ kind: "mention", id: line && !hit.folder ? `${hit.path}\n${line}` : hit.path, type: hit.folder ? "folder" : "file", label: hit.path });
+      if (hit?.folder) return chip({ kind: "mention", id: hit.path, type: "folder", label: hit.path });
+      if (hit) return <FileRef word={word} open={() => openFile(owner, hit.path, { line: line ? Number(line) : undefined, preview: true })} />;
       return null;
     };
   }, [owner, rows, prs, listed, found]);
@@ -113,6 +110,16 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
 /** A word `remarkRefs` marked, or a whole inline code: its chip when the session knows it, else `plain`. */
 export function RefWord({ word, plain }: { word: string; plain: ReactNode }) {
   return useContext(RefsContext)?.(word) ?? plain;
+}
+
+/** A file the answer names: a blue link with a file icon, opening it in a preview tab [D113]. */
+function FileRef({ word, open }: { word: string; open: () => void }) {
+  return (
+    <button type="button" onClick={open} className="inline cursor-pointer rounded-xs text-chat-link focus-visible:focus-ring">
+      <File className="me-0.5 inline-block size-icon-sm align-icon" />
+      {word}
+    </button>
+  );
 }
 
 /** A PR the session knows, as its card row: the state's icon and colour, the number, opening its tab [D251]. */
