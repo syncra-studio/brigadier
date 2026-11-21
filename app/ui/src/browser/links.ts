@@ -1,4 +1,4 @@
-import { pastedRef } from "../pull-requests/route";
+import { pastedRef, prPageOf, reviewChats } from "../pull-requests/route";
 import { getSettings } from "../settings/api";
 import { HOME, openTab } from "../shell/tab-store";
 
@@ -27,6 +27,9 @@ export const swapped = (event: { metaKey: boolean; ctrlKey: boolean }): boolean 
 function sessionInFront(): string | null {
   const { hash } = window.location;
   if (hash.startsWith("#thread/")) return decodeURIComponent(hash.slice("#thread/".length));
+  // A PR open on the Pull Requests page shows its review chat once there is one, else the review draft (Home's) [D162].
+  const pr = prPageOf(hash);
+  if (pr) return reviewChats.get()[pr] ?? HOME;
   return hash.startsWith("#settings") ? null : HOME;
 }
 
