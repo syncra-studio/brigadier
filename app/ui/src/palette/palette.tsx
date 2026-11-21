@@ -13,6 +13,7 @@ import { newSession } from "../home/start";
 import { store, useProfile } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
 import { showProject } from "../projects/store";
+import { prCommands, runPrCommand } from "../panel/create-pr";
 import { toggleSummary } from "../shell/summary-card";
 import { matches } from "../shortcuts";
 import { useShown } from "../sidebar/actions";
@@ -73,7 +74,7 @@ type Result =
   | { kind: "command"; id: string; title: string; at?: [number, number][] };
 type Group = { value: "Projects" | "Sessions" | "Commands"; items: Result[] };
 
-/** What ⌘K runs besides opening things: the tour for now [D3109]. */
+/** What ⌘K runs besides opening things [D3109]; the session in front's PR commands join them [D170]. */
 const COMMANDS = [
   { id: "tour", title: "Take the tour" },
   { id: "summary", title: "Toggle summary" },
@@ -90,7 +91,7 @@ const archivedLast = (a: { row: PaletteRow }, b: { row: PaletteRow }) => Number(
 function results(rows: PaletteRow[], projects: Project[], query: string, hits: Hit[] | undefined): Group[] {
   const commands: Group = {
     value: "Commands",
-    items: COMMANDS.flatMap((command) => {
+    items: [...COMMANDS, ...prCommands()].flatMap((command) => {
       const at = query.trim() ? wordStarts(command.title, query) : [];
       return at ? [{ kind: "command" as const, ...command, at }] : [];
     }),
@@ -343,7 +344,7 @@ export function GlobalSearch() {
         newSession(id);
         showProject(id, false);
       }}
-      onCommand={(id) => (id === "summary" ? toggleSummary() : startTour())}
+      onCommand={(id) => runPrCommand(id) || (id === "summary" ? toggleSummary() : startTour())}
     />
   );
 }

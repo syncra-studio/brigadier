@@ -10,6 +10,7 @@ import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
 import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, PlanCard, summaryReady, type TouchedRepo } from "../panel/card";
 import { PrsCard } from "../panel/card-prs";
+import { frontBranch } from "../panel/create-pr";
 import { SourcesCard } from "../panel/card-sources";
 import { pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
@@ -353,6 +354,13 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, each with its repo's name.
   const kept = shown.kept ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
   const prs = folderChat ? (touched ?? []).flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name }))) : (shown.prs ?? kept?.prs ?? []);
+  // ⌘K's PR commands act on this card's branch [D170].
+  const source = shown.source;
+  useEffect(() => {
+    if (folderChat || !source) return;
+    const open = prs.find((pr) => pr.state === "open" && (!pr.branch || pr.branch === source.branch)) ?? null;
+    frontBranch.current = { owner, repo: project, branch: source.branch, changed: source.staged.length + source.changes.length > 0, remote: Boolean(source.remote), open };
+  });
   // Not drawn until its data is in: no skeleton first. In this order [D128].
   const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
     <>

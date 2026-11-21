@@ -8,7 +8,11 @@ import { Input } from "../components/input";
 import { Textarea } from "../components/textarea";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
+import { MergeDialog } from "../landing/pr-dialogs";
+import { mergeBlocked } from "../landing/pr-tab";
+import type { PullRequest } from "../landing/pull-requests";
 import { pastedRef } from "../pull-requests/route";
+import type { Pr } from "./types";
 
 /**
  * Create PR [D168]: a new branch if asked for, Commit and push local changes when there are some, Title
@@ -78,11 +82,11 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
             </p>
             <ErrorLine error={error} />
             <DialogFooter>
-              <Button variant="outline" disabled={Boolean(busy)} onClick={() => create(true)}>
-                {busy === "draft" ? "Creating…" : "Create draft PR"}
+              <Button variant="outline" disabled={Boolean(busy)} onClick={() => create(!startDraft)}>
+                {busy === (startDraft ? "ready" : "draft") ? "Creating…" : startDraft ? "Create PR" : "Create draft PR"}
               </Button>
               <Button disabled={Boolean(busy)} onClick={() => create(startDraft)}>
-                {busy === "ready" ? "Creating…" : startDraft ? "Create draft PR" : "Create PR"}
+                {busy === (startDraft ? "draft" : "ready") ? "Creating…" : startDraft ? "Create draft PR" : "Create PR"}
               </Button>
             </DialogFooter>
           </>
@@ -141,11 +145,11 @@ function AttachPrDialog({ owner, open, onOpenChange }: { owner: string; open: bo
 }
 
 type CreateAsk = { owner: string; repo: string | null; branch: string | null; changed: boolean; draft?: boolean };
-type Ask = ({ kind: "create" } & CreateAsk) | { kind: "attach"; owner: string };
+type Ask = ({ kind: "create" } & CreateAsk) | { kind: "attach"; owner: string } | { kind: "merge"; pr: PullRequest };
 
 let showAsk: ((ask: Ask) => void) | null = null;
 
-/** Opens Create PR or Attach pull request; PrDialogHost draws it, outside any popover that a click inside would close. */
+/** Opens Create PR, Attach pull request or Merge; PrDialogHost draws it, outside any popover that a click inside would close. */
 export function openPrDialog(ask: Ask): void {
   showAsk?.(ask);
 }
@@ -161,5 +165,47 @@ export function PrDialogHost() {
     };
   }, []);
   if (!ask) return null;
+  if (ask.kind === "merge") return <MergeDialog key={ask.pr.ref} pr={ask.pr} open={open} onOpenChange={setOpen} onDone={() => {}} />;
   return ask.kind === "create" ? <CreatePrDialog key={ask.owner} ask={ask} open={open} onOpenChange={setOpen} /> : <AttachPrDialog key={ask.owner} owner={ask.owner} open={open} onOpenChange={setOpen} />;
+}
+
+/** Merge from a row or ⌘K: a fresh read, then the reason it can't or the PR tab's Merge dialog. */
+export function mergePr(host: string, target: string, ref: string | null) {
+  run(["host", host, "view", target])
+    .then((reply) => {
+      const live = reply.pr as PullRequest;
+      const why = mergeBlocked(live);
+      return why ? showToast(why, { tone: "error" }) : openPrDialog({ kind: "merge", pr: { ...live, ref: live.ref ?? ref ?? undefined } });
+    })
+    .catch((cause) => showToast(errorText(cause), { tone: "error" }));
+}
+
+/** The branch the summary card in front shows, for ⌘K's PR commands [D170]. */
+// shortcut: the card drawn last wins; with two sessions side by side, ⌘K acts on the later one.
+export const frontBranch: { current: (CreateAsk & { remote: boolean; open: Pr | null }) | null } = { current: null };
+
+/** ⌘K's PR commands for the session in front: Create PR and Create draft PR, or Merge PR and Open PR on GitHub. */
+export function prCommands(): { id: string; title: string }[] {
+  const at = frontBranch.current;
+  if (!at || window.location.hash !== `#thread/${encodeURIComponent(at.owner)}` || !at.remote) return [];
+  if (!at.open)
+    return [
+      { id: "pr-create", title: "Create PR" },
+      { id: "pr-draft", title: "Create draft PR" },
+    ];
+  return [
+    { id: "pr-merge", title: "Merge PR" },
+    { id: "pr-open", title: "Open PR on GitHub" },
+  ];
+}
+
+/** Runs one of prCommands'; false for any other command. */
+export function runPrCommand(id: string): boolean {
+  const at = frontBranch.current;
+  if (!at || !id.startsWith("pr-")) return false;
+  const { open, remote: _, ...ask } = at;
+  if (id === "pr-create" || id === "pr-draft") openPrDialog({ kind: "create", ...ask, draft: id === "pr-draft" });
+  else if (open && id === "pr-merge") mergePr(at.owner, open.repo ? `${open.repo}#${open.number}` : String(open.number), open.url ? pastedRef(open.url) : null);
+  else if (open?.url && id === "pr-open") window.brigadier?.openLink(open.url);
+  return true;
 }

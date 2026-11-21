@@ -8,14 +8,14 @@ import { useDaemon } from "../daemon";
 import { ChevronDown, X } from "../icons";
 import { useHost } from "../landing/host";
 import { prAct } from "../landing/pr-act";
-import { MergeDialog } from "../landing/pr-dialogs";
-import { codeFirst, mergeBlocked } from "../landing/pr-tab";
+import { codeFirst } from "../landing/pr-tab";
 import type { PullRequest } from "../landing/pull-requests";
 import { ago, STATE_WORDS } from "../landing/pr-words";
 import { askInChat, type Focus, sendToAgent } from "../landing/send-to-agent";
 import { errorText, run } from "../onboarding/api";
 import { pastedRef } from "../pull-requests/route";
 import { CardSection, WarnLine } from "./card";
+import { mergePr } from "./create-pr";
 import { Counts, Line, PR_LOOK, ROW, ROW_HOVER, Rows } from "./source/rows";
 import type { KeptPrs, Pr } from "./types";
 
@@ -36,18 +36,11 @@ function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; now
   const host = useHost(owner ?? "");
   const { rows, projects } = useDaemon();
   const [read, setRead] = useState<PullRequest | null>(null);
-  const [merging, setMerging] = useState<PullRequest | null>(null);
   const ref = pr.url ? pastedRef(pr.url) : null;
   const fresh = () => run(["host", host, "view", target]).then((live) => live.pr as PullRequest);
   const status = (verb: "ready" | "draft" | "close" | "reopen") =>
     ref && prAct(verb, ref).catch((cause: Error) => showToast(cause.message || "Couldn’t complete the pull request action", { tone: "error" }));
-  const merge = () =>
-    fresh()
-      .then((live) => {
-        const why = mergeBlocked(live);
-        return why ? showToast(why, { tone: "error" }) : setMerging({ ...live, ref: live.ref ?? ref ?? undefined });
-      })
-      .catch((cause) => showToast(errorText(cause), { tone: "error" }));
+  const merge = () => mergePr(host, target, ref);
   const state = pr.state === "open" && pr.draft ? "draft" : pr.state;
   const { Icon, tint } = PR_LOOK[state];
   const target = pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number);
@@ -113,7 +106,6 @@ function PrRow({ owner, pr, nowMs, onView }: { owner: string | null; pr: Pr; now
         )}
       </DropdownMenuContent>
     </DropdownMenu>
-    {merging && <MergeDialog pr={merging} open onOpenChange={(open) => !open && setMerging(null)} onDone={() => {}} />}
     </>
   );
 }
