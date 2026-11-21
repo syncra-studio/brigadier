@@ -13,6 +13,7 @@ import { newSession } from "../home/start";
 import { store, useProfile } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
 import { showProject } from "../projects/store";
+import { toggleSummary } from "../shell/summary-card";
 import { matches } from "../shortcuts";
 import { useShown } from "../sidebar/actions";
 import { RowMark } from "../sidebar/row";
@@ -73,7 +74,10 @@ type Result =
 type Group = { value: "Projects" | "Sessions" | "Commands"; items: Result[] };
 
 /** What ⌘K runs besides opening things: the tour for now [D3109]. */
-const COMMANDS = [{ id: "tour", title: "Take the tour" }];
+const COMMANDS = [
+  { id: "tour", title: "Take the tour" },
+  { id: "summary", title: "Toggle summary" },
+];
 
 const byLastSend = (a: { row: PaletteRow }, b: { row: PaletteRow }) => b.row.sent - a.row.sent;
 const archivedLast = (a: { row: PaletteRow }, b: { row: PaletteRow }) => Number(Boolean(a.row.archived)) - Number(Boolean(b.row.archived));
@@ -339,7 +343,7 @@ export function GlobalSearch() {
         newSession(id);
         showProject(id, false);
       }}
-      onCommand={startTour}
+      onCommand={(id) => (id === "summary" ? toggleSummary() : startTour())}
     />
   );
 }

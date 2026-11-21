@@ -21,26 +21,24 @@ import { useHasPanel } from "./right-panel";
 import { CHAT, HOME, openAttachment, openTab, useTabs } from "./tab-store";
 
 /*
- * The summary card [D1014, D1048], as the old app's PinnedSummary: pinned at the thread pane's top end. Where the pane
- * has room beside the thread's column it sits there; with less, the column moves aside for it; too narrow for both,
- * it floats over the thread, and only when asked, so it never covers the conversation by itself [D48]. Wave 2 owns
- * the frame and what's in it; the other Delegator wires the Context button to `useCardToggle` [D1014].
+ * The summary card [D132–D137]: pinned at the thread pane's top end, 8 from its edges.
+ * Where the pane has room beside the thread's column it sits there; with less, the column moves aside for it, keeping
+ * its width; below a 1096 pane it opens over the thread only when asked, and a click outside closes it.
  */
 
 type Layout = "beside" | "shift" | "float";
 
-// In rem. Below GUTTER_FROM the card floats over the thread rather than push it [D51]: the column it pushes keeps
-// 37.5rem (600px) beside the card's room (--spacing-summary-room's 76 spacings: the w-75 card and its 4px inset) and
-// the thread scroller's two 10px gutters (scroll-gutter-both). BESIDE_FROM: the old theme's --spacing-summary-beside-from.
-const GUTTER_FROM = 19 + 1.25 + 37.5;
-const BESIDE_FROM = 25;
+// In rem: a pane under 68.5rem (1096px) opens the card as a popover; where the column's side has under
+// 28.875rem (462px: the card's 308 and the column's 154 move) the column moves aside.
+const POPOVER_BELOW = 68.5;
+const SHIFT_BELOW = 28.875;
 
 function layoutOf(width: number, full: boolean): Layout {
   const root = getComputedStyle(document.documentElement);
   const rem = Number.parseFloat(root.fontSize);
   const column = full ? width : Number.parseFloat(root.getPropertyValue("--container-reading")) * rem;
-  if (width < GUTTER_FROM * rem) return "float";
-  return (width - column) / 2 < BESIDE_FROM * rem ? "shift" : "beside";
+  if (width < POPOVER_BELOW * rem) return "float";
+  return (width - column) / 2 < SHIFT_BELOW * rem ? "shift" : "beside";
 }
 
 /**
@@ -63,11 +61,19 @@ function fold(pane: Element) {
   return { left, start };
 }
 
-/** Per owner: `pinned`, the user's show or hide, which holds at every width; `floating`, shown over the thread where it floats. */
+/** Per owner: `floating`, shown over the thread where it floats. Pinned is one app-wide show or hide, on until hidden,
+ * kept across restarts [D134]. */
 type Card = { pinned: boolean; floating: boolean; layout: Layout | null };
-const OPENED: Card = { pinned: true, floating: false, layout: null };
+const PINNED = "summary-pinned";
+let OPENED: Card = { pinned: localStorage.getItem(PINNED) !== "false", floating: false, layout: null };
 const cards = new Map<string, Card>();
 const listeners = new Set<() => void>();
+function setPinned(pinned: boolean) {
+  OPENED = { ...OPENED, pinned };
+  localStorage.setItem(PINNED, String(pinned));
+  for (const [owner, card] of cards) cards.set(owner, { ...card, pinned });
+  for (const listener of listeners) listener();
+}
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
@@ -81,17 +87,26 @@ function setCard(owner: string, change: Partial<Card>) {
 const useCard = (owner: string) => useSyncExternalStore(subscribe, () => cardOf(owner));
 const visible = (card: Card) => (card.layout === "float" ? card.floating : card.pinned);
 
-/** The Context button's state and click: it pins and unpins the card, or where it floats, opens it over the thread. */
+const toggle = (owner: string) => {
+  const card = cardOf(owner);
+  if (card.layout === "float") setCard(owner, { floating: !card.floating });
+  else setPinned(!card.pinned);
+};
+
+/** The toggle's state and click: it pins and unpins the card, or where it floats, opens it over the thread. */
 export function useCardToggle(owner: string) {
-  const card = useCard(owner);
-  const shown = visible(card);
-  return { shown, toggle: () => setCard(owner, card.layout === "float" ? { floating: !shown, pinned: !shown } : { pinned: !shown }) };
+  return { shown: visible(useCard(owner)), toggle: () => toggle(owner) };
 }
 
-// The card itself, pinned or floating.
-// The new design's floating card: the card colour, the panel's corners, the glass edge; the old card's 18.75rem (300px) wide [D592].
-// The composer's fill and edge [D843].
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-panel bg-popover py-2.5 shadow-composer";
+/** ⌘K's and the app menu's Toggle summary [D133]: for the session in front. */
+export function toggleSummary() {
+  const { hash } = window.location;
+  if (hash.startsWith("#thread/")) toggle(decodeURIComponent(hash.slice("#thread/".length)));
+}
+window.brigadier?.onMenu((command) => command === "toggle-summary" && toggleSummary());
+
+// The card itself, pinned or floating: 300 wide, radius 16, its edge and faint shadow [D136].
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-menu border border-summary-edge bg-popover p-3 shadow-summary";
 
 /** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
@@ -102,11 +117,11 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-label="Context"
         aria-hidden={!shown || undefined}
         className={cx(
-          // 12px from the pane's top and end, a right panel's edge too [D843].
-          "pointer-events-none flex max-h-full min-h-0 w-79 max-w-full origin-top-right flex-col overflow-y-auto ps-1 pe-3 pt-3",
+          // 8 from the pane's top and end, a right panel's edge too [D136].
+          "pointer-events-none flex max-h-full min-h-0 w-77 max-w-full flex-col overflow-y-auto pe-2 pt-2 pb-2",
           // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). Shown or
-          // hidden, it shrinks and fades toward its top corner, never out past the pane's end, where a right panel cut it [D63, D67].
-          shown ? "summary-floats:invisible summary-floats:scale-80 summary-floats:opacity-0" : "invisible scale-80 opacity-0",
+          // hidden, it slides in from the right and fades, cut at the pane's end [D137].
+          shown ? "summary-floats:invisible summary-floats:translate-x-4 summary-floats:opacity-0" : "invisible translate-x-4 opacity-0",
           settled && "summary-card-motion",
         )}
       >
@@ -119,9 +134,8 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
 }
 
 /**
- * The card where it floats (the old FloatingSummary): over the thread at the pane's top end, its top on the side
- * panels' [D55], at most as tall as the room left; it fades in sliding down and fades out (menu-motion). Only the
- * Context button or Escape closes it, so `open` is all it follows.
+ * The card where it floats, a popover: over the thread at the pane's top end, at most as tall as the room
+ * left; it fades in and out (menu-motion). Its toggle, Escape or a click outside closes it [D135].
  */
 function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () => void; surface: Ref<HTMLDivElement> }) {
   // The pane's whole width, so the card follows the pane's end as the pane narrows.
@@ -130,8 +144,11 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
   return (
     <>
       <div ref={setAnchor} className="pointer-events-none absolute inset-x-0 top-0 h-0" />
-      {/* Focus is on the card, so its own Escape closes it; a click elsewhere leaves it shown. */}
-      <Popover.Root open={open} onOpenChange={(next, details) => !next && details.reason === "escape-key" && onClose()}>
+      {/* Focus is on the card, so its own Escape closes it; so does a click outside, but on the toggle, whose click does. */}
+      <Popover.Root
+        open={open}
+        onOpenChange={(next, details) => !next && !(details.event?.target instanceof Element && details.event.target.closest("[data-summary-toggle]")) && onClose()}
+      >
         <Popover.Portal>
           {/* Over the thread, under the toasts and its own menus (z-popup), which come before it in the page. */}
           <Popover.Positioner className="z-20" anchor={anchor} side="bottom" align="end" sideOffset={0} collisionPadding={0}>
@@ -142,7 +159,7 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
               // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel [D59]; below, room for its shadow.
-              className="pointer-events-none flex max-h-available w-79 max-w-available flex-col overflow-y-auto ps-1 pe-3 pt-3 pb-3 outline-none menu-motion"
+              className="pointer-events-none flex max-h-available w-77 max-w-available flex-col overflow-y-auto pe-2 pt-2 pb-2 outline-none menu-motion"
             >
               <div ref={surface} className={SURFACE} />
             </Popover.Popup>
@@ -173,7 +190,6 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
   useLayoutEffect(() => {
     const element = pane.current;
     if (!has || !element) return;
-    let windowWidth = innerWidth;
     let paneWidth = -1;
     let frame = 0;
     const observer = new ResizeObserver(([entry]) => {
@@ -181,8 +197,6 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       // Only the width lays the card out: a height-only resize leaves it as it was.
       if (width === undefined || width === paneWidth) return;
       paneWidth = width;
-      const resized = innerWidth !== windowWidth;
-      windowWidth = innerWidth;
       const before = cardOf(owner);
       const sliding = fold(element);
       const layout = layoutOf(width + sliding.left, full);
@@ -193,12 +207,8 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       if (changed && sliding.start !== null) {
         for (const each of element.getAnimations({ subtree: true })) if (each instanceof CSSTransition && each.startTime === null) each.startTime = sliding.start;
       }
-      // A shown card stays shown as the window narrows, floating; a side panel narrowing the pane is moving on to
-      // it, so the card waits behind the Context button rather than cover the thread.
-      if (layout === "float") {
-        const floating = before.layout === "float" ? before.floating && resized : before.layout !== null && resized && before.pinned;
-        if (layout !== before.layout || floating !== before.floating) setCard(owner, { layout, floating });
-      } else if (layout !== before.layout) setCard(owner, { layout, floating: false });
+      // Where it floats it waits behind its toggle, never covering the thread by itself [D135].
+      if (layout !== before.layout) setCard(owner, { layout, floating: false });
       if (!frame) frame = requestAnimationFrame(() => setSettledFor(owner));
     });
     observer.observe(element, { box: "border-box" });
@@ -218,7 +228,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
     if (!floating) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || document.activeElement?.closest('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]')) return;
-      setCard(owner, { floating: false, pinned: false });
+      setCard(owner, { floating: false });
     };
     addEventListener("keydown", onKeyDown, true);
     return () => removeEventListener("keydown", onKeyDown, true);
@@ -278,7 +288,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
       {/* Keyed by its session: what it holds carries across layouts, never to another session. */}
       {has && content && createPortal(card, holder, owner)}
       {card !== null && state.layout === "float" && (
-        <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false, pinned: false })} surface={toFloat} />
+        <FloatingCard open={state.floating} onClose={() => setCard(owner, { floating: false })} surface={toFloat} />
       )}
       {has && state.layout !== null && (
         // Hidden where it floats (summary-floats), so the pane widening again eases it back in.

@@ -399,6 +399,7 @@ function setMenu(): void {
           { role: "togglefullscreen" },
           { type: "separator" },
           { label: "Toggle Sidebar", accelerator: keysOf("sidebar"), click: (_item, window) => tell(window as BrowserWindow | undefined, "toggle-sidebar") },
+          { label: "Toggle Summary", click: (_item, window) => tell(window as BrowserWindow | undefined, "toggle-summary") },
           { label: "Back", accelerator: keysOf("back"), click: (_item, window) => tell(window as BrowserWindow | undefined, "back") },
           { label: "Forward", accelerator: keysOf("forward"), click: (_item, window) => tell(window as BrowserWindow | undefined, "forward") },
         ],

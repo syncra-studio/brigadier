@@ -20,6 +20,9 @@
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
   --color-popover-edge: rgb(255 255 255 / 12%);
+  /* The summary card's edge, and its rows' hover [D136 D139]. */
+  --color-summary-edge: #3b3b3b;
+  --color-summary-row-hover: #3d3d3d;
   /* A menu's and popover's fill: the popover at 90%, over a blur [D73]. */
   --color-menu: color-mix(in oklab, var(--color-popover) 90%, transparent);
   /* A pill's fill (a secondary button's), its edge (border), the active tab and picked row (ghost hover). */
@@ -373,9 +376,8 @@
   --spacing-icon-button-sm: 1.5rem;
   --spacing-traffic-lights: 4.75rem;
   --container-reading: 46rem;
-  /* The room the pinned summary card takes from the reading column where it moves it aside (the old app's
-     --spacing-summary-shift, twice, and --container-thread-beside-summary): the w-75 card and its 4px inset. */
-  --spacing-summary-room: calc(var(--spacing) * 76);
+  /* How far the reading column moves aside for the pinned summary card, keeping its width [D135]. */
+  --spacing-summary-room: calc(var(--spacing) * 38.5);
   /* A Settings page's column (the old app's). */
   --container-settings: 60rem;
   /* Find in the conversation: its bar (24rem, at most 70% of the window, a row 2.75rem tall), and the first row's
@@ -554,6 +556,8 @@
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
+  /* A faint card shadow, under the summary card [D136]. */
+  --shadow-summary: 0 4px 16px rgb(0 0 0 / 5%);
   /* Menus' and popovers' edge and shadow: a hairline ring and a large shadow [D73]. */
   --shadow-overlay: 0 0 0 0.5px var(--color-popover-edge), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);
@@ -1820,9 +1824,9 @@
   transition-duration: var(--duration-bar);
 }
 
-/* The pinned summary card shrinking and fading in and out where it sits [D67]: visible until it has gone. */
+/* The summary card sliding in from the right and fading, a 0.3s spring [D137]: visible until it has gone. */
 @utility summary-card-motion {
-  transition-property: opacity, scale, visibility;
+  transition-property: opacity, translate, visibility;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
@@ -1841,11 +1845,11 @@
 @utility summary-room {
   --summary-room: var(--spacing-summary-room);
 }
-/* The reading column centred in what the card's room leaves of the pane, at most --container-reading wide (the old
-   app's shift: aside by half the room, narrowed by all of it); with no room, as it was. */
+/* The reading column moved aside by the card's room, keeping its width where the pane has it [D135];
+   with no room, as it was. */
 @utility summary-column {
-  translate: calc(var(--summary-room) / -2) 0;
-  max-width: min(var(--container-reading), 100% - var(--summary-room));
+  translate: calc(var(--summary-room) * -1) 0;
+  max-width: min(var(--container-reading), 100% - var(--summary-room) * 2);
 }
 
 /* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. */

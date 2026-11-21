@@ -50,21 +50,21 @@ function ChatActions({ row, inert, className }: { row: SessionRow; inert: boolea
 }
 
 /**
- * Context shows and hides the summary card where the chat has one, in the Toggle pinned summary spot [D39 D1014];
- * elsewhere it's still drawn only.
+ * Toggle pinned summary: shows and hides the summary card where the chat has one [D39 D132]; elsewhere it's
+ * still drawn only.
  */
 function ContextButton({ owner, className }: { owner: string; className: string }) {
   const { shown, toggle } = useCardToggle(owner);
   const onChat = useTabs(owner).active === CHAT;
   if (!useHasPanel(owner))
     return (
-      <Drawn tooltip="Context" className={className} inert={!onChat}>
+      <Drawn tooltip="Toggle pinned summary" className={className} inert={!onChat}>
         <Tasks />
       </Drawn>
     );
   return (
     <span inert={!onChat} className={cx("app-no-drag flex", className)}>
-      <TooltipIconButton look="bar" tooltip="Context" pressed={shown} onClick={toggle}>
+      <TooltipIconButton look="bar" tooltip="Toggle pinned summary" data-summary-toggle pressed={shown} onClick={toggle}>
         <Tasks />
       </TooltipIconButton>
     </span>
