@@ -56,7 +56,6 @@ export function AppSidebar({
   projects,
   active,
   page = null,
-  home,
   offline,
   onOpen,
   onNewSession,
@@ -72,8 +71,6 @@ export function AppSidebar({
   active: string | null;
   /** The project whose page shows [D780]. */
   page?: string | null;
-  /** The home page (a new session) is what shows. */
-  home: boolean;
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
@@ -240,10 +237,10 @@ export function AppSidebar({
         </div>
       </ViewMenu>
       <div ref={list} className={LIST}>
-        {/* New chat, the first row [D25]. */}
+        {/* New chat, the first row [D25], never lit: Home isn't a place in the list. */}
         <NavList>
           <li>
-            <NavRow aria-current={home ? "page" : undefined} onClick={onNewChat}>
+            <NavRow onClick={onNewChat}>
               <ComposeEditSquare />
               New chat
             </NavRow>

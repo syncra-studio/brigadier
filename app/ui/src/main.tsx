@@ -172,7 +172,6 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           projects={projects ?? []}
           active={active}
           page={page}
-          home={active === null && page === undefined}
           offline={daemon === null}
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
           // ⌘N's too: Home in the open session's project [D184].
