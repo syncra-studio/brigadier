@@ -116,7 +116,7 @@ export function Reactions({ pr, subject, reactions = [], onChanged }: { pr: Pull
             render={
               <PopoverTrigger
                 aria-label="Add reaction"
-                className="flex size-6 cursor-pointer items-center justify-center rounded-capsule text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring svg:size-icon-sm"
+                className="flex size-6 cursor-pointer items-center justify-center rounded-icon-button text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring svg:size-icon-sm"
               />
             }
           >
