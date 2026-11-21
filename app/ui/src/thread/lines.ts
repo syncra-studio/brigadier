@@ -18,7 +18,7 @@ export type Line =
    * `members`: every step it holds, which its words say [D755].
    */
   | { type: "group"; id: string; gap: Gap; item: Group; turn: Turn | undefined; open: boolean; steps: StepLine[]; live?: Item; members: Item[] }
-  /** "Working for 12s" over a running turn's work (`open` null: it doesn't fold), "Worked for 3m 4s" once done. */
+  /** "Working for 12s" over a running turn's work, "Worked for 3m 4s" once done; `open` null: nothing to fold. */
   | { type: "work"; id: string; gap: Gap; turn: Turn; work: Work | undefined; open: boolean | null };
 
 type GroupLine = Extract<Line, { type: "group" }>;
@@ -26,6 +26,9 @@ export type StepLine = Extract<Line, { type: "item" }>;
 
 /** The id of a turn's work header, which is also what it toggles. */
 export const workKey = (turnId: string) => `work:${turnId}`;
+
+/** What a running turn's header toggles: its work shut away till it ends, when it folds as any turn [D93]. */
+export const shutKey = (turnId: string) => `shut:${turnId}`;
 
 /** A user message that starts a turn: a steer joins the running one [D183]. */
 const opens = (item: Item | undefined) => item?.kind === "message" && item.role === "user" && !item.steer;
@@ -108,6 +111,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (opens(item) || (before && item.turnId !== before.turnId)) {
       bare();
       end();
+      // A running turn's shut work ends with it.
+      fold = null;
     }
     if (opens(item)) {
       starts.push(at);
@@ -126,10 +131,11 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     if (turn && (wakes || (opens(before) && before!.turnId === item.turnId)) && (!ends(item) || live || turn.status === "done") && (item.kind !== "message" || turn.status !== "done" || live || done || turn.denied)) {
       const key = workKey(turn.id);
       const foldable = done !== undefined && !live;
-      const opened = foldable ? open.has(key) : null;
+      const opened = foldable ? open.has(key) : live ? !open.has(shutKey(turn.id)) : null;
       // A turn its agent woke to carry on runs again, the view still holding its earlier work [D106].
       push({ type: "work", id: key, gap: "turn", turn, work: foldable ? done : undefined, open: opened });
-      fold = foldable && !opened ? done.folded : null;
+      // Shut while it runs: all it has done so far and does next, till the turn ends [D93].
+      fold = foldable && !opened ? done.folded : live && !opened ? [item.n ?? 0, Number.MAX_SAFE_INTEGER] : null;
       kept = done?.kept ?? [];
     }
     // Its first row too: an empty span (a worktree's turn with only its reply) folds nothing [D85, D118].

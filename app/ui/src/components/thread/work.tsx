@@ -1,7 +1,7 @@
 import { useThread } from "../../daemon";
 import { Lightbulb, Mcp } from "../../icons";
 import type { Item, Turn, Work } from "../../thread/item";
-import { type Group, workKey } from "../../thread/lines";
+import { type Group, shutKey, workKey } from "../../thread/lines";
 import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
 import { cx } from "../cx";
 import { Markdown } from "../../thread/markdown";
@@ -9,18 +9,18 @@ import { Chevron, OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-ro
 import { finished } from "../../workers/chip";
 import { useWorkers } from "../../workers/live";
 
-const RULE = "flex w-full items-center border-b border-divider pb-2";
+const RULE = "flex w-fit max-w-full items-center";
 const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
 
 /** "2 workers", "1 subagent". */
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
- * Over a turn's work, on a hairline: "Working for 12s" ticking from the turn's start, never reset [D128], with what it
+ * Over a turn's work, with no hairline [D93]: "Working for 12s" ticking from the turn's start, never reset [D128], with what it
  * waits on, a count per kind: "· 2 workers · 1 subagent running", "· 1 worker paused" [D67, D550, D553], and
  * "· waiting for you" while it waits on the user's answer, a worker's or subagent's too [D551]; held 30 minutes with no
  * word from any of them, "· no activity for 30 min" [D552]. Then "Worked for 3m 4s ›" (with "· waited for 1m 2s" when
- * it waited), which opens and shuts the turn's folded work.
+ * it waited), which opens and shuts the turn's folded work; while it runs, a click shuts its work away till it ends [D93].
  */
 export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
   const live = turn.status === "running" || Boolean(turn.held);
@@ -53,8 +53,8 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
     <button
       type="button"
       aria-expanded={open}
-      onClick={() => onToggle(workKey(turn.id))}
-      className={cx(RULE, "group cursor-pointer gap-1 text-start focus-visible:focus-ring")}
+      onClick={() => onToggle(live ? shutKey(turn.id) : workKey(turn.id))}
+      className={cx(RULE, "group cursor-pointer gap-1 rounded-control text-start focus-visible:focus-ring")}
     >
       <span className={cx(LABEL, "transition-colors group-hover:text-foreground group-focus-visible:text-foreground")}>{label}</span>
       <span className="flex text-faint-foreground">
