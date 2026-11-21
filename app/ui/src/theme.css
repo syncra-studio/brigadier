@@ -29,10 +29,10 @@
   --color-control: rgb(255 255 255 / 5.2%);
   --color-glass-stroke: rgb(255 255 255 / 8.4%);
   --color-selection: rgb(255 255 255 / 7.8%);
-  /* The rail and sidebar divider and a close button's hover; a card's edge while its handle is dragged [D16]. */
+  /* A close button's hover; a card's edge while its handle is dragged [D16]. */
   --color-muted: #393939;
-  /* A resize handle's line while hovered or dragged, the splitter [D41]. */
-  --color-resize-line: #4d4d4d;
+  /* A resize handle's line while hovered or dragged: a strong border [D41 D188]. */
+  --color-resize-line: rgb(255 255 255 / 15.6%);
   /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
   --color-foreground: #dfdfdf;
   --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
@@ -724,10 +724,15 @@
 :root {
   color-scheme: dark;
 }
-/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76]. */
+/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76]. Electron's
+   material stays dark behind a key window, where the reference lights up: its sidebar reads #262626 key and #1e1e1e not, ours
+   #1d1d1d both ways, so while key the window fill stands in for it, #262626 on screen [D188]. */
 :root[data-platform="darwin"] {
   --color-sidebar: color-mix(in oklab, var(--color-background) 65%, transparent);
   --color-window-fill: color-mix(in oklab, #282828 80%, transparent);
+  &[data-key] {
+    --color-window-fill: color-mix(in oklab, #484848 80%, transparent);
+  }
   & body:has([data-slot="sidebar-wrapper"]) {
     background: transparent;
   }
@@ -1443,17 +1448,23 @@
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* The strip [D11], its hairline to the shown sidebar the divider, fading in under the titlebar row [D20]. */
+/* The strip [D11], its hairline to the shown sidebar: the border on the sidebar's first half point, 8 in from
+   the titlebar row and the window's foot, fading over 3 at both ends [D20 D188]. */
 @utility rail {
   position: relative;
   width: var(--spacing-rail);
   [data-state="expanded"] > &::after {
     content: "";
     position: absolute;
-    inset-block: var(--spacing-tab-bar) 0;
-    inset-inline-end: 0;
+    inset-block: calc(var(--spacing-tab-bar) + var(--spacing) * 2) calc(var(--spacing) * 2);
+    inset-inline-end: -0.5px;
     width: 0.5px;
-    background: linear-gradient(transparent, var(--color-muted) calc(var(--spacing) * 3));
+    background: linear-gradient(
+      transparent,
+      var(--color-border) calc(var(--spacing) * 0.75),
+      var(--color-border) calc(100% - var(--spacing) * 0.75),
+      transparent
+    );
     pointer-events: none;
   }
 }

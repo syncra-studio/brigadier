@@ -10,11 +10,16 @@ export const px = (name: string) => {
 
 /**
  * The grab area straddling a column's edge (the old SidebarResizeHandle): Files' start edge, or with `end` the left
- * sidebar's end edge [D21]. The width goes on `holder`'s data-width while dragged.
+ * sidebar's: 8 wide just past its edge under the titlebar row, the line on the edge itself [D21 D188]. The
+ * width goes on `holder`'s data-width while dragged. Dragged under `hideBelow` it closes; with `onOpen` the drag goes on,
+ * and coming back over it opens again.
  */
-export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, end = false, min = "--spacing-sidebar-min", max = "--spacing-sidebar-max", holder = (handle) => handle.parentElement }: {
+export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, onOpen, hideBelow, end = false, min = "--spacing-sidebar-min", max = "--spacing-sidebar-max", holder = (handle) => handle.parentElement }: {
   label: string;
   end?: boolean;
+  /** The width it closes under; half its least by default. */
+  hideBelow?: number;
+  onOpen?: () => void;
   /** The width's range, theme lengths. */
   min?: string;
   max?: string;
@@ -24,7 +29,7 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, e
   onWidth: (width: number) => void;
   onClose: () => void;
 }) {
-  const start = useRef<{ x: number; width: number } | null>(null);
+  const start = useRef<{ x: number; width: number; closed: boolean } | null>(null);
   const latest = useRef<number | null>(null);
 
   const stop = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -47,7 +52,7 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, e
         if (!panel) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        start.current = { x: event.clientX, width: panel.getBoundingClientRect().width };
+        start.current = { x: event.clientX, width: panel.getBoundingClientRect().width, closed: false };
         latest.current = null;
         setResizing(true);
       }}
@@ -58,13 +63,19 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, e
         const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
         const wanted = start.current.width + (event.clientX - start.current.x) * (rtl !== end ? 1 : -1);
         const least = px(min);
-        if (wanted < least / 2) {
+        if (wanted < (hideBelow ?? least / 2)) {
+          if (start.current.closed) return;
           // Closed by the drag, it keeps the width it had when the drag began, for when it opens again.
           latest.current = Math.round(start.current.width);
           holder(event.currentTarget)?.setAttribute("data-width", String(latest.current));
-          stop(event);
+          start.current.closed = true;
+          if (!onOpen) stop(event);
           onClose();
           return;
+        }
+        if (start.current.closed) {
+          start.current.closed = false;
+          onOpen?.();
         }
         latest.current = Math.round(Math.min(Math.max(wanted, least), px(max)));
         // Follows the pointer without a render; the width is kept when the drag ends.
@@ -73,9 +84,12 @@ export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, e
       onPointerUp={stop}
       onPointerCancel={stop}
       onLostPointerCapture={stop}
-      className={cx("group/resize absolute top-0 bottom-0 z-10 flex w-resize-handle cursor-col-resize justify-center", end ? "end-0 translate-x-1/2 rtl:-translate-x-1/2" : "start-0 -translate-x-1/2 rtl:translate-x-1/2")}
+      className={cx(
+        "group/resize absolute bottom-0 z-10 flex cursor-col-resize",
+        end ? "end-0 top-tab-bar w-2 translate-x-full rtl:-translate-x-full" : "start-0 top-0 w-resize-handle -translate-x-1/2 justify-center rtl:translate-x-1/2",
+      )}
     >
-      <span className="w-px bg-resize-line opacity-0 transition-opacity group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100" />
+      <span className={cx("w-px bg-resize-line opacity-0 group-hover/resize:opacity-100 group-data-resizing/resize:opacity-100", end && "-translate-x-1/2 rtl:translate-x-1/2")} />
     </div>
   );
 }

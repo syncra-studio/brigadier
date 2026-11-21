@@ -254,6 +254,11 @@ function openWindow(): void {
   window.on("enter-full-screen", tellFullScreen);
   window.on("leave-full-screen", tellFullScreen);
   window.webContents.on("did-finish-load", tellFullScreen);
+  // Whether it's the key window: the sidebar's fill follows it (theme.css's data-key) [D188].
+  const tellKey = (): void => window.webContents.send("key", window.isFocused());
+  window.on("focus", tellKey);
+  window.on("blur", tellKey);
+  window.webContents.on("did-finish-load", tellKey);
   // A scroll's news for swiping Back and Forward (shell/titlebar.tsx): a mouse's, the fingers' lift, its end [D3110].
   watchScrolls(window.webContents, {
     begin: (trackpad) => trackpad || window.webContents.send("scroll", "mouse"),

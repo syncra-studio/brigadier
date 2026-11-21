@@ -112,25 +112,30 @@ export function SidebarProvider({
 export function SidebarPanel({ rail, className, children, ...props }: ComponentProps<"div"> & { rail?: ReactNode }) {
   const { open, setOpen, onWidthChange } = useSidebar();
   const [resizing, setResizing] = useState(false);
+  // The sidebar hides under half the least width of the strip and it together [D188].
+  const strip = px("--spacing-rail");
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
       {rail}
-      <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : "w-0")}>
+      {/* Still while dragged, but hiding or showing mid-drag it eases. */}
+      <div inert={!open} data-resizing={(resizing && open) || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : "w-0")}>
         <div data-sidebar="sidebar" className={cx("sidebar-panel-width relative flex h-full flex-col pt-tab-bar text-foreground", className)} {...props}>
           {children}
         </div>
       </div>
-      {open && (
+      {(open || resizing) && (
         <ResizeHandle
           end
           label="Resize sidebar"
           min="--spacing-left-sidebar-min"
           max="--spacing-left-sidebar-max"
+          hideBelow={(px("--spacing-left-sidebar-min") + strip) / 2 - strip}
           holder={(handle) => handle.closest('[data-slot="sidebar-wrapper"]')}
           resizing={resizing}
           setResizing={setResizing}
           onWidth={onWidthChange}
           onClose={() => setOpen(false)}
+          onOpen={() => setOpen(true)}
         />
       )}
     </div>
