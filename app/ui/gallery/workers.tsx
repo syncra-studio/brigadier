@@ -1,21 +1,17 @@
 // Workers, drawn on fake data, as the old app had them [D3010, D3012, D3013]: the chip, the sentences and rows in
-// the parent's thread, the right panel's Workers tab and a worker's view. The strip above the composer is in the composer.
+// the parent's thread, the Workers tab and a worker's view. The strip above the composer is in the composer.
 import { type ReactNode, useState } from "react";
 
-import { TooltipIconButton } from "../src/components/icon-button";
-import { TitlebarTips } from "../src/components/tooltip";
-import { X } from "../src/icons";
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import type { Item, Turn } from "../src/thread/item";
 import { type Worker, WorkerChip, WorkerName, WorkersPanel } from "../src/workers/chip";
-import { PanelTabs, WORKERS_LABEL, WorkerList } from "../src/workers/list";
+import { WorkerList } from "../src/workers/list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "../src/workers/sentence";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "../src/workers/view";
 import { Row, Section, State } from "./parts";
 
 const NOW = Date.now();
 const noop = () => {};
-const act = () => Promise.resolve();
 
 const BRIEF =
   "Target src/upload/retry.rs\n\nChange: retry failed uploads 5 times with doubling waits from 1 s; stop at once on a 4xx. Keep the public API as it is, and commit on your branch when the tests pass.";
@@ -63,7 +59,7 @@ function Column({ children }: { children: ReactNode }) {
   return <div className="flex w-140 min-w-0 flex-col gap-2">{children}</div>;
 }
 
-/** The right panel's frame. */
+/** The tab's frame. */
 function Panel({ children }: { children: ReactNode }) {
   return <div className="flex h-110 w-90 flex-col overflow-hidden rounded-surface border border-border bg-background">{children}</div>;
 }
@@ -86,7 +82,7 @@ const RECENT = [tool("wt-1", "read", "read", "src/upload/retry.rs"), tool("wt-2"
 const EARLIER = [tool("wt-0a", "search", "rg", "“retry” in src/upload"), tool("wt-0b", "read", "read", "src/upload/mod.rs"), tool("wt-0c", "edit", "apply_patch", "src/upload/retry.rs")];
 const ANSWER = reply("wt-3", "Uploads now retry 5 times, waiting 1, 2, 4, 8 and 16 s; a 4xx stops at once. Committed on `brigadier/retry-backoff` (2 commits).");
 
-/** A worker opened in the panel: its header and thread, or its details. */
+/** A worker opened in its tab: its header and thread, or its details. */
 function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] }) {
   const [details, setDetails] = useState(false);
   return (
@@ -96,24 +92,16 @@ function View({ shown, items = [] }: { shown: Worker; items?: readonly Item[] })
         details={details}
         onBack={() => setDetails(false)}
         onToggleDetails={() => setDetails(!details)}
-        actions={
-          <TitlebarTips>
-            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={noop}>
-              <X />
-            </TooltipIconButton>
-          </TitlebarTips>
-        }
       />
       {details ? <WorkerDetails worker={shown} /> : <WorkerThread worker={shown} items={items} turns={[DONE_TURN]} />}
     </Panel>
   );
 }
 
-/** The panel live: the list, a row opening its worker, back to the list. */
+/** The tab live: the list, a row opening its worker, back to the list. */
 function LivePanel() {
   const [open, setOpen] = useState<string | null>(null);
-  const [ended, setEnded] = useState<string[]>([]);
-  const all = [RETRY, PROGRESS, HELD, ...STATES.slice(6), ...DONE_MANY].map((each) => (ended.includes(each.id) ? { ...each, kind: "stopped" as const, word: "Ended", lastAt: Date.now() } : each));
+  const all = [RETRY, PROGRESS, HELD, ...STATES.slice(6), ...DONE_MANY];
   const shown = all.find((each) => each.id === open);
   return (
     <WorkersPanel.Provider value={{ open: setOpen }}>
@@ -124,10 +112,7 @@ function LivePanel() {
             <WorkerThread worker={shown} items={RECENT} turns={[DONE_TURN]} />
           </>
         ) : (
-          <>
-            <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} finishedWords="11 done · 4 stopped" onSelect={noop} onClose={noop} />
-            <WorkerList workers={all} act={async (_, ids) => setEnded((now) => [...now, ...ids])} />
-          </>
+          <WorkerList workers={all} />
         )}
       </Panel>
     </WorkersPanel.Provider>
@@ -223,21 +208,19 @@ export function WorkersGallery() {
         </Row>
       </Section>
 
-      <Section title="Right panel: Workers">
-        <Row name="The list (the tab row shows only here until 4.3 wires it)">
+      <Section title="Workers tab">
+        <Row name="The list">
           <State label="Active and Done">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
-              <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} act={act} />
+              <WorkerList workers={[RETRY, PROGRESS, HELD, LIMIT, STATES[3]!, ...DONE_MANY]} />
             </Panel>
           </State>
           <State label="None active">
             <Panel>
-              <PanelTabs active={WORKERS_LABEL} tabs={[WORKERS_LABEL]} onSelect={noop} onClose={noop} />
-              <WorkerList workers={DONE_MANY.slice(0, 3)} act={act} />
+              <WorkerList workers={DONE_MANY.slice(0, 3)} />
             </Panel>
           </State>
-          <State label="Live: open a worker, End one">
+          <State label="Live: open a worker, back">
             <LivePanel />
           </State>
         </Row>

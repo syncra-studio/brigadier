@@ -1,25 +1,19 @@
-import { type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
-import { TooltipIconButton } from "../components/icon-button";
 import { type PendingQuestion, QuestionCard } from "../components/composer/question";
-import { Body } from "../components/thread/body";
 import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
-import { TitlebarTips } from "../components/tooltip";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
-import { X } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { CardSection } from "../panel/card";
 import { Counts, Line } from "../panel/source/rows";
 import { cx } from "../components/cx";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
-import { setPanelOpen, usePanelMemory } from "../panel/memory";
-import { px, ResizeHandle } from "../components/resize-handle";
-import { useHasPanel } from "../shell/right-panel";
+import { openTab } from "../shell/tab-store";
 import type { Item, Setup, StepKind, Turn } from "../thread/item";
 import { finished, lowerFirst, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
-import { PanelTabs, WORKERS_LABEL, WorkerList } from "./list";
+import { WORKERS_LABEL, WorkerList } from "./list";
 import { StillRunningRow, TeamSentence, TeamStepRow } from "./sentence";
 import { type Act, WorkerControls, WorkersStrip } from "./strip";
 import { asSubagent, SUBAGENTS_LABEL, SubagentView, useAgents } from "./subagents";
@@ -108,29 +102,18 @@ const stop = (parent: string, ids: readonly string[]) =>
     return false;
   });
 
-/** Whether each session's Workers panel is open, which worker or subagent it shows (null: the list), and which list. */
-type Shown = { open: boolean; worker: string | null; tab?: string };
-let shown: Record<string, Shown> = {};
-const listeners = new Set<() => void>();
-const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
-function show(owner: string, next: Shown) {
-  shown = { ...shown, [owner]: next };
-  for (const listener of listeners) listener();
-}
-const CLOSED: Shown = { open: false, worker: null };
-const useShown = (owner: string) => useSyncExternalStore(subscribe, () => shown[owner]) ?? CLOSED;
-// shortcut: the panel's dragged width lasts until the app quits; keep it in Rust's panel memory if the owner wants it kept.
-let width: number | null = null;
+/** The Workers tab, the session's own workers, or the Subagents tab, its agent CLI's own [D80]. */
+export type TeamKind = "workers" | "subagents";
 
-/** Opens a worker of `owner` in its Workers panel: its chip in a message, or a message just sent to it. */
-export const openWorker = (owner: string, worker: string) => show(owner, { open: true, worker });
+/** Opens a worker of `owner` in its Workers tab: its chip in a message, or a message just sent to it [D81]. */
+export const openWorker = (owner: string, worker: string) => openTab(owner, "workers", worker);
 
-/** A worker named anywhere opens it in its parent's Workers panel; null opens the list, `tab`'s. */
-export function Opens({ owner, tab, children }: { owner: string; tab?: string; children: ReactNode }) {
+/** A worker named anywhere opens it in its parent's Workers tab, `tab`'s; null opens the list [D81]. */
+export function Opens({ owner, tab = "workers", children }: { owner: string; tab?: TeamKind; children: ReactNode }) {
   const rows = useDaemon().rows;
   // A Brigade's session opens as the session it is [D189].
   const session = (id: string | null) => rows?.some((row) => row.id === id && row.boss);
-  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : show(owner, { open: true, worker, tab }));
+  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : openTab(owner, tab, worker ?? undefined));
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
@@ -204,144 +187,31 @@ export function SessionWorkersStrip({ id }: { id: string }) {
   );
 }
 
-/** "1 done · 1 paused · 1 stopped": the Workers tab's tip after its name, as the old app's outcomeWords. */
-function finishedWords(workers: readonly Worker[]): string {
-  const counts = { done: 0, paused: 0, stopped: 0, failed: 0 };
-  for (const { kind } of workers) {
-    if (kind === "done" || kind === "merged" || kind === "doneNotMerged") counts.done += 1;
-    else if (kind === "paused" || kind === "stopped" || kind === "failed") counts[kind] += 1;
-  }
-  return Object.entries(counts).filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`).join(" · ");
-}
-
-/** A right column's chosen width, not its rendered one; one never resized counts at its default. */
-const chosen = (dragged: number | null) => dragged ?? px("--spacing-sidebar");
-
-/** Whether the Workers column folds, as the old app's rightSidebarFolds: below the narrow window plus the open left column. */
-const folds = () => {
-  const left = document.querySelector('[data-slot="sidebar-panel"]');
-  return innerWidth < px("--spacing-narrow-window") + (left?.getAttribute("data-state") === "expanded" ? left.getBoundingClientRect().width : 0);
-};
-function subscribeFold(onChange: () => void) {
-  const left = document.querySelector('[data-slot="sidebar-panel"]');
-  const observer = new ResizeObserver(onChange);
-  if (left) observer.observe(left);
-  addEventListener("resize", onChange);
-  return () => {
-    observer.disconnect();
-    removeEventListener("resize", onChange);
-  };
-}
-
 /**
- * The Workers panel, as the old app's RightSidebar [D3012, D3013]: its own column between the chat and Files, opened
- * from a worker named anywhere, its tab and close in a row at its top, or a worker's header in their place. It slides
- * as Files does; where the window can't hold the chat beside both, the one opened last stays and the other closes.
+ * The Workers or Subagents tab [D80–D83]: their list, newest first, or the one its target
+ * names, view only; ← goes back to the list in the same tab. Closing it stops nothing.
  */
-export function WorkersPanelSlot({ owner, onShown }: { owner: string; onShown: (width: number) => void }) {
+export function TeamTab({ owner, kind, target }: { owner: string; kind: TeamKind; target?: string }) {
   const workers = useWorkers(owner);
   const agents = useAgents(owner);
-  const shown = useShown(owner);
-  // Folded, it shows only once opened there, and each fold change closes it; the wide choice stays, as the old useSidebarChoice's.
-  const fold = useSyncExternalStore(subscribeFold, folds);
-  const [hidden, setHidden] = useState(fold);
-  const [wide, setWide] = useState(fold ? shown.open : null);
-  const [seen, setSeen] = useState({ fold, shown });
-  if (seen.fold !== fold || seen.shown !== shown) {
-    setSeen({ fold, shown });
-    setHidden(seen.fold !== fold && fold);
-    if (seen.fold !== fold && fold) setWide(shown.open);
-  }
-  // Unfolded, the choice made while wide comes back.
-  useLayoutEffect(() => {
-    if (fold || wide === null) return;
-    setWide(null);
-    if (shown.open !== wide) show(owner, { open: wide, worker: shown.worker });
-  }, [fold, wide, shown, owner]);
-  const open = shown.open && !hidden;
-  const { worker } = shown;
-  const files = usePanelMemory();
-  const filesOpen = useHasPanel(owner) && files.open;
-  const [resizing, setResizing] = useState(false);
-  const content = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(open);
-  if (open && !mounted) setMounted(true);
-  const close = () => (fold ? setHidden(true) : show(owner, { open: false, worker }));
-
-  // Files leaves room for this column's full width while it's open, as this one leaves Files its least width.
-  useLayoutEffect(() => {
-    const element = content.current;
-    if (!open || !element) return;
-    const measure = () => onShown(Math.round(element.getBoundingClientRect().width));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      onShown(0);
-    };
-  }, [open, onShown]);
-
-  const was = useRef({ files: filesOpen, workers: open });
-  useLayoutEffect(() => {
-    const opened = { files: filesOpen && !was.current.files, workers: open && !was.current.workers };
-    was.current = { files: filesOpen, workers: open };
-    const left = document.querySelector('[data-slot="sidebar-panel"]')?.getBoundingClientRect().width ?? 0;
-    if (!filesOpen || !open || innerWidth >= left + px("--spacing-sidebar-thread-min") + chosen(width) + chosen(files.width)) return;
-    if (opened.files) close();
-    else if (opened.workers) setPanelOpen(false);
-  }, [filesOpen, open, files.width, owner, worker, fold]);
-
-  const opened = workers.find((each) => each.id === worker);
-  const agent = opened ? undefined : agents.find((each) => each.id === worker);
-  // Workers, and the CLI's own subagents once it has any, each a list of its own.
-  const tabs = [...(workers.length > 0 || agents.length === 0 ? [WORKERS_LABEL] : []), ...(agents.length > 0 ? [SUBAGENTS_LABEL] : [])];
-  const tab = shown.tab && tabs.includes(shown.tab) ? shown.tab : tabs[0]!;
+  const worker = kind === "workers" ? workers.find((each) => each.id === target) : undefined;
+  const agent = kind === "subagents" ? agents.find((each) => each.id === target) : undefined;
+  const back = () => openTab(owner, kind);
   return (
-    <div
-      data-slot="workers-panel"
-      data-state={open ? "expanded" : "collapsed"}
-      data-width={width ?? undefined}
-      data-beside={filesOpen ? px("--spacing-sidebar-min") : undefined}
-      className={cx("right-panel-width-source start-hairline relative flex h-full shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
-    >
-      <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "right-panel-width" : "w-0")}>
-        <div ref={content} className="right-panel-width flex h-full flex-col">
-          <Opens owner={owner}>
-            {!opened && !agent && <PanelTabs active={tab} tabs={tabs} finishedWords={finishedWords(workers)} onSelect={(next) => show(owner, { ...shown, tab: next })} onClose={close} />}
-            <div
-              id="workers-panel-content"
-              className={cx("flex min-h-0 flex-1 flex-col overflow-clip bg-background transition-opacity duration-150 motion-reduce:transition-none", open ? "opacity-100" : "opacity-0")}
-            >
-              {mounted &&
-                (opened ? (
-                  <WorkerView key={opened.id} worker={opened} owner={owner} onBack={() => show(owner, { open: true, worker: null })} onClose={close} />
-                ) : agent ? (
-                  <SubagentView key={agent.id} item={agent} onBack={() => show(owner, { open: true, worker: null, tab: SUBAGENTS_LABEL })} onClose={close} />
-                ) : tab === SUBAGENTS_LABEL ? (
-                  <WorkerList workers={agents.map(asSubagent).toReversed()} label={SUBAGENTS_LABEL} />
-                ) : (
-                  <WorkerList workers={workers.toReversed()} act={act(owner)} />
-                ))}
-            </div>
-          </Opens>
-        </div>
-      </div>
-      {open && (
-        <ResizeHandle
-          label="Resize Workers"
-          resizing={resizing}
-          setResizing={setResizing}
-          onWidth={(next) => (width = next)}
-          onClose={close}
-        />
+    <Opens owner={owner} tab={kind}>
+      {worker ? (
+        <WorkerView key={worker.id} worker={worker} owner={owner} onBack={back} />
+      ) : agent ? (
+        <SubagentView key={agent.id} item={agent} onBack={back} />
+      ) : (
+        <WorkerList workers={(kind === "workers" ? workers : agents.map(asSubagent)).toReversed()} label={kind === "workers" ? WORKERS_LABEL : SUBAGENTS_LABEL} />
       )}
-    </div>
+    </Opens>
   );
 }
 
 /** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
-function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner: string; onBack: () => void; onClose: () => void }) {
+function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; onBack: () => void }) {
   const rows = useDaemon().rows;
   const updated = rows?.find((row) => row.id === worker.id)?.updated;
   // Its asks name the session that answers them [D131].
@@ -366,13 +236,6 @@ function WorkerView({ worker, owner, onBack, onClose }: { worker: Worker; owner:
         details={details}
         onBack={() => (details ? setDetails(false) : onBack())}
         onToggleDetails={() => setDetails(!details)}
-        actions={
-          <TitlebarTips>
-            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
-              <X />
-            </TooltipIconButton>
-          </TitlebarTips>
-        }
       />
       <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
       {/* Its hold is the user's call, answered here where "Needs you" leads [D2028, D342]; its other asks are its parent's [D119, D131]. */}
@@ -399,7 +262,7 @@ function doneWords(workers: readonly Worker[]): string {
 
 /**
  * A worker at work, as the old card's WorkerLineRow: its glyph, its name, its state in a soft word ("working",
- * shimmering; "paused") and its +N −N, under its pause/resume and End on hover [D3045]. The row opens its panel.
+ * shimmering; "paused") and its +N −N, under its pause/resume and End on hover [D3045]. The row opens it in the Workers tab.
  */
 function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
   const { open } = useContext(WorkersPanel);
@@ -443,14 +306,14 @@ function WorkerLine({ worker, act }: { worker: Worker; act?: Act }) {
 /**
  * The session's workers in the summary card, as the old card's WorkersSummary [D3045]: while a few work, a line each
  * (then what finished, muted); else one row of glyphs with "N working" or "1 done · 2 ended". A row opens the
- * Workers panel, or the worker's own.
+ * Workers tab on the list, or on the worker [D81].
  */
 export function WorkersCard({ owner }: { owner: string }) {
   return <TeamCard owner={owner} title={WORKERS_LABEL} workers={useWorkers(owner)} act={act(owner)} />;
 }
 
 /** The card's section for a session's workers or its CLI's own subagents, oldest first; with no `act`, no controls. */
-export function TeamCard({ owner, title, workers: all, act, tab }: { owner: string; title: string; workers: readonly Worker[]; act?: Act; tab?: string }) {
+export function TeamCard({ owner, title, workers: all, act, tab }: { owner: string; title: string; workers: readonly Worker[]; act?: Act; tab?: TeamKind }) {
   const workers = all.toReversed();
   if (workers.length === 0) return null;
   const active = workers.filter(onHand);

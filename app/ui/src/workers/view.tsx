@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
@@ -18,43 +18,41 @@ import { finished, waiting, type Worker } from "./chip";
 import { WORKERS_LABEL } from "./list";
 
 /*
- * One worker in the right panel, as the old app's WorkerDetail, WorkerHeader, WorkerThread and WorkerBrief [D3013]:
- * back, its glyph and "‹name› · ‹model› · ‹effort›" [D884]; below, its brief as the thread's first bubble, what routing picked
+ * One worker in its tab, as the old app's WorkerDetail, WorkerThread and WorkerBrief [D3013] under a
+ * header [D82]: back, its glyph, its name and, at the end, "‹model› · ‹effort›"; below, its brief as the thread's first bubble, what routing picked
  * for it [D3018], how long it worked, and its thread, read only. The user talks to it from the parent's composer.
  */
 
-/** Its header: back, its glyph, "‹name› · ‹model› · ‹effort›" as one piece that shows its details, and the panel's own actions [D884]. */
-export function WorkerHeader({ worker, details = false, onBack, onToggleDetails, actions, list = WORKERS_LABEL }: {
+/** Its header [D82]: back, its glyph, its name (which shows its details) and its model at the end. View only. */
+export function WorkerHeader({ worker, details = false, onBack, onToggleDetails, list = WORKERS_LABEL }: {
   worker: Worker;
   /** The list Back goes to. */
   list?: string;
   details?: boolean;
   onBack: () => void;
   onToggleDetails: () => void;
-  actions?: ReactNode;
 }) {
   return (
-    <header data-slot="worker-header" className="flex h-panel-header min-w-0 shrink-0 items-center gap-2 border-b border-border px-2">
-      <TooltipIconButton tooltip={details ? "Back to worker" : `Back to ${list.toLowerCase()}`} onClick={onBack} className="rounded-icon-button">
+    <header data-slot="worker-header" className="flex h-10 min-w-0 shrink-0 items-center gap-2 border-b border-border px-4">
+      <TooltipIconButton tooltip={details ? "Back to worker" : `Back to ${list.toLowerCase()}`} onClick={onBack}>
         <ArrowLeft />
       </TooltipIconButton>
       <WorkerGlyph id={worker.id} className="size-6" />
-      {/* A long name truncates; its model and effort (Rust's "Opus 5.5 · High") stay whole. */}
-      <h2 className="me-auto flex min-w-0 text-label">
+      <h2 className="flex min-w-0 flex-1">
         <button
           type="button"
-          aria-label={`Details: ${worker.name}${worker.model ? ` · ${worker.model}` : ""}`}
+          aria-label={`Details: ${worker.name}`}
           aria-pressed={details}
           data-slot="worker-header-name"
           title={worker.name}
           onClick={onToggleDetails}
-          className="-mx-1 flex h-control-sm min-w-8 cursor-pointer items-center rounded-control px-1 whitespace-nowrap hover:bg-fill focus-visible:focus-ring aria-pressed:bg-fill"
+          className="min-w-0 cursor-pointer truncate rounded-control text-sm font-medium focus-visible:focus-ring"
         >
-          <span className="min-w-0 truncate font-medium">{worker.name}</span>
-          {worker.model && <span className="shrink-0 text-muted-foreground">{"\u00a0· "}{worker.model}</span>}
+          {worker.name}
         </button>
       </h2>
-      {actions}
+      {/* Rust's "Opus 5.5 · High". */}
+      {worker.model && <span className="max-w-1/2 min-w-0 truncate text-xs text-faint-foreground">{worker.model}</span>}
     </header>
   );
 }

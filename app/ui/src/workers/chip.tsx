@@ -6,7 +6,7 @@ import { WorkerGlyph } from "../icons/worker-glyphs";
 
 /*
  * A worker named anywhere in the conversation, as the old app's WorkerChip, WorkerName and Glyphs: its chip (glyph
- * and name in a pill, which opens it in the Workers panel), its name as a button, and a sentence's glyphs [D3010].
+ * and name in a pill, which opens it in the Workers tab), its name as a button, and a sentence's glyphs [D3010].
  * Drawn only: Rust will hand each worker's state word, its live line and its times [D3029].
  */
 
@@ -54,12 +54,12 @@ export const waiting = (worker: Worker) => worker.kind === "needsYou" || worker.
 /** A state word inside a line: "Needs you" reads "needs you". */
 export const lowerFirst = (word: string) => word.charAt(0).toLowerCase() + word.slice(1);
 
-/** Which worker the Workers tab shows: `null` for the list. */
+/** Opens a worker in its tab: `null` for the list [D81]. */
 export const WorkersPanel = createContext<{ open: (id: string | null) => void }>({ open: () => {} });
 
 /**
  * A worker named in a line: its glyph and name in a pill that truncates a long name, shows it whole with its
- * state on hover, and opens it in the panel. An unknown worker reads "a worker".
+ * state on hover, and opens it in its tab. An unknown worker reads "a worker".
  */
 export function WorkerChip({ worker, label, className }: {
   worker: Worker | null;

@@ -64,8 +64,8 @@ function Files({ owner }: { owner: string }) {
   return <FilesView owner={owner} shown={front} onOpen={(path, keep) => openFile(owner, path, { preview: !keep })} />;
 }
 
-/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]; `beside`: the Workers panel's width while it shows. */
-export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: number }) {
+/** Where the right panel mounts, below the tab bar and beside the chat [D361, D410]. */
+export function RightPanelSlot({ owner }: { owner: string }) {
   useArchivedGitNotice(owner);
   const has = useHasPanel(owner);
   const memory = usePanelMemory();
@@ -98,7 +98,6 @@ export function RightPanelSlot({ owner, beside = 0 }: { owner: string; beside?: 
       aria-label="Files"
       data-state={open ? "expanded" : "collapsed"}
       data-width={memory.width ?? undefined}
-      data-beside={beside || undefined}
       className={cx("right-panel-width-source start-hairline relative flex h-full min-h-0 shrink-0 before:transition-opacity before:duration-300 before:ease-sidebar motion-reduce:before:transition-none", !open && "before:opacity-0")}
     >
       <div

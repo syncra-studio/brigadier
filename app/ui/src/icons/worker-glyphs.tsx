@@ -137,3 +137,6 @@ export function IdGlyph({
 export function WorkerGlyph({ id, working, className }: { id: string; working?: boolean; className?: string }) {
   return <IdGlyph id={id} dot={working} className={className} />;
 }
+
+/** The Workers and Subagents tabs' icon: one worker glyph, with no status dot [D83]. */
+export const TeamGlyph = ({ className }: { className?: string }) => <IdGlyph id="workers" className={className} />;

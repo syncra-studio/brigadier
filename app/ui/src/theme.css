@@ -137,6 +137,8 @@
   --color-ansi-bright-white: var(--color-foreground);
   /* A select's pill at rest: a tertiary button. */
   --color-fill-faint: rgb(255 255 255 / 2.9%);
+  /* A shade under the page: a hovered row of the Workers and Subagents lists [D80]. */
+  --color-surface-under: #141414;
   /* Behind an open dialog: the page, dimmed. */
   --color-dialog-backdrop: color-mix(in oklab, var(--color-background) 60%, transparent);
   /* The image viewer's backdrop: near-black, so the image reads as itself. */
@@ -1432,13 +1434,10 @@
     pointer-events: none;
   }
 }
-/* A right column's width, Files' or Workers': where it was dragged (data-width on it) or the default, kept in its range
-   and leaving the chat its least room beside the left sidebar and the other right column (data-beside: Workers' width
-   while open, for Files; Files' least width while open, for Workers), as the old workspace-pane-width and
-   right-sidebar-panel-width. */
+/* Files' width: where it was dragged (data-width on it) or the default, kept in its range and leaving the chat its least
+   room beside the left sidebar, as the old workspace-pane-width. */
 @utility right-panel-width-source {
   --right-panel-width: attr(data-width px, var(--spacing-sidebar));
-  --right-panel-beside: attr(data-beside px, 0px);
 }
 @utility right-panel-width {
   width: clamp(
@@ -1446,7 +1445,7 @@
     var(--right-panel-width, var(--spacing-sidebar)),
     max(
       var(--spacing-sidebar-min),
-      min(var(--spacing-sidebar-max), 100vw - var(--spacing) * 7 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px) - var(--right-panel-beside, 0px))
+      min(var(--spacing-sidebar-max), 100vw - var(--spacing) * 7 - var(--spacing-sidebar-thread-min) - var(--sidebar-shown, 0px))
     )
   );
 }

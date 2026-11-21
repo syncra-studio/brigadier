@@ -41,7 +41,7 @@ const BUTTON = "shrink-0 rounded-icon-button text-row-foreground hover:text-fore
 /** "4m ago": how long since a finished worker's CLI last said anything. */
 function ago(at: number, now: number): string {
   const minutes = Math.floor(Math.max(0, now - at) / 60_000);
-  if (minutes < 1) return "now";
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
@@ -61,7 +61,7 @@ export function RowTime({ worker, ago: since = false, className }: { worker: Wor
 }
 
 /** The user's End for one worker while it works, waits or is paused: no confirm, its work stays on its branch. */
-export function StopWorker({ worker, act }: { worker: Worker; act: Act }) {
+function StopWorker({ worker, act }: { worker: Worker; act: Act }) {
   const stop = useAction();
   if (!onHand(worker)) return null;
   return (

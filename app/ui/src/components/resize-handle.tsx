@@ -9,8 +9,8 @@ export const px = (name: string) => {
 };
 
 /**
- * The grab area straddling a column's edge (the old SidebarResizeHandle): a right column's start edge, Files' and
- * Workers', or with `end` the left sidebar's end edge [D21]. The width goes on `holder`'s data-width while dragged.
+ * The grab area straddling a column's edge (the old SidebarResizeHandle): Files' start edge, or with `end` the left
+ * sidebar's end edge [D21]. The width goes on `holder`'s data-width while dragged.
  */
 export function ResizeHandle({ label, resizing, setResizing, onWidth, onClose, end = false, min = "--spacing-sidebar-min", max = "--spacing-sidebar-max", holder = (handle) => handle.parentElement }: {
   label: string;

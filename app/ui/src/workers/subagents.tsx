@@ -1,9 +1,6 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 
-import { TooltipIconButton } from "../components/icon-button";
-import { TitlebarTips } from "../components/tooltip";
 import { threadSource, useThread } from "../daemon";
-import { X } from "../icons";
 import type { Item, Progress, Turn } from "../thread/item";
 import type { Worker, WorkerStateKind } from "./chip";
 import { Opens, TeamCard } from "./live";
@@ -12,7 +9,7 @@ import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 /*
  * The agent CLI's own subagents [D78, D115]: in the thread only "‹name› started working", then
- * "finished", "failed" or "stopped", each with its glyph; their steps live in the side panel, which the name opens; the
+ * "finished", "failed" or "stopped", each with its glyph; their steps live in the Subagents tab, which the name opens; the
  * card counts them. They draw with the workers' parts, as workers that can't be paused or ended from here.
  */
 
@@ -46,11 +43,11 @@ export function useAgents(owner: string): Agent[] {
   return useMemo(() => items.filter((item): item is Agent => item.kind === "childAgent" && !item.hidden), [items]);
 }
 
-/** Its row in the thread: "Find the parser started working", its name opening it in the side panel. */
+/** Its row in the thread: "Find the parser started working", its name opening it in the Subagents tab [D81]. */
 export function SubagentRow({ item }: { item: Agent }) {
   const owner = useThread()?.id ?? "";
   return (
-    <Opens owner={owner} tab={SUBAGENTS_LABEL}>
+    <Opens owner={owner} tab="subagents">
       <TeamSentence keep={item.id} word={STATES[item.progress][2]} workers={[asSubagent(item)]} />
     </Opens>
   );
@@ -60,13 +57,13 @@ export function SubagentRow({ item }: { item: Agent }) {
 export function SubagentsCard({ owner }: { owner: string }) {
   const agents = useAgents(owner);
   const workers = useMemo(() => agents.map(asSubagent), [agents]);
-  return <TeamCard owner={owner} title={SUBAGENTS_LABEL} workers={workers} tab={SUBAGENTS_LABEL} />;
+  return <TeamCard owner={owner} title={SUBAGENTS_LABEL} workers={workers} tab="subagents" />;
 }
 
 const NO_TURNS: readonly Turn[] = [];
 
-/** One subagent in the side panel: its header, its steps as they come, and its answer once it's in. */
-export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: () => void; onClose: () => void }) {
+/** One subagent in its tab: its header, its steps as they come, and its answer once it's in. */
+export function SubagentView({ item, onBack }: { item: Agent; onBack: () => void }) {
   const worker = asSubagent(item);
   const [details, setDetails] = useState(false);
   const items = useMemo<Item[]>(
@@ -81,13 +78,6 @@ export function SubagentView({ item, onBack, onClose }: { item: Agent; onBack: (
         details={details}
         onBack={() => (details ? setDetails(false) : onBack())}
         onToggleDetails={() => setDetails(!details)}
-        actions={
-          <TitlebarTips>
-            <TooltipIconButton look="toolbar" tooltip="Close right panel" onClick={onClose}>
-              <X />
-            </TooltipIconButton>
-          </TitlebarTips>
-        }
       />
       {details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={items} turns={NO_TURNS} />}
     </section>
