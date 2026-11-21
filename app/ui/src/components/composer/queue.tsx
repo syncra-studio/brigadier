@@ -328,7 +328,7 @@ function QueueRow({
         <DropdownMenuContent align="end">
           <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered" || !!item.peer} onClick={() => onEdit(item.id)}>
             <EditPencil />
-            Edit message
+            Edit
           </DropdownMenuItem>
           {item.to?.ended && (
             <DropdownMenuItem onClick={() => onToSession(item.id)}>

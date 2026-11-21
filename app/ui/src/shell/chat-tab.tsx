@@ -36,7 +36,7 @@ export const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && ev
 /** ⌘N while ⌘ is held, at the tab's end where its × is [D48]. */
 export const Keycap = ({ keycap }: { keycap?: string | undefined }) => (keycap ? <Kbd variant="chip" className="h-5 shrink-0">{keycap}</Kbd> : null);
 
-/** The tab bar's Close all tabs asks first, for the owner here; never the Chat tab [D50]. */
+/** The tab menu's Close all asks first, for the owner here; never the Chat tab [D50]. */
 const closingAll = store<string | null>(null);
 export function CloseAllDialog() {
   const owner = closingAll.use();
@@ -73,15 +73,15 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
       </DropdownMenuItem>
       <DropdownMenuItem disabled={order.length <= (id === CHAT ? 1 : 2)} onClick={() => closeOthers(owner, id)}>
         <X />
-        Close other tabs
+        Close others
       </DropdownMenuItem>
       <DropdownMenuItem disabled={order.indexOf(id) === order.length - 1} onClick={() => closeRight(owner, id)}>
         <X />
-        Close tabs to the right
+        Close to the right
       </DropdownMenuItem>
       <DropdownMenuItem disabled={order.length <= 1} onClick={() => closingAll.set(owner)}>
         <X />
-        Close all tabs
+        Close all
       </DropdownMenuItem>
     </>
   );

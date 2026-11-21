@@ -41,7 +41,7 @@ const countOf = (group: Group) => {
  * Archived sessions and chats, the old app's page [D191, D2014]: a search and two menus (kind and order,
  * project) over the list, grouped by project, chats last; Rust does the filtering. Each row opens on its
  * title and has Unarchive and Delete. ⌘-click and Shift-click pick rows for Unarchive (N) and Delete (N)…;
- * Delete all… is in the toolbar's "…" menu.
+ * Delete all is in the toolbar's "…" menu.
  */
 export function ArchivedPage() {
   const { daemon, rows, projects } = useDaemon();
@@ -309,7 +309,7 @@ function ArchivedRowItem({
             <ContextMenuSeparator />
             <ContextMenuItem variant="destructive" disabled={off} onClick={() => onDelete(targets)}>
               <Trash />
-              {deletes > 1 ? `Delete (${deletes})…` : "Delete…"}
+              {deletes > 1 ? `Delete (${deletes})` : "Delete"}
             </ContextMenuItem>
           </>
         )}

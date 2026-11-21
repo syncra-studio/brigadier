@@ -391,7 +391,7 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => group.forEach((each) => closeHere(each.id))}>
                               <X />
-                              Close group
+                              Close
                             </DropdownMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>

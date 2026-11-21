@@ -12,7 +12,7 @@ import { type Check, KeptBranches, readDelete } from "../sessions/archived";
 const titleOf = (row: { title: string }) => row.title || "New session";
 
 /**
- * Delete (N)… and Delete all…: DeleteForm's workflow for several sessions in one confirm [D35, D181]. Each
+ * Delete (N) and Delete all: DeleteForm's workflow for several sessions in one confirm [D35, D181]. Each
  * branch with work that never landed is named, kept unless asked; Delete waits for every check.
  */
 export function DeleteManyForm({ rows, first, onClose }: { rows: { id: string; title: string }[]; first: Check[]; onClose: () => void }) {

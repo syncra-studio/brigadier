@@ -134,7 +134,7 @@ export function MoreMenu({ count, narrowed, onDeleteAll }: { count: number; narr
       <DropdownMenuContent align="end">
         <DropdownMenuItem variant="destructive" disabled={count === 0} onClick={onDeleteAll}>
           <Trash />
-          {narrowed ? `Delete these ${count}…` : "Delete all…"}
+          {narrowed ? `Delete these ${count}` : "Delete all"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

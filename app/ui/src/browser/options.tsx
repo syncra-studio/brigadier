@@ -13,7 +13,7 @@ const MAC = window.brigadier?.platform === "darwin";
 const STEP = "flex size-6 items-center justify-center hover:bg-fill disabled:opacity-disabled disabled:hover:bg-transparent";
 
 /**
- * The ⋯ menu: the page's own actions (Find in page, Print and Zoom, once there is a page), then where
+ * The ⋯ menu: the page's own actions (Find, Print and Zoom, once there is a page), then where
  * the browser's data lives in Settings.
  */
 export function BrowserOptions({
@@ -55,7 +55,7 @@ export function BrowserOptions({
             onFind();
           }}
         >
-          Find in page
+          Find
         </DropdownMenuItem>
         <DropdownMenuItem disabled={!ready} className="h-browser-menu-item" onClick={onPrint}>
           Print
@@ -81,7 +81,7 @@ export function BrowserOptions({
         <DropdownMenuSeparator className="mx-2" />
         {MAC && (
           <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
-            Import Browser Data…
+            Import browser data
           </DropdownMenuItem>
         )}
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("clear")}>
@@ -89,7 +89,7 @@ export function BrowserOptions({
         </DropdownMenuItem>
         <DropdownMenuSeparator className="mx-2" />
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings()}>
-          Browser settings
+          Settings
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

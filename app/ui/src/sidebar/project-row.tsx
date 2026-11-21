@@ -12,7 +12,7 @@ import { NavFold, NavList, NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { showToast } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Archive, ComposeEditSquare, DotsHorizontal, Folder, FolderOpen, Pencil, Pin, Unpin, X } from "../icons";
+import { Archive, ComposeEditSquare, DotsHorizontal, FolderOpen, Pencil, Pin, Settings, Unpin, X } from "../icons";
 import { newSession } from "../home/start";
 import { errorText, run, store } from "../onboarding/api";
 import { openProject } from "../projects/page";
@@ -86,8 +86,8 @@ function ProjectMenuItems({ project, chats }: { project: Project; chats: Session
   return (
     <>
       <DropdownMenuItem onClick={() => openProject(project.id)}>
-        <Folder />
-        Open project
+        <Settings />
+        Settings
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => pinProject(project, !project.pinned)}>
         {project.pinned ? <Unpin /> : <Pin />}
@@ -95,7 +95,7 @@ function ProjectMenuItems({ project, chats }: { project: Project; chats: Session
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => asking.set({ project })}>
         <Pencil />
-        Rename…
+        Rename
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={reveal}>
@@ -110,7 +110,7 @@ function ProjectMenuItems({ project, chats }: { project: Project; chats: Session
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => openRemoveProject(project.id)}>
         <X />
-        Remove project…
+        Remove
       </DropdownMenuItem>
     </>
   );

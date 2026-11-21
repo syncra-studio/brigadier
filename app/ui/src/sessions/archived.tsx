@@ -23,7 +23,7 @@ import { type ArchiveCheck, hideDeleting } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
- * archived. Its rows open read-only; their menu has Restore and Delete…, as every live row's menu has Delete… [D3101].
+ * archived. Its rows open read-only; their menu has Restore and Delete, as every live row's menu has Delete [D3101].
  */
 
 const titleOf = (row: SessionRow) => row.title || "New session";
@@ -80,7 +80,7 @@ export function ArchivedSection({
   );
 }
 
-/** An archived row's menu, or one a delete left unfinished: what stayed, Restore, and Delete… again [D35]. */
+/** An archived row's menu, or one a delete left unfinished: what stayed, Restore, and Delete again [D35]. */
 export function ClosedMenuItems({ row }: { row: SessionRow }) {
   const left = row.lifecycle?.left;
   // Off for a folder chat, archived too [D3102].
@@ -111,12 +111,12 @@ export function DeleteMenuItem({ row }: { row: SessionRow }) {
   return (
     <DropdownMenuItem variant="destructive" onClick={() => askDelete(row)}>
       <Trash />
-      Delete…
+      Delete
     </DropdownMenuItem>
   );
 }
 
-/** Where delete's confirm shows, mounted once by the sidebar, for every row menu's Delete… [D3101]. */
+/** Where delete's confirm shows, mounted once by the sidebar, for every row menu's Delete [D3101]. */
 export function DeleteAsk() {
   const asking = deleting.use();
   return (

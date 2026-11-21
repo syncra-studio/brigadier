@@ -13,10 +13,10 @@ import type { SessionRow } from "./words";
 
 /*
  * A session's labels [D3101, D3103]: names only, no colours or rename. A label lives while some session has it, so the
- * menu offers every name any session has, and New label… makes one by giving it to this session.
+ * menu offers every name any session has, and New label makes one by giving it to this session.
  */
 
-/** The row menu's Label ›: each label in use, ticked where this session has it, then New label…. */
+/** The row menu's Label ›: each label in use, ticked where this session has it, then New label. */
 export function LabelMenu({ row }: { row: SessionRow }) {
   const { rows } = useDaemon();
   const mine = row.labels ?? [];
@@ -36,7 +36,7 @@ export function LabelMenu({ row }: { row: SessionRow }) {
         {all.length > 0 && <DropdownMenuSeparator />}
         <DropdownMenuItem onClick={() => naming.set(row)}>
           <Plus />
-          New label…
+          New label
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -59,7 +59,7 @@ export function Labels({ row, className }: { row: SessionRow; className?: string
 
 const naming = store<SessionRow | null>(null);
 
-/** New label…'s form, mounted once by the sidebar. */
+/** New label's form, mounted once by the sidebar. */
 export function LabelAsk() {
   const row = naming.use();
   return (

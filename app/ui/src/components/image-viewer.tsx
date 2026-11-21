@@ -83,8 +83,8 @@ export function ImageContextMenu({
     <ContextMenu>
       <ContextMenuTrigger render={children} {...trigger} />
       <ContextMenuContent>
-        <ContextMenuItem onClick={() => void copyImage(image.url)}>Copy image</ContextMenuItem>
-        <ContextMenuItem onClick={() => void downloadImage(image)}>Download image</ContextMenuItem>
+        <ContextMenuItem onClick={() => void copyImage(image.url)}>Copy</ContextMenuItem>
+        <ContextMenuItem onClick={() => void downloadImage(image)}>Download</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

@@ -56,7 +56,7 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
           Copy
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
-          {copies.map(([what, value]) => value && <DropdownMenuItem key={what} onClick={() => copyWithToast(value, what)}>Copy {what}</DropdownMenuItem>)}
+          {copies.map(([what, value]) => value && <DropdownMenuItem key={what} onClick={() => copyWithToast(value, what)}>{what[0]!.toUpperCase() + what.slice(1)}</DropdownMenuItem>)}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       {/* Its working directory [D37]; Rust's Files reveal of the checkout itself (""). */}

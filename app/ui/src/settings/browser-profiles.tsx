@@ -139,11 +139,11 @@ function ProfileRow({ profile, index, count, isDefault, sessions, importedFrom }
             <DropdownMenuItem disabled={isDefault} onClick={() => void makeDefaultProfile(profile.id)}>
               Make default
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setClearing(true)}>Clear browsing data…</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setClearing(true)}>Clear browsing data</DropdownMenuItem>
             <DropdownMenuItem onClick={() => (window.location.hash = profileHref(profile.id))}>Open details</DropdownMenuItem>
             <DropdownMenuSeparator className="mx-2" />
             <DropdownMenuItem variant="destructive" disabled={only || isDefault} onClick={() => setDeleting(true)}>
-              {only ? "Delete… (last profile)" : isDefault ? "Delete… (default profile)" : "Delete…"}
+              {only ? "Delete (last profile)" : isDefault ? "Delete (default profile)" : "Delete"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

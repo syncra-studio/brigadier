@@ -258,7 +258,7 @@ export function ArchiveMenuItem({ row }: { row: SessionRow }) {
   return (
     <DropdownMenuItem onClick={() => archiveRows(target.rows)}>
       <Archive />
-      {target.label}
+      {target.rows.length > 1 ? target.label : "Archive"}
       <DropdownMenuShortcut>{keysOf("archive")[0]}</DropdownMenuShortcut>
     </DropdownMenuItem>
   );

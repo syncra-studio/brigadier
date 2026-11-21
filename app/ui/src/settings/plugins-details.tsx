@@ -174,7 +174,7 @@ export function DetailsPage({
                 {!item.from && (
                   <DropdownMenuItem variant="destructive" onClick={onRemove}>
                     <Trash aria-hidden />
-                    Remove {item.name}
+                    Remove
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

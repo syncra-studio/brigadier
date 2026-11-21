@@ -172,7 +172,7 @@ export function SessionRowItem({
   onRename: (row: SessionRow) => void;
   /** One of several picked with ⌘- or Shift-click [D185]. */
   picked?: boolean;
-  /** Its menu, in place of the live row's (an archived row's Restore and Delete…). */
+  /** Its menu, in place of the live row's (an archived row's Restore and Delete). */
   menu?: ReactNode;
   /** A click with its keys, in place of opening it. */
   onClick?: (event: MouseEvent) => void;
@@ -181,7 +181,7 @@ export function SessionRowItem({
   const words = useStatusWords(row);
   const label = words ?? "";
   const title = row.title || "New session";
-  // Archived rows bring their own menu (Restore, Delete…), and no Pin or Archive.
+  // Archived rows bring their own menu (Restore, Delete), and no Pin or Archive.
   const live = !menu && !row.archived;
   const pins = live && canPin;
   const items = menu ?? <RowMenuItems row={row} canPin={canPin} onRename={() => onRename(row)} />;
