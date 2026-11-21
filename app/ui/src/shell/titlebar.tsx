@@ -58,11 +58,10 @@ const LIGHTS_X = 16;
 /**
  * The sidebar toggle after the traffic lights, then Back and Forward by their buttons, keys, mouse buttons and menu items,
  * the same pair in the app and Settings, each walking its own history: at the shown sidebar's end, or after the toggle
- * with New chat while it's hidden (titlebar-nav) [D34 D35 D926]. The toggle steps open, strip, hidden [D800].
+ * with New chat while it's hidden (titlebar-nav) [D34 D35 D926]. The toggle shows or hides the sidebar [D67].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
-  const { open, collapse, toggleSidebar, canToggle } = useSidebar();
-  const mode = open ? "open" : collapse === "hidden" ? "hidden" : "strip";
+  const { open, toggleSidebar, canToggle } = useSidebar();
   useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
   const page = settingsPageOf(hash);
   const { pages, at } = walk.use();
@@ -179,7 +178,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
         <TitlebarTips>
           {canToggle && (
             // Its name says what a click does; aria-expanded would draw an open fill.
-            <TooltipIconButton look="strip" tip={false} tooltip={{ open: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" onClick={toggleSidebar}>
+            <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
               {open ? <Sidebar /> : <SidebarFloatingLeft />}
             </TooltipIconButton>
           )}

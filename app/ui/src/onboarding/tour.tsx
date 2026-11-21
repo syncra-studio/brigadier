@@ -20,9 +20,9 @@ const STEPS: readonly Step[] = [
   { target: ".strip-squares > *, [data-project-id], [data-row-id]", side: "right", title: "Working or needs you", line: "By a project or session, a spinner means an agent is working, a blue ring that it needs your answer, and a blue dot that there's news." },
   { target: ":has(> .session-tab-list)", side: "bottom", title: "Tabs", line: "After its project's house tab, the open session has its own tabs, its chat first; + opens a web page, a terminal or a note beside them." },
   { target: ".session-tab[data-home]", side: "bottom", title: "The project's page", line: "The house tab is the project's page, with every session in it as a list or a board." },
-  { target: ".titlebar-nav", side: "bottom", title: "Back, Forward and the sidebar", line: "Back and Forward retrace where you've been, and the last button folds the sidebar to a strip or hides it." },
+  { target: ".titlebar-nav", side: "bottom", title: "Back, Forward and the sidebar", line: "The first button shows or hides the sidebar, the strip staying, and Back and Forward retrace where you've been." },
   { target: '[aria-controls="right-panel-content"]', side: "bottom", title: "Files", line: "Files shows the session's copy of the code; a file you pick opens as a tab." },
-  { target: '[data-slot="sidebar-foot"]', side: "top", title: "Search and Settings", line: "⌘K finds any project or session and runs commands; Settings is here, and both can start this tour again." },
+  { target: '[data-slot="sidebar-foot"]', side: "right", title: "Search and Settings", line: "⌘K finds any project or session and runs commands; Settings is here, and both can start this tour again." },
 ];
 
 const at = store<number | null>(null);

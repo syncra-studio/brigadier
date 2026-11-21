@@ -42,7 +42,7 @@ const TAB_BAR = Number(/--spacing-tab-bar:\s*([\d.]+)rem;/.exec(theme)![1]) * 16
 const LIGHTS_Y = TAB_BAR / 2 - 7;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
-// A Mac's window is clear over macOS's sidebar vibrancy, which the page's strip and sidebar let through [D76].
+// A Mac's window is clear over macOS's menu vibrancy, which the page's strip and sidebar let through [D76].
 const vibrant = process.platform === "darwin" && platform === "darwin";
 // Clear as the intro's.
 const windowFill = vibrant ? introColours.clear : themeFrame;

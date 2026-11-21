@@ -7,7 +7,6 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
-import { useSidebar } from "../components/sidebar";
 import { ArrowRotateCw, Check, DownloadSimple, Spinner, X } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { type Agent, checkAll, useAgents } from "../onboarding/api";
@@ -17,7 +16,7 @@ import { useDaemon } from "../daemon";
 import { footPlacement } from "./foot";
 
 /*
- * The update pill at the sidebar's foot: one, whatever kinds of update there are, and what to update is chosen
+ * The updates icon at the strip's foot, with a dot, above Usage [D57]: one, whatever kinds of update there are, and what to update is chosen
  * in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
  * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does.
  * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
@@ -186,7 +185,6 @@ export function UpdatesRow() {
       setSkipped(next);
     }
   };
-  const { drawn: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
   // Kept while the chip leaves, so it doesn't empty as it shrinks.
   const [last, setLast] = useState(items);
@@ -205,22 +203,15 @@ export function UpdatesRow() {
   // Every row an "Update" button could run right now, for "Update all" [D199].
   const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
-    <BarItem show={!empty || open} axis={expanded ? "x" : "y"}>
+    <BarItem show={!empty || open} axis="y">
       <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<TooltipIconButton look={expanded ? "chip" : "chip-tall"} side={expanded ? "top" : "right"} tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          render={<TooltipIconButton look="rail" side="right" dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
           onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
-          <span className={cx("flex items-center", !expanded && "flex-col")}>
-            {shown.map((item) => (
-              <BarItem key={item.target} show={items.includes(item)} axis={expanded ? "x" : "y"}>
-                <Glyph item={item} className={cx("size-icon-sm shrink-0", expanded ? "mx-0.5" : "my-0.5")} />
-              </BarItem>
-            ))}
-          </span>
         </PopoverTrigger>
-        <PopoverContent {...footPlacement(expanded)} padded={false} className="flex w-96 flex-col p-1.5">
+        <PopoverContent {...footPlacement} padded={false} className="flex w-96 flex-col p-1.5">
           <BarItem axis="y" show={shown.length > 1}>
             <div className="flex justify-end px-1.5 pt-1 pb-1.5">
               <Button size="sm" variant="secondary" disabled={runnable.length < 2} onClick={() => runnable.forEach((item) => void update(item))}>

@@ -54,20 +54,20 @@ export function tokenMs(name: string): number {
 }
 
 type TooltipContentProps = Omit<BaseTooltip.Popup.Props, "className"> &
-  Pick<BaseTooltip.Positioner.Props, "side" | "align" | "collisionAvoidance"> & {
+  Pick<BaseTooltip.Positioner.Props, "side" | "align" | "collisionAvoidance" | "sideOffset"> & {
     className?: string;
     /** Where the tip is placed in the page; the body by default. */
     container?: BaseTooltip.Portal.Props["container"];
   };
 
-export function TooltipContent({ className, side = "top", align, collisionAvoidance, container, ...props }: TooltipContentProps) {
+export function TooltipContent({ className, side = "top", align, collisionAvoidance, sideOffset = spacingPx, container, ...props }: TooltipContentProps) {
   return (
     <BaseTooltip.Portal container={container}>
       <BaseTooltip.Positioner
         side={side}
         align={align}
         collisionAvoidance={collisionAvoidance}
-        sideOffset={spacingPx}
+        sideOffset={sideOffset}
         className="z-popup"
       >
         <BaseTooltip.Popup

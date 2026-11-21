@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -35,7 +35,7 @@ function Flyout({ label, icon, lit = false, children }: { label: string; icon: R
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<TooltipIconButton look="strip" side="right" tooltip={label} dot={lit ? "bg-link" : undefined} />}>{icon}</PopoverTrigger>
+      <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} dot={lit ? "bg-link" : undefined} />}>{icon}</PopoverTrigger>
       {/* Focus lands on the list itself, not its first row, so Tab goes on into the rows. */}
       <PopoverContent
         ref={list}
@@ -92,7 +92,7 @@ export const attentionOf = (rows: SessionRow[], active: string | null) => rows.s
 export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: boolean }) {
   const open = useOpenPlace();
   return (
-    <TooltipIconButton look="strip" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => open(project.id)}>
+    <TooltipIconButton look="rail" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => open(project.id)}>
       <ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />
     </TooltipIconButton>
   );
@@ -101,34 +101,15 @@ export function ProjectSquare({ project, tone, current, attention }: { project: 
 /** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
 export function SessionSquare({ row, project, tone, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
   return (
-    <TooltipIconButton look="strip" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
+    <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
       <ProjectBadge id={project?.id} name={project?.name ?? null} tone={tone} size="size-4.5 text-badge" />
     </TooltipIconButton>
   );
 }
 
-/**
- * The strip's squares, scrolling under a fade (the sidebar list's) and ending above the foot's icons, which rise over
- * the strip from the card's bottom: their height is measured into `data-foot` [D803].
- */
+/** The strip's squares while the sidebar is hidden, scrolling under a fade (the sidebar list's) above the foot [D55 D803]. */
 export function Squares({ children }: { children: ReactNode }) {
-  const list = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const foot = list.current?.closest("[data-sidebar]")?.querySelector("[data-slot=sidebar-foot]");
-    if (!foot) return;
-    const measure = () => {
-      const below = list.current!.parentElement!.getBoundingClientRect().bottom - foot.getBoundingClientRect().top;
-      list.current!.setAttribute("data-foot", String(Math.max(0, Math.round(below))));
-    };
-    const observer = new ResizeObserver(measure);
-    observer.observe(foot);
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <div ref={list} className="strip-squares scroll-edge-fade edge-fade-sidebar hide-scrollbar flex min-h-0 flex-1 flex-col items-center gap-0.5 overflow-y-auto pb-2">
-      {children}
-    </div>
-  );
+  return <div className="strip-squares scroll-edge-fade edge-fade-sidebar hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto">{children}</div>;
 }
 
 /** The chats: this branch has no chats, so those are the sessions in no project, as View's filter counts them. */

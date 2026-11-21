@@ -423,16 +423,17 @@
   --spacing-nav-search: 2.25rem;
   /* The room a Settings row keeps for its control. */
   --spacing-settings-control: min(10rem, 40cqw);
-  /* The sidebar panel: its open width, the right panels' range, the content's least room beside it. */
+  /* The right panels: their default width and range; the content's least room beside them and the sidebar. */
   --spacing-sidebar: 18rem;
   --spacing-sidebar-min: 11.75rem;
-  /* The open sidebar's least [new-design]: its top row holds the real traffic lights (24 to 84) and the History pill
-     8px after them, ending 10px in (84 + 8 + 107 + 10). */
-  --spacing-sidebar-open-min: 13.125rem;
   --spacing-sidebar-max: 29.25rem;
   --spacing-sidebar-thread-min: 20rem;
-  /* Collapsed to a strip of icons: the old app's 48px strip, as the rail card inside the panel's 4px insets. */
-  --spacing-sidebar-strip: calc(var(--spacing) * 10 + var(--spacing-icon-md));
+  /* The left sidebar: 279 wide, dragged between 238 and 468 [D21]. */
+  --spacing-left-sidebar: 17.4375rem;
+  --spacing-left-sidebar-min: 14.875rem;
+  --spacing-left-sidebar-max: 29.25rem;
+  /* The strip beside it, always shown: a 52 rail of 36 buttons 8 in [D11]. */
+  --spacing-rail: 3.25rem;
   /* The panel's grab area, over the gap and its card's edge. */
   --spacing-resize-handle: 1rem;
   /* A window narrower than this folds the sidebar by itself. */
@@ -1387,46 +1388,46 @@
   }
 }
 
-/* The sidebar's one open width [D804], narrower only where the content beside it would get less than its least room.
-   Shown, the window behind it is the sidebar's fill; hidden, the strip blends into the main area [D20 D69]. */
+/* The sidebar's width, where it was dragged (data-width) or the default, in its range [D21], narrower only where the
+   content beside it would get less than its least room. Shown, the window behind the strip and it is the sidebar's
+   fill; hidden, the strip blends into the main area [D20 D69]. */
 @utility sidebar-width-source {
-  --sidebar-open-width: max(
-    var(--spacing-sidebar-open-min),
-    min(var(--spacing-sidebar), 100vw - var(--spacing-sidebar-thread-min))
+  --sidebar-open-width: clamp(
+    var(--spacing-left-sidebar-min),
+    attr(data-width px, var(--spacing-left-sidebar)),
+    max(var(--spacing-left-sidebar-min), min(var(--spacing-left-sidebar-max), 100vw - var(--spacing-rail) - var(--spacing-sidebar-thread-min)))
   );
   background-color: var(--color-background);
   transition: background-color var(--duration-fold) var(--ease-sidebar);
-  /* How wide the panel shows beside the content: what a right panel leaves it. */
-  --sidebar-shown: var(--spacing-sidebar-strip);
+  /* How wide the strip and sidebar show beside the content: what a right panel leaves it. */
+  --sidebar-shown: var(--spacing-rail);
   /* The titlebar's toggle, Back, Forward and New chat (2px apart), and 8px past them (titlebar-clear) [D35 D934]. */
   --toggle-room: calc(var(--spacing) * 35);
   &[data-state="expanded"] {
-    --sidebar-shown: var(--sidebar-open-width);
+    --sidebar-shown: calc(var(--spacing-rail) + var(--sidebar-open-width));
     background-color: var(--color-window-fill);
     background-image: linear-gradient(var(--color-sidebar), var(--color-sidebar));
-  }
-  &[data-state="collapsed"][data-collapse="hidden"] {
-    --sidebar-shown: 0px;
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
 }
-/* The strip's squares end above the foot's icons rising over the strip: how far they rise, measured (flyout.tsx). */
-@utility strip-squares {
-  margin-bottom: attr(data-foot px, 0px);
-}
 @utility sidebar-panel-width {
   width: var(--sidebar-open-width);
 }
-/* The sidebar's room clips its card, out to the window's start, so a hiding card slides off the window [D63]. */
-@utility sidebar-clip {
-  overflow: clip;
-  overflow-clip-margin: var(--spacing-surface-inset);
-}
-/* The floating card inside it, the panel's 4px inset off each side. */
-@utility sidebar-card-width {
-  width: calc(var(--sidebar-open-width) - var(--spacing) * 2);
+/* The strip [D11], its hairline to the shown sidebar the divider, fading in under the titlebar row [D20]. */
+@utility rail {
+  position: relative;
+  width: var(--spacing-rail);
+  [data-state="expanded"] > &::after {
+    content: "";
+    position: absolute;
+    inset-block: var(--spacing-tab-bar) 0;
+    inset-inline-end: 0;
+    width: 0.5px;
+    background: linear-gradient(transparent, var(--color-muted) calc(var(--spacing) * 3));
+    pointer-events: none;
+  }
 }
 /* A right column's width, Files' or Workers': where it was dragged (data-width on it) or the default, kept in its range
    and leaving the chat its least room beside the left sidebar and the other right column (data-beside: Workers' width
@@ -1513,6 +1514,10 @@
 /* Back and Forward's start: their 64px end 10px before the sidebar's edge, past the toggle's 32 and the 2px gaps. */
 @utility titlebar-history {
   margin-inline-start: max(0px, calc(var(--sidebar-shown, 0px) - var(--spacing-toggle-start) - var(--spacing) * 27));
+  /* Settings has no toggle before them. */
+  &:first-child {
+    margin-inline-start: max(0px, calc(var(--sidebar-shown, 0px) - var(--spacing-toggle-start) - var(--spacing) * 18.5));
+  }
   transition: margin var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -1587,13 +1592,6 @@
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
-}
-
-/* The strip foot's rule under Archived: the tab bar's start rule (session-tab-bar), lying down [D426]. */
-@utility strip-rule {
-  height: 1px;
-  width: calc(var(--spacing) * 6);
-  background: var(--color-divider);
 }
 
 /* A menu's divider only between two groups that both have items: none first, last or after another, whatever a menu
@@ -1959,15 +1957,11 @@
   }
 }
 
-/* The sidebar's column easing between its widths, or its card sliding off and onto the window at its width; still
-   while it is dragged. */
+/* A side column easing between its widths; still while it is dragged. */
 @utility sidebar-motion {
-  transition-property: width, translate;
+  transition-property: width;
   transition-duration: var(--duration-fold);
   transition-timing-function: var(--ease-sidebar);
-  &[data-slide] {
-    transition-property: translate;
-  }
   &[data-resizing] {
     transition: none;
   }

@@ -1,7 +1,7 @@
 import { Button, type ButtonProps } from "./button";
 import { cx } from "./cx";
 import { Kbd } from "./kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 // A titlebar or pane-toolbar icon: a dim glyph that brightens on hover and shows pressed with a faint fill.
 const TOOLBAR = cx(
@@ -24,11 +24,11 @@ export type TooltipIconButtonProps = ButtonProps & {
   shortcut?: string;
   side?: "top" | "bottom" | "left" | "right";
   /**
-   * `ghost`: a quiet icon in a card, row or composer; its tip shows at once. `toolbar`, `strip`, `chip`
-   * (the strip's look, outlined and round-ended, for the foot's update pill) and `chip-tall` (the same,
-   * standing up) take their tip timing from the provider around them (TitlebarTips, the sidebar).
+   * `ghost`: a quiet icon in a card, row or composer; its tip shows at once. `toolbar` and `strip` take their tip timing
+   * from the provider around them (TitlebarTips, the sidebar). `rail`: the strip's 36 square, its tip a 30-tall pill 2px
+   * beside it [D11].
    */
-  look?: "ghost" | "toolbar" | "strip" | "chip" | "chip-tall";
+  look?: "ghost" | "toolbar" | "strip" | "rail";
   /** Switched on (aria-pressed). */
   pressed?: boolean;
   /** A small dot on the icon, in this background class ("bg-warning"). */
@@ -52,7 +52,7 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   const ghost = look === "ghost";
-  const flat = look === "strip" || look === "chip" || look === "chip-tall";
+  const flat = look === "strip" || look === "rail";
   const button = (
     <Button
       variant={flat ? null : (variant ?? "ghost")}
@@ -64,8 +64,7 @@ export function TooltipIconButton({
         look === "toolbar" && TOOLBAR,
         flat && STRIP,
         look === "strip" && "h-7.5 rounded-icon-button",
-        look === "chip" && "h-7.5 rounded-capsule border border-border px-2",
-        look === "chip-tall" && "flex-col rounded-capsule border border-border py-2",
+        look === "rail" && "size-9 rounded-icon-button",
         className,
       )}
       {...props}
@@ -84,7 +83,7 @@ export function TooltipIconButton({
   return (
     <Tooltip>
       <TooltipTrigger delay={ghost ? 0 : undefined} render={button} />
-      <TooltipContent side={side}>
+      <TooltipContent side={side} {...(look === "rail" && { sideOffset: spacingPx() / 2, className: "h-7.5" })}>
         {tooltip}
         {shortcut && <Kbd>{shortcut}</Kbd>}
       </TooltipContent>

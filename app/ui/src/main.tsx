@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { loadAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
 import { cx } from "./components/cx";
-import { type SidebarCollapse, SidebarPanel, SidebarProvider } from "./components/sidebar";
+import { SidebarPanel, SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
 import { DrawBoundary } from "./components/thread/error-state";
 import { hhmm } from "./thread/words";
@@ -46,8 +46,8 @@ import { readRouting } from "./settings/routing";
 import { listenToSettingsKeys, SettingsNav, SettingsView, settingsPageOf } from "./settings/shell";
 import { useShown } from "./sidebar/actions";
 import { useSeen } from "./sidebar/seen";
-import { SidebarFoot } from "./sidebar/foot";
 import { AppSidebar, useStored } from "./sidebar/sidebar";
+import { Strip } from "./sidebar/strip";
 import { Thread, type ThreadHandle } from "./thread/thread";
 import { installBrowserAgent } from "./browser/agent";
 import { installTabLayer } from "./browser/layer";
@@ -135,19 +135,25 @@ function App() {
   );
 }
 
-// The sidebar beside every screen after onboarding [D173, D174]; open and collapse kept across launches. The shell
-// [D69]: no frame, the sidebar flush at the window's start and the main area from its edge to the window's end, the
-// titlebar row across both. Settings keeps the panel open with its nav in place of the sessions, and no foot [D2004].
+// The strip and sidebar beside every screen after onboarding [D173, D174]; shown and its width kept across launches. The
+// shell [D69]: no frame, the strip and sidebar flush at the window's start and the main area from its edge to the window's
+// end, the titlebar row across both. Settings keeps the sidebar shown with its nav in place of the sessions [D2004].
 function Shell({ hash, active, rows, settings, page, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
   const projects = useProjects();
   const [open, setOpen] = useStored("sidebar.open", true);
-  const [collapse, setCollapse] = useStored<SidebarCollapse>("sidebar.collapse", "strip");
+  const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   useSeen(rows?.find((row) => row.id === active));
   // One tab bar for every page but Settings, kept as the page changes so its tabs change smoothly: the old ones shrink
   // out, the new grow in, the house holds its place [D836 D854]. It shows a rename or an archive at once [D30].
   const titled = useShown(rows)?.find((each) => each.id === active);
+  const home = active === null && page === undefined && settings === undefined;
+  const rail = (squares?: ReactNode) => (
+    <Strip home={home} page={page} settings={settings} front={rows?.find((row) => row.id === active)?.project}>
+      {squares}
+    </Strip>
+  );
   return (
     <div
       className="fixed inset-0"
@@ -156,9 +162,9 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse} keepOpen={settings !== undefined}>
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined}>
         {settings !== undefined ? (
-          <SidebarPanel>
+          <SidebarPanel rail={rail()}>
             <SettingsNav current={settings} />
           </SidebarPanel>
         ) : (
@@ -173,7 +179,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
           // ⌘N's too: Home in the open session's project [D184].
           onNewSession={() => newSession(rows?.find((row) => row.id === active)?.project)}
           onNewChat={newChat}
-          foot={(archived) => <SidebarFoot archived={archived} />}
+          rail={rail}
         />
         )}
         {/* Settings' page is on the nav's colour, one line between them [D898]. */}
@@ -187,7 +193,7 @@ function Shell({ hash, active, rows, settings, page, children }: { hash: string;
       <RemoveProjectHost />
       <FeedbackDialog />
       <FolderDrop />
-      <TourHost home={active === null && page === undefined && settings === undefined} />
+      <TourHost home={home} />
     </div>
   );
 }

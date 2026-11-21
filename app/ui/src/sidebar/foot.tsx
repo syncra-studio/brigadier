@@ -1,13 +1,12 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
-import { useSidebar } from "../components/sidebar";
 import { StateDot } from "../components/state-dot";
-import { spacingPx, tokenMs } from "../components/tooltip";
+import { spacingPx } from "../components/tooltip";
 import { useDaemon } from "../daemon";
 import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
@@ -25,16 +24,14 @@ import { ProviderMark } from "../components/composer/model-picker";
 import { stateOf } from "../onboarding/agents";
 import { type Agent, errorText, useAgents } from "../onboarding/api";
 
-/** Where a foot menu opens: up from the row, or beside the strip. */
-export const footPlacement = (expanded: boolean) =>
-  expanded ? ({ side: "top", align: "start" } as const) : ({ side: "right", align: "end", sideOffset: () => spacingPx() * 3 } as const);
+/** Where a foot menu opens: beside the strip [D56]. */
+export const footPlacement = { side: "right", align: "end", sideOffset: () => spacingPx() * 3 } as const;
 
 /**
  * Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands and when to stay awake.
  * With the lid closed too stays away, as the old app's did where it wasn't supported: nothing here can do it yet.
  */
 function KeepAwakeMenu() {
-  const { drawn: expanded } = useSidebar();
   const { rows } = useDaemon();
   // The same value as Settings › General's row [D2016].
   const mode = useSettings().value?.awake;
@@ -45,11 +42,11 @@ function KeepAwakeMenu() {
   return (
     <Popover>
       <PopoverTrigger
-        render={<TooltipIconButton look="strip" side={expanded ? "top" : "right"} tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
+        render={<TooltipIconButton look="rail" side="right" tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
       >
         <Lightbulb className={cx(on && "text-foreground")} />
       </PopoverTrigger>
-      <PopoverContent {...footPlacement(expanded)} padded={false} className="flex w-80 flex-col gap-3 p-3">
+      <PopoverContent {...footPlacement} padded={false} className="flex w-80 flex-col gap-3 p-3">
         <div className="flex items-start gap-2.5">
           <Lightbulb aria-hidden className={cx("mt-0.5 size-icon-md shrink-0", on ? "text-foreground" : "text-muted-foreground")} />
           <div className="flex min-w-0 flex-col gap-0.5">
@@ -103,7 +100,6 @@ function usageEntries(accounts: readonly SwitchAgent[], agents: readonly Agent[]
  * row opens its agent's page; one that needs signing in says so with Sign in.
  */
 function UsageMenu() {
-  const { drawn: expanded } = useSidebar();
   const [open, setOpen] = useState(false);
   const accounts = useAccounts().agents;
   const agents = useAgents().list;
@@ -127,8 +123,8 @@ function UsageMenu() {
       <PopoverTrigger
         render={
           <TooltipIconButton
-            look="strip"
-            side={expanded ? "top" : "right"}
+            look="rail"
+            side="right"
             tooltip={top?.limit ? `Usage · ${top.label} ${used}% used` : "Usage"}
             dot={alert === "destructive" ? "bg-destructive" : alert === "warning" ? "bg-warning" : undefined}
           />
@@ -136,8 +132,7 @@ function UsageMenu() {
       >
         <BarChart className={alert === "destructive" ? "text-destructive" : alert === "warning" ? "text-warning" : undefined} />
       </PopoverTrigger>
-      {/* In the row, it lines up with the row's start: Settings and Keep awake sit before it. */}
-      <PopoverContent {...footPlacement(expanded)} alignOffset={expanded ? -spacingPx() * 18 : 0} className="w-90">
+      <PopoverContent {...footPlacement} className="w-90">
         <div className="flex items-center justify-between px-2 py-1.5">
           <span className="font-mono text-2xs font-medium tracking-wide text-muted-foreground uppercase">Usage</span>
           <button
@@ -187,81 +182,22 @@ function UsageMenu() {
 
 const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item px-2 text-sm";
 
-/** Glides the foot's icons between the row and the stack with the sidebar's own motion, the same elements throughout. */
-function useGlide(open: boolean, slide: boolean) {
-  const foot = useRef<HTMLDivElement>(null);
-  const seen = useRef(open);
-  const from = useRef(new Map<Element, [number, number]>());
-  const focused = useRef<HTMLElement | null>(null);
-  // Read while rendering, before React moves them: where they are now, whatever changed since the last toggle, and mid-glide too.
-  if (seen.current !== open && foot.current) {
-    seen.current = open;
-    focused.current = foot.current.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
-    const box = foot.current.getBoundingClientRect();
-    from.current = new Map(
-      [...foot.current.children].map((item) => {
-        const at = item.getBoundingClientRect();
-        return [item, [at.left - box.left, at.top - box.bottom]];
-      }),
-    );
-  }
-  useLayoutEffect(() => {
-    // Reversing the icons drops focus from one React moved.
-    if (focused.current?.isConnected && document.activeElement !== focused.current) focused.current.focus({ preventScroll: true });
-    const box = foot.current!;
-    const css = getComputedStyle(box);
-    const glide = { duration: tokenMs("--duration-fold"), easing: css.getPropertyValue("--ease-sidebar") };
-    // A card sliding off or onto the window changes layout out of sight, and slides with its icons set [D63].
-    if (slide || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const item of box.children as HTMLCollectionOf<HTMLElement>) {
-      const was = from.current.get(item);
-      // From the bottom: that edge stays put while the box changes height.
-      const dx = was ? was[0] - item.offsetLeft : 0;
-      const dy = was ? was[1] - (item.offsetTop - box.clientHeight) : 0;
-      if (dx || dy) item.animate({ translate: [`${dx}px ${dy}px`, "0 0"] }, glide);
-    }
-  }, [open]);
-  return foot;
-}
-
-/**
- * The icons at the sidebar's foot. Expanded they make one row, Settings first. In the strip the same elements
- * reverse to read Archived, updates, Usage, Keep awake, Settings [D211], and Settings stays in the corner
- * either way. `archived` is the strip's Archived icon.
- */
-export function SidebarFoot({ archived }: { archived?: ReactNode }) {
-  const { drawn: open, slide } = useSidebar();
-  const foot = useGlide(open, slide);
+/** The strip's foot, today's strip order top to bottom: updates (only while there are some), Usage, Keep awake, Feedback, Settings [D56 D57 D18 D19]. */
+export function StripFoot() {
   // An offer on a job is open [D386].
   const offered = useRoutingDot();
-  // Keyed, so a toggle reverses the same elements: the page's order, and so Tab, runs as the icons read.
-  const icons = [
-    <TooltipIconButton key="settings" look="strip" side={open ? "top" : "right"} tooltip="Settings" shortcut={keysOf("settings")[0]} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
-      <Settings />
-    </TooltipIconButton>,
-    // Feedback sits in the foot now, after Settings [new-design].
-    <TooltipIconButton key="feedback" look="strip" side={open ? "top" : "right"} tooltip="Send Feedback" onClick={() => openFeedback()}>
-      <FeedbackGlyph />
-    </TooltipIconButton>,
-    <KeepAwakeMenu key="awake" />,
-    <UsageMenu key="usage" />,
-    <UpdatesRow key="updates" />,
-    // Always here, fading as the strip's own contents do; out of the row's way when expanded.
-    archived && (
-      <div key="archived" inert={open} className={cx("flex flex-col items-center", !slide && "transition-opacity motion-reduce:transition-none", open ? "pointer-events-none absolute opacity-0" : "opacity-100")}>
-        {archived}
-        {/* Set apart from the icons under it by the titlebar's rule, laid flat [D426]. */}
-        <span aria-hidden className="strip-rule my-2.5" />
-      </div>
-    ),
-  ];
-  // The row's height always, the stack rising over the strip from it, so the list above never resizes on a toggle.
-  // The row is its final width from the start, or it would wrap while the panel widens.
   return (
-    <div className="relative min-h-11.5 shrink-0">
-      <div ref={foot} data-slot="sidebar-foot" className={cx("flex px-2 pt-2", open ? "sidebar-card-width relative flex-row flex-wrap items-center gap-0.5 pb-2" : "absolute inset-x-0 bottom-0 flex-col items-center gap-0.5 pb-2.5")}>
-        {open ? icons : icons.toReversed()}
-      </div>
+    <div data-slot="sidebar-foot" className="flex flex-col items-center gap-2">
+      <UpdatesRow />
+      <UsageMenu />
+      <KeepAwakeMenu />
+      {/* Feedback sits in the foot [new-design]. */}
+      <TooltipIconButton look="rail" side="right" tooltip="Send Feedback" onClick={() => openFeedback()}>
+        <FeedbackGlyph />
+      </TooltipIconButton>
+      <TooltipIconButton look="rail" side="right" tooltip="Settings" shortcut={keysOf("settings")[0]} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
+        <Settings />
+      </TooltipIconButton>
     </div>
   );
 }

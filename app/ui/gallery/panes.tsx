@@ -13,7 +13,7 @@ import { RowAction, RowActionsSlot } from "../src/components/row-action";
 import { Section as KitSection } from "../src/components/section";
 import { RowText, SettingsCard } from "../src/components/settings-card";
 import { SettingsRow } from "../src/components/settings-row";
-import { type SidebarCollapse, SidebarPanel, SidebarProvider, useSidebar } from "../src/components/sidebar";
+import { SidebarPanel, SidebarProvider, useSidebar } from "../src/components/sidebar";
 import { StateDot } from "../src/components/state-dot";
 import { Switch } from "../src/components/switch";
 import { ChevronRight, Copy, Dot, InfoCircle, X } from "../src/icons";
@@ -68,11 +68,11 @@ function SidebarContents() {
 
 function Strip() {
   return (
-    <div className="flex flex-col items-center gap-1 pt-3">
-      <TooltipIconButton tooltip="Mark" look="strip" side="right">
+    <div className="rail flex flex-col items-center gap-2 pt-3">
+      <TooltipIconButton tooltip="Mark" look="rail" side="right">
         <Dot />
       </TooltipIconButton>
-      <TooltipIconButton tooltip="New session" look="strip" side="right">
+      <TooltipIconButton tooltip="New session" look="rail" side="right">
         <Copy />
       </TooltipIconButton>
     </div>
@@ -92,11 +92,10 @@ function ToggleButton() {
 /** The kit's sidebar frame in a box of its own (`transform-gpu` holds its fixed parts inside), the content beside it. */
 function SidebarDemo() {
   const [open, setOpen] = useState(true);
-  const [collapse, setCollapse] = useState<SidebarCollapse>("strip");
   const [tab, setTab] = useState("chat");
   return (
     <div className="relative h-140 w-full transform-gpu overflow-hidden rounded-surface border border-divider bg-chrome">
-      <SidebarProvider open={open} onOpenChange={setOpen} collapse={collapse} onCollapseChange={setCollapse}>
+      <SidebarProvider open={open} onOpenChange={setOpen}>
         <TitlebarNav hash="" rows={[]} />
         <header className="titlebar-clear session-tab-bar fixed start-0 end-surface-inset top-0 flex h-tab-bar items-center pt-3.5" data-settled>
           <div role="tablist" aria-label="Sample tabs" data-count={2} className="session-tab-list app-no-drag flex h-7.5 min-w-0 items-center gap-0.5 rounded-capsule p-px ring-1 ring-glass-stroke ring-inset">
@@ -107,14 +106,11 @@ function SidebarDemo() {
             ))}
           </div>
         </header>
-        <SidebarPanel strip={<Strip />}>
+        <SidebarPanel rail={<Strip />}>
           <SidebarContents />
         </SidebarPanel>
         <div className="flex flex-1 flex-col items-start gap-2 p-4 pt-page-top text-sm text-muted-foreground">
           <ToggleButton />
-          <Button size="sm" variant="soft" onClick={() => setCollapse(collapse === "strip" ? "hidden" : "strip")}>
-            Collapses to: {collapse}
-          </Button>
           <span>The frame only: its rows are samples.</span>
         </div>
       </SidebarProvider>

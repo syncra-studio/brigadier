@@ -86,7 +86,7 @@ function Buttons() {
 function IconButtons() {
   return (
     <Section title="Icon button with tooltip">
-      {(["ghost", "toolbar", "strip"] as const).map((look) => (
+      {(["ghost", "toolbar", "strip", "rail"] as const).map((look) => (
         <Row key={look} name={`look ${look}`}>
           <State label="live (hover for the tip)">
             <TitlebarTips>

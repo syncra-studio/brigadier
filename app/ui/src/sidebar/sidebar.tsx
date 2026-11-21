@@ -12,7 +12,6 @@ import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { ComposeEditSquare, MagnifyingGlassSmSearch, Pin, Plus, Unpin } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openSearch } from "../palette/palette";
 import { newSession } from "../home/start";
 import { useOpenPlace } from "../projects/page";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
@@ -20,9 +19,9 @@ import { ArchivedSection, DeleteAsk } from "../sessions/archived";
 import { LabelAsk } from "./labels";
 import { pinProject, type Project } from "../projects/projects";
 import { openAddProject, setShowProject } from "../projects/store";
-import { keysOf, matches } from "../shortcuts";
+import { matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
-import { ArchivedFlyout, attentionOf, ChatsFlyout, NoProjects, ProjectSquare, SessionSquare, Squares } from "./flyout";
+import { ArchivedFlyout, attentionOf, ChatsFlyout, NoProjects, ProjectSquare, SessionSquare } from "./flyout";
 import { RenameDialog } from "./menu";
 import { SearchResults, useSidebarSearch } from "./search";
 import { NeedYouPill } from "./pill";
@@ -31,7 +30,7 @@ import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "
 import type { SessionRow } from "./words";
 
 /*
- * The app's sidebar [D173, D174], its search field and New chat on one row in both modes [D846, D868], picked in View's Organize sidebar [D806]. By projects:
+ * The app's sidebar [D173, D174], its search field and New chat [D846, D868], picked in View's Organize sidebar [D806]. By projects:
  * Pinned projects, Projects by name, each opening its page, and Chats, the sessions in no project; no other
  * session and nothing archived shows [D808, D809, D812]. By sessions: Pinned sessions, Open, every
  * project's and none, each with its project's badge, and Archived [D803]. Rows go by the user's last send,
@@ -68,7 +67,7 @@ export function AppSidebar({
   onOpen,
   onNewSession,
   onNewChat,
-  foot,
+  rail,
   storeKey = "sidebar",
 }: {
   /** undefined until the first list arrives. */
@@ -84,10 +83,10 @@ export function AppSidebar({
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
-  /** The New chat row and the strip's: Home in no project [D421]. */
+  /** The New chat button: Home in no project [D421]. */
   onNewChat: () => void;
-  /** Given the strip's Archived icon, which only the sidebar has the rows for. */
-  foot?: (archived: ReactNode) => ReactNode;
+  /** The strip, given its squares and lists, which only the sidebar has the rows for. */
+  rail?: (squares: ReactNode) => ReactNode;
   /** Where its view is kept; the gallery's demos keep theirs apart. */
   storeKey?: string;
 }) {
@@ -225,8 +224,8 @@ export function AppSidebar({
 
   return (
     <SidebarPanel
-      strip={
-        <Strip onNewChat={onNewChat}>
+      rail={rail?.(
+        <>
           {pinsSessions
             ? order.map((each) => (
                 <SessionSquare
@@ -243,9 +242,9 @@ export function AppSidebar({
                 <ProjectSquare key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} />
               ))}
           {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
-        </Strip>
-      }
-      foot={foot?.(pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />)}
+          {pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />}
+        </>,
+      )}
     >
       {/* The card's top, under the tab bar [D48]: the name and New chat, room under it [D864], then the search field and View [D846, D868, D934]; ⌘K's palette stays. */}
       <div className="flex shrink-0 px-2.5 pt-3 pb-4">
@@ -420,30 +419,6 @@ function ProjectRow({ project, tone, current, attention, count }: { project: Pro
       </ContextMenuTrigger>
       <ContextMenuContent>{items}</ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-/**
- * The collapsed rail [new-design]: the logo, New chat and Search, a
- * rule, then the squares and Chats (`children`), scrolling. A click on the logo goes Home [D66, D69, D803].
- */
-function Strip({ onNewChat, children }: { onNewChat: () => void; children: ReactNode }) {
-  return (
-    <div className="flex h-full flex-col items-center gap-3 pt-3">
-      <TooltipIconButton tooltip="Home" tip={false} look="strip" onClick={onNewChat}>
-        <BrigadierMark className="size-icon-mark" />
-      </TooltipIconButton>
-      <div className="flex flex-col items-center gap-0.5">
-        <TooltipIconButton tooltip="New chat" look="strip" side="right" onClick={onNewChat}>
-          <ComposeEditSquare />
-        </TooltipIconButton>
-        <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="strip" side="right" onClick={openSearch}>
-          <MagnifyingGlassSmSearch />
-        </TooltipIconButton>
-      </div>
-      <span aria-hidden className="h-px w-6 shrink-0 bg-divider" />
-      <Squares>{children}</Squares>
-    </div>
   );
 }
 

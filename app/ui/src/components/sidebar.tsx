@@ -1,47 +1,27 @@
-import {
-  type ComponentProps,
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type ComponentProps, createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { matches } from "../shortcuts";
 import { cx } from "./cx";
+import { px, ResizeHandle } from "./resize-handle";
 import { TooltipProvider } from "./tooltip";
 
 /*
- * The sidebar panel: expanded to its width, collapsed to a strip of icons, or fully hidden. It eases
- * between these (the content beside it moves with it) while its contents cross-fade; hiding slides it off
- * the window's start and showing slides it back, at the width it has there [D63]; the
- * expanded contents keep their full width, revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles
- * it. Each of the three has one fixed width, nothing drags [D804]. In a narrow window it collapses by
- * itself, and comes back once there is room. While `keepOpen` it stays expanded.
+ * The sidebar panel: the strip always at the window's start and the sidebar beside it, shown or hidden
+ * [D11 D67]. It eases between the two (the content beside it moves with it), its contents kept at their full width,
+ * revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles it; its edge drags to resize it, and dragged past its
+ * least width it hides [D21]. In a narrow window it hides by itself, and comes back once there is room [D68]. While
+ * `keepOpen` it stays shown.
  *
- * It holds nothing: open and collapse come in, and changes go out (the app remembers them).
+ * It holds nothing: open and the width come in, and changes go out (the app remembers them).
  */
 
-export type SidebarCollapse = "strip" | "hidden";
-
 type SidebarContextProps = {
-  state: "expanded" | "collapsed";
   open: boolean;
-  collapse: SidebarCollapse;
-  /** Picks strip or hidden for when it collapses (the sidebar toggle steps through them). */
-  setCollapse: (collapse: SidebarCollapse) => void;
-  hidden: boolean;
-  /** Whether the card draws its open layout: open, or hidden from open (it slides off and back at the width it had). */
-  drawn: boolean;
-  /** The last fold went into or out of hidden: the card slides off or onto the window's start, its width and contents set [D63]. */
-  slide: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
-  /** Whether it can collapse here (not while held open). */
+  /** Whether it can hide here (not while held open). */
   canToggle: boolean;
+  onWidthChange: (width: number) => void;
 };
 
 const SidebarContext = createContext<SidebarContextProps | null>(null);
@@ -52,37 +32,31 @@ export function useSidebar() {
   return context;
 }
 
-/** A theme length (rem) in CSS pixels. */
-function tokenPx(name: string): number {
-  const root = getComputedStyle(document.documentElement);
-  return parseFloat(root.getPropertyValue(name)) * parseFloat(root.fontSize);
-}
-
 function subscribeResize(onChange: () => void) {
   addEventListener("resize", onChange);
   return () => removeEventListener("resize", onChange);
 }
-const isNarrow = () => innerWidth < tokenPx("--spacing-narrow-window");
+const isNarrow = () => innerWidth < px("--spacing-narrow-window");
 
 export function SidebarProvider({
   open: wideOpen,
   onOpenChange,
-  collapse = "strip",
-  onCollapseChange = () => {},
+  width = null,
+  onWidthChange = () => {},
   keepOpen = false,
   className,
   children,
   ...props
 }: Omit<ComponentProps<"div">, "onChange"> & {
-  /** Expanded while the window has room: the app's remembered choice. */
+  /** Shown while the window has room: the app's remembered choice. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Collapsed to a strip of icons, or hidden. */
-  collapse?: SidebarCollapse;
-  onCollapseChange?: (collapse: SidebarCollapse) => void;
+  /** Where it was dragged to, or null for the default. */
+  width?: number | null;
+  onWidthChange?: (width: number) => void;
   keepOpen?: boolean;
 }) {
-  // In a narrow window it collapses, and the toggle opens it only until the window changes again.
+  // In a narrow window it hides, and the toggle shows it only until the window changes again.
   const narrow = useSyncExternalStore(subscribeResize, isNarrow);
   const [narrowOpen, setNarrowOpen] = useState(false);
   const [seenNarrow, setSeenNarrow] = useState(narrow);
@@ -99,13 +73,8 @@ export function SidebarProvider({
     },
     [keepOpen, narrow, onOpenChange],
   );
-  // Every path (the sidebar toggle, ⌘B, View › Toggle Sidebar) steps open → strip → hidden → open [D800].
-  const toggleSidebar = useCallback(() => {
-    if (keepOpen) return;
-    if (open) onCollapseChange("strip");
-    else if (collapse === "strip") onCollapseChange("hidden");
-    setOpen(!open && collapse === "hidden");
-  }, [keepOpen, open, collapse, onCollapseChange, setOpen]);
+  // Every path (the titlebar toggle, ⌘B, View › Toggle Sidebar) shows or hides it [D67].
+  const toggleSidebar = useCallback(() => setOpen(!open), [open, setOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -117,16 +86,9 @@ export function SidebarProvider({
     return () => removeEventListener("keydown", onKeyDown);
   }, [toggleSidebar]);
 
-  const hidden = !open && collapse === "hidden";
-  const state = open ? "expanded" : "collapsed";
-  const mode = open ? "open" : hidden ? "hidden" : "strip";
-  const [fold, setFold] = useState({ from: mode, to: mode });
-  if (fold.to !== mode) setFold({ from: fold.to, to: mode });
-  const slide = fold.from === "hidden" || mode === "hidden";
-  const drawn = hidden ? fold.from === "open" : open;
   const context = useMemo<SidebarContextProps>(
-    () => ({ state, open, collapse, setCollapse: onCollapseChange, hidden, drawn, slide, setOpen, toggleSidebar, canToggle: !keepOpen }),
-    [state, open, collapse, onCollapseChange, hidden, drawn, slide, setOpen, toggleSidebar, keepOpen],
+    () => ({ open, setOpen, toggleSidebar, canToggle: !keepOpen, onWidthChange }),
+    [open, setOpen, toggleSidebar, keepOpen, onWidthChange],
   );
 
   return (
@@ -134,8 +96,8 @@ export function SidebarProvider({
       <TooltipProvider delay={0}>
         <div
           data-slot="sidebar-wrapper"
-          data-state={state}
-          data-collapse={hidden ? "hidden" : "strip"}
+          data-state={open ? "expanded" : "collapsed"}
+          data-width={width ?? undefined}
           className={cx("group/sidebar-wrapper sidebar-width-source flex h-full w-full", className)}
           {...props}
         >
@@ -146,60 +108,31 @@ export function SidebarProvider({
   );
 }
 
-/**
- * The panel: on the window's frame, a sidebar [D823]. The expanded
- * contents (`children`) and the strip's (`strip`) cross-fade in the same place; `foot` is shared by both, below them.
- */
-export function SidebarPanel({
-  strip,
-  foot,
-  className,
-  children,
-  ...props
-}: ComponentProps<"div"> & { strip?: ReactNode; foot?: ReactNode }) {
-  const { open, hidden, drawn, slide } = useSidebar();
+/** The strip (`rail`) and, beside it, the sidebar's contents, flush at the window's start under the titlebar row [D69]. */
+export function SidebarPanel({ rail, className, children, ...props }: ComponentProps<"div"> & { rail?: ReactNode }) {
+  const { open, setOpen, onWidthChange } = useSidebar();
+  const [resizing, setResizing] = useState(false);
   return (
-    <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0 pt-tab-bar">
-      <div
-        inert={hidden}
-        className={cx("sidebar-motion sidebar-clip h-full", open ? "sidebar-panel-width" : hidden ? "w-0" : "w-sidebar-strip")}
-      >
-        {/* Hiding slides the card off the window's start as its room closes, on the same curve, so its end stays on the room's [D63]. */}
-        <div
-          data-slide={slide || undefined}
-          className={cx(
-            "sidebar-motion relative flex h-full flex-col p-1",
-            drawn ? "sidebar-panel-width" : "w-sidebar-strip",
-            hidden && "-translate-x-full rtl:translate-x-full",
-          )}
-        >
-          <div data-sidebar="sidebar" className={cx("relative flex min-h-0 flex-1 flex-col overflow-clip text-foreground", className)} {...props}>
-            <div className="relative min-h-0 flex-1">
-              <div
-                inert={!open}
-                className={cx(
-                  "sidebar-card-width absolute inset-y-0 start-0 flex flex-col",
-                  !slide && "transition-opacity motion-reduce:transition-none",
-                  drawn ? "opacity-100" : "opacity-0",
-                )}
-              >
-                {children}
-              </div>
-              <div
-                inert={open || hidden}
-                className={cx(
-                  "absolute inset-0 flex flex-col",
-                  !slide && "transition-opacity motion-reduce:transition-none",
-                  drawn ? "opacity-0" : "opacity-100",
-                )}
-              >
-                {strip}
-              </div>
-            </div>
-            {foot}
-          </div>
+    <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
+      {rail}
+      <div inert={!open} data-resizing={resizing || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : "w-0")}>
+        <div data-sidebar="sidebar" className={cx("sidebar-panel-width relative flex h-full flex-col pt-tab-bar text-foreground", className)} {...props}>
+          {children}
         </div>
       </div>
+      {open && (
+        <ResizeHandle
+          end
+          label="Resize sidebar"
+          min="--spacing-left-sidebar-min"
+          max="--spacing-left-sidebar-max"
+          holder={(handle) => handle.closest('[data-slot="sidebar-wrapper"]')}
+          resizing={resizing}
+          setResizing={setResizing}
+          onWidth={onWidthChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </div>
   );
 }
