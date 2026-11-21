@@ -6,7 +6,7 @@ import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { DotsHorizontal, Plus } from "../icons";
 import { Pin, Unpin } from "../icons/sidebar";
-import { Document } from "../icons/tab";
+import { StickyNote } from "../icons/tab";
 import { EditPencil, Trash } from "../icons/thread";
 import { ago } from "../panel/words";
 import { setNoteTitle, UNTITLED_NOTE } from "../shell/note-tab";
@@ -105,7 +105,7 @@ export function NotesColumn({
               ) : (
                 <button type="button" tabIndex={-1} aria-current={row.id === note || undefined} className="note-list-row" onMouseEnter={() => setAt(index)} onClick={() => onOpen(row.id)} onDoubleClick={() => onRenaming(row.id)}>
                   <span className="note-list-line">
-                    {emoji ? <span aria-hidden className="note-list-emoji">{emoji}</span> : <Document aria-hidden className="size-icon-sm shrink-0 text-muted-foreground" />}
+                    {emoji ? <span aria-hidden className="note-list-emoji">{emoji}</span> : <StickyNote aria-hidden className="size-icon-sm shrink-0 text-muted-foreground" />}
                     <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
                     {row.pinned && <Pin aria-label="Pinned" className="size-icon-sm shrink-0 text-muted-foreground" />}
                   </span>

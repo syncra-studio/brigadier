@@ -10,7 +10,7 @@ import { Radio, RadioGroup } from "../components/radio";
 import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Branch, Chats, ChevronRightAlt, Document, Folder, Spinner } from "../icons";
+import { Branch, Chats, ChevronRightAlt, Folder, StickyNote, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { ArchiveCheck } from "../sessions/archive";
 import { shortPath } from "./add-project";
@@ -177,7 +177,7 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
         {preview && anything && (
           <ul aria-label="What is deleted" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
             {sessions > 0 && <SummaryRow icon={<Chats />} label={plural(sessions, "session", "sessions")} detail="Can't be undone" />}
-            {notes > 0 && <SummaryRow icon={<Document />} label={plural(notes, "note", "notes")} detail="With their chats" />}
+            {notes > 0 && <SummaryRow icon={<StickyNote />} label={plural(notes, "note", "notes")} detail="With their chats" />}
             {preview.worktrees > 0 && <SummaryRow icon={<Folder />} label={plural(preview.worktrees, "worktree", "worktrees")} detail={formatBytes(preview.bytes)} />}
             {preview.merged > 0 && (
               <SummaryRow

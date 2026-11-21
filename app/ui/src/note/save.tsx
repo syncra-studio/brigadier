@@ -4,7 +4,7 @@ import { SessionOfThread } from "../accounts/limit";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { useDaemon } from "../daemon";
-import { Document } from "../icons";
+import { StickyNote } from "../icons";
 import { failure } from "../session/composer";
 import { newId } from "../session/store";
 import { openTab } from "../shell/tab-store";
@@ -24,7 +24,7 @@ export function SaveAsNote({ text }: { text: string }) {
   };
   return (
     <TooltipIconButton tooltip="Save as note" size="icon-answer" onClick={save}>
-      <Document />
+      <StickyNote />
     </TooltipIconButton>
   );
 }

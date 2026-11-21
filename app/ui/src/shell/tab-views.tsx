@@ -5,7 +5,7 @@ import { EmptyState } from "../components/empty-state";
 import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Dock, Document } from "../icons";
+import { Dock, StickyNote } from "../icons";
 import { FileViewer } from "../files/viewer";
 import { useHomeProject } from "../home/start";
 import { Actions } from "../landing/actions";
@@ -67,7 +67,7 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
           <Card why={shut}>
             <button type="button" disabled={archived} onClick={() => replaceTab(owner, tab.id, "note", newId())} className={TOOL}>
               <span className={TOP}>
-                <Document className={ICON} />
+                <StickyNote className={ICON} />
               </span>
               <span className={LABEL}>New note</span>
             </button>
@@ -100,7 +100,7 @@ function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; o
         {notes.map((note) => (
           <li key={note.id}>
             <NavRow onClick={() => onOpen(note.id)} className="text-label text-foreground">
-              <Document className="text-muted-foreground" />
+              <StickyNote className="text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{note.title || UNTITLED_NOTE}</span>
               <span className="shrink-0 text-muted-foreground">{ago(note.at, Date.now())}</span>
             </NavRow>

@@ -1,4 +1,4 @@
-import { Chat, CodeSquareSlash, Document, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, ToolsSkills } from "../../icons";
+import { Chat, CodeSquareSlash, File, FileDocument, FileImage, FilePresentation, FileSpreadsheet, Folder, Globe, Mcp, StickyNote, ToolsSkills } from "../../icons";
 import { cx } from "../cx";
 import { Plugin } from "../../icons/settings";
 import { WorkerGlyph } from "../../icons/worker-glyphs";
@@ -56,7 +56,7 @@ export function MentionKindIcon({ type, id, label, className }: { type: "file" |
   if (type === "note") {
     const { emoji } = noteName(label);
     if (emoji) return <span aria-hidden className={cx("inline-flex items-center justify-center leading-none", className ?? "size-icon-md")}>{emoji}</span>;
-    return <Document aria-hidden className={cx(NOTE_TONE, className)} />;
+    return <StickyNote aria-hidden className={cx(NOTE_TONE, className)} />;
   }
   if (type === "tab") return <Globe aria-hidden className={cx("text-muted-foreground", className)} />;
   if (type === "plugin") return <Plugin aria-hidden className={cx("text-muted-foreground", className)} />;

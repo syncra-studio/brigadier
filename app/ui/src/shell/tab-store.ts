@@ -2,7 +2,7 @@ import { type ComponentType, useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle, RobotHead } from "../icons";
+import { Compare, Dock, Document, FileDocument, Globe, ImageSquare, PlayCircle, RobotHead, StickyNote } from "../icons";
 import { TeamGlyph } from "../icons/worker-glyphs";
 import { Clock, PullRequestOpen } from "../landing/icons";
 import { HOME_DRAFT } from "../session/draft";
@@ -26,7 +26,7 @@ export const TAB_KINDS = {
   review: { name: "Review", icon: Compare },
   attachment: { name: "Attachment", icon: FileDocument },
   background: { name: "Background history", icon: Clock },
-  note: { name: "Note", icon: Document },
+  note: { name: "Note", icon: StickyNote },
   actions: { name: "Actions", icon: PlayCircle },
   browser: { name: "Browser", icon: Globe },
   mockup: { name: "Mockup", icon: ImageSquare },

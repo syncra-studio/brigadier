@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { ChevronDown, Copy } from "../icons";
 import { SimpleSmile, SquarePlus } from "../icons/note";
 import { Download } from "../icons/sidebar";
-import { Document } from "../icons/tab";
+import { StickyNote } from "../icons/tab";
 import { EditPencil, Trash } from "../icons/thread";
 import { applyBlock, BLOCKS } from "./blocks";
 import { BlockRow } from "./tools";
@@ -88,7 +88,7 @@ export function NoteTopBar({ content, listing, editor, onList, onRename, onDelet
     <div data-slot="note-top-bar" className="note-top-bar">
       <DropdownMenu>
         <DropdownMenuTrigger render={<button type="button" aria-label="File menu" className="note-capsule note-file-button" />}>
-          <Document aria-hidden className="size-icon-sm" />
+          <StickyNote aria-hidden className="size-icon-sm" />
           <ChevronDown aria-hidden className="size-icon-sm" />
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -98,7 +98,7 @@ export function NoteTopBar({ content, listing, editor, onList, onRename, onDelet
           finalFocus={() => (renaming.current ? ((renaming.current = false), requestAnimationFrame(onRename), false) : true)}
         >
           <DropdownMenuItem className={item} onClick={onList}>
-            <Document aria-hidden />
+            <StickyNote aria-hidden />
             {listing ? "Hide notes" : "Show notes"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
