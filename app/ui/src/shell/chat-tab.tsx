@@ -22,7 +22,7 @@ import { CHAT, closeOthers, closeRight, HOME, selectTab } from "./tab-store";
 /* The tabs that aren't a session's own: its Chat tab and the draft's (tab-bar.tsx) [D848]. */
 // A tab [D44]: 32 tall on the row's middle line, its fill (session-tab's ::after) in front and on hover only.
 export const TAB = "session-tab app-no-drag group/tab flex min-w-0 items-center select-none";
-export const LOOK = (active: boolean) => (active ? "text-foreground" : "text-toolbar-foreground");
+export const LOOK = (active: boolean) => (active ? "text-chat-title" : "text-toolbar-foreground");
 // Its 16 icon and title from the start, 10 in, 7 from the end; a title too long fades out [D44].
 export const BUTTON = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-session-tab ps-2.5 pe-1.75 focus-visible:focus-ring";
 export const TITLE = "tab-title min-w-0 flex-1 text-start";

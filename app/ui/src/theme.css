@@ -35,7 +35,7 @@
   --color-resize-line: rgb(255 255 255 / 15.6%);
   /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
   --color-foreground: #dfdfdf;
-  /* The chat title in its session topbar [D196]. */
+  /* The chat's title in the titlebar and the front tab's title, white [D196 D44]. */
   --color-chat-title: #ffffff;
   --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
   /* A primary button: white, with near-black ink. */

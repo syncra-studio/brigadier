@@ -16,7 +16,7 @@ const STRIP = cx(
   "hover:bg-fill hover:text-foreground aria-expanded:bg-fill aria-expanded:text-foreground",
   "aria-pressed:bg-fill aria-pressed:text-foreground",
 );
-// The chat's own buttons and Show tabs at the row's end: white glyphs, at rest too [D39 D40 D200].
+// The chat's own buttons, the tab bar's + and the Files toggle at the row's end: white glyphs, at rest too [D39 D40 D44 D200].
 const CHAT_BAR = cx(
   "relative flex text-chat-title transition-all motion-safe:active:scale-press",
   "hover:bg-fill aria-expanded:bg-fill aria-pressed:bg-fill",
@@ -69,7 +69,7 @@ export function TooltipIconButton({
       className={cx(
         ghost && (variant ?? "ghost") === "ghost" && "aria-expanded:bg-fill",
         look === "toolbar" && TOOLBAR,
-        flat && (look === "chat" || look === "round" ? CHAT_BAR : STRIP),
+        flat && (look === "chat" || look === "round" || look === "bar" ? CHAT_BAR : STRIP),
         look === "strip" && "h-7.5 min-w-8 rounded-icon-button",
         look === "head" && "h-7 w-7.25 justify-center rounded-icon-button",
         look === "rail" && "size-9 rounded-icon-button",
