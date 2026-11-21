@@ -558,8 +558,8 @@
   /* The composer card's edge: the new design's 1px --border stroke over its inner glow (#FFFFFF33, blur 1). */
   --shadow-composer: inset 0 0 0 1px var(--color-border), var(--shadow-hairline);
   --shadow-raised: 0 0 0 0.5px oklch(1 0 0 / 6%), 0 4px 16px oklch(0 0 0 / 5%);
-  /* A faint card shadow, under the summary card [D136]. */
-  --shadow-summary: 0 4px 16px rgb(0 0 0 / 5%);
+  /* The summary card's edge, a hairline inside, and its faint shadow [D136]. */
+  --shadow-summary: inset 0 0 0 0.5px var(--color-summary-edge), 0 4px 16px rgb(0 0 0 / 5%);
   /* Menus' and popovers' edge and shadow: a hairline ring and a large shadow [D73]. */
   --shadow-overlay: 0 0 0 0.5px var(--color-popover-edge), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-tooltip: 0 8px 18px oklch(0 0 0 / 25%);

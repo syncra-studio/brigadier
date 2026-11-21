@@ -109,7 +109,7 @@ export function toggleSummary() {
 window.brigadier?.onMenu((command) => command === "toggle-summary" && toggleSummary());
 
 // The card itself, pinned or floating: 300 wide, radius 16, its edge and faint shadow [D136].
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-menu border border-summary-edge bg-popover p-3 shadow-summary";
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-menu bg-popover p-3 shadow-summary";
 
 /** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
