@@ -59,8 +59,9 @@ export type HomeProps = {
   /** The base branch picked here; null: the checked-out one [D392]. */
   base: string | null;
   onBase: (branch: string) => void;
-  /** The existing worktree picked here. */
+  /** The existing worktree picked here; `worktreeName`, a chat's own worktree's name [D152]. */
   worktree: string | null;
+  worktreeName?: string;
   onWorktree: (path: string) => void;
   /** null while the first list loads. */
   groups: ModelGroup[] | null;
@@ -217,7 +218,7 @@ export function HomeView(props: HomeProps) {
                   {project && project.kind !== "folder" && (
                     <>
                       <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} />
-                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} onBase={props.onBase} onWorktree={props.onWorktree} />
+                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} worktreeName={props.worktreeName} onBase={props.onBase} onWorktree={props.onWorktree} />
                     </>
                   )}
                 </UtilityBar>

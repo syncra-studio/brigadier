@@ -46,6 +46,8 @@ export type HomeDraft = {
   focus: number;
   /** A PR sent to the agent, while Home is in its project in a new worktree [D699]. */
   pr?: PrStart;
+  /** A chat's "New chat in this worktree": this draft only works in that worktree, the remembered `workIn` untouched [D152]. */
+  once?: { project: string; worktree: string; name: string };
 };
 const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
@@ -59,6 +61,12 @@ export function newSession(project?: string | null): void {
   // By its own key: Home's tabs may still be another project's.
   selectTab(draftKey(), CHAT);
   window.location.hash = "";
+}
+
+/** Home in `project`, its next session working in `worktree` (`name`: its chat's) once: a chat's "New chat in this worktree" [D152]. */
+export function newChatIn(project: string, worktree: string, name: string): void {
+  newSession(project);
+  setHomeDraft({ once: { project, worktree, name } });
 }
 
 /** Home in no project, from the sidebar's New chat [D421]. */
@@ -179,7 +187,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, model, ...(project && { project }) });
+  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, once: undefined, model, ...(project && { project }) });
   // Its PR tab closes on Home: the session has the PR's page instead [D699].
   for (const owner of place.pr ? [HOME_DRAFT] : []) {
     const tab = tabsOf(owner).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);

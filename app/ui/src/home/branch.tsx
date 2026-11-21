@@ -52,6 +52,7 @@ export function BranchPicker({
   name,
   base,
   worktree,
+  worktreeName,
   onBase,
   onWorktree,
 }: {
@@ -62,6 +63,7 @@ export function BranchPicker({
   /** The base picked here; null: the checked-out branch. */
   base: string | null;
   worktree: string | null;
+  worktreeName?: string;
   onBase: (branch: string) => void;
   onWorktree: (path: string) => void;
 }) {
@@ -102,7 +104,7 @@ export function BranchPicker({
       pick(matches[highlighted]!.key);
     }
   };
-  const label = local ? (info?.current ?? (loading ? "…" : "No branch")) : existing ? (picked ? folderName(picked) : "Pick a worktree") : (picked ?? (loading ? "…" : "Pick a branch"));
+  const label = local ? (info?.current ?? (loading ? "…" : "No branch")) : existing ? (picked ? (worktreeName ?? folderName(picked)) : "Pick a worktree") : (picked ?? (loading ? "…" : "Pick a branch"));
   const kind = existing ? "worktrees" : "branches";
   return (
     <Popover

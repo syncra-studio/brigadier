@@ -61,7 +61,8 @@ export function HomeDraft() {
   const asked = useRef(0);
   const id = project?.id;
   // A folder of repos has no placement: each chat works in its own folder and claims copies there [D494].
-  const workIn = project?.kind === "folder" ? "worktree" : draft.workIn;
+  const once = draft.once?.project === project?.id ? draft.once : undefined;
+  const workIn = project?.kind === "folder" ? "worktree" : once ? "existing" : draft.workIn;
   // Trust this folder? asks about the project Home is drafted in [D167].
   useEffect(() => {
     enterProject(id ?? null);
@@ -74,7 +75,9 @@ export function HomeDraft() {
   // A PR sent to the agent: a new worktree on its branch, until another branch or place is picked [D699].
   const pr = draft.pr?.project === id && workIn === "worktree" ? draft.pr : undefined;
   const base = pr ? (pr.fork ? `pr-${pr.number}` : pr.branch) : known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
-  const worktree = known(spot?.worktree, repo.info?.worktrees, (each) => each.path === spot?.worktree);
+  const picked = once?.worktree ?? spot?.worktree;
+  // A session's own worktree isn't one Home offers, so its one-off is taken as it is [D152].
+  const worktree = once?.worktree ?? known(picked, repo.info?.worktrees, (each) => each.path === picked);
   const groups = listed && listed.project === id ? listed.groups : null;
   const fresh = listed?.project === id && listed?.fresh;
   const load = () => {
@@ -143,12 +146,13 @@ export function HomeDraft() {
         }}
         workIn={workIn}
         localHolder={workIn === "local" && id ? rows?.find((row) => row.project === id && row.local) : undefined}
-        onWorkIn={(workIn) => setHomeDraft({ workIn })}
+        onWorkIn={(workIn) => setHomeDraft({ workIn, once: undefined })}
         repo={repo}
         base={base}
-        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined }, pr: undefined })}
+        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined }, pr: undefined, once: undefined })}
         worktree={worktree}
-        onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path } })}
+        worktreeName={once?.name}
+        onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path }, once: undefined })}
         // Only a fresh list can say no model is available: a cached one before any check offers none, so it reads as loading.
         groups={fresh || model ? groups : null}
         model={model}

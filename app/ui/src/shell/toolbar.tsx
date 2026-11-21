@@ -2,10 +2,10 @@ import { type ReactNode, useState } from "react";
 
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { justStarted, useHomeDraft } from "../home/start";
-import { DotsHorizontal, Tasks } from "../icons";
+import { justStarted, newChatIn, useHomeDraft } from "../home/start";
+import { ChatCompose, DotsHorizontal, Tasks } from "../icons";
 import { useProjects } from "../projects/projects";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
@@ -31,7 +31,7 @@ function Drawn({ tooltip, className, inert, children }: { tooltip: string; class
 /** The chat's own controls show only while its tab is in front, folding away and back as the tab changes [D882]. */
 const fold = (onChat: boolean) => cx("justify-center overflow-hidden transition-all duration-300 ease-sidebar motion-reduce:transition-none", onChat ? "w-7" : "-me-1.5 w-0 scale-80 opacity-0");
 
-/** The Chat actions [D37]: the session's row menu, as its sidebar row's ⋯ [D185]. */
+/** The Chat actions [D37]: New chat in this worktree, a one-off [D152], then the session's row menu, as its sidebar row's ⋯ [D185]. */
 function ChatActions({ row, inert, className }: { row: SessionRow; inert: boolean; className: string }) {
   const [renaming, setRenaming] = useState(false);
   return (
@@ -41,6 +41,15 @@ function ChatActions({ row, inert, className }: { row: SessionRow; inert: boolea
           <DotsHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {row.project && row.folder && (
+            <>
+              <DropdownMenuItem onClick={() => newChatIn(row.project!, row.folder!, row.title)}>
+                <ChatCompose />
+                New chat in this worktree
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <RowMenuItems row={row} onRename={() => setRenaming(true)} />
         </DropdownMenuContent>
       </DropdownMenu>
