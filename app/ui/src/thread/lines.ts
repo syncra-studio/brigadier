@@ -4,8 +4,8 @@ import type { Item, Session, Turn, Work } from "./item";
 
 export type Group = Extract<Item, { kind: "group" }>;
 
-/** Space above a row: the first row, a new turn, a new part of a turn, the next step of an opened group. */
-export type Gap = "first" | "turn" | "part" | "step";
+/** Space above a row: the first row, the user's message, a new turn, a new part of a turn, the next step of an opened group. */
+export type Gap = "first" | "input" | "turn" | "part" | "step";
 
 export type Line =
   | { type: "setup"; id: string; gap: Gap; setup: NonNullable<Session["setup"]> }
@@ -92,7 +92,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   const gap = (item: Item | null, step: boolean): Gap => {
     const last = out.at(-1);
     if (!last) return "first";
-    if (item?.kind === "message" && item.role === "user") return "turn";
+    if (item?.kind === "message" && item.role === "user") return "input";
     if (last.type === "item" && last.item.kind === "message" && last.item.role === "user") return "turn";
     if (item && last.type !== "work" && last.type !== "setup" && last.item.turnId !== item.turnId) return "turn";
     return step ? "step" : "part";
