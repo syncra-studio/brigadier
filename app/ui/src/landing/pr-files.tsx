@@ -161,16 +161,15 @@ export function PrFiles({
   const comments = useMemo(() => new Map(pr.comments.map((comment) => [comment.id, comment])), [pr.comments]);
   const threads = useMemo(() => {
     const by = new Map<string, { thread: PrThread; line: number | null }[]>();
-    for (const item of pr.timeline ?? []) {
-      if (item.kind !== "review") continue;
-      for (const thread of item.threads) {
-        const first = comments.get(thread.comments[0] ?? "");
-        if (!thread.path || !first) continue;
-        by.set(thread.path, [...(by.get(thread.path) ?? []), { thread, line: first.line }]);
-      }
+    // The sent reviews' threads, then the viewer's unsent review's, which the Conversation leaves out.
+    const all = [...(pr.timeline ?? []).flatMap((item) => (item.kind === "review" ? item.threads : [])), ...(pr.drafts ?? [])];
+    for (const thread of all) {
+      const first = comments.get(thread.comments[0] ?? "");
+      if (!thread.path || !first) continue;
+      by.set(thread.path, [...(by.get(thread.path) ?? []), { thread, line: first.line }]);
     }
     return by;
-  }, [pr.timeline, comments]);
+  }, [pr.timeline, pr.drafts, comments]);
   const card = (thread: PrThread) => <ThreadCard key={thread.id} pr={pr} thread={thread} comments={comments} sends={sends} onAddToChat={onAddToChat} bare />;
 
   return (
@@ -195,7 +194,7 @@ export function PrFiles({
                   connected={Boolean(daemon)}
                   acts={acts}
                   split={look.split}
-                  notes={mine.flatMap(({ thread, line }) => (line === null ? [] : [{ side: "additions" as const, line, key: thread.id, node: card(thread) }]))}
+                  notes={mine.flatMap(({ thread, line }) => (line === null ? [] : [{ side: thread.left ? ("deletions" as const) : ("additions" as const), line, key: thread.id, node: card(thread) }]))}
                   above={mine.some(({ line }) => line === null) && <div className="flex flex-col gap-2 border-b border-border p-2">{mine.filter(({ line }) => line === null).map(({ thread }) => card(thread))}</div>}
                   end={
                     <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">

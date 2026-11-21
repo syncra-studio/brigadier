@@ -32,6 +32,21 @@ pub(super) fn state_of(pr: &Value) -> &'static str {
     }
 }
 
+/// The threads review `r` started, each with the side of the diff its line is on.
+pub(super) fn started_by(r: &Value, threads: &[Value]) -> Vec<Value> {
+    (threads.iter())
+        .filter_map(|t| {
+            let said = nodes(&t["comments"]);
+            let first = said.first()?;
+            (first["pullRequestReview"]["databaseId"] == r["databaseId"]).then(|| {
+                json!({"id": t["id"], "path": first["path"], "resolved": t["isResolved"],
+                    "outdated": t["isOutdated"], "left": t["diffSide"] == "LEFT",
+                    "comments": said.iter().map(|c| format!("r{}", c["databaseId"])).collect::<Vec<_>>()})
+            })
+        })
+        .collect()
+}
+
 /// The Conversation as GitHub draws it under the description, oldest first [D260]: commits, comments
 /// (by id, in `comments`), reviews with the threads they started, and events. A run of one person's
 /// commits, or of their review requests, is one item. A review that only answered others' threads
@@ -62,17 +77,7 @@ pub(super) fn timeline(
             Some("DISMISSED") => "dismissed",
             _ => continue,
         };
-        let started: Vec<Value> = (threads.iter())
-            .filter_map(|t| {
-                let said = nodes(&t["comments"]);
-                let first = said.first()?;
-                (first["pullRequestReview"]["databaseId"] == r["databaseId"]).then(|| {
-                    json!({"id": t["id"], "path": first["path"], "resolved": t["isResolved"],
-                        "outdated": t["isOutdated"],
-                        "comments": said.iter().map(|c| format!("r{}", c["databaseId"])).collect::<Vec<_>>()})
-                })
-            })
-            .collect();
+        let started = started_by(r, threads);
         let said = r["body"].as_str().is_some_and(|b| !b.trim().is_empty());
         if state == "commented" && !said && started.is_empty() {
             continue;

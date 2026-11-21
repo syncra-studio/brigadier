@@ -53,6 +53,8 @@ export type PullRequest = {
   /** The Conversation under the description, oldest first, as Rust groups it from GitHub's [D260]; absent in a read
    * kept before it, until the next. */
   timeline?: PrItem[];
+  /** The viewer's unsent review's threads, for Changes. */
+  drafts?: PrThread[];
   /** GitHub's merge state, lower case: clean, blocked, behind, dirty, unstable, has_hooks, unknown. */
   mergeState: string | null;
   /** It's the session's own branch's: Files changed shows the Review tab's branch diff [D204]. */
@@ -98,7 +100,7 @@ export type PrComment = {
 };
 
 /** A review's line thread: its comments by id, folded as GitHub folds a resolved or outdated one. */
-export type PrThread = { id: string; path: string | null; resolved: boolean; outdated: boolean; comments: string[] };
+export type PrThread = { id: string; path: string | null; resolved: boolean; outdated: boolean; comments: string[]; /** On the diff's old side. */ left?: boolean };
 
 type Item<K extends string, T = object> = { kind: K; id: string; atMs: number | null; actor: string | null; bot?: boolean } & T;
 
