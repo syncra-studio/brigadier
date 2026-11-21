@@ -9,7 +9,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeRight, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
 
@@ -74,14 +74,6 @@ export function newChat(): void {
   setHomeDraft({ chat: true, locked: false, focus: draft.get().focus + 1 });
   selectTab(draftKey(), CHAT);
   window.location.hash = "";
-}
-
-/** A project's draft closed with its Chat tab's ×: its tabs and words go, and New chat shows [D865 D866 D179]. */
-export function dropDraft(project: string): void {
-  const key = draftKey({ locked: true, project });
-  closeRight(key, CHAT);
-  keepDraft(daemonRun, key, EMPTY_DRAFT);
-  newChat();
 }
 
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */

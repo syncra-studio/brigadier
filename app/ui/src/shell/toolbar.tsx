@@ -2,14 +2,10 @@ import { type ReactNode, useState } from "react";
 
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { justStarted, newChatIn, useHomeDraft } from "../home/start";
-import { ChatCompose, DotsHorizontal, Tasks } from "../icons";
+import { justStarted, useHomeDraft } from "../home/start";
+import { Tasks } from "../icons";
 import { useProjects } from "../projects/projects";
-import { rename } from "../sidebar/actions";
-import { RenameDialog, RowMenuItems } from "../sidebar/menu";
-import type { SessionRow } from "../sidebar/words";
 import { RightPanelToggle, useHasPanel } from "./right-panel";
 import { useCardToggle } from "./summary-card";
 import { CHAT, HOME, useTabs } from "./tab-store";
@@ -30,33 +26,6 @@ function Drawn({ tooltip, className, inert, children }: { tooltip: string; class
 
 /** The chat's own controls show only while its tab is in front, folding away and back as the tab changes [D882]. */
 const fold = (onChat: boolean) => cx("justify-center overflow-hidden transition-all duration-300 ease-sidebar motion-reduce:transition-none", onChat ? "w-7" : "-me-1.5 w-0 scale-80 opacity-0");
-
-/** The Chat actions [D37]: New chat in this worktree, a one-off [D152], then the session's row menu, as its sidebar row's ⋯ [D185]. */
-function ChatActions({ row, inert, className }: { row: SessionRow; inert: boolean; className: string }) {
-  const [renaming, setRenaming] = useState(false);
-  return (
-    <span inert={inert} className={cx("app-no-drag flex", className)}>
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger render={<TooltipIconButton look="bar" tooltip="Chat actions" />}>
-          <DotsHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {row.project && row.folder && (
-            <>
-              <DropdownMenuItem onClick={() => newChatIn(row.project!, row.folder!, row.title)}>
-                <ChatCompose />
-                New chat in this worktree
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <RowMenuItems row={row} onRename={() => setRenaming(true)} />
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <RenameDialog row={renaming ? row : null} onClose={() => setRenaming(false)} onRename={(name, branch) => rename(row, name, branch)} />
-    </span>
-  );
-}
 
 /**
  * Toggle pinned summary: shows and hides the summary card where the chat has one [D39 D132]; elsewhere it's
@@ -81,11 +50,12 @@ function ContextButton({ owner, className }: { owner: string; className: string 
 }
 
 /**
- * The row's end, the chat toolbar then Show tabs [D38 D39 D40 D360]: the chat's "…", Context, then Files.
+ * The row's end [D38 D39 D40 D360]: Context, then Files; the chat's "…" is
+ * on its tab (chat-tab.tsx) [D200].
  * Context waits for the first message [D420], and Home's new chat, in no project, has no right panel [D421]. What the
  * first message brings fades in; opening a session that has them shows them at once.
  */
-export function Toolbar({ owner, row }: { owner: string; row?: SessionRow | undefined }) {
+export function Toolbar({ owner }: { owner: string }) {
   const home = owner === HOME;
   const draft = useHomeDraft();
   const projects = useProjects();
@@ -98,7 +68,6 @@ export function Toolbar({ owner, row }: { owner: string; row?: SessionRow | unde
   return (
     <div className="app-no-drag flex shrink-0 items-center gap-1.5">
       <TitlebarTips>
-        {row && !row.archived && <ChatActions row={row} inert={!onChat} className={cx(fold(onChat), enter)} />}
         {!home && <ContextButton owner={owner} className={cx(fold(onChat), enter)} />}
         {panel && <RightPanelToggle owner={owner} className={enter} />}
       </TitlebarTips>

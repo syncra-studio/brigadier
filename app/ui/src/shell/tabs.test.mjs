@@ -56,7 +56,7 @@ test("New chat and a project's New session keep their own words [D863]", async (
   const kept = [];
   globalThis.window = { location: { hash: "" } };
   const store = (value) => ({ get: () => value, set: (next) => (value = next), use: () => value });
-  const { draftKey, setHomeDraft, newSession, newChat, dropDraft } = await load("../home/start.ts", {
+  const { draftKey, setHomeDraft, newSession, newChat } = await load("../home/start.ts", {
     "../session/draft": { HOME_DRAFT: "@home", keepDraft: (_, id, draft) => kept.push([id, draft]) },
     "../onboarding/api": { store },
   });
@@ -66,8 +66,6 @@ test("New chat and a project's New session keep their own words [D863]", async (
   assert.equal(draftKey(), "@home");
   setHomeDraft({ project: "p", chat: false });
   assert.equal(draftKey(), "@home", "New chat picking a project stays New chat's draft");
-  dropDraft("p");
-  assert.deepEqual(kept.map(([id]) => id), ["@home:p"], "the project draft's × clears its own words only");
 });
 
 test("from New chat a project picked or clicked opens its last place, never New chat in that project [D886 D891]", async () => {

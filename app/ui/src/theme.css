@@ -35,6 +35,8 @@
   --color-resize-line: rgb(255 255 255 / 15.6%);
   /* Body text, in hex for main, and the secondary text; --color-placeholder is the latter at 60%. */
   --color-foreground: #dfdfdf;
+  /* The chat title in its session topbar [D196]. */
+  --color-chat-title: #ffffff;
   --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
   /* A primary button: white, with near-black ink. */
   --color-primary: #ffffff;
@@ -1673,20 +1675,35 @@
 
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
+  /* With tabs, a 1px rule under the row across the main area; the chat alone has none, as its topbar [D201]. */
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline: var(--sidebar-shown, 0px) calc(var(--spacing) * -2);
+    bottom: 0;
+    height: 1px;
+    background: var(--color-border);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-session-tab) var(--ease-session-tab);
+  }
+  &[data-tabbed]::after {
+    opacity: 1;
+  }
   /* Until the tabs read on opening have drawn, they don't grow in [D423]. */
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
     transition: none;
   }
 }
 
-/* The widths [D44]: every tab but Chat an even share of the tab area (its container) less "+", the
-   group labels and Chat (its width, data-chat), from 90 up to 240, then the strip scrolls. Chat is as wide as its
-   title, 90 to 240, and stays put. The row is as wide as its tabs, so "+" follows the last [D835]. */
+/* The widths [D44]: every tab, Chat too, an even share of the tab area (its container) less "+" and the group
+   labels, from 90 up to 240, then the strip scrolls; Chat stays put. The row is as wide as its tabs, so "+" follows
+   the last [D835 D197]. */
 @utility session-tab-list {
   position: relative;
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - attr(data-chat px, 0px));
+  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups));
   --session-tab-count: max(attr(data-count type(<number>), 1), 1);
   --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
@@ -1721,18 +1738,41 @@
     flex-basis var(--duration-session-tab) var(--ease-session-tab),
     max-width var(--duration-session-tab) var(--ease-session-tab),
     opacity var(--duration-session-tab) var(--ease-session-tab);
-  &[data-tab-id="chat"] {
-    flex: 0 0 auto;
-    min-width: var(--spacing-session-tab-min);
-    max-width: var(--spacing-session-tab-max);
-  }
   &[data-tab-id="chat"][data-closing] {
-    min-width: 0;
     max-width: 0;
   }
   /* Each held at its width after a close with the pointer, until it leaves the row (tab-bar.tsx). */
   &[data-frozen] {
     flex-basis: attr(data-frozen px);
+  }
+  /* The only tab: no chip, its title plain and white, its icon 16 in and its title 48,
+     growing from its title's width into tab 1 as a tab opens [D196]. */
+  interpolate-size: allow-keywords;
+  & > button {
+    transition:
+      padding-inline-start var(--duration-session-tab) var(--ease-session-tab),
+      gap var(--duration-session-tab) var(--ease-session-tab);
+  }
+  &[data-plain] {
+    flex: 0 1 max-content;
+    color: var(--color-chat-title);
+    &::before,
+    &::after {
+      content: none;
+    }
+    & > button {
+      padding-inline-start: calc(var(--spacing) * 2);
+      gap: calc(var(--spacing) * 4);
+    }
+    /* Cut with "…", its own "…" button 7 past it (the tab's end padding) [D200]. */
+    & .tab-title {
+      mask-image: none;
+      text-overflow: ellipsis;
+    }
+  }
+  /* As a tab, its title's fade past its words, so one that fits shows whole as it grows from its title's width. */
+  &[data-tab-id="chat"]:not([data-plain]) .tab-title {
+    padding-inline-end: var(--spacing-tab-title-fade);
   }
   &::after {
     content: "";
@@ -1783,13 +1823,19 @@
     opacity: 0;
   }
   @media (prefers-reduced-motion: reduce) {
-    transition: none;
+    &,
+    & > button {
+      transition: none;
+    }
   }
 }
 
-/* "+", 28 square, a little past the last tab [D44]. */
+/* "+", 28 square, a little past the last tab [D44]; with only the chat at the row's end, 6 before its buttons as theirs [D196]. */
 .session-tab-new {
   margin-inline-start: calc(var(--spacing) * -1);
+}
+.session-tab-spacer[data-bare] ~ .session-tab-new {
+  margin-inline-end: calc(var(--spacing) * -0.5);
 }
 
 /* Between the tabs and "+", its gap taken back: nothing, or with no tabs (New chat) all the room, so "+" slides to the

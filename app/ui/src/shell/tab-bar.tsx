@@ -14,7 +14,6 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenuItem, DropdownMenuSeparator } from "../components/menu";
 import { baseName } from "../files/tree";
-import { dropDraft } from "../home/start";
 import { HOME_DRAFT } from "../session/draft";
 import { ArrowRight, Pin, Plus, Undo, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
@@ -200,9 +199,10 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
   const familyIds = useMemo(() => (familyFolded ? [] : family.map((each) => each.id)), [family, familyFolded]);
   useTabKeys(owner, archived, familyIds);
   const presence = useTabPresence(tabs);
-  // By the tabs now, not those still sliding shut: Home's last tab closing takes its Chat tab in the same frame, as the old app's.
-  // New chat in no project with no tabs has no Chat tab, "+" at the row's end [D831].
-  const bare = owner === HOME && !project && tabs.length === 0;
+  // By the tabs now, not those still sliding shut: the last tab closing takes the Chat tab's chip in the same frame. With
+  // no other tab there's no chip: the chat's title plain, none for New chat, and "+" at the
+  // row's end with the chat's buttons [D831 D196].
+  const bare = tabs.length === 0 && family.length === 0;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
@@ -222,15 +222,6 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
     return at === keys.length - 1 ? "⌘9" : at >= 0 && at < 8 ? `⌘${at + 1}` : undefined;
   };
   const list = useRef<HTMLDivElement>(null);
-  // Chat is as wide as its title; the others share what it leaves (session-tab-list) [D44].
-  const [chatWidth, setChatWidth] = useState(0);
-  useEffect(() => {
-    const tab = list.current?.querySelector(`[data-tab-id="${CHAT}"]`);
-    if (!tab) return setChatWidth(0);
-    const observer = new ResizeObserver(() => setChatWidth(tab.getBoundingClientRect().width));
-    observer.observe(tab);
-    return () => observer.disconnect();
-  }, [owner, family.length, Boolean(row)]);
   // Safari's and Chrome's: a tab closed with the pointer leaves each other tab its width until the pointer leaves the
   // row, so the next tab's × comes under it, even where closing the front puts its opener in front elsewhere [D848 D3113].
   const tabsHere = () => list.current?.querySelectorAll<HTMLElement>(".session-tab") ?? [];
@@ -323,17 +314,17 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
       <Plus />
     </TooltipIconButton>
   );
-  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} separator={active !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== active)} order={order} grouped={family.length > 0} keycap={keycap(CHAT)} /> : <BlankChatTab owner={owner} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} onClose={project ? () => dropDraft(project) : undefined} keycap={bare ? undefined : keycap(CHAT)} />;
+  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} plain={bare} separator={active !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== active)} order={order} grouped={family.length > 0} keycap={bare ? undefined : keycap(CHAT)} /> : <BlankChatTab owner={owner} project={project} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} keycap={bare ? undefined : keycap(CHAT)} />;
   // A pill on the row [D71].
   const reconnecting = offline && <span role="status" className="flex h-7 shrink-0 items-center rounded-capsule bg-fill px-3 text-label text-warning">Reconnecting…</span>;
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
   return (
     <>
-      <header data-slot="session-tabs" data-settled={settled || undefined} onPointerLeave={thaw} className={cx(BAR, "session-tab-bar")}>
+      <header data-slot="session-tabs" data-settled={settled || undefined} data-tabbed={!bare || undefined} onPointerLeave={thaw} className={cx(BAR, "session-tab-bar")}>
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + siblings} data-chat={chatWidth} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center" onKeyDown={onKeys} onWheel={onWheel}>
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + siblings + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center" onKeyDown={onKeys} onWheel={onWheel}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
             {family.length === 0 && chat}
             <div ref={strip} className="tab-scroll scroll-edge-fade-x hide-scrollbar flex min-w-0 items-center self-stretch overflow-x-auto empty:hidden">
@@ -403,12 +394,12 @@ export function TabBar({ owner, row, offline }: { owner: string; row?: SessionRo
               </DragDropProvider>
             </div>
           </div>
-          {/* Home's draft with no tab of its own has no tabs, as the old app's untabbed draft: "+" slides to the end, before the toolbar [D39 D831 D836]. */}
+          {/* With only the chat, "+" slides to the end, with the chat's buttons [D39 D831 D836 D196]. */}
           <span aria-hidden data-bare={bare || undefined} className="session-tab-spacer" />
           {newTab}
           {reconnecting}
         </div>
-        <Toolbar owner={owner} row={row} />
+        <Toolbar owner={owner} />
       </header>
       <CloseAllDialog />
     </>
