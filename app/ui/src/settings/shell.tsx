@@ -4,6 +4,7 @@ import { EmptyState } from "../components/empty-state";
 import { StateDot } from "../components/state-dot";
 import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { ArrowLeft, MagnifyingGlassSearch, XCircleFilled } from "../icons";
+import { HomeMark } from "../sidebar/strip";
 import { matches } from "../shortcuts";
 import { useRoutingDot } from "./routing";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSearchResult, searchSettings, settingsPage } from "./pages";
@@ -82,7 +83,7 @@ export function SettingsNav({ current }: { current: string }) {
   return (
     <>
       {/* Its title on the app sidebar's name line, and its rows on the sessions' insets, so a swap moves nothing [D48 D227]. */}
-      <NavHeader title="Settings" />
+      <NavHeader start={<HomeMark />} title="Settings" />
       <div className="ps-2 pe-2.5 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />

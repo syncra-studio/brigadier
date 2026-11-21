@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/menu";
 import { NavHeader, NavList, NavSection } from "../components/nav";
+import { HomeMark } from "../sidebar/strip";
 import { Skeleton } from "../components/skeleton";
 import { ask, useDaemon } from "../daemon";
 import { Check, MagnifyingGlassSearch, XCircleFilled } from "../icons";
@@ -123,6 +124,7 @@ export function PullRequestsNav({ current }: { current: string }) {
     <>
       <div className="shrink-0">
         <NavHeader
+          start={<HomeMark />}
           title="Pull Requests"
           actions={
             <DropdownMenu modal={false}>
@@ -150,7 +152,7 @@ export function PullRequestsNav({ current }: { current: string }) {
           }
         />
       </div>
-      <div className="px-2 pb-2">
+      <div className="ps-2 pe-2.5 pb-2">
         <label className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
           <input

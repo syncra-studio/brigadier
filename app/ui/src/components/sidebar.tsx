@@ -6,10 +6,10 @@ import { px, ResizeHandle } from "./resize-handle";
 import { TooltipProvider } from "./tooltip";
 
 /*
- * The sidebar panel: the strip always at the window's start and the sidebar beside it, shown or hidden
- * [D11 D67]. It eases between the two (the content beside it moves with it), its contents kept at their full width,
- * revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles it; its edge drags to resize it, and dragged past its
- * least width it hides [D21]. In a narrow window it hides by itself, and comes back once there is room [D68].
+ * The sidebar panel at the window's start: shown, or folded to the strip [D226, demo A]. It eases between the two (the
+ * content beside it moves with it) while the sidebar's and the strip's contents crossfade, each kept at its own width,
+ * revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles it; its edge drags to resize it, and dragged past half its
+ * least width it folds to the strip [D21]. In a narrow window it folds by itself, and comes back once there is room [D68].
  *
  * It holds nothing: open and the width come in, and changes go out (the app remembers them).
  */
@@ -102,19 +102,22 @@ export function SidebarProvider({
   );
 }
 
-/** The strip (`rail`) and, beside it, the sidebar's contents, flush at the window's start under the titlebar row [D69]. */
+/** The sidebar's contents, or folded the strip (`rail`), in one column at the window's start under the titlebar row [D69 D226]. */
 export function SidebarPanel({ rail, className, children, ...props }: ComponentProps<"div"> & { rail?: ReactNode }) {
   const { open, setOpen, onWidthChange } = useSidebar();
   const [resizing, setResizing] = useState(false);
-  // The sidebar hides under half the least width of the strip and it together [D188].
-  const strip = px("--spacing-rail");
+  const fade = "absolute inset-y-0 start-0 flex transition-opacity duration-200 motion-reduce:transition-none";
   return (
     <div data-slot="sidebar-panel" data-state={open ? "expanded" : "collapsed"} className="relative flex h-full shrink-0">
-      {rail}
-      {/* Still while dragged, but hiding or showing mid-drag it eases. */}
-      <div inert={!open} data-resizing={(resizing && open) || undefined} className={cx("sidebar-motion h-full overflow-clip", open ? "sidebar-panel-width" : "w-0")}>
-        <div data-sidebar="sidebar" className={cx("sidebar-panel-width relative flex h-full flex-col pt-tab-bar text-foreground", className)} {...props}>
-          {children}
+      {/* Its room, eased: the sidebar's width or the strip's. Still while dragged, but folding mid-drag it eases. */}
+      <div data-resizing={(resizing && open) || undefined} className={cx("sidebar-motion relative h-full overflow-clip", open ? "sidebar-panel-width" : "w-rail")}>
+        <div inert={!open} className={cx(fade, !open && "opacity-0")}>
+          <div data-sidebar="sidebar" className={cx("sidebar-panel-width relative flex h-full flex-col pt-tab-bar text-foreground", className)} {...props}>
+            {children}
+          </div>
+        </div>
+        <div inert={open} className={cx(fade, open && "opacity-0")}>
+          {rail}
         </div>
       </div>
       {(open || resizing) && (
@@ -123,7 +126,6 @@ export function SidebarPanel({ rail, className, children, ...props }: ComponentP
           label="Resize sidebar"
           min="--spacing-left-sidebar-min"
           max="--spacing-left-sidebar-max"
-          hideBelow={(px("--spacing-left-sidebar-min") + strip) / 2 - strip}
           holder={(handle) => handle.closest('[data-slot="sidebar-wrapper"]')}
           resizing={resizing}
           setResizing={setResizing}
