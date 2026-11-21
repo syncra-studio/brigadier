@@ -1,4 +1,3 @@
-import { pastedRef } from "../pull-requests/route";
 import { openTab } from "../shell/tab-store";
 
 /** What card rows, sidebar chips and thread rows open [D1013, D1022]. */
@@ -6,11 +5,11 @@ import { openTab } from "../shell/tab-store";
 /** A file's diff in `owner`'s Review tab, or every file's with no path [D1032, D1038]. */
 export const openReview = (owner: string, path?: string) => openTab(owner, "review", path);
 
-type PrAt = { number: number; repo?: string | null; url?: string };
+type PrAt = { number: number; repo?: string | null };
 
-/** `owner`'s Pull requests tab on a PR [D1017, D1113]: named in full, `host/owner/name#n`, when its link says [D159]; else its
- * number, `owner/name#n` for another repository's [D213]. */
-export const openPr = (owner: string, pr: PrAt) => openTab(owner, "pr", (pr.url && pastedRef(pr.url)) || (pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number)));
+/** `owner`'s Pull requests tab on a PR [D1017, D1113]: its number, `owner/name#n` for another repository's [D213]. Never the
+ * full `host/owner/name#n`: that reads through the Pull Requests page, off the session's PR watch and its rows. */
+export const openPr = (owner: string, pr: PrAt) => openTab(owner, "pr", pr.repo ? `${pr.repo}#${pr.number}` : String(pr.number));
 
 /** `owner`'s Background history: everything that ran in its background [D200]. */
 export const openBackgroundHistory = (owner: string) => openTab(owner, "background");
