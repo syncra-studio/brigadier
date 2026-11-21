@@ -88,8 +88,9 @@ function draw(slot: Slot): void {
 function land(slot: Slot, reply: Record<string, any>): void {
   if (slot.rev === null || reply.rev > slot.rev) {
     slot.rev = reply.rev;
-    // Only kinds this build draws: a daemon from another build may still keep a kind this one dropped (worker tabs).
-    const tabs = (reply.tabs as Tab[]).filter((tab) => tab.kind in TAB_KINDS);
+    // Only kinds this build draws: a daemon from another build may still keep a kind this one dropped (worker tabs),
+    // or the PR list tab that's gone [D174].
+    const tabs = (reply.tabs as Tab[]).filter((tab) => tab.kind in TAB_KINDS && !(tab.kind === "pr" && tab.target === "list"));
     slot.rust = { tabs, active: tabs.some((tab) => tab.id === reply.active) ? reply.active : CHAT };
   }
   draw(slot);

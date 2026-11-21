@@ -1,7 +1,6 @@
 import { useEffect, useReducer } from "react";
 
 import type { Row } from "../daemon";
-import type { PrChipState } from "../landing/pr-chip";
 import { hhmm } from "../thread/words";
 
 /** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, a calm grey dot for what it left running [D68], or nothing. */
@@ -28,8 +27,6 @@ export type SessionRow = {
   finished: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
-  /** Its pull requests' chip, as Rust computes it [D1018]; none when no PR needs a word. */
-  pr?: PrChipState | null;
   /** Its labels' names, in the order given [D3101, D3103]. */
   labels?: string[];
   /** Archived with its Brigade: the Brigade's restore brings it back [D3111]. */
@@ -83,8 +80,6 @@ export function statusWords(row: SessionRow): string | null {
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
   // Answered, but its block stays open on its subagents [D118].
   if (row.mark === "working" && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS.working;
-  // Amber for a PR failing its checks, the session itself at rest [D261].
-  if (row.mark === "amber" && row.pr?.chip === "checks_failed" && !STATE_WORDS[row.state]) return "Checks failed";
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
 }

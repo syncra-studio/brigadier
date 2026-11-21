@@ -35,16 +35,6 @@ use std::sync::atomic::AtomicBool;
 pub use view::{kept_files, kept_view, tabbed};
 pub use write::{REVIEW, Verdict, qualified};
 
-/// A row's mark with its PRs' `chip` [D261]: a PR it shows failing its checks needs the user
-/// (amber), under a question or a turn at work.
-pub fn marked(mark: Option<&'static str>, chip: &Value) -> Option<&'static str> {
-    match mark {
-        Some("working" | "needs") => mark,
-        _ if chip["chip"] == "checks_failed" => Some("amber"),
-        _ => mark,
-    }
-}
-
 /// Proposed: gh gets this long for a look, and a create this long.
 const GH_SECS: u64 = 20;
 /// Why a host read couldn't start.

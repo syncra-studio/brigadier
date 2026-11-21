@@ -8,7 +8,6 @@ import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Comment, Pin, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking, Unpin } from "../icons";
-import { prList } from "../landing/pr-chip";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { pin } from "./actions";
@@ -222,7 +221,6 @@ export function SessionRowItem({
                     <span className={cx(row.mark && "-ms-0.5")}>{words}</span>
                   </div>
                 )}
-                {row.pr && <div className={CARD_LINE}>{prList(row.pr)}</div>}
                 {project && (
                   <>
                     <div className="border-t border-border" />
