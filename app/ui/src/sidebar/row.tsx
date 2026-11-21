@@ -103,7 +103,7 @@ export function ProjectBadge({ id, name, tone = 0, size = "size-icon-md text-bad
 }
 
 /** Marks by how much they need the user, a folded Brigade's first [D189]. */
-export const URGENT: Mark[] = ["needs", "amber", "working", "unread", "background", null];
+const URGENT: Mark[] = ["needs", "amber", "working", "unread", "background", null];
 
 /** How long a pointer rests on a row before its card shows; on to the next row it shows at once. */
 export const CARD_DELAY_MS = 300;

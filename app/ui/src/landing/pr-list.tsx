@@ -37,7 +37,7 @@ export type FoundPr = Pr & { additions?: number | null; deletions?: number | nul
 /** What a found read is: `host <id> search`'s, kept per query, `next` its next page's cursor [D258, D613]. */
 type Found = { query: string; okAt: number | null; error: string | null; prs: FoundPr[]; next?: string | null };
 
-export const CHIP = "h-6 shrink-0 cursor-pointer rounded-capsule px-2.5 text-label whitespace-nowrap text-faint-foreground hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground";
+const CHIP = "h-6 shrink-0 cursor-pointer rounded-capsule px-2.5 text-label whitespace-nowrap text-faint-foreground hover:text-foreground focus-visible:focus-ring data-pressed:bg-fill-hover data-pressed:text-foreground";
 const TRACK = "hidden shrink-0 items-center gap-0.5 rounded-capsule bg-fill-subtle p-0.5 @pr-bar:flex";
 
 /** A narrow list's chips as one menu [D609]. */

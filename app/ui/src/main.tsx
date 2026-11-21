@@ -111,9 +111,9 @@ function App() {
   if (page !== null) {
     // Its Home tab under the project's Home tab bar [D780 D819 D820].
     return (
-      <Shell hash={hash} active={null} rows={rows} page={page.id}>
-        <Home page={page.id}>
-          <ProjectPage id={page.id} tab={page.tab} />
+      <Shell hash={hash} active={null} rows={rows} page={page}>
+        <Home page={page}>
+          <ProjectPage id={page} />
         </Home>
       </Shell>
     );
