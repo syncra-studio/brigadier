@@ -745,6 +745,12 @@
 }
 
 @layer base {
+  /* Every view scrolls itself; the window never does. A fast fling that runs off a list's end used to rubber-band
+     the page and flash its overlay scrollbar at the window's right edge [D290]. */
+  html {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   /* Text on a Mac: grayscale smoothing, lighter than Chromium's default [D1]. */
   body {
     @apply select-none antialiased;
