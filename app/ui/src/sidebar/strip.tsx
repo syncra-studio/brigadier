@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { newChat } from "../home/start";
-import { MagnifyingGlassSearch, Plugin, PullRequestOpen } from "../icons";
+import { ComposeEditSquare, MagnifyingGlassSearch, Plugin, PullRequestOpen } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
 import { openSearch } from "../palette/palette";
 import { openSettings } from "../settings/shell";
@@ -11,7 +11,8 @@ import { keysOf } from "../shortcuts";
 import { StripFoot } from "./foot";
 
 /**
- * The strip, the rail, always at the window's start [D11]: the logo (Home), Search (⌘K), Plugins and Pull Requests;
+ * The strip, the rail, always at the window's start [D11]: the logo (Home), New chat while the sidebar (and its own
+ * New chat row) is hidden [D265], Search (⌘K), Plugins and Pull Requests;
  * while the sidebar is hidden, a rule, then the squares and their lists (`children`) [D189 D194 D55 D58]. That part scrolls
  * under a fade once it reaches the foot, which a rule then sets apart [D191]; the foot at the bottom, its last button 4 from
  * the window's foot [D56].
@@ -32,6 +33,11 @@ export function Strip({ home, pulls, settings, children }: {
         <TooltipIconButton look="rail" side="right" tooltip="Home" pressed={home} onClick={newChat}>
           <BrigadierMark className="size-icon-mark text-foreground" />
         </TooltipIconButton>
+        {!open && (
+          <TooltipIconButton look="rail" side="right" tooltip="New chat" onClick={newChat}>
+            <ComposeEditSquare />
+          </TooltipIconButton>
+        )}
         <TooltipIconButton look="rail" side="right" tooltip="Search" shortcut={keysOf("search")[0]} onClick={openSearch}>
           <MagnifyingGlassSearch />
         </TooltipIconButton>

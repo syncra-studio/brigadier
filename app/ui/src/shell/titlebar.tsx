@@ -4,8 +4,7 @@ import { guestPage } from "../browser/layer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { newChat } from "../home/start";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
 import { settingsOrigin, settingsPageOf } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
@@ -56,9 +55,9 @@ function scrollsSideways(from: EventTarget | null, dx: number): boolean {
 const LIGHTS_X = 16;
 
 /**
- * The sidebar toggle after the traffic lights, then Back and Forward by their buttons, keys, mouse buttons and menu items,
- * the same pair in the app and Settings, each walking its own history: at the shown sidebar's end, or after the toggle
- * with New chat while it's hidden (titlebar-nav) [D34 D35 D926]. The toggle shows or hides the sidebar [D67].
+ * Back and Forward right after the traffic lights by their buttons, keys, mouse buttons and menu items, then the sidebar
+ * toggle, on every page with the sidebar shown or hidden; the pair walks the app's or Settings' own history [D926 D265].
+ * The toggle shows or hides the sidebar [D67].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, toggleSidebar } = useSidebar();
@@ -166,7 +165,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is hidden, Settings too [D34 D35 D926 D254].
+  // Back and Forward (our arrows [D217]), then the toggle, Settings too [D254 D265].
   return (
     <>
       {chip && (
@@ -176,23 +175,16 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       )}
       <div className="titlebar-nav app-no-drag fixed z-20 flex items-center gap-0.5">
         <TitlebarTips>
+          <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
+            <ArrowLeft />
+          </TooltipIconButton>
+          <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
+            <ArrowRight />
+          </TooltipIconButton>
           {/* Its name says what a click does; aria-expanded would draw an open fill. */}
           <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
             {open ? <Sidebar /> : <SidebarFloatingLeft />}
           </TooltipIconButton>
-          <div className="titlebar-history flex">
-            <TooltipIconButton look="strip" tooltip="Back" shortcut={keysOf("back")[0]} disabled={up === null} onClick={() => step(-1)}>
-              <ArrowLeft />
-            </TooltipIconButton>
-            <TooltipIconButton look="strip" tooltip="Forward" shortcut={keysOf("forward")[0]} disabled={forward === null} onClick={() => step(1)}>
-              <ArrowRight />
-            </TooltipIconButton>
-          </div>
-          {!open && (
-            <TooltipIconButton look="strip" tooltip="New chat" onClick={newChat}>
-              <ComposeEditSquare />
-            </TooltipIconButton>
-          )}
         </TitlebarTips>
       </div>
     </>

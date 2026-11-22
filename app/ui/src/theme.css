@@ -354,7 +354,7 @@
   --spacing-tab-bar: 2.875rem;
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
-  /* The sidebar toggle's start, 88 past the traffic lights at 16 (titlebar-nav) [D34]; with none (Windows,
+  /* The titlebar's Back button's start, 88 in, past the traffic lights at 16 (titlebar-nav) [D34]; with none (Windows,
      macOS full screen) 8px in [D861]. */
   --spacing-toggle-start: 5.5rem;
   /* Windows [new-design]: the caption buttons' inset from the window's end, past the page's 4px edge (the titlebar
@@ -1468,8 +1468,8 @@
   transition-timing-function: var(--ease-sidebar);
   /* How wide the strip and sidebar show beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
-  /* The titlebar's toggle, Back, Forward and New chat (2px apart), and 8px past them (titlebar-clear) [D35 D934]. */
-  --toggle-room: calc(var(--spacing) * 35);
+  /* The titlebar's Back, Forward and toggle (2px apart), and 8px past them (titlebar-clear) [D265 D934]. */
+  --toggle-room: calc(var(--spacing) * 27);
   &[data-state="expanded"] {
     --sidebar-shown: calc(var(--spacing-rail) + var(--sidebar-open-width));
     background-color: var(--color-window-fill);
@@ -1607,21 +1607,12 @@
   --spacing-toggle-start: var(--spacing-window-inset);
 }
 
-/* The sidebar toggle after the traffic lights on the titlebar's middle line, then Back and Forward: 10px before the
-   shown sidebar's edge, or right after the toggle with New chat while it's hidden [D34 D35]. */
+/* Back, Forward and the sidebar toggle right after the traffic lights on the titlebar's middle line [D34 D265]. */
 @utility titlebar-nav {
   /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
   --opacity-disabled: var(--opacity-titlebar-nowhere);
   top: calc((var(--spacing-tab-bar) - var(--spacing) * 7.5) / 2);
   inset-inline-start: var(--spacing-toggle-start);
-}
-/* Back and Forward's start: their 64px end 10px before the sidebar's edge, past the toggle's 32 and the 2px gaps. */
-@utility titlebar-history {
-  margin-inline-start: max(0px, calc(var(--sidebar-shown, 0px) - var(--spacing-toggle-start) - var(--spacing) * 27));
-  transition: margin var(--duration-fold) var(--ease-sidebar);
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
 }
 /* A swipe's chip, the image viewer's round button: in from the window's edge as the fingers travel (data-travel,
    1 armed), its chevron bright once a release goes; it shrinks away on going, slides back out short [D3110]. */
