@@ -111,7 +111,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
             onRemove={(owner, account) => setAsk({ kind: "remove", agent: owner, account })}
           />
         ) : (
-          <SettingsPage title={list ? "No such agent" : "Checking…"} back={{ label: "Providers", href: "#settings/providers" }}>
+          <SettingsPage title={list ? "No such agent" : "Checking…"}>
             <ErrorLine error={checkError} />
           </SettingsPage>
         )

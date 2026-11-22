@@ -40,7 +40,7 @@ export function ProfileDetailPage({ id }: { id: string }) {
   }, [id, read]);
   if (!profile) {
     return (
-      <SettingsPage title="No such profile" back={{ label: "Browser", href: BACK }}>
+      <SettingsPage title="No such profile">
         {null}
       </SettingsPage>
     );
@@ -56,7 +56,7 @@ export function ProfileDetailPage({ id }: { id: string }) {
     else if (trimmed !== profile.name) void renameProfile(id, trimmed);
   };
   return (
-    <SettingsPage title={profile.name} mark={<ProfileDisc profile={profile} size="xl" />} description={`${isDefault ? "The default profile. " : ""}${on}`} back={{ label: "Browser", href: BACK }}>
+    <SettingsPage title={profile.name} mark={<ProfileDisc profile={profile} size="xl" />} description={`${isDefault ? "The default profile. " : ""}${on}`}>
       <SettingsSection>
         <SettingsCard>
           <SettingsRow label="Name">

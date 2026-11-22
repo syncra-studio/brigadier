@@ -383,7 +383,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
       <MessageRail rows={data} items={items ?? []} list={list} scroller={scroller} box={box} away={leaveEnd} />
       <Find id={id} source={source} scroller={scroller} rows={data} items={items ?? []} onOpen={openAll} toIndex={toIndex} away={leaveEnd} />
       {/* Over the composer, the old app's: solid up to the jump button's top while it shows, then the text fades out. */}
-      <ScrollFade edge="bottom" raised={jumps} />
+      <ScrollFade raised={jumps} />
       {/* Kept in place and faded in and out (the old app's look). Centred on the reading column, which the pinned card
           moves aside, never on the pane. */}
       <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 mx-auto flex w-full max-w-reading justify-center">

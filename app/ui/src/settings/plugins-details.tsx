@@ -10,7 +10,7 @@ import { RowText, SettingsCard } from "../components/settings-card";
 import { Switch } from "../components/switch";
 import { Copy, DotsHorizontal, Eye, Folder, Globe, Spinner, Trash } from "../icons";
 import { errorText } from "../onboarding/api";
-import { type Crumb, SettingsPage, SettingsSection } from "./parts";
+import { SettingsPage, SettingsSection } from "./parts";
 import { InstallDialog } from "./plugins-dialogs";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Entry, type Item, type Kind, type PluginActions, type Plugins, type Scope, STATUS } from "./plugins";
@@ -64,7 +64,6 @@ export function DetailsPage({
   marks,
   actions,
   signing,
-  trail,
   onInstall,
   onScope,
   onSwitch,
@@ -78,7 +77,6 @@ export function DetailsPage({
   marks: Record<string, string | null>;
   actions: PluginActions;
   signing: SignInStart;
-  trail: Crumb[];
   onInstall: () => void;
   onScope: (scope: Scope) => void;
   onSwitch: (on: boolean) => void;
@@ -139,7 +137,6 @@ export function DetailsPage({
   return (
     <>
       <SettingsPage
-        trail={trail}
         title={name}
         description={entry ? `By ${entry.maker} · ${entry.line}` : `${KIND_LABEL[kind]} · ${item!.description || detail.replace(/^https:\/\//, "")}`}
         mark={<PluginMark item={mark} large />}

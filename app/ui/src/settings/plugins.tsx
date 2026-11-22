@@ -241,11 +241,6 @@ export function PluginsPage({
     return added?.sign_in === "brigadier" && !added.signed_in ? added.key : null;
   };
   const close = () => setOpen(null);
-  /** Back to the list, on this tab: the breadcrumb's parts. */
-  const back = (to: Tab) => () => {
-    setTab((lastTab = to));
-    onDetail(null);
-  };
   const toAdd = (kind: Kind) => setOpen({ type: "add", remote, first: { form: { kind, remote } } });
   let page;
   const controls = (
@@ -278,10 +273,6 @@ export function PluginsPage({
   const toCategory = (name: string) => () => onDetail(`category:${name}`);
   const onEntry = { onOpen: (entry: Entry) => onDetail(`catalog:${entry.id}`), onInstall: (entry: Entry) => setOpen({ type: "catalog", entry }) };
   if (shown && (item || asked)) {
-    // A catalog entry's page sits under its category; the library's under its tab.
-    const trail = asked
-      ? [{ label: "Plugins", go: back("browse") }, { label: asked.category, go: toCategory(asked.category) }, { label: asked.name }]
-      : [{ label: "Plugins", go: back("browse") }, { label: TAB_LABEL[item!.kind], go: back(item!.kind) }, { label: entry?.name ?? item!.name }];
     page = (
       <DetailsPage
         value={shown}
@@ -290,7 +281,6 @@ export function PluginsPage({
         marks={marks}
         actions={actions}
         signing={signing}
-        trail={trail}
         onInstall={() => entry && onEntry.onInstall(entry)}
         onScope={(scope) => item && set(item.key, { scope })}
         onSwitch={(on) => item && set(item.key, { on })}
@@ -301,7 +291,7 @@ export function PluginsPage({
   } else if (shown && category) {
     const listed = entries.filter((each) => inCategory(each, category) && matches(query, each.name, each.line, each.maker));
     page = (
-      <SettingsPage trail={[{ label: "Plugins", go: back("browse") }, { label: category }]} title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
+      <SettingsPage title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
         {listed.length ? (
           <PickGrid>{listed.map((each) => entryRow(each, onEntry))}</PickGrid>
         ) : (

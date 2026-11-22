@@ -2,7 +2,6 @@ import { type ReactNode, useEffect, useId, useRef } from "react";
 
 import { cx } from "../components/cx";
 import { ScrollFade } from "../components/scroll-fade";
-import { ChevronRight } from "../icons";
 
 /*
  * The parts every Settings page is built from, the old app's: a page (its title, an optional line and
@@ -10,47 +9,14 @@ import { ChevronRight } from "../icons";
  * rows are the kit's SettingsCard and SettingsRow.
  */
 
-/** One step of a Settings page's breadcrumb: a page to go back to (`go` or `href`), else plain words. */
-export type Crumb = { label: string; go?: () => void; href?: string };
-
-/** The breadcrumb, Plugins › MCP servers › Linear [D577]; the last part is where you are. */
-function Trail({ parts }: { parts: Crumb[] }) {
-  const link = "cursor-pointer text-quiet-foreground hover:text-foreground focus-visible:focus-ring";
-  return (
-    <nav aria-label="Breadcrumb" className="app-no-drag flex w-fit items-center gap-2 text-label">
-      {parts.map((part, at) => (
-        <span key={at} className="flex items-center gap-2">
-          {at > 0 && <ChevronRight aria-hidden className="size-icon-sm text-faint-foreground" />}
-          {at === parts.length - 1 ? (
-            <span aria-current="page">{part.label}</span>
-          ) : part.go ? (
-            <button type="button" onClick={part.go} className={link}>
-              {part.label}
-            </button>
-          ) : part.href ? (
-            <a href={part.href} className={link}>
-              {part.label}
-            </a>
-          ) : (
-            <span className="text-quiet-foreground">{part.label}</span>
-          )}
-        </span>
-      ))}
-    </nav>
-  );
-}
-
 /**
- * A Settings page: its header (the breadcrumb), title, then its sections. A page that scrolls its own list passes
- * `scrollable={false}`. `mark` sits before the title (an agent's). The breadcrumb is the full path from Settings: Settings,
- * then `trail`, else `back` (the page this one is inside) and the title [D659 D898].
+ * A Settings page: its title, then its sections. A page that scrolls its own list passes `scrollable={false}`. `mark`
+ * sits before the title (an agent's). No breadcrumb: the nav's highlighted row and the title say where you are [D255].
  */
 export function SettingsPage({
   title,
   description,
   mark,
-  back,
-  trail,
   actions,
   scrollable = true,
   children,
@@ -58,14 +24,11 @@ export function SettingsPage({
   title: ReactNode;
   description?: ReactNode;
   mark?: ReactNode;
-  back?: { label: string; href: string };
-  trail?: Crumb[];
   actions?: ReactNode;
   scrollable?: boolean;
   children: ReactNode;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  const parts: Crumb[] = [{ label: "Settings", href: "#settings/general" }, ...(trail ?? [...(back ? [back] : []), { label: typeof title === "string" ? title : "" }])];
   // A page opened from the nav takes focus on its title, unless something else kept it.
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -75,11 +38,8 @@ export function SettingsPage({
   }, []);
   return (
     <div data-slot="settings-page" className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      {/* The breadcrumb in the titlebar's row, as a chat's title, taking no room of the page's, so the title sits where
-          a chat's title does [D206]; above the scroll and its fade; Back is the titlebar's [D899 D926]. */}
-      <div className="app-drag -mt-tab-bar flex h-tab-bar shrink-0 items-center gap-1.5 px-5">
-        <Trail parts={parts} />
-      </div>
+      {/* The titlebar's row drags the window, as the tab bar does elsewhere [D255]. */}
+      <div className="app-drag -mt-tab-bar h-tab-bar shrink-0" />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
           <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-1.5", scrollable ? "pb-12" : "min-h-0 flex-1")}>
@@ -98,12 +58,7 @@ export function SettingsPage({
             <div className={cx("flex flex-col", scrollable ? "gap-10 pt-5" : "min-h-0 flex-1")}>{children}</div>
           </div>
         </div>
-        {scrollable && (
-          <>
-            <ScrollFade edge="top" />
-            <ScrollFade edge="bottom" />
-          </>
-        )}
+        {scrollable && <ScrollFade />}
       </div>
     </div>
   );

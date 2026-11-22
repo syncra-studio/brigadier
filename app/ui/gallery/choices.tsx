@@ -124,13 +124,12 @@ export function Choices() {
       </Section>
       <Section title="Scroll fade">
         <div className="relative h-56 w-56 overflow-hidden rounded-surface border border-divider">
-          <ScrollFade edge="top" />
           <div className="h-full overflow-y-auto px-3 py-5 text-sm text-muted-foreground">
             {Array.from({ length: 14 }, (_, i) => (
               <p key={i}>Line {i + 1} of the thread</p>
             ))}
           </div>
-          <ScrollFade edge="bottom" raised />
+          <ScrollFade raised />
         </div>
       </Section>
     </>
