@@ -185,7 +185,7 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
       onPointerDown={(event) => peekRow(event.target)}
       onFocus={(event) => peekRow(event.target)}
     >
-      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth} keepOpen={settings !== undefined}>
+      <SidebarProvider open={open} onOpenChange={setOpen} width={width} onWidthChange={setWidth}>
         {/* One sidebar for every page: Settings' and Pull Requests' navs crossfade over the sessions in it [D2004 D225]. */}
         <AppSidebar
           rows={rows}

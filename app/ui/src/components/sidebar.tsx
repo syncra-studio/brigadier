@@ -9,8 +9,7 @@ import { TooltipProvider } from "./tooltip";
  * The sidebar panel: the strip always at the window's start and the sidebar beside it, shown or hidden
  * [D11 D67]. It eases between the two (the content beside it moves with it), its contents kept at their full width,
  * revealed rather than squeezed. ⌘B (Ctrl elsewhere) toggles it; its edge drags to resize it, and dragged past its
- * least width it hides [D21]. In a narrow window it hides by itself, and comes back once there is room [D68]. While
- * `keepOpen` it stays shown.
+ * least width it hides [D21]. In a narrow window it hides by itself, and comes back once there is room [D68].
  *
  * It holds nothing: open and the width come in, and changes go out (the app remembers them).
  */
@@ -19,8 +18,6 @@ type SidebarContextProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
-  /** Whether it can hide here (not while held open). */
-  canToggle: boolean;
   onWidthChange: (width: number) => void;
 };
 
@@ -43,7 +40,6 @@ export function SidebarProvider({
   onOpenChange,
   width = null,
   onWidthChange = () => {},
-  keepOpen = false,
   className,
   children,
   ...props
@@ -54,7 +50,6 @@ export function SidebarProvider({
   /** Where it was dragged to, or null for the default. */
   width?: number | null;
   onWidthChange?: (width: number) => void;
-  keepOpen?: boolean;
 }) {
   // In a narrow window it hides, and the toggle shows it only until the window changes again.
   const narrow = useSyncExternalStore(subscribeResize, isNarrow);
@@ -64,14 +59,13 @@ export function SidebarProvider({
     setSeenNarrow(narrow);
     setNarrowOpen(false);
   }
-  const open = keepOpen || (narrow ? narrowOpen : wideOpen);
+  const open = narrow ? narrowOpen : wideOpen;
   const setOpen = useCallback(
     (next: boolean) => {
-      if (keepOpen) return;
       if (narrow) setNarrowOpen(next);
       else onOpenChange(next);
     },
-    [keepOpen, narrow, onOpenChange],
+    [narrow, onOpenChange],
   );
   // Every path (the titlebar toggle, ⌘B, View › Toggle Sidebar) shows or hides it [D67].
   const toggleSidebar = useCallback(() => setOpen(!open), [open, setOpen]);
@@ -87,8 +81,8 @@ export function SidebarProvider({
   }, [toggleSidebar]);
 
   const context = useMemo<SidebarContextProps>(
-    () => ({ open, setOpen, toggleSidebar, canToggle: !keepOpen, onWidthChange }),
-    [open, setOpen, toggleSidebar, keepOpen, onWidthChange],
+    () => ({ open, setOpen, toggleSidebar, onWidthChange }),
+    [open, setOpen, toggleSidebar, onWidthChange],
   );
 
   return (
