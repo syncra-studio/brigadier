@@ -25,7 +25,9 @@ type Look = "compact" | "expanded" | "minimised";
 export function PrPage({ target, chat, children }: { target: string; chat: string | undefined; children: ReactNode }) {
   useTabsShownOnThread(chat);
   return (
-    <main className="toolbar-in-titlebar relative flex min-h-0 flex-1 flex-col bg-background">
+    <main className="relative flex min-h-0 flex-1 flex-col bg-background">
+      {/* The titlebar's row stays empty and drags the window; the toolbar sits on the sidebar heading's row [D263]. */}
+      <div className="app-drag -mt-tab-bar h-tab-bar shrink-0" />
       {/* Read by the Pull Requests page's own owner, needing no checkout [D159]; Review and Fix ask in its review chat. */}
       <HostOf.Provider value="@">
         <LivePrTab owner={chat ?? HOME} target={target} />
