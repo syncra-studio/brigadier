@@ -63,114 +63,118 @@ export function PrInbox() {
   // A failed refresh leaves the rows it had in place, as the sidebar does [D262].
   const failed = sections.every((each) => !each.rows?.length) ? (read?.error ?? (sections.every((each) => each.error) ? sections[0]!.error : null)) : null;
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter">
-      <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
-        <header className="flex items-center gap-4">
-          <h1 className="min-w-0 flex-1 text-page-title font-medium">Pull Requests</h1>
-          <Segmented
-            label="State"
-            value={filters.state}
-            onChange={(state) => set({ state })}
-            options={[
-              { value: "open", label: "Open" },
-              { value: "merged", label: "Merged" },
-              { value: "closed", label: "Closed" },
-            ]}
-          />
-        </header>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex h-nav-search min-w-0 flex-1 basis-64 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
-            <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
-            <input
-              aria-label="Search pull requests"
-              placeholder="Search pull requests, or label:bug"
-              value={filters.words}
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              className="min-w-0 flex-1 cursor-text bg-transparent text-sm outline-none placeholder:text-faint-foreground"
-              onChange={(event) => {
-                // A pasted link opens its PR at once, as the sidebar's search does [D160].
-                const ref = pastedRef(event.target.value);
-                if (ref) openPrPage(ref);
-                else set({ words: event.target.value });
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Escape" || !filters.words) return;
-                event.stopPropagation();
-                set({ words: "" });
-              }}
+    <main className="flex min-h-0 flex-1 flex-col">
+      {/* The titlebar's row stays empty and drags the window, as on a PR and in Settings [D277]. */}
+      <div className="app-drag -mt-tab-bar h-tab-bar shrink-0" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter">
+        <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
+          <header className="flex items-center gap-4">
+            <h1 className="min-w-0 flex-1 text-page-title font-medium">Pull Requests</h1>
+            <Segmented
+              label="State"
+              value={filters.state}
+              onChange={(state) => set({ state })}
+              options={[
+                { value: "open", label: "Open" },
+                { value: "merged", label: "Merged" },
+                { value: "closed", label: "Closed" },
+              ]}
             />
-            {filters.words && (
-              <button type="button" aria-label="Clear search" className="flex shrink-0 cursor-pointer items-center rounded-capsule text-faint-foreground hover:text-foreground focus-visible:focus-ring" onClick={() => set({ words: "" })}>
-                <XCircleFilled className="size-icon-sm" />
-              </button>
-            )}
-          </label>
-          <Select
-            label="Project"
-            value={project ? project.id : ALL}
-            onChange={(id) => set({ project: id })}
-            options={[
-              { value: ALL, label: "All projects", shown: "Project: All" },
-              ...(scopes?.projects ?? []).map((each) => ({
-                value: each.id,
-                label: each.name,
-                shown: `Project: ${each.name}`,
-                hint: each.repos.length ? each.repos.join(", ") : "No GitHub repository",
-              })),
-            ]}
-          />
-          <Select
-            label="Account"
-            value={account}
-            onChange={(login) => set({ account: login })}
-            icon={account === ALL ? undefined : <Avatar login={account} size="size-4" />}
-            options={[{ value: ALL, label: "All accounts" }, ...(scopes?.accounts ?? []).map((login) => ({ value: login, label: login }))]}
-          />
+          </header>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex h-nav-search min-w-0 flex-1 basis-64 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
+              <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
+              <input
+                aria-label="Search pull requests"
+                placeholder="Search pull requests, or label:bug"
+                value={filters.words}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 cursor-text bg-transparent text-sm outline-none placeholder:text-faint-foreground"
+                onChange={(event) => {
+                  // A pasted link opens its PR at once, as the sidebar's search does [D160].
+                  const ref = pastedRef(event.target.value);
+                  if (ref) openPrPage(ref);
+                  else set({ words: event.target.value });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape" || !filters.words) return;
+                  event.stopPropagation();
+                  set({ words: "" });
+                }}
+              />
+              {filters.words && (
+                <button type="button" aria-label="Clear search" className="flex shrink-0 cursor-pointer items-center rounded-capsule text-faint-foreground hover:text-foreground focus-visible:focus-ring" onClick={() => set({ words: "" })}>
+                  <XCircleFilled className="size-icon-sm" />
+                </button>
+              )}
+            </label>
+            <Select
+              label="Project"
+              value={project ? project.id : ALL}
+              onChange={(id) => set({ project: id })}
+              options={[
+                { value: ALL, label: "All projects", shown: "Project: All" },
+                ...(scopes?.projects ?? []).map((each) => ({
+                  value: each.id,
+                  label: each.name,
+                  shown: `Project: ${each.name}`,
+                  hint: each.repos.length ? each.repos.join(", ") : "No GitHub repository",
+                })),
+              ]}
+            />
+            <Select
+              label="Account"
+              value={account}
+              onChange={(login) => set({ account: login })}
+              icon={account === ALL ? undefined : <Avatar login={account} size="size-4" />}
+              options={[{ value: ALL, label: "All accounts" }, ...(scopes?.accounts ?? []).map((login) => ({ value: login, label: login }))]}
+            />
+          </div>
+          {!scoped ? (
+            <EmptyState variant="centered" title="No GitHub repository" detail={`${project!.name} isn't on github.com`} className="py-16" />
+          ) : failed ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <EmptyState variant="centered" title="Unable to load pull requests" detail={failed} />
+              <Button variant="outline" size="sm" onClick={again}>
+                Try again
+              </Button>
+            </div>
+          ) : loading ? (
+            <div aria-label="Loading pull requests" className="flex flex-col gap-5 pt-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex flex-col gap-2 px-3">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+              ))}
+            </div>
+          ) : sections.every((each) => !each.rows?.length) ? (
+            <EmptyState variant="centered" title="No pull requests" detail={words || project || account !== ALL ? "None match these filters" : `You have no ${filters.state} pull requests`} className="py-16" />
+          ) : (
+            sections.map(
+              (each) =>
+                !!each.rows?.length && (
+                  <section key={each.title} className="flex flex-col gap-1">
+                    <h2 className="flex items-center gap-2 px-3 text-sm text-quiet-foreground">
+                      {each.title}
+                      <span className="text-faint-foreground">
+                        {each.rows.length}
+                        {each.more && "+"}
+                      </span>
+                    </h2>
+                    {each.error && <p className="px-3 text-xs text-destructive">{each.error}</p>}
+                    <ul className="flex flex-col">
+                      {each.rows.map((row) => (
+                        <InboxRow key={row.ref} row={row} />
+                      ))}
+                    </ul>
+                  </section>
+                ),
+            )
+          )}
         </div>
-        {!scoped ? (
-          <EmptyState variant="centered" title="No GitHub repository" detail={`${project!.name} isn't on github.com`} className="py-16" />
-        ) : failed ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <EmptyState variant="centered" title="Unable to load pull requests" detail={failed} />
-            <Button variant="outline" size="sm" onClick={again}>
-              Try again
-            </Button>
-          </div>
-        ) : loading ? (
-          <div aria-label="Loading pull requests" className="flex flex-col gap-5 pt-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex flex-col gap-2 px-3">
-                <Skeleton className="h-4 w-3/5" />
-                <Skeleton className="h-3 w-2/5" />
-              </div>
-            ))}
-          </div>
-        ) : sections.every((each) => !each.rows?.length) ? (
-          <EmptyState variant="centered" title="No pull requests" detail={words || project || account !== ALL ? "None match these filters" : `You have no ${filters.state} pull requests`} className="py-16" />
-        ) : (
-          sections.map(
-            (each) =>
-              !!each.rows?.length && (
-                <section key={each.title} className="flex flex-col gap-1">
-                  <h2 className="flex items-center gap-2 px-3 text-sm text-quiet-foreground">
-                    {each.title}
-                    <span className="text-faint-foreground">
-                      {each.rows.length}
-                      {each.more && "+"}
-                    </span>
-                  </h2>
-                  {each.error && <p className="px-3 text-xs text-destructive">{each.error}</p>}
-                  <ul className="flex flex-col">
-                    {each.rows.map((row) => (
-                      <InboxRow key={row.ref} row={row} />
-                    ))}
-                  </ul>
-                </section>
-              ),
-          )
-        )}
       </div>
     </main>
   );
