@@ -9,7 +9,6 @@ import { SetupRow } from "../components/thread/setup";
 import { WorkHeader, WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
-import { useOpenPlace } from "../projects/page";
 import { useProjects } from "../projects/projects";
 import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
@@ -58,8 +57,6 @@ export function HomeDraft() {
   const home = useHomeProject();
   const reviewIn = useReviewProject(draft.review);
   const project = draft.review ? (projects?.find((each) => each.id === reviewIn) ?? null) : home;
-  // With no last place it's this draft's project: its page is its settings now [D176 D257].
-  const openPlace = useOpenPlace((project) => setHomeDraft({ project, chat: false }));
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -147,8 +144,8 @@ export function HomeDraft() {
         projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
         locked={draft.locked}
-        // Picking a project is switching to it: its last place, as its sidebar row or strip square [D886 D891]; only an unlocked picker opens.
-        onProject={openPlace}
+        // Picking a project only sets this draft's; the sidebar's click goes to its last place [D261].
+        onProject={(id) => setHomeDraft({ project: id, chat: false })}
         onNoProject={() => setHomeDraft({ chat: true })}
         onAddProject={(path) => {
           before.current = new Set(projects?.map((each) => each.id));

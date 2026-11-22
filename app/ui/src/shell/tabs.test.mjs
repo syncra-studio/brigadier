@@ -68,7 +68,7 @@ test("New chat and a project's New session keep their own words [D863]", async (
   assert.equal(draftKey(), "@home", "New chat picking a project stays New chat's draft");
 });
 
-test("from New chat a project picked or clicked opens its last place, never New chat in that project [D886 D891]", async () => {
+test("from New chat a project clicked opens its last place, never New chat in that project [D886]", async () => {
   const drafts = [];
   globalThis.window = { location: { hash: "" } };
   const { useOpenPlace } = await load("../projects/page.tsx", {
