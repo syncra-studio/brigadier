@@ -7,8 +7,9 @@ import { DropdownMenuLabel } from "../components/menu";
 import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { spacingPx } from "../components/tooltip";
-import { Archive, ArrowUpRight, Chats } from "../icons";
-import { useOpenPlace } from "../projects/page";
+import { newSession } from "../home/start";
+import { Archive, ArrowUpRight, Chats, ComposeEditSquare, Settings } from "../icons";
+import { openProject } from "../projects/page";
 import { useMark } from "../session/turn";
 import { openSettings } from "../settings/shell";
 import { ProjectBadge, SidebarMark } from "./row";
@@ -16,7 +17,7 @@ import { type Project, type SessionRow, useStatusWords } from "./words";
 
 /*
  * The strip's squares, a project's or a session's [D805, D811], and its lists, each opening beside it to pick from
- * without expanding the sidebar: Chats, which stands for the Chats section [D813], and Archived [D211].
+ * without expanding the sidebar: a project's [D278], Chats, which stands for the Chats section [D813], and Archived [D211].
  */
 
 type Choose = (choice: () => void) => void;
@@ -26,7 +27,7 @@ type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => v
 const markOf = (row: SessionRow, active: string | null) => (row.id === active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark);
 
 /** A strip icon and its list, with a blue dot while anything in it has a mark. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
-function Flyout({ label, icon, lit = false, children }: { label: string; icon: ReactNode; lit?: boolean; children: (pick: Choose) => ReactNode }) {
+function Flyout({ label, icon, lit = false, pressed, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const pick: Choose = (choice) => {
@@ -35,7 +36,7 @@ function Flyout({ label, icon, lit = false, children }: { label: string; icon: R
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} dot={lit ? "bg-link" : undefined} />}>{icon}</PopoverTrigger>
+      <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} pressed={pressed} dot={lit ? "bg-link" : undefined} />}>{icon}</PopoverTrigger>
       {/* Focus lands on the list itself, not its first row, so Tab goes on into the rows. */}
       <PopoverContent
         ref={list}
@@ -88,13 +89,43 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
  */
 export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
 
-/** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click goes back to the last place used in it [D811 D865]. */
-export function ProjectSquare({ project, tone, current, attention }: { project: Project; tone: number; current: boolean; attention: boolean }) {
-  const open = useOpenPlace();
+/** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its list,
+ *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]. */
+export function ProjectSquare({ project, tone, current, attention, chats, ...rows }: Rows & { project: Project; tone: number; current: boolean; attention: boolean; chats: SessionRow[] }) {
   return (
-    <TooltipIconButton look="rail" side="right" tooltip={project.name} pressed={current} dot={attention ? "bg-link" : undefined} onClick={() => open(project.id)}>
-      <ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />
-    </TooltipIconButton>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />} lit={attention} pressed={current}>
+      {(pick) => (
+        <div className="flex flex-col gap-3">
+          <NavList>
+            <li>
+              <NavRow onClick={() => pick(() => newSession(project.id))}>
+                <ComposeEditSquare />
+                New chat
+              </NavRow>
+            </li>
+          </NavList>
+          <section>
+            <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
+              {project.name}
+            </DropdownMenuLabel>
+            <NavList>
+              {chats.map((row) => (
+                <Line key={row.id} row={row} pick={pick} {...rows} />
+              ))}
+              {chats.length === 0 && <EmptyState as="li" title="Chats you start in this project appear here." />}
+            </NavList>
+          </section>
+          <NavList>
+            <li>
+              <NavRow onClick={() => pick(() => openProject(project.id))}>
+                <Settings />
+                Project settings
+              </NavRow>
+            </li>
+          </NavList>
+        </div>
+      )}
+    </Flyout>
   );
 }
 

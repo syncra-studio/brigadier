@@ -228,7 +228,7 @@ export function AppSidebar({
                 />
               ))
             : [...pinnedProjects, ...unpinnedProjects].map((project) => (
-                <ProjectSquare key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} />
+                <ProjectSquare key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
               ))}
           {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
           {pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />}
