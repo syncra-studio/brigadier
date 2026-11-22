@@ -2114,6 +2114,91 @@
   min-width: calc(100% + var(--spacing) * 2 * --value(integer));
 }
 
+/* ── Launch screen ──────────────────────────────────────────────────────────────────────────
+   The old app's startup screen (its splash.css and tokens) on the main surface: the mark, with a
+   band of light crossing it now and then, until the first screen is drawn under it; then it fades
+   out over it (main.tsx's endLaunchScreen) [D283]. */
+:root {
+  --splash-mark-size: 3.5rem;
+  --splash-mark-color: color-mix(in oklab, var(--color-foreground) 68%, transparent);
+  --splash-sweep-edge: color-mix(in oklab, var(--color-foreground) 6%, transparent);
+  --splash-sweep-peak: color-mix(in oklab, var(--color-foreground) 45%, transparent);
+  --splash-sweep-period: 2400ms;
+  --splash-sweep-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --splash-mark-in: 180ms;
+  --splash-mark-in-delay: 60ms;
+  --splash-reveal: 220ms;
+}
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-background);
+  transition: opacity var(--splash-reveal) ease-out;
+}
+#splash[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-mark {
+  position: relative;
+  width: var(--splash-mark-size);
+  height: var(--splash-mark-size);
+  opacity: 0;
+  animation: splash-in var(--splash-mark-in) ease-out var(--splash-mark-in-delay) forwards;
+  pointer-events: none;
+}
+.splash-mark > span {
+  position: absolute;
+  inset: 0;
+  mask: url("./onboarding/mark.svg") center / contain no-repeat;
+}
+.splash-mark-base {
+  background: var(--splash-mark-color);
+}
+.splash-mark-sweep {
+  background-image: linear-gradient(
+    112deg,
+    transparent 22%,
+    var(--splash-sweep-edge) 38%,
+    var(--splash-sweep-peak) 49%,
+    var(--splash-sweep-edge) 56%,
+    transparent 74%
+  );
+  background-position: 140% 0;
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  animation: splash-sweep var(--splash-sweep-period) var(--splash-sweep-ease) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-mark {
+    animation: none;
+    opacity: 1;
+  }
+  .splash-mark-sweep {
+    display: none;
+  }
+  #splash {
+    transition: none;
+  }
+}
+@keyframes splash-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes splash-sweep {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -105% 0;
+  }
+}
+
 /* ── First launch ───────────────────────────────────────────────────────────────────────────
    The welcome intro and the setup after it (onboarding/), from the old theme as it was. The orb
    and the window it opens into are drawn by onboarding/intro-canvas.tsx: the orb grows into sight

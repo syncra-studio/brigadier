@@ -102,6 +102,11 @@ function App() {
   useEffect(() => {
     if (knownNot) void intro.release()?.catch((error: unknown) => console.error(error));
   }, [knownNot]);
+  // The launch screen stays until the first screen is known: the profile, or why it can't load [D283].
+  const known = hash === "#states" || Boolean(profile.value || profile.error || refused) || daemon === null;
+  useEffect(() => {
+    if (known) endLaunchScreen(Boolean(playsIntro));
+  }, [known, playsIntro]);
   if (hash === "#states") return <Demo />;
   if (!profile.value) return <FirstLoad error={daemon === null ? (refused ?? "Daemon not reachable · reconnecting…") : profile.error} />;
   if (!profile.value.onboarded) return <Onboarding profile={profile.value} />;
@@ -235,6 +240,15 @@ function Home({ children }: { children: ReactNode }) {
   );
 }
 
+/** Fades the launch screen (index.html) out over the first screen; at once under the intro, which needs the window clear. */
+function endLaunchScreen(now = false): void {
+  const splash = document.getElementById("splash");
+  if (!splash || (!now && "leaving" in splash.dataset)) return;
+  splash.dataset.leaving = "";
+  // A timer, not transitionend: a covered window runs no transitions.
+  setTimeout(() => splash.remove(), now ? 0 : parseFloat(getComputedStyle(splash).transitionDuration) * 1000);
+}
+
 // Before the profile is known: a blank window that drags, or why it can't load.
 function FirstLoad({ error }: { error?: string }) {
   return (
@@ -345,6 +359,9 @@ const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../galle
 // `pnpm thread` builds the thread demo in place of the app.
 const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
 const Screen = Gallery ?? ThreadDemo;
+if (Screen) endLaunchScreen(true);
+// A screen that never comes, as when the app throws, isn't left hidden under it.
+setTimeout(endLaunchScreen, 10_000);
 
 // The platform the window is drawn for, which the `win:` styles read [new-design].
 if (window.brigadier) document.documentElement.dataset.platform = window.brigadier.platform;

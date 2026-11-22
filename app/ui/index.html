@@ -7,6 +7,13 @@
     <script type="module" src="/src/main.tsx"></script>
   </head>
   <body class="bg-background font-sans text-foreground">
+    <!-- The launch screen, drawn before any script runs, until the first screen is (main.tsx's endLaunchScreen) [D283]. -->
+    <div id="splash" class="app-drag">
+      <div class="splash-mark" aria-hidden="true">
+        <span class="splash-mark-base"></span>
+        <span class="splash-mark-sweep"></span>
+      </div>
+    </div>
     <div id="root"></div>
   </body>
 </html>
