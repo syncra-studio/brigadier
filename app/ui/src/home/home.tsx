@@ -58,7 +58,8 @@ export function HomeDraft() {
   const home = useHomeProject();
   const reviewIn = useReviewProject(draft.review);
   const project = draft.review ? (projects?.find((each) => each.id === reviewIn) ?? null) : home;
-  const openPlace = useOpenPlace();
+  // With no last place it's this draft's project: its page is its settings now [D176 D257].
+  const openPlace = useOpenPlace((project) => setHomeDraft({ project, chat: false }));
 
   const [listed, setListed] = useState<{ project: string | undefined; trusted: boolean | null | undefined; groups: LevelGroup[]; fresh: boolean } | null>(null);
   const [listError, setListError] = useState<string | null>(null);

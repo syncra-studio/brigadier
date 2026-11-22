@@ -23,8 +23,8 @@ export function ProjectPage({ id }: { id: string }) {
 /** Opens a project's page. */
 export const openProject = (id: string) => (window.location.hash = `#project/${encodeURIComponent(id)}`);
 
-/** A project's row or strip square: back to the last place used in it, its page when there's none or you're there [D865]. */
-export function useOpenPlace(): (id: string) => void {
+/** A project's row or strip square: back to the last place used in it, else `none` (its page) when there's none or you're there [D865]. */
+export function useOpenPlace(none: (id: string) => void = openProject): (id: string) => void {
   const { rows } = useDaemon();
   return (id) => {
     const at = placeOf(id, (each) => Boolean(rows?.some((row) => row.id === each && !row.archived)), window.location.hash);
@@ -32,7 +32,7 @@ export function useOpenPlace(): (id: string) => void {
       setHomeDraft({ project: id, chat: false, locked: true });
       window.location.hash = "";
     } else if (at) window.location.hash = `#thread/${encodeURIComponent(at)}`;
-    else openProject(id);
+    else none(id);
   };
 }
 
