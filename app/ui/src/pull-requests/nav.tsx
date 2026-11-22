@@ -14,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "../components/menu";
 import { NavHeader, NavList, NavSection } from "../components/nav";
-import { HomeMark } from "../sidebar/strip";
 import { useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { ask, useDaemon } from "../daemon";
@@ -76,10 +75,10 @@ export function useSections(queries: string[]): { read: Read | null; again: () =
   return { read, again };
 }
 
-/** The page with no PR open: pick one from the sidebar's list, or open the sidebar first while it's folded or hidden. */
+/** The page with no PR open: pick one from the sidebar's list, or show the sidebar first while it's hidden. */
 export function PrPageEmpty() {
   const { open } = useSidebar();
-  return <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail={open ? "Choose one from the sidebar to review its changes" : "Expand the sidebar to choose one"} className="m-auto" />;
+  return <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail={open ? "Choose one from the sidebar to review its changes" : "Show the sidebar to choose one"} className="m-auto" />;
 }
 
 export function PullRequestsNav({ current }: { current: string }) {
@@ -117,7 +116,6 @@ export function PullRequestsNav({ current }: { current: string }) {
     <>
       <div className="shrink-0">
         <NavHeader
-          start={<HomeMark />}
           title="Pull Requests"
           actions={
             <DropdownMenu modal={false}>
@@ -145,7 +143,7 @@ export function PullRequestsNav({ current }: { current: string }) {
           }
         />
       </div>
-      <div className="ps-2 pe-2.5 pb-2">
+      <div className="px-2 pb-2">
         <label className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
           <input

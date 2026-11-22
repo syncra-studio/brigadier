@@ -3,19 +3,16 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
-import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
+import { NavList, NavRow, NavSection } from "../components/nav";
 import { RowAction } from "../components/row-action";
 import { SidebarPanel } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { ComposeEditSquare, MagnifyingGlassSearch, Plugin, Plus, PullRequestOpen } from "../icons";
+import { ComposeEditSquare, MagnifyingGlassSearch, Plus } from "../icons";
 import { openSearch } from "../palette/palette";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection, DeleteAsk } from "../sessions/archived";
-import { openSettings } from "../settings/shell";
-import { StripFoot } from "./foot";
 import { LabelAsk } from "./labels";
-import { HomeMark } from "./strip";
 import type { Project } from "../projects/projects";
 import { openAddProject, setShowProject } from "../projects/store";
 import { keysOf, matches } from "../shortcuts";
@@ -241,20 +238,15 @@ export function AppSidebar({
       {/* The sessions and a page's nav share the one panel and crossfade: its column, width and edge stay [D225]. */}
       <div className="grid min-h-0 flex-1 grid-rows-1">
         <div inert={Boolean(nav)} className={cx("col-start-1 row-start-1 flex min-h-0 flex-col transition-opacity duration-200", Boolean(nav) && "opacity-0")}>
-          {/* The header under the titlebar row: the mark (Home) and the name, no chevron, then View and ⌘K's search [D22 D23 D24 D59 D226]. */}
+          {/* The header under the titlebar row: the name, no logo or chevron, then View and ⌘K's search [D22 D23 D24 D59]. */}
           <ViewMenu grouping={grouping} onGrouping={setGrouping} sort={sort} onSort={setSort} projects={projects} rows={shown ?? []} show={show}>
-            <NavHeader
-              start={<HomeMark />}
-              title="Brigadier"
-              actions={
-                <>
-                  <ViewTrigger projects={projects} show={show} />
-                  <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="head" side="bottom" onClick={openSearch}>
-                    <MagnifyingGlassSearch />
-                  </TooltipIconButton>
-                </>
-              }
-            />
+            <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-4 pe-3">
+              <h1 className="min-w-0 flex-1 truncate text-nav-title font-semibold">Brigadier</h1>
+              <ViewTrigger projects={projects} show={show} />
+              <TooltipIconButton tooltip="Search" shortcut={keysOf("search")[0]} look="head" side="bottom" onClick={openSearch}>
+                <MagnifyingGlassSearch />
+              </TooltipIconButton>
+            </div>
           </ViewMenu>
           <div ref={list} className={LIST}>
             {/* New chat, the first row [D25], never lit: Home isn't a place in the list. */}
@@ -263,19 +255,6 @@ export function AppSidebar({
                 <NavRow onClick={onNewChat}>
                   <ComposeEditSquare />
                   New chat
-                </NavRow>
-              </li>
-              {/* The strip's pages, rows here once it folded into the sidebar [D226]. */}
-              <li>
-                <NavRow onClick={() => openSettings("plugins")}>
-                  <Plugin />
-                  Plugins
-                </NavRow>
-              </li>
-              <li>
-                <NavRow onClick={() => (window.location.hash = "#pull-requests")}>
-                  <PullRequestOpen />
-                  Pull Requests
                 </NavRow>
               </li>
             </NavList>
@@ -345,7 +324,6 @@ export function AppSidebar({
             )}
           </div>
           {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
-          <StripFoot row />
         </div>
         {!navGone && (
           <div

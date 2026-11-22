@@ -58,10 +58,10 @@ const LIGHTS_X = 16;
 /**
  * The sidebar toggle after the traffic lights, then Back and Forward by their buttons, keys, mouse buttons and menu items,
  * the same pair in the app and Settings, each walking its own history: at the shown sidebar's end, or after the toggle
- * with New chat while it's folded or hidden (titlebar-nav) [D34 D35 D926]. The toggle steps the sidebar's modes [D226].
+ * with New chat while it's hidden (titlebar-nav) [D34 D35 D926]. The toggle shows or hides the sidebar [D67].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
-  const { mode, open, toggleSidebar, canToggle } = useSidebar();
+  const { open, toggleSidebar, canToggle } = useSidebar();
   useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
   const page = settingsPageOf(hash);
   const { pages, at } = walk.use();
@@ -166,7 +166,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is folded or hidden; Settings holds the panel open, so its toggle hides [D34 D35 D926 D225].
+  // The toggle, Back and Forward (our arrows [D217]), then New chat while the sidebar is hidden; Settings holds the panel open, so its toggle hides [D34 D35 D926 D225].
   return (
     <>
       {chip && (
@@ -178,7 +178,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
         <TitlebarTips>
           {/* Its name says what a click does; aria-expanded would draw an open fill. Settings keeps its room, hidden, so Back
               and Forward stay put going in and out [D225]. */}
-          <TooltipIconButton look="strip" tip={false} tooltip={{ expanded: "Collapse sidebar", strip: "Hide sidebar", hidden: "Show sidebar" }[mode]} data-slot="sidebar-toggle" className={canToggle ? undefined : "invisible"} onClick={toggleSidebar}>
+          <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" className={canToggle ? undefined : "invisible"} onClick={toggleSidebar}>
             {open ? <Sidebar /> : <SidebarFloatingLeft />}
           </TooltipIconButton>
           <div className="titlebar-history flex">

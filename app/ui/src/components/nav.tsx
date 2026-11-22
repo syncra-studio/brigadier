@@ -27,11 +27,10 @@ export function NavRow({ className, ...props }: ComponentProps<"button">) {
   );
 }
 
-/** The panel's header: a mark at its start, its title, and icon buttons at the end, one row for every page's sidebar [D226 D227]. */
-export function NavHeader({ start, title, actions }: { start?: ReactNode; title: ReactNode; actions?: ReactNode }) {
+/** The panel's header: its title, and icon buttons at the end, on the sessions header's row and insets [D227]. */
+export function NavHeader({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-2.5 pe-3">
-      {start}
+    <div className="flex h-tab-bar shrink-0 items-center gap-1 ps-4 pe-3">
       <h1 className="min-w-0 flex-1 truncate text-nav-title font-semibold">{title}</h1>
       {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
     </div>
