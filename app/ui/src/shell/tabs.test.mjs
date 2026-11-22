@@ -59,7 +59,7 @@ test("New chat is one draft, back as it was left; a project's New chat is that p
   globalThis.window = { location: { hash: "" } };
   const store = (value) => ({ get: () => value, set: (next) => (value = next), use: () => value });
   const { draftKey, useHomeDraft, setHomeDraft, newSession, newChat, pickHomeProject } = await load("../home/start.ts", {
-    "../session/draft": { HOME_DRAFT: "@home", keepDraft: () => {} },
+    "../session/draft": { HOME_DRAFT: "@home", keepDraft: () => {}, keepProject: () => {}, projectOf: () => undefined },
     "../onboarding/api": { store },
     "../shell/tab-store": { CHAT: "chat", selectTab: () => {}, closeOthers: (owner, keep) => closed.push([owner, keep]) },
   });
@@ -87,4 +87,30 @@ test("New chat is one draft, back as it was left; a project's New chat is that p
   assert.equal(useHomeDraft().project, "q");
   pickHomeProject(null, "q");
   assert.equal(closed.length, 1, "a project's own draft never closes New chat's tabs");
+});
+
+test("New chat's project is kept with its words, past a send and a relaunch [D284]", async () => {
+  const written = [];
+  const timers = globalThis.setTimeout;
+  globalThis.setTimeout = (run) => (run(), 0);
+  const empty = { parts: [], attachmentIds: [] };
+  const isEmpty = (d) => d.attachmentIds.length === 0 && d.parts.every((p) => typeof p === "string" && p.trim() === "");
+  const run = async (args) => (written.push(args), { ok: true, draft: JSON.stringify({ parts: ["hi"], attachmentIds: [], project: "p" }) });
+  const fresh = () => load("../session/draft.ts", { "../components/composer/draft": { EMPTY_DRAFT: empty, isEmpty } });
+  let { keepDraft, keepProject, projectOf, loadDraft } = await fresh();
+  const settle = () => new Promise((r) => setImmediate(r));
+  keepProject(run, "@home", "p");
+  keepDraft(run, "@home", { parts: ["words"], attachmentIds: [] });
+  await settle();
+  assert.deepEqual(JSON.parse(written.at(-1)[2]), { parts: ["words"], attachmentIds: [], project: "p" }, "typing keeps the project");
+  keepDraft(run, "@home", empty);
+  await settle();
+  assert.equal(JSON.parse(written.at(-1)[2]).project, "p", "a send empties the words, not the project");
+  keepDraft(run, "@session", empty);
+  await settle();
+  assert.equal(written.at(-1)[2], "", "a draft with no project still goes when emptied");
+  ({ projectOf, loadDraft } = await fresh());
+  assert.deepEqual(await loadDraft(run, "@home"), { parts: ["hi"], attachmentIds: [], project: "p" });
+  assert.equal(projectOf("@home"), "p", "a relaunch reads it back");
+  globalThis.setTimeout = timers;
 });

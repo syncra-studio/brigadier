@@ -14,13 +14,13 @@ import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
 import { daemonRun } from "../session/composer";
 import type { Draft } from "../components/composer/draft";
-import { draftOf, keepDraft, loadDraft } from "../session/draft";
+import { draftOf, HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
-import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
+import { discard, draftKey, pickHomeProject, restoreHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 import { prName } from "../pull-requests/route";
@@ -177,7 +177,12 @@ export function HomeDraft() {
         offline={!daemon}
         initial={draftOf(key)}
         onDraft={(text) => keepDraft(daemonRun, key, text)}
-        loadDraft={() => loadDraft(daemonRun, key)}
+        loadDraft={() =>
+          loadDraft(daemonRun, key).then((saved) => {
+            if (key === HOME_DRAFT) restoreHomeProject();
+            return saved;
+          })
+        }
         focus={draft.focus}
         onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />

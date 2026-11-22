@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { daemonRun } from "../session/composer";
 import { EMPTY_DRAFT } from "../components/composer/draft";
-import { HOME_DRAFT, keepDraft } from "../session/draft";
+import { HOME_DRAFT, keepDraft, keepProject, projectOf } from "../session/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { ask, openThread, type Row, threadSource, useDaemon, useThread } from "../daemon";
@@ -94,8 +94,23 @@ export function newChat(): void {
 
 /** New chat's own project picker: another project, or none, closes its tabs but Chat; its words stay [D282]. */
 export function pickHomeProject(next: string | null, shown: string | null): void {
-  if (next !== shown && draftKey() === HOME_DRAFT) closeOthers(HOME_DRAFT, CHAT);
+  const home = draftKey() === HOME_DRAFT;
+  if (next !== shown && home) closeOthers(HOME_DRAFT, CHAT);
   setHomeDraft(next ? { project: next, chat: false } : { chat: true });
+  // Kept with its words, for the next launch [D284].
+  if (home) {
+    picked = true;
+    keepProject(daemonRun, HOME_DRAFT, next);
+  }
+}
+let picked = false;
+
+/** Once New chat's saved draft is read: the project kept with it, unless one was picked since [D284]. */
+export function restoreHomeProject(): void {
+  const saved = projectOf(HOME_DRAFT);
+  if (picked || saved === undefined || draftKey() !== HOME_DRAFT) return;
+  picked = true;
+  setHomeDraft(saved ? { project: saved, chat: false } : { chat: true });
 }
 
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */
