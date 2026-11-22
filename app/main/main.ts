@@ -40,6 +40,8 @@ const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || pro
 // its controls and tabs' [D823 D832].
 const TAB_BAR = Number(/--spacing-tab-bar:\s*([\d.]+)rem;/.exec(theme)![1]) * 16;
 const LIGHTS_Y = TAB_BAR / 2 - 7;
+// How long a window may take to paint before it's shown anyway [D285].
+const FIRST_PAINT_MS = 3000;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
 // A Mac's window is clear over macOS's menu vibrancy, which the page's strip and sidebar let through [D76].
@@ -190,7 +192,9 @@ function openWindow(): void {
     title: APP_NAME,
     backgroundColor: hold ? introColours.clear : windowFill,
     ...(vibrant ? { vibrancy: "menu" as const } : {}),
-    ...(hold ? { transparent: true, show: false } : {}),
+    // Shown at its first paint, the launch screen, so macOS's material never shows before it [D285].
+    show: false,
+    ...(hold ? { transparent: true } : {}),
     titleBarStyle: "hidden",
     // The lights' centre is y + 7: this puts it on the titlebar's middle line (theme's --spacing-titlebar). The
     // sidebar moves them onto the tab bar's line once it shows (traffic-lights).
@@ -270,6 +274,16 @@ function openWindow(): void {
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
   if (hold) holdForIntro(window, vibrant ? windowFill : themeBackground, introColours);
+  else {
+    // One that never paints still shows, once.
+    let pending = true;
+    const show = (): void => {
+      if (pending && !window.isDestroyed()) window.show();
+      pending = false;
+    };
+    window.once("ready-to-show", show);
+    setTimeout(show, FIRST_PAINT_MS);
+  }
   // The Windows stand-in on a Mac has no traffic lights; the page draws its caption buttons.
   if (process.platform === "darwin" && platform !== "darwin") window.setWindowButtonVisibility(false);
   keepOnClose(window);
