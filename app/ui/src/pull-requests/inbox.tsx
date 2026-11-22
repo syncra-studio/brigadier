@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
+import { ScrollFade } from "../components/scroll-fade";
 import { Segmented } from "../components/segmented";
 import { Select } from "../components/select";
 import { Skeleton } from "../components/skeleton";
@@ -63,10 +64,12 @@ export function PrInbox() {
   // A failed refresh leaves the rows it had in place, as the sidebar does [D262].
   const failed = sections.every((each) => !each.rows?.length) ? (read?.error ?? (sections.every((each) => each.error) ? sections[0]!.error : null)) : null;
   return (
-    <main className="flex min-h-0 flex-1 flex-col">
-      {/* The titlebar's row stays empty and drags the window, as on a PR and in Settings [D277]. */}
-      <div className="app-drag -mt-tab-bar h-tab-bar shrink-0" />
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter">
+    // From the window's top, as Settings: the list scrolls under the titlebar's row, fading there [D292].
+    <main className="relative -mt-tab-bar flex min-h-0 flex-1 flex-col">
+      <ScrollFade side="top" />
+      {/* The titlebar's row stays empty and drags the window, as on a PR and in Settings, over what scrolls under it [D277]. */}
+      <div className="app-drag absolute inset-x-0 top-0 z-10 h-tab-bar" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter pt-tab-bar">
         <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
           <header className="flex items-center gap-4">
             <h1 className="min-w-0 flex-1 text-page-title font-medium">Pull Requests</h1>

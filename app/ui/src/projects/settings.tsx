@@ -171,7 +171,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   // Drawn once the account read lands, so the GitHub account row doesn't push the page down [D257].
   if (!github && checking) return null;
   return (
-    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 py-6">
+    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 pt-project-page-top pb-6">
       <ul aria-label="General">
         <Row label="Name" line="What the sidebar and this page call it; its icon is the folder's logo, else these initials" error={errors.name}>
           <ProjectBadge id={project.id} name={project.name} />

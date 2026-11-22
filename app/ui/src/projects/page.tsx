@@ -1,4 +1,5 @@
 import { EmptyState } from "../components/empty-state";
+import { ScrollFade } from "../components/scroll-fade";
 import { Folder } from "../icons";
 import { useProjects } from "./projects";
 import { daemonSettings, ProjectSettings } from "./settings";
@@ -11,8 +12,10 @@ export function ProjectPage({ id }: { id: string }) {
     return projects === undefined ? null : <EmptyState variant="centered" icon={Folder} title="This project isn’t available" detail="Brigadier has no project by this name. Pick another in the sidebar." className="m-auto" />;
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // From the window's top, as Settings: the page scrolls under the titlebar's row, fading there [D292].
+    <div className="relative -mt-tab-bar flex min-h-0 flex-1 flex-col">
       <ProjectSettings key={id} project={project} source={daemonSettings} />
+      <ScrollFade side="top" />
     </div>
   );
 }

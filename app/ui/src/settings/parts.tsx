@@ -38,11 +38,11 @@ export function SettingsPage({
   }, []);
   return (
     <div data-slot="settings-page" className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      {/* The titlebar's row drags the window, as the tab bar does elsewhere [D255]. */}
-      <div className="app-drag -mt-tab-bar h-tab-bar shrink-0" />
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* From the window's top: the page scrolls under the titlebar's row and off the window, the title starting below
+          the row as before [D292]. */}
+      <div className="relative -mt-tab-bar flex min-h-0 flex-1 flex-col">
         <div className={cx("min-h-0 flex-1", scrollable ? "overflow-y-auto scroll-gutter" : "flex flex-col overflow-hidden")}>
-          <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-1.5", scrollable ? "pb-12" : "min-h-0 flex-1")}>
+          <div className={cx("mx-auto flex w-full max-w-settings flex-col px-5 pt-page-top", scrollable ? "pb-12" : "min-h-0 flex-1")}>
             <header className="flex shrink-0 items-start gap-4 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3.5">
                 {mark}
@@ -58,7 +58,10 @@ export function SettingsPage({
             <div className={cx("flex flex-col", scrollable ? "gap-10 pt-5" : "min-h-0 flex-1")}>{children}</div>
           </div>
         </div>
+        {scrollable && <ScrollFade side="top" />}
         {scrollable && <ScrollFade />}
+        {/* The titlebar's row drags the window, as the tab bar does elsewhere, over what scrolls under it [D255]. */}
+        <div className="app-drag absolute inset-x-0 top-0 z-10 h-tab-bar" />
       </div>
     </div>
   );
