@@ -3,7 +3,8 @@
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
 //! PRs, every query in one read, `--kept` their last reads [D258], `--after <next>` one query's next
-//! page [D613]; `runs <query>... [--kept]`,
+//! page [D613], `--as <login>` on `@` as that gh account alone, and `@ scopes` the page's Project and Account
+//! menus [D243]; `runs <query>... [--kept]`,
 //! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264];
 //! `sides <n> <path>` is a file's two sides whole [D262]; `project <owner/name>` is the project
 //! whose repository that is, or null, and `<project> session <branch>` its session whose worktree
@@ -32,19 +33,43 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     // Several queries at once, the side views' as the tab opens: one read, or their last [D207, D258].
     if arg(args, 2)? == "search" {
-        // `--after <cursor>`: one query's next page [D613].
-        let after = args.iter().position(|a| a == "--after");
+        // `--after <cursor>`: one query's next page [D613]; `--as <login>`: the page's search as that
+        // gh account alone [D243].
+        let flag = |name: &str| args.iter().position(|a| a == name);
+        let (after, reader) = (flag("--after"), flag("--as").filter(|_| id == host::REVIEW));
+        let valued = |i: usize| {
+            [after, reader]
+                .iter()
+                .flatten()
+                .any(|p| i == *p || i == p + 1)
+        };
         let queries: Vec<&str> = (args.iter().enumerate().skip(3))
-            .filter(|(i, a)| *a != "--kept" && after.is_none_or(|p| *i != p && *i != p + 1))
+            .filter(|(i, a)| *a != "--kept" && !valued(*i))
             .map(|(_, a)| a.as_str())
             .collect();
+        let reader = reader.and_then(|p| args.get(p + 1)).cloned();
         if args.iter().any(|a| a == "--kept") {
             let dir = host::dir(data, id);
-            let found: Vec<_> = queries.iter().map(|q| host::kept_search(&dir, q)).collect();
+            let found: Vec<_> = (queries.iter())
+                .map(|q| host::kept_search(&dir, &host::kept_key(q, reader.as_deref())))
+                .collect();
             return Ok(json!({"ok": true, "found": found}));
         }
         let after = after.and_then(|p| args.get(p + 1)).map(String::as_str);
-        return Ok(json!({"ok": true, "found": host::pr(data, id)?.search(&queries, after)?}));
+        let mut pr = host::pr(data, id)?;
+        if reader.is_some() {
+            pr.account = reader;
+        }
+        return Ok(json!({"ok": true, "found": pr.search(&queries, after)?}));
+    }
+    // The Pull Requests page's Project and Account menus [D243]: gh's github.com logins, and each
+    // project's github.com repositories.
+    if id == host::REVIEW && arg(args, 2)? == "scopes" {
+        let projects: Vec<Value> = (core::projects::list(data)?.into_iter())
+            .map(|p| json!({"id": p.id, "name": p.name, "repos": host::project_repos(data, &p.id)}))
+            .collect();
+        let accounts = host::accounts::logins(&host::accounts::GH, "github.com");
+        return Ok(json!({"ok": true, "accounts": accounts, "projects": projects}));
     }
     if arg(args, 2)? == "project" {
         return Ok(json!({"ok": true, "project": host::project_of(data, arg(args, 3)?)}));

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cx } from "../components/cx";
-import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import {
   DropdownMenu,
@@ -14,12 +13,10 @@ import {
   DropdownMenuTrigger,
 } from "../components/menu";
 import { NavHeader, NavList, NavSection } from "../components/nav";
-import { useSidebar } from "../components/sidebar";
 import { Skeleton } from "../components/skeleton";
 import { ask, useDaemon } from "../daemon";
 import { Check, MagnifyingGlassSearch, XCircleFilled } from "../icons";
 import { SettingsSlider } from "../icons/sidebar";
-import { PullRequestOpen } from "../landing/icons";
 import { useStored } from "../sidebar/sidebar";
 import { PrNavRow } from "./nav-row";
 import { openPrPage, pastedRef, pinned, type PrRow, recents } from "./route";
@@ -39,20 +36,32 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]["id"];
 export type View = "compact" | "detailed";
 
-type Found = { query: string; okAt: number | null; error: string | null; prs: PrRow[] } | null;
+type Found = { query: string; okAt: number | null; error: string | null; prs: PrRow[]; next?: string | null } | null;
 /** One read of every shown section: GitHub's rows by query, or why it failed. */
 type Read = { found: Record<string, Found>; error?: string };
 
 // A read younger than this isn't asked again when the window comes back.
 const FRESH_MS = 60_000;
 
-/** The sections' rows: the kept read at once, then GitHub's; again on focus once stale, and on `again`. */
-export function useSections(queries: string[]): { read: Read | null; again: () => void } {
+/**
+ * The sections' rows: the kept read at once, then GitHub's; again on focus once stale, and on `again`. `flags` go with each
+ * read (`--as <login>`); a reply to queries or flags since changed is dropped.
+ */
+export function useSections(queries: string[], flags: string[] = []): { read: Read | null; again: () => void } {
   const { daemon } = useDaemon();
   const [read, setRead] = useState<Read | null>(null);
   const at = useRef(0);
-  const key = queries.join("\n");
-  const land = (reply: Record<string, any>, keptOnly: boolean) =>
+  const key = [...queries, "", ...flags].join("\n");
+  const asking = useRef(key);
+  asking.current = key;
+  // Other queries or flags start from nothing: their rows aren't these.
+  const [readKey, setReadKey] = useState(key);
+  if (readKey !== key) {
+    setReadKey(key);
+    setRead(null);
+  }
+  const land = (asked: string, reply: Record<string, any>, keptOnly: boolean) =>
+    asked === asking.current &&
     setRead((now) => {
       if (!reply.ok) return keptOnly ? now : { found: now?.found ?? {}, error: String(reply.error) };
       const found = { ...(now?.found ?? {}) };
@@ -62,23 +71,17 @@ export function useSections(queries: string[]): { read: Read | null; again: () =
   const again = () => {
     if (!queries.length) return;
     at.current = Date.now();
-    ask({ op: "run", args: ["host", "@", "search", ...queries] }, (reply) => reply.error !== "disconnected" && land(reply, false));
+    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags] }, (reply) => reply.error !== "disconnected" && land(key, reply, false));
   };
   useEffect(() => {
     if (!daemon || !queries.length) return;
-    ask({ op: "run", args: ["host", "@", "search", ...queries, "--kept"] }, (reply) => land(reply, true));
+    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags, "--kept"] }, (reply) => land(key, reply, true));
     again();
     const focus = () => Date.now() - at.current > FRESH_MS && again();
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
   }, [daemon, key]);
   return { read, again };
-}
-
-/** The page with no PR open: pick one from the sidebar's list, or show the sidebar first while it's hidden. */
-export function PrPageEmpty() {
-  const { open } = useSidebar();
-  return <EmptyState variant="centered" icon={PullRequestOpen} title="Select a pull request" detail={open ? "Choose one from the sidebar to review its changes" : "Show the sidebar to choose one"} className="m-auto" />;
 }
 
 export function PullRequestsNav({ current }: { current: string }) {

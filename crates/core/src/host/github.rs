@@ -154,3 +154,18 @@ fn list(gh: &str, token: Option<String>) -> io::Result<Option<Vec<Value>>> {
     }
     Ok(Some(found))
 }
+
+/// A project's repositories on github.com (`owner/name`), as the Pull Requests page's Project menu scopes its search [D243].
+pub fn project_repos(data: &Path, id: &str) -> Vec<String> {
+    let Ok(pr) = super::pr(data, id) else {
+        return Vec::new();
+    };
+    let all = match pr.scope.is_empty() {
+        true => pr.repo.into_iter().collect(),
+        false => pr.scope,
+    };
+    (all.into_iter())
+        .filter(|r| r.kind == super::Kind::GitHub && r.host == HOST)
+        .map(|r| r.path)
+        .collect()
+}

@@ -28,6 +28,12 @@ export type PrRow = {
   author?: string | null;
   createdAtMs?: number | null;
   updatedAtMs?: number | null;
+  head?: string | null;
+  base?: string | null;
+  additions?: number | null;
+  deletions?: number | null;
+  /** The head commit's checks, as GitHub rolls them up: "success", "failure", "error", "pending", "expected". */
+  checks?: string | null;
 };
 
 /** `owner/name #n` from a ref. */

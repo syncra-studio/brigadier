@@ -23,9 +23,9 @@ mod write;
 pub use actions::{kept_run, kept_runs};
 pub use chip::{chip, moved_on, opened};
 pub use create::Create;
-pub use github::{clone_github, github_repos};
+pub use github::{clone_github, github_repos, project_repos};
 pub use prs::kept;
-pub use search::kept_search;
+pub use search::{kept_key, kept_search};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io;
@@ -371,8 +371,9 @@ pub struct Pr {
     dir: std::path::PathBuf,
     /// Where the pictures of the people its reads name are kept [D615].
     avatars: std::path::PathBuf,
-    /// Its project's GitHub account, read as [D631]; None: whichever can see the repository.
-    account: Option<String>,
+    /// Its project's GitHub account, read as [D631]; None: whichever can see the repository. On the
+    /// Pull Requests page, the one account its search reads as, else every one [D243].
+    pub account: Option<String>,
 }
 
 /// A checkout and the repository its branch pushes to, git picking the remote; None with no

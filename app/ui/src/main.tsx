@@ -13,7 +13,8 @@ import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
 import { newChat, newSession, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
-import { PrPageEmpty, PullRequestsNav } from "./pull-requests/nav";
+import { PrInbox } from "./pull-requests/inbox";
+import { PullRequestsNav } from "./pull-requests/nav";
 import { PrPage, ReviewDraft } from "./pull-requests/page";
 import { prPageOf, reviewChats } from "./pull-requests/route";
 import { Chat, Key } from "./icons";
@@ -123,7 +124,7 @@ function App() {
   }
   const prs = prPageOf(hash);
   if (prs !== null) {
-    // A PR fills the page with its review chat floating over it [D237]; no PR, the page's empty state [D159].
+    // A PR fills the page with its review chat floating over it [D237]; no PR, its inbox [D243].
     const chat = prs ? chats[prs] : undefined;
     // Before the rows are read it's taken as live, so a send in that moment can't start a second review chat.
     const live = chat && (rows ? rows.some((row) => row.id === chat && !row.archived) : true) ? chat : undefined;
@@ -134,7 +135,7 @@ function App() {
             {live ? <SessionThread id={live} rows={rows} offline={daemon === null} docked /> : <ReviewDraft review={prs} />}
           </PrPage>
         ) : (
-          <PrPageEmpty />
+          <PrInbox />
         )}
       </Shell>
     );

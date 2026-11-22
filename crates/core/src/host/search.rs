@@ -18,10 +18,15 @@ const PAGE: u32 = 30;
 const KEPT: usize = 20;
 
 /// A row's fields: a bare row [D613].
-const ROW: &str = "number url title state isDraft headRefName baseRefName createdAt updatedAt additions deletions author { login avatarUrl }";
+const ROW: &str = "number url title state isDraft headRefName baseRefName createdAt updatedAt additions deletions author { login avatarUrl } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }";
 
 fn path(dir: &Path) -> PathBuf {
     dir.join("pr").join("search.json")
+}
+
+/// Where `query`'s read is kept: as itself, or beside the one account the Pull Requests page read it as [D243].
+pub fn kept_key(query: &str, account: Option<&str>) -> String {
+    account.map_or_else(|| query.to_string(), |login| format!("{query}\t{login}"))
 }
 
 /// `query`'s last read, or null before any [D207].
@@ -56,7 +61,9 @@ impl Pr {
         };
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
-        let found: Vec<Value> = (queries.iter().enumerate())
+        let reader = self.account.as_deref().filter(|_| self.id == super::REVIEW);
+        let keys: Vec<String> = queries.iter().map(|q| kept_key(q, reader)).collect();
+        let found: Vec<Value> = (keys.iter().enumerate())
             .map(|(i, query)| {
                 let was = kept_search(&self.dir, query);
                 match &read {
@@ -90,7 +97,7 @@ impl Pr {
             .collect();
         let all = read_kept(path(&self.dir));
         let older = (all["queries"].as_array().into_iter().flatten())
-            .filter(|q| !queries.iter().any(|n| q["query"] == *n))
+            .filter(|q| !keys.iter().any(|n| q["query"] == *n))
             .cloned();
         let kept: Vec<Value> = found.iter().cloned().chain(older).take(KEPT).collect();
         keep(&path(&self.dir), &json!({"queries": kept}));
@@ -187,6 +194,8 @@ impl Pr {
         let path = setup::find("gh", &[]).ok_or(NO_GH)?;
         let path = path.to_string_lossy().into_owned();
         let mut ghs: BTreeMap<String, Gh> = (accounts::logins(&accounts::GH, HOST).into_iter())
+            // The page's Account menu reads as one of them alone [D243].
+            .filter(|login| self.account.as_ref().is_none_or(|one| one == login))
             .filter_map(|login| {
                 let token = Some(token(&path, HOST, &login)?);
                 Some((
@@ -198,6 +207,9 @@ impl Pr {
                 ))
             })
             .collect();
+        if let (true, Some(one)) = (ghs.is_empty(), &self.account) {
+            return Err(format!("gh has no token for {one}."));
+        }
         if ghs.is_empty() {
             ghs.insert(String::new(), Gh { path, token: None });
         }
@@ -372,6 +384,7 @@ fn row(pr: &Value) -> Value {
     json!({"number": pr["number"], "ref": named, "title": pr["title"], "url": pr["url"],
         "state": pr["state"].as_str().map(str::to_lowercase), "draft": pr["isDraft"],
         "head": pr["headRefName"], "base": pr["baseRefName"],
+        "checks": pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["state"].as_str().map(str::to_lowercase),
         "author": pr["author"]["login"], "additions": pr["additions"], "deletions": pr["deletions"],
         "createdAtMs": pr["createdAt"].as_str().and_then(iso_ms),
         "updatedAtMs": pr["updatedAt"].as_str().and_then(iso_ms)})
