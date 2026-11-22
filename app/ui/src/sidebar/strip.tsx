@@ -25,7 +25,7 @@ export function Strip({ home, pulls, settings, children }: {
   settings?: string;
   children?: ReactNode;
 }) {
-  const { open } = useSidebar();
+  const { open, setOpen } = useSidebar();
   return (
     <nav aria-label="Strip" className="rail strip-timeline flex h-full shrink-0 flex-col items-center pt-tab-bar pb-1">
       <div className="strip-scroll scroll-edge-fade edge-fade-group hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto pt-1.25">
@@ -38,7 +38,17 @@ export function Strip({ home, pulls, settings, children }: {
         <TooltipIconButton look="rail" side="right" tooltip="Plugins" pressed={settings === "plugins"} onClick={() => openSettings("plugins")}>
           <Plugin />
         </TooltipIconButton>
-        <TooltipIconButton look="rail" side="right" tooltip="Pull Requests" pressed={pulls} onClick={() => (window.location.hash = "#pull-requests")}>
+        <TooltipIconButton
+          look="rail"
+          side="right"
+          tooltip="Pull Requests"
+          pressed={pulls}
+          onClick={() => {
+            // The page and the sidebar with its list, as the toggle shows it [D236].
+            setOpen(true);
+            window.location.hash = "#pull-requests";
+          }}
+        >
           <PullRequestOpen />
         </TooltipIconButton>
         {!open && children && (
