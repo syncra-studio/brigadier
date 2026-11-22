@@ -46,6 +46,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => {}
     }
     let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !matches!(arg(1), "" | "sync") {
+        crate::signin::DENIED.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
     match arg(1) {
         "" => {}
         // The page shows the library first, then asks for this [D721].

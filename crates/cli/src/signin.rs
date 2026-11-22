@@ -78,24 +78,40 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// The state, the grants read from the Keychain item the first time.
-fn state<T>(data: &Path, f: impl FnOnce(&mut State) -> T) -> T {
+/// A Keychain read failed (Deny, Cancel, locked): none again until a sign-in, a sign-out, a plugin
+/// change or the next start, so a Deny doesn't put the prompt straight back [D258].
+pub(crate) static DENIED: AtomicBool = AtomicBool::new(false);
+/// The grants' first read, one at a time and outside STATE, so a prompt up holds no STATE.
+static LOADING: Mutex<()> = Mutex::new(());
+/// The daemon's pass started the first read aside.
+static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Reads the grants from the Keychain item, unless read already or denied.
+fn load(data: &Path) {
+    let _one = LOADING.lock().unwrap_or_else(|e| e.into_inner());
+    let loaded = STATE.lock().unwrap().as_ref().is_some_and(|s| s.loaded);
+    if loaded || DENIED.load(Ordering::SeqCst) {
+        return;
+    }
+    let Ok(all) = secrets::read(data) else {
+        DENIED.store(true, Ordering::SeqCst);
+        return;
+    };
     let mut s = STATE.lock().unwrap();
     let s = s.get_or_insert_with(State::default);
-    // A Keychain that can't be read yet (locked) is tried again on the next call.
-    if !s.loaded
-        && let Ok(all) = secrets::read(data)
-    {
-        s.loaded = true;
-        {
-            for (key, v) in all {
-                if let Ok(g) = serde_json::from_value::<Grant>(v["oauth"].clone()) {
-                    s.grants.insert(key, g);
-                }
-            }
+    s.loaded = true;
+    for (key, v) in all {
+        if let Ok(g) = serde_json::from_value::<Grant>(v["oauth"].clone()) {
+            s.grants.insert(key, g);
         }
     }
-    f(s)
+}
+
+/// The state, the grants read from the Keychain item the first time.
+fn state<T>(data: &Path, f: impl FnOnce(&mut State) -> T) -> T {
+    load(data);
+    let mut s = STATE.lock().unwrap();
+    f(s.get_or_insert_with(State::default))
 }
 
 /// Saves (or, with None, removes) a server's grant in the Keychain item, read back whole.
@@ -143,6 +159,9 @@ fn server(data: &Path, key: &str) -> Result<(String, String), Value> {
 
 /// `plugins signin|wait|cancel|signout <key>`.
 pub fn run(data: &Path, words: &[&str]) -> Value {
+    if let ["signin" | "signout", _] = words {
+        DENIED.store(false, Ordering::SeqCst);
+    }
     match words {
         ["signin", key] => flow::signin(data, key),
         ["wait", key] => flow::wait(data, key),
@@ -351,7 +370,17 @@ fn due(g: &Grant) -> bool {
 
 /// The daemon's pass: refreshes each grant coming due, in the background, one at a time each.
 pub fn pass(data: &Path) {
-    let due: Vec<String> = state(data, |s| {
+    // The main loop never waits on the Keychain: the grants come when the read returns [D258].
+    if !STARTED.swap(true, Ordering::SeqCst) {
+        let data = data.to_path_buf();
+        thread::spawn(move || load(&data));
+    }
+    let due: Vec<String> = {
+        // Nor on STATE: a sign-in saving holds it through its own prompt.
+        let Ok(mut s) = STATE.try_lock() else { return };
+        let Some(s) = s.as_mut().filter(|s| s.loaded) else {
+            return;
+        };
         let keys: Vec<String> = (s.grants.iter())
             .filter(|(k, g)| {
                 !g.rejected
@@ -364,7 +393,7 @@ pub fn pass(data: &Path) {
             s.live.entry(k.clone()).or_default().busy = true;
         }
         keys
-    });
+    };
     for key in due {
         let data = data.to_path_buf();
         thread::spawn(move || {
@@ -383,10 +412,16 @@ pub fn reach(
 ) -> Result<(String, Map<String, Value>, String), String> {
     let (url, title) =
         server(data, key).map_err(|e| e["error"].as_str().unwrap_or("").to_string())?;
-    let mut headers: Map<String, Value> = secrets::read(data)
-        .ok()
-        .and_then(|s| s.get(key)?["headers"].as_object().cloned())
-        .unwrap_or_default();
+    // Read on each request, so not again after a failure: one prompt at most, not one a call.
+    let all = match DENIED.load(Ordering::SeqCst) {
+        true => Map::new(),
+        false => secrets::read(data).unwrap_or_else(|_| {
+            DENIED.store(true, Ordering::SeqCst);
+            Map::new()
+        }),
+    };
+    let mut headers =
+        (all.get(key).and_then(|v| v["headers"].as_object().cloned())).unwrap_or_default();
     let signs_in = item(data, key).is_some_and(|i| i["sign_in"] == "brigadier")
         || state(data, |s| s.grants.contains_key(key));
     if signs_in {
