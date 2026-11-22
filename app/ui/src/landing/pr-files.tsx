@@ -79,7 +79,8 @@ export function PrFiles({
   const seen = useRef(tick);
   const at = useRef(0);
   const list = useRef<HTMLDivElement>(null);
-  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  // Every file starts folded [D250]: these are the ones opened.
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const land = (next: Files) => {
@@ -115,7 +116,7 @@ export function PrFiles({
   // The same for every card, so a toggle draws only the card it changed.
   const acts = useMemo<Acts>(
     () => ({
-      toggle: (path) => setFolded((now) => (now.has(path) ? new Set([...now].filter((each) => each !== path)) : new Set(now).add(path))),
+      toggle: (path) => setOpened((now) => (now.has(path) ? new Set([...now].filter((each) => each !== path)) : new Set(now).add(path))),
       sides: (path) =>
         new Promise<Sides>((resolve, reject) =>
           ask({ op: "run", args: ["host", host, "sides", target, path] }, (reply) => {
@@ -127,14 +128,14 @@ export function PrFiles({
     }),
     [host, target],
   );
-  // A file past the pages drawn so far brings the pages up to it, the ones it skips folded: one diff drawn, not hundreds.
+  // A tree pick opens its file and brings the pages up to it, if it's past those drawn so far.
   const go = (path: string) => {
     const all = files?.files ?? [];
     const at = all.findIndex((file) => file.path === path);
     const to = at >= limit ? Math.ceil((at + 1) / PAGE) * PAGE : limit;
     flushSync(() => {
       setCurrent(path);
-      setFolded((now) => new Set([...now, ...all.slice(limit, to).map((file) => file.path)].filter((each) => each !== path)));
+      setOpened((now) => new Set(now).add(path));
       setLimit(to);
     });
     const card = () => list.current?.querySelector(`[data-path="${CSS.escape(path)}"]`)?.scrollIntoView({ block: "start" });
@@ -155,7 +156,7 @@ export function PrFiles({
   useEffect(() => setViewed({}), [files]);
   const markViewed = (path: string, on: boolean) => {
     setViewed((now) => ({ ...now, [path]: on }));
-    if (on) setFolded((now) => new Set(now).add(path));
+    if (on) setOpened((now) => new Set([...now].filter((each) => each !== path)));
     prAct(on ? "viewed" : "unviewed", pr.ref!, path).catch((cause: Error) => {
       setViewed((now) => ({ ...now, [path]: !on }));
       showToast(cause.message, { tone: "error" });
@@ -198,7 +199,7 @@ export function PrFiles({
                 <PrFile
                   key={file.path}
                   file={file}
-                  collapsed={folded.has(file.path)}
+                  collapsed={!opened.has(file.path)}
                   connected={Boolean(daemon)}
                   acts={acts}
                   split={look.split}
