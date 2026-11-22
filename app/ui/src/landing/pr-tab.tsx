@@ -73,10 +73,15 @@ export function PrTab({
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [look, setLook] = useState<ChangesLook>({ split: false, tree: true, generated: false });
+  // Changes picked while the PR still loads draws once it lands.
+  const pick = (next: "summary" | "code") => {
+    setTab(next);
+    if (next === "code") setCoded(true);
+  };
   if (!pr) {
     return (
       <div data-slot="pr-tab" className="flex min-h-0 flex-1 flex-col">
-        <PrToolbar pr={undefined} tab={tab} onTab={setTab} checking={checking} onCheck={check} look={look} onLook={setLook} busy={false} blocked={null} onReview={onReview} onApprove={() => {}} onMerge={() => {}} act={() => {}} />
+        <PrToolbar pr={undefined} tab={tab} onTab={pick} checking={checking} onCheck={check} look={look} onLook={setLook} busy={false} blocked={null} onReview={onReview} onApprove={() => {}} onMerge={() => {}} act={() => {}} />
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 pt-8">
           {row ? <h1 className="font-display text-2xl font-medium">{row.title}</h1> : <Skeleton className="h-6 w-2/3" />}
           {error ? (
@@ -104,10 +109,7 @@ export function PrTab({
       <PrToolbar
         pr={pr}
         tab={tab}
-        onTab={(next) => {
-          setTab(next);
-          if (next === "code") setCoded(true);
-        }}
+        onTab={pick}
         checking={checking}
         onCheck={check}
         look={look}
