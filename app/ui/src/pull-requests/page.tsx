@@ -5,12 +5,12 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { HomeDraft } from "../home/home";
-import { reviewTitle, setHomeDraft } from "../home/start";
+import { REVIEW_DRAFT, reviewTitle, setHomeDraft } from "../home/start";
 import { Chat, Minus, Spinner, X } from "../icons";
 import { HostOf } from "../landing/host";
 import { LivePrTab } from "../landing/live";
 import { usePutBackAsked } from "../session/side";
-import { HOME } from "../shell/tab-store";
+import { HOME, setHomeTabs, useTabs } from "../shell/tab-store";
 import { useStored } from "../sidebar/sidebar";
 import { prName } from "./route";
 
@@ -23,6 +23,7 @@ import { prName } from "./route";
 type Look = "compact" | "expanded" | "minimised";
 
 export function PrPage({ target, chat, children }: { target: string; chat: string | undefined; children: ReactNode }) {
+  useTabsShownOnThread(chat);
   return (
     <main className="toolbar-in-titlebar relative flex min-h-0 flex-1 flex-col bg-background">
       {/* Read by the Pull Requests page's own owner, needing no checkout [D159]; Review and Fix ask in its review chat. */}
@@ -38,8 +39,25 @@ export function PrPage({ target, chat, children }: { target: string; chat: strin
 
 /** The review chat's draft, before its first message: the composer alone, its send starting the chat here [D162 D198]. */
 export function ReviewDraft({ review }: { review: string }) {
-  useLayoutEffect(() => setHomeDraft({ review }), [review]);
+  // Its tabs its own, apart from Home's and a project's draft, which its start must not carry away [D162].
+  useLayoutEffect(() => {
+    setHomeDraft({ review });
+    setHomeTabs(null, REVIEW_DRAFT);
+  }, [review]);
   return <HomeDraft />;
+}
+
+/** The page has no tab bar [D237]: a file, attachment or link the review chat opens shows on the chat's own page, in its tabs. */
+function useTabsShownOnThread(chat: string | undefined): void {
+  const { tabs, active } = useTabs(chat ?? HOME);
+  // Counted from when the page or its chat opened, so a tab left in front before stays put.
+  const was = useRef({ chat, active });
+  useEffect(() => {
+    const before = was.current;
+    was.current = { chat, active };
+    const tab = tabs.find((each) => each.id === active);
+    if (chat && before.chat === chat && active !== before.active && tab && tab.kind !== "pr") window.location.hash = `#thread/${encodeURIComponent(chat)}`;
+  }, [chat, active]);
 }
 
 /** The last answer's words, plain, for the compact dock's Response ready. */
@@ -98,12 +116,12 @@ function ReviewDock({ target, chat, children }: { target: string; chat: string |
     );
   }
   const expandable = Boolean(chat);
+  const fold = expandable && (look === "expanded" ? "cursor-s-resize" : "cursor-n-resize");
   return (
     <section data-dock={look} aria-label={title} className="review-dock review-dock-place absolute z-20 flex flex-col rounded-dock bg-popover p-1.5 shadow-summary">
       <header
-        aria-label={expandable ? (look === "expanded" ? "Show compact floating chat" : "Expand floating chat") : undefined}
         onClick={() => expandable && setLook(look === "expanded" ? "compact" : "expanded")}
-        className={cx("flex h-tab-bar shrink-0 items-center gap-1.5", look === "expanded" ? "px-3" : "mx-1.5 border-b border-border px-2", expandable && (look === "expanded" ? "cursor-s-resize" : "cursor-n-resize"))}
+        className={cx("flex h-tab-bar shrink-0 items-center gap-1.5", look === "expanded" ? "px-3" : "mx-1.5 border-b border-border px-2", fold)}
       >
         <TooltipIconButton
           tooltip="Minimize chat"
@@ -115,7 +133,16 @@ function ReviewDock({ target, chat, children }: { target: string; chat: string |
         >
           <Minus />
         </TooltipIconButton>
-        <h2 className="min-w-0 flex-1 truncate text-base font-medium text-muted-foreground">{title}</h2>
+        <h2 className="min-w-0 flex-1 truncate text-base font-medium text-muted-foreground">
+          {/* The header's fold, for the keyboard too: its click reaches the header's. */}
+          {expandable ? (
+            <button type="button" aria-expanded={look === "expanded"} className={cx("max-w-full truncate rounded-sm focus-visible:focus-ring", fold)}>
+              {title}
+            </button>
+          ) : (
+            title
+          )}
+        </h2>
         {running ? <Spinner aria-label="Running" className="size-icon-sm text-muted-foreground motion-safe:animate-spin" /> : ready && <span aria-label="Unread response" className="size-2 rounded-capsule bg-link" />}
       </header>
       {look === "compact" && chat && (running || ready) && (
