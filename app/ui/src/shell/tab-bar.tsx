@@ -24,7 +24,7 @@ import { BrigadeGroupLabel, SiblingTab, useBrigadeFamily } from "./brigade-tabs"
 import { BlankChatTab, BUTTON, ChatTab, CLOSE, CloseAllDialog, Keycap, leave, LOOK, noAutoscroll, TAB, TabMenuItems, TITLE, TITLE_CLOSABLE } from "./chat-tab";
 import { useNoteTitle } from "./note-tab";
 import { useCommandHeld, useTabKeys } from "./tab-keys";
-import { CHAT, closeTab, familyOrder, HOME, homeProject, justOpened, keepTab, moveTab, openTab, selectTab, setPlace, SIBLING, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
+import { CHAT, closeTab, familyOrder, HOME, justOpened, keepTab, moveTab, openTab, selectTab, SIBLING, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -183,12 +183,6 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   const now = useTabs(owner);
   const { tabs, active } = now;
   useTabsFromRust(owner);
-  // The last place used in its project, where a click on the project goes back to [D865].
-  // Home's project as it is now: the render's may be the last page's, before Home set its own [D863].
-  useEffect(() => {
-    const at = owner === HOME ? homeProject() : project;
-    if (at && !row?.archived) setPlace(at, owner);
-  }, [owner, project, row?.archived]);
   const archived = Boolean(row?.archived);
   // A Brigade's family, its tab group around the Chat tab [D3108].
   const family = useBrigadeFamily(row);

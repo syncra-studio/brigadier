@@ -144,7 +144,7 @@ export function HomeDraft() {
         projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
         locked={draft.locked}
-        // Picking a project only sets this draft's; the sidebar's click goes to its last place [D261].
+        // Picking a project only sets this draft's, and stays on it [D261].
         onProject={(id) => setHomeDraft({ project: id, chat: false })}
         onNoProject={() => setHomeDraft({ chat: true })}
         onAddProject={(path) => {

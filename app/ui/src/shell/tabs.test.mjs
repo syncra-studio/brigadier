@@ -21,7 +21,7 @@ const store = await load("./tab-store.ts", {
   "../daemon": { ask: (request) => asked.push(request.args), useDaemon: () => ({}) },
   "../session/store": { newId: () => String(asked.length) },
 });
-const { HOME, openTab, tabsOf, setHomeTabs, carryHome, setPlace, placeOf } = store;
+const { HOME, openTab, tabsOf, setHomeTabs, carryHome } = store;
 
 test("New chat and a project's New session keep their own tabs [D859 D863]", () => {
   setHomeTabs("p");
@@ -38,20 +38,6 @@ test("New chat and a project's New session keep their own tabs [D859 D863]", () 
   assert.ok(asked.some((args) => args[1] === "@home:p") && asked.some((args) => args[1] === "@home"));
 });
 
-test("a project's click goes back to its last place [D865]", () => {
-  const live = (id) => id === "s1";
-  assert.equal(placeOf("q", live, ""), null, "nothing used there yet: its page");
-  setPlace("q", "s1");
-  assert.equal(placeOf("q", live, "#project/q"), "s1");
-  assert.equal(placeOf("q", live, "#thread/s1"), null, "already there: its page");
-  setPlace("q", "gone");
-  assert.equal(placeOf("q", live, ""), null, "a session no longer listed: its page");
-  setPlace("q", HOME);
-  assert.equal(placeOf("q", live, "#project/q"), HOME, "its draft");
-  setPlace("q", "");
-  assert.equal(placeOf("q", live, "#thread/s1"), null, "none: its page");
-});
-
 test("New chat and a project's New session keep their own words [D863]", async () => {
   const kept = [];
   globalThis.window = { location: { hash: "" } };
@@ -66,26 +52,4 @@ test("New chat and a project's New session keep their own words [D863]", async (
   assert.equal(draftKey(), "@home");
   setHomeDraft({ project: "p", chat: false });
   assert.equal(draftKey(), "@home", "New chat picking a project stays New chat's draft");
-});
-
-test("from New chat a project clicked opens its last place, never New chat in that project [D886]", async () => {
-  const drafts = [];
-  globalThis.window = { location: { hash: "" } };
-  const { useOpenPlace } = await load("../projects/page.tsx", {
-    "../daemon": { useDaemon: () => ({ rows: [{ id: "s9", archived: false }] }) },
-    "../shell/tab-store": store,
-    "../home/start": { setHomeDraft: (change) => drafts.push(change) },
-  });
-  const open = useOpenPlace();
-  setHomeTabs(null);
-  open("n");
-  assert.equal(window.location.hash, "#project/n", "nothing used there yet: its page");
-  window.location.hash = "";
-  setPlace("n", "s9");
-  open("n");
-  assert.equal(window.location.hash, "#thread/s9", "its last session");
-  window.location.hash = "";
-  setPlace("n", HOME);
-  open("n");
-  assert.deepEqual(drafts, [{ project: "n", chat: false, locked: true }], "its own draft, locked, not New chat's");
 });

@@ -59,18 +59,8 @@ export function setHomeTabs(project: string | null, key?: string): void {
   for (const listener of listeners) listener();
 }
 /** The project Home's tabs are its draft's, or null for New chat's own [D863]. */
-export const homeProject = (): string | null => homeAt;
+const homeProject = (): string | null => homeAt;
 export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, homeProject);
-/** The last place used in each project, a session or its draft (HOME), where a click on it goes back to [D865]. */
-const places = new Map<string, string>();
-export const setPlace = (project: string, at: string): void => void places.set(project, at);
-/** Where a click on `project` goes: its last place, a session `live` still holds or its draft, else its page (null);
- *  its page too when that place is where `hash` already is. */
-export function placeOf(project: string, live: (id: string) => boolean, hash: string): string | null {
-  const at = places.get(project);
-  if (at === HOME) return hash === "" && homeProject() === project ? null : HOME;
-  return at && live(at) && hash !== `#thread/${encodeURIComponent(at)}` ? at : null;
-}
 const opened = new Set<string>();
 
 function slotOf(owner: string): Slot {

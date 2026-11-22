@@ -1,8 +1,5 @@
 import { EmptyState } from "../components/empty-state";
-import { useDaemon } from "../daemon";
-import { setHomeDraft } from "../home/start";
 import { Folder } from "../icons";
-import { HOME, placeOf } from "../shell/tab-store";
 import { useProjects } from "./projects";
 import { daemonSettings, ProjectSettings } from "./settings";
 
@@ -22,19 +19,6 @@ export function ProjectPage({ id }: { id: string }) {
 
 /** Opens a project's page. */
 export const openProject = (id: string) => (window.location.hash = `#project/${encodeURIComponent(id)}`);
-
-/** A project's row or strip square: back to the last place used in it, its page when there's none or you're there [D865]. */
-export function useOpenPlace(): (id: string) => void {
-  const { rows } = useDaemon();
-  return (id) => {
-    const at = placeOf(id, (each) => Boolean(rows?.some((row) => row.id === each && !row.archived)), window.location.hash);
-    if (at === HOME) {
-      setHomeDraft({ project: id, chat: false, locked: true });
-      window.location.hash = "";
-    } else if (at) window.location.hash = `#thread/${encodeURIComponent(at)}`;
-    else openProject(id);
-  };
-}
 
 /** `#project/<id>`'s project, or null; an old `#project/<id>/<tab>` is its project's too. */
 export function projectPageOf(hash: string): string | null {
