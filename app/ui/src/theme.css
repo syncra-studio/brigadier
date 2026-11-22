@@ -2585,6 +2585,14 @@
   }
 }
 
+/* A PR's state pill: its state's colour, washed 10% behind it, 15% on hover where it opens a menu [D238]. */
+@utility state-pill {
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  &:is(button):hover {
+    background-color: color-mix(in srgb, currentColor 15%, transparent);
+  }
+}
+
 /* The Pull Requests page's floating review chat [D237]: 10 in from the main area's end and foot,
    560 + 12 wide, expanded 640 tall but never past the area less 32; the composer fills it and, compact, is all it shows. */
 @utility review-dock-place {
@@ -2617,7 +2625,7 @@
 }
 /* With no tab bar on the Pull Requests page, a PR's toolbar is the titlebar's row: it drags the window and
    starts past the titlebar's toggle and arrows while the sidebar leaves them over the page [D240]. */
-@utility pr-titlebar {
+@utility toolbar-in-titlebar {
   & [data-slot="pr-toolbar"] {
     margin-top: calc(var(--spacing-tab-bar) * -1);
     -webkit-app-region: drag;

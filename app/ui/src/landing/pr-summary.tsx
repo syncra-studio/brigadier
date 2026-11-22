@@ -5,50 +5,91 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
-import { Input } from "../components/input";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../components/menu";
 import { Segmented } from "../components/segmented";
 import { Textarea } from "../components/textarea";
-import { Branch, Check, ChevronDown, ChevronRight, Copy, Pencil } from "../icons";
+import { showToast } from "../components/toast";
+import { ArrowRight, Branch, Check, ChevronDown, ChevronRight, Filter, Pencil, Spinner } from "../icons";
 import { Eye } from "../icons/settings";
 import { Commit } from "../icons/thread";
 import { prAct, said } from "./pr-act";
 import { PrAside } from "./pr-aside";
 import { Body, CommentCard, Reactions, Writer } from "./pr-comment";
-import { Avatar, type Sends } from "./pr-parts";
+import { Avatar, type Sends, StateIcon } from "./pr-parts";
 import { ThreadCard } from "./pr-thread";
 import { ago, STATE_WORDS } from "./pr-words";
 import type { PrComment, PrItem, PullRequest } from "./pull-requests";
 
 const PILL = {
-  open: "bg-success-wash text-success",
-  draft: "bg-fill text-muted-foreground",
-  merged: "bg-tag-purple-wash text-pr-purple",
-  closed: "bg-destructive-wash text-destructive",
+  open: "text-success",
+  draft: "text-muted-foreground",
+  merged: "text-pr-purple",
+  closed: "text-destructive",
 };
+const PILL_LOOK = "inline-flex h-6.5 items-center gap-1 state-pill rounded-capsule px-2.5 text-sm leading-5 font-medium whitespace-nowrap svg:size-icon-xs";
 
-/** A value in the header that copies itself on a press: #n and the branches. */
-function CopyChip({ value, label, children, mono }: { value: string; label: string; children: ReactNode; mono?: boolean }) {
-  const [copied, setCopied] = useState(false);
+/** A header value that copies itself on a press: plain text, "Copy …" its tooltip, Copied its toast. */
+function Copy({ value, label, className, children }: { value: string; label: string; className?: string; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={() => {
-        copyWithToast(value, label.toLowerCase());
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
-      className={cx("group/chip flex h-6 max-w-60 min-w-0 cursor-pointer items-center gap-1 rounded-control bg-fill px-1.5 text-xs text-foreground hover:bg-muted focus-visible:focus-ring svg:size-icon-xs", mono && "font-mono")}
-    >
-      <span className="truncate">{children}</span>
-      <span className="hidden text-muted-foreground group-hover/chip:flex">{copied ? <Check /> : <Copy />}</span>
+    <button type="button" aria-label={label} title={`Copy ${value}`} onClick={() => copyWithToast(value, "Copied")} className={cx("min-w-0 max-w-full cursor-pointer underline-offset-2 hover:text-foreground focus-visible:underline focus-visible:outline-none", className)}>
+      {children}
     </button>
   );
 }
 
-/** The title: an Edit beside it for who may, opening it in place; Save sends it to GitHub [D165]. */
+/** A branch cut in its middle, its last 6 letters always shown. */
+const BranchName = ({ name }: { name: string }) => (
+  <span className="flex max-w-50 min-w-0 text-base">
+    <span className="truncate">{name.slice(0, -6)}</span>
+    <span className="shrink-0">{name.slice(-6)}</span>
+  </span>
+);
+
+const MOVES = [
+  { to: "draft", label: "Draft" },
+  { to: "open", label: "Open" },
+  { to: "closed", label: "Closed" },
+] as const;
+
+/** The state's pill; for who may change it, a menu of Draft / Open / Closed, the current one checked [D238]. */
+function StatePill({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const [busy, setBusy] = useState(false);
+  const icon = <StateIcon state={pr.state} className="svg:size-icon-xs" />;
+  if (!pr.canEdit || !pr.ref || pr.state === "merged") {
+    return (
+      <span className={cx(PILL_LOOK, PILL[pr.state])}>
+        {icon}
+        {STATE_WORDS[pr.state]}
+      </span>
+    );
+  }
+  const move = (to: (typeof MOVES)[number]["to"]) => {
+    const verb = to === "draft" ? "draft" : to === "closed" ? "close" : pr.state === "draft" ? "ready" : "reopen";
+    setBusy(true);
+    prAct(verb, pr.ref!)
+      .catch((cause: Error) => showToast(cause.message || "GitHub could not update this pull request", { tone: "error" }))
+      .finally(() => (setBusy(false), sends.onChanged()));
+  };
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger aria-busy={busy || undefined} disabled={busy} className={cx(PILL_LOOK, PILL[pr.state], "cursor-pointer focus-visible:focus-ring")}>
+        {icon}
+        {STATE_WORDS[pr.state]}
+        {busy ? <Spinner className="motion-safe:animate-spin" /> : <ChevronDown />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {MOVES.map(({ to, label }) => (
+          <DropdownMenuItem key={to} disabled={pr.state === to || (pr.state === "closed" && to === "draft")} onClick={() => move(to)}>
+            <span className="flex-1">{label}</span>
+            {pr.state === to && <Check />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The title: its pencil always after it for who may edit, opening it in place; Save sends it to GitHub [D165 D238]. */
 function Title({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,67 +104,91 @@ function Title({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   };
   if (editing !== null) {
     return (
-      <div className="flex flex-col gap-2">
-        <Input
-          aria-label="Pull request title"
-          autoFocus
-          value={editing}
-          disabled={busy}
-          onChange={(event) => setEditing(event.target.value)}
-          onKeyDown={(event) => (event.key === "Enter" ? save() : event.key === "Escape" && setEditing(null))}
-          className="text-xl"
-        />
+      <form
+        className="flex flex-col gap-3"
+        aria-busy={busy}
+        onSubmit={(event) => (event.preventDefault(), save())}
+        onKeyDown={(event) => event.key === "Escape" && !busy && (event.preventDefault(), setEditing(null))}
+      >
+        <span className="-mx-2 -my-1 block rounded-xl border border-border bg-fill-subtle px-2 py-1 focus-within:border-ring">
+          <textarea
+            aria-label="Pull request title"
+            autoFocus
+            rows={1}
+            value={editing}
+            disabled={busy}
+            onChange={(event) => setEditing(event.target.value.replace(/[\r\n]+/g, " "))}
+            onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), save())}
+            className="field-sizing-content block max-h-24 w-full resize-none bg-transparent font-display text-2xl leading-tight font-medium tracking-tight outline-none focus-visible:outline-none"
+          />
+        </span>
         <ErrorLine error={error} />
-        <div className="flex justify-end gap-2">
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
-            Cancel
-          </Button>
-          <Button size="sm" disabled={busy || !editing.trim()} onClick={save}>
+        <div className="flex gap-1.5">
+          <Button size="sm" type="submit" disabled={busy || !editing.trim()}>
+            {busy ? <Spinner className="motion-safe:animate-spin" /> : <Check />}
             Save
           </Button>
+          {!busy && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+              Cancel
+            </Button>
+          )}
         </div>
-      </div>
+      </form>
     );
   }
   return (
-    <h1 className="group/title font-display text-2xl leading-tight font-medium tracking-tight break-words">
-      {pr.title}
-      {pr.canEdit && (
-        <button type="button" aria-label="Edit title" title="Edit title" onClick={() => setEditing(pr.title)} className="ms-2 inline-flex size-6 cursor-pointer items-center justify-center rounded-control align-middle text-muted-foreground opacity-0 group-hover/title:opacity-100 hover:bg-fill hover:text-foreground focus-visible:opacity-100 focus-visible:focus-ring svg:size-icon-sm">
-          <Pencil />
-        </button>
+    <header className="font-display text-2xl leading-tight font-medium tracking-tight text-pretty">
+      <h1 className="inline break-words">{pr.title}</h1>
+      {pr.canEdit && pr.ref && (
+        <span className="ms-1 inline-flex align-middle">
+          <button type="button" aria-label="Edit title" title="Edit title" onClick={() => setEditing(pr.title)} className="inline-flex size-6 cursor-pointer items-center justify-center rounded-control text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring svg:size-icon-sm">
+            <Pencil />
+          </button>
+        </span>
       )}
-    </h1>
+    </header>
   );
 }
 
-/** The heading: title, then state, #n, who opened it and when, From → Into [D165]. */
+/** The heading [D238]: the state pill, repo and #n; the title; who opened it, when, and head → base. */
 function Heading({ pr, sends }: { pr: PullRequest; sends: Sends }) {
+  const repo = pr.repo ?? pr.url.split("/").slice(-4, -2).join("/");
   return (
-    <>
-      <Title pr={pr} sends={sends} />
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-muted-foreground">
-        <span className={cx("flex h-6 items-center rounded-capsule px-2 text-xs font-medium", PILL[pr.state])}>{STATE_WORDS[pr.state]}</span>
-        <CopyChip value={`#${pr.number}`} label={`Copy pull request number #${pr.number}`}>
-          #{pr.number}
-        </CopyChip>
-        <span className="flex items-center gap-1.5">
-          <Avatar login={pr.openedBy} at={pr.checkedAtMs} size="size-4" />
-          <span className="text-foreground">{pr.openedBy}</span>
-          Opened {ago(pr.openedAtMs, sends.now)} ·
+    <section aria-label="Pull request summary" className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 items-baseline gap-2 text-sm select-none">
+        <span className="flex shrink-0">
+          <StatePill pr={pr} sends={sends} />
         </span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          From
-          <CopyChip value={pr.branch} label={`Copy source branch ${pr.branch}`} mono>
-            {pr.branch}
-          </CopyChip>
-          Into
-          <CopyChip value={pr.base} label={`Copy target branch ${pr.base}`} mono>
-            {pr.base}
-          </CopyChip>
+        <span className="flex min-w-0 items-baseline gap-1 text-muted-foreground">
+          <Copy value={repo} label={`Copy repository name ${repo}`} className="truncate">
+            {repo.split("/").pop()}
+          </Copy>
+          <Copy value={String(pr.number)} label={`Copy pull request number #${pr.number}`} className="shrink-0">
+            #{pr.number}
+          </Copy>
         </span>
       </div>
-    </>
+      <Title pr={pr} sends={sends} />
+      <div className="flex min-w-0 items-center gap-x-2 overflow-x-clip text-base text-faint-foreground">
+        <span className="inline-flex min-w-0 shrink-0 items-center gap-2 whitespace-nowrap">
+          <span className="inline-flex min-w-0 items-center gap-2.5">
+            <Avatar login={pr.openedBy} at={pr.checkedAtMs} size="size-5" />
+            <span className="min-w-0 truncate text-foreground">{pr.openedBy}</span>
+          </span>
+          <time title={new Date(pr.openedAtMs).toLocaleString()}>{ago(pr.openedAtMs, sends.now)}</time> ·
+        </span>
+        <span className="flex min-w-0 items-center gap-2 text-muted-foreground svg:size-icon-sm">
+          <Copy value={pr.branch} label={`Copy source branch ${pr.branch}`}>
+            <BranchName name={pr.branch} />
+          </Copy>
+          <ArrowRight className="shrink-0 text-faint-foreground" />
+          <Copy value={pr.base} label={`Copy target branch ${pr.base}`}>
+            <BranchName name={pr.base} />
+          </Copy>
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -308,13 +373,12 @@ function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; o
   const comments = new Map(pr.comments.map((comment) => [comment.id, comment]));
   const items = pr.timeline ?? [];
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <h2 className="flex-1 text-base font-medium">Activity</h2>
+    <section id="pull-request-activity" className="flex min-w-0 flex-col gap-3 border-t border-border pt-6">
+      <div className="flex items-center justify-between gap-2 text-base select-none">
+        <h2 className="font-semibold text-foreground">Activity</h2>
         <DropdownMenu modal={false}>
-          <DropdownMenuTrigger className="flex h-control-xs cursor-pointer items-center gap-1 rounded-control px-1.5 text-sm text-muted-foreground hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill">
-            {FILTERS.find((each) => each.value === filter)!.label}
-            <ChevronDown className="size-icon-xs" />
+          <DropdownMenuTrigger aria-label="Filter activity" title={FILTERS.find((each) => each.value === filter)!.label} className={cx("flex size-control-sm cursor-pointer items-center justify-center rounded-capsule hover:bg-fill hover:text-foreground focus-visible:focus-ring aria-expanded:bg-fill svg:size-icon-md", filter === "all" ? "text-muted-foreground" : "text-foreground")}>
+            <Filter />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup value={filter} onValueChange={(value: Filter) => setFilter(value)}>
@@ -327,7 +391,7 @@ function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; o
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         {filter === "all" && (
           <EventLine icon={<Avatar login={pr.openedBy} at={pr.checkedAtMs} size="size-5" />} at={pr.openedAtMs} sends={sends}>
             <Actor who={pr.openedBy} /> opened this pull request
@@ -342,7 +406,7 @@ function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; o
           </EventLine>
         )}
       </div>
-      <Writer label="Leave a comment" placeholder="Leave a comment" verb="Post comment" mentions={pr.ref} onSend={(text) => prAct("comment", pr.ref!, ...said(text)).finally(sends.onChanged)} />
+      <Writer label="Leave a comment" placeholder="Leave a comment" verb="Comment" mentions={pr.ref} onSend={(text) => prAct("comment", pr.ref!, ...said(text)).finally(sends.onChanged)} />
     </section>
   );
 }
@@ -354,7 +418,7 @@ function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; o
 export function Summary({ pr, sends, onFix, onAddToChat }: { pr: PullRequest; sends: Sends; onFix: (focus: "checks" | "conflicts" | "comments", check?: string) => void; onAddToChat: (c: PrComment) => void }) {
   return (
     <div className="@container/pr-page">
-      <div className="pr-page relative mx-auto w-full max-w-6xl min-w-0 px-6 pb-4">
+      <div className="pr-page relative mx-auto w-full max-w-6xl min-w-0 px-6 pb-dock">
         <div data-pr-heading className="relative flex min-w-0 flex-col gap-2 select-text">
           <Heading pr={pr} sends={sends} />
         </div>

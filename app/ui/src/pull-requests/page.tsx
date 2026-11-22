@@ -24,7 +24,7 @@ type Look = "compact" | "expanded" | "minimised";
 
 export function PrPage({ target, chat, children }: { target: string; chat: string | undefined; children: ReactNode }) {
   return (
-    <main className="pr-titlebar relative flex min-h-0 flex-1 flex-col bg-background">
+    <main className="toolbar-in-titlebar relative flex min-h-0 flex-1 flex-col bg-background">
       {/* Read by the Pull Requests page's own owner, needing no checkout [D159]; Review and Fix ask in its review chat. */}
       <HostOf.Provider value="@">
         <LivePrTab owner={chat ?? HOME} target={target} />
