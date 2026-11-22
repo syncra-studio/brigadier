@@ -2615,3 +2615,16 @@
 @utility pb-dock {
   padding-bottom: calc(var(--spacing) * 30);
 }
+/* With no tab bar on the Pull Requests page, a PR's toolbar is the titlebar's row: it drags the window and
+   starts past the titlebar's toggle and arrows while the sidebar leaves them over the page [D240]. */
+@utility pr-titlebar {
+  & [data-slot="pr-toolbar"] {
+    margin-top: calc(var(--spacing-tab-bar) * -1);
+    -webkit-app-region: drag;
+    padding-inline-start: max(calc(var(--spacing) * 2), calc(var(--spacing-toggle-start) + var(--toggle-room, 0px) - var(--sidebar-shown, 0px)));
+    transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+}

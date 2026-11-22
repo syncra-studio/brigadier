@@ -80,7 +80,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       error={error}
       checking={checking}
       onCheck={read}
-      onReview={() => void askInChat(owner, null, { text: ASK })}
+      onReview={(instructions) => void askInChat(owner, null, { text: instructions ? `${ASK}\n\n${instructions}` : ASK })}
       onFix={(focus, check) => pr && askInChat(owner, check ? { ...pr, checks: pr.checks.filter((each) => each.id === check) } : pr, { focus }).catch((cause) => setError(errorText(cause)))}
       onAddToChat={(c) => void askInChat(owner, null, { text: `${c.author}${c.path ? ` on ${c.path}${c.line === null ? "" : `:${c.line}`}` : ""} (${c.url ?? pr?.url}):\n${c.body.split("\n").map((line) => `> ${line}`).join("\n")}\n\n` })}
       sends={{

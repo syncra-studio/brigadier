@@ -28,7 +28,7 @@ SOFTWARE.
 
 ## Lucide
 
-The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev); `ListBullets` and `ArrowDownUp` are Lucide's own list and arrow-down-up; all under the ISC License:
+The `Dot` icon in `app/ui/src/icons/` came to apps-sdk-ui from Lucide (https://lucide.dev); `ListBullets` and `ArrowDownUp` are Lucide's own list and arrow-down-up, and `GitHub` (app/ui/src/landing/icons.tsx) its github; all under the ISC License:
 
 ```
 ISC License
