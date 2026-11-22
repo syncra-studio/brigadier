@@ -42,6 +42,8 @@ type Read = { found: Record<string, Found>; error?: string };
 
 // A read younger than this isn't asked again when the window comes back.
 const FRESH_MS = 60_000;
+// Each view's last read this run, by its queries and flags: a view seen before paints at once on a revisit [D262].
+const last = new Map<string, Read>();
 
 /**
  * The sections' rows: the kept read at once, then GitHub's; again on focus once stale, and on `again`. `flags` go with each
@@ -49,25 +51,27 @@ const FRESH_MS = 60_000;
  */
 export function useSections(queries: string[], flags: string[] = []): { read: Read | null; again: () => void } {
   const { daemon } = useDaemon();
-  const [read, setRead] = useState<Read | null>(null);
-  const at = useRef(0);
   const key = [...queries, "", ...flags].join("\n");
+  const [read, setRead] = useState<Read | null>(() => last.get(key) ?? null);
+  const at = useRef(0);
   const asking = useRef(key);
   asking.current = key;
-  // Other queries or flags start from nothing: their rows aren't these.
+  // Other queries or flags start from their own last read, or nothing: another view's rows aren't these.
   const [readKey, setReadKey] = useState(key);
   if (readKey !== key) {
     setReadKey(key);
-    setRead(null);
+    setRead(last.get(key) ?? null);
   }
-  const land = (asked: string, reply: Record<string, any>, keptOnly: boolean) =>
-    asked === asking.current &&
-    setRead((now) => {
-      if (!reply.ok) return keptOnly ? now : { found: now?.found ?? {}, error: String(reply.error) };
-      const found = { ...(now?.found ?? {}) };
-      (reply.found as Found[]).forEach((each, i) => (each || !keptOnly) && (found[queries[i]!] = each));
-      return { found };
-    });
+  // A reply for a view since left is still remembered for it, but only the view asked for is shown.
+  const land = (asked: string, reply: Record<string, any>, keptOnly: boolean) => {
+    const now = last.get(asked);
+    if (!reply.ok) return !keptOnly && asked === asking.current && setRead({ found: now?.found ?? {}, error: String(reply.error) });
+    const found = { ...(now?.found ?? {}) };
+    // A kept read only fills what isn't shown yet: it's never newer than this run's.
+    (reply.found as Found[]).forEach((each, i) => (keptOnly ? each && !found[queries[i]!] : true) && (found[queries[i]!] = each));
+    last.set(asked, { found });
+    if (asked === asking.current) setRead({ found });
+  };
   const again = () => {
     if (!queries.length) return;
     at.current = Date.now();

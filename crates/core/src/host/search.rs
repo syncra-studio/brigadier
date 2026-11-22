@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 /// The page size [D609].
 const PAGE: u32 = 30;
-/// Proposed: the last reads of this many queries are kept.
-const KEPT: usize = 20;
+/// Proposed: the last reads of this many queries are kept, enough for the Pull Requests inbox's
+/// views (three queries each, per state, account and project) to paint again after a relaunch [D262].
+const KEPT: usize = 60;
 
 /// A row's fields: a bare row [D613].
 const ROW: &str = "number url title state isDraft headRefName baseRefName createdAt updatedAt additions deletions author { login avatarUrl } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }";

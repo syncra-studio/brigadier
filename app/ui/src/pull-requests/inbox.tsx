@@ -60,7 +60,8 @@ export function PrInbox() {
     return { ...each, rows, more: !!got?.next, error: got?.error ?? null };
   });
   const loading = !scopes || (scoped && !read?.error && sections.some((each) => !each.rows));
-  const failed = read?.error ?? (sections.every((each) => each.error && !each.rows?.length) ? sections[0]!.error : null);
+  // A failed refresh leaves the rows it had in place, as the sidebar does [D262].
+  const failed = sections.every((each) => !each.rows?.length) ? (read?.error ?? (sections.every((each) => each.error) ? sections[0]!.error : null)) : null;
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter">
       <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
@@ -215,12 +216,13 @@ function InboxRow({ row }: { row: PrRow }) {
 /** The menus' choices, Rust's `host @ scopes`: gh's github.com logins and each project's repositories there. */
 function useScopes(): Scopes | null {
   const { daemon } = useDaemon();
-  const [scopes, setScopes] = useState<Scopes | null>(null);
+  // The last read at once, so a revisit doesn't wait on it to ask for its rows [D262].
+  const [scopes, setScopes] = useStored<Scopes | null>("pullRequests.scopes", null);
   useEffect(() => {
     if (!daemon) return;
     ask({ op: "run", args: ["host", "@", "scopes"] }, (reply) =>
       // Unread, the menus offer All alone and the search still goes.
-      setScopes(reply.ok ? { accounts: reply.accounts, projects: reply.projects } : { accounts: [], projects: [] }),
+      setScopes(reply.ok ? { accounts: reply.accounts, projects: reply.projects } : (scopes ?? { accounts: [], projects: [] })),
     );
   }, [daemon]);
   return scopes;
