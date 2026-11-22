@@ -63,7 +63,7 @@ export function PrInbox() {
   const failed = read?.error ?? (sections.every((each) => each.error && !each.rows?.length) ? sections[0]!.error : null);
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter">
-      <div className="mx-auto flex w-full max-w-settings flex-col gap-5 px-5 pt-8 pb-12">
+      <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
         <header className="flex items-center gap-4">
           <h1 className="min-w-0 flex-1 text-page-title font-medium">Pull Requests</h1>
           <Segmented
