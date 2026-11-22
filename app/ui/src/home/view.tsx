@@ -38,7 +38,7 @@ function useGreeting(on: boolean): string {
 }
 
 export type HomeProps = {
-  /** A PR's review chat not started yet: "owner/repo #n", its heading, with no project to pick [D162]. */
+  /** A PR's review chat not started yet: its composer alone, in the floating review chat [D162 D237]. */
   review?: string;
   /** The name onboarding asked for; no greeting without one. */
   name: string;
@@ -139,20 +139,115 @@ export function HomeView(props: HomeProps) {
     });
   }, []);
   const setUp = props.groups?.find((group) => group.unavailable);
+  const composer = (
+    <SharedComposer
+      rail={
+        <>
+          {props.modelError && (
+            <RailItem label="Notices">
+              <ul aria-live="polite">
+                <NoticeRow level="error">{props.modelError}</NoticeRow>
+              </ul>
+            </RailItem>
+          )}
+          {!props.modelError && noModel && (
+            <RailItem label="Notices">
+              <ul aria-live="polite">
+                <NoticeRow
+                  level="info"
+                  action={
+                    setUp &&
+                    props.onSetUp && (
+                      <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
+                        Set up {setUp.label}
+                      </Button>
+                    )
+                  }
+                >
+                  No model is available.
+                </NoticeRow>
+              </ul>
+            </RailItem>
+          )}
+          {holder && (
+            <RailItem label="Notices">
+              <ul aria-live="polite">
+                <NoticeRow
+                  level="warning"
+                  subject={
+                    <ChipContext value={{ onOpen: (_, id) => openThread(id), commands: new Map() }}>
+                      <ComposerChip chip={{ kind: "mention", type: "chat", id: holder.id, label: holder.title }} />
+                    </ChipContext>
+                  }
+                  action={
+                    <Button variant="link-blue" size={null} onClick={() => props.onWorkIn("worktree")}>
+                      New worktree
+                    </Button>
+                  }
+                >
+                  works in the local checkout. Start this session in a new worktree.
+                </NoticeRow>
+              </ul>
+            </RailItem>
+          )}
+          {/* The model strip takes its slot while open; it comes back once the strip has folded [D83]. */}
+          <RailItem label="Composer utility bar" shown={!(strip.present && props.model) && !props.review}>
+            {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
+            <UtilityBar className={projects ? undefined : "invisible"}>
+              <ProjectPicker projects={projects ?? []} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
+              {project?.kind === "folder" && project.folder && <RepoCount folder={project.folder} />}
+              {project && project.kind !== "folder" && (
+                <>
+                  <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} />
+                  <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} worktreeName={props.worktreeName} onBase={props.onBase} onWorktree={props.onWorktree} />
+                </>
+              )}
+            </UtilityBar>
+          </RailItem>
+          {props.model && <ModelStrip strip={strip} groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} asksSwitch={false} />}
+        </>
+      }
+      onDragOver={files.onDragOver}
+      onDrop={files.onDrop}
+      tiles={files.tilesRow}
+      plus={extras.plus}
+      level={props.level}
+      model={props.model && <ModelPill strip={strip} groups={props.groups ?? []} value={props.model} disabled={modelDisabled} />}
+      send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(typed.current)} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
+    >
+      <ComposerField
+        ref={field}
+        initial={props.initial}
+        placeholder={props.review ? "Ask about this pull request" : "Do anything"}
+        autoFocus
+        attachments={files.attachments}
+        onAttach={files.attach}
+        mentions={files.mentions}
+        commands={extras.commands}
+        onOpen={extras.onOpen}
+        onChange={(parts) => {
+          typed.current = parts;
+          setEmpty(isEmpty({ parts, attachmentIds: [] }));
+          props.onDraft?.({ parts, attachmentIds: files.tileIds });
+        }}
+        onSubmit={() => send(field.current?.parts() ?? [])}
+      />
+    </SharedComposer>
+  );
+  // A review chat's draft is the floating review chat's composer alone, its header saying whose PR [D237].
+  if (props.review) return composer;
   return (
     <div className="scroll-gutter-both flex min-h-0 flex-1 flex-col overflow-y-auto">
       {/* The hero ends a little above the middle and the composer sits at the bottom; each takes half the height. */}
       <div className="flex min-h-fit grow basis-0 flex-col items-center justify-end gap-6 px-4 pb-11 select-none">
         <BrigadierMark spinOnHover className="hero-mark size-16 text-foreground opacity-60 hover:opacity-100" />
-        {name && !props.review && (
+        {name && (
           <p className="-mb-3 text-center text-base text-muted-foreground">
             {salutation}, {name}
           </p>
         )}
         <h1 className="text-center font-display text-hero font-normal tracking-hero">
-          {props.review ? (
-            `Reviewing ${props.review}`
-          ) : project && projects ? (
+          {project && projects ? (
             <>
               What should we build in{" "}
               <ProjectPicker heading projects={projects} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
@@ -163,99 +258,7 @@ export function HomeView(props: HomeProps) {
         </h1>
       </div>
       <div className="flex grow basis-0 flex-col justify-end">
-        <SharedComposer
-          rail={
-            <>
-              {props.modelError && (
-                <RailItem label="Notices">
-                  <ul aria-live="polite">
-                    <NoticeRow level="error">{props.modelError}</NoticeRow>
-                  </ul>
-                </RailItem>
-              )}
-              {!props.modelError && noModel && (
-                <RailItem label="Notices">
-                  <ul aria-live="polite">
-                    <NoticeRow
-                      level="info"
-                      action={
-                        setUp &&
-                        props.onSetUp && (
-                          <Button variant="link-blue" size={null} onClick={() => props.onSetUp?.(setUp.provider)}>
-                            Set up {setUp.label}
-                          </Button>
-                        )
-                      }
-                    >
-                      No model is available.
-                    </NoticeRow>
-                  </ul>
-                </RailItem>
-              )}
-              {holder && (
-                <RailItem label="Notices">
-                  <ul aria-live="polite">
-                    <NoticeRow
-                      level="warning"
-                      subject={
-                        <ChipContext value={{ onOpen: (_, id) => openThread(id), commands: new Map() }}>
-                          <ComposerChip chip={{ kind: "mention", type: "chat", id: holder.id, label: holder.title }} />
-                        </ChipContext>
-                      }
-                      action={
-                        <Button variant="link-blue" size={null} onClick={() => props.onWorkIn("worktree")}>
-                          New worktree
-                        </Button>
-                      }
-                    >
-                      works in the local checkout. Start this session in a new worktree.
-                    </NoticeRow>
-                  </ul>
-                </RailItem>
-              )}
-              {/* The model strip takes its slot while open; it comes back once the strip has folded [D83]. */}
-              <RailItem label="Composer utility bar" shown={!(strip.present && props.model) && !props.review}>
-                {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
-                <UtilityBar className={projects ? undefined : "invisible"}>
-                  <ProjectPicker projects={projects ?? []} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
-                  {project?.kind === "folder" && project.folder && <RepoCount folder={project.folder} />}
-                  {project && project.kind !== "folder" && (
-                    <>
-                      <WorkInPicker value={props.workIn} onChange={props.onWorkIn} repo={project.name} />
-                      <BranchPicker workIn={props.workIn} repo={props.repo} name={project.name} base={props.base} worktree={props.worktree} worktreeName={props.worktreeName} onBase={props.onBase} onWorktree={props.onWorktree} />
-                    </>
-                  )}
-                </UtilityBar>
-              </RailItem>
-              {props.model && <ModelStrip strip={strip} groups={props.groups ?? []} value={props.model} onChange={props.onModel} onSetUp={props.onSetUp} asksSwitch={false} />}
-            </>
-          }
-          onDragOver={files.onDragOver}
-          onDrop={files.onDrop}
-          tiles={files.tilesRow}
-          plus={extras.plus}
-          level={props.level}
-          model={props.model && <ModelPill strip={strip} groups={props.groups ?? []} value={props.model} disabled={modelDisabled} />}
-          send={<SendButton empty={empty && files.tileIds.length === 0} running={false} canStop={false} blocked={blocked ?? files.hold(typed.current)} onSend={() => send(field.current?.parts() ?? [])} onStop={() => {}} />}
-        >
-          <ComposerField
-            ref={field}
-            initial={props.initial}
-            placeholder={props.review ? "Ask about this pull request" : "Do anything"}
-            autoFocus
-            attachments={files.attachments}
-            onAttach={files.attach}
-            mentions={files.mentions}
-            commands={extras.commands}
-            onOpen={extras.onOpen}
-            onChange={(parts) => {
-              typed.current = parts;
-              setEmpty(isEmpty({ parts, attachmentIds: [] }));
-              props.onDraft?.({ parts, attachmentIds: files.tileIds });
-            }}
-            onSubmit={() => send(field.current?.parts() ?? [])}
-          />
-        </SharedComposer>
+        {composer}
       </div>
     </div>
   );

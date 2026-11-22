@@ -4,7 +4,6 @@ import { ask, useDaemon } from "../daemon";
 
 import { HOME_DRAFT } from "../session/draft";
 import { putBack } from "../session/side";
-import { closeTab, HOME, openTab, tabsOf, useTabsRead } from "../shell/tab-store";
 import { liveReviewChat, openPrPage, type PrRow } from "./route";
 
 export const ASK = "Review this pull request.";
@@ -13,16 +12,6 @@ export const ASK = "Review this pull request.";
 export function openReview(row: PrRow): void {
   putBack(liveReviewChat(row.ref) ?? HOME_DRAFT, ASK, false);
   openPrPage(row);
-}
-
-/** The review draft's tabs show this PR's, in front, and no other PR's [D162]. */
-export function useReviewTab(ref?: string): void {
-  const read = useTabsRead(HOME);
-  useEffect(() => {
-    if (!ref || !read) return;
-    for (const tab of tabsOf(HOME).tabs) if (tab.kind === "pr" && tab.target !== ref) closeTab(HOME, tab.id);
-    openTab(HOME, "pr", ref);
-  }, [ref, read]);
 }
 
 /** The project of the PR's repository, by its remote: undefined while asked, null when none [D198]. */

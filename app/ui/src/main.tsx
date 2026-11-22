@@ -12,9 +12,9 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, REVIEW_DRAFT, reviewTitle, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
 import { PrPageEmpty, PullRequestsNav } from "./pull-requests/nav";
-import { useReviewTab } from "./pull-requests/review";
+import { PrPage, ReviewDraft } from "./pull-requests/page";
 import { prPageOf, reviewChats } from "./pull-requests/route";
 import { Chat, Key } from "./icons";
 import { EmptyState } from "./components/empty-state";
@@ -123,18 +123,16 @@ function App() {
   }
   const prs = prPageOf(hash);
   if (prs !== null) {
-    // A PR's review chat once its first message went, else its draft beside the PR's tab; no PR, the page's empty state [D159 D162].
+    // A PR fills the page with its review chat floating over it [D237]; no PR, the page's empty state [D159].
     const chat = prs ? chats[prs] : undefined;
     // Before the rows are read it's taken as live, so a send in that moment can't start a second review chat.
-    const live = chat && (rows ? rows.some((row) => row.id === chat && !row.archived) : true);
+    const live = chat && (rows ? rows.some((row) => row.id === chat && !row.archived) : true) ? chat : undefined;
     return (
-      <Shell hash={hash} active={live ? chat : null} rows={rows} prs={prs}>
-        {live ? (
-          <SessionThread id={chat} rows={rows} offline={daemon === null} />
-        ) : prs ? (
-          <Home review={prs}>
-            <HomeDraft />
-          </Home>
+      <Shell hash={hash} active={live ?? null} rows={rows} prs={prs}>
+        {prs ? (
+          <PrPage key={prs} target={prs} chat={live}>
+            {live ? <SessionThread id={live} rows={rows} offline={daemon === null} docked /> : <ReviewDraft review={prs} />}
+          </PrPage>
         ) : (
           <PrPageEmpty />
         )}
@@ -203,7 +201,8 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
         />
         {/* Settings' page is the main area too. */}
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
-        {settings === undefined && page === undefined && prs !== "" && <TabBar owner={active ?? HOME} row={active ? titled : undefined} title={prs ? reviewTitle(prs) : undefined} offline={daemon === null} />}
+        {/* None on the Pull Requests page: a PR fills it, its review chat floating over it [D237]. */}
+        {settings === undefined && page === undefined && prs === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
@@ -218,15 +217,14 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
 }
 
 // Home is a new session's draft [D161]: a project's has that project's tabs [D706].
-function Home({ review, children }: { review?: string; children: ReactNode }) {
+function Home({ children }: { children: ReactNode }) {
   const project = useHomeProject()?.id ?? null;
-  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863]; a PR's review chat, the review draft's [D162].
+  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
   const locked = useHomeDraft().locked === true;
   useLayoutEffect(() => {
-    setHomeDraft({ review });
-    setHomeTabs(review ? null : locked ? project : null, review ? REVIEW_DRAFT : undefined);
-  }, [project, locked, review]);
-  useReviewTab(review);
+    setHomeDraft({ review: undefined });
+    setHomeTabs(locked ? project : null);
+  }, [project, locked]);
   return (
     <>
       <TabbedMain owner={HOME} archived={false}>
@@ -255,7 +253,8 @@ const peekRow = (target: EventTarget, wait = 0) => {
 };
 
 // One session's thread, straight from Rust's fold [D64, D65]; the view draws it, with no folding here.
-function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefined; offline: boolean }) {
+// Docked, it's the Pull Requests page's floating review chat: no tabs, its thread hidden while the dock is compact [D237].
+function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] | undefined; offline: boolean; docked?: boolean }) {
   const row = rows?.find((each) => each.id === id);
   const thread = useRef<ThreadHandle>(null);
   // Before the paint, and the Thread waits for it below: a new one never starts on the last session's rows.
@@ -272,9 +271,7 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
   // Started from Home and not made yet: "not found" means "not yet" [D30].
   const starting = useStart(id);
   const missing = state?.status === "missing" && !starting;
-  return (
-    <>
-      <TabbedMain owner={id} archived={Boolean(row?.archived)}>
+  const body = (
         <div className="flex min-h-0 flex-1">
           {missing ? (
             <EmptyState variant="centered" icon={Chat} title="This conversation isn’t available" detail="Brigadier has no conversation by this name. Pick another in the sidebar." className="m-auto" />
@@ -315,12 +312,16 @@ function SessionThread({ id, rows, offline }: { id: string; rows: Row[] | undefi
               </ThreadDrop>
               </DrawBoundary>
               {/* A follow-up waits for the start to land, never sent to a session Rust hasn't made [D30]. */}
-              {!row?.archived && <SessionComposer key={id} onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
+              {!row?.archived && <SessionComposer key={id} onSent={(cid) => thread.current?.sent(cid)} id={id} row={row} offline={offline} placeholder={docked ? "Ask about this pull request" : undefined} blocked={starting && starting.outcome !== "delivered" ? "Starting…" : undefined} />}
             </div>
           )}
         </div>
-      </TabbedMain>
-    </>
+  );
+  if (docked) return body;
+  return (
+    <TabbedMain owner={id} archived={Boolean(row?.archived)}>
+      {body}
+    </TabbedMain>
   );
 }
 

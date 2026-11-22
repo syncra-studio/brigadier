@@ -55,6 +55,9 @@ export function sendAsNew(source: string, text: string, qid?: string, made = { i
 const back = store<{ source: string; text: string; n: number; above: boolean; draft?: Draft | null } | null>(null);
 export const putBack = (source: string, text: string, above = false, draft?: Draft | null) => back.set({ source, text, above, draft, n: (back.get()?.n ?? 0) + 1 });
 
+/** The last put back, without taking it: the PR page's review chat comes forward for one [D237]. */
+export const usePutBackAsked = () => back.use();
+
 /** Fills session `id`'s composer when one of its lines puts a message back. */
 export function usePutBack(id: string, fill: (text: string, above: boolean, draft?: Draft | null) => void): void {
   const asked = back.use();

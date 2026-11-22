@@ -553,6 +553,8 @@
   --radius-thread: 1.25rem;
   --radius-shell: 0.5rem;
   --radius-composer: 1.375rem;
+  /* The PR page's floating review chat: its composer's corner and the 6 it sits in from the edge [D237]. */
+  --radius-dock: calc(var(--radius-composer) + var(--spacing) * 1.5);
   /* An image attachment's thumbnail. */
 
   --shadow-hairline: inset 0 0 1px 0 oklch(1 0 0 / 20%);
@@ -2581,4 +2583,35 @@
     height: 1px;
     border: 0;
   }
+}
+
+/* The Pull Requests page's floating review chat [D237]: 10 in from the main area's end and foot,
+   560 + 12 wide, expanded 640 tall but never past the area less 32; the composer fills it and, compact, is all it shows. */
+@utility review-dock-place {
+  inset-inline-end: calc(var(--spacing) * 2.5);
+  bottom: calc(var(--spacing) * 2.5);
+  max-width: calc(100% - var(--spacing) * 5);
+}
+@utility review-dock {
+  width: calc(var(--spacing) * 143);
+  /* Its thread's fades meet its own fill. */
+  --color-background: var(--color-popover);
+  &[data-dock="expanded"] {
+    height: min(calc(var(--spacing) * 160), calc(100% - var(--spacing) * 8));
+  }
+  /* Compact, the thread before the composer goes. */
+  &[data-dock="compact"] div:has(+ div > [data-slot="composer"]) {
+    display: none;
+  }
+  & div:has(> [data-slot="composer"]) {
+    padding: 0;
+  }
+  & [data-slot="composer"] {
+    max-width: none;
+    padding-inline: 0;
+  }
+}
+/* What a page under it keeps clear at its foot. */
+@utility pb-dock {
+  padding-bottom: calc(var(--spacing) * 30);
 }

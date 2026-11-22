@@ -142,7 +142,7 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
  * wave 3, D191); ⌘⏎ or ⌥⏎ does the other, steering only where the agent can; ⌘⏎ in an empty field steers the first
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159].
  */
-export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source }) {
+export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource, placeholder = "Do anything" }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source; placeholder?: string }) {
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
   const model = useSessionModel(id, row, offline);
@@ -473,7 +473,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerField
         ref={field}
         initial={initial}
-        placeholder={toWorker ? `Message ${toWorker.name}` : "Do anything"}
+        placeholder={toWorker ? `Message ${toWorker.name}` : placeholder}
         attachments={files.attachments}
         onAttach={files.attach}
         mentions={{ ...files.mentions, onDirect: setTo }}
