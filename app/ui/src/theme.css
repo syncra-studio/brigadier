@@ -1765,6 +1765,26 @@
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
     opacity: 0;
   }
+  /* The same rule between the sidebar toggle and the first tab, with the sidebar folded (shown, the tabs start past
+     its edge); none beside the front tab or a hovered one. Centred between the toggle's icon and the tab's, 13 to each,
+     as "+"'s rule is 10 from both its neighbours' [D291]. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    margin-block: auto;
+    inset-inline-start: -3px;
+    height: var(--spacing-session-tab-rule-height);
+    width: var(--spacing-session-tab-rule);
+    background: var(--color-border);
+    pointer-events: none;
+  }
+  [data-slot="sidebar-wrapper"][data-state="expanded"] &::before {
+    opacity: 0;
+  }
+  &:has(> .session-tab:first-child:is([data-active], [data-closing], :hover))::before {
+    opacity: 0;
+  }
 }
 
 /* The strip scrolled: 40 fades at the edges it hides tabs under [D44]. */
