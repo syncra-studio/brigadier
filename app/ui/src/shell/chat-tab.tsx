@@ -60,7 +60,8 @@ export function CloseAllDialog() {
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
 export function leave(row: SessionRow | undefined): void {
-  if (row) setHomeDraft(row.project ? { project: row.project, chat: false, locked: true } : { chat: true, locked: false });
+  // A chat in no project goes back to New chat's draft as it was left [D282].
+  if (row) setHomeDraft(row.project ? { project: row.project, chat: false, locked: true } : { locked: false });
   window.location.hash = "";
   if (row?.mark === "working" || row?.mark === "needs") showToast("Still running. Reopen it from the sidebar.");
 }

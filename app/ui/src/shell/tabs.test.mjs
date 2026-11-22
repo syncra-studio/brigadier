@@ -53,3 +53,38 @@ test("New chat and a project's New session keep their own words [D863]", async (
   setHomeDraft({ project: "p", chat: false });
   assert.equal(draftKey(), "@home", "New chat picking a project stays New chat's draft");
 });
+
+test("New chat is one draft, back as it was left; a project's New chat is that project's own [D282]", async () => {
+  const closed = [];
+  globalThis.window = { location: { hash: "" } };
+  const store = (value) => ({ get: () => value, set: (next) => (value = next), use: () => value });
+  const { draftKey, useHomeDraft, setHomeDraft, newSession, newChat, pickHomeProject } = await load("../home/start.ts", {
+    "../session/draft": { HOME_DRAFT: "@home", keepDraft: () => {} },
+    "../onboarding/api": { store },
+    "../shell/tab-store": { CHAT: "chat", selectTab: () => {}, closeOthers: (owner, keep) => closed.push([owner, keep]) },
+  });
+  pickHomeProject("p", null);
+  assert.deepEqual(closed, [["@home", "chat"]], "another project closes New chat's tabs but Chat");
+  pickHomeProject("p", "p");
+  assert.equal(closed.length, 1, "the same project again leaves them");
+  const left = useHomeDraft();
+  newChat();
+  assert.equal(useHomeDraft(), left, "on New chat already, New chat changes nothing");
+  newSession("q");
+  assert.equal(draftKey(), "@home:q", "a project's New chat is its own draft");
+  window.location.hash = "#settings/general";
+  newChat();
+  assert.equal(draftKey(), "@home");
+  assert.equal(useHomeDraft().project, "p", "New chat comes back in the project it was left in");
+  assert.equal(useHomeDraft().chat, false);
+  assert.equal(window.location.hash, "");
+  setHomeDraft({ model: { provider: "fake", model: "m" } });
+  newSession("q");
+  assert.equal(useHomeDraft().model, null, "q's draft kept its own model");
+  setHomeDraft({ review: "github.com/o/r#1" });
+  setHomeDraft({ review: undefined });
+  assert.equal(draftKey(), "@home:q", "the review chat's draft gives q's back");
+  assert.equal(useHomeDraft().project, "q");
+  pickHomeProject(null, "q");
+  assert.equal(closed.length, 1, "a project's own draft never closes New chat's tabs");
+});

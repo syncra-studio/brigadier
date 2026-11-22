@@ -78,8 +78,8 @@ function App() {
   // Rust's rows, with the sessions Home is still starting [D30].
   const rows = useStartingRows(open);
   const chats = reviewChats.use();
-  // File › New Session (⌘N): Home in the open session's project [D184].
-  useEffect(() => window.brigadier?.onMenu((command) => command === "new-session" && newSession(rows?.find((row) => row.id === open)?.project)), [rows, open]);
+  // ⌘N and File › New Chat: New chat's one draft, from anywhere [D184 D282].
+  useEffect(() => window.brigadier?.onMenu((command) => command === "new-session" && newChat()), []);
   const profile = useProfile();
   // The profile says whether this is the first launch: asked again on each reconnect until known.
   useEffect(() => {

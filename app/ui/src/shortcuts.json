@@ -2,7 +2,7 @@
   { "id": "settings", "keys": ["CmdOrCtrl+,"], "name": "Settings", "line": "Open Settings" },
   { "id": "shortcuts", "keys": ["CmdOrCtrl+/"], "name": "Keyboard shortcuts", "line": "Show every shortcut" },
   { "id": "search", "keys": ["CmdOrCtrl+K"], "name": "Search", "line": "Search projects and sessions" },
-  { "id": "new-session", "keys": ["CmdOrCtrl+N"], "name": "New session", "line": "Start a new session" },
+  { "id": "new-session", "keys": ["CmdOrCtrl+N"], "name": "New chat", "line": "Back to New chat, as you left it" },
   { "id": "open-folder", "keys": ["CmdOrCtrl+O"], "name": "Open folder", "line": "Add a folder as a project" },
   { "id": "sidebar", "keys": ["CmdOrCtrl+B"], "name": "Toggle sidebar", "line": "Show or hide the sidebar" },
   { "id": "back", "keys": ["CmdOrCtrl+["], "name": "Back", "line": "Go back to the place shown before" },

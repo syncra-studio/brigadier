@@ -9,7 +9,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeTab, openTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
+import { carryHome, CHAT, closeOthers, closeTab, openTab, rereadHome, selectTab, tabsOf } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
@@ -54,7 +54,17 @@ export type HomeDraft = {
 };
 const draft = store<HomeDraft>({ project: null, chat: false, workIn: "worktree", model: null, focus: 0 });
 export const useHomeDraft = draft.use;
-export const setHomeDraft = (change: Partial<HomeDraft>) => draft.set({ ...draft.get(), ...change });
+// Each draft as it was left, by its key: New chat's one, each project's, the review chat's [D282].
+const kept = new Map<string, HomeDraft>();
+/** A change that moves to another draft keeps this one and takes that one back as it was left [D282]. */
+export function setHomeDraft(change: Partial<HomeDraft>): void {
+  const now = draft.get();
+  const next = { ...now, ...change };
+  const [from, to] = [draftKey(now), draftKey(next)];
+  if (from === to) return draft.set(next);
+  kept.set(from, now);
+  draft.set({ ...(kept.get(to) ?? next), ...change, focus: next.focus });
+}
 /** Where the draft's words are kept: a project's New session has its own, apart from New chat's [D863]. */
 export const draftKey = (d: Pick<HomeDraft, "locked" | "project" | "review"> = draft.get()) => (d.review ? REVIEW_DRAFT : d.locked && d.project ? `${HOME_DRAFT}:${d.project}` : HOME_DRAFT);
 /** Review chats' draft and tabs, one for every PR not yet asked about; in no project [D162]. */
@@ -74,11 +84,18 @@ export function newChatIn(project: string, worktree: string, name: string): void
   setHomeDraft({ once: { project, worktree, name } });
 }
 
-/** Home in no project, from the sidebar's New chat [D421]. */
+/** The one New chat draft, from anywhere, back as it was left: its project, words and tabs; there already, nothing changes [D282]. */
 export function newChat(): void {
-  setHomeDraft({ chat: true, locked: false, focus: draft.get().focus + 1 });
-  selectTab(draftKey(), CHAT);
+  if (window.location.hash === "" && draftKey() === HOME_DRAFT) return;
+  // Its tab too, as it was left: not Chat's if a page was showing.
+  setHomeDraft({ locked: false, review: undefined, focus: draft.get().focus + 1 });
   window.location.hash = "";
+}
+
+/** New chat's own project picker: another project, or none, closes its tabs but Chat; its words stay [D282]. */
+export function pickHomeProject(next: string | null, shown: string | null): void {
+  if (next !== shown && draftKey() === HOME_DRAFT) closeOthers(HOME_DRAFT, CHAT);
+  setHomeDraft(next ? { project: next, chat: false } : { chat: true });
 }
 
 /** `outcome` is Rust's for the message; `asking` while a command is out; `error` why it didn't go. */

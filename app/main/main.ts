@@ -330,7 +330,7 @@ ipcMain.on("traffic-lights", (event, x: number) => {
 const closesTab = new WeakSet<Electron.WebContents>();
 ipcMain.on("closes-tab", (event, on: boolean) => void (on ? closesTab.add(event.sender) : closesTab.delete(event.sender)));
 
-// The standard menus plus File › New Session (⌘N) [D184] and Add project's: File › Open Folder… (⌘O, the
+// The standard menus plus File › New Chat (⌘N) [D184 D282] and Add project's: File › Open Folder… (⌘O, the
 // picker, several at once) and View › Add project…, each told to the page, which does the rest [D165].
 function setMenu(): void {
   const tell = (window: BrowserWindow | undefined, command: string, paths?: string[]) => window?.webContents.send("menu", command, paths);
@@ -362,7 +362,7 @@ function setMenu(): void {
       {
         label: "File",
         submenu: [
-          { label: "New Session", accelerator: keysOf("new-session"), click: (_item, window) => tell(window as BrowserWindow | undefined, "new-session") },
+          { label: "New Chat", accelerator: keysOf("new-session"), click: (_item, window) => tell(window as BrowserWindow | undefined, "new-session") },
           { type: "separator" },
           { label: "Open Folder…", accelerator: keysOf("open-folder"), click: (_item, window) => void openFolder(window as BrowserWindow | undefined) },
           { type: "separator" },

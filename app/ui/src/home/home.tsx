@@ -20,7 +20,7 @@ import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
-import { discard, draftKey, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
+import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 import { prName } from "../pull-requests/route";
@@ -144,9 +144,9 @@ export function HomeDraft() {
         projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
         locked={draft.locked}
-        // Picking a project only sets this draft's, and stays on it [D261].
-        onProject={(id) => setHomeDraft({ project: id, chat: false })}
-        onNoProject={() => setHomeDraft({ chat: true })}
+        // Picking a project only sets this draft's, and stays on it [D261 D282].
+        onProject={(id) => pickHomeProject(id, project?.id ?? null)}
+        onNoProject={() => pickHomeProject(null, project?.id ?? null)}
         onAddProject={(path) => {
           before.current = new Set(projects?.map((each) => each.id));
           openAddProject(path);
