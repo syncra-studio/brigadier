@@ -462,8 +462,8 @@
   /* The window's inset [D55]: the sidebar card's gap to the window's start (the surface's 4px and the panel's own 4px),
      kept by the right panel and the summary card at the window's end, and by every card and the composer at its bottom. */
   --spacing-window-inset: calc(var(--spacing-surface-inset) + var(--spacing));
-  /* A scroll view's faded edges. */
-  --spacing-fade-top: 2rem;
+  /* A scroll view's faded edges; the top one the thread's 1rem [D462], light enough that what passes under only dims [D235]. */
+  --spacing-fade-top: 1rem;
   --spacing-fade-bottom: 2rem;
   /* A scroll list's fade this tall (the old theme's). */
   --spacing-group-fade: 1.5rem;
@@ -1402,7 +1402,12 @@
    reaches over a floating button too. */
 @utility fade-top {
   height: var(--spacing-fade-top);
-  background-image: linear-gradient(to bottom, var(--color-background), transparent);
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--color-background) 80%, transparent),
+    color-mix(in oklab, var(--color-background) 30%, transparent) 50%,
+    transparent
+  );
 }
 @utility fade-bottom {
   height: var(--spacing-fade-bottom);
