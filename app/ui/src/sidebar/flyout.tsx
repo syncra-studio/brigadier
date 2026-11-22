@@ -26,6 +26,28 @@ type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => v
 /** The mark a row draws: needs-you and unread aren't drawn on the session you're looking at. */
 const markOf = (row: SessionRow, active: string | null) => (row.id === active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark);
 
+/** A list's section: its heading stays, only its rows scroll, so what's above and below it stays in view [D280]. */
+function Section({ heading, actions, children }: { heading: ReactNode; actions?: ReactNode; children: ReactNode }) {
+  const title = (
+    <DropdownMenuLabel variant="heading" role="heading" aria-level={2} className="min-w-0 truncate">
+      {heading}
+    </DropdownMenuLabel>
+  );
+  return (
+    <section className="flex min-h-0 flex-col">
+      {actions ? (
+        <div className="flex items-center justify-between">
+          {title}
+          <span className="flex items-center">{actions}</span>
+        </div>
+      ) : (
+        title
+      )}
+      <NavList className="min-h-0 overflow-y-auto">{children}</NavList>
+    </section>
+  );
+}
+
 /** A strip icon and its list, with a blue dot while anything in it has a mark. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
 function Flyout({ label, icon, lit = false, pressed, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -46,7 +68,7 @@ function Flyout({ label, icon, lit = false, pressed, children }: { label: string
         sideOffset={() => spacingPx() * 3}
         aria-label={label}
         padded={false}
-        className="flex max-h-available w-72 flex-col overflow-y-auto p-1.5"
+        className="flex max-h-available w-72 flex-col p-1.5"
       >
         {children(pick)}
       </PopoverContent>
@@ -95,7 +117,7 @@ export function ProjectSquare({ project, tone, current, attention, chats, ...row
   return (
     <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />} lit={attention} pressed={current}>
       {(pick) => (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3">
           <NavList>
             <li>
               <NavRow onClick={() => pick(() => newSession(project.id))}>
@@ -104,17 +126,12 @@ export function ProjectSquare({ project, tone, current, attention, chats, ...row
               </NavRow>
             </li>
           </NavList>
-          <section>
-            <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
-              {project.name}
-            </DropdownMenuLabel>
-            <NavList>
-              {chats.map((row) => (
-                <Line key={row.id} row={row} pick={pick} {...rows} />
-              ))}
-              {chats.length === 0 && <EmptyState as="li" title="Chats you start in this project appear here." />}
-            </NavList>
-          </section>
+          <Section heading={project.name}>
+            {chats.map((row) => (
+              <Line key={row.id} row={row} pick={pick} {...rows} />
+            ))}
+            {chats.length === 0 && <EmptyState as="li" title="Chats you start in this project appear here." />}
+          </Section>
           <NavList>
             <li>
               <NavRow onClick={() => pick(() => openProject(project.id))}>
@@ -143,19 +160,12 @@ export function ChatsFlyout({ chats, ...rows }: Rows & { chats: SessionRow[] }) 
   return (
     <Flyout label="Chats" icon={<Chats />} lit={chats.some((row) => markOf(row, rows.active))}>
       {(pick) => (
-        <div className="flex flex-col gap-3">
-          <section>
-            <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
-              Chats
-            </DropdownMenuLabel>
-            <NavList>
-              {chats.map((row) => (
-                <Line key={row.id} row={row} pick={pick} {...rows} />
-              ))}
-              {chats.length === 0 && <EmptyState as="li" title="Chats you start appear here." />}
-            </NavList>
-          </section>
-        </div>
+        <Section heading="Chats">
+          {chats.map((row) => (
+            <Line key={row.id} row={row} pick={pick} {...rows} />
+          ))}
+          {chats.length === 0 && <EmptyState as="li" title="Chats you start appear here." />}
+        </Section>
       )}
     </Flyout>
   );
@@ -178,21 +188,11 @@ export function ArchivedFlyout({ archived, ...rows }: Rows & { archived: Session
   return (
     <Flyout label="Archived" icon={<Archive />}>
       {(pick) => (
-        <section>
-          <div className="flex items-center justify-between">
-            <DropdownMenuLabel variant="heading" role="heading" aria-level={2}>
-              Archived
-            </DropdownMenuLabel>
-            <span className="flex items-center">
-              <ArchivedActions count={archived.length} />
-            </span>
-          </div>
-          <NavList>
-            {archived.map((row) => (
-              <Line key={row.id} row={row} pick={pick} {...rows} />
-            ))}
-          </NavList>
-        </section>
+        <Section heading="Archived" actions={<ArchivedActions count={archived.length} />}>
+          {archived.map((row) => (
+            <Line key={row.id} row={row} pick={pick} {...rows} />
+          ))}
+        </Section>
       )}
     </Flyout>
   );
