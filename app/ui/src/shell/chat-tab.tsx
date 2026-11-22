@@ -142,7 +142,8 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
           onMouseUp={middleLeaves}
           onClick={() => selectTab(owner, CHAT)}
           onDoubleClick={startRename}
-          className={BUTTON}
+          // Plain, it's a title, not a button [D230].
+          className={cx(BUTTON, plain && "cursor-default!")}
         >
           {icon}
           <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>

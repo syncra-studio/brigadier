@@ -1781,7 +1781,7 @@
   /* The only tab: no chip, its title plain and white, its icon 16 in and its title 48,
      growing from its title's width into tab 1 as a tab opens [D196]. */
   interpolate-size: allow-keywords;
-  & > button {
+  & > [role="tab"] {
     transition:
       padding-inline-start var(--duration-session-tab) var(--ease-session-tab),
       gap var(--duration-session-tab) var(--ease-session-tab);
@@ -1793,7 +1793,7 @@
     &::after {
       content: none;
     }
-    & > button {
+    & > [role="tab"] {
       padding-inline-start: calc(var(--spacing) * 2);
       gap: calc(var(--spacing) * 4);
     }
