@@ -6,7 +6,7 @@ import { cx } from "../components/cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, MenuRow } from "../components/menu";
 import { TooltipIconButton } from "../components/icon-button";
-import { ArrowDownUp, Bolt, Chat, Check, ChevronRight, Comment, Eye, Filter, Folder, ListBullets, Plus, Sidebar } from "../icons";
+import { ArrowDownUp, Bolt, Chat, Check, ChevronRight, Comment, Eye, Folder, ListBullets, ListFilter, Plus, Sidebar } from "../icons";
 import { openAddProject } from "../projects/store";
 import { ProjectBadge } from "./row";
 import { useStored } from "./sidebar";
@@ -63,14 +63,14 @@ function ShowRow({ name, checked, onChange, mark, count }: { name: string; check
   );
 }
 
-/** The View button, Filter, in the sidebar's header before Search [D23]; before it, how many projects show while anything is left out. */
+/** The View button, Lucide's list-filter as Codex draws it [D289], in the sidebar's header before Search [D23]; before it, how many projects show while anything is left out. */
 export function ViewTrigger({ projects, show }: { projects: Project[]; show: ShowFilter }) {
   const shown = projects.length - show.hiddenProjects.size;
   return (
     <>
       {!show.all && <span className="me-1 text-xs whitespace-nowrap text-marker-foreground">{shown === 1 ? "1 project" : `${shown} projects`}</span>}
       <PopoverTrigger render={<TooltipIconButton tooltip="View" look="head" side="bottom" data-filtered={!show.all || undefined} className="data-filtered:bg-fill data-filtered:text-foreground" />}>
-        <Filter />
+        <ListFilter />
       </PopoverTrigger>
     </>
   );
