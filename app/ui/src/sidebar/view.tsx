@@ -163,13 +163,13 @@ export function ViewMenu({
             )}
           </div>
           <div className="scroll-edge-fade edge-fade-sidebar max-h-60 overflow-y-auto">
-            {projects.map((project, tone) => (
+            {projects.map((project) => (
               <ShowRow
                 key={project.id}
                 name={project.name}
                 checked={!show.hiddenProjects.has(project.id)}
                 onChange={(on) => tickProject(project.id, on)}
-                mark={<ProjectBadge id={project.id} name={project.name} tone={tone} />}
+                mark={<ProjectBadge id={project.id} name={project.name} />}
                 count={count(project.id)}
               />
             ))}

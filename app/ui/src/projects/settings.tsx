@@ -108,7 +108,7 @@ const Profile = ({ name, hue, before = "" }: { name: string; hue: number; before
   </span>
 );
 
-export function ProjectSettings({ project, tone = 0, source }: { project: Project; tone?: number; source: SettingsSource }) {
+export function ProjectSettings({ project, source }: { project: Project; source: SettingsSource }) {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [github, setGithub] = useState<GithubAccounts | null>(null);
   const [checking, setChecking] = useState(true);
@@ -174,7 +174,7 @@ export function ProjectSettings({ project, tone = 0, source }: { project: Projec
     <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 py-6">
       <ul aria-label="General">
         <Row label="Name" line="What the sidebar and this page call it; its icon is the folder's logo, else these initials" error={errors.name}>
-          <ProjectBadge id={project.id} name={project.name} tone={tone} />
+          <ProjectBadge id={project.id} name={project.name} />
           <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : setErrors((now) => ({ ...now, name: "Name can't be empty." })))} />
         </Row>
         <Row label="Folder" line={sessions > 0 ? `Where it is on this Mac; it has ${plural(sessions, "session", "sessions")}, so it can't move` : "Where it is on this Mac; a new folder is asked about trust again"} error={errors.folder}>

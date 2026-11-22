@@ -183,7 +183,6 @@ export function AppSidebar({
       key={each.id}
       row={each}
       project={each.project === null ? undefined : projectOf.get(each.project)}
-      tone={projects.findIndex((project) => project.id === each.project)}
       active={each.id === active}
       canPin={pinsSessions}
       offline={offline}
@@ -199,7 +198,7 @@ export function AppSidebar({
     const key = `project:${project.id}`;
     const chats = chatsIn(project.id);
     return (
-      <ProjectRow key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
+      <ProjectRow key={project.id} project={project} current={page === project.id} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
         {chats.map((each) => row(each, { indent: true }))}
       </ProjectRow>
     );
@@ -224,14 +223,13 @@ export function AppSidebar({
                   key={each.id}
                   row={each}
                   project={each.project === null ? undefined : projectOf.get(each.project)}
-                  tone={projects.findIndex((project) => project.id === each.project)}
                   active={each.id === active}
                   attention={attentionOf([each], active)}
                   onOpen={onOpen}
                 />
               ))
             : [...pinnedProjects, ...unpinnedProjects].map((project) => (
-                <ProjectSquare key={project.id} project={project} tone={projects.indexOf(project)} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
+                <ProjectSquare key={project.id} project={project} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
               ))}
           {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
           {pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />}

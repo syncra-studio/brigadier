@@ -12,7 +12,7 @@ import { setSetting, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
-import { BarChart, ChevronRight, FeedbackGlyph, Lightbulb, Settings } from "../icons";
+import { BarChart, ChevronRight, Lightbulb, Settings, ThumbMixed } from "../icons";
 import { openFeedback } from "../feedback/dialog";
 import { keysOf } from "../shortcuts";
 import { UpdatesRow } from "./updates";
@@ -204,7 +204,7 @@ export function StripFoot({ settings = false, row = false }: { settings?: boolea
     <KeepAwakeMenu key="awake" />,
     // Feedback sits in the foot [new-design].
     <TooltipIconButton key="feedback" look="rail" side={side} tooltip="Send Feedback" onClick={() => openFeedback()}>
-      <FeedbackGlyph />
+      <ThumbMixed />
     </TooltipIconButton>,
     <TooltipIconButton key="settings" look="rail" side={side} tooltip="Settings" shortcut={keysOf("settings")[0]} pressed={settings} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
       <Settings />

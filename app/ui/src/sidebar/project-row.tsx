@@ -10,6 +10,7 @@ import { Input } from "../components/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/menu";
 import { NavFold, NavList, NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
+import { ScrollFade } from "../components/scroll-fade";
 import { showToast } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Archive, ComposeEditSquare, DotsHorizontal, FolderOpen, Pencil, Pin, Settings, Unpin, X } from "../icons";
@@ -27,12 +28,11 @@ const asking = store<{ project: Project; archive?: SessionRow[] } | null>(null);
 
 /**
  * A project's row [D28 D30]: its badge and name; a click opens and closes its sessions under it (`children`,
- * at the name's x), "No chats" when it has none. Hovered, "…" (its actions, as a right-click) and New session [D62].
- * Folded, a dot says a session in it has something new or needs you.
+ * at the name's x), five rows tall at most and scrolling past that [D282], "No chats" when it has none. Hovered, "…"
+ * (its actions, as a right-click) and New session [D62]. Folded, a dot says a session in it has something new or needs you.
  */
-export function ProjectRow({ project, tone, current, open, onToggle, attention, chats, children }: {
+export function ProjectRow({ project, current, open, onToggle, attention, chats, children }: {
   project: Project;
-  tone: number;
   /** Its page shows. */
   current: boolean;
   open: boolean;
@@ -49,7 +49,7 @@ export function ProjectRow({ project, tone, current, open, onToggle, attention, 
         <ContextMenuTrigger render={<div className="group/row relative" />}>
           <NavRow aria-expanded={open} aria-current={current ? "page" : undefined} className={cx("pe-1.5", ROOM_FOR_TWO)} onClick={onToggle}>
             {/* Its logo, else its initials, in place of a folder [D28]. */}
-            <ProjectBadge id={project.id} name={project.name} tone={tone} />
+            <ProjectBadge id={project.id} name={project.name} />
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
             <span className={cx("flex shrink-0 empty:hidden", HIDE_ON_HOVER)}>{!open && attention && <SidebarMark mark="unread" label="A session needs your attention" />}</span>
           </NavRow>
@@ -71,10 +71,19 @@ export function ProjectRow({ project, tone, current, open, onToggle, attention, 
         <ContextMenuContent>{items}</ContextMenuContent>
       </ContextMenu>
       <NavFold open={open}>
-        <NavList className="pt-px pb-2">
-          {children}
-          {chats.length === 0 && <li className="flex h-nav-row items-center ps-8 text-sm text-faint-foreground">No chats</li>}
-        </NavList>
+        {/* Five rows at most; more scroll inside, faded at an end while there is more that way [D282]. */}
+        <div className="pt-px pb-2">
+          <div className="scroll-fade-scope relative">
+            <div className="project-chats scroll-fade-source hide-scrollbar">
+              <NavList>
+                {children}
+                {chats.length === 0 && <li className="flex h-nav-row items-center ps-8 text-sm text-faint-foreground">No chats</li>}
+              </NavList>
+            </div>
+            <ScrollFade side="top" surface="sidebar" whileMore />
+            <ScrollFade surface="sidebar" whileMore />
+          </div>
+        </div>
       </NavFold>
     </li>
   );

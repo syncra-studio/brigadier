@@ -97,6 +97,16 @@ export function useStatusWords(row: SessionRow): string | null {
   return statusWords(row);
 }
 
+/** Which of `count` hues a project's tile takes: FNV-1a of its name, mixed (murmur3's finaliser) so names alike spread
+ *  over the hues; the same name always gets the same hue. Their constants in decimal, as FNV publishes its own [D283]. */
+export function hueOf(name: string, count: number): number {
+  let hash = 2166136261;
+  for (const char of name) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
+  hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+  return ((hash ^ (hash >>> 16)) >>> 0) % count;
+}
+
 /** A project's initials for its badge: the first letters of its first two words, else its first two. */
 export function projectInitials(name: string): string {
   const [first = "", second] = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);

@@ -12,7 +12,7 @@ import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { pin } from "./actions";
 import { RowMenuItems } from "./menu";
-import { type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
+import { hueOf, type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
 const SLOT = "flex size-icon-lg shrink-0 items-center justify-center";
 
@@ -55,16 +55,8 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-// Finder's tags in their order, each project the next as it is added, so neighbours differ [new-design].
-const TAGS = [
-  "bg-tag-red-wash text-tag-red",
-  "bg-tag-orange-wash text-tag-orange",
-  "bg-tag-yellow-wash text-tag-yellow",
-  "bg-tag-green-wash text-tag-green",
-  "bg-tag-blue-wash text-tag-blue",
-  "bg-tag-purple-wash text-tag-purple",
-  "bg-tag-grey-wash text-tag-grey",
-];
+// Ten playful hues, one per project by its name's hash [D283].
+const TAGS = ["bg-tile-coral", "bg-tile-mint", "bg-tile-sunflower", "bg-tile-violet", "bg-tile-sky", "bg-tile-tangerine", "bg-tile-lime", "bg-tile-pink", "bg-tile-periwinkle", "bg-tile-rose"];
 
 // Every badge's one square and corners, initials or logo, so none is wider than another [D62].
 const BADGE = "shrink-0 overflow-hidden rounded-badge";
@@ -74,16 +66,15 @@ const logos = new Map<string, boolean>();
 
 /**
  * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
- * project's colour. `tone` is the project's place in the order projects were added, so it keeps its colour as
- * others are added. Initials show while the logo is looked for. `size` is its square and its initials' size, larger in the strip [D811].
+ * project's hue, picked from its name. Initials show while the logo is looked for. `size` is its square and its initials' size, larger in the strip [D811].
  */
-export function ProjectBadge({ id, name, tone = 0, size = "size-icon-md text-badge" }: { id?: string; name: string | null; tone: number | undefined; size?: string }) {
+export function ProjectBadge({ id, name, size = "size-icon-md text-badge" }: { id?: string; name: string | null; size?: string }) {
   const [, found] = useState(false);
   const logo = id === undefined || name === null ? false : logos.get(id);
   const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
   if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, size, "object-cover")} />;
   return (
-    <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold", name === null ? "bg-fill text-marker-foreground" : TAGS[((tone % TAGS.length) + TAGS.length) % TAGS.length])}>
+    <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold", name === null ? "bg-fill text-marker-foreground" : cx("text-tile-ink", TAGS[hueOf(name, TAGS.length)]))}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
       {logo === undefined && (
         <img
@@ -144,7 +135,6 @@ export const ROOM_FOR_TWO = "group-hover/row:pe-14 group-has-focus-visible/row:p
 export function SessionRowItem({
   row,
   project,
-  tone,
   active,
   badged = false,
   canPin = true,
@@ -158,8 +148,6 @@ export function SessionRowItem({
 }: {
   row: SessionRow;
   project: Project | undefined;
-  /** The project's place in the projects list, for its badge's colour. */
-  tone?: number;
   active: boolean;
   badged?: boolean;
   canPin?: boolean;
@@ -200,7 +188,7 @@ export function SessionRowItem({
             }
           >
             {/* A chat with no project: the OpenAI SDK Chat icon, as its tab [D218 D214]. */}
-            {badged && (project ? <ProjectBadge id={project.id} name={project.name} tone={tone} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
+            {badged && (project ? <ProjectBadge id={project.id} name={project.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             <span className={cx("flex shrink-0 empty:hidden", live && HIDE_ON_HOVER, offline && "opacity-disabled")}>
               <SidebarMark mark={mark} label={label} />
@@ -226,7 +214,7 @@ export function SessionRowItem({
                   <>
                     <div className="border-t border-border" />
                     <div className={cx(CARD_LINE, "text-sm")}>
-                      <ProjectBadge id={project.id} name={project.name} tone={tone} />
+                      <ProjectBadge id={project.id} name={project.name} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>
                   </>

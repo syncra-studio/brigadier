@@ -93,8 +93,8 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
 /** The chat's project icon, its sidebar row's badge [D36]; a Chat bubble with no project [D214]. */
 function ProjectIcon({ project }: { project: string | null | undefined }) {
   const projects = useProjects() ?? [];
-  const tone = projects.findIndex((each) => each.id === project);
-  return tone >= 0 ? <ProjectBadge id={project!} name={projects[tone]!.name} tone={tone} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
+  const named = projects.find((each) => each.id === project);
+  return named ? <ProjectBadge id={named.id} name={named.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
 }
 
 /** A chat or session's first tab, never moved: its title and its state, and its "…" with the row's actions. It has no

@@ -113,9 +113,9 @@ export const attentionOf = (rows: SessionRow[], active: string | null) => rows.s
 
 /** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its list,
  *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]. */
-export function ProjectSquare({ project, tone, current, attention, chats, ...rows }: Rows & { project: Project; tone: number; current: boolean; attention: boolean; chats: SessionRow[] }) {
+export function ProjectSquare({ project, current, attention, chats, ...rows }: Rows & { project: Project; current: boolean; attention: boolean; chats: SessionRow[] }) {
   return (
-    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} tone={tone} size="size-6 text-2xs" />} lit={attention} pressed={current}>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} size="size-6 text-2xs" />} lit={attention} pressed={current}>
       {(pick) => (
         <div className="flex min-h-0 flex-col gap-3">
           <NavList>
@@ -147,10 +147,10 @@ export function ProjectSquare({ project, tone, current, attention, chats, ...row
 }
 
 /** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
-export function SessionSquare({ row, project, tone, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; tone: number; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
+export function SessionSquare({ row, project, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
   return (
     <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
-      <ProjectBadge id={project?.id} name={project?.name ?? null} tone={tone} size="size-4.5 text-badge" />
+      <ProjectBadge id={project?.id} name={project?.name ?? null} size="size-4.5 text-badge" />
     </TooltipIconButton>
   );
 }

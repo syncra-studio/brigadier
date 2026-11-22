@@ -16,6 +16,8 @@
   /* The strip and sidebar's fill: the card, or on a Mac 65% main over the window fill (80% #282828) over the
      window's vibrancy [D76]. */
   --color-sidebar: var(--color-card);
+  /* The sidebar's fill as it shows on screen, opaque, for what lies over it (a ScrollFade) [D282]. */
+  --color-sidebar-solid: var(--color-card);
   --color-window-fill: transparent;
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
@@ -76,21 +78,18 @@
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
   --color-success-wash: color-mix(in oklab, var(--color-success) 15%, transparent);
-  /* Finder's tag colours (Apple's system colours, dark), a project badge's text on its 15% wash [new-design]. */
-  --color-tag-red: rgb(255 69 58);
-  --color-tag-red-wash: color-mix(in oklab, var(--color-tag-red) 15%, transparent);
-  --color-tag-orange: rgb(255 159 10);
-  --color-tag-orange-wash: color-mix(in oklab, var(--color-tag-orange) 15%, transparent);
-  --color-tag-yellow: rgb(255 214 10);
-  --color-tag-yellow-wash: color-mix(in oklab, var(--color-tag-yellow) 15%, transparent);
-  --color-tag-green: rgb(48 209 88);
-  --color-tag-green-wash: color-mix(in oklab, var(--color-tag-green) 15%, transparent);
-  --color-tag-blue: rgb(10 132 255);
-  --color-tag-blue-wash: color-mix(in oklab, var(--color-tag-blue) 15%, transparent);
-  --color-tag-purple: rgb(191 90 242);
-  --color-tag-purple-wash: color-mix(in oklab, var(--color-tag-purple) 15%, transparent);
-  --color-tag-grey: rgb(152 152 157);
-  --color-tag-grey-wash: color-mix(in oklab, var(--color-tag-grey) 15%, transparent);
+  /* A project's initials tile: ten playful hues, its initials in the one dark ink, each 7:1 or more [D283]. */
+  --color-tile-coral: #ff7a6b;
+  --color-tile-mint: #38d9a9;
+  --color-tile-sunflower: #ffd43b;
+  --color-tile-violet: #b197fc;
+  --color-tile-sky: #4dabf7;
+  --color-tile-tangerine: #ff9f43;
+  --color-tile-lime: #a9e34b;
+  --color-tile-pink: #ff8fd8;
+  --color-tile-periwinkle: #91a7ff;
+  --color-tile-rose: #f783ac;
+  --color-tile-ink: #161616;
   /* Pull request words, the old app's PR colours. */
   --color-pr-yellow: #fbc959;
   --color-pr-purple: #d080e2;
@@ -734,8 +733,11 @@
 :root[data-platform="darwin"] {
   --color-sidebar: color-mix(in oklab, var(--color-background) 65%, transparent);
   --color-window-fill: color-mix(in oklab, #282828 80%, transparent);
+  /* What those show over the dark material, measured on screen [D282]. */
+  --color-sidebar-solid: rgb(30 29 29);
   &[data-key] {
     --color-window-fill: color-mix(in oklab, #484848 80%, transparent);
+    --color-sidebar-solid: rgb(39 39 39);
   }
   & body:has([data-slot="sidebar-wrapper"]) {
     background: transparent;
@@ -1399,26 +1401,73 @@
   }
 }
 
-/* A scroll view's bottom edge: what scrolls under it fades into the background; raised, it reaches over a
-   floating button too. */
+/* A scroll view's edge (ScrollFade): what scrolls under it fades into the surface it sits on, the main area's unless
+   data-surface says the sidebar's; raised, it reaches over a floating button. data-while-more shows it only while there
+   is more to scroll that way, by the nearest scroll-fade-source's timeline (scroll-fade-scope) [D282 D284]. */
+@keyframes scroll-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes scroll-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@utility scroll-fade-scope {
+  timeline-scope: --scroll-fade;
+}
+@utility scroll-fade-source {
+  scroll-timeline: --scroll-fade y;
+}
+@utility fade-top {
+  --fade-fill: var(--color-background);
+  height: var(--spacing-fade-bottom);
+  background-image: linear-gradient(to bottom, var(--fade-fill), transparent);
+  &[data-surface="sidebar"] {
+    --fade-fill: var(--color-sidebar-solid);
+  }
+  &[data-while-more] {
+    opacity: 0;
+    animation: scroll-fade-in linear both;
+    animation-timeline: --scroll-fade;
+    animation-range: 0px var(--spacing-fade-bottom);
+  }
+}
 @utility fade-bottom {
+  --fade-fill: var(--color-background);
   height: var(--spacing-fade-bottom);
   background-image: linear-gradient(
     to top,
-    var(--color-background) 0%,
-    var(--color-background) calc(100% - var(--spacing-fade-bottom)),
+    var(--fade-fill) 0%,
+    var(--fade-fill) calc(100% - var(--spacing-fade-bottom)),
     transparent 100%
   );
+  &[data-surface="sidebar"] {
+    --fade-fill: var(--color-sidebar-solid);
+  }
+  &[data-while-more] {
+    opacity: 0;
+    animation: scroll-fade-out linear both;
+    animation-timeline: --scroll-fade;
+    animation-range: calc(100% - var(--spacing-fade-bottom)) 100%;
+  }
   /* Raised (the thread's jump button, which floats over it): no solid band, the text dissolves along a smoothstep. */
   &[data-raised] {
     height: 64px;
     background-image: linear-gradient(
       to top,
-      var(--color-background) 0%,
-      color-mix(in oklab, var(--color-background) 90%, transparent) 20%,
-      color-mix(in oklab, var(--color-background) 65%, transparent) 40%,
-      color-mix(in oklab, var(--color-background) 35%, transparent) 60%,
-      color-mix(in oklab, var(--color-background) 10%, transparent) 80%,
+      var(--fade-fill) 0%,
+      color-mix(in oklab, var(--fade-fill) 90%, transparent) 20%,
+      color-mix(in oklab, var(--fade-fill) 65%, transparent) 40%,
+      color-mix(in oklab, var(--fade-fill) 35%, transparent) 60%,
+      color-mix(in oklab, var(--fade-fill) 10%, transparent) 80%,
       transparent 100%
     );
   }
@@ -1495,18 +1544,12 @@
   height: 1px;
   background: var(--color-border);
 }
-/* The strip's top scrolls once it reaches the foot; the foot's rule shows only then: its scroll timeline is active only
-   while it can scroll [D191]. */
-@utility strip-timeline {
-  timeline-scope: --strip;
-}
-@utility strip-scroll {
-  scroll-timeline: --strip y;
-}
+/* The strip's squares scroll between its actions and its foot; the foot's rule shows only while they can: their
+   scroll timeline (scroll-fade-source, the strip its scope) is active only then [D191 D284]. */
 @utility strip-foot-rule {
   opacity: 0;
   animation: strip-touching linear both;
-  animation-timeline: --strip;
+  animation-timeline: --scroll-fade;
 }
 @keyframes strip-touching {
   from,
@@ -2053,6 +2096,13 @@
   --edge-size-bottom: 0px;
   /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
   animation-direction: reverse;
+}
+/* An unfolded project's sessions: five rows tall at most, the rest scrolling inside it under its ScrollFades; a row
+   focused or opened past an end scrolls in clear of them [D282]. */
+@utility project-chats {
+  max-height: calc(var(--spacing-nav-row) * 5 + 4px);
+  overflow-y: auto;
+  scroll-padding-block: var(--spacing-fade-bottom);
 }
 /* The old sidebar's fade lengths, only while there is more to scroll that way. */
 @utility edge-fade-sidebar {

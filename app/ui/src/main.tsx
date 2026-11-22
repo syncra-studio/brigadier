@@ -178,7 +178,7 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
   const pulls = hash.startsWith("#pull-requests");
   const home = active === null && page === undefined && settings === undefined && prs === undefined;
   const rail = (squares?: ReactNode) => (
-    <Strip home={home} pulls={pulls} settings={settings}>
+    <Strip pulls={pulls} settings={settings}>
       {squares}
     </Strip>
   );
