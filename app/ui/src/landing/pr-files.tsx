@@ -2,13 +2,17 @@ import { memo, type ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { flushSync } from "react-dom";
 
 import { Button } from "../components/button";
-import { Checkbox } from "../components/checkbox";
+import { cx } from "../components/cx";
+import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
+import { TooltipIconButton } from "../components/icon-button";
 import { NavRow } from "../components/nav";
 import { Skeleton } from "../components/skeleton";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
-import { ChevronDown, ChevronRight, Folder } from "../icons";
+import { CheckCircle, ChevronDown, ChevronRight, Folder } from "../icons";
+import { Eye } from "../icons/settings";
+import { Comment } from "../icons/sidebar";
 import { FileIcon } from "../icons/file-types";
 import type { Sides } from "../review/diff-view";
 import { FileSection } from "../review/file-section";
@@ -173,19 +177,23 @@ export function PrFiles({
   const card = (thread: PrThread) => <ThreadCard key={thread.id} pr={pr} thread={thread} comments={comments} sends={sends} onAddToChat={onAddToChat} bare />;
 
   return (
-    <div data-slot="pr-files" className="flex min-h-0 flex-1 gap-4 px-5 pt-3">
-      {look.tree && <FileTree files={shownFiles} current={current} onPick={go} />}
+    <div data-slot="pr-files" className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        <ErrorLine size="sm" error={error} className="shrink-0 pb-3" />
-        <div ref={list} data-slot="pr-diffs" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5">
+        <ErrorLine size="sm" error={files && error} className="shrink-0 px-4 py-3" />
+        <div ref={list} data-slot="pr-diffs" className="flex min-h-0 flex-1 flex-col overflow-auto pb-dock">
           {!files ? (
-            !error && <FilesLoading />
+            error ? (
+              <EmptyState variant="centered" title="Changes unavailable" detail={<Button size="sm" variant="secondary" onClick={read}>Try again</Button>} className="h-full" />
+            ) : (
+              <FilesLoading />
+            )
           ) : files.files.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No changed files</p>
+            <EmptyState variant="centered" title="No changed files" className="h-full" />
           ) : (
             shownFiles.slice(0, limit).map((file) => {
               const mine = threads.get(file.path) ?? [];
               const isViewed = viewed[file.path] ?? file.viewed === "viewed";
+              const threadWords = `${mine.length} comment thread${mine.length === 1 ? "" : "s"} in this file`;
               return (
                 <PrFile
                   key={file.path}
@@ -197,13 +205,17 @@ export function PrFiles({
                   notes={mine.flatMap(({ thread, line }) => (line === null ? [] : [{ side: thread.left ? ("deletions" as const) : ("additions" as const), line, key: thread.id, node: card(thread) }]))}
                   above={mine.some(({ line }) => line === null) && <div className="flex flex-col gap-2 border-b border-border p-2">{mine.filter(({ line }) => line === null).map(({ thread }) => card(thread))}</div>}
                   end={
-                    <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                      {mine.length > 0 && <span title={`${mine.length} comment thread${mine.length === 1 ? "" : "s"} in this file`}>{mine.length} 💬</span>}
+                    <span className="ms-auto flex shrink-0 items-center gap-2">
+                      {mine.length > 0 && (
+                        <span role="img" aria-label={threadWords} title={threadWords} className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-faint-foreground tabular-nums svg:size-icon-xs">
+                          <Comment />
+                          {mine.length}
+                        </span>
+                      )}
                       {pr.ref && (
-                        <label title={isViewed ? "Mark as unviewed" : "Mark as viewed"} className="flex cursor-pointer items-center gap-1.5">
-                          <Checkbox aria-label={`Mark ${file.path} as ${isViewed ? "unviewed" : "viewed"}`} checked={isViewed} onCheckedChange={(on) => markViewed(file.path, on)} />
-                          Viewed
-                        </label>
+                        <TooltipIconButton tooltip={isViewed ? "Mark as unviewed" : "Mark as viewed"} look="round" aria-label={`Mark ${file.path} as ${isViewed ? "unviewed" : "viewed"}`} aria-pressed={isViewed} onClick={() => markViewed(file.path, !isViewed)} className="text-faint-foreground hover:text-foreground">
+                          {isViewed ? <CheckCircle className="text-success" /> : <Eye />}
+                        </TooltipIconButton>
                       )}
                     </span>
                   }
@@ -213,12 +225,12 @@ export function PrFiles({
             })
           )}
           {files && limit < files.files.length && (
-            <Button variant="soft" size="sm" className="self-start" onClick={() => setLimit((now) => now + PAGE)}>
+            <Button variant="soft" size="sm" className="m-4 self-start" onClick={() => setLimit((now) => now + PAGE)}>
               Load more
             </Button>
           )}
           {cut && (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-4 text-sm text-muted-foreground">
               Showing {files.files.length} of {files.total} files ·{" "}
               <button type="button" className="cursor-pointer underline-offset-2 hover:underline" onClick={onOpen}>
                 See the rest on {pr.host}
@@ -227,6 +239,7 @@ export function PrFiles({
           )}
         </div>
       </div>
+      {look.tree && <FileTree files={shownFiles} current={current} onPick={go} />}
     </div>
   );
 }
@@ -238,8 +251,8 @@ type Extra = Pick<Parameters<typeof FileSection>[0], "notes" | "above" | "end" |
 /** One file's card, drawn again only when its own fold, connection, threads or look change. */
 const PrFile = memo(function PrFile({ file, collapsed, connected, acts, split, notes, above, end, onComment }: { file: File; collapsed: boolean; connected: boolean; acts: Acts; split: boolean; above?: ReactNode } & Extra) {
   return (
+    <div className={cx("border-t border-border first:border-t-0", !collapsed && "drawn-when-seen")}>
     <FileSection
-      card
       file={file}
       contents={file}
       look={split ? SPLIT : LOOK}
@@ -255,6 +268,7 @@ const PrFile = memo(function PrFile({ file, collapsed, connected, acts, split, n
       comments={NO_COMMENTS}
       onRemoveComment={NONE}
     />
+    </div>
   );
 });
 
@@ -322,11 +336,11 @@ function FileTree({ files, current, onPick }: { files: readonly File[]; current:
       );
     });
   return (
-    <nav aria-label="Changed files" className="flex w-64 shrink-0 flex-col gap-2 pb-5">
+    <nav aria-label="Changed files" className="flex w-72 shrink-0 flex-col gap-2 border-s border-border bg-background p-3">
       <div className="flex shrink-0">
         <SearchField label="Filter files…" value={filter} onChange={setFilter} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-dock">
         {files.length > 0 && tree.length === 0 ? <p className="px-2 py-1 text-sm text-muted-foreground">No files match</p> : rows(tree)}
       </div>
     </nav>
