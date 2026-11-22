@@ -126,7 +126,7 @@ pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
             .map(|login| json!({"login": login, "sees": null}))
             .collect();
         return Ok(
-            json!({"ok": true, "github": true, "repo": repo.path, "url": repo.url(), "ssh": ssh, "auto": null, "logins": all}),
+            json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": null, "logins": all}),
         );
     }
     let sees: Vec<bool> = thread::scope(|s| {
@@ -148,7 +148,7 @@ pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
         .map(|(login, sees)| json!({"login": login, "sees": sees}))
         .collect();
     Ok(
-        json!({"ok": true, "github": true, "repo": repo.path, "url": repo.url(), "ssh": ssh, "auto": auto, "logins": all}),
+        json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": auto, "logins": all}),
     )
 }
 
