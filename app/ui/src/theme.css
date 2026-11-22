@@ -13,7 +13,8 @@
   --color-chrome: var(--color-card);
   /* Sidebar, strip, right panel and window fill: an opaque sidebar, in hex for main (Windows' caption buttons). */
   --color-card: #262626;
-  /* The strip and sidebar's fill: the card, or on a Mac none, the window fill's glass alone [D76 D244]. */
+  /* The strip and sidebar's fill: the card, or on a Mac 65% main over the window fill (80% #282828) over the
+     window's vibrancy [D76]. */
   --color-sidebar: var(--color-card);
   --color-window-fill: transparent;
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
@@ -727,14 +728,14 @@
 :root {
   color-scheme: dark;
 }
-/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76], as one
-   glass, the main colour at 64% over it (about #222), 72% once the window isn't key [D244]. One fill, so hiding the
-   sidebar eases only its alpha to the main area's, no flash [D193]. */
+/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76]. Electron's
+   material stays dark behind a key window, where the reference lights up: its sidebar reads #262626 key and #1e1e1e not, ours
+   #1d1d1d both ways, so while key the window fill stands in for it, #262626 on screen [D188]. */
 :root[data-platform="darwin"] {
-  --color-sidebar: transparent;
-  --color-window-fill: color-mix(in oklab, var(--color-background) 72%, transparent);
+  --color-sidebar: color-mix(in oklab, var(--color-background) 65%, transparent);
+  --color-window-fill: color-mix(in oklab, #282828 80%, transparent);
   &[data-key] {
-    --color-window-fill: color-mix(in oklab, var(--color-background) 64%, transparent);
+    --color-window-fill: color-mix(in oklab, #484848 80%, transparent);
   }
   & body:has([data-slot="sidebar-wrapper"]) {
     background: transparent;
