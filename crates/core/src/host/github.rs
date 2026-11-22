@@ -2,6 +2,7 @@
 //! clone through gh as the account that sees it [D168, D202, D625, D631].
 
 use super::{GH_SECS, accounts, avatars, err, failed, setup, token, tool};
+use crate::git::{self, Checkout, Target};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::{io, thread};
@@ -156,15 +157,21 @@ fn list(gh: &str, token: Option<String>) -> io::Result<Option<Vec<Value>>> {
 }
 
 /// A project's repositories on github.com (`owner/name`), as the Pull Requests page's Project menu scopes its search [D243].
+/// Read from each checkout's remote, as `pr()` needs a branch and a detached HEAD would read as none.
 pub fn project_repos(data: &Path, id: &str) -> Vec<String> {
-    let Ok(pr) = super::pr(data, id) else {
-        return Vec::new();
+    let checkouts: Vec<Checkout> = match crate::projects::get(data, id) {
+        Ok(p) if p.kind == crate::folder::KIND => {
+            let home = Path::new(&p.folder);
+            (crate::folder::repos(home).into_iter())
+                .filter_map(|r| git::at(data, &home.join(r)).ok())
+                .collect()
+        }
+        _ => git::checkout(data, &Target::Project(id))
+            .into_iter()
+            .collect(),
     };
-    let all = match pr.scope.is_empty() {
-        true => pr.repo.into_iter().collect(),
-        false => pr.scope,
-    };
-    (all.into_iter())
+    (checkouts.into_iter().filter_map(super::hosted))
+        .map(|(_, r)| r)
         .filter(|r| r.kind == super::Kind::GitHub && r.host == HOST)
         .map(|r| r.path)
         .collect()
