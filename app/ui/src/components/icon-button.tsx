@@ -31,7 +31,7 @@ export type TooltipIconButtonProps = ButtonProps & {
   /**
    * `ghost`: a quiet icon in a card, row or composer; its tip shows at once. `toolbar` and `strip` take their tip timing
    * from the provider around them (TitlebarTips, the sidebar). `rail`: the strip's 36 square, its tip a 30-tall pill 2px
-   * beside it, the foot's too [D11 D204]. `head`: the sidebar header's 29×28 [D23 D24]. `bar`: the tab bar's and the chat's own 28
+   * beside it on one line, as wide as its words, the foot's too [D11 D204 D279]. `head`: the sidebar header's 29×28 [D23 D24]. `bar`: the tab bar's and the chat's own 28
    * square (its …, Toggle pinned summary), `round` the 32 one at the row's end, the Files toggle; a rounded square, not
    * a circle [D39 D40 D44 D200 D213].
    */
@@ -93,7 +93,7 @@ export function TooltipIconButton({
   return (
     <Tooltip>
       <TooltipTrigger delay={ghost ? 0 : undefined} render={button} />
-      <TooltipContent side={side} {...(look === "rail" && { sideOffset: spacingPx() / 2, className: "h-7.5" })}>
+      <TooltipContent side={side} {...(look === "rail" && { sideOffset: spacingPx() / 2, className: "h-7.5 max-w-none whitespace-nowrap" })}>
         {tooltip}
         {shortcut && <Kbd>{shortcut}</Kbd>}
       </TooltipContent>
