@@ -179,7 +179,7 @@ function Overview({
   const accounts = useAccounts().agents;
   const installed = (list ?? []).filter((agent) => stateOf(agent) !== "install");
   const missing = (list ?? []).filter((agent) => stateOf(agent) === "install");
-  const settingUp = (agent: Agent) => setup.starting === agent.name || Boolean(agent.setup?.running);
+  const settingUp = (agent: Agent) => Boolean(setup.starting[agent.name]) || Boolean(agent.setup?.running);
   return (
     <div className={cx("flex flex-col gap-10", !online && "opacity-disabled")}>
       <SettingsSection title="Fallback" setting="Fallback">

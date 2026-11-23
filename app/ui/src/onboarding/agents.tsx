@@ -7,7 +7,7 @@ import { ErrorLine } from "../components/error-line";
 import { Input } from "../components/input";
 import { useDaemon } from "../daemon";
 import { ArrowUpRight, Plug, Spinner, Terminal, Warning } from "../icons";
-import { type Agent, checkAll, checkOne, errorText, run, useAgents } from "./api";
+import { type Agent, checkAll, checkOne, errorText, run, store, useAgents } from "./api";
 import { MAC, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
 /** How often an agent is checked again while its install or sign-in runs. */
@@ -31,12 +31,16 @@ const RANK: Record<State, number> = { ready: 0, noModel: 1, signIn: 1, running: 
 
 const listNames = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
+type SetupAction = "install" | "sign-in" | "update";
+/** Each agent whose run was asked for and hasn't answered yet, with which: one window-wide, so a view drawn again (the sidebar collapsed) or another of the same agent still knows. */
+const startingRuns = store<Readonly<Record<string, SetupAction>>>({});
+
 /**
  * What drives an agent's card: its install or sign-in run, checked again while it goes and closed once it ends well,
  * and why one failed; a finished install waits for its Sign in to be pressed. Onboarding's step and the model picker's Set up share it.
  */
 export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
-  const [starting, setStarting] = useState<string | null>(null);
+  const starting = startingRuns.use();
   const [failed, setFailed] = useState<Record<string, string>>({});
 
   // While a run goes its agent is checked again; one that ended well goes by itself.
@@ -60,9 +64,9 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
       (cause) => setFailed((all) => ({ ...all, [name]: errorText(cause) })),
     );
 
-  const begin = async (agent: Agent, action: "install" | "sign-in" | "update") => {
+  const begin = async (agent: Agent, action: SetupAction) => {
     setFailed(({ [agent.name]: _, ...rest }) => rest);
-    setStarting(agent.name);
+    startingRuns.set({ ...startingRuns.get(), [agent.name]: action });
     try {
       // Wide, so a link it prints stays on one line; fewer rows than its pane, as a picker drawn taller and then
       // shrunk to the pane shows its top lines twice, while one grown redraws clean.
@@ -73,7 +77,8 @@ export function useAgentSetup(list: Agent[] | undefined, online: boolean) {
       setFailed((all) => ({ ...all, [agent.name]: errorText(cause) }));
       return false;
     } finally {
-      setStarting(null);
+      const { [agent.name]: _, ...rest } = startingRuns.get();
+      startingRuns.set(rest);
     }
   };
 
@@ -197,7 +202,7 @@ export function AgentsStep({ onBack, onContinue }: { onBack: () => void; onConti
                   key={agent.name}
                   agent={agent}
                   online={online}
-                  starting={starting === agent?.name}
+                  starting={Boolean(agent && starting[agent.name])}
                   retrying={Boolean(agent && checking.has(agent.name))}
                   failed={failed[agent.name] ?? untested[agent.name]?.reason}
                   testing={testing.has(agent.name)}

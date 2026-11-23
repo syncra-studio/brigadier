@@ -94,9 +94,13 @@ const Glyph = ({ item, className }: { item: UpdateItem; className: string }) => 
 
 /** "Codex update available", "Brigadier and Codex updates available", "Updating Codex". */
 function rowLabel(items: readonly UpdateItem[]) {
-  const all = items.map((item) => item.name);
-  const names = all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
-  if (items.some((item) => item.progress.type === "updating")) return `Updating ${names}`;
+  const join = (some: readonly UpdateItem[]) => {
+    const all = some.map((item) => item.name);
+    return all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
+  };
+  const names = join(items);
+  const updating = items.filter((item) => item.progress.type === "updating");
+  if (updating.length) return `Updating ${join(updating)}`;
   if (items.every((item) => item.progress.type === "updated")) return `${names} updated`;
   if (items.every((item) => item.action.type === "restart")) return "Restart to update";
   return `${names} ${items.length > 1 ? "updates" : "update"} available`;
@@ -170,7 +174,7 @@ export function UpdatesRow() {
       clearInterval(every);
     };
   }, [online]);
-  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting === agent.name) ?? []);
+  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update") ?? []);
   const update = (item: UpdateItem): Promise<boolean> => {
     const agent = list?.find((each) => each.name === item.target);
     return agent ? setup.begin(agent, "update") : Promise.resolve(false);

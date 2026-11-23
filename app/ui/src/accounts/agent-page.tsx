@@ -145,7 +145,7 @@ function Installation({
   }, [agent.setup, agent.label]);
   // Not installed, its install running or not: the old card's Install stays, waiting [D2078].
   const missing = state === "install" || (state === "running" && !agent.path);
-  const busy = !online || setup.starting === agent.name || Boolean(agent.setup?.running);
+  const busy = !online || Boolean(setup.starting[agent.name]) || Boolean(agent.setup?.running);
   const updatingNow = agent.setup?.action === "update" && agent.setup.running;
   // The old app's line: its version, then whether a newer one is out, coming, or it is up to date.
   const news = updatingNow ? agent.latest && `updating to v${agent.latest}…` : agent.outdated ? `v${agent.latest} is out` : "up to date";
