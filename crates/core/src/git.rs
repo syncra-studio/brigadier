@@ -124,14 +124,16 @@ pub fn folder(data: &Path, target: &Target) -> io::Result<PathBuf> {
             } else {
                 let spec = load(data, id)?;
                 if crate::folder::chat(&spec) {
-                    return err(
-                        "This chat works in several repos: its card shows each one it changed.",
-                    );
+                    return err("This chat works in several repos: its card shows each one.");
                 }
                 PathBuf::from(spec.cwd)
             }
         }
-        Target::Project(id) => PathBuf::from(projects::get(data, id)?.folder),
+        // `<project>@<repo>`: a repo in a folder project, as its chat's card moves its branch [D341].
+        Target::Project(id) => match id.split_once('@') {
+            Some((id, repo)) => crate::folder::repo_in(data, id, repo)?,
+            None => PathBuf::from(projects::get(data, id)?.folder),
+        },
         Target::Repo(id, repo) => worktrees::folder(&crate::folder::record_of(data, id, repo)?)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "This repo's copy is gone."))?,
     })

@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 import { FileTypeIcon } from "../components/composer/attachments";
 import { copyWithToast } from "../components/copy-button";
@@ -12,10 +12,12 @@ import { TooltipIconButton } from "../components/icon-button";
 import { useDaemon } from "../daemon";
 import { Branch, CheckCircle, ChevronDown, Dot, DotsHorizontal, Spinner, Warning, X } from "../icons";
 import { Offline } from "./source/branch";
+import { named, useBranchOp } from "./source/branch-ops";
 import type { SourceData, SourceOps } from "./source/data";
+import { branchOps } from "./source/view";
 import { Counts, Line, Rows } from "./source/rows";
 import { useBranchPicker } from "./branch-picker";
-import type { KeptPrs, Pr } from "./types";
+import type { KeptPrs, Pr, SourceState } from "./types";
 
 /** Sections folded by hand, by key, for every session's card, kept across restarts [D138]. */
 const FOLDS = "summary-folds";
@@ -226,23 +228,54 @@ export function ChangesCard({
   );
 }
 
-/** A repo a folder chat changed, as `source <id> repos` gives it [D494]. */
-export type TouchedRepo = { name: string; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
+/** A repo of a folder chat's folder, as `source <id> repos` gives it [D494, D341]: `claimed`, its own copy. */
+export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
 
 /**
- * A folder chat's Changes [D494, D544, D151]: a row per repo it changed, "repo · branch" and its +/− counts, opening
- * Review on that repo. A repo claimed and never changed isn't shown.
+ * A folder chat's Changes [D494, D544, D151, D341]: a row per repo of its folder, those it claimed first, "repo ·
+ * branch" with its +/− counts; a claimed one opens Review on that repo. Its "…" copies the branch and, for a repo
+ * still in the folder itself, switches it, as the one-checkout card's [D141].
  */
-export function FolderChanges({ repos, onReview }: { repos: TouchedRepo[]; onReview: (repo: string) => void }) {
+export function FolderChanges({ repos, project, agentWorking, onReview, onMoved }: { repos: TouchedRepo[]; project: string; agentWorking: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
   if (repos.length === 0) return null;
   return (
     <CardSection title="Changes" fold="changes">
-      {repos.map((repo) => (
-        <Line key={repo.name} icon={<Branch />} end={<Counts added={repo.added} removed={repo.removed} />} onClick={() => onReview(repo.name)}>
-          {repo.name} · {repo.branch ?? "…"}
-        </Line>
-      ))}
+      <Rows items={repos}>{(repo) => <RepoLine key={repo.name} repo={repo} project={project} agentWorking={agentWorking} onReview={onReview} onMoved={onMoved} />}</Rows>
     </CardSection>
+  );
+}
+
+function RepoLine({ repo, project, agentWorking, onReview, onMoved }: { repo: TouchedRepo; project: string; agentWorking: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
+  const row = useRef<HTMLDivElement>(null);
+  // Its branch moves on the repo in the project's folder; a claimed copy's branch is the chat's own [D242].
+  const target = { project: `${project}@${repo.name}` };
+  const op = useBranchOp(target);
+  const branch = op.naming ?? repo.branch;
+  const source: SourceState = { checkout: repo.claimed ? "worktree" : "folder", branch, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] };
+  const ops = { retry: () => {}, branch: branchOps(target, branch ?? "the branch", onMoved) };
+  const { folder, open, pickers } = useBranchPicker({ data: { source, agentWorking }, ops, nowMs: Date.now(), anchor: row, trigger: row });
+  useEffect(() => {
+    if (op.naming && op.naming === repo.branch) named(target);
+  });
+  return (
+    <div ref={row}>
+      <Line
+        icon={<Branch />}
+        end={(repo.added > 0 || repo.removed > 0) && <Counts added={repo.added} removed={repo.removed} />}
+        onClick={repo.claimed ? () => onReview(repo.name) : undefined}
+        action={
+          <RowMenu label="Branch actions">
+            <DropdownMenuItem disabled={!branch} onClick={() => branch && copyWithToast(branch, "branch name")}>
+              Copy branch
+            </DropdownMenuItem>
+            {folder && <DropdownMenuItem onClick={() => open("branch")}>Switch branch</DropdownMenuItem>}
+          </RowMenu>
+        }
+      >
+        {repo.name} · {branch ?? "…"}
+      </Line>
+      {pickers}
+    </div>
   );
 }
 

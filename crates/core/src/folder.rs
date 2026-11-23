@@ -305,36 +305,58 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Vec<String>> {
     Ok(kept)
 }
 
-/// The repos session `id` claimed and changed, for its card [D544]: each one's target
-/// (`<id>@<repo>`), branch, line counts since it started, and its kept PRs (`prs.json`). One whose
-/// copy can't be read is left out.
+/// Every repo of session `id`'s folder, for its card [D544, D341]: those it claimed first, each with
+/// its target (`<id>@<repo>`), branch, line counts since it started and kept PRs (`prs.json`); then
+/// the folder's others on the branch checked out there. A claim whose copy can't be read is left out.
 pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
     crate::check_id(id)?;
     let stop = AtomicBool::new(false);
+    let spec = crate::load(data, id)?;
+    let claimed = claims(&spec.dir);
     let mut out = vec![];
-    for (name, rec) in claims(&crate::session_dir(data, id)) {
-        let Ok(checkout) = git::checkout(data, &git::Target::Repo(id, &name)) else {
+    for (name, rec) in &claimed {
+        let Ok(checkout) = git::checkout(data, &git::Target::Repo(id, name)) else {
             continue;
         };
-        let Some(since) =
-            worktrees::base(&rec).and_then(|b| diff::since(&checkout, &b, &stop).ok())
-        else {
-            continue;
-        };
-        let Ok(review) = diff::list(&checkout, diff::Scope::Branch(&since), &stop) else {
-            continue;
-        };
-        if review["files"].as_array().is_none_or(Vec::is_empty) {
-            continue;
-        }
+        let review = (worktrees::base(rec).and_then(|b| diff::since(&checkout, &b, &stop).ok()))
+            .and_then(|since| diff::list(&checkout, diff::Scope::Branch(&since), &stop).ok())
+            .unwrap_or_default();
         let kept: Value = (fs::read(rec.join("prs.json")).ok())
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
-        out.push(json!({"name": name, "target": format!("{id}@{name}"),
-            "branch": worktrees::branch(&rec).ok().flatten(), "added": review["insertions"],
-            "removed": review["deletions"], "kept": kept}));
+        out.push(json!({"name": name, "target": format!("{id}@{name}"), "claimed": true,
+            "changed": review["files"].as_array().is_some_and(|f| !f.is_empty()),
+            "branch": worktrees::branch(rec).ok().flatten(), "added": review["insertions"].as_u64().unwrap_or(0),
+            "removed": review["deletions"].as_u64().unwrap_or(0), "kept": kept}));
+    }
+    let home = PathBuf::from(of(&spec).map(|p| p.folder).unwrap_or_default());
+    for name in repos(&home)
+        .into_iter()
+        .filter(|n| !claimed.iter().any(|(c, _)| c == n))
+    {
+        let head = git::read(
+            &home.join(&name),
+            &["symbolic-ref", "--quiet", "--short", "HEAD"],
+            &stop,
+        );
+        let branch = head
+            .ok()
+            .map(|b| String::from_utf8_lossy(&b).trim().to_string());
+        out.push(
+            json!({"name": name, "claimed": false, "changed": false, "branch": branch,
+            "added": 0, "removed": 0, "kept": null}),
+        );
     }
     Ok(out)
+}
+
+/// A repo in folder project `id`, for the branch moves on it from a folder chat's card [D341].
+pub fn repo_in(data: &Path, id: &str, repo: &str) -> io::Result<PathBuf> {
+    let home = PathBuf::from(projects::get(data, id)?.folder);
+    match repos(&home).iter().any(|n| n == repo) {
+        true => Ok(home.join(repo)),
+        false => err(format!("No repo {repo:?} in this folder.")),
+    }
 }
 
 /// Whether the session is a folder chat [D494].

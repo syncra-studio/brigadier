@@ -6,12 +6,12 @@ import { isWorking as working, restoreCheckout, retryGit, type Target, useGit } 
 import { name, named, readBranches, useBranchOp } from "./branch-ops";
 import type { BranchOps, SourceData, SourceOps } from "./data";
 
-/** The branch item's moves on `target`'s checkout, Rust's [D1020, D1021]. */
-function branchOps(target: Target, branch: string): BranchOps {
+/** The branch item's moves on `target`'s checkout, Rust's [D1020, D1021]; `moved` once Rust has made one. */
+export function branchOps(target: Target, branch: string, moved?: () => void): BranchOps {
   return {
     read: (done) => readBranches(target, done),
-    switchTo: (to, remote) => name(target, ["switch", to, ...(remote ? ["--remote"] : [])], remote ? to.slice(to.indexOf("/") + 1) : to),
-    create: (to, from) => name(target, ["create", to, ...(from ? ["--from", from] : [])], to),
+    switchTo: (to, remote) => name(target, ["switch", to, ...(remote ? ["--remote"] : [])], remote ? to.slice(to.indexOf("/") + 1) : to, moved),
+    create: (to, from) => name(target, ["create", to, ...(from ? ["--from", from] : [])], to, moved),
   };
 }
 

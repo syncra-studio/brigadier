@@ -53,10 +53,11 @@ export function failed(target: Target, reply: Record<string, any>): void {
   gitFailed(target, said, details);
 }
 
-/** Switch or create: the item shows `name` at once, until the watch reads it or Rust says no. */
-export function name(target: Target, args: string[], name: string): void {
+/** Switch or create: the item shows `name` at once, until the watch reads it or Rust says no; `moved` once it's made. */
+export function name(target: Target, args: string[], name: string, moved?: () => void): void {
   put(target, { naming: name });
   run(target, args, (reply) => {
+    if (reply.ok) moved?.();
     // A read that never shows it (git took another name) doesn't hold it.
     if (reply.ok) return void setTimeout(() => opOf(target).naming === name && put(target, { naming: null }), 3000);
     put(target, { naming: null });

@@ -12,7 +12,7 @@ import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, PlanCard, s
 import { PrsCard } from "../panel/card-prs";
 import { frontBranch } from "../panel/create-pr";
 import { SourcesCard } from "../panel/card-sources";
-import { pickRepo, useRepoPick } from "../panel/git";
+import { isWorking, pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { openPr, openReview } from "../panel/open";
@@ -333,11 +333,13 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const making = session?.id === owner ? session.setup?.steps.find((step) => step.kind === "worktree" && step.state !== "failed") : undefined;
   const named = making?.kind === "worktree" ? making.branch : null;
   const shown = summaryReady(data) || !named ? data : { ...data, source: { checkout: "worktree" as const, branch: named, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] } };
-  // A folder chat's card lists the repos it changed, read again as the session changes [D494, D544].
+  // A folder chat's card lists its folder's repos, read again as the session changes [D494, D544, D341].
   // shortcut: a repo's PRs show as of the session's last change; push them with the row if they lag.
   const folderChat = projects?.find((each) => each.id === projectId)?.kind === "folder";
   const picked = useRepoPick(owner);
   const [touched, setTouched] = useState<TouchedRepo[] | null>(null);
+  // Read again after a branch move on one of its repos [D341].
+  const [moves, setMoves] = useState(0);
   useEffect(() => {
     if (!has || !folderChat) return;
     let live = true;
@@ -345,12 +347,13 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       if (!live || !reply.ok) return;
       setTouched(reply.repos);
       // Files and Review read the first repo it changed until another is picked.
-      if (!picked && reply.repos[0]) pickRepo(owner, reply.repos[0].name);
+      const first = reply.repos.find((repo: TouchedRepo) => repo.changed);
+      if (!picked && first) pickRepo(owner, first.name);
     });
     return () => {
       live = false;
     };
-  }, [owner, has, folderChat, updated, picked]);
+  }, [owner, has, folderChat, updated, picked, moves]);
   // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, each with its repo's name.
   const kept = shown.kept ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
   const prs = folderChat ? (touched ?? []).flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name }))) : (shown.prs ?? kept?.prs ?? []);
@@ -365,7 +368,13 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
     <>
       {folderChat ? (
-        <FolderChanges repos={touched ?? []} onReview={(repo) => (pickRepo(owner, repo), openReview(owner))} />
+        <FolderChanges
+          repos={touched ?? []}
+          project={projectId ?? ""}
+          agentWorking={isWorking(rows?.find((row) => row.id === owner))}
+          onReview={(repo) => (pickRepo(owner, repo), openReview(owner))}
+          onMoved={() => setMoves((n) => n + 1)}
+        />
       ) : (
         <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} owner={owner} prs={prs} onViewPr={(pr) => openPr(owner, pr)} />
       )}
