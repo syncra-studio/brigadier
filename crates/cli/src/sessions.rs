@@ -18,7 +18,13 @@ mod servers;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    let spec = core::load(data, id)?;
+    let spec = match core::load(data, id) {
+        // One already deleted, with its Brigade or by another delete, has nothing to check or remove.
+        Err(e) if e.kind() == io::ErrorKind::NotFound && args[0] == "delete" => {
+            return Ok(session::gone());
+        }
+        spec => spec?,
+    };
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
@@ -208,8 +214,21 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
     owner::release(data, id)
 }
 
-/// One session's delete: its host stops, then core deletes it, recording its intent first.
+/// One session's delete: its host stops, then core deletes it, recording its intent first. One
+/// whose folder went meanwhile, by its Brigade's delete or its own, is done [D35].
 pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+    match delete_one(data, id, drop, by) {
+        Err(e)
+            if e.kind() == io::ErrorKind::NotFound
+                && !core::session_dir(data, id).join("session.json").exists() =>
+        {
+            Ok(session::gone())
+        }
+        done => done,
+    }
+}
+
+fn delete_one(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
     crate::rewind::settled(data, &spec)?;

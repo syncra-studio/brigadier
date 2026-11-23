@@ -306,8 +306,13 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
     };
     let _one = match worktrees::lock(dir) {
         Ok(one) => one,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return gone(),
         Err(e) => return fail(vec![format!("{}: {e}", dir.display())], 0),
     };
+    // Another delete got here first, its Brigade's or its own: what's gone is done [D35].
+    if !dir.join("session.json").exists() {
+        return gone();
+    }
     // A rewind can start after the caller settled it; keep its record recoverable [D35].
     if crate::rewind::pending(dir) {
         return json!({"ok": false, "swept": 0, "removed": [],
@@ -394,6 +399,11 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
     }
     json!({"ok": left.is_empty(), "swept": swept, "removed": removed, "left": left,
         "kept_branches": kept_branches})
+}
+
+/// A delete's reply for a session already deleted: one with no `session.json` can't be loaded again.
+pub fn gone() -> Value {
+    json!({"ok": true, "swept": 0, "removed": [], "left": [], "kept_branches": []})
 }
 
 /// Rolls back a restore cut short: its worktree is freed again, unless another session still
