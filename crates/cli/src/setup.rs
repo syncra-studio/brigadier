@@ -149,10 +149,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         pinned: None,
                     };
                     // `--icon ""|tag:N|emoji:E|image:PATH`: an image is copied in.
-                    if let Some(icon) = flag(args, "--icon") {
-                        projects::icon::set(data, arg(2), icon)?;
-                    }
-                    let project = projects::set(data, arg(2), change)?;
+                    let project = projects::icon::set(data, arg(2), flag(args, "--icon"), change)?;
                     // The answer stays saved when a CLI's own entry can't be written [D166].
                     let failed = core::trust::sync(data, &project.id, None);
                     return Ok(json!({"ok": true, "project": project, "trust_errors": failed}));
