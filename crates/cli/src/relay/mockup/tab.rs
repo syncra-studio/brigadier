@@ -39,6 +39,42 @@ pub(crate) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
+/// The lead's card on round `on` (`<wid>-<round>`): its Use is the tab's.
+pub(super) fn from_card(data: &Path, lead: &str, on: &str, choice: &str) -> io::Result<Value> {
+    let (wid, round) = on.rsplit_once('-').ok_or_else(none)?;
+    if workers::link(data, wid).is_none_or(|l| l.parent != lead) {
+        return Err(none());
+    }
+    let Some(letter) = choice.strip_prefix("Use ") else {
+        return Ok(
+            json!({"ok": false, "error": "invalid", "message": "Pick one of the card's answers."}),
+        );
+    };
+    let r = pick(
+        data,
+        wid,
+        letter,
+        &json!({"round": round.parse::<u64>().unwrap_or(0)}),
+    )?;
+    // Picked in the tab already: the card only stops asking.
+    if r["error"] == "picked" {
+        super::settle(data, lead, &format!("{}{on}", super::PICK), choice)?;
+    }
+    Ok(r)
+}
+
+/// The lead's card on that round stops asking, answered by `how`.
+fn settle_card(data: &Path, wid: &str, round: usize, how: &str) {
+    if let Some(l) = workers::link(data, wid) {
+        let _ = super::settle(
+            data,
+            &l.parent,
+            &format!("{}{wid}-{round}", super::PICK),
+            how,
+        );
+    }
+}
+
 fn none() -> io::Error {
     io::Error::other("No mockup here.")
 }
@@ -197,7 +233,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
     {
         rounds.push(json!({"variants": [], "sent": []}));
     }
-    m["draft"] = Value::Null;
+    (m["draft"], m["doing"]) = (Value::Null, Value::Null);
     workers::write_json(&file(data, wid), &m)?;
     let mut call: Vec<String> = ["send", wid, &text, "--steer"].map(String::from).into();
     call.extend(
@@ -221,6 +257,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
         };
         return no(error, &format!("Couldn't send the notes: {why}"));
     }
+    settle_card(data, wid, round, "Left notes");
     // The lead's chat records it: "You → mockup · 3 notes on A and B · round 2 drawing".
     if let Some(l) = workers::link(data, wid) {
         let mut on: Vec<&str> = LETTERS
@@ -242,7 +279,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
 /// and merge [D2059, D2068, D97]; that turn's end reports to the parent as any task's [D560]. Unsent
 /// notes go with it, cleared once it's taken. A worker the user stopped can't: the pick goes to
 /// the lead, with the branch its code is on [D560].
-fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value> {
+pub(super) fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value> {
     let no =
         |error: &str, message: &str| Ok(json!({"ok": false, "error": error, "message": message}));
     let _one = WRITING.lock().unwrap();
@@ -323,7 +360,9 @@ fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value
         return no("failed", &format!("Couldn't send the pick: {why}"));
     }
     (m["picked"], m["pickedRound"], m["draft"]) = (letter.into(), round.into(), Value::Null);
+    m["doing"] = Value::Null;
     workers::write_json(&file(data, wid), &m)?;
+    settle_card(data, wid, round, &format!("Use {letter}"));
     let message = (to != wid)
         .then(|| format!("{letter} went to the lead to build, as its worker was stopped."));
     Ok(json!({"ok": true, "message": message}))

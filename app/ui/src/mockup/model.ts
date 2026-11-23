@@ -23,6 +23,10 @@ export type Mockup = {
   real: string | null;
   /** The user stopped the mockup worker; notes can't reach it [D560]. */
   stopped: boolean;
+  /** The step its worker said it's on (`--doing`), and the round it said it on; cleared by a send or Use. */
+  doing?: { text: string; round: number } | null;
+  /** When it last had news for the user (ms): a round drawn or the pick built [D560]. */
+  news?: number;
   /** The notes not sent yet, kept by Rust so they survive closing the tab [D2055]. */
   draft?: Notes | null;
 };
@@ -53,9 +57,13 @@ export function statusOf(mockup: Mockup): string | null {
   const last = mockup.rounds.at(-1);
   if (mockup.real && mockup.picked) return `${mockup.picked} built into the app`;
   if (mockup.stopped) return "Stopped";
-  if (mockup.building && mockup.picked) return `Building ${mockup.picked} into the app…`;
+  const doing = busy(mockup) && mockup.doing ? `${mockup.doing.text.replace(/[.…]+$/, "")}…` : null;
+  if (mockup.building && mockup.picked) return doing ?? `Building ${mockup.picked} into the app…`;
+  // Its worker's turn ended with no real screen reported: built all the same.
+  if (mockup.picked) return `${mockup.picked} built into the app`;
   if (ready(mockup)) return "Ready · pick one with Use, or leave a note";
   if (!last?.drawing) return null;
+  if (doing) return doing;
   if (mockup.rounds.length > 1) return `Drawing round ${mockup.rounds.length}…`;
   const done = last.variants.filter(drawn).length;
   return `Drawing ${Math.min(done + 1, mockup.count)} of ${mockup.count}…`;

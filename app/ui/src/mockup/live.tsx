@@ -64,7 +64,7 @@ function momentOf(mockup: Mockup | null, count: number, ready?: number | null): 
   if (!mockup) return ready ? { kind: "ready", round: ready, open: false } : { kind: "drawing", count };
   if (mockup.picked && mockup.real) return { kind: "built", letter: mockup.picked };
   if (mockup.stopped) return { kind: "stopped" };
-  if (mockup.picked) return { kind: "picked", letter: mockup.picked };
+  if (mockup.picked) return mockup.building ? { kind: "picked", letter: mockup.picked } : { kind: "built", letter: mockup.picked };
   const open = mockup.rounds.length === (ready ?? mockup.rounds.length);
   if (ready) return { kind: "ready", round: ready, open };
   return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "ready", round: null, open: true };
@@ -82,8 +82,14 @@ export function LiveMockupRow({ worker, count, on, round, ready }: { worker: str
   return <MockupRow moment={moment} live={!round && !ready && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
 }
 
+// The news the user last saw in each Mockup tab, kept across restarts.
+const SEEN_KEY = "mockup-seen";
+const seenNews = (): Record<string, number> => JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}");
+
+/** The Mockup tab's icon: the spinner while busy, else a blue dot while its news is unseen [D560]. */
 export function LiveMockupTabIcon({ worker }: { worker: string }) {
-  return <MockupTabIcon busy={busy(useMockup(worker))} />;
+  const mockup = useMockup(worker);
+  return <MockupTabIcon busy={busy(mockup)} unread={(mockup?.news ?? 0) > (seenNews()[worker] ?? 0)} />;
 }
 
 /** Saves the notes still unsaved as the mockup's draft, once. */
@@ -171,6 +177,13 @@ export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; act
   }, [worker, changed]);
   // A change still waiting to save when the tab closes saves then.
   useEffect(() => () => saveDraft(worker, unsaved), [worker]);
+  // The tab in front sees its news: the icon's dot goes till the next.
+  useEffect(() => {
+    const news = mockup?.news ?? 0;
+    if (!active || news <= (seenNews()[worker] ?? 0)) return;
+    localStorage.setItem(SEEN_KEY, JSON.stringify({ ...seenNews(), [worker]: news }));
+    listeners.forEach((l) => l());
+  }, [active, worker, mockup?.news]);
   const [loads, setLoads] = useState<Record<string, Load>>({});
   // A frame's page by letter and address, so a new address loads anew; Retry bumps its try. A round shown remounts its frames.
   const [tries, setTries] = useState<Record<string, number>>({});
