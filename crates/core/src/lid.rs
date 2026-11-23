@@ -211,6 +211,8 @@ struct Held {
 pub struct Lid {
     held: Option<Held>,
     next: Option<Instant>,
+    /// When a restore that failed is tried again.
+    retry: Option<Instant>,
 }
 
 impl Lid {
@@ -242,26 +244,32 @@ impl Lid {
     }
 
     /// Restores sleep if this daemon disabled it, then sleeps now if the lid is shut and that
-    /// sleeps the Mac: macOS looks at the lid only when it opens or closes.
+    /// sleeps the Mac: macOS looks at the lid only when it opens or closes. A failed restore keeps
+    /// the hold, its marker and guard, and is tried again after CHECK_EVERY.
     fn release(&mut self, data: &Path) {
-        let Some(mut held) = self.held.take() else {
+        let Some(held) = &mut self.held else {
             return;
         };
-        if !held.owned {
-            return;
+        if held.owned {
+            if self.retry.is_some_and(|retry| Instant::now() < retry) {
+                return;
+            }
+            if let Err(e) = pmset_disablesleep(false) {
+                eprintln!("brigadierd: can't restore sleep: {e}");
+                self.retry = Some(Instant::now() + CHECK_EVERY);
+                return;
+            }
+            if let Some(guard) = &mut held.guard {
+                let _ = guard.kill();
+                let _ = guard.wait();
+            }
+            let _ = fs::remove_file(marker(data));
+            if !dry_run() {
+                thread::spawn(sleep_if_lid_closed);
+            }
         }
-        if let Some(guard) = &mut held.guard {
-            let _ = guard.kill();
-            let _ = guard.wait();
-        }
-        if let Err(e) = pmset_disablesleep(false) {
-            eprintln!("brigadierd: can't restore sleep: {e}");
-            return;
-        }
-        let _ = fs::remove_file(marker(data));
-        if !dry_run() {
-            thread::spawn(sleep_if_lid_closed);
-        }
+        self.held = None;
+        self.retry = None;
     }
 }
 
