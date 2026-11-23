@@ -70,14 +70,35 @@ const logos = new Map<string, boolean>();
  */
 export function ProjectBadge({ id, name, icon, size = "size-icon-md text-badge" }: { id?: string; name: string | null; icon?: string | null; size?: string }) {
   const [, found] = useState(false);
+  // An image that won't load, its file gone: drawn as with no icon.
+  const [broken, setBroken] = useState<string>();
   // Picked in its settings (Rust's projects/icon.rs): `tag:<n>`, `emoji:<it>` or `image:<file>`.
-  const [kind, value = ""] = icon && name !== null ? [icon.slice(0, icon.indexOf(":")), icon.slice(icon.indexOf(":") + 1)] : [];
-  if (kind === "image") return <img aria-hidden alt="" src={`/project-icon/${encodeURIComponent(id ?? "")}/${encodeURIComponent(value)}`} className={cx(BADGE, size, "object-cover")} />;
-  if (kind === "emoji") return <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center bg-fill leading-none")}>{value}</span>;
+  const [kind, value = ""] = icon && name !== null && icon !== broken ? [icon.slice(0, icon.indexOf(":")), icon.slice(icon.indexOf(":") + 1)] : [];
+  if (kind === "image")
+    return <img aria-hidden alt="" src={`/project-icon/${encodeURIComponent(id ?? "")}/${encodeURIComponent(value)}`} onError={() => setBroken(icon!)} className={cx(BADGE, size, "object-cover")} />;
+  if (kind === "emoji")
+    return (
+      <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center bg-fill")}>
+        {/* Its own size, as `size`'s is the initials': the glyph fills the badge. */}
+        <span className="text-base leading-none">{value}</span>
+      </span>
+    );
   if (kind === "tag") return <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold text-tile-ink", TAGS[Number(value)])}>{projectInitials(name!)}</span>;
   const logo = id === undefined || name === null ? false : logos.get(id);
   const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
-  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, size, "object-cover")} />;
+  if (logo)
+    return (
+      <img
+        aria-hidden
+        alt=""
+        src={src}
+        onError={() => {
+          logos.set(id!, false);
+          setBroken(src);
+        }}
+        className={cx(BADGE, size, "object-cover")}
+      />
+    );
   return (
     <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold", name === null ? "bg-fill text-marker-foreground" : cx("text-tile-ink", TAGS[hueOf(name, TAGS.length)]))}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}

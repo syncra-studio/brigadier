@@ -165,10 +165,14 @@ function serveUi(): void {
     if (url.host === APP_ID && url.pathname.startsWith("/project-icon/")) {
       // `/project-icon/<id>/<file>`: the image picked in its settings, as Rust copied it into the project's folder.
       const [, , id = "", picked] = url.pathname.split("/");
-      const own = picked !== undefined && PLAIN.test(id) && /^icon-\d+\.(png|jpe?g|gif|webp|svg)$/.test(picked) ? path.join(dataDir, "projects", id, picked) : null;
-      if (own) return existsSync(own) ? net.fetch(pathToFileURL(own).toString()) : new Response(null, { status: 404 });
-      const file = await projectIcon(url.pathname);
-      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+      const own = picked !== undefined && PLAIN.test(id) && /^icon-\d+(-\d+)?\.(png|jpe?g|gif|webp|svg)$/.test(picked) ? path.join(dataDir, "projects", id, picked) : null;
+      const file = own ? (existsSync(own) ? own : null) : await projectIcon(url.pathname);
+      const fetched = file ? await net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+      // An SVG can carry script: none runs, nothing loads, and no file is read as another kind. A fetch's headers are fixed, so they're copied.
+      const headers = new Headers(fetched.headers);
+      headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      headers.set("X-Content-Type-Options", "nosniff");
+      return new Response(fetched.body, { status: fetched.status, headers });
     }
     const file = path.join(uiDist, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
     if (url.host !== APP_ID || !file.startsWith(uiDist + path.sep)) return new Response(null, { status: 403 });
