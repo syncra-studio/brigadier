@@ -268,7 +268,7 @@ impl Fold {
                 self.windows.push((turn.first_tool, ts));
             }
             self.last = Some(
-                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "quiet": turn.quiet,
+                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "began_at": turn.delivered.unwrap_or(turn.ts), "quiet": turn.quiet,
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "reply": turn.reply, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),

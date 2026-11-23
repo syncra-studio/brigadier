@@ -51,6 +51,40 @@ pub(in crate::workers) fn write(
     write_as(data, l, wid, turn, how, error, false)
 }
 
+/// The turn's time and computer calls as Brigadier measured them, not as the worker tells them.
+/// shortcut: one turn's; a job carried over a context cut counts from the last cut on.
+fn measured(dir: &Path, ended: Option<&Value>) -> String {
+    let Some(e) = ended else {
+        return String::new();
+    };
+    let (from, to) = (
+        e["began_at"].as_u64().unwrap_or(0),
+        e["ts"].as_u64().unwrap_or(0),
+    );
+    if from == 0 || to < from {
+        return String::new();
+    }
+    let calls = fs::read_to_string(dir.join("computer").join("calls")).unwrap_or_default();
+    let verbs: Vec<&str> = (calls.lines())
+        .filter_map(|l| l.split_once(' '))
+        .filter(|(at, _)| at.parse::<u64>().is_ok_and(|at| (from..=to).contains(&at)))
+        .map(|(_, verb)| verb)
+        .collect();
+    let mins = (to - from) as f64 / 60_000.0;
+    let mut said = format!("Measured by Brigadier: {mins:.1} min from its input to its end");
+    if !verbs.is_empty() {
+        let looks = (verbs.iter())
+            .filter(|v| ["apps", "read", "screenshot"].contains(v))
+            .count();
+        said += &format!(
+            ", {} computer calls ({} actions, {looks} reads or screenshots)",
+            verbs.len(),
+            verbs.len() - looks
+        );
+    }
+    said + ".\n"
+}
+
 /// The most a turn the user started in a worker tells its parent, all of it [D303].
 const DIRECT: usize = 1 << 10;
 
@@ -197,6 +231,7 @@ pub(in crate::workers) fn write_as(
     // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
     let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
     let said = (ended.as_ref().filter(|_| l.session)).and_then(|l| l["id"].as_str());
+    text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));

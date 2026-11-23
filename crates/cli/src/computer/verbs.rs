@@ -15,6 +15,8 @@ use act::{act, key, need, token};
 use open::{apps, find, menu_path, press};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -213,6 +215,16 @@ fn verb(
         return Err(refuse(OFF));
     }
     take(me, rows)?;
+    // Brigadier's own count, which a worker's result carries so its lead needn't take the
+    // worker's word for it [D2032].
+    let calls = brigadier_core::session_dir(data, me).join("computer");
+    let _ = fs::create_dir_all(&calls).and_then(|()| {
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(calls.join("calls"))?;
+        writeln!(f, "{} {}", brigadier_frames::log::now_ms(), w.verb)
+    });
     need(data, w.verb == "screenshot" || w.verb == "drag")?;
     let mut s = lock(&SESSIONS).get(me).cloned().unwrap_or_default();
     let n = |i: usize| -> Result<u64, Value> {
