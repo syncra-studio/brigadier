@@ -289,13 +289,13 @@ export function PluginsPage({
       />
     );
   } else if (shown && category) {
-    const listed = entries.filter((each) => inCategory(each, category) && matches(query, each.name, each.line, each.maker));
+    const listed = entries.filter((each) => !each.installed && inCategory(each, category) && matches(query, each.name, each.line, each.maker));
     page = (
       <SettingsPage title={category} description={category === "Popular" ? "Services most people connect first." : undefined} actions={controls}>
         {listed.length ? (
           <PickGrid>{listed.map((each) => entryRow(each, onEntry))}</PickGrid>
         ) : (
-          <p className="py-6 text-center text-label text-quiet-foreground">Nothing matches “{query.trim()}”.</p>
+          <p className="py-6 text-center text-label text-quiet-foreground">{query.trim() ? `Nothing matches “${query.trim()}”.` : "Everything here is installed."}</p>
         )}
       </SettingsPage>
     );

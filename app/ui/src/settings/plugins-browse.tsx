@@ -6,7 +6,7 @@ import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
 import { RowText } from "../components/settings-card";
 import { Skeleton } from "../components/skeleton";
-import { ChevronRight, DotsHorizontal, Plus } from "../icons";
+import { ChevronRight, Plus } from "../icons";
 import { errorText } from "../onboarding/api";
 import { type Entry, inCategory, type Kind, markOf, type Plugins } from "./plugins";
 import type { AddFirst } from "./plugins-dialogs";
@@ -59,7 +59,7 @@ export function Pick({ mark, name, line, end, onOpen, dim = false }: { mark: Rea
   );
 }
 
-/** A catalog entry's row: + installs it; once installed, … opens its page. */
+/** A catalog entry's row, never an installed one's (Browse hides those [D323]): + installs it. */
 export const entryRow = (entry: Entry, { onOpen, onInstall }: EntryActions) => (
   <Pick
     key={entry.id}
@@ -68,15 +68,9 @@ export const entryRow = (entry: Entry, { onOpen, onInstall }: EntryActions) => (
     line={entry.line}
     onOpen={() => onOpen(entry)}
     end={
-      entry.installed ? (
-        <Button variant="ghost" size="icon-md" aria-label={`${entry.name}, installed`} onClick={() => onOpen(entry)}>
-          <DotsHorizontal aria-hidden />
-        </Button>
-      ) : (
-        <Button variant="ghost" size="icon-md" aria-label={`Install ${entry.name}`} onClick={() => onInstall(entry)}>
-          <Plus aria-hidden />
-        </Button>
-      )
+      <Button variant="ghost" size="icon-md" aria-label={`Install ${entry.name}`} onClick={() => onInstall(entry)}>
+        <Plus aria-hidden />
+      </Button>
     }
   />
 );
@@ -102,15 +96,15 @@ export function Category({ title, onOpen, children }: { title: string; onOpen?: 
 }
 
 /**
- * Plugins › Browse [D566, D569]: what installs, by category, 6 of each, empty ones hidden. What the agents have on this
- * machine is installed already [D721].
+ * Plugins › Browse [D566, D569]: what installs, by category, 6 of each, empty ones hidden. What's installed, or the
+ * agents have on this machine (installed already [D721]), isn't shown [D323].
  */
 export function BrowseTab({ value, onEntry, onCategory }: { value: Plugins; onEntry: EntryActions; onCategory: (name: string) => void }) {
   const catalog = value.catalog ?? { categories: [], entries: [] };
   return (
     <>
       {catalog.categories.map((name) => {
-        const entries = catalog.entries.filter((each) => inCategory(each, name));
+        const entries = catalog.entries.filter((each) => !each.installed && inCategory(each, name));
         return (
           entries.length > 0 && (
             <Category key={name} title={name} onOpen={() => onCategory(name)}>
