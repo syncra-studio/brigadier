@@ -80,6 +80,10 @@ pub struct Thread {
     open: Option<Open>,
     /// Status-fold turns already shown, by id.
     shown: HashSet<String>,
+    /// A turn that carried on another's block (a wake, a rebirth's carry-on) → that block's id,
+    /// which its rows carry as their `turnId`.
+    #[serde(default)]
+    joined: HashMap<String, String>,
     /// (turn, tool or question id) → its row's index.
     #[serde(with = "pairs")]
     keys: HashMap<(String, String), usize>,
@@ -398,6 +402,11 @@ impl Thread {
             subagents::settle(&mut self.items[at], progress);
             self.changed_items.insert(at);
         }
+    }
+
+    /// The block a turn's rows went into: its own, or the one it carried on.
+    pub fn block_of<'a>(&'a self, turn: &'a str) -> &'a str {
+        self.joined.get(turn).map_or(turn, String::as_str)
     }
 
     fn turn_id(&self) -> Option<String> {

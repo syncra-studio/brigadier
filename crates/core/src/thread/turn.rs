@@ -278,6 +278,7 @@ impl Thread {
         match resumed.or(held.map(|(o, _)| o)) {
             // Carried on by another agent, the turn is that agent's now [D124].
             Some(mut o) => {
+                self.joined.insert(t.id.clone(), o.id.clone());
                 o.backend.clone_from(&t.backend);
                 // A worker's ask its parent answers stays out of the block it carries on [D329].
                 o.quiet = t.quiet;
