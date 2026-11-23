@@ -31,14 +31,15 @@ import {
   type LexicalEditor,
   LineBreakNode,
   PASTE_COMMAND,
+  type RangeSelection,
 } from "lexical";
 import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { matches } from "../../shortcuts";
 import { cx } from "../cx";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
-import { $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
-import { type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
+import { $insertChip, $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
+import { type Chip, type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
 import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
@@ -47,11 +48,12 @@ import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menu
 
 type Parts = Draft["parts"];
 
-/** What feature code does with the field: read what's typed, show another draft's text, focus it. */
+/** What feature code does with the field: read what's typed, show another draft's text, put a chip in, focus it. */
 export type ComposerFieldHandle = {
   parts(): Parts;
   /** Shows `parts` in place of what's there (a pulled queued message, an emptied field after a send). */
   set(parts: Parts): void;
+  insert(chip: Chip): void;
   focus(): void;
 };
 
@@ -397,6 +399,7 @@ function Keys({
   const [editor] = useLexicalComposerContext();
   // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
   const walk = useRef<{ back: number; shown: string } | null>(null);
+  const caret = useRef<RangeSelection | null>(null); // the field's last caret, for a pick from the +, which takes the focus
   const changed = useEffectEvent((parts: Parts) => onChange?.(parts));
   const paste = useEffectEvent((event: ClipboardEvent | InputEvent | KeyboardEvent) => pasteChips(editor, event) || pasteAttachments(event, onAttach));
   const submit = useEffectEvent((event: KeyboardEvent | null) => {
@@ -441,6 +444,7 @@ function Keys({
     () => ({
       parts: () => editor.read($read),
       set: (parts) => editor.update(() => $write(parts)),
+      insert: (chip) => editor.update(() => $insertChip(chip, caret.current)),
       focus: () => editor.focus(),
     }),
     [editor],
@@ -477,6 +481,7 @@ function Keys({
       mergeRegister(
         registerArrowKeys(editor),
         editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
+          editorState.read(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) caret.current = selection.clone(); });
           if (dirtyElements.size > 0 || dirtyLeaves.size > 0) changed(editorState.read($read));
         }),
         editor.registerCommand(COPY_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),

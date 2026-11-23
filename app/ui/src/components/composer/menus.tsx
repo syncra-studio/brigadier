@@ -1,6 +1,6 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, MenuOption, type MenuRenderFn, type MenuTextMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
-import { $createTextNode, $isTextNode, COMMAND_PRIORITY_HIGH, type LexicalNode, type TextNode } from "lexical";
+import { COMMAND_PRIORITY_HIGH } from "lexical";
 import { type ComponentProps, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -9,7 +9,7 @@ import { cx } from "../cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow } from "../menu";
 import type { ComposerFieldHandle } from "./field";
 import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
-import { ChipNode } from "./chip";
+import { $putWithSpace, ChipNode } from "./chip";
 import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
 import { ToolIcon } from "./tools";
@@ -136,19 +136,6 @@ class Row<T> extends MenuOption {
   ) {
     super(key);
   }
-}
-
-/** `node` in the text, then a space after it unless one follows, the caret after that. */
-function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
-  if (replacing) replacing.replace(node);
-  const next = node.getNextSibling();
-  if ($isTextNode(next) && /^\s/.test(next.getTextContent())) {
-    next.select(1, 1);
-    return;
-  }
-  const space = $createTextNode(" ");
-  node.insertAfter(space);
-  space.select(1, 1);
 }
 
 /**
@@ -421,8 +408,8 @@ const CHAT_ROWS = 5;
 /**
  * The + ("Add files and more"): a menu as wide as the composer card, just above it (over the rail, hidden
  * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's tools, skills and MCP prompts
- * and the `@` menu's chats in their own rows, each picked into the end of the text. Closed, the keyboard goes
- * back to typing.
+ * and the `@` menu's chats in their own rows, each picked in where the caret last was, as the `/` menu does (the
+ * end if the field never had one). Closed, the keyboard goes back to typing.
  */
 export function PlusMenu({
   onFiles,
@@ -439,12 +426,7 @@ export function PlusMenu({
   const input = useRef<HTMLInputElement>(null);
   const [card, setCard] = useState<HTMLElement | null>(null);
   const field = () => card?.querySelector<HTMLElement>("[contenteditable]") ?? null;
-  const add = (chip: Chip) => {
-    const parts = composerField.current!.parts();
-    const last = parts.at(-1);
-    const apart = last !== undefined && !(typeof last === "string" && /\s$/.test(last));
-    composerField.current!.set([...parts, ...(apart ? [" "] : []), chip, " "]);
-  };
+  const add = (chip: Chip) => composerField.current!.insert(chip);
   const kind = (wanted: "tool" | "skill" | "mcp") => {
     const listed = commands.commands?.filter((command) => command.kind === wanted) ?? [];
     return (
