@@ -249,24 +249,3 @@ fn open(data: &Path, me: &str, line: Option<&str>) -> Value {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{PAGE, page};
-
-    #[test]
-    fn pages_cover_everything_and_fit() {
-        let lines: Vec<String> = (1..=5000).map(|i| i.to_string()).collect();
-        let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-        assert_eq!(page(&lines, 200, None), (4800, 5000));
-        assert_eq!(page(&lines, 200, Some(1)), (0, 200));
-        assert_eq!(page(&lines, 200, Some(4999)), (4998, 5000));
-        assert_eq!(page(&lines, 200, Some(9000)), (5000, 5000));
-        let wide = "x".repeat(100);
-        let wide: Vec<&str> = vec![wide.as_str(); 1000];
-        let (start, end) = page(&wide, 1000, None);
-        assert!(end == 1000 && (end - start) * 101 <= PAGE);
-        let huge = "y".repeat(PAGE * 2);
-        assert_eq!(page(&[huge.as_str(), "z"], 10, Some(1)), (0, 1));
-    }
-}

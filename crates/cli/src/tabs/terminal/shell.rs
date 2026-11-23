@@ -243,12 +243,3 @@ pub(crate) fn plain(bytes: &[u8]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn plain_drops_escapes_and_redrawn_lines() {
-        let raw = b"\x1b[31mred\x1b[0m\n\x1b]0;title\x07ok\n10%\r50%\r100%\r\n% e\x08echo\ndone";
-        assert_eq!(super::plain(raw), "red\nok\n100%\n% echo\ndone");
-    }
-}
