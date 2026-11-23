@@ -430,6 +430,60 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     Ok(None)
 }
 
+/// A local branch's commit, its name checked strictly first (no `-x`, no `@{-1}`).
+fn branch_commit(repo: &Path, name: &str) -> io::Result<String> {
+    let full = format!("refs/heads/{name}");
+    if name.starts_with('-') || git(repo, &["check-ref-format", &full]).is_err() {
+        return err(format!("“{name}” isn't a branch name."));
+    }
+    git(repo, &["rev-parse", "--verify", "--quiet", &full])
+        .or_else(|_| err(format!("No branch {name} in {}.", repo.display())))
+}
+
+fn repo_folder(repo: &Path) -> io::Result<()> {
+    if !repo.is_absolute() || !repo.is_dir() {
+        return err(format!("{} isn't a folder.", repo.display()));
+    }
+    git(repo, &["rev-parse", "--git-dir"]).map(drop)
+}
+
+/// Remove project's Delete N kept branches: each named local branch of `repo` goes, its commit
+/// returned for Undo. Every name is checked before any goes; one git refuses (checked out
+/// somewhere) is in the errors, the rest still go.
+pub fn drop_branches(
+    repo: &Path,
+    names: &[String],
+) -> io::Result<(Vec<(String, String)>, Vec<String>)> {
+    repo_folder(repo)?;
+    let commits = (names.iter())
+        .map(|n| Ok((n.clone(), branch_commit(repo, n)?)))
+        .collect::<io::Result<Vec<_>>>()?;
+    let (mut gone, mut failed) = (vec![], vec![]);
+    for (name, commit) in commits {
+        match git(repo, &["branch", "-D", &name]) {
+            Ok(_) => gone.push((name, commit)),
+            Err(e) => failed.push(e.to_string()),
+        }
+    }
+    Ok((gone, failed))
+}
+
+/// Undo for `drop_branches`: each branch made again at the commit it pointed to.
+pub fn put_branches(repo: &Path, branches: &[(String, String)]) -> io::Result<()> {
+    repo_folder(repo)?;
+    for (name, commit) in branches {
+        let hex = matches!(commit.len(), 40 | 64) && commit.bytes().all(|b| b.is_ascii_hexdigit());
+        if name.starts_with('-')
+            || !hex
+            || git(repo, &["check-ref-format", &format!("refs/heads/{name}")]).is_err()
+        {
+            return err(format!("“{name}” at {commit} isn't a branch to put back."));
+        }
+        git(repo, &["branch", name, commit])?;
+    }
+    Ok(())
+}
+
 /// Puts an archived session's worktree back at its path on its branch, with its files to copy
 /// [D178, D180, D211]. A failure removes what it added, so restore can run again. The caller
 /// holds `lock`.
