@@ -21,7 +21,7 @@ use std::{process, thread};
 
 /// The commands the app runs: those that reach a host, and providers and onboarding [D45]. The
 /// rest of the CLI prints to stdout or never returns.
-const ROUTED: [&str; 50] = [
+const ROUTED: [&str; 51] = [
     // Computer use: the helper's connection lives here [D913].
     "computer",
     "plugins",
@@ -65,6 +65,7 @@ const ROUTED: [&str; 50] = [
     "feedback",
     "side",
     "tabs",
+    "terminal",
     "chips",
     "rewind",
     "panel",
@@ -111,8 +112,9 @@ pub(super) fn serve(
     });
     // Bumped to end this connection's thread watch: a new request, or the connection closing.
     let watching = Arc::new(AtomicU64::new(0));
-    // The same for the terminal stream, and the bytes of it the app has drawn.
-    let (terming, acked) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
+    // The same for each terminal this connection streams, by its id, and the bytes of it the app has
+    // drawn: every open terminal tab streams at once [D315].
+    let terms: term::Streams = Arc::default();
     // The same for the checkout this connection watches.
     let gitting = Arc::new(AtomicU64::new(0));
     // The thread this connection watches, by session, for its older pages.
@@ -222,12 +224,17 @@ pub(super) fn serve(
                 }
                 let _ = out.send(reply.to_string());
             }
+            // `{"op": "terminal", "session", "stop": true}` ends the stream without a new one.
             "terminal" => {
                 let id = req["session"].as_str().unwrap_or("").to_string();
-                let mine = terming.fetch_add(1, Ordering::SeqCst) + 1;
-                let (out, data) = (out.clone(), PathBuf::from(data));
-                let (terming, acked) = (terming.clone(), acked.clone());
-                thread::spawn(move || term::watch(&data, &id, re, &out, mine, &terming, &acked));
+                let entry = terms.lock().unwrap().entry(id.clone()).or_default().clone();
+                let mine = entry.0.fetch_add(1, Ordering::SeqCst) + 1;
+                if req["stop"] != true {
+                    let (out, data) = (out.clone(), PathBuf::from(data));
+                    thread::spawn(move || {
+                        term::watch(&data, &id, re, &out, mine, &entry.0, &entry.1)
+                    });
+                }
             }
             "git" => {
                 let mine = gitting.fetch_add(1, Ordering::SeqCst) + 1;
@@ -247,7 +254,15 @@ pub(super) fn serve(
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
             }
             "term_ack" => {
-                acked.fetch_add(req["bytes"].as_u64().unwrap_or(0), Ordering::SeqCst);
+                if let Some(entry) = terms
+                    .lock()
+                    .unwrap()
+                    .get(req["term"].as_str().unwrap_or(""))
+                {
+                    entry
+                        .1
+                        .fetch_add(req["bytes"].as_u64().unwrap_or(0), Ordering::SeqCst);
+                }
             }
             // Answered in order on this connection, so keys never pass each other.
             "keys" | "resize" => {
@@ -344,7 +359,9 @@ pub(super) fn serve(
     }
     here.store(false, Ordering::SeqCst);
     watching.fetch_add(1, Ordering::SeqCst);
-    terming.fetch_add(1, Ordering::SeqCst);
+    for entry in terms.lock().unwrap().values() {
+        entry.0.fetch_add(1, Ordering::SeqCst);
+    }
     gitting.fetch_add(1, Ordering::SeqCst);
     git::leave(conn);
     brigadier::browser::leave(conn);

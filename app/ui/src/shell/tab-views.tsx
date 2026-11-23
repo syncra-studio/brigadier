@@ -22,6 +22,7 @@ import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
 import { LocalServers } from "../browser/new-tab";
 import { BrowserTab } from "../browser/tab";
+import { TerminalTab } from "../terminal/terminal";
 import { TeamTab } from "../workers/live";
 import { AttachmentTab } from "./attachment-tab";
 import { MockupTab } from "../mockup/live";
@@ -165,7 +166,6 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             inert={tab.id !== active}
             className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}
           >
-            {/* Each kind until it's wired: the terminal comes later [D361]. */}
             {/* A PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
             <HostOf.Provider key={host} value={tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
               {tab.kind === "pr" && tab.target === "list" ? (
@@ -180,6 +180,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
                 <ReviewView owner={owner} target={tab.target} tab={tab.id} kept={tab.scope} />
               ) : tab.kind === "attachment" ? (
                 <AttachmentTab key={tab.target?.split("/")[0]} owner={owner} id={tab.target?.split("/")[0] ?? ""} label={tab.target?.split("/")[1] ?? ""} active={tab.id === active} />
+              ) : tab.kind === "terminal" ? (
+                <TerminalTab owner={owner} tab={tab.id} active={tab.id === active} />
               ) : tab.kind === "background" ? (
                 <BackgroundHistory owner={owner} />
               ) : tab.kind === "actions" ? (
@@ -192,13 +194,11 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
                 <TeamTab owner={owner} kind={tab.kind} target={tab.target} />
               ) : tab.kind === "mockup" ? (
                 <MockupTab key={tab.target} owner={owner} tab={tab} active={tab.id === active} />
-              ) : tab.kind === "new" ? (
+              ) : (
                 // The New tab is the browser: Enter or a site turns it into the page, drawn anew [D508].
                 <BrowserTab key="new" owner={owner} tab={tab} active={tab.id === active} onNavigate={(url) => replaceTab(owner, tab.id, "browser", url)}>
                   <NewTab owner={owner} tab={tab} archived={archived} active={tab.id === active} />
                 </BrowserTab>
-              ) : (
-                <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Not connected yet" className="m-auto" />
               )}
             </HostOf.Provider>
           </div>

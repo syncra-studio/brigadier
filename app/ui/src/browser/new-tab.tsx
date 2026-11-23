@@ -8,13 +8,14 @@ import { HOME } from "../shell/tab-store";
 
 /** The New tab's browser part (the old NewTabTools's): its session's Local servers [D508]. */
 
-/** The local servers the session's background jobs printed, while they answer (Rust's `jobs <id> servers`), read again as its jobs change. */
+/** The local servers the session's background jobs and terminals printed, while they answer (Rust's `jobs <id> servers`), read
+ *  again as its jobs change [D315]. */
 export function LocalServers({ owner, active, onOpen }: { owner: string; active: boolean; onOpen: (url: string) => void }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
   const jobs = (row?.background ?? []).map((job) => `${job.pid}.${job.start_us}`).join(" ");
   const [servers, setServers] = useState<string[]>([]);
   useEffect(() => {
-    if (!active || owner === HOME || !jobs) return setServers([]);
+    if (!active || owner === HOME) return setServers([]);
     let live = true;
     run(["jobs", owner, "servers"]).then(
       (reply) => live && setServers(reply.servers as string[]),

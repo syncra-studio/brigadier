@@ -71,15 +71,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
             return Ok(json!({"ok": true, "history": fold::history(&spec.dir, &left)}));
         }
-        // `jobs <id> servers`: the local servers its steps printed, while a job its turns left runs [D508].
+        // `jobs <id> servers`: the local servers its steps printed, while a job its turns left runs, and
+        // its terminals, while their shell runs [D508, D315].
         "jobs" if arg(args, 2)? == "servers" => {
             let f = core::fold(&spec.dir, true)?;
             let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
-            let servers = if left.is_empty() {
-                vec![]
-            } else {
-                servers::of(&spec.dir)
-            };
+            let shells = crate::tabs::terminal::printed(data, id);
+            let servers = servers::of(&spec.dir, !left.is_empty(), shells);
             return Ok(json!({"ok": true, "servers": servers}));
         }
         // `jobs <id> stop <pid> <start_us>`: one process tree its turns left running [D105].
@@ -135,8 +133,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             reply["workers"] = workers::unlanded(data, &family).into();
             return Ok(reply);
         }
-        _ => return workers::delete(data, id, flag(args, "--branch") == Some("delete")),
+        // Its terminals go too, also those of one cut short before [repo D35].
+        _ => {
+            let done = workers::delete(data, id, flag(args, "--branch") == Some("delete"));
+            crate::tabs::terminal::sweep(data);
+            return done;
+        }
     }
+    crate::tabs::terminal::sweep(data);
     Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
 }
 

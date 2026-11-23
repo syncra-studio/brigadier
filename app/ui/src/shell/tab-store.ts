@@ -51,7 +51,7 @@ const listeners = new Set<() => void>();
 /** Home's tabs are its project's, as the old app's draft:<project>; a chat in no project has its own [D706]. */
 let homeKey = HOME;
 let homeAt: string | null = null;
-const own = (owner: string) => (owner === HOME ? homeKey : owner);
+export const own = (owner: string) => (owner === HOME ? homeKey : owner);
 /** `key`: tabs of a draft in no project kept apart from New chat's, a PR's review chat's [D162]. */
 export function setHomeTabs(project: string | null, key?: string): void {
   homeAt = project;

@@ -195,11 +195,18 @@ pub fn check_id(id: &str) -> io::Result<()> {
 /// A setup run (an install or sign-in in a terminal [D45]) is a session folder of its own under
 /// `setup/`, off the session list, so the host, log and terminal serve it unchanged [D45, D60].
 pub const SETUP: &str = "setup-";
+/// A terminal, a tab's or a `!` command's, is a folder of its own under `terminals/`, named by its
+/// tab's or command's id, which a draft's tab keeps when it becomes a session's [D315]. Whose it
+/// is lives with its owner (`cli::terminal`), so a host, log and terminal serve it unchanged.
+pub const TERM: &str = "term-";
 
 pub fn session_dir(data: &Path, id: &str) -> PathBuf {
-    match id.strip_prefix(SETUP) {
-        Some(agent) => data.join("setup").join(agent),
-        None => data.join("sessions").join(id),
+    if let Some(agent) = id.strip_prefix(SETUP) {
+        data.join("setup").join(agent)
+    } else if let Some(term) = id.strip_prefix(TERM) {
+        data.join("terminals").join(term)
+    } else {
+        data.join("sessions").join(id)
     }
 }
 

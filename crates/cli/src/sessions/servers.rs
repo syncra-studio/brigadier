@@ -1,22 +1,26 @@
 //! The New tab's Local servers [D508]: the local addresses the session's steps printed, as the old
-//! app's devServers read a terminal's output, kept while something still answers there.
+//! app's devServers read a terminal's output, kept while something still answers there; its
+//! terminals' too, while their shell runs [D315].
 
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::path::Path;
 use std::time::Duration;
 
-/// Each server address its steps printed that answers now, newest first, one per origin.
-pub fn of(dir: &Path) -> Vec<String> {
+/// Each server address its steps (when `steps`) and `terminals` printed that answers now, newest
+/// first, one per origin.
+pub fn of(dir: &Path, steps: bool, terminals: Vec<String>) -> Vec<String> {
     let mut printed = vec![];
-    // shortcut: steps' output only; a terminal's too once terminals are built [D361].
-    let _ = brigadier_core::rewind::read_active(dir, |item| {
-        if item["kind"] == "tool_done"
-            && let Some(output) = item["output"].as_str()
-            && output.contains("://")
-        {
-            printed.extend(addresses(&plain(output)));
-        }
+    let _ = steps.then(|| {
+        brigadier_core::rewind::read_active(dir, |item| {
+            if item["kind"] == "tool_done"
+                && let Some(output) = item["output"].as_str()
+                && output.contains("://")
+            {
+                printed.extend(addresses(&plain(output)));
+            }
+        })
     });
+    printed.extend(terminals.iter().flat_map(|t| addresses(&plain(t))));
     let mut origins = vec![];
     let mut found = vec![];
     for url in printed.into_iter().rev() {

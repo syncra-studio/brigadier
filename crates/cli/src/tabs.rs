@@ -6,6 +6,7 @@
 
 mod home;
 pub(crate) mod target;
+pub(crate) mod terminal;
 
 pub use home::carry;
 use home::is_home;
@@ -20,7 +21,7 @@ use std::path::{Path, PathBuf};
 use target::{check_target, relative};
 
 const CHAT: &str = "chat";
-/// The old app's New tab chooser, and a terminal, drawn only for now [D361]; a pull request with its
+/// The old app's New tab chooser, and a terminal, its shell on its own host (`terminal`) [D315]; a pull request with its
 /// number, or `list` for the session's PRs [D205]; the Review diff [D1014, D1032]; an attachment, `<id>/<its name>`, as the old app opened a
 /// pasted text or a text file in a tab, and now every file that isn't an image [D2098, D2104]; the
 /// card's Background history [D200]; a note, by its id [D244]; the session repository's Actions [D264]; a web page, by
@@ -227,6 +228,9 @@ impl Tabs {
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    if args[0] == "terminal" {
+        return terminal::run(data, args);
+    }
     let id = arg(args, 1)?;
     let path = file(data, id);
     let Some(op) = args.get(2).map(String::as_str) else {
@@ -471,6 +475,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if now != was {
         now.rev = was.rev + 1;
         write(&path, &now)?;
+        terminal::closed(data, &was, &now);
     }
     Ok(state(&now))
 }

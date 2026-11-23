@@ -84,7 +84,8 @@ let n: number | undefined;
 const listeners = new Set<() => void>();
 // One-off replies by request id (a command, the terminal's stream), and where terminal frames go.
 const replies = new Map<number, (frame: Record<string, any>) => void>();
-let onTerm: ((frame: Record<string, any>) => void) | undefined;
+/** Every open terminal's handler, each taking only its own stream's frames, by its watch id [D315]. */
+export const termHandlers = new Set<(frame: Record<string, any>) => void>();
 let onGit: ((frame: Record<string, any>) => void) | undefined;
 let onBrowser: ((call: Record<string, any>) => void) | undefined;
 
@@ -140,11 +141,6 @@ export function setGitHandler(handler: typeof onGit): void {
 export function setBrowserHandler(handler: typeof onBrowser): void {
   onBrowser = handler;
   if (view.daemon) send({ op: "browser" });
-}
-
-/** Where a sign-in terminal's pushed frames go: one at a time [D45]. */
-export function setTermHandler(handler: typeof onTerm): void {
-  onTerm = handler;
 }
 
 function send(request: object): number {
@@ -305,7 +301,7 @@ function onFrame(frame: Record<string, any>): void {
     replies.delete(frame.re);
     return reply(frame);
   }
-  if (frame.term !== undefined) return onTerm?.(frame);
+  if (frame.term !== undefined) return termHandlers.forEach((handler) => handler(frame));
   if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
   if (frame.browser !== undefined && frame.re === undefined) return onBrowser?.(frame.browser);
   if (frame.status === "running") {

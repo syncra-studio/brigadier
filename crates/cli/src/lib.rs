@@ -135,7 +135,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" | "routing" | "plugins" | "browser" | "computer" => &[][..],
+        | "panel" | "routing" | "plugins" | "browser" | "computer" | "terminal" => &[][..],
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
@@ -151,8 +151,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match cmd {
         "start" => {
             let id = arg(args, 1)?;
-            if id.starts_with(core::SETUP) {
-                let kept = format!("{:?} is kept for setup runs", core::SETUP);
+            if [core::SETUP, core::TERM].iter().any(|p| id.starts_with(p)) {
+                let kept = format!("{id:?} is kept for setup runs and terminals");
                 return Err(io::Error::other(kept));
             }
             let backend = flag(args, "--backend").unwrap_or("fake");
@@ -370,7 +370,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "rewind" => rewind::run(data, args),
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),
-        "tabs" => tabs::run(data, args),
+        "tabs" | "terminal" => tabs::run(data, args),
         "browser" => browser::run(data, args),
         "computer" => computer::run(data, args),
         "chips" => chips::run(data, args),

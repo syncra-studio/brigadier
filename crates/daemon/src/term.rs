@@ -1,11 +1,12 @@
-//! A sign-in's terminal for the app [D45]. `{"id", "op": "terminal", "session"}` answers
+//! A sign-in's or a terminal tab's terminal for the app [D45, D315]. `{"id", "op": "terminal", "session"}` answers
 //! `{"re", "ok", "found"}`, then pushes the run's last terminal from its spawn frame, and follows on:
 //! `{"term", "watch", "start": {spawn, cols, rows}}` when a terminal starts, `{…, "data"}` (its
 //! bytes, base64), `{…, "resize": {cols, rows}}` and `{…, "exited": true}`. Replayed whole, every
 //! resize in its place, so the screen comes back the same [D60].
 //!
 //! Flow control: no more than WINDOW bytes go out before the app acks them with
-//! `{"op": "term_ack", "bytes"}` once xterm has drawn them. Unread bytes wait in the log.
+//! `{"op": "term_ack", "term", "bytes"}` once xterm has drawn them. Unread bytes wait in the log.
+//! Each terminal streams on its own, so every open terminal tab is live at once [D315].
 
 use brigadier_core::{check_id, session_dir};
 use brigadier_frames::base64;
@@ -21,6 +22,11 @@ use std::thread;
 use std::time::Duration;
 
 const WINDOW: u64 = 512 * 1024;
+/// A connection's terminal streams, by terminal id: each one's watch counter and the bytes the
+/// app has drawn of it.
+pub type Streams = std::sync::Arc<
+    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<(AtomicU64, AtomicU64)>>>,
+>;
 /// The most bytes one push carries.
 const CHUNK: usize = 64 * 1024;
 const FOLLOW: Duration = Duration::from_millis(30);
