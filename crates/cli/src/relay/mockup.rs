@@ -420,7 +420,11 @@ fn ready(data: &Path, me: &str, m: &mut Value, round: usize, again: bool) {
     let request = json!({"id": format!("{PICK}{me}-{round}"), "title": format!("{} · round {round} is ready", m["title"].as_str().unwrap_or("Mockup")), "items": [item], "held": true});
     let note =
         json!({"event": "mockup", "phase": "asked", "id": request["id"], "request": request});
-    let post = || owner::call(data, &l.parent, json!({"op": "note", "data": note})).is_ok();
+    // The host answers a note it couldn't log with ok false, not an error.
+    let post = || {
+        owner::call(data, &l.parent, json!({"op": "note", "data": note}))
+            .is_ok_and(|r| r["ok"] == true)
+    };
     let gone = |s: &core::Spec| {
         core::session::retired(&s.dir).is_some() || core::projects::removing(data, s)
     };
