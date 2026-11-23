@@ -306,12 +306,12 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
     };
     let _one = match worktrees::lock(dir) {
         Ok(one) => one,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return gone(),
+        Err(_) if !dir.join("session.json").exists() => return gone(dir),
         Err(e) => return fail(vec![format!("{}: {e}", dir.display())], 0),
     };
     // Another delete got here first, its Brigade's or its own: what's gone is done [D35].
     if !dir.join("session.json").exists() {
-        return gone();
+        return gone(dir);
     }
     // A rewind can start after the caller settled it; keep its record recoverable [D35].
     if crate::rewind::pending(dir) {
@@ -401,9 +401,19 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         "kept_branches": kept_branches})
 }
 
-/// A delete's reply for a session already deleted: one with no `session.json` can't be loaded again.
-pub fn gone() -> Value {
-    json!({"ok": true, "swept": 0, "removed": [], "left": [], "kept_branches": []})
+/// A delete of a session already deleted, one with no `session.json`: what a removal cut short
+/// left goes too, known by its intent or archive mark, so a worker still being made keeps its
+/// folder; one kept for a worktree another uses stays [D35, D1080].
+pub fn gone(dir: &Path) -> Value {
+    let cut = [INTENT, ARCHIVED].iter().any(|f| dir.join(f).exists());
+    let left: Vec<String> =
+        match (cut && !dir.join(worktrees::RETAINED).exists()).then(|| fs::remove_dir_all(dir)) {
+            Some(Err(e)) if e.kind() != io::ErrorKind::NotFound => {
+                vec![format!("{}: {e}", dir.display())]
+            }
+            _ => vec![],
+        };
+    json!({"ok": left.is_empty(), "swept": 0, "removed": [], "left": left, "kept_branches": []})
 }
 
 /// Rolls back a restore cut short: its worktree is freed again, unless another session still
@@ -426,13 +436,19 @@ fn undo_restore(spec: &Spec) -> io::Result<()> {
         })
 }
 
-/// The session's folder goes; one still holding a worktree another uses keeps only that, its
-/// record last, so a crash leaves it a session that deletes again [D35, D1080].
+/// The session's folder goes, its record and intent last, so a file that won't go leaves a session
+/// that deletes again; one still holding a worktree another uses keeps only that [D35, D1080].
 fn remove(dir: &Path) -> io::Result<()> {
-    if !dir.join(worktrees::RETAINED).exists() {
-        return fs::remove_dir_all(dir);
-    }
-    let keep = ["worktree", worktrees::RETAINED, "session.json", INTENT];
+    let retained = dir.join(worktrees::RETAINED).exists();
+    // Its lock stays held to the end: a second delete waits on it, then finds the session gone.
+    let keep = [
+        "session.json",
+        INTENT,
+        "worktree.lock",
+        "worktree",
+        worktrees::RETAINED,
+    ];
+    let keep = &keep[..if retained { 5 } else { 3 }];
     for entry in fs::read_dir(dir)?.flatten() {
         if keep.iter().any(|k| entry.file_name() == *k) {
             continue;
@@ -443,7 +459,10 @@ fn remove(dir: &Path) -> io::Result<()> {
         }
     }
     fs::remove_file(dir.join("session.json"))?;
-    clear(dir, INTENT)
+    match retained {
+        true => clear(dir, INTENT),
+        false => fs::remove_dir_all(dir),
+    }
 }
 
 /// At the daemon's start, after `worktrees::sweep`'s own: an archive cut short finishes, a restore

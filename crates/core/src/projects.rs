@@ -390,16 +390,15 @@ fn path(p: &str) -> io::Result<String> {
     Ok(p.into())
 }
 
-/// The project's sessions, archived ones too.
+/// The project's sessions, archived ones too, with one in a worktree of theirs an archive took away.
 pub fn sessions(data: &Path, id: &str) -> io::Result<Vec<String>> {
-    let projects = list(data)?;
-    let mut roots = Roots::default();
-    Ok(ids(data)
-        .into_iter()
-        .filter(|s| {
-            load(data, s).is_ok_and(|spec| of(&spec, &projects, &mut roots).as_deref() == Some(id))
-        })
-        .collect())
+    let (projects, mut roots) = (list(data)?, Roots::default());
+    let specs = ids(data).into_iter().filter_map(|s| load(data, &s).ok());
+    let (mine, rest): (Vec<Spec>, Vec<Spec>) =
+        specs.partition(|s| of(s, &projects, &mut roots).as_deref() == Some(id));
+    let within = |s: &&Spec| mine.iter().any(|m| Path::new(&s.cwd).starts_with(&m.dir));
+    let more: Vec<&Spec> = rest.iter().filter(within).collect();
+    Ok(mine.iter().chain(more).map(|s| s.id.clone()).collect())
 }
 
 /// Marks the project as being removed, or clears it; a second Remove while one runs is refused.
