@@ -12,6 +12,31 @@ impl Fold {
         }
     }
 
+    /// A new host: what it was delivering is lost, and session grants live as long as the host
+    /// that holds them [D193, D238].
+    pub(super) fn owner_started(&mut self, ts: u64) {
+        self.interrupt(serde_json::json!({"owner_restarted": true}), ts);
+        self.turns
+            .iter_mut()
+            .filter(|t| t.delivered.is_none())
+            .for_each(|t| t.orphaned = true);
+        self.grants.clear();
+        self.granting.clear();
+    }
+
+    /// A mockup card shown, or picked [D2067].
+    pub(super) fn offered(&mut self, item: &Value) {
+        let id = item["id"].as_str().unwrap_or("").to_string();
+        match item["phase"].as_str() {
+            Some("asked") => {
+                let turn = self.turns.first().map(|t| t.id.clone());
+                self.offer = Some((id, turn.unwrap_or_default()));
+            }
+            Some("answered") if self.offer.as_ref().is_some_and(|o| o.0 == id) => self.offer = None,
+            _ => {}
+        }
+    }
+
     /// The child an input asked for: started (`spawned`) or never started (`failed`).
     pub(super) fn spawn_settled(&mut self, cid: &str, failed: bool) {
         if let Some(t) = self

@@ -93,6 +93,9 @@ pub struct Fold {
     /// asked, then while it waits for the reset (`until`) [D2028, D342].
     #[serde(default)]
     pub hold: Option<Value>,
+    /// A mockup card waiting on the user's pick, its turn over or not, and its turn's id [D2067].
+    #[serde(default)]
+    pub offer: Option<(String, String)>,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
@@ -481,16 +484,8 @@ impl Fold {
                 Some("peer") => self.passed_to_user(item),
                 Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
-                Some("owner_started") => {
-                    self.interrupt(json!({"owner_restarted": true}), ts);
-                    self.turns
-                        .iter_mut()
-                        .filter(|t| t.delivered.is_none())
-                        .for_each(|t| t.orphaned = true);
-                    // Session grants live as long as the host that holds them [D193, D238].
-                    self.grants.clear();
-                    self.granting.clear();
-                }
+                Some("mockup") => self.offered(item),
+                Some("owner_started") => self.owner_started(ts),
                 Some("worker") => self.worker(item),
                 _ => {}
             },
