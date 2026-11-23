@@ -467,10 +467,12 @@ pub(super) fn said(data: &Path, l: &Link, wid: &str, turn: &str) -> String {
     }
 }
 
-/// A turn's own last message, by the turn's stable id.
+/// A turn's own last message, by the turn's stable id: its rows carry the id of the block it went
+/// into, the one it carried on for a wake or a rebirth's carry-on [D88, D118].
 pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
     let mut thread = core::thread::Thread::default();
     let _ = core::rewind::read_active(&core::session_dir(data, id), |i| thread.push(i));
+    let turn = thread.block_of(turn).to_string();
     let items = thread.session(id, "", None, None)["items"].take();
     (items.as_array().into_iter().flatten().rev())
         .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == turn)
