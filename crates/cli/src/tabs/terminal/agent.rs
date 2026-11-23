@@ -92,7 +92,7 @@ pub(super) fn commands(data: &Path, me: &str) -> Vec<String> {
 }
 
 /// The line a command ran: its spawn's last word.
-fn line_of(dir: &Path) -> String {
+pub(super) fn line_of(dir: &Path) -> String {
     use brigadier_frames::log::{self, Reader};
     let mut r = Reader::open(&dir.join("log"), 0, 0).ok();
     while let Some(Ok(Some(f))) = r.as_mut().map(|r| r.next_with(|k| k == log::SPAWNED)) {
@@ -109,7 +109,7 @@ fn line_of(dir: &Path) -> String {
     String::new()
 }
 
-fn text_of(data: &Path, id: &str) -> String {
+pub(super) fn text_of(data: &Path, id: &str) -> String {
     plain(&tail(
         &core::session_dir(data, &format!("{TERM}{id}")),
         WHOLE,

@@ -109,7 +109,7 @@ fn due(data: &Path, pid: &str, wid: Option<&str>) -> Vec<(std::path::PathBuf, Re
 /// The words for the parent: per worker, its messages then its turns' ends, oldest worker first.
 fn words(data: &Path, due: &[(std::path::PathBuf, Res)]) -> String {
     let mut wids: Vec<&str> = Vec::new();
-    for (_, r) in due {
+    for (_, r) in due.iter().filter(|(_, r)| r.how != "shell") {
         if !wids.contains(&r.wid.as_str()) {
             wids.push(&r.wid);
         }
@@ -158,11 +158,83 @@ fn words(data: &Path, due: &[(std::path::PathBuf, Res)]) -> String {
 /// marked with it first, then the words, after `agent`'s. Call under the parent's queue lock.
 pub fn with(data: &Path, pid: &str, cid: &str, agent: &mut String) {
     let mut due = due(data, pid, None);
+    let shell = shell_words(data, pid, &mut due);
     for (path, r) in due.iter_mut() {
         r.going = cid.into();
         let _ = write_json(path, r);
     }
     *agent += &words(data, &due);
+    *agent += &shell;
+}
+
+/// A `!` command the user ran in `pid` [D316]: its start (`run`), told as it is when it goes; its
+/// end (`end`) only when its start went while it still ran, so the lead hears the end too.
+pub fn shell(data: &Path, pid: &str, cmd: &str, phase: &str) -> std::io::Result<()> {
+    let (_lock, _) = queue::hold(&core::session_dir(data, pid))?;
+    let run: Option<Res> = super::read_json(&path_of(data, pid, cmd, "run"));
+    if phase == "end"
+        && run.is_none_or(|r| r.going.is_empty() && r.state == "quiet" || r.text == "ended")
+    {
+        return Ok(());
+    }
+    let at = brigadier_frames::log::now_ms();
+    let (wid, turn, how, state) = (cmd.into(), phase.into(), "shell".into(), "quiet".into());
+    let res = Res {
+        wid,
+        turn,
+        how,
+        state,
+        at,
+        ..Default::default()
+    };
+    fs::create_dir_all(dir_of(data, pid))?;
+    write_json(&path_of(data, pid, cmd, phase), &res)
+}
+
+/// The words for the `!` commands due (an end whose start goes too is told by its start), and
+/// the terminal tabs that printed more; each command marked as told ended or not.
+fn shell_words(data: &Path, pid: &str, due: &mut [(std::path::PathBuf, Res)]) -> String {
+    let runs: Vec<String> = (due
+        .iter()
+        .filter(|(_, r)| r.how == "shell" && r.turn == "run"))
+    .map(|(_, r)| r.wid.clone())
+    .collect();
+    let mut cmds: Vec<String> = vec![];
+    for (_, r) in due.iter().filter(|(_, r)| r.how == "shell") {
+        if (r.turn == "run" || !runs.contains(&r.wid)) && !cmds.contains(&r.wid) {
+            cmds.push(r.wid.clone());
+        }
+    }
+    let (text, ended) = crate::tabs::terminal::notes::shell(data, pid, &cmds);
+    for (_, r) in due
+        .iter_mut()
+        .filter(|(_, r)| r.how == "shell" && r.turn == "run")
+    {
+        let told_ended = cmds
+            .iter()
+            .position(|c| *c == r.wid)
+            .is_some_and(|i| ended[i]);
+        r.text = if told_ended {
+            "ended".into()
+        } else {
+            String::new()
+        };
+    }
+    text + &crate::tabs::terminal::notes::tabs(data, pid)
+}
+
+/// The lead's own `wait` takes what waits of its user's terminals, once, under its queue lock as
+/// a delivery sends [D304, D316].
+pub fn take_shell(data: &Path, me: &str) -> Option<String> {
+    let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
+    let mut due = due(data, me, None);
+    due.retain(|(_, r)| r.how == "shell");
+    let text = shell_words(data, me, &mut due);
+    for (path, r) in due.iter_mut() {
+        r.state = "taken".into();
+        write_json(path, r).ok()?;
+    }
+    (!text.is_empty()).then(|| text.trim_start().to_string())
 }
 
 /// The parent's own `wait` on worker `wid` takes what waits from it at once, though it still

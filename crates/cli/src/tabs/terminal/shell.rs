@@ -96,6 +96,8 @@ fn spawn(
     let note = json!({"event": "shell", "phase": "start", "id": cmd, "command": line});
     owner::call(data, &spec.id, json!({"op": "note", "data": note}))?;
     fs::write(mark, "")?;
+    // The lead hears of it with its next input, never woken [D316].
+    let _ = crate::workers::told_shell(data, &spec.id, cmd, "run");
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let run = Spec {
         id: format!("{TERM}{cmd}"),
@@ -181,6 +183,7 @@ fn end(data: &Path, sid: &str, cmd: &str, failed: Option<&str>) -> io::Result<Va
     owner::ensure(data, &spec)?;
     owner::call(data, sid, json!({"op": "note", "data": note}))?;
     fs::write(&mark, "ended")?;
+    let _ = crate::workers::told_shell(data, sid, cmd, "end");
     let _ = owner::release(data, &id);
     Ok(json!({"ok": failed.is_none(), "error": failed}))
 }

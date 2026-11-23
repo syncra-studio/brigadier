@@ -10,6 +10,7 @@
 //! [repo D35]. `<owner>` is a session, `@home` or `@home:<project>`, as `tabs` takes.
 
 pub(crate) mod agent;
+pub(crate) mod notes;
 mod shell;
 
 use super::{TERMINAL, Tab, Tabs, file, lock, read};

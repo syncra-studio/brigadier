@@ -7,8 +7,27 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Waits for the first of `ids` to stop working or need its user.
+/// Waits for the first of `ids` to stop working or need its user; what waits of the user's
+/// terminals goes first, taken once [D316].
 pub(super) fn wait(
+    data: &Path,
+    me: &str,
+    ids: &[String],
+    secs: u64,
+    rows: &dyn Fn() -> Vec<Value>,
+    here: &dyn Fn() -> bool,
+) -> Value {
+    let mut reply = until(data, me, ids, secs, rows, here);
+    if reply["ok"] == true
+        && let Some(notes) = workers::take_shell(data, me)
+    {
+        reply["text"] = format!("{notes}\n\n{}", reply["text"].as_str().unwrap_or("")).into();
+        reply["terminals"] = notes.into();
+    }
+    reply
+}
+
+fn until(
     data: &Path,
     me: &str,
     ids: &[String],
