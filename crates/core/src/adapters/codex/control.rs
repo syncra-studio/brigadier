@@ -375,3 +375,12 @@ fn answers(cli: &Value, msg: &Value) -> Value {
     }
     json!({"answers": out})
 }
+
+/// A reload ahead of the message when the session's proxy couldn't connect Codex to a server: it
+/// never dials a failed one again itself, and a reload dials them all.
+pub fn redial(spec: &Spec) -> &'static str {
+    match crate::library::unreached(spec).is_empty() {
+        true => "",
+        false => "{\"redial\":true}\n",
+    }
+}

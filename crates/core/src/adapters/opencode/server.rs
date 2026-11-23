@@ -104,6 +104,13 @@ pub(super) fn start(
 /// One line from the adapter. A failed `must` line (the setup before a first message) ends the
 /// helper, so no message runs on a setup it didn't take [D222].
 pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
+    if let Some(names) = c["redial"].as_array() {
+        for name in names.iter().filter_map(Value::as_str) {
+            let path = format!("/api/experimental/mcp/{name}/connect");
+            let _ = server.request("POST", &path, &Value::Null);
+        }
+        return Ok(());
+    }
     let session = state.lock().unwrap().session.clone();
     let at = |rest: &str| format!("/api/session/{session}{rest}");
     let (p, f) = (&c["permission"], &c["form"]);

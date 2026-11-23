@@ -252,7 +252,7 @@ impl Adapter for Codex {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!("{}\n", control::turn(spec, text))
+        format!("{}{}\n", control::redial(spec), control::turn(spec, text))
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {

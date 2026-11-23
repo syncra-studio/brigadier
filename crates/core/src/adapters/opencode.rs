@@ -284,7 +284,7 @@ impl Adapter for OpenCode {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!("{}\n", message(spec, text))
+        format!("{}{}\n", control::redial(spec), message(spec, text))
     }
 
     /// Auto as its own per-tool rules [D130].
