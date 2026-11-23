@@ -72,6 +72,18 @@ fn request(body: Value) -> (String, String) {
     (format!("{line}\n"), id)
 }
 
+/// Asks Claude to connect again each server the session's proxy couldn't answer its connect for
+/// (the Agent SDK's `reconnectMcpServer`), before the message: it never dials a failed one itself.
+pub fn redial(spec: &Spec) -> String {
+    let file = spec.dir.join("plugins").join("unreached.json");
+    let names: Vec<String> = (std::fs::read(file).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    (names.iter())
+        .map(|name| request(json!({"subtype": "mcp_reconnect", "serverName": name})).0)
+        .collect()
+}
+
 /// A level or model change goes to the idle child as its own requests, confirmed before the
 /// message [D222]; an effort, or its subagents' allowlist, has no such request, so the child starts
 /// again with it [D376].
