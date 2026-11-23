@@ -5,22 +5,30 @@
 //! block list [D903]; an action waits while the user is in its app [D910].
 
 mod act;
+mod apps;
+mod diff;
 mod open;
 mod run;
+mod shot;
+mod typing;
+mod web;
 mod window;
 
 use super::{Fail, HUB, lock, tool};
 use crate::agent::{cap, refuse};
 use act::{act, key, need, token};
-use open::{apps, find, menu_path, press};
+use apps::{apps, find, menu_path};
+use open::press;
 use serde_json::{Value, json};
+use shot::{drag, screenshot};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
-use window::{drag, ours, read, screenshot};
+use web::web_page;
+use window::{ours, read};
 
 pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them, by a
 worker: a chat's lead starts one on the job whose line covers computer use (`brigadier start --job`).
@@ -95,56 +103,6 @@ struct Sess {
 
 pub(super) const OFF: &str =
     "Computer use is off: ask the user to turn it on in Settings › Computer use.";
-
-/// Why a browser app is closed to computer use, or `None` where it isn't: while Settings › Computer
-/// use › Web pages in Brigadier's browser is on, web pages go to `brigadier browser`, unless the
-/// user named this browser in the chat, this session's or its lead's [D2032]. `address`: its
-/// window has an address bar.
-pub(super) fn web_page(data: &Path, me: &str, app: &str, address: bool) -> Option<String> {
-    // shortcut: browsers by name; an address bar also tells one, once a read has seen it.
-    const BROWSERS: [&str; 11] = [
-        "chrome", "chromium", "safari", "firefox", "edge", "brave", "arc", "dia", "opera",
-        "vivaldi", "helium",
-    ];
-    let words = |t: &str| -> Vec<String> {
-        (t.to_lowercase().split(|c: char| !c.is_alphanumeric()))
-            .filter(|w| !w.is_empty())
-            .map(String::from)
-            .collect()
-    };
-    let named = words(app);
-    let browser = address || named.iter().any(|w| BROWSERS.contains(&w.as_str()));
-    if !browser || crate::settings::get(data, super::WEB) != "true" {
-        return None;
-    }
-    // The user's own words, here and in the chat that started this worker; once named, it stays so.
-    static NAMED: LazyLock<Mutex<HashSet<(String, String)>>> = LazyLock::new(Mutex::default);
-    let key = (me.to_string(), app.to_string());
-    if lock(&NAMED).contains(&key) {
-        return None;
-    }
-    let (root, _) = crate::workers::place(data, me);
-    let said = [me, root.as_str()].iter().any(|id| {
-        (crate::relay::archive(data, id, false).iter())
-            .filter(|e| e.from == "user")
-            .any(|e| {
-                let theirs = words(&e.text);
-                (named.iter())
-                    .filter(|w| {
-                        !["google", "microsoft", "browser", "for", "testing"].contains(&w.as_str())
-                    })
-                    .any(|w| theirs.contains(w))
-            })
-    });
-    if said {
-        lock(&NAMED).insert(key);
-    }
-    (!said).then(|| format!(
-        "{app} is a browser, and web pages go to Brigadier's browser: `brigadier browser open <url>`, then `brigadier browser snapshot`. \
-         Reading {app} stays open to you. The user's sign-ins come over in Settings › Import Browser Data, from {app}'s profile: ask them to bring them there. \
-         Computer use acts in {app} only once the user names it in the chat, or turns off Settings › Computer use › Web pages in Brigadier's browser."
-    ))
-}
 
 /// The session using the computer now [D907].
 static HOLDER: Mutex<Option<String>> = Mutex::new(None);
@@ -430,83 +388,7 @@ fn verb(
                 r => r?,
             }
         }
-        "type" => {
-            let n = n(0)?;
-            let text = w
-                .values
-                .get("--stdin")
-                .filter(|t| !t.is_empty())
-                .ok_or_else(|| {
-                    refuse("Pipe the text in: echo \"…\" | brigadier computer type 4")
-                })?;
-            if s.moved {
-                return Err(refuse(
-                    "The window's numbers moved: read it again before typing.",
-                ));
-            }
-            if s.secure.contains(&n) {
-                return Err(refuse(&format!(
-                    "[{n}] is a password field: ask the user to type it."
-                )));
-            }
-            // `type` replaces: the field is emptied first, else the text goes in at its caret.
-            let old = s.values.get(&n).cloned().unwrap_or_default();
-            if !old.is_empty() {
-                let clear = json!({"element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "value": "", "session": me});
-                call(data, "set_value", clear, here)?;
-            }
-            let args = json!({"text": text, "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
-            let line = format!("Typed {} characters into [{n}]", text.chars().count());
-            let mut out = act(data, me, &mut s, &line, "type_text", args, here)?;
-            // Done only when the field reads the text back.
-            if s.batch {
-                lock(&SESSIONS).insert(me.to_string(), s);
-                return Ok(out);
-            }
-            let landed = window::shows(&s, n, text);
-            // The old text still there beside the new: it went in at the caret, not over it.
-            let kept = !old.is_empty() && !text.contains(old.trim()) && window::shows(&s, n, &old);
-            let typed = match (landed, kept) {
-                (true, false) => format!("{line}: done, [{n}] reads it back."),
-                (true, true) => format!(
-                    "{line}: [{n}] holds its old text too: \"{}\". Read it before going on.",
-                    s.values[&n]
-                ),
-                (false, _) => {
-                    format!("{line}: [{n}] doesn't read it back. Read it before going on.")
-                }
-            };
-            let landed = landed && !kept;
-            out = out.replacen(out.lines().next().unwrap_or(""), &typed, 1);
-            // Return only after text that landed: never on a refusal or an unknown outcome.
-            if w.flags.contains("--submit") && !landed {
-                out.push_str("\nNot submitted: read the window, then `key return`.");
-            } else if w.flags.contains("--submit") {
-                // A real Return to the field: Chromium's address bar takes only a hardware one.
-                let mut enter = json!({"key": "return", "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
-                if window::chromium(data, s.pid, here) {
-                    enter["delivery_mode"] = "foreground".into();
-                }
-                let title =
-                    |s: &Sess| (s.wins.iter().find(|w| w.0 == s.window)).map(|w| w.1.clone());
-                let (address, before) = (s.address == Some(n), title(&s));
-                out = act(data, me, &mut s, "Pressed Return", "press_key", enter, here)?;
-                if address {
-                    let url = s
-                        .address
-                        .and_then(|a| s.values.get(&a))
-                        .cloned()
-                        .unwrap_or_default();
-                    out.push_str(&match (url == old, title(&s) == before) {
-                        (true, _) => format!("\nThe address bar still shows \"{old}\": the page didn't change."),
-                        (false, true) => format!("\nThe address bar shows \"{url}\", but the page title is the same: read to check it loaded."),
-                        (false, false) => format!("\nThe address bar shows \"{url}\": the page changed."),
-                    });
-                }
-                out = format!("{typed}\n{out}");
-            }
-            out
-        }
+        "type" => typing::type_into(data, me, &mut s, w, n(0)?, here)?,
         "scroll" => {
             let n = n(0)?;
             let way = w
@@ -589,31 +471,4 @@ fn call(data: &Path, name: &str, args: Value, here: &dyn Fn() -> bool) -> Result
     tool(data, name, args, &|| !here())
         .map_err(said)?
         .map_err(|e| refuse(&cap(&ours(&e))))
-}
-
-/// Brigadier itself and the system's security prompts are closed at every level [D903].
-fn blocked(name: &str, bundle: &str) -> Result<(), Value> {
-    // `open` takes an app's path too: …/Brigadier.app is Brigadier.
-    let name = Path::new(name)
-        .file_stem()
-        .and_then(|n| n.to_str())
-        .unwrap_or(name);
-    if bundle.starts_with("sh.brigadier.")
-        || name.eq_ignore_ascii_case("Brigadier")
-        || name.eq_ignore_ascii_case("Brigadier Computer Use")
-    {
-        return Err(refuse(
-            "Brigadier can't be used this way: use `brigadier` commands for it.",
-        ));
-    }
-    if [
-        "com.apple.SecurityAgent",
-        "com.apple.LocalAuthentication.UIAgent",
-        "com.apple.CoreAuthUI",
-    ]
-    .contains(&bundle)
-    {
-        return Err(refuse("That's a security prompt: ask the user."));
-    }
-    Ok(())
 }

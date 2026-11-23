@@ -1,7 +1,8 @@
 //! `run` (proposed): a few actions in one call, one round trip. It stops at the first that fails
 //! and answers each step's line, then one diff for the whole run.
 
-use super::window::{Seen, baseline, changes, shows};
+use super::diff::{Seen, baseline, changes};
+use super::window::shows;
 use super::{SESSIONS, Words, lock, refuse, verb, words};
 use serde_json::Value;
 use std::path::Path;

@@ -1,8 +1,9 @@
 //! An action: it waits while the user is in its app [D910], runs once, and says how it went and
 //! what changed.
 
+use super::diff::{Seen, baseline, changes};
 use super::open::{front, own};
-use super::window::{Seen, baseline, changes, ours};
+use super::window::ours;
 use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
