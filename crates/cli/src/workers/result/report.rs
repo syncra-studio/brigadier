@@ -194,9 +194,13 @@ pub(in crate::workers) fn write_as(
     text += &format!("Ran on {}.\n", ran.join(" · "));
     text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
-    // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
+    // A sub-session's last word is its last turn's, after its workers' results woke it [D189];
+    // so is a turn's its CLI carried on in a wake of its own, as its background work ended.
     let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
-    let said = (ended.as_ref().filter(|_| l.session)).and_then(|l| l["id"].as_str());
+    let said = ended
+        .as_ref()
+        .filter(|e| l.session || e["origin"] == "agent");
+    let said = said.and_then(|l| l["id"].as_str());
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
@@ -212,7 +216,9 @@ pub(in crate::workers) fn write_as(
             commits,
             last_of_turn(data, wid, turn),
         );
-    } else if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
+    } else if let Some(mut last) =
+        (said.and_then(|s| last_of_turn(data, wid, s))).or_else(|| last_of_turn(data, wid, turn))
+    {
         if last.len() > super::LAST {
             let mut at = super::LAST;
             while !last.is_char_boundary(at) {

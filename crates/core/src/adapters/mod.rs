@@ -42,9 +42,9 @@ pub enum Event {
     Reasoning(String),
     ToolStart(Tool),
     ToolEnd(Done),
-    /// Background subagents, by their ids, whose own background work still runs: a run of theirs
-    /// that ends now isn't their end, as they run again when that work ends.
-    Awaiting(Vec<String>),
+    /// All its CLI runs in the background, by id (each one's end wakes the agent), then the
+    /// subagents among it whose own work still runs: a run of theirs that ends now isn't their end.
+    Awaiting(Vec<String>, Vec<String>),
     /// A command or watch its CLI runs in the background, by the id it gave it, and what the agent
     /// said it does, else its command: its Background row's words [D187].
     Background(String, String),

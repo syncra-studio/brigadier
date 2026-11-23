@@ -2,7 +2,7 @@
 
 use super::{Fold, Owner};
 use brigadier_frames::{log, procs};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -36,6 +36,30 @@ pub struct Job {
     pub start_us: u64,
     /// Its command, as the agent ran it.
     pub label: String,
+}
+
+/// What the live child's CLI runs in the background, by id, as it last listed it: each one's end
+/// wakes its agent, so a worker's turn that ended meanwhile hasn't reported yet.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Pending {
+    pub ids: BTreeSet<String>,
+    /// One of those ended with no turn open: the wake it starts is on its way.
+    pub due: bool,
+}
+
+impl Pending {
+    /// Its CLI's new list; `idle`: no turn is open.
+    pub(super) fn listed(&mut self, item: &serde_json::Value, idle: bool) {
+        let ids = item["ids"].as_array().into_iter().flatten();
+        let now: BTreeSet<String> = ids.filter_map(|i| i.as_str().map(String::from)).collect();
+        self.due |= idle && self.ids.iter().any(|i| !now.contains(i));
+        self.ids = now;
+    }
+
+    /// Whether its agent will be woken by it.
+    pub fn wakes(&self) -> bool {
+        !self.ids.is_empty() || self.due
+    }
 }
 
 /// A tool's process can start just before its step reaches the log, or after its turn's end does.
