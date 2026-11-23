@@ -137,6 +137,8 @@ pub fn mark(
         .unwrap_or(0);
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
+        // A mockup card its ended turn left up: between turns still, so its queue and results go in.
+        "idle" | "idle_jobs" if fold.offer.is_some() => Some("needs"),
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking"
         | "reconnecting" => Some("working"),
         // Its answer is in, but the block stays open on its subagents or workers: still working [D118, D151].
@@ -205,7 +207,7 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         }
         "waiting_answer" => {
             let turn = turn?;
-            match turn.asks.iter().find(|(_, r)| r["to"] != "parent") {
+            match turn.asks.iter().find(|(_, r)| r["to"].is_null()) {
                 Some((id, ask)) if ask["items"].is_array() => {
                     ("question", format!("ask:{id}"), turn.question.clone())
                 }
@@ -327,6 +329,19 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     if child.stopped {
         return ("stalled", json!({"stopped": child.pid}));
     }
+    // A request only the user answers waits on them, whatever else its turn waits on [D173].
+    if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"].is_null()) {
+        let why = turn
+            .question
+            .clone()
+            .map_or(json!({"approval": id}), Value::from);
+        return ("waiting_answer", why);
+    }
+    // Its own mockup card, the call that asked it waiting on the pick; one left up from an earlier
+    // turn doesn't hide this one's work.
+    if let Some((id, _)) = (fold.offer.as_ref()).filter(|(_, t)| *t == turn.id) {
+        return ("waiting_answer", json!({"offer": id}));
+    }
     // Brigadier answers an exact repeat of a command allowed for the session: it works on [D389].
     if let Some((id, _)) = turn.asks.iter().find(|(_, r)| r["to"] == "brigadier") {
         return ("working", serde_json::json!({"repeat": id}));
@@ -346,9 +361,6 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     }
     if let Some(q) = &turn.question {
         return ("waiting_answer", q.clone().into());
-    }
-    if let Some(id) = turn.asks.keys().next() {
-        return ("waiting_answer", serde_json::json!({"approval": id}));
     }
     // The CLI's own retry while nothing came after it, and its safety hold, say so [D487].
     if turn.retry.is_object() {
