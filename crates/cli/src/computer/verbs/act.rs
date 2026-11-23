@@ -2,7 +2,7 @@
 //! what changed.
 
 use super::open::front;
-use super::window::{NO_CHANGE, changes, ours};
+use super::window::{Seen, baseline, changes, ours};
 use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -21,6 +21,9 @@ pub(super) fn act(
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
+    if !s.batch {
+        baseline(data, s, here);
+    }
     let mut args = args;
     // A run's step reads nothing after it, so it needn't wait for a window to show.
     if s.batch && name != "drag" {
@@ -46,7 +49,7 @@ pub(super) fn act(
             )));
         }
         Ok(Err(why)) if why.contains("-25204") => {
-            let diff = changes(data, me, s, here);
+            let (_, diff) = changes(data, me, s, here);
             return Ok(format!(
                 "{line}: outcome unknown, the app didn't answer.\n{diff}"
             ));
@@ -68,13 +71,14 @@ pub(super) fn act(
         }
         Ok(Ok(done)) => done,
     };
-    let diff = changes(data, me, s, here);
+    let (seen, diff) = changes(data, me, s, here);
     let how = match done["effect"].as_str() {
         Some("refused") => format!("refused.{}", ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))),
-        _ if diff == NO_CHANGE => {
+        _ if seen == Seen::No => {
             "no change seen. Try another way: a key, a menu item, `click N --double`, or read again.".into()
         }
         Some("partial") => "partly done.".into(),
+        _ if seen == Seen::Unsure => "sent; I can't tell what it changed.".into(),
         _ => "change observed.".into(),
     };
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))

@@ -87,13 +87,47 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
     }
 }
 
+/// Always the whole window: a --query is ours to filter, so the driver's last snapshot, which an
+/// action's diff starts from, never holds only part of it [D2032]. A query reads the larger budget.
 pub(super) fn state_args(s: &Sess, me: &str) -> Value {
-    let (rows, depth) = if s.full { FULL } else { ROWS };
-    let mut args = json!({"pid": s.pid, "window_id": s.window, "session": me, "tree_format": "both", "include_screenshot": false, "max_elements": rows, "max_depth": depth});
-    if let Some(q) = &s.query {
-        args["query"] = q.as_str().into();
+    let (rows, depth) = if s.full || s.query.is_some() {
+        FULL
+    } else {
+        ROWS
+    };
+    json!({"pid": s.pid, "window_id": s.window, "session": me, "tree_format": "both", "include_screenshot": false, "max_elements": rows, "max_depth": depth})
+}
+
+/// The rows holding any of `query`'s `a|b` words, each under its ancestors, as Cua's own
+/// `filter_tree` (MIT) gives them.
+fn filter(md: &str, query: &str) -> String {
+    let words: Vec<String> = (query.to_lowercase().split('|'))
+        .map(|w| w.trim().to_string())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let (mut ancestors, mut shown, mut out): (Vec<&str>, Vec<Option<&str>>, Vec<&str>) =
+        Default::default();
+    for line in md.lines() {
+        let depth = line.chars().take_while(|c| *c == ' ').count() / 2;
+        while ancestors.len() <= depth {
+            ancestors.push("");
+            shown.push(None);
+        }
+        shown[depth + 1..].fill(None);
+        ancestors[depth] = line;
+        let low = line.to_lowercase();
+        if words.iter().any(|w| low.contains(w.as_str())) {
+            for d in 0..depth {
+                if !ancestors[d].is_empty() && shown[d] != Some(ancestors[d]) {
+                    shown[d] = Some(ancestors[d]);
+                    out.push(ancestors[d]);
+                }
+            }
+            shown[depth] = Some(line);
+            out.push(line);
+        }
     }
-    args
+    out.join("\n")
 }
 
 /// One window, whole: its title, then its rows [D902].
@@ -183,11 +217,20 @@ pub(super) fn read(
         .or(named)
         .unwrap_or("untitled");
     let total = found["total_element_count"].as_u64().unwrap_or(0);
+    let shown = match &s.query {
+        Some(q) => match filter(tree, q) {
+            rows if rows.is_empty() => format!(
+                "No row holds \"{q}\": try a shorter or another word (\"a|b\" finds either), or read without --query."
+            ),
+            rows => rows,
+        },
+        None => tree.to_string(),
+    };
     let mut text = format!(
         "{} · \"{title}\" · window {nth} of {} · {total} elements\n{}",
         s.app,
         all.len(),
-        tidy(&mask(tree, &s.secure))
+        tidy(&mask(&shown, &s.secure))
     );
     if found["truncated"] == true {
         text.push_str(&format!(
@@ -233,20 +276,97 @@ pub(super) fn tidy(md: &str) -> String {
     md.lines().map(tidy_row).collect::<Vec<_>>().join("\n")
 }
 
+/// What an action did, by our own reads before and after it [D922].
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Seen {
+    Yes,
+    No,
+    /// Something we couldn't compare: never said as "no change".
+    Unsure,
+}
+
 pub(super) const NO_CHANGE: &str = "No change in the window.";
+/// The most changed rows listed; the rest are counted.
+const TOP: usize = 40;
 
 /// Whether control [n]'s whole value, as last read, holds all of `text` (its ends' spaces aside).
 pub(super) fn shows(s: &Sess, n: u64, text: &str) -> bool {
     s.values.get(&n).is_some_and(|v| v.contains(text.trim()))
 }
 
-/// What changed in the window since the last read, from Cua's own `since` read.
-pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) -> String {
+/// The app's windows just before an action, so one it opens or closes is a change too. The
+/// window's own rows are diffed against the last read: a new read would void its numbers.
+pub(super) fn baseline(data: &Path, s: &mut Sess, here: &dyn Fn() -> bool) {
+    s.wins = titles(data, s, here);
+}
+
+fn titles(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Vec<(u64, String)> {
+    let all = windows(data, s.pid, here).unwrap_or_default();
+    (all.iter())
+        .map(|w| {
+            let title = w["title"].as_str().unwrap_or("");
+            (w["window_id"].as_u64().unwrap_or(0), title.to_string())
+        })
+        .collect()
+}
+
+/// What changed since the baseline: the window's rows, from Cua's own `since` read, and the app's
+/// windows that opened or closed.
+pub(super) fn changes(
+    data: &Path,
+    me: &str,
+    s: &mut Sess,
+    here: &dyn Fn() -> bool,
+) -> (Seen, String) {
+    let (seen, text) = rows_changed(data, me, s, here);
+    let now = titles(data, s, here);
+    let name = |t: &str| match t {
+        "" => "untitled".to_string(),
+        t => format!("\"{t}\""),
+    };
+    let mut wins: Vec<String> = (now.iter())
+        .filter(|w| !s.wins.iter().any(|b| b.0 == w.0))
+        .map(|w| format!("+ window {}", name(&w.1)))
+        .collect();
+    wins.extend(
+        (s.wins.iter())
+            .filter(|b| !now.iter().any(|w| w.0 == b.0))
+            .map(|b| format!("- window {}", name(&b.1))),
+    );
+    s.wins = now;
+    let (seen, text) = match (seen, wins.is_empty()) {
+        (_, true) => (seen, text),
+        (Seen::No, false) => (
+            Seen::Yes,
+            format!("The app's windows changed:\n{}", wins.join("\n")),
+        ),
+        (seen, false) => (
+            seen,
+            format!("{text}\nThe app's windows changed:\n{}", wins.join("\n")),
+        ),
+    };
+    s.changed |= seen != Seen::No;
+    (seen, text)
+}
+
+fn rows_changed(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) -> (Seen, String) {
     let mut args = state_args(s, me);
-    args["since"] = "latest".into();
-    let Ok(found) = call(data, "get_window_state", args, here) else {
+    // The last read, named: a second look diffs against it too, not against the first look.
+    args["since"] = match s.snapshot.is_empty() {
+        true => "latest".into(),
+        false => s.snapshot.clone().into(),
+    };
+    let mut found = call(data, "get_window_state", args.clone(), here);
+    // Chromium's tree trails a click a moment: "no change" only after a second look.
+    if found
+        .as_ref()
+        .is_ok_and(|f| f["since_status"] == "no_change")
+    {
+        thread::sleep(Duration::from_millis(500));
+        found = call(data, "get_window_state", args, here);
+    }
+    let Ok(found) = found else {
         // The window went (a panel closed, a document replaced it): read what the app shows now.
-        s.changed = true;
         let again = Words {
             verb: "read",
             rest: vec![],
@@ -254,41 +374,66 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
             flags: Default::default(),
         };
         return match read(data, me, s, &again, here) {
-            Ok(text) => format!("The window changed:\n{text}"),
-            Err(_) => format!(
-                "Couldn't read {} after it: `brigadier computer read {}`.",
-                s.app, s.app
+            Ok(text) => (Seen::Yes, format!("The window changed:\n{text}")),
+            Err(_) => (
+                Seen::Unsure,
+                format!(
+                    "Couldn't read {} after it: `brigadier computer read {}`.",
+                    s.app, s.app
+                ),
             ),
         };
     };
     learn(s, &found);
-    s.changed |= found["since_status"].as_str() != Some("no_change");
+    let outside = |n: &Value| {
+        format!(
+            "Changed, but outside what I can diff ({} added, {} changed, {} removed by the driver's count): read again.",
+            n["added"], n["changed"], n["removed"]
+        )
+    };
     match found["since_status"].as_str() {
-        Some("no_change") => NO_CHANGE.into(),
+        // Past the row budget the reads stop, and so does the diff.
+        Some("no_change") if found["truncated"] == true => (
+            Seen::Unsure,
+            "No change in the rows I compare, but the window has more past them: `read --full` shows it all.".into(),
+        ),
+        Some("no_change") => (Seen::No, NO_CHANGE.into()),
         Some("diff") => {
             let diff = found["tree_diff"].as_str().unwrap_or("");
             s.moved |= diff.contains("\nreindexed:");
-            let body: Vec<&str> = diff.lines().skip(1).collect();
-            let moved = if s.moved {
-                "\nThe numbers moved: read again before using them."
-            } else {
-                ""
+            let body = tidy(&mask(&diff.lines().skip(1).collect::<Vec<_>>().join("\n"), &s.secure));
+            let rows: Vec<&str> = (body.lines())
+                .filter(|l| l.trim_start().starts_with(['+', '-', '~']))
+                .collect();
+            if rows.is_empty() {
+                return (Seen::Yes, outside(&found["diff_counts"]));
+            }
+            let more = match rows.len().saturating_sub(TOP) {
+                0 => String::new(),
+                n => format!("\n… and {n} more: read again for them."),
             };
-            format!(
-                "Changed:\n{}{moved}",
-                tidy(&mask(&body.join("\n"), &s.secure))
-            )
+            let moved = match s.moved {
+                true => "\nThe numbers moved: read again before using them.",
+                false => "",
+            };
+            (Seen::Yes, format!("Changed:\n{}{more}{moved}", rows[..rows.len().min(TOP)].join("\n")))
         }
+        // Most of it changed (a page loaded): the window as it is now.
+        Some("too_much_changed" | "diff_too_large") => {
+            (s.secure, s.values, s.moved) = Default::default();
+            learn(s, &found);
+            let tree = tidy(&mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure));
+            (Seen::Yes, format!("Most of the window changed; it reads now:\n{tree}"))
+        }
+        // No baseline to compare: the window as it is now, never called a change.
         _ => {
             (s.secure, s.values, s.moved) = Default::default();
             learn(s, &found);
-            format!(
-                "The window changed:\n{}",
-                tidy(&mask(
-                    found["tree_markdown"].as_str().unwrap_or(""),
-                    &s.secure
-                ))
-            )
+            let tree = tidy(&mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure));
+            match tree.trim().is_empty() {
+                true => (Seen::Unsure, "I couldn't compare it with before, and the window reads empty now: read again.".into()),
+                false => (Seen::Unsure, format!("I couldn't compare it with before; the window now:\n{tree}")),
+            }
         }
     }
 }

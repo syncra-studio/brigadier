@@ -3,7 +3,7 @@
 //! the helper's own calls (Cua's need a window, #8055).
 
 use super::act::{CLICK, MODIFIER, act, idle, wait_for_user};
-use super::window::{NO_CHANGE, changes, read};
+use super::window::{Seen, baseline, changes, read};
 use super::{Fail, SESSIONS, Sess, Words, blocked, call, lock, refuse, said};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -277,6 +277,9 @@ pub(super) fn press(
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
+    if s.window != 0 && !s.batch {
+        baseline(data, s, here);
+    }
     let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
     let listed = windows(data, s.pid, here)?;
     let before: Vec<u64> = listed.iter().map(id).collect();
@@ -382,10 +385,13 @@ pub(super) fn press(
         ));
     }
     match changes(data, me, s, here) {
-        diff if diff == NO_CHANGE => Ok(format!(
+        (Seen::No, _) => Ok(format!(
             "Chose {chose}: no change seen in the window. Read again, or try another way."
         )),
-        diff => Ok(format!("Chose {chose}: change observed.\n{diff}")),
+        (Seen::Unsure, diff) => Ok(format!(
+            "Chose {chose}: I can't tell what it changed.\n{diff}"
+        )),
+        (Seen::Yes, diff) => Ok(format!("Chose {chose}: change observed.\n{diff}")),
     }
 }
 

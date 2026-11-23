@@ -82,6 +82,8 @@ struct Sess {
     /// The last screenshot's window and hash, and whether an action changed the window since.
     shot: Option<(u64, String)>,
     changed: bool,
+    /// The app's windows (id, title) just before the last action.
+    wins: Vec<(u64, String)>,
 }
 
 pub(super) const OFF: &str =
