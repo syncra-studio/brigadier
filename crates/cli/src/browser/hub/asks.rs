@@ -25,6 +25,8 @@ const SCRIPT_MOST: usize = 16 * 1024;
 struct Card {
     session: String,
     key: Option<(String, String, String)>,
+    /// The site a yes for the session covers, when the kind of ask is one it may.
+    site: Option<String>,
     approved: Value,
     question: String,
     tab: String,
@@ -246,6 +248,12 @@ fn site(url: &str) -> &str {
     if host.is_empty() { url } else { host }
 }
 
+/// The grant a yes for the session leaves: session `me` on `site`, kept in HUB.grants beside the
+/// one-call yeses, as long as the hub runs.
+fn site_key(me: &str, site: &str) -> (String, String, String) {
+    (me.into(), String::new(), format!("site\u{1f}{site}"))
+}
+
 /// A card's question for the action that asks, as the user would say it. One that asks because of
 /// a filled password says what it does, which may be no sign-in at all ("Show password").
 fn question(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
@@ -344,16 +352,28 @@ pub(super) fn ask(
         asked["what"].as_str().unwrap_or(""),
     );
     let sensitive = asked["sensitive"].as_str().unwrap_or("script");
+    let approved = json!({"generation": asked["generation"], "url": url});
+    // A yes for the session covers scripts, clicks, typing, keys, delete and send on its site;
+    // never money or identity (pay, card, password, code, sign-in).
+    let site = matches!(sensitive, "script" | "action" | "delete" | "send").then(|| site(url));
+    if let (Some(s), Some(k)) = (site, &key)
+        && lock(&HUB.grants).contains_key(&site_key(me, s))
+    {
+        lock(&HUB.grants).insert(k.clone(), approved);
+        return Ok(());
+    }
     let question = question(op, sensitive, what, url);
     let id = format!("browser-{}", &core_uuid()[..8]);
-    let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url)});
+    let grant = site.map(|s| json!({"scope": "site", "pattern": s}));
+    let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url), "grant": grant});
     let (to, answer) = mpsc::channel();
     lock(&CARDS).insert(
         id.clone(),
         Card {
             session: me.into(),
             key,
-            approved: json!({"generation": asked["generation"], "url": url}),
+            site: site.map(String::from),
+            approved,
             question: question.clone(),
             tab: asked["tab"].as_str().unwrap_or("").into(),
             waiter: Some(to),
@@ -409,6 +429,10 @@ pub(crate) fn answered(
     if allow && let Some(key) = card.key.clone() {
         lock(&HUB.grants).insert(key, card.approved.clone());
     }
+    let site = (card.site.as_deref()).filter(|_| control["decision"] == "allowSession");
+    if let Some(s) = site {
+        lock(&HUB.grants).insert(site_key(id, s), Value::Null);
+    }
     if let Some(waiter) = &card.waiter
         && waiter.send((allow, reason.to_string())).is_ok()
     {
@@ -416,8 +440,12 @@ pub(crate) fn answered(
     }
     let text = match allow {
         true => format!(
-            "[decision] The user said yes: {} Make the same browser call on {} again now; the yes holds on that page, for that call only.",
-            card.question, card.tab
+            "[decision] The user said yes: {} Make the same browser call on {} again now; the yes holds on that page, for {}.",
+            card.question,
+            card.tab,
+            site.map_or("that call only".into(), |s| format!(
+                "that call and the rest of this job on {s}, but paying, cards, passwords, codes and sign-in"
+            ))
         ),
         false => format!(
             "[decision] The user said no: {}{} Don't do it, or anything else that does the same.",
