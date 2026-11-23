@@ -189,15 +189,19 @@ export function TerminalPane({ id, ended, onRestart, onGone, active = true }: { 
  * A terminal tab: its shell, started once in its session's folder (Home's: its project's, or the home folder), then shown
  * live; one that ended offers Restart [D315, D320]. Its id is its tab's, kept when a draft's tabs become its session's.
  */
+/** What a terminal tab types into its new shell once it starts, by tab id: Open in terminal's command [D316]. */
+export const typeIn = new Map<string, string>();
+
 export function TerminalTab({ owner, tab, active }: { owner: string; tab: string; active: boolean }) {
   const { daemon } = useDaemon();
   const [run, setRun] = useState<{ live: boolean; n: number } | { error: string }>();
   const key = own(owner);
   const start = useCallback(
     (again: boolean) =>
-      ask({ op: "run", args: ["terminal", key, again ? "restart" : "start", tab] }, (reply) =>
-        setRun((was) => reply.ok ? { live: Boolean(reply.live), n: (was && "n" in was ? was.n : 0) + 1 } : { error: String(reply.error ?? "The shell didn't start") }),
-      ),
+      ask({ op: "run", args: ["terminal", key, again ? "restart" : "start", tab, ...(typeIn.has(tab) ? ["--run", typeIn.get(tab)!] : [])] }, (reply) => {
+        typeIn.delete(tab);
+        setRun((was) => (reply.ok ? { live: Boolean(reply.live), n: (was && "n" in was ? was.n : 0) + 1 } : { error: String(reply.error ?? "The shell didn't start") }));
+      }),
     [key, tab],
   );
   const failed = Boolean(run && "error" in run);

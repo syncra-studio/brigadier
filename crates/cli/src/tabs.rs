@@ -228,7 +228,7 @@ impl Tabs {
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
 /// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
-    if args[0] == "terminal" {
+    if matches!(args[0].as_str(), "terminal" | "shell") {
         return terminal::run(data, args);
     }
     let id = arg(args, 1)?;

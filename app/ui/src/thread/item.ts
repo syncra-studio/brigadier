@@ -244,6 +244,8 @@ export type Item = Base &
       }
     /** Where a fork starts, after its inherited rows [D48, D1063]; `where` null for a chat's. */
     | { kind: "forked"; source: string; where: "worktree" | null; summary: boolean; leftOut: string[] }
+    /** A `!` command the user ran [D316]: running, then how it ended with its newest output (the rest: `shell output`). */
+    | { kind: "shell"; cmd: string; command: string; progress: Progress; output: string; exitCode: number | null; ms?: number; error?: string | null }
     /**
      * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,
      * with the text) then its result in place. The new session's title and status come from its own row; `title`

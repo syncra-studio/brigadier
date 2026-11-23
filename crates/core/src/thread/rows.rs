@@ -353,8 +353,7 @@ impl Thread {
                 self.add(json!({"kind": "unknown", "raw": raw}));
             }
             "note" if item["event"] == "switch_failed" => self.switch_failed(item),
-            // Send as new [D204]: one row per session started from here, its intent then its
-            // result in place; never sent to the agent.
+            // Send as new [D204]: a row per session started here, intent then result; never sent to the agent.
             "note" if item["event"] == "side" => {
                 let id = format!("side:{}", str_of("session"));
                 let at = match self.named.get(&id).copied() {
@@ -390,6 +389,7 @@ impl Thread {
             k if k == "image" || (k == "note" && item["event"] == "image") => self.image(item),
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
+            "note" if item["event"] == "shell" => self.shell(item),
             "note" if item["event"] == "plan_review" => self.plan_review(item, ts),
             // A native fork whose first launch fell to the hand-off: its line says so [D90].
             "note" if item["event"] == "unforked" => {

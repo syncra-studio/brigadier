@@ -138,6 +138,7 @@ fn main() -> io::Result<()> {
     brigadier::rewind::sweep(&data);
     // Terminals nothing holds any more, from a cleanup cut short [repo D35].
     let _ = brigadier::run(&data, &["terminal".into(), "sweep".into()]);
+    let _ = brigadier::run(&data, &["shell".into(), "settle".into()]);
     git::auto_fetch(data.clone());
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;

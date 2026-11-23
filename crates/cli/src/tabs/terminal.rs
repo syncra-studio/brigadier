@@ -9,6 +9,8 @@
 //! deleted, a project is removed, and at the daemon's start, so a cleanup cut short is finished
 //! [repo D35]. `<owner>` is a session, `@home` or `@home:<project>`, as `tabs` takes.
 
+mod shell;
+
 use super::{TERMINAL, Tab, Tabs, file, lock, read};
 use crate::{HOME_DRAFT, arg, owner};
 use brigadier_core::{self as core, Spec, TERM, adapters, projects, session};
@@ -19,6 +21,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    if args[0] == "shell" {
+        return shell::run(data, args);
+    }
     if arg(args, 1)? == "sweep" {
         sweep(data);
         return Ok(json!({"ok": true}));
@@ -28,8 +33,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         core::check_id(owner.strip_prefix("@home:").unwrap_or(owner))?;
     }
     let size = |i: usize| args.get(i).and_then(|v| v.parse().ok());
+    // `--run <line>`: typed into the new shell, as the user would (Open in terminal, the agent's own).
+    let typed = crate::flag(args, "--run");
     match op {
-        "start" | "restart" => start(data, owner, tab, op == "restart", (size(4), size(5))),
+        "start" | "restart" => start(data, owner, tab, op == "restart", (size(4), size(5)), typed),
         _ => Err(io::Error::other(format!("unknown terminal command {op}"))),
     }
 }
@@ -40,12 +47,13 @@ fn start(
     tab: &str,
     again: bool,
     (cols, rows): (Option<u16>, Option<u16>),
+    typed: Option<&str>,
 ) -> io::Result<Value> {
     core::check_id(tab)?;
     let id = format!("{TERM}{tab}");
     // Its owner's lock, then the sweep's: a tab closing, or its session archiving, can't miss it.
     let _owner = lock(data, owner)?;
-    let _sweep = projects::lock(data, "terminals.lock")?;
+    let _sweep = lock_sweep(data)?;
     if !terminals(data, owner).iter().any(|t| t == tab) {
         return Err(io::Error::other("No such terminal tab"));
     }
@@ -71,14 +79,24 @@ fn start(
         "LOGNAME".into(),
         std::env::var("LOGNAME").unwrap_or_default(),
     ));
+    // What it printed before (a restart's earlier shell), when a line is to be typed.
+    let dir = core::session_dir(data, &id);
+    let printed = typed.map_or(0, |_| tail(&dir, 1 << 20).len());
     let reply = crate::setup::in_terminal(data, &spec, vec![shell, "-l".into()], env, cols, rows)?;
     if reply["ok"] != true {
-        return Err(io::Error::other(
-            reply["error"]
-                .as_str()
-                .unwrap_or("The shell didn't start")
-                .to_string(),
-        ));
+        let why = reply["error"].as_str().unwrap_or("The shell didn't start");
+        return Err(io::Error::other(why.to_string()));
+    }
+    if let Some(line) = typed {
+        // Typed once its prompt shows (3 s at most), so the line isn't echoed above it.
+        for _ in 0..30 {
+            if tail(&dir, 1 << 20).len() > printed {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let keys = json!({"op": "keys", "spawn": reply["spawn"], "bytes": format!("{line}\r")});
+        owner::call(data, &id, keys)?;
     }
     Ok(json!({"ok": true, "id": id, "live": true}))
 }
@@ -108,7 +126,7 @@ fn live(data: &Path, id: &str) -> bool {
 /// Every terminal an open tab of a live owner holds: a session not archived or going, Home's
 /// draft, a project's draft while the project is there.
 fn held(data: &Path) -> HashSet<String> {
-    let mut owners = vec![HOME_DRAFT.to_string()];
+    let (mut owners, mut held) = (vec![HOME_DRAFT.to_string()], HashSet::new());
     for entry in fs::read_dir(data).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(project) = name
@@ -123,9 +141,16 @@ fn held(data: &Path) -> HashSet<String> {
         let dir = core::session_dir(data, &id);
         if dir.join("session.json").exists() && session::retired(&dir).is_none() {
             owners.push(id);
+            // Its `!` commands too, ended ones' output kept for reading [D316].
+            let commands = fs::read_dir(dir.join("commands"))
+                .into_iter()
+                .flatten()
+                .flatten();
+            held.extend(commands.map(|c| c.file_name().to_string_lossy().to_string()));
         }
     }
-    owners.iter().flat_map(|o| terminals(data, o)).collect()
+    held.extend(owners.iter().flat_map(|o| terminals(data, o)));
+    held
 }
 
 /// What each of `owner`'s terminals printed lately, while its shell runs: for Local servers [repo D508].
@@ -170,7 +195,7 @@ pub(super) fn closed(data: &Path, was: &Tabs, now: &Tabs) {
 
 /// Stops and removes each terminal nothing holds: its host first, then its folder [repo D35].
 pub fn sweep(data: &Path) {
-    let Ok(_sweep) = projects::lock(data, "terminals.lock") else {
+    let Ok(_sweep) = lock_sweep(data) else {
         return;
     };
     let held = held(data);
@@ -190,4 +215,9 @@ pub fn sweep(data: &Path) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
+}
+
+/// Held by every start and every sweep, so a sweep never takes a terminal or command being started.
+fn lock_sweep(data: &Path) -> io::Result<fs::File> {
+    projects::lock(data, "terminals.lock")
 }

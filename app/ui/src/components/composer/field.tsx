@@ -275,6 +275,8 @@ type FieldProps = {
   attachments?: ReadonlyMap<string, Attachment>;
   /** A click on a chip: opens what it names (a mention's id, a command's id, an attachment's id). */
   onOpen?: (kind: OpenKind, id: string) => void;
+  /** A `!` line is a shell command here: it shows in the code font [D316]. */
+  shell?: boolean;
 };
 
 /**
@@ -294,6 +296,8 @@ export function ComposerField({
 }: FieldProps) {
   const [scrolled, setScrolled] = useState(false);
   const [numbers, setNumbers] = useState(() => numbersOf(initial.parts));
+  const isBang = (parts: Parts) => Boolean(props.shell) && typeof parts[0] === "string" && parts[0].trimStart().startsWith("!");
+  const [bang, setBang] = useState(() => isBang(initial.parts));
   const { box, pad } = SIZES[size];
   // A one-line field stays plain text; the others draw lists.
   const TextPlugin = size === "line" ? PlainTextPlugin : RichTextPlugin;
@@ -302,6 +306,7 @@ export function ComposerField({
   const onChange = (parts: Parts) => {
     const next = numbersOf(parts);
     setNumbers((now) => (sameNumbers(now, next) ? now : next));
+    setBang(isBang(parts));
     props.onChange?.(parts);
   };
   return (
@@ -320,8 +325,9 @@ export function ComposerField({
       <div
         data-slot="composer-field"
         data-scrolled={scrolled || undefined}
+        data-shell={bang || undefined}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-        className={cx("relative w-full cursor-text", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
+        className={cx("relative w-full cursor-text data-shell:font-mono", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
         <TextPlugin
           contentEditable={

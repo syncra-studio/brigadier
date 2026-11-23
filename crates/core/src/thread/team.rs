@@ -155,6 +155,32 @@ impl Thread {
     }
 }
 
+impl Thread {
+    /// A `shell` note: a `!` command the user ran [D316]. `start` adds its row, out of the work
+    /// fold; `end` sets how it ended and its newest output in place.
+    pub(super) fn shell(&mut self, item: &Value) {
+        let id = format!("shell:{}", item["id"].as_str().unwrap_or(""));
+        let at = match self.named.get(&id).copied() {
+            Some(at) => at,
+            None => {
+                self.break_group();
+                let row = json!({"kind": "shell", "cmd": item["id"], "command": item["command"], "progress": "running", "output": "", "exitCode": null});
+                let at = self.add_as(row, Some(id));
+                if let Some(o) = self.open.as_mut() {
+                    o.kept.push(at as u64 + 1);
+                }
+                at
+            }
+        };
+        if item["phase"] == "end" {
+            for k in ["progress", "exitCode", "output", "ms", "error"] {
+                self.items[at][k] = item[k].clone();
+            }
+            self.changed_items.insert(at);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Thread;

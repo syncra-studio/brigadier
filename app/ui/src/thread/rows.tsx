@@ -6,6 +6,7 @@ import { RewindContext } from "../components/thread/rewind";
 import { WorkHeader } from "../components/thread/work";
 import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
+import { BangRow } from "../session/bang-row";
 import { ForkAction, ForkedLine } from "../session/fork";
 import { FailedActions, GoOn, PluginSignIn } from "../session/notices";
 import { SetupRow } from "../components/thread/setup";
@@ -57,6 +58,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <LiveMockupRow {...props.item} />
       ) : props.item.kind === "peer" ? (
         <PeerRow item={props.item} />
+      ) : props.item.kind === "shell" ? (
+        <BangRow item={props.item} />
       ) : props.item.kind === "started" ? (
         <SideLine item={props.item} />
       ) : props.item.kind === "forked" ? (

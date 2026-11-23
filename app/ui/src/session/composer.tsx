@@ -27,6 +27,7 @@ import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
+import { bangOf, runBang } from "./bang";
 import { queuedOf, type RustQueued, toArgs } from "./queued";
 import { useTurn } from "./turn";
 
@@ -156,8 +157,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [stopError, setStopError] = useState<string | null>(null);
-  // A queued message pulled back to edit, which Rust keeps meanwhile (`queue.editing`): sending puts it back in its
-  // slot under its id, emptying the field puts the original back.
+  // A queued message pulled back to edit, which Rust keeps meanwhile (`queue.editing`): sending puts it back in its slot under its id, emptying the field puts the original back.
   const editing = useRef<{ qid: string; slot: number; text: string; to?: string } | null>(null);
   // A send into the paused queue, asked about first; its words stay in the field meanwhile.
   const [asking, setAsking] = useState<string | null>(null);
@@ -345,10 +345,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       setError(failure(reply));
     });
   };
-
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
     if (held || files.hold(parts)) return;
+    if (!to && bangOf(parts)) return void (take(), runBang(id, bangOf(parts)!, (reply) => (field.current?.set(parts), setEmpty(false), setError(failure(reply)))));
     if (to && !isEmpty({ parts, attachmentIds: files.tiles() })) return sendTo(to, parts, files.tiles(), other);
     if (inProject && parts.some(isNew)) return submitNew();
     const tiles = files.tiles();
@@ -482,7 +482,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           keepDraft(run, id, { parts, attachmentIds: files.tileIds });
           changed(isEmpty({ parts, attachmentIds: [] }));
         }}
-        onSubmit={submit}
+        onSubmit={submit} shell={!toWorker}
         onSubmitNew={inProject ? submitNew : undefined}
         commands={extras.commands}
         onOpen={extras.onOpen}

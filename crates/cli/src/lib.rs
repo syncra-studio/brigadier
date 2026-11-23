@@ -370,7 +370,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "rewind" => rewind::run(data, args),
         "fork" => fork::run(data, args),
         "side" => side::run(data, args),
-        "tabs" | "terminal" => tabs::run(data, args),
+        "tabs" | "terminal" | "shell" => tabs::run(data, args),
         "browser" => browser::run(data, args),
         "computer" => computer::run(data, args),
         "chips" => chips::run(data, args),
