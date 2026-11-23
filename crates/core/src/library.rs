@@ -196,3 +196,11 @@ pub fn kit(spec: &Spec, skip: &[String]) -> Option<Kit> {
         servers: servers.collect(),
     })
 }
+
+/// The servers this session's proxy couldn't connect its CLI to, last it tried (the host's
+/// `plugins/unreached.json`): a CLI that failed one never dials it again unless asked.
+pub fn unreached(spec: &Spec) -> Vec<String> {
+    (fs::read(spec.dir.join("plugins").join("unreached.json")).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}

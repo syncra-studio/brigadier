@@ -217,7 +217,6 @@ impl Proxy {
                 );
                 continue;
             }
-            unreached::note(&self.dir, name, &body, status / 100 != 2);
             if status / 100 == 2 {
                 self.told.lock().unwrap().remove(name);
             }
@@ -250,14 +249,17 @@ impl Proxy {
                 // Not reaped until the wait below, so the pid is still curl's.
                 unsafe { libc::kill(pid, libc::SIGTERM) };
             });
-            let mut buf = [0u8; 16 << 10];
+            let (mut buf, mut start) = ([0u8; 16 << 10], vec![]);
             loop {
                 match from.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) if out.write_all(&buf[..n]).and_then(|_| out.flush()).is_err() => break,
+                    Ok(n) if start.len() < 4096 => start.extend(&buf[..n]),
                     Ok(_) => {}
                 }
             }
+            let down = status / 100 != 2 || !unreached::answered(&start);
+            unreached::note(&self.dir, name, &body, down);
             let _ = out.shutdown(std::net::Shutdown::Both);
             let _ = gone.join();
             let _ = child.kill();
