@@ -13,11 +13,10 @@
   --color-chrome: var(--color-card);
   /* Sidebar, strip, right panel and window fill: an opaque sidebar, in hex for main (Windows' caption buttons). */
   --color-card: #262626;
-  /* The strip and sidebar's fill: the card, or on a Mac 65% main over the window fill (80% #282828) over the
-     window's vibrancy [D76]. */
-  --color-sidebar: var(--color-card);
+  /* The strip and sidebar's fill: the page's, one surface with the main area, a 1px line between (main-surface). */
+  --color-sidebar: var(--color-background);
   /* The sidebar's fill as it shows on screen, opaque, for what lies over it (a ScrollFade) [D282]. */
-  --color-sidebar-solid: var(--color-card);
+  --color-sidebar-solid: var(--color-background);
   --color-window-fill: transparent;
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
@@ -739,18 +738,8 @@
 :root {
   color-scheme: dark;
 }
-/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76]. Electron's
-   material stays dark behind a key window, where the reference lights up: its sidebar reads #262626 key and #1e1e1e not, ours
-   #1d1d1d both ways, so while key the window fill stands in for it, #262626 on screen [D188]. */
+/* A Mac's window is clear behind the shell (main.ts's vibrancy); the sidebar's opaque fill covers it. */
 :root[data-platform="darwin"] {
-  --color-sidebar: color-mix(in oklab, var(--color-background) 65%, transparent);
-  --color-window-fill: color-mix(in oklab, #282828 80%, transparent);
-  /* What those show over the dark material, measured on screen [D282]. */
-  --color-sidebar-solid: rgb(30 29 29);
-  &[data-key] {
-    --color-window-fill: color-mix(in oklab, #484848 80%, transparent);
-    --color-sidebar-solid: rgb(39 39 39);
-  }
   & body:has([data-slot="sidebar-wrapper"]) {
     background: transparent;
   }
@@ -1646,7 +1635,7 @@
 @utility main-surface {
   position: relative;
   background-color: var(--color-background);
-  border-inline-start: 0.5px solid var(--color-border);
+  border-inline-start: 1px solid var(--color-border);
   transition: border-color var(--duration-fold) var(--ease-sidebar);
   [data-state="collapsed"] > & {
     border-color: transparent;
