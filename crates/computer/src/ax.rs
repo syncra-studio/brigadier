@@ -20,6 +20,9 @@ unsafe extern "C" {
     fn AXUIElementSetAttributeValue(e: CFTypeRef, attr: CFStringRef, value: CFTypeRef) -> i32;
     fn AXUIElementPerformAction(e: CFTypeRef, action: CFStringRef) -> i32;
     fn AXUIElementSetMessagingTimeout(e: CFTypeRef, seconds: f32) -> i32;
+    fn AXUIElementCopyElementAtPosition(app: CFTypeRef, x: f32, y: f32, out: *mut CFTypeRef)
+    -> i32;
+    fn AXValueGetValue(value: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
 }
 
 /// One `brigadier/…` call: its result, or why not.
@@ -43,12 +46,57 @@ pub fn handle(method: &str, p: &Value) -> Result<Value, String> {
             )
         }
         "brigadier/front" => Ok(json!({"pid": front()})),
+        "brigadier/hit" => {
+            let (x, y) = (
+                p["x"].as_f64().unwrap_or(0.0),
+                p["y"].as_f64().unwrap_or(0.0),
+            );
+            Ok(json!({"chain": hit(&app(pid)?, x as f32, y as f32)}))
+        }
         "brigadier/restore" => {
             let wid = p["window"].as_u64().unwrap_or(0) as u32;
             Ok(json!({"restored": restore(pid, wid) && front() == Some(pid), "front": front()}))
         }
         _ => Err(format!("{method} isn't a call of this helper.")),
     }
+}
+
+/// What the app has at a point of the screen, and its ancestors up to the window: a press that
+/// does nothing may be under another element [D2032].
+fn hit(app: &CFType, x: f32, y: f32) -> Vec<Value> {
+    let mut out: CFTypeRef = std::ptr::null();
+    let err = unsafe { AXUIElementCopyElementAtPosition(app.as_CFTypeRef(), x, y, &mut out) };
+    if err != 0 || out.is_null() {
+        return vec![];
+    }
+    let mut at = Some(unsafe { CFType::wrap_under_create_rule(out) });
+    let mut chain = vec![];
+    while let Some(e) = at.take() {
+        let role = text(&e, "AXRole");
+        let name = [text(&e, "AXTitle"), text(&e, "AXDescription")]
+            .into_iter()
+            .find(|n| !n.is_empty())
+            .unwrap_or_default();
+        chain.push(json!({"role": role, "subrole": text(&e, "AXSubrole"), "name": name, "frame": frame(&e)}));
+        if role == "AXWindow" || chain.len() >= 30 {
+            break;
+        }
+        at = attr(&e, "AXParent");
+    }
+    chain
+}
+
+/// An element's place on screen, as x, y, width, height.
+fn frame(e: &CFType) -> Option<[f64; 4]> {
+    let mut point = [0f64; 2];
+    let mut size = [0f64; 2];
+    // kAXValueCGPointType, kAXValueCGSizeType.
+    let read = |name: &str, kind: u32, out: *mut c_void| {
+        attr(e, name).is_some_and(|v| unsafe { AXValueGetValue(v.as_CFTypeRef(), kind, out) })
+    };
+    (read("AXPosition", 1, point.as_mut_ptr().cast())
+        && read("AXSize", 2, size.as_mut_ptr().cast()))
+    .then_some([point[0], point[1], size[0], size[1]])
 }
 
 fn app(pid: i32) -> Result<CFType, String> {
