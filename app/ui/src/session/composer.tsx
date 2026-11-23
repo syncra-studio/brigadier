@@ -28,7 +28,7 @@ import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 import { bangOf, runBang } from "./bang";
-import { queuedOf, type RustQueued, toArgs } from "./queued";
+import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
 import { useTurn } from "./turn";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
@@ -93,8 +93,7 @@ export const useOnItsWay = (id: string) => useSyncExternalStore(subscribeSent, (
 export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id: string; source?: Source; run?: Runner }) {
   const list = useSyncExternalStore(subscribeSent, () => sent.get(id));
   const session = useSyncExternalStore(source.subscribe, source.get);
-  const ids = new Set([...(session?.turns.map((turn) => turn.id) ?? []), ...(session?.items.map((item) => ("cid" in item ? item.cid : undefined)) ?? [])]);
-  const done = (each: Sent) => ids.has(each.cid);
+  const done = (each: Sent) => inThread(session).has(each.cid);
   useEffect(() => {
     if (list?.some(done)) setSent(id, (now) => now.filter((each) => !done(each)));
   });
@@ -209,12 +208,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     ops.filter((op) => !live.includes(op)).forEach((op) => op.done?.());
     setOps(live);
   });
-  let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows);
+  const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
+  let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows).filter((each) => !delivered.has(each.id));
   let paused = row?.queue?.paused === true;
   for (const op of live) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
     if (op.kind === "resume") paused = false;
-    if (op.kind === "add" && !items.some((each) => each.id === op.qid)) {
+    if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
       items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local" });
     }
   }

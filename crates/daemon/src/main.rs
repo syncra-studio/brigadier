@@ -178,6 +178,7 @@ fn main() -> io::Result<()> {
     // once per limit, and again when a setting or the accounts change [D51].
     let mut seen: HashMap<String, Value> = HashMap::new();
     let mut finished: HashMap<String, u64> = HashMap::new();
+    let mut changed = 0;
     loop {
         match index.sync() {
             Ok((rows, gone)) => {
@@ -219,7 +220,7 @@ fn main() -> io::Result<()> {
         };
         awake.set(on);
         lid.set(&data, on && brigadier_core::lid::wanted(&data));
-        thread::sleep(TICK);
+        changed = brigadier::queue::wake::changed(changed, TICK);
     }
 }
 
