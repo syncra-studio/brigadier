@@ -10,9 +10,8 @@ import { FolderOpen } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { matches as isShortcut } from "../shortcuts";
 import { ask } from "../daemon";
-import { daemonRun } from "../session/composer";
-import { urlOf } from "../session/files";
-import { HOME, openFile } from "../shell/tab-store";
+import { readFrom, sourceArgs, type Target, useGit } from "../panel/git";
+import { openFile } from "../shell/tab-store";
 import { FileLinks, Markdown } from "../thread/markdown";
 import "../thread/markdown.css";
 import { CodeLines } from "./code-lines";
@@ -42,7 +41,9 @@ export function formatBytes(bytes: number): string {
 
 /** `href` from the file at `path`, as a checkout path: from its folder, or the root for `/…`; never above the root. */
 function within(path: string, href: string): string {
-  const at = new URL(href, `file:///${dirName(path) && `${dirName(path)}/`}`).pathname.slice(1);
+  // Each folder's name escaped, so a `#`, `?` or `%` in it is its name's.
+  const dir = dirName(path).split("/").map(encodeURIComponent).join("/");
+  const at = new URL(href, `file:///${dir && `${dir}/`}`).pathname.slice(1);
   try {
     return decodeURIComponent(at);
   } catch {
@@ -50,16 +51,9 @@ function within(path: string, href: string): string {
   }
 }
 
-/** A checkout image's URL: Rust finds it in the checkout and copies it under the session's `viewed/`, as a thread's image link [D290]. */
-const imageUrl = (owner: string, path: string) =>
-  new Promise<string | null>((done) =>
-    ask({ op: "paths", owner, paths: [path] }, (reply) => {
-      const hit = reply.ok ? reply.found[path] : undefined;
-      // Only the file itself: Rust also takes a bare name another folder holds.
-      if (hit?.path !== path || !hit.image) return done(null);
-      void daemonRun(["attach", owner, "view", hit.at]).then((viewed) => done(viewed.ok ? urlOf(owner, viewed.id) : null));
-    }),
-  );
+/** A checkout image as a `data:` URL, read by Rust inside the checkout as the file itself is, links followed [D1002]. */
+const imageUrl = (target: Target | null, path: string) =>
+  new Promise<string | null>((done) => (target ? ask({ op: "run", args: sourceArgs(target, "image", path) }, (reply) => done(reply.ok ? reply.url : null)) : done(null)));
 
 export function FileViewer({
   owner,
@@ -70,7 +64,7 @@ export function FileViewer({
   active,
   onReveal,
 }: {
-  /** Whose checkout the file is in, so its relative links open there; left out for a file that isn't a checkout's. */
+  /** Whose checkout the file is in, so its relative links and images are its; left out for a file that isn't a checkout's. */
   owner?: string;
   /** The file's path in the checkout. */
   path: string;
@@ -103,13 +97,13 @@ export function FileViewer({
     if (line !== null || !seen.startsWith(`${path}:`)) setView(line === null ? "formatted" : "source");
   }
   const formatted = markdown && view === "formatted";
-  // shortcut: Home's draft has no session to copy an image under, so its images show their alt text until it has one.
+  const { target: watched, version } = useGit();
+  const target = readFrom(watched);
+  const from = target && JSON.stringify(target);
+  // New on each watch read that changed something, so an image made or changed since is read again.
   const links = useMemo(
-    () =>
-      owner === undefined
-        ? null
-        : { open: (href: string) => openFile(owner, within(path, href), { preview: true }), image: async (src: string) => (owner === HOME ? null : imageUrl(owner, within(path, src))) },
-    [owner, path],
+    () => (owner === undefined ? null : { open: (href: string) => openFile(owner, within(path, href), { preview: true }), image: (src: string) => imageUrl(target, within(path, src)) }),
+    [owner, path, from, version],
   );
   useEffect(() => {
     if (!active || !formatted) return;
