@@ -374,8 +374,8 @@ export function AppSidebar({
           </div>
         )}
       </div>
-      {/* The strip's foot as one row, under every page's nav, so it never moves [D226 D227]. */}
-      <StripFoot row />
+      {/* The strip's foot as one row, so it never moves [D226 D227]; Settings' and Pull Requests' navs go without it [D326]. */}
+      {!nav && <StripFoot row />}
       <ArchiveAsk />
       <DeleteAsk />
       <LabelAsk />
