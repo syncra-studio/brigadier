@@ -199,7 +199,7 @@ pub(in crate::workers) fn write_as(
     let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
     let said = ended
         .as_ref()
-        .filter(|e| l.session || e["origin"] == "agent");
+        .filter(|e| l.session || (e["origin"] == "agent" && e["of"] == turn));
     let said = said.and_then(|l| l["id"].as_str());
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);

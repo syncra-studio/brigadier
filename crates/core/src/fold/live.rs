@@ -43,7 +43,7 @@ pub struct Job {
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Pending {
     pub ids: BTreeSet<String>,
-    /// One of those ended with no turn open: the wake it starts is on its way.
+    /// One of those, or a subagent, ended with no turn open: the wake it starts is on its way.
     pub due: bool,
 }
 
