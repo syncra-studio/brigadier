@@ -4,7 +4,8 @@ import { Virtualizer, type CacheSnapshot, type VirtualizerHandle } from "virtua"
 import type { Session } from "./item";
 import { lineMaker, workKey, type Line } from "./lines";
 import { MessageRail } from "./rail";
-import { COLUMN, LineRow } from "./rows";
+import { LineRow } from "./rows";
+import { COLUMN } from "../components/composer/composer";
 import { Find } from "./find";
 import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
 import { store, useAgentLabel } from "../onboarding/api";

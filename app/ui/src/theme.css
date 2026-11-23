@@ -2057,9 +2057,13 @@
   max-width: min(var(--container-reading), 100% - var(--summary-room) * 2);
 }
 
-/* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. */
+/* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. Its width
+   then counts its padding, so the card's room (summary-column) keeps the text 16 inside the space it leaves, as with no card. */
 @utility reading-full {
   --container-reading: 100%;
+  & .max-w-reading {
+    box-sizing: border-box;
+  }
 }
 
 /* The card's room easing in and out: with the card, and with a fold when a panel's width is what makes it [D45, D49]. */
