@@ -338,7 +338,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["models"] = c
                     .models
                     .into_iter()
-                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "fast": m.fast, "legacy": m.legacy, "window": m.window, "top": m.top, "default": m.default}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "draws": m.draws, "fast": m.fast, "legacy": m.legacy, "window": m.window, "top": m.top, "default": m.default}))
                     .collect();
             }
             Err(e) => out["error"] = e.trim().into(),

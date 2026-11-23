@@ -94,11 +94,15 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
         }
         let account = call("account/read", json!({})).unwrap_or_default();
         let limits = call("account/rateLimits/read", Value::Null).ok();
-        Some((models, account["account"].clone(), limits))
+        let draws = call("modelProvider/capabilities/read", json!({})).ok();
+        Some((models, account["account"].clone(), limits, draws))
     });
-    let (mut models, account, limits) = found??;
+    let (mut models, account, limits, draws) = found??;
     models.sort_by_key(|m| m["isDefault"] != true);
     let mut models: Vec<ModelInfo> = models.iter().map(info).collect();
+    // Its image tool is the provider's, so every model makes images or none does [D298].
+    let draws = draws.and_then(|c| c["imageGeneration"].as_bool());
+    models.iter_mut().for_each(|m| m.draws = draws);
     mark_legacy(&mut models);
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
     who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
@@ -266,6 +270,8 @@ fn info(m: &Value) -> ModelInfo {
             .collect(),
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
         images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
+        // The provider's, set by `list`.
+        draws: None,
         fast: (m["serviceTiers"].as_array().into_iter().flatten())
             .find(|t| t["id"] == FAST_TIER)
             .map(|t| t["description"].as_str().unwrap_or("").into()),

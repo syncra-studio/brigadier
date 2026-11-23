@@ -122,6 +122,8 @@ pub struct ModelInfo {
     pub retiring: Option<Value>,
     /// Whether it takes images, where its CLI's list says; None where nothing says [D2022 #14].
     pub images: Option<bool>,
+    /// Whether it makes and edits images with a tool of its own; None where nothing says [D298].
+    pub draws: Option<bool>,
     /// What its fast tier offers ("1.5x speed, increased usage"), where its CLI's list has one;
     /// the picker's Speed picks it, and its adapter runs it.
     pub fast: Option<String>,

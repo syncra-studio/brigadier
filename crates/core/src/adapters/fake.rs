@@ -83,8 +83,10 @@ impl Adapter for Fake {
                 };
                 // Its default and its top model [D2075].
                 vec![
+                    // Makes images (`image:<file>`), for the image routing's demo [D298].
                     ModelInfo {
                         default: true,
+                        draws: Some(true),
                         ..level(&["low", "medium", "high"], "medium")
                     },
                     ModelInfo {

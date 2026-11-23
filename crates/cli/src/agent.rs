@@ -452,7 +452,7 @@ fn models(data: &Path, me: &str) -> Value {
         .filter(|g| g["unavailable"].is_null())
         .map(|g| {
             let models: Vec<Value> = (g["models"].as_array().into_iter().flatten())
-                .map(|m| json!({"id": m["id"], "efforts": m["efforts"], "default_effort": m["default_effort"]}))
+                .map(|m| json!({"id": m["id"], "efforts": m["efforts"], "default_effort": m["default_effort"], "draws": m["draws"]}))
                 .collect();
             json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"]})
         })
@@ -483,11 +483,11 @@ fn models(data: &Path, me: &str) -> Value {
                     }
                 })
                 .collect();
-            let efforts = if efforts.is_empty() {
-                String::new()
-            } else {
-                format!(": {}", efforts.join(", "))
-            };
+            let efforts = Some(efforts.join(", ")).filter(|e| !e.is_empty());
+            let mut efforts = efforts.map_or(String::new(), |e| format!(": {e}"));
+            if m["draws"] == true {
+                efforts += " (makes images)";
+            }
             text += &format!("  {}{efforts}\n", str_of(m, "id"));
         }
     }
