@@ -4,6 +4,7 @@ import { File, FileCode, FileDocument, FileImage, Paperclip, Spinner, Warning, X
 import { formatBytes } from "../../files/viewer";
 import { cx } from "../cx";
 import { ImagePreview } from "../image-viewer";
+import { useSettings } from "../../settings/api";
 
 /**
  * A file going with a message: an image or a long paste in the text (a chip), any other file as a tile beside
@@ -293,10 +294,12 @@ export function SentAttachments({
   files: readonly SentTile[];
   onOpen: (file: SentTile) => void;
 }) {
+  // Stacked: wrapped rows start at the left with the bubble's column, not its far end [D914].
+  const stacked = useSettings().value?.message_layout === "stacked";
   if (files.length === 0) return null;
   const images = files.filter((file) => file.mime.startsWith("image/"));
   return (
-    <ul data-slot="message-attachments" aria-label="Attachments" className="flex flex-wrap items-end justify-end gap-2">
+    <ul data-slot="message-attachments" aria-label="Attachments" className={cx("flex flex-wrap items-end gap-2", stacked ? "justify-start" : "justify-end")}>
       {files.map((file) => (
         <li key={file.id} className="flex">
           {file.mime.startsWith("image/") ? (
