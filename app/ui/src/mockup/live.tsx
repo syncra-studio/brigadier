@@ -101,6 +101,15 @@ const boundsOf = (element: HTMLElement): BrowserBounds => {
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 };
 
+/** The part of `a` inside `b`, or null when none is. */
+function clip(a: BrowserBounds, b: BrowserBounds): BrowserBounds | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const width = Math.min(a.x + a.width, b.x + b.width) - x;
+  const height = Math.min(a.y + a.height, b.y + b.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
 /** One frame's live page, opened while its tab is in front and placed over its box as a Browser tab's is. */
 function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; tab: string; url: string; zoom: Zoom; active: boolean; onLoad: (load: Load | null) => void }) {
   // Its own page each time it mounts: a frame coming in can't take the one going out's as already made.
@@ -124,11 +133,14 @@ function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; ta
     const place = () => {
       const rect = boundsOf(element);
       const bounds = !element.closest("[inert]") && rect.width > 0 && rect.height > 0 ? rect : null;
-      const key = JSON.stringify(bounds);
+      // The page is placed whole on the canvas, and shows only where the stage does.
+      const stage = element.closest("[data-slot=mockup-stage]");
+      const shown = bounds && stage ? clip(bounds, boundsOf(stage as HTMLElement)) : bounds;
+      const key = JSON.stringify([bounds, shown]);
       if (key === placed) return;
       placed = key;
       placePage(id, bounds);
-      showPage(id, bounds);
+      showPage(id, shown);
     };
     const stop = followLayout(() => [element], place);
     return () => {
