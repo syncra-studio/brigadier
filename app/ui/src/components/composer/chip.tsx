@@ -1,5 +1,19 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from "lexical";
+import {
+  $createTextNode,
+  $getNodeByKey,
+  $getRoot,
+  $getSelection,
+  $isTextNode,
+  $setSelection,
+  DecoratorNode,
+  type LexicalNode,
+  type NodeKey,
+  type RangeSelection,
+  type SerializedLexicalNode,
+  type Spread,
+  type TextNode,
+} from "lexical";
 import { createContext, type ReactNode, useContext } from "react";
 
 import { cx } from "../cx";
@@ -120,3 +134,27 @@ export class ChipNode extends DecoratorNode<ReactNode> {
 }
 
 export const $isChipNode = (node: LexicalNode | null | undefined): node is ChipNode => node instanceof ChipNode;
+
+/** `node` in the text, then a space after it unless one follows, the caret after that. */
+export function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
+  if (replacing) replacing.replace(node);
+  const next = node.getNextSibling();
+  if ($isTextNode(next) && /^\s/.test(next.getTextContent())) {
+    next.select(1, 1);
+    return;
+  }
+  const space = $createTextNode(" ");
+  node.insertAfter(space);
+  space.select(1, 1);
+}
+
+/** `chip` where `caret` was (the end when it's gone or never was), spaced off what's around it, the caret after it. */
+export function $insertChip(chip: Chip, caret: RangeSelection | null): void {
+  if (caret && $getNodeByKey(caret.anchor.key) && $getNodeByKey(caret.focus.key)) $setSelection(caret.clone());
+  else $getRoot().selectEnd();
+  const node = new ChipNode(chip);
+  $getSelection()!.insertNodes([node]);
+  const before = node.getPreviousSibling();
+  if (before && !($isTextNode(before) && /\s$/.test(before.getTextContent()))) node.insertBefore($createTextNode(" "));
+  $putWithSpace(node, null);
+}
