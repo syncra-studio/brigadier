@@ -1,6 +1,5 @@
 //! Projects [D165, D171]: Brigadier's own record of each repository sessions run in, kept in
-//! `projects.json` in the data folder (proposed). Later steps only add fields: the trust answer's
-//! use (1h), worktrees (1l), project settings (1r).
+//! `projects.json` in the data folder (proposed). Later steps only add fields.
 
 use crate::adapters::{home_path, setup};
 use crate::{Spec, check_id, ids, load, write_atomic};
@@ -11,6 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+pub mod icon;
 
 /// Proposed: a name is at most this many characters.
 const NAME_CHARS: usize = 80;
@@ -46,6 +46,8 @@ pub struct Project {
     pub kind: String,
     /// When it was pinned (ms), shown in the sidebar's Pinned by projects [D808]; None: not pinned.
     pub pinned: Option<u64>,
+    /// Its own icon, picked in its settings (icon.rs); None: the folder's logo, else its initials.
+    pub icon: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -284,8 +286,7 @@ fn find<'a>(list: &'a mut [Project], id: &str) -> io::Result<&'a mut Project> {
 }
 
 pub fn get(data: &Path, id: &str) -> io::Result<Project> {
-    let mut list = list(data)?;
-    find(&mut list, id).cloned()
+    find(&mut list(data)?, id).cloned()
 }
 
 /// What `set` changes; None leaves a field as it is.

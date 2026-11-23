@@ -35,7 +35,7 @@ export type SessionRow = {
   archivedWith?: boolean;
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss">;
 
-export type Project = { id: string; name: string; folder: string };
+export type Project = { id: string; name: string; folder: string; icon?: string | null };
 
 // Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
 const STATE_WORDS: Record<string, string | null> = {

@@ -95,7 +95,7 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
 function ProjectIcon({ project }: { project: string | null | undefined }) {
   const projects = useProjects() ?? [];
   const named = projects.find((each) => each.id === project);
-  return named ? <ProjectBadge id={named.id} name={named.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
+  return named ? <ProjectBadge id={named.id} name={named.name} icon={named.icon} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
 }
 
 /** A chat or session's first tab, never moved: its title and its state, and its "…" with the row's actions. It has no

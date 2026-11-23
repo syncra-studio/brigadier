@@ -16,8 +16,8 @@ import { useDaemon } from "../daemon";
 import { Copy, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
-import { ProjectBadge } from "../sidebar/row";
 import { shortPath } from "./add-project";
+import { IconPicker } from "./icon-picker";
 import { type Project, setProject } from "./projects";
 import { openRemoveProject, plural } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
@@ -173,8 +173,9 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   return (
     <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 pt-project-page-top pb-6">
       <ul aria-label="General">
-        <Row label="Name" line="What the sidebar and this page call it; its icon is the folder's logo, else these initials" error={errors.name}>
-          <ProjectBadge id={project.id} name={project.name} />
+        <Row label="Name" line={project.icon ? "What the sidebar and this page call it; click its icon to change it" : "What the sidebar and this page call it; its icon is the folder's logo, else these initials — click it to pick another"} error={errors.name ?? errors.icon}>
+          {/* An image shows once Rust has copied it in; a colour or emoji at once [D30]. */}
+          <IconPicker id={project.id} name={project.name} icon={project.icon} onChange={(icon) => save("icon", icon.startsWith("image:") ? {} : { icon: icon || null }, ["--icon", icon])} />
           <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : setErrors((now) => ({ ...now, name: "Name can't be empty." })))} />
         </Row>
         <Row label="Folder" line={sessions > 0 ? `Where it is on this Mac; it has ${plural(sessions, "session", "sessions")}, so it can't move` : "Where it is on this Mac; a new folder is asked about trust again"} error={errors.folder}>

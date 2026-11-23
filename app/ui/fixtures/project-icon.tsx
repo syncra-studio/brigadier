@@ -1,5 +1,6 @@
 // Mockup only: Project settings' Name row, its icon a button that opens a picker (variant A): the folder's logo or
-// initials as now, initials on a colour, an emoji, or an image you choose. Fake project, kept in memory. Not the app.
+// initials as now, initials on a colour, an emoji, or an image you choose. Fake project, kept in memory. ?v=real is the
+// real Project settings page on a fake project kept in memory (an image needs the app, which copies it in). Not the app.
 import "../src/theme.css";
 import "../src/note/page.css";
 import "./fixtures.css";
@@ -16,6 +17,8 @@ import { ImageSquare } from "../src/icons/tab";
 import { Undo } from "../src/icons/thread";
 import { ProjectBadge } from "../src/sidebar/row";
 import { hueOf, projectInitials } from "../src/sidebar/words";
+import type { Project } from "../src/daemon";
+import { ProjectSettings, type SettingsSource } from "../src/projects/settings";
 
 type Icon = { kind: "auto" } | { kind: "colour"; tag: number } | { kind: "emoji"; emoji: string } | { kind: "image"; src: string };
 
@@ -138,4 +141,31 @@ function VariantA() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<VariantA />);
+/** The real Project settings page, saving to a fake project in memory as Rust would keep it. */
+function Real() {
+  const [project, setProject] = useState<Project>({ id: "p1", name: "billing", folder: "/Users/sam/Development/work/billing", trusted: true, setup: "pnpm install", include: [".env.local"], added: 0, branch_prefix: "brigadier/" });
+  const source: SettingsSource = {
+    pick: async () => null,
+    check: async () => ({ kind: "invalid", reason: "" }),
+    save: async (_, change, args) => {
+      const icon = args[0] === "--icon" ? args[1]! : undefined;
+      if (icon?.startsWith("image:")) throw new Error("An image is copied in by the app; here, pick a colour or an emoji.");
+      setProject((now) => ({ ...now, ...change, ...(icon !== undefined && { icon: icon || null }) }));
+    },
+    repos: async () => [],
+    accounts: async () => ({ github: false, auto: null, logins: [] }),
+  };
+  return (
+    <div className="flex h-screen">
+      <div className="w-60 shrink-0 bg-sidebar p-2 text-sm">
+        <div className="flex h-8 items-center gap-2 rounded-control px-2 text-foreground">
+          <ProjectBadge id={project.id} name={project.name} icon={project.icon} />
+          <span className="truncate">{project.name}</span>
+        </div>
+      </div>
+      <ProjectSettings project={project} source={source} />
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(new URLSearchParams(location.search).get("v") === "real" ? <Real /> : <VariantA />);

@@ -112,7 +112,7 @@ export const attentionOf = (rows: SessionRow[], active: string | null) => rows.s
  *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]. */
 export function ProjectSquare({ project, current, attention, chats, ...rows }: Rows & { project: Project; current: boolean; attention: boolean; chats: SessionRow[] }) {
   return (
-    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} size="size-6 text-2xs" />} lit={attention} pressed={current}>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} pressed={current}>
       {(pick) => (
         <div className="flex min-h-0 flex-col gap-3">
           <NavList>
@@ -147,7 +147,7 @@ export function ProjectSquare({ project, current, attention, chats, ...rows }: R
 export function SessionSquare({ row, project, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
   return (
     <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
-      <ProjectBadge id={project?.id} name={project?.name ?? null} size="size-4.5 text-badge" />
+      <ProjectBadge id={project?.id} name={project?.name ?? null} icon={project?.icon} size="size-4.5 text-badge" />
     </TooltipIconButton>
   );
 }

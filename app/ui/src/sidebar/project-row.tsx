@@ -49,7 +49,7 @@ export function ProjectRow({ project, current, open, onToggle, attention, chats,
         <ContextMenuTrigger render={<div className="group/row relative" />}>
           <NavRow aria-expanded={open} aria-current={current ? "page" : undefined} className={cx("pe-1.5", ROOM_FOR_TWO)} onClick={onToggle}>
             {/* Its logo, else its initials, in place of a folder [D28]. */}
-            <ProjectBadge id={project.id} name={project.name} />
+            <ProjectBadge id={project.id} name={project.name} icon={project.icon} />
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
             <span className={cx("flex shrink-0 empty:hidden", HIDE_ON_HOVER)}>{!open && attention && <SidebarMark mark="unread" label="A session needs your attention" />}</span>
           </NavRow>
