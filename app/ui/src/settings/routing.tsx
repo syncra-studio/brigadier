@@ -41,7 +41,10 @@ export const ROUTING_ROWS = {
 // Whether an offer on a job is open: the dot on Routing and on the sidebar's Settings [D386]. One reader, no polling.
 let offered = false;
 const heard = new Set<() => void>();
+// The last table, models and results read, so the page paints at once and refreshes quietly [D262, D321].
+const kept: { table: Routing | null; groups: ModelGroup[]; results: Results | null } = { table: null, groups: [], results: null };
 function note(table: Routing): Routing {
+  kept.table = table;
   const now = table.offers.some((offer) => offer.job !== null);
   if (now !== offered) {
     offered = now;
@@ -51,6 +54,9 @@ function note(table: Routing): Routing {
 }
 /** Reads the table, keeping the dot; the app calls it at launch and after each model-list refresh. */
 export const readRouting = (): Promise<Routing> => run(["routing"]).then((table) => note(table as Routing));
+const readModels = () => run(["models", "--all"]).then((models) => (kept.groups = asGroups(models.groups)));
+/** At launch: the table and the models the page names, kept for its first paint [D321]. */
+export const preloadRouting = () => void Promise.all([readRouting(), readModels()]).catch(() => {});
 export const useRoutingDot = (): boolean =>
   useSyncExternalStore(
     (listener) => {
@@ -194,19 +200,19 @@ export function Note({ children }: { children: string }) {
 /** The page in Settings: Rust's table and models, a change or an offer's answer sent through the routing op, in order [C5, D30]. */
 export function RoutingSettings() {
   const online = Boolean(useDaemon().daemon);
-  const [value, setValue] = useState<Routing | null>(null);
-  const [groups, setGroups] = useState<ModelGroup[]>([]);
+  const [value, setValue] = useState<Routing | null>(kept.table);
+  const [groups, setGroups] = useState<ModelGroup[]>(kept.groups);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Results | null>(null);
+  const [results, setResults] = useState<Results | null>(kept.results);
   useEffect(() => {
     if (!online) return;
     setError(null);
     // Your results read every worker's log, so the table never waits on them [D2038].
-    run(["routing", "results"]).then((back) => setResults(back as Results), (cause) => setError(errorText(cause)));
-    Promise.all([readRouting(), run(["models", "--all"])]).then(
+    run(["routing", "results"]).then((back) => setResults((kept.results = back as Results)), (cause) => setError(errorText(cause)));
+    Promise.all([readRouting(), readModels()]).then(
       ([table, models]) => {
         setValue(table);
-        setGroups(asGroups(models.groups));
+        setGroups(models);
       },
       (cause) => setError(errorText(cause)),
     );

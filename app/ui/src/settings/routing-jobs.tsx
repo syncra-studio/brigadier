@@ -33,7 +33,7 @@ const BLANK: Job = { name: "", for: "", entries: [] };
 
 /**
  * Jobs: one card, each job a block: its header, its offer, then its editor when open and its order, which the header
- * folds; the first starts unfolded [D383, D425]. New job adds a block with its editor; Rust's refusals show in the editor [D388 Q14].
+ * folds; all start folded [D383, D425, D321]. New job adds a block with its editor; Rust's refusals show in the editor [D388 Q14].
  * A job-less offer is a quiet line under the card [D386]. A taken offer reads its `done` with Undo until the page
  * closes; Undo saves the job's order from before.
  */
@@ -90,7 +90,7 @@ export function Jobs({
       }
     >
       <SettingsCard inset data-slot="jobs">
-        {jobs.map((job, index) => {
+        {jobs.map((job) => {
           const open = editing === job.name;
           const offer = offers.find((each) => each.job === job.name);
           const taken = used.find((each) => each.offer.job === job.name);
@@ -98,7 +98,6 @@ export function Jobs({
             <JobBlock
               key={job.name}
               job={job}
-              first={index === 0}
               editing={open}
               onEdit={() => {
                 onDraft(null);
@@ -226,9 +225,9 @@ function JobHead({ job, open, children }: { job: Job; open?: boolean; children?:
 }
 
 /** A job in the card: its header folds its editor and order; its offer stays in sight. An open editor keeps it unfolded; folding closes it [D425]. */
-function JobBlock({ job, first, editing, onEdit, offer, children }: { job: Job; first: boolean; editing: boolean; onEdit: () => void; offer: ReactNode; children: ReactNode }) {
+function JobBlock({ job, editing, onEdit, offer, children }: { job: Job; editing: boolean; onEdit: () => void; offer: ReactNode; children: ReactNode }) {
   // A rename draws it afresh under its new name, still editing: it stays unfolded.
-  const [shown, setShown] = useState(first || editing);
+  const [shown, setShown] = useState(editing);
   const open = shown || editing;
   const fold = (next: boolean) => {
     setShown(next);
