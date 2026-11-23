@@ -33,8 +33,8 @@ const roundButton = cx(
 );
 const zoomButton = cx("flex size-9 items-center justify-center rounded-capsule bg-fill-hover hover:bg-marker", PRESS);
 
-/** One image a viewer can show. */
-export type ViewerImage = { name: string; url: string };
+/** One image a viewer can show; `reveal` shows its file in Finder, for an image the agent made [D300]. */
+export type ViewerImage = { name: string; url: string; reveal?: () => void };
 type Gallery = { images: readonly ViewerImage[]; index: number };
 type Size = { width: number; height: number };
 
@@ -85,6 +85,7 @@ export function ImageContextMenu({
       <ContextMenuContent>
         <ContextMenuItem onClick={() => void copyImage(image.url)}>Copy</ContextMenuItem>
         <ContextMenuItem onClick={() => void downloadImage(image)}>Download</ContextMenuItem>
+        {image.reveal && <ContextMenuItem onClick={image.reveal}>Show in Finder</ContextMenuItem>}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -105,16 +106,18 @@ function morphs(): boolean {
 export function ImagePreview({
   url,
   name,
+  reveal,
   gallery,
   children,
 }: {
   url: string;
   name: string;
+  reveal?: () => void;
   /** The set this image belongs to (a message's images), and where it is in it. */
   gallery?: Gallery | undefined;
   children: ReactElement;
 }) {
-  const images = gallery?.images ?? [{ name, url }];
+  const images = gallery?.images ?? [{ name, url, reveal }];
   const first = gallery?.index ?? 0;
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState(first);

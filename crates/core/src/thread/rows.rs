@@ -387,6 +387,7 @@ impl Thread {
                     self.changed_items.insert(at);
                 }
             }
+            k if k == "image" || (k == "note" && item["event"] == "image") => self.image(item),
             "note" if item["event"] == "worker" => self.team(item, ts),
             "note" if item["event"] == "peer" => self.peer(item),
             "note" if item["event"] == "plan_review" => self.plan_review(item, ts),

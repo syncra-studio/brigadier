@@ -129,4 +129,24 @@ impl Thread {
             json!({"kind": "team", "word": word, "workers": [wid], "merge": merge, "hidden": true}),
         );
     }
+
+    /// An image made, one row from its start to its end, out of the turn's work fold as the
+    /// user's words are; a worker's comes to its parent's thread too [D289].
+    pub(super) fn image(&mut self, item: &Value) {
+        let id = format!("image-{}", item["id"].as_str().unwrap_or(""));
+        let row = json!({"kind": "image", "progress": item["progress"], "attachment": item["attachment"],
+            "name": item["name"], "prompt": item["prompt"], "error": item["error"], "from": item["from"]});
+        if let Some(at) = self.named.get(&id).copied() {
+            for (k, v) in row.as_object().into_iter().flatten() {
+                self.items[at][k] = v.clone();
+            }
+            self.changed_items.insert(at);
+            return;
+        }
+        self.break_group();
+        let at = self.add_as(row, Some(id));
+        if let Some(o) = self.open.as_mut() {
+            o.kept.push(at as u64 + 1);
+        }
+    }
 }

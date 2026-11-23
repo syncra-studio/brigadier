@@ -62,6 +62,9 @@ pub struct Fold {
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
+    /// The images its agent made, each as its last `image` item said: a worker's go to its parent [D289].
+    #[serde(default)]
+    pub images: Vec<Value>,
     pub resume: BTreeMap<String, String>,
     pub versions: BTreeMap<String, String>,
     /// Each agent's own commands, as it last listed them [D2009].
@@ -325,6 +328,14 @@ impl Fold {
                 self.close(outcome, by, ts);
             }
             "mark" => self.mark(item),
+            "image" => {
+                let image = json!({"id": item["id"], "progress": item["progress"], "attachment": item["attachment"],
+                    "name": item["name"], "prompt": item["prompt"], "error": item["error"]});
+                match self.images.iter_mut().find(|i| i["id"] == item["id"]) {
+                    Some(was) => *was = image,
+                    None => self.images.push(image),
+                }
+            }
             // A command or watch sent to the background, by what the agent said it does [D187].
             "background" => {
                 self.tasks.push((ts, str_of("task")));

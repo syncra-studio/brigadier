@@ -185,6 +185,33 @@ impl Agent {
                 }
             }
             "hang" => thread::sleep(Duration::from_secs(n)),
+            // `image:<file>`: an image tool's run, kept in the session's attachments as a real
+            // CLI's helper keeps it [D289]: its tile shows for N seconds (4 unsaid), then the file.
+            "image" => {
+                let file = word.split_once(':').map_or("", |w| w.1);
+                self.tools += 1;
+                let id = format!("iimg{}-{}", self.tools, now());
+                emit(json!({"t": "image", "id": id, "progress": "running"}));
+                thread::sleep(Duration::from_secs(if n > 1 { n } else { 4 }));
+                let name = std::path::Path::new(file)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string());
+                let kept =
+                    (env::var_os("BRIGADIER_SESSION").zip(name.clone())).and_then(|(dir, name)| {
+                        let to = std::path::Path::new(&dir).join("attachments").join(&id);
+                        fs::create_dir_all(&to)
+                            .and_then(|_| fs::copy(file, to.join(&name)))
+                            .ok()
+                    });
+                match kept {
+                    Some(_) => emit(
+                        json!({"t": "image", "id": id, "progress": "done", "attachment": id, "name": name}),
+                    ),
+                    None => emit(
+                        json!({"t": "image", "id": id, "progress": "failed", "error": "failed"}),
+                    ),
+                }
+            }
             "ask" => {
                 self.waiting = true;
                 let mut ask = json!({"t": "ask", "id": format!("q{}", now()), "text": "Proceed with the change?"});

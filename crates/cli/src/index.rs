@@ -319,6 +319,8 @@ impl Index {
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
                              "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
+            // A worker's images, which its parent's thread shows too [D289].
+            row["images"] = json!(f.fold.images);
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
             row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
             row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]

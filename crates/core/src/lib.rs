@@ -12,6 +12,7 @@ pub mod fork;
 pub mod git;
 pub mod handoff;
 pub mod host;
+pub mod images;
 pub mod library;
 pub mod message;
 pub mod norm;

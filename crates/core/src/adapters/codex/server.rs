@@ -16,6 +16,7 @@ use std::thread;
 use std::time::Duration;
 
 mod child;
+mod image;
 mod limits;
 use child::{activity, child};
 use limits::{limit_id, merge, out_of_credits, resets, tell_limits};
@@ -424,6 +425,9 @@ fn notification(state: &Shared, v: &mut Value) {
     }
     if subagent {
         activity(st, &mut v["params"]["item"]);
+    }
+    if method == "item/completed" && v["params"]["item"]["type"] == "imageGeneration" {
+        image::kept(&st.thread, &mut v["params"]["item"]);
     }
     say(v.take());
 }

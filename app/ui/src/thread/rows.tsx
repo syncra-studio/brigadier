@@ -10,6 +10,7 @@ import { ForkAction, ForkedLine } from "../session/fork";
 import { FailedActions, GoOn, PluginSignIn } from "../session/notices";
 import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
+import { ImageRow } from "../components/thread/image";
 import { PeerRow } from "../peers/live";
 import { TeamRow } from "../workers/live";
 import { SubagentRow } from "../workers/subagents";
@@ -60,6 +61,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <SideLine item={props.item} />
       ) : props.item.kind === "forked" ? (
         <ForkedLine item={props.item} />
+      ) : props.item.kind === "image" ? (
+        <ImageRow item={props.item} />
       ) : (
         <Body
           item={props.item}

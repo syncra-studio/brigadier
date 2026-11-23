@@ -16,7 +16,7 @@ pub use files::repeat;
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
 pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
-pub use setup::version;
+pub use setup::{base_env, memory, probe, probe_as, version};
 pub use shell::{relay_call, shell_step, unwrap_shell};
 
 use crate::Spec;
@@ -104,6 +104,8 @@ pub enum Event {
     Failed(&'static str, String),
     /// The CLI holds its reply for extra safety checks (true), or let it go (false) [D487].
     Checking(bool),
+    /// An image made, `{id, progress, attachment, name, prompt, error}`, kept in the session [D289].
+    Image(Value),
     /// An action the CLI's own rule or reviewer turned down, with nobody asked [D487].
     Denied,
     /// An action its CLI's own safety check gave no verdict on: not run, nobody asked [D455].
@@ -478,8 +480,6 @@ pub fn all() -> [&'static dyn Adapter; 4] {
 pub fn get(name: &str) -> Option<&'static dyn Adapter> {
     all().into_iter().find(|a| a.name() == name)
 }
-
-pub use setup::{base_env, memory, probe, probe_as};
 
 pub fn home_path(rest: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)

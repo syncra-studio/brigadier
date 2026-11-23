@@ -5,6 +5,7 @@
 //! Logged without that proof, it's uncertain and never sent again by itself. An idle parent wakes;
 //! a busy one gets it after its turn. Turns the user starts in a worker report nothing.
 
+mod images;
 mod report;
 mod take;
 
@@ -96,6 +97,7 @@ pub(super) fn open(data: &Path, pid: &str) {
 /// After a pass's rows: a worker whose reported turn ended gets its result written. Only a worker
 /// whose turns changed is folded.
 pub(super) fn written(data: &Path, wid: &str, row: &Value) {
+    images::pass(data, wid, row);
     if row["running"] == true {
         return;
     }

@@ -417,11 +417,13 @@ fn build(
     let copied = copy_of(&src.dir, &order, ask.at)?;
     let lines: String = copied.iter().map(|item| format!("{item}\n")).collect();
     write_atomic(&new.dir.join(COPY), lines.as_bytes())?;
-    // The copied messages' files are the fork's own, so they show and open after the source's delete.
+    // The copied messages' files and the images made are the fork's own, so they show and open
+    // after the source's delete [D289].
     let ids =
         (copied.iter()).flat_map(|item| item["parts"]["files"].as_array().into_iter().flatten());
-    for id in (ids.filter_map(|file| file["id"].as_str())).filter(|id| crate::check_id(id).is_ok())
-    {
+    let ids = (ids.filter_map(|file| file["id"].as_str()))
+        .chain(copied.iter().filter_map(|item| item["attachment"].as_str()));
+    for id in ids.filter(|id| crate::check_id(id).is_ok()) {
         let Ok(found) = fs::read_dir(crate::message::sent(&src.dir).join(id)) else {
             continue;
         };

@@ -3,7 +3,7 @@
 use super::super::{
     Done, Event, Tool, change, classify, counts, s, shell_step, temporary, unwrap_shell,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 
 mod app_server;
 pub use app_server::{compact, limited};
@@ -48,6 +48,9 @@ pub fn parse(line: &str) -> Vec<Event> {
             agents(item, done)
         }
         "item.completed" if kind == "sub_agent_activity" => activity(item),
+        "item.started" | "item.completed" if kind == "image_generation" => {
+            vec![Event::Image(image(item, done))]
+        }
         "item.started" | "item.completed" if TOOLS.contains(&kind) => {
             let mut events = vec![Event::ToolStart(tool(item))];
             if done {
@@ -66,6 +69,20 @@ pub fn parse(line: &str) -> Vec<Event> {
         "item.started" | "item.updated" | "item.completed" => vec![],
         _ => vec![Event::Unknown(line.into())],
     }
+}
+
+/// Its image tool's item; its helper kept the picture, by its id and name [D289].
+fn image(item: &Value, done: bool) -> Value {
+    let failed = !item["failure"].is_null() || s(item, &["status"]) == "failed";
+    let progress = match (done, failed) {
+        (_, true) => "failed",
+        (true, _) => "done",
+        _ => "running",
+    };
+    let error = (item["failure"]["type"].as_str()).or(failed.then_some("failed"));
+    json!({"id": crate::images::plain(s(item, &["id"])), "progress": progress,
+        "attachment": item["attachment"], "name": item["name"],
+        "prompt": item["revised_prompt"], "error": error})
 }
 
 /// An exec item as a step, by its type [D48, D65].

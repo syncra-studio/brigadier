@@ -531,6 +531,8 @@
   --radius-surface: 0.75rem;
   /* The image the viewer shows (the old app's rounded-lg). */
   --radius-image-viewer: 0.625rem;
+  /* An image the agent made, and its tile while it's made: 16 [D289]. */
+  --radius-image: 1rem;
   --radius-tooltip: 1rem;
   /* A menu's corners, 16 [D73]. */
   --radius-menu: 1rem;
@@ -649,6 +651,16 @@
   --animate-chunk-in: fade-in 0.7s cubic-bezier(0.37, 0.55, 0.86, 0.88);
   /* A progress bar growing. */
   --duration-bar: 500ms;
+  /* An image being made: its dots breathe between 38% and 56% [D289, D299]. */
+  --animate-image-making: image-making 1.75s ease-in-out infinite alternate;
+  @keyframes image-making {
+    from {
+      opacity: 0.38;
+    }
+    to {
+      opacity: 0.56;
+    }
+  }
   --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   @keyframes pulse {
     50% {
@@ -839,6 +851,19 @@
   animation: var(--animate-shimmer);
   @media (prefers-reduced-motion: reduce) {
     animation: none;
+  }
+}
+
+/* An image being made: a field of faint dots 12 apart over the tile, its corners fading, breathing while it
+   lasts; still with less motion [D289, D299]. */
+@utility image-making {
+  background-image: radial-gradient(circle, var(--color-foreground) 1px, transparent 1.5px);
+  background-size: 0.75rem 0.75rem;
+  mask-image: linear-gradient(135deg, transparent, black 30%, black 70%, transparent);
+  animation: var(--animate-image-making);
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 0.38;
   }
 }
 

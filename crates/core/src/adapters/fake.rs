@@ -176,6 +176,10 @@ impl Adapter for Fake {
             "hello" => vec![Event::Resume(s(&v, &["session"]).into())],
             "turn" => vec![Event::TurnStart],
             "say" => vec![Event::Text(s(&v, &["text"]).into())],
+            "image" => vec![Event::Image(
+                json!({"id": v["id"], "progress": v["progress"],
+                "attachment": v["attachment"], "name": v["name"], "prompt": null, "error": v["error"]}),
+            )],
             // `write:` reports an edit step with its file change; every other tool is "other".
             "tool" if v["path"].is_string() => vec![Event::ToolStart(Tool {
                 id: s(&v, &["id"]).into(),

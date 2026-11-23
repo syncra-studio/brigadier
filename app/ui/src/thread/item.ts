@@ -196,6 +196,11 @@ export type Item = Base &
         answer?: string | null;
       }
     | { kind: "compaction"; summary: string | null; progress?: Progress }
+    /**
+     * An image the agent makes or made, kept in this session's attachments by `attachment` and `name` once done; a
+     * worker's (`from`) shows in its parent's thread too [D289].
+     */
+    | { kind: "image"; progress: Progress; attachment?: string | null; name?: string | null; prompt?: string | null; error?: string | null; from?: string | null }
     | { kind: "notice"; level: "info" | "warning" | "error"; text: string }
     /** A notice Rust sends as structure, its words written here: `untrusted`, trust taken back holds this turn to Ask [D166]. */
     | { kind: "notice"; reason: "untrusted" }

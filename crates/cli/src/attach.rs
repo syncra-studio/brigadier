@@ -131,8 +131,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "id": id}))
         }
         // A file or folder a thread's link names outside the checkout shows in Finder, as the old app's [D2098, D290].
+        // An attachment by its id (an image the agent made) shows its file [D300].
         "reveal" => {
             let path = arg(args, 3)?;
+            let kept = (!path.starts_with('/') && core::check_id(path).is_ok())
+                .then(|| {
+                    fs::read_dir(core::message::sent(&core::session_dir(data, owner)).join(path))
+                        .ok()
+                })
+                .flatten()
+                .and_then(|mut found| Some(found.next()?.ok()?.path().display().to_string()));
+            let path = kept.as_deref().unwrap_or(path);
             if !path.starts_with('/')
                 || !std::process::Command::new("open")
                     .arg("-R")
