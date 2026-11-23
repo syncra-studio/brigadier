@@ -150,3 +150,36 @@ impl Thread {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Thread;
+    use serde_json::json;
+
+    // A worker's ask that wakes its parent, its block held for that worker, adds no shown row [D329].
+    #[test]
+    fn an_ask_carrying_a_held_block_on_stays_quiet() {
+        let mut t = Thread::default();
+        for (cid, origin, text) in [
+            ("u1", "user", "Started it."),
+            ("r1", "result:asks:w1", "Still running."),
+        ] {
+            t.push(&json!({"kind": "input", "cid": cid, "origin": origin, "text": "go", "backend": "claude"}));
+            t.push(&json!({"kind": "delivered", "cid": cid}));
+            if origin == "user" {
+                t.push(&json!({"kind": "note", "event": "worker", "phase": "started", "id": "w1", "title": "Outline"}));
+            }
+            t.push(&json!({"kind": "text", "text": text}));
+            t.push(&json!({"kind": "turn_end", "ok": true}));
+        }
+        let items = t.session("s", "", None, None)["items"].take();
+        let hidden = |text: &str| {
+            let rows = items.as_array().into_iter().flatten();
+            rows.filter(|i| i["kind"] == "message" && i["text"] == text)
+                .map(|i| i["hidden"] == true)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(hidden("Started it."), [false]);
+        assert_eq!(hidden("Still running."), [true]);
+    }
+}

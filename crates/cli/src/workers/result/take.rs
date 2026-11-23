@@ -51,7 +51,7 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
 
 /// The results held for the parent's next message, or waiting to wake it, go with that message,
 /// after its text: one turn, one answer, never a wake per worker [D95, D314, D329]. Ones the user
-/// ended come last, the agent told to mention them only if something matters [D330]. Call under
+/// or the parent ended come last, the agent told to mention them only if something matters [D330]. Call under
 /// the parent's queue lock; `went_with` once the message is in.
 pub fn with_next(data: &Path, pid: &str, agent: &mut String) -> Vec<PathBuf> {
     let mut due: Vec<(PathBuf, Res)> = (all(data, pid).into_iter())
@@ -62,7 +62,7 @@ pub fn with_next(data: &Path, pid: &str, agent: &mut String) -> Vec<PathBuf> {
         *agent += &format!("\n\n{}", r.text);
     }
     if due.iter().any(|(_, r)| r.ended) {
-        *agent += "\n\nThe user ended these workers. Mention them only if something matters (say, a file one left uncommitted), in one short line of your reply:";
+        *agent += "\n\nThese workers were ended, by the user or by you. Mention them only if something matters (say, a file one left uncommitted), in one short line of your reply:";
         for (_, r) in due.iter().filter(|(_, r)| r.ended) {
             *agent += &format!("\n\n{}", r.text);
         }

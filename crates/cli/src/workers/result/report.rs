@@ -214,7 +214,8 @@ pub(in crate::workers) fn write(
             _ => "written",
         }
         .into(),
-        ended: how == "stopped" && l.last["by"] == "user",
+        // One its parent ended is news the parent has: it too waits for the next input [D303, D328].
+        ended: how == "stopped" && matches!(l.last["by"].as_str(), Some("user" | "agent")),
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
     };

@@ -45,7 +45,7 @@ pub(super) struct Res {
     pub text: String,
     pub at: u64,
     /// written | sent (logged in the parent) | delivered | uncertain | held (stopped, till a turn
-    /// of the parent's ends or its next message; `ended` by the user, till that message [D330]) |
+    /// of the parent's ends or its next message; `ended` by the user or its parent, till that message [D330, D328]) |
     /// taken (by the parent's own `wait` or its next message) | dropped (its family is deleted) |
     /// review (a reviewer the switch started: its findings go to its worker instead [D3026])
     pub state: String,
