@@ -25,10 +25,22 @@ static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 pub(crate) fn land_line(merge: Option<(&str, &str, &str)>, review: bool) -> String {
     match merge {
         _ if review => super::review::FINDINGS.into(),
-        Some((to, branch, base)) => format!(
-            "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {to} merge --no-edit {branch}`. If that conflicts, run `git -C {to} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
-        ),
+        Some((to, branch, base)) => {
+            let (dir, b) = (sh(to), sh(branch));
+            format!(
+                "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
+            )
+        }
         None => "Commit your work on your branch and don't merge it.".into(),
+    }
+}
+
+/// `s` as one shell word: as is when plain, else single-quoted ("Application Support") [D309].
+fn sh(s: &str) -> String {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "_./:@%+=,-".contains(c);
+    match !s.is_empty() && s.chars().all(plain) {
+        true => s.into(),
+        false => format!("'{}'", s.replace('\'', "'\\''")),
     }
 }
 
