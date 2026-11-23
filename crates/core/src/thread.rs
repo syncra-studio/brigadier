@@ -80,10 +80,11 @@ pub struct Thread {
     open: Option<Open>,
     /// Status-fold turns already shown, by id.
     shown: HashSet<String>,
-    /// A turn that carried on another's block (a wake, a rebirth's carry-on) → that block's id,
-    /// which its rows carry as their `turnId`.
+    /// Each turn's start: its id, the block its rows went into (their `turnId`: its own, or the
+    /// one it carried on), its first row's index, and whether it carries on its block's answer
+    /// (a wake, a rebirth's carry-on) rather than being another's words in it (a steer).
     #[serde(default)]
-    joined: HashMap<String, String>,
+    starts: Vec<(String, String, usize, bool)>,
     /// (turn, tool or question id) → its row's index.
     #[serde(with = "pairs")]
     keys: HashMap<(String, String), usize>,
@@ -404,9 +405,28 @@ impl Thread {
         }
     }
 
-    /// The block a turn's rows went into: its own, or the one it carried on.
-    pub fn block_of<'a>(&'a self, turn: &'a str) -> &'a str {
-        self.joined.get(turn).map_or(turn, String::as_str)
+    /// A turn's own last reply: in its block, from its first row till a turn that isn't its
+    /// carry-on starts, so neither a reply from before it nor one to a later steer.
+    pub fn last_said(&self, turn: &str) -> Option<String> {
+        let at = self.starts.iter().rposition(|s| s.0 == turn);
+        let (block, from, to) = match at {
+            Some(at) => {
+                let (_, block, from, _) = &self.starts[at];
+                let next = self.starts[at + 1..].iter().find(|s| !s.3);
+                (
+                    block.as_str(),
+                    *from,
+                    next.map_or(self.items.len(), |s| s.2),
+                )
+            }
+            // A thread folded before starts were kept: any row of its id.
+            None => (turn, 0, self.items.len()),
+        };
+        (from..to)
+            .rev()
+            .map(|at| &self.items[at])
+            .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == block)
+            .and_then(|i| i["text"].as_str().map(String::from))
     }
 
     fn turn_id(&self) -> Option<String> {
