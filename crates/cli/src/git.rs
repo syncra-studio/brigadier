@@ -6,6 +6,7 @@ use super::{arg, flag, has};
 use brigadier_core::folder;
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{self, Checkout, Status, Target, branch, files, watch::Watch};
+use brigadier_core::message::MAX_BYTES;
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
@@ -122,7 +123,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         Target::Session(id)
             if matches!(
                 arg(args, at)?,
-                "files" | "find" | "folder" | "file" | "reveal"
+                "files" | "find" | "folder" | "file" | "image" | "reveal"
             ) && folder::chat(&brigadier_core::load(data, id)?) =>
         {
             let names = folder::seen(data, id)?;
@@ -206,6 +207,27 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
             let mut file = git::read_file(&checkout, word(1)?)?;
             file["ignored"] = files::ignored(&checkout, word(1)?).into();
             json!({"ok": true, "file": file})
+        }
+        // A markdown file's own image in the viewer, read inside the checkout as `file` is, as a `data:` URL.
+        "image" => {
+            use std::io::Read;
+            let path = git::inside(&checkout, word(1)?)?;
+            let ext = (path.extension().and_then(|e| e.to_str())).map(str::to_ascii_lowercase);
+            let mime = match ext.as_deref() {
+                Some("png") => "image/png",
+                Some("jpg" | "jpeg") => "image/jpeg",
+                Some("gif") => "image/gif",
+                Some("webp") => "image/webp",
+                Some("svg") => "image/svg+xml",
+                _ => return Err(io::Error::other("This isn't an image to show.")),
+            };
+            let mut bytes = vec![];
+            (std::fs::File::open(&path)?.take(MAX_BYTES + 1)).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > MAX_BYTES {
+                return Err(io::Error::other("This image is too large to show."));
+            }
+            let data = brigadier_frames::base64(&bytes);
+            json!({"ok": true, "url": format!("data:{mime};base64,{data}")})
         }
         // The branch item [D1020, D1021, D1026, D1034].
         "branches" => {

@@ -41,7 +41,11 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const seen = new Map<string, number>();
-    for (const heading of box.current!.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) if (heading.closest(".markdown") === box.current) heading.id = slug(heading.textContent ?? "", seen);
+    for (const heading of box.current!.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) {
+      // One drawn with an id keeps it: GFM's footnotes heading, which its references name.
+      if (heading.closest(".markdown") !== box.current || (heading.id && heading.dataset.slug === undefined)) continue;
+      heading.id = heading.dataset.slug = slug(heading.textContent ?? "", seen);
+    }
   });
   return (
     <div ref={box} className="markdown">
@@ -59,9 +63,9 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
   );
 }
 
-/** GitHub's heading slug (github-slugger's): lower case, punctuation dropped, spaces as `-`; a repeat gets `-1`, `-2`. */
+/** GitHub's heading slug (github-slugger's): lower case, punctuation and `²`-like numbers dropped, spaces as `-`; a repeat gets `-1`, `-2`. */
 function slug(text: string, seen: Map<string, number>): string {
-  const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "").replace(/ /g, "-");
+  const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc} -]/gu, "").replace(/ /g, "-");
   let id = base;
   while (seen.has(id)) {
     seen.set(base, seen.get(base)! + 1);
@@ -79,7 +83,10 @@ function toHeading(link: HTMLElement, hash: string): void {
   } catch {
     // Kept as written.
   }
-  link.closest(".markdown")?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: "start" });
+  const box = link.closest(".markdown");
+  // Not one in a text nested in it, a draft's, which counts its own.
+  const found = [...(box?.querySelectorAll(`#${CSS.escape(id)}`) ?? [])].find((at) => at.closest(".markdown") === box);
+  found?.scrollIntoView({ block: "start" });
 }
 
 /**
@@ -104,8 +111,6 @@ function Anchor({ href, chip, ...link }: { href?: string; chip?: (n: number) => 
         }}
       />
     );
-  const pr = href && pastedRef(href);
-  if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
   if (files && href && RELATIVE.test(href))
     return (
       <a
@@ -117,6 +122,8 @@ function Anchor({ href, chip, ...link }: { href?: string; chip?: (n: number) => 
         }}
       />
     );
+  const pr = href && pastedRef(href);
+  if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
   if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
   return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
 }
