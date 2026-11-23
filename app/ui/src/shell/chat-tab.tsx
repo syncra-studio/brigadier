@@ -101,7 +101,7 @@ function ProjectIcon({ project }: { project: string | null | undefined }) {
 /** A chat or session's first tab, never moved: its title and its state, and its "…" with the row's actions. It has no
  *  × [D45 D427 D197]; ⌘W, middle-click and Close leave it. `plain` while it's the only tab: no chip, its title plain in
  *  the titlebar, until a tab opens and it grows into tab 1 [D196]. */
-export function ChatTab({ owner, row, active, plain, separator, order, grouped = false, keycap }: { owner: string; row: SessionRow; active: boolean; plain: boolean; separator: boolean; order: string[]; grouped?: boolean; keycap?: string | undefined }) {
+export function ChatTab({ owner, row, active, plain, separator, order, keycap }: { owner: string; row: SessionRow; active: boolean; plain: boolean; separator: boolean; order: string[]; keycap?: string | undefined }) {
   const [renaming, setRenaming] = useState(false);
   const words = useStatusWords(row);
   const archived = Boolean(row.archived);
@@ -133,7 +133,7 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
   );
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-plain={plain || undefined} data-separator={separator || undefined} data-active={active || undefined} data-agent-group={grouped || undefined} className={cx(TAB, LOOK(active))} />}>
+      <ContextMenuTrigger render={<div data-tab-id={CHAT} data-plain={plain || undefined} data-separator={separator || undefined} data-active={active || undefined} className={cx(TAB, LOOK(active))} />}>
         <button
           type="button"
           role="tab"

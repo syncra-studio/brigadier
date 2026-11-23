@@ -2,7 +2,7 @@ import { PointerActivationConstraints, PointerSensor } from "@dnd-kit/dom";
 import { RestrictToElement } from "@dnd-kit/dom/modifiers";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
-import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent as ReactWheelEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { shownAddress } from "../browser/address";
 import { giveTab, giveTabToChat, takeBackTab, ungroup } from "../browser/give";
@@ -20,11 +20,10 @@ import { FileIcon } from "../icons/file-types";
 import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 import { LiveMockupTabIcon } from "../mockup/live";
-import { BrigadeGroupLabel, SiblingTab, useBrigadeFamily } from "./brigade-tabs";
 import { BlankChatTab, BUTTON, ChatTab, CLOSE, CloseAllDialog, Keycap, leave, LOOK, noAutoscroll, TAB, TabMenuItems, TITLE, TITLE_CLOSABLE } from "./chat-tab";
 import { useNoteTitle } from "./note-tab";
 import { useCommandHeld, useTabKeys } from "./tab-keys";
-import { CHAT, closeTab, familyOrder, HOME, justOpened, keepTab, moveTab, openTab, selectTab, SIBLING, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
+import { CHAT, closeTab, HOME, justOpened, keepTab, moveTab, openTab, selectTab, type Tab, TAB_KINDS, tabOrder, tabsOf, useTabs, useTabsFromRust, useTabsProject, useTabsRead } from "./tab-store";
 import { blocked } from "./titlebar";
 import { Toolbar } from "./toolbar";
 
@@ -184,20 +183,13 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   const { tabs, active } = now;
   useTabsFromRust(owner);
   const archived = Boolean(row?.archived);
-  // A Brigade's family, its tab group around the Chat tab [D3108].
-  const family = useBrigadeFamily(row);
-  const me = family.findIndex((each) => each.id === owner);
   const [folds, setFolds] = useState<ReadonlySet<string>>(new Set());
-  const familyKey = `brigade:${family[0]?.id}`;
-  const familyFolded = folds.has(familyKey);
-  // Keys reach only the tabs that show: folded, the family's others are out of the order.
-  const familyIds = useMemo(() => (familyFolded ? [] : family.map((each) => each.id)), [family, familyFolded]);
-  useTabKeys(owner, archived, familyIds);
+  useTabKeys(owner, archived);
   const presence = useTabPresence(tabs);
   // By the tabs now, not those still sliding shut: the last tab closing takes the Chat tab's chip in the same frame. With
   // no other tab there's no chip: the chat's title plain, none for New chat, and "+" at the
   // row's end with the chat's buttons [D831 D196].
-  const bare = tabs.length === 0 && family.length === 0;
+  const bare = tabs.length === 0;
   // What's read on opening shows at its size [D423]: nothing slides until a frame after Rust's first answer.
   const read = useTabsRead(owner);
   const [settled, setSettled] = useState(false);
@@ -210,11 +202,10 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   const strip = useRef<HTMLDivElement>(null);
   // Holding ⌘: each tab ⌘1…⌘8 in the strip's order, the last ⌘9, as ⌘1–9 pick them (selectNumber) [D48].
   const held = useCommandHeld();
-  const keys = familyOrder(order, familyIds, owner);
   const keycap = (id: string) => {
     if (!held) return undefined;
-    const at = keys.indexOf(id);
-    return at === keys.length - 1 ? "⌘9" : at >= 0 && at < 8 ? `⌘${at + 1}` : undefined;
+    const at = order.indexOf(id);
+    return at === order.length - 1 ? "⌘9" : at >= 0 && at < 8 ? `⌘${at + 1}` : undefined;
   };
   const list = useRef<HTMLDivElement>(null);
   // Safari's and Chrome's: a tab closed with the pointer leaves each other tab its width until the pointer leaves the
@@ -241,7 +232,7 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   );
 
   // The tab in front stays in view as the strip's room changes and as the tabs finish growing or shrinking [D44].
-  const count = tabs.length + family.length; // a Brigade's tabs scroll in the strip too
+  const count = tabs.length;
   useEffect(() => {
     const list = strip.current;
     if (!list || count === 0) return;
@@ -266,19 +257,18 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
     const focus = (id: string) => requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"] [role="tab"]`)?.focus());
     if (matches(event.nativeEvent, "close-focused")) {
       const id = event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId;
-      if (!id || id === CHAT || id.startsWith(SIBLING)) return;
+      if (!id || id === CHAT) return;
       event.preventDefault();
       closeTab(owner, id);
       return focus(tabsOf(owner).active);
     }
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    // A family's other tab takes the focus only; Enter opens its session [D3108].
-    const at = keys.indexOf(event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId ?? active);
+    const at = order.indexOf(event.target.closest<HTMLElement>("[data-tab-id]")?.dataset.tabId ?? active);
     const forward = (event.key === "ArrowRight") !== (getComputedStyle(list).direction === "rtl");
-    const next = event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1 : (at + (forward ? 1 : -1) + keys.length) % keys.length;
-    if (!keys[next]!.startsWith(SIBLING)) selectTab(owner, keys[next]!);
-    focus(keys[next]!);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? order.length - 1 : (at + (forward ? 1 : -1) + order.length) % order.length;
+    selectTab(owner, order[next]!);
+    focus(order[next]!);
   };
 
   // The wheel scrolls the strip from anywhere on the pill: the chat tab and the pill's edge move it as the tabs do,
@@ -292,7 +282,7 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
   };
 
   // A folded group shows its label alone, as Chrome's; its tab in front keeps it open. Folding the one in front opens
-  // a New tab after the strip's last, as Chrome does [D894 D909]. `folds` is above, for the keys.
+  // a New tab after the strip's last, as Chrome does [D894 D909].
   const frontDriver = tabs.find((tab) => tab.id === active)?.driver;
   const folded = (driver: string | undefined) => Boolean(driver) && driver !== frontDriver && folds.has(`${owner}:${driver}`);
   const fold = (driver: string, group: readonly Tab[]) => {
@@ -301,15 +291,12 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
     if (folds.has(key) || !group.some((tab) => tab.id === active)) return;
     moveTab(owner, openTab(owner, "new"), tabs.length);
   };
-  // A Brigade's group folds its other sessions' tabs, never the Chat tab: no New tab takes the front, as an agent's does [D3108].
-  const foldFamily = () => setFolds((now) => (now.has(familyKey) ? new Set([...now].filter((each) => each !== familyKey)) : new Set([...now, familyKey])));
-  const siblings = familyFolded ? 0 : Math.max(family.length - 1, 0);
   const newTab = (
     <TooltipIconButton look="bar" tooltip="New tab" shortcut={keysOf("new-tab")[0]} className="app-no-drag session-tab-new" onClick={() => openTab(owner, "new")}>
       <Plus />
     </TooltipIconButton>
   );
-  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} plain={bare} separator={active !== CHAT && ((me >= 0 && me < family.length - 1 && !familyFolded) || tabs[0]?.id !== active)} order={order} grouped={family.length > 0} keycap={bare ? undefined : keycap(CHAT)} /> : <BlankChatTab owner={owner} project={project} title={title} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} keycap={bare ? undefined : keycap(CHAT)} />;
+  const chat = row ? <ChatTab owner={owner} row={row} active={active === CHAT} plain={bare} separator={active !== CHAT && tabs[0]?.id !== active} order={order} keycap={bare ? undefined : keycap(CHAT)} /> : <BlankChatTab owner={owner} project={project} title={title} active={active === CHAT} closing={bare} separator={!bare && active !== CHAT && tabs[0]?.id !== active} keycap={bare ? undefined : keycap(CHAT)} />;
   // A pill on the row [D71].
   const reconnecting = offline && <span role="status" className="flex h-7 shrink-0 items-center rounded-capsule bg-fill px-3 text-label text-warning">Reconnecting…</span>;
   // In the titlebar row across the window's top, over the sidebar too, outside the frame below [D48 D823].
@@ -319,19 +306,10 @@ export function TabBar({ owner, row, offline, title }: { owner: string; row?: Se
         {/* The tabs from the start, "+" right after them [D823]: the tabs' room when crowded (session-tab-list). */}
         <div className="@container flex min-w-0 flex-1 items-center gap-2 self-stretch">
           {/* The whole strip is no-drag: a drag region gets no wheel, so the gaps between tabs wouldn't scroll. */}
-          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + siblings + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length + (family.length > 0 ? 1 : 0)} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center" onKeyDown={onKeys} onWheel={onWheel}>
+          <div ref={list} role="tablist" aria-label="Tabs" tabIndex={-1} data-count={tabs.length - tabs.filter((tab) => folded(tab.driver)).length + 1} data-groups={presence.tabs.filter((_, at) => leadsGroup(presence.tabs, at)).length} className="session-tab-list app-no-drag flex h-8 min-w-0 items-center" onKeyDown={onKeys} onWheel={onWheel}>
             {/* A rule after Chat unless the front tab is either side of it, as the floating design's [D437 D840]. */}
-            {family.length === 0 && chat}
+            {chat}
             <div ref={strip} className="tab-scroll scroll-edge-fade-x hide-scrollbar flex min-w-0 items-center self-stretch overflow-x-auto empty:hidden">
-              {/* A Brigade's family scrolls with the tabs, its Chat tab held in view as the front one is [D3108]. */}
-              {family.length > 0 && (
-                <>
-                  <BrigadeGroupLabel family={family} folded={familyFolded} onFold={foldFamily} />
-                  {family.slice(0, Math.max(me, 0)).map((each, at) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={!(at === me - 1 && active === CHAT)} keycap={keycap(SIBLING + each.id)} />)}
-                  {chat}
-                  {me >= 0 && family.slice(me + 1).map((each, at, after) => <SiblingTab key={each.id} row={each} folded={familyFolded} separator={at < after.length - 1 || tabs[0]?.id !== active} keycap={keycap(SIBLING + each.id)} />)}
-                </>
-              )}
               {/* Held inside the strip, which is a tab high: it moves along the row only. */}
               <DragDropProvider
                 sensors={SENSORS}

@@ -7,7 +7,7 @@ import { blocked } from "./titlebar";
 import { closeOthers, openTab, reopenTab, selectNumber, stepTab, tabsOf } from "./tab-store";
 
 /** The old app's tab keys, for the kinds that exist so far. ⌘W comes through the File menu (main.ts), so it isn't here. */
-export function useTabKeys(owner: string, archived: boolean, family: readonly string[] = []): void {
+export function useTabKeys(owner: string, archived: boolean): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || blocked()) return;
@@ -15,12 +15,12 @@ export function useTabKeys(owner: string, archived: boolean, family: readonly st
       let run: (() => void) | undefined;
       // ⌘J and ⌃` open a Terminal tab, on Home, in a chat and in a session [D428]; there is no bottom panel [D360].
       if (is("terminal")) run = () => !archived && openTab(owner, "terminal");
-      else if (is("previous-tab") || is("next-tab")) run = () => stepTab(owner, is("previous-tab") ? -1 : 1, family);
+      else if (is("previous-tab") || is("next-tab")) run = () => stepTab(owner, is("previous-tab") ? -1 : 1);
       else if (is("close-others")) run = () => closeOthers(owner, tabsOf(owner).active);
       else if (is("reopen")) run = () => reopenTab(owner);
       else if (is("new-tab")) run = () => openTab(owner, "new");
       else if (is("new-note")) run = () => !archived && openTab(owner, "note", newId());
-      else if (is("show-tab")) run = () => selectNumber(owner, Number(event.code.slice(-1)), family);
+      else if (is("show-tab")) run = () => selectNumber(owner, Number(event.code.slice(-1)));
       else if (is("switch-profile") && window.brigadier) {
         const profile = allProfiles()[Number(event.code.slice(-1)) - 1];
         // One from a page comes as a press made here (browser/keys.ts): the page had the keyboard, and keeps it.
@@ -33,7 +33,7 @@ export function useTabKeys(owner: string, archived: boolean, family: readonly st
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [owner, archived, family]);
+  }, [owner, archived]);
 }
 
 // shortcut: the wait before the badges show is our own pick; it keeps ⌘T and the like from flashing them.

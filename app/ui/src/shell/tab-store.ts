@@ -361,34 +361,17 @@ export function reopenTab(owner: string): void {
   act(owner, { args: ["reopen"], change: (now) => now, once: true });
 }
 
-export function stepTab(owner: string, step: 1 | -1, family: readonly string[] = []): void {
+export function stepTab(owner: string, step: 1 | -1): void {
   const now = tabsOf(owner);
-  const order = familyOrder(tabOrder(now), family, owner);
-  go(owner, order[(order.indexOf(now.active) + step + order.length) % order.length]!);
+  const order = tabOrder(now);
+  selectTab(owner, order[(order.indexOf(now.active) + step + order.length) % order.length]!);
 }
 
-/** ⌘1 is Chat, ⌘2 to ⌘8 the tabs after it, ⌘9 the last, as browsers do; in a Brigade, its family's tabs first. */
-export function selectNumber(owner: string, number: number, family: readonly string[] = []): void {
-  const order = familyOrder(tabOrder(tabsOf(owner)), family, owner);
+/** ⌘1 is Chat, ⌘2 to ⌘8 the tabs after it, ⌘9 the last, as browsers do. */
+export function selectNumber(owner: string, number: number): void {
+  const order = tabOrder(tabsOf(owner));
   const id = number === 9 ? order.at(-1) : order[number - 1];
-  if (id) go(owner, id);
-}
-
-/** A tab of a Brigade's family that isn't the session shown: its id is `SIBLING` and the session's [D3108]. */
-export const SIBLING = "brigade-session:";
-/** The strip's order in a Brigade's family (`family`: its head, then its sessions): those before `shown`, its Chat tab,
- *  those after, then its own tabs [D3108]. */
-export function familyOrder(order: readonly string[], family: readonly string[], shown: string): string[] {
-  const at = family.indexOf(shown);
-  if (at < 0) return [...order];
-  const sib = (ids: readonly string[]) => ids.map((id) => SIBLING + id);
-  return [...sib(family.slice(0, at)), CHAT, ...sib(family.slice(at + 1)), ...order.slice(1)];
-}
-/** A family's tab opens its session on its Chat tab, the tab it stands for; any other is selected [D3108]. */
-const go = (owner: string, id: string) => (id.startsWith(SIBLING) ? openSibling(id.slice(SIBLING.length)) : selectTab(owner, id));
-export function openSibling(id: string): void {
-  selectTab(id, CHAT);
-  window.location.hash = `#thread/${encodeURIComponent(id)}`;
+  if (id) selectTab(owner, id);
 }
 
 /**

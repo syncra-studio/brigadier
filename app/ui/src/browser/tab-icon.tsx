@@ -46,7 +46,7 @@ export function BrowserTabGroupLabel({ tabs, driver, folded, onFold }: { tabs: r
   );
 }
 
-/** A tab group's label, an agent's or a Brigade's [D3108]: `name`, then on hover its `count` and its tabs' names (`children`); `before`, an agent's hourglass. */
+/** A tab group's label, an agent's: `name`, then on hover its `count` and its tabs' names (`children`); `before`, an agent's hourglass. */
 export function TabGroupLabel({ name, before = "", count, folded, onFold, children }: { name: string; before?: string; count: string; folded: boolean; onFold: () => void; children: ReactNode }) {
   const words = useRef<HTMLSpanElement>(null);
   const [cut, setCut] = useState(false);
