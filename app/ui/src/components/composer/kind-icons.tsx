@@ -67,7 +67,8 @@ export function MentionKindIcon({ type, id, label, className }: { type: "file" |
 }
 
 /** A command's colour by kind, for its icon and its chip's name. */
-export const COMMAND_TONES = { command: "text-link", skill: "text-ansi-magenta", mcp: "text-ansi-cyan" };
+/** A tool's is green (components/composer/tools.tsx). */
+export const COMMAND_TONES = { command: "text-link", tool: "text-success", skill: "text-ansi-magenta", mcp: "text-ansi-cyan" };
 
 /**
  * A command's icon: Rust's (an SVG mark, or a same-origin image), else its kind's in colour: a command blue,

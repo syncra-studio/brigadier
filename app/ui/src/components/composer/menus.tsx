@@ -49,13 +49,13 @@ export type SlashCommand = {
   id: string;
   label: string;
   description?: string;
-  /** Listed under its kind's heading: Commands, Tools, Skills, MCP prompts. A tool is Brigadier's own, switched on or off. */
+  /** Listed under its kind's heading: Commands, Tools, Skills, MCP prompts. A tool is Brigadier's own (./tools.tsx). */
   kind: "command" | "tool" | "skill" | "mcp";
   /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
   source?: string;
   /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
   icon?: string | null;
-  hint?: ReactNode;
+  hint?: string;
   disabled?: boolean;
   /** Runs at once when picked (/compact); otherwise picking types its `label` where the `/` was, the rest kept. */
   instant: boolean;
@@ -455,7 +455,7 @@ export function PlusMenu({
             <DropdownMenuItem
               key={command.id}
               disabled={command.disabled}
-              onClick={() => (command.instant || command.kind === "tool" ? commands.onRun(command) : add({ kind: "command", id: command.id, type: command.kind, label: command.label }))}
+              onClick={() => (command.instant ? commands.onRun(command) : add({ kind: "command", id: command.id, type: command.kind, label: command.label }))}
             >
               <CommandRow command={command} query="" />
             </DropdownMenuItem>
