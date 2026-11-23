@@ -92,11 +92,11 @@ impl Thread {
     pub(super) fn hold(&mut self, item: &Value, ts: u64) {
         // A mockup's one row in its lead's chat, out of the turn's fold; the app reads its moment
         // from the mockup [D560]. And each send of the user's notes: "You → mockup · 3 notes on A
-        // and B · round 2 drawing".
-        if matches!(item["phase"].as_str(), Some("started" | "notes")) {
+        // and B · round 2 drawing". And each round's every variant in: "Mockup · round 1 ready".
+        if matches!(item["phase"].as_str(), Some("started" | "notes" | "ready")) {
             self.kept_row(
                 json!({"kind": "mockup", "worker": item["id"], "count": item["count"],
-                "on": item["on"], "round": item["round"]}),
+                "on": item["on"], "round": item["round"], "ready": item["ready"]}),
             );
             return;
         }

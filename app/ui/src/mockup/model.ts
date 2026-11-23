@@ -42,12 +42,19 @@ export const drawn = (variant: Variant) => Boolean(variant.url || variant.shot);
 /** The mockup's busy work: a round drawing or the pick being wired in; the tab's spinner shows only then. */
 export const busy = (mockup: Mockup | null) => Boolean(mockup && !mockup.stopped && (mockup.building || mockup.rounds.at(-1)?.drawing));
 
-/** The header's status word: Drawing 2 of 3…, nothing once ready, Stopped, Building B into the app…, B built into the app. */
+/** The newest round has every variant in, nothing picked yet: the user's move, Use or a note. */
+export const ready = (mockup: Mockup) => {
+  const last = mockup.rounds.at(-1);
+  return Boolean(last && !mockup.picked && !mockup.stopped && slots(mockup, last).every(drawn));
+};
+
+/** The header's status word: Drawing 2 of 3…, Ready, Stopped, Building B into the app…, B built into the app. */
 export function statusOf(mockup: Mockup): string | null {
   const last = mockup.rounds.at(-1);
   if (mockup.real && mockup.picked) return `${mockup.picked} built into the app`;
   if (mockup.stopped) return "Stopped";
   if (mockup.building && mockup.picked) return `Building ${mockup.picked} into the app…`;
+  if (ready(mockup)) return "Ready · pick one with Use, or leave a note";
   if (!last?.drawing) return null;
   if (mockup.rounds.length > 1) return `Drawing round ${mockup.rounds.length}…`;
   const done = last.variants.filter(drawn).length;

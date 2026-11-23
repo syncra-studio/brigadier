@@ -309,9 +309,36 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
     all.retain(|x| x["letter"] != letter.as_str());
     all.push(v);
     all.sort_by_key(|x| x["letter"].as_str().unwrap_or("").to_string());
+    let full = all.len() == letters.len();
     *list = all.into();
     workers::write_json(&file(data, me), &m)?;
+    if full {
+        ready(data, me, &m, rounds);
+    }
     Ok(json!({"ok": true, "text": format!("Variant {letter} shows in the user's Mockup tab.")}))
+}
+
+/// Round `round` has every variant in: a row in the lead's chat asks the user to pick one with
+/// Use or leave a note, and the lead hears it quietly with its next input, once a round [D560].
+fn ready(data: &Path, me: &str, m: &Value, round: usize) {
+    let Some(l) = workers::link(data, me) else {
+        return;
+    };
+    let count = m["count"].as_u64().unwrap_or(3);
+    let n = match count {
+        1 => "its variant".to_string(),
+        _ => format!("all {count} variants"),
+    };
+    let text = format!(
+        "Your mockup worker {} ({me}) drew {n} of round {round}: the user picks one with Use in the Mockup tab, or sends notes for another round. Nothing for you to do; the pick goes to that worker, and its result comes to you once it's built.",
+        l.title
+    );
+    let key = format!("mockup-ready-{round}");
+    if workers::told_notice(data, &l.parent, me, &key, &text).unwrap_or(false) {
+        let note =
+            json!({"event": "mockup", "phase": "ready", "id": me, "count": count, "ready": round});
+        let _ = owner::call(data, &l.parent, json!({"op": "note", "data": note}));
+    }
 }
 
 fn web(url: &str) -> bool {

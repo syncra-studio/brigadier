@@ -191,6 +191,28 @@ pub fn shell(data: &Path, pid: &str, cmd: &str, phase: &str) -> std::io::Result<
     write_json(&path_of(data, pid, cmd, phase), &res)
 }
 
+/// A short word to `pid` from its worker `wid`, once per `key`: quiet as a message's line, it
+/// goes with the parent's next input or its `wait` on that worker, never waking it [D560]. Says
+/// whether it's new.
+pub fn notice(data: &Path, pid: &str, wid: &str, key: &str, text: &str) -> std::io::Result<bool> {
+    let (_lock, _) = queue::hold(&core::session_dir(data, pid))?;
+    let path = path_of(data, pid, wid, key);
+    if path.exists() {
+        return Ok(false);
+    }
+    let res = Res {
+        wid: wid.into(),
+        turn: key.into(),
+        how: "notice".into(),
+        text: text.into(),
+        at: brigadier_frames::log::now_ms(),
+        state: "quiet".into(),
+        ..Default::default()
+    };
+    fs::create_dir_all(dir_of(data, pid))?;
+    write_json(&path, &res).map(|()| true)
+}
+
 /// The words for the `!` commands due (an end whose start goes too is told by its start), and
 /// the terminal tabs that printed more; each command marked as told ended or not.
 fn shell_words(data: &Path, pid: &str, due: &mut [(std::path::PathBuf, Res)]) -> String {

@@ -11,7 +11,7 @@ import { type Choice, Segmented } from "../components/segmented";
 import { Check, CheckCircle, ChevronDown, Spinner } from "../icons";
 import { matches } from "../shortcuts";
 import { type PageOf, VariantColumn, type Zoom } from "./frame";
-import { drawn, type Load, type Mockup, slots, statusOf } from "./model";
+import { drawn, type Load, type Mockup, ready as allIn, slots, statusOf } from "./model";
 import { type MockupNote, noteCount, type Notes } from "./notes";
 import type { Hovered } from "./pins";
 import { type Send, Tray } from "./tray";
@@ -164,12 +164,14 @@ export function MockupView({
     );
   }
   const status = statusOf(mockup);
+  // Every variant in and none picked: Use stands out on each, and the status says so.
+  const picking = allIn(mockup) && shownRound === newest;
   const picked = mockup.picked;
   const pickedRound = mockup.pickedRound ?? shownRound + 1;
   const pickedVariant = (mockup.pickedRound ? (mockup.rounds[pickedRound - 1]?.variants ?? []) : variants).find((v) => v.letter === picked);
   const firstWaiting = variants.find((v) => !drawn(v))?.letter;
   const drawnCount = variants.filter(drawn).length;
-  const hint = !round?.drawing ? "Click anything to comment on it." : drawnCount ? `You can comment on ${variants.filter(drawn).map((v) => v.letter).join(", ")} now. Comments wait until you send them.` : null;
+  const hint = picking ? "Pick one with Use, or click anything to leave a note." : !round?.drawing ? "Click anything to comment on it." : drawnCount ? `You can comment on ${variants.filter(drawn).map((v) => v.letter).join(", ")} now. Comments wait until you send them.` : null;
   const columns =
     mockup.real && pickedVariant
       ? [
@@ -194,8 +196,8 @@ export function MockupView({
         )}
         <span className="flex-1" />
         {status && (
-          <span role="status" className={cx("flex shrink-0 items-center gap-1.5 text-xs", mockup.real ? "text-success" : "text-muted-foreground")}>
-            {mockup.real ? <CheckCircle className="size-icon-sm" /> : mockup.stopped ? null : <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
+          <span role="status" className={cx("flex shrink-0 items-center gap-1.5 text-xs", mockup.real ? "text-success" : picking ? "font-medium text-foreground" : "text-muted-foreground")}>
+            {mockup.real ? <CheckCircle className="size-icon-sm" /> : mockup.stopped || picking ? null : <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
             {status}
           </span>
         )}
@@ -232,7 +234,7 @@ export function MockupView({
             pointing={takes && mode === "point"}
             hovered={hovers[variant.letter]}
             onNotes={takes && !older && send !== "sending" ? changePins : undefined}
-            use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm === variant.letter } : null}
+            use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
             picked={!mockup.real && (confirm ?? picked) === variant.letter}
             dim={!mockup.real && Boolean(confirm ?? picked) && (confirm ?? picked) !== variant.letter}
             onName={view === "all" && !mockup.real && variants.length > 1 ? () => setView(variant.letter) : undefined}

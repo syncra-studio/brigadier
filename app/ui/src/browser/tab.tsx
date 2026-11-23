@@ -13,11 +13,13 @@ import { showPage } from "./hole";
 import { type BrowserKey, browserKey, stepZoom } from "./keys";
 import { type BrowserBounds, focusPage, go, placePage, printPage } from "./layer";
 import { closeBrowserPage, dismissBlocked, openPage, originOf, syncZoom, useBrowserPage, zoomPage } from "./pages";
+import { agentDrive } from "./hands";
+import { agentShields } from "./overlay";
 import { handBack, pageShows, type SignInStop, useAgentPause, userUsed } from "./pause";
 import { dismissSignInRejected, useSignInRejected } from "./sign-in";
 import { OsRefusedNotice, PermissionPrompt } from "./permission";
 import { SiteInfo } from "./site-info";
-import { useDriverName } from "./tab-icon";
+import { useDriverDone, useDriverName } from "./tab-icon";
 import { BrowserOptions } from "./options";
 import { ProfileButton } from "./profile-button";
 import { AgentPill, AgentSessionBar, Banner, FindBar, type NavAction, NavigationCapsule } from "./toolbar-parts";
@@ -78,6 +80,11 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
   const signInStop = pause.asked[id];
   const signInRejected = useSignInRejected(id);
   const driver = useDriverName(tab.driver);
+  const driverDone = useDriverDone(tab.driver);
+  // Its turn ended, so the hold goes, as its "end" call does (agent.ts): this keeps the pill from outliving a lost one.
+  useEffect(() => {
+    if (driverDone && agentShields(id)) agentDrive(id, false).catch(() => {});
+  }, [id, driverDone]);
 
   useEffect(() => {
     if (!active || !initialUrl || made || !area.current) return;

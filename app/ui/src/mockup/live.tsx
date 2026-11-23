@@ -59,24 +59,27 @@ export function useMockup(wid: string): Mockup | null {
   );
 }
 
-/** The chat row's moment, from where the mockup is now. */
-function momentOf(mockup: Mockup | null, count: number): MockupMoment {
-  if (!mockup) return { kind: "drawing", count };
+/** The chat row's moment, from where the mockup is now; `ready`: the row of that round's every variant in. */
+function momentOf(mockup: Mockup | null, count: number, ready?: number | null): MockupMoment {
+  if (!mockup) return ready ? { kind: "ready", round: ready, open: false } : { kind: "drawing", count };
   if (mockup.picked && mockup.real) return { kind: "built", letter: mockup.picked };
   if (mockup.stopped) return { kind: "stopped" };
   if (mockup.picked) return { kind: "picked", letter: mockup.picked };
-  return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "waiting" };
+  const open = mockup.rounds.length === (ready ?? mockup.rounds.length);
+  if (ready) return { kind: "ready", round: ready, open };
+  return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "ready", round: null, open: true };
 }
 
 /**
- * "Mockup · drawing 3 variants · Open" in the lead's chat, or a send of the user's notes, "You → mockup · 3 notes on A
- * and B · round 2 drawing"; Open brings its tab to the front.
+ * "Mockup · drawing 3 variants · Open" in the lead's chat, "Mockup · round 1 ready · pick one with Use, or leave a
+ * note · Open" once its variants are in, or a send of the user's notes, "You → mockup · 3 notes on A and B · round 2
+ * drawing"; Open brings its tab to the front.
  */
-export function LiveMockupRow({ worker, count, on, round }: { worker: string; count: number; on?: string[] | null; round?: number | null }) {
+export function LiveMockupRow({ worker, count, on, round, ready }: { worker: string; count: number; on?: string[] | null; round?: number | null; ready?: number | null }) {
   const owner = useThread()?.id ?? "";
   const mockup = useMockup(worker);
-  const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count);
-  return <MockupRow moment={moment} live={!round && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
+  const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count, ready);
+  return <MockupRow moment={moment} live={!round && !ready && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
 }
 
 export function LiveMockupTabIcon({ worker }: { worker: string }) {

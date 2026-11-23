@@ -44,7 +44,9 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
             None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),
             None if state == "new" => ("working", "Starting".into()),
             // A mockup worker between rounds waits on the user's notes or pick [D560].
-            None if !l.asked["mockup"].is_null() => ("needsYou", "Waiting for your notes".into()),
+            None if !l.asked["mockup"].is_null() => {
+                ("needsYou", "Ready · pick one with Use".into())
+            }
             // Its turn ended, its outcome not yet written: still finishing, never back to Starting.
             None => ("working", "Working".into()),
         },
