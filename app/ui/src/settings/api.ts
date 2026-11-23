@@ -94,10 +94,12 @@ export async function setLid(on: boolean): Promise<void> {
   // Not yet known counts as no rule: Rust's lid-setup asks only when there isn't one.
   const state = lid.get().state;
   if (on && state !== "ready" && state !== "low") {
-    lid.set({ ...lid.get(), settingUp: true });
+    // Only a setup that takes a moment shows waiting: a rule already there answers at once, with no flash.
+    const waiting = setTimeout(() => lid.set({ ...lid.get(), settingUp: true }), 300);
     try {
       lid.set({ state: (await run(["awake", "lid-setup"])).lid as LidState });
     } finally {
+      clearTimeout(waiting);
       lid.set({ ...lid.get(), settingUp: false });
     }
   }
