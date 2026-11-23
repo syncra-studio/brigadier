@@ -89,17 +89,23 @@ export function loadLid(): void {
   );
 }
 
+let inSetup = false;
+
 /** On or off; the first time on asks for the administrator password once, and without it stays off, as the old app. */
 export async function setLid(on: boolean): Promise<void> {
   // Not yet known counts as no rule: Rust's lid-setup asks only when there isn't one.
   const state = lid.get().state;
   if (on && state !== "ready" && state !== "low") {
+    // Before the switch shows waiting, a second click would set up twice, and its save could undo a later off.
+    if (inSetup) return;
+    inSetup = true;
     // Only a setup that takes a moment shows waiting: a rule already there answers at once, with no flash.
     const waiting = setTimeout(() => lid.set({ ...lid.get(), settingUp: true }), 300);
     try {
       lid.set({ state: (await run(["awake", "lid-setup"])).lid as LidState });
     } finally {
       clearTimeout(waiting);
+      inSetup = false;
       lid.set({ ...lid.get(), settingUp: false });
     }
   }
