@@ -269,7 +269,7 @@ export function ArchiveRowAction({ row }: { row: SessionRow }) {
   const target = useArchiveTarget(row);
   return (
     <Tooltip>
-      <TooltipTrigger render={<RowAction aria-label={target.label} onClick={() => archiveRows(target.rows)} />}>
+      <TooltipTrigger render={<RowAction thread aria-label={target.label} onClick={() => archiveRows(target.rows)} />}>
         <Archive />
       </TooltipTrigger>
       <TooltipContent side="bottom">{target.label}</TooltipContent>

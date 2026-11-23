@@ -6,11 +6,11 @@ import { cx } from "../components/cx";
 import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
-import { spacingPx, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Chat, Comment, Pin, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking, Unpin } from "../icons";
+import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
+import { Chat, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking } from "../icons";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
-import { pin } from "./actions";
 import { RowMenuItems } from "./menu";
 import { hueOf, type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
 
@@ -122,15 +122,16 @@ export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
 const ROW_SLOT = "flex h-5 w-5.25 shrink-0 items-center justify-center";
 // Hovered or focused, a row's mark gives way to its actions over its end, the title making room for them.
 export const HIDE_ON_HOVER = "group-hover/row:hidden group-has-focus-visible/row:hidden group-has-data-popup-open/row:hidden";
-export const ROOM_FOR_ONE = "group-hover/row:pe-8 group-has-focus-visible/row:pe-8 group-has-data-popup-open/row:pe-8";
 export const ROOM_FOR_TWO = "group-hover/row:pe-14 group-has-focus-visible/row:pe-14 group-has-data-popup-open/row:pe-14";
+// A session row's "…" and Archive, two 22 squares 6 apart, 8 from the end [D302].
+const ROOM_FOR_THREAD = "group-hover/row:pe-16 group-has-focus-visible/row:pe-16 group-has-data-popup-open/row:pe-16";
 
 /**
  * A session on one line [D31]: with `badged` (the one list) its project's badge first, or without one the chat
  * badge View's menu shows; `indent`, under its project, at the project name's x; then its title and its mark. Resting on
  * it, or focusing it, opens a card beside the sidebar with the title, the mark in plain words and the project. The row you
- * are looking at (`active`) draws its thread's mark (`useMark`). Hovered, Pin (where pins apply) and Archive show over its
- * end; its actions are on a right-click [D185].
+ * are looking at (`active`) draws its thread's mark (`useMark`). Hovered, keyboard-focused or with its menu open, "…" (its
+ * actions, as a right-click) then Archive show over its end, in place of the mark [D185, D302].
  */
 export function SessionRowItem({
   row,
@@ -170,7 +171,6 @@ export function SessionRowItem({
   const title = row.title || "New session";
   // Archived rows bring their own menu (Restore, Delete), and no Pin or Archive.
   const live = !menu && !row.archived;
-  const pins = live && canPin;
   const items = menu ?? <RowMenuItems row={row} canPin={canPin} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
@@ -182,7 +182,7 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live && (pins ? ROOM_FOR_TWO : ROOM_FOR_ONE), indent && "ps-8")}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live && ROOM_FOR_THREAD, indent && "ps-8")}
                 onClick={(event) => (onClick ? onClick(event) : onOpen(row.id))}
               />
             }
@@ -190,7 +190,8 @@ export function SessionRowItem({
             {/* A chat with no project: the OpenAI SDK Chat icon, as its tab [D218 D214]. */}
             {badged && (project ? <ProjectBadge id={project.id} name={project.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
-            <span className={cx("flex shrink-0 empty:hidden", live && HIDE_ON_HOVER, offline && "opacity-disabled")}>
+            {/* On Archive's square, so the actions take the mark's place [D302]. */}
+            <span className={cx("flex shrink-0 empty:hidden", live && cx("me-0.5", HIDE_ON_HOVER), offline && "opacity-disabled")}>
               <SidebarMark mark={mark} label={label} />
             </span>
           </TooltipTrigger>
@@ -224,13 +225,13 @@ export function SessionRowItem({
           </BaseTooltip.Portal>
         </Tooltip>
         {live && (
-          <RowActionsSlot>
-            {pins && (
-              <Tooltip>
-                <TooltipTrigger render={<RowAction aria-label={row.pinned ? "Unpin" : "Pin"} onClick={() => pin(row, !row.pinned)} />}>{row.pinned ? <Unpin /> : <Pin />}</TooltipTrigger>
-                <TooltipContent side="bottom">{row.pinned ? "Unpin" : "Pin"}</TooltipContent>
-              </Tooltip>
-            )}
+          <RowActionsSlot thread>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger render={<RowAction thread aria-label={`Actions for ${title}`} />}>
+                <DotsHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">{items}</DropdownMenuContent>
+            </DropdownMenu>
             <ArchiveRowAction row={row} />
           </RowActionsSlot>
         )}
