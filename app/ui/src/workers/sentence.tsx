@@ -80,11 +80,15 @@ const said = (workers: readonly Worker[]) => {
 
 const FINISHED_KINDS: ReadonlySet<Worker["kind"]> = new Set(["merged", "doneNotMerged", "done"]);
 
-/** How the batch went: working while any is on hand, else finished, with errors when one failed. */
-function batchWords(workers: readonly Worker[]): string {
+/**
+ * How the batch went: working while any is on hand, else finished, with errors when one failed.
+ * Workers whose End has its own "Ended" row (`endRows`) keep their start, so the end reads once, in its place [D328].
+ */
+export function batchWords(workers: readonly Worker[], endRows = false): string {
   if (workers.some(onHand)) return "started working";
   if (workers.some((worker) => worker.kind === "failed")) return "finished with errors";
-  return workers.some((worker) => FINISHED_KINDS.has(worker.kind)) ? "finished" : "stopped";
+  if (workers.some((worker) => FINISHED_KINDS.has(worker.kind))) return "finished";
+  return endRows ? "started working" : "stopped";
 }
 
 /** One agent's own outcome in the opened batch: a worker's merge said there alone [D175]. */
@@ -107,7 +111,7 @@ function outcome(worker: Worker): string {
  * Workers or subagents started together, one row per batch [D103]: their glyphs and "A and B started working",
  * "… finished" once all are. Opened, a row each with how it went, which opens that one in its tab [D81, D175].
  */
-export const BatchRow: FC<{ keep: string; workers: readonly Worker[] }> = ({ keep, workers }) => {
+export const BatchRow: FC<{ keep: string; workers: readonly Worker[]; endRows?: boolean }> = ({ keep, workers, endRows = false }) => {
   const [open, setOpen] = useKept(keep);
   const { open: show } = useContext(WorkersPanel);
   return (
@@ -115,7 +119,7 @@ export const BatchRow: FC<{ keep: string; workers: readonly Worker[] }> = ({ kee
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className={cx(ROW, TOGGLE)}>
         <Glyphs workers={workers} />
         <span className="min-w-0 truncate">
-          {said(workers)} {batchWords(workers)}
+          {said(workers)} {batchWords(workers, endRows)}
         </span>
         <Chevron />
       </button>

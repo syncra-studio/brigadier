@@ -138,7 +138,7 @@ export function TeamRow({ item }: { item: TeamItem }) {
   const row =
     item.kind === "team" ? (
       // Only a batch's start draws: how each ended shows in it opened, or in the Workers tab [D103, D175].
-      <BatchRow keep={item.id} workers={workers} />
+      <BatchRow keep={item.id} workers={workers} endRows />
     ) : item.kind === "team_step" ? (
       <TeamStepRow
         keep={item.id}
