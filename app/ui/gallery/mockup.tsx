@@ -124,7 +124,7 @@ export function MockupGallery() {
         <Row name="its rows in the chat">
           <div className="flex flex-col gap-2">
             <MockupRow moment={{ kind: "drawing", count: 3 }} live onOpen={noop} />
-            <MockupRow moment={{ kind: "waiting" }} live={false} onOpen={noop} />
+            <MockupRow moment={{ kind: "ready", round: 1, open: true }} live={false} onOpen={noop} />
             <MockupRow moment={{ kind: "notes", count: 3, on: ["A", "B"], round: 2 }} live onOpen={noop} />
             <MockupRow moment={{ kind: "picked", letter: "B" }} live onOpen={noop} />
             <MockupRow moment={{ kind: "built", letter: "B" }} live={false} onOpen={noop} />
