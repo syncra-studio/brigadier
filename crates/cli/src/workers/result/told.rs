@@ -71,12 +71,19 @@ pub(super) fn scan(data: &Path, wid: &str, row: &Value) {
     }
 }
 
-/// The turns the user started in the worker, by their stable id: their ends report quietly.
+/// The turns the user started in the worker, each followed to the switch or rebirth that carries
+/// it on, as `reported` does: their ends report quietly.
 pub(super) fn turns(f: &core::fold::Fold) -> Vec<String> {
     let started = f.direct.iter().filter(|d| d["steer"] != true);
-    started
+    let mut out: Vec<String> = started
         .filter_map(|d| d["cid"].as_str().map(String::from))
-        .collect()
+        .collect();
+    for t in &mut out {
+        while let Some(next) = f.carried.get(t) {
+            *t = next.clone();
+        }
+    }
+    out
 }
 
 /// The records still to go to `pid` (of `wid` alone, when named): one that went with an input the
@@ -172,4 +179,33 @@ pub fn take(data: &Path, me: &str, wid: &str) -> Option<String> {
         write_json(&path, &r).ok()?;
     }
     Some(words(data, &due).trim_start().to_string())
+}
+
+/// Resume's continue reports what a Pause stopped: each turn the user started that ended without
+/// a result is dropped, so it never reads later as finished [D3041].
+pub(in crate::workers) fn paused(data: &Path, l: &Link, wid: &str) -> std::io::Result<()> {
+    let f = core::fold(&core::session_dir(data, wid), true)?.fold;
+    let ended = |t: &String| f.cids.contains_key(t) && !f.turns.iter().any(|x| &x.id == t);
+    for turn in turns(&f).iter().filter(|t| ended(t)) {
+        let path = path_of(data, &l.parent, wid, turn);
+        if path.exists() {
+            continue;
+        }
+        let (how, state, at) = (
+            "stopped".into(),
+            "dropped".into(),
+            brigadier_frames::log::now_ms(),
+        );
+        let res = Res {
+            wid: wid.into(),
+            turn: turn.clone(),
+            how,
+            state,
+            at,
+            ..Default::default()
+        };
+        fs::create_dir_all(dir_of(data, &l.parent))?;
+        write_json(&path, &res)?;
+    }
+    Ok(())
 }

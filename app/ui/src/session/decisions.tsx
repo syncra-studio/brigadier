@@ -64,7 +64,7 @@ function overlay(session: Session, mine: ReadonlyMap<string, Answer> | undefined
   };
 }
 
-let memo: { from: Session | null; mine: ReadonlyMap<string, Answer> | undefined; out: Session | null } = { from: null, mine: undefined, out: null };
+let answeringMemo: { from: Session | null; mine: ReadonlyMap<string, Answer> | undefined; out: Session | null } = { from: null, mine: undefined, out: null };
 /** The open thread with the answers on their way already in it. */
 export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, "older" | "newer" | "latest" | "jump" | "findOlder"> = {
   subscribe(listener) {
@@ -78,8 +78,8 @@ export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, 
   get() {
     const from = threadSource.get();
     const mine = from ? answering.get(from.id) : undefined;
-    if (from !== memo.from || mine !== memo.mine) memo = { from, mine, out: from && overlay(from, mine) };
-    return memo.out;
+    if (from !== answeringMemo.from || mine !== answeringMemo.mine) answeringMemo = { from, mine, out: from && overlay(from, mine) };
+    return answeringMemo.out;
   },
   older: () => threadSource.older(),
   newer: () => threadSource.newer(),
@@ -87,6 +87,28 @@ export const answeringSource: Omit<Source, "older"> & Pick<typeof threadSource, 
   jump: (n) => threadSource.jump(n),
   findOlder: (query, limit) => threadSource.findOlder(query, limit),
 };
+
+/** Another snapshot (a worker's tab) with its answers on their way in it, as `answeringSource` is the open thread's [D305]. */
+export function withAnswers(from: Source): Source & { raw(): Session | null } {
+  let memo: typeof answeringMemo = { from: null, mine: undefined, out: null };
+  return {
+    subscribe(listener) {
+      const off = from.subscribe(listener);
+      const offMine = subscribe(listener);
+      return () => {
+        off();
+        offMine();
+      };
+    },
+    get() {
+      const now = from.get();
+      const mine = now ? answering.get(now.id) : undefined;
+      if (now !== memo.from || mine !== memo.mine) memo = { from: now, mine, out: now && overlay(now, mine) };
+      return memo.out;
+    },
+    raw: () => from.get(),
+  };
+}
 
 const WHY: Record<string, string> = {
   answered: "Already answered",
@@ -147,7 +169,7 @@ function useWaiting(id: string, source: Source) {
   const mine = all.get(id);
   const session = shown?.id === id ? shown : null;
   // Rust's own rows (the overlaid ones always show the answer): an entry goes once its row has moved on.
-  const raw = threadSource.get();
+  const raw = (source as { raw?: () => Session | null }).raw?.() ?? threadSource.get();
   const workers = useWorkerApprovals(id).filter((each) => {
     const answer = all.get(each.session)?.get(each.id);
     return !answer || answer.error !== undefined;

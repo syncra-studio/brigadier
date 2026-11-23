@@ -99,6 +99,9 @@ fn resume(data: &Path, wid: &str) -> Value {
         return json!({"ok": true});
     };
     let dir = core::session_dir(data, wid);
+    if let Err(e) = super::result::told::paused(data, &l, wid) {
+        return refuse(&e.to_string());
+    }
     if let Err(e) = crate::queue::give_held(data, &l.parent, wid) {
         return refuse(&e.to_string());
     }

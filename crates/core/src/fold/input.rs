@@ -159,6 +159,8 @@ impl Fold {
             self.sent = ts;
         }
         let retry_of = item["retry_of"].as_str().map(String::from);
+        // A switch's or recovery's continuation of a turn the user started stays the user's [D305].
+        let direct = item["direct"] == true || retry_of.as_deref().is_some_and(|t| self.told(t));
         let mid = !self.turns.is_empty();
         self.turns.push(Turn {
             mid,
@@ -175,8 +177,25 @@ impl Fold {
             ts,
             spawning: item["starts_child"] == true,
             quiet: str_of("origin").starts_with("result:asks:"),
-            direct: item["direct"] == true,
+            direct,
             ..Default::default()
         });
+    }
+
+    /// Whether `turn` is one the user started here, or carries one on, back through the switches.
+    fn told<'a>(&'a self, mut turn: &'a str) -> bool {
+        loop {
+            if self
+                .direct
+                .iter()
+                .any(|d| d["cid"] == turn && d["steer"] != true)
+            {
+                return true;
+            }
+            match self.carried.iter().find(|(_, to)| to.as_str() == turn) {
+                Some((of, _)) => turn = of,
+                None => return false,
+            }
+        }
     }
 }

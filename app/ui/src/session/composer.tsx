@@ -359,7 +359,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     }
     // The chips go after the words, and leave once it's sent or queued; a failed send keeps them in its message.
     const message = withChips(plainText(parts), chips);
-    const mode = sendMode(running, followUp, other, canSteer);
+    const mode = worker && row?.worker?.kind === "paused" ? "queue" : sendMode(running, followUp, other, canSteer); // Held till Resume [D3041].
     if (mode === "now" && paused && items.length > 0) {
       askingChips.current = chips;
       return setAsking(message);

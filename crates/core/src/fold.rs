@@ -34,8 +34,7 @@ pub struct Child {
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
     pub turns: Vec<Turn>,
-    /// The user's direct messages to this worker, each once by its cid: `{cid, ts, text, steer}`,
-    /// the text cut at 200 characters [D294, D303].
+    /// The user's own messages to this worker, once each: `{cid, ts, text≤200, steer}` [D294, D303].
     #[serde(default)]
     pub direct: Vec<Value>,
     pub last: Option<Value>,
@@ -59,8 +58,7 @@ pub struct Fold {
     /// worker's newest is what its strip row says it does [D143]. Plumbing has no step and isn't one.
     #[serde(default)]
     pub calls: Vec<Value>,
-    /// The live child's subagents still running, by step id: a turn that answered stays held open
-    /// till they end [D118].
+    /// The live child's subagents still running, by step id: an answered turn waits on them [D118].
     #[serde(default)]
     pub agents: BTreeSet<String>,
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
@@ -93,15 +91,13 @@ pub struct Fold {
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
-    /// Every conversation the session had, as (backend, account, id), so delete cleans each one
-    /// where it lives [D35].
+    /// Each conversation it had, as (backend, account, id): delete cleans each where it lives [D35].
     #[serde(default)]
     pub convs: BTreeSet<(String, String, String)>,
     /// The model each backend a switch moved to runs [D51].
     #[serde(default)]
     pub models: BTreeMap<String, String>,
-    /// Each turn a switch carried on, by its id: the switch's own input, which goes on in its
-    /// place [D51, D2041].
+    /// Each turn a switch carried on, by its id: the switch's input going on in its place [D51, D2041].
     #[serde(default)]
     pub carried: BTreeMap<String, String>,
     /// The newest setup (model, effort, level) given to the running child, from its inputs: what a

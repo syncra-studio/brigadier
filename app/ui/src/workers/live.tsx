@@ -13,6 +13,7 @@ import type { Item, Session, StepKind, Turn } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { SessionOfThread } from "../accounts/limit";
 import { type ComposerRow, SentBubbles, SessionComposer, useSending } from "../session/composer";
+import { withAnswers } from "../session/decisions";
 import { finished, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { WORKERS_LABEL, WorkerList } from "./list";
 import { BatchRow, StillRunningRow, TeamStepRow } from "./sentence";
@@ -246,7 +247,9 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
       live = false;
     };
   }, [worker.id, updated, source]);
-  const shown = useSyncExternalStore(source.subscribe, source.get);
+  // Its asks answered here show answered at once, till its next peek has them [D305].
+  const answered = useMemo(() => withAnswers(source), [source]);
+  const shown = useSyncExternalStore(answered.subscribe, answered.get);
   const items = shown?.items ?? NO_ITEMS;
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
@@ -265,12 +268,12 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
         {details ? (
           <WorkerDetails worker={worker} />
         ) : (
-          <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={source} />} />
+          <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={answered} />} />
         )}
       </ParentName>
       {!details && (
         <SessionOfThread value={{ id: worker.id, offline: daemon === null }}>
-          <SessionComposer id={worker.id} row={row} offline={daemon === null} source={source} placeholder={`Message ${worker.name}`} worker />
+          <SessionComposer id={worker.id} row={row} offline={daemon === null} source={answered} placeholder={`Message ${worker.name}`} worker />
         </SessionOfThread>
       )}
     </section>

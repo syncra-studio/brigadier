@@ -29,7 +29,7 @@ pub(super) fn wait(
             // What the user told its worker comes at once, once, though it still works [D304].
             if let Some(told) = workers::told_take(data, me, id) {
                 let done = row["running"] != true && !workers::busy(data, id);
-                return json!({"ok": true, "done": done, "id": id, "state": state, "text": told});
+                return json!({"ok": true, "done": done, "id": id, "state": state, "result": told, "text": told});
             }
             // Its worker's ask comes at once, though the worker is still at work [D131].
             if let Some(ask) = workers::take_ask(data, me, id) {

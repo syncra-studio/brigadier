@@ -8,7 +8,7 @@
 mod images;
 mod report;
 mod take;
-mod told;
+pub(super) mod told;
 
 use super::review;
 use super::{Link, Record, closing, link, read_json, write_json};
@@ -131,22 +131,12 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
     let reports = reported(&l, &f);
-    // A turn the user started in it reports quietly, once it ended [D303].
-    for turn in told::turns(&f).iter().filter(|t| !reports.contains(t)) {
-        let ended = !f.turns.iter().any(|t| &t.id == turn) || cut;
-        if !ended || path_of(data, &l.parent, wid, turn).exists() {
-            continue;
-        }
-        let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
-        let how = match last.map_or("done", |l| l["outcome"].as_str().unwrap_or("done")) {
-            "done" => "finished",
-            "stopped" => "stopped",
-            "limited" => "limit",
-            _ => "failed",
-        };
-        report::write_as(data, &l, wid, turn, how, None, true)?;
-    }
-    for turn in &reports {
+    // A turn the user started in it reports too, quietly, on the same rules [D303].
+    let direct = told::turns(&f).into_iter().filter(|t| !reports.contains(t));
+    let turns: Vec<_> = (reports.iter().map(|t| (t.clone(), false)))
+        .chain(direct.map(|t| (t, true)))
+        .collect();
+    for (turn, direct) in &turns {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
@@ -177,6 +167,10 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         // A reviewer and a fix turn end at their limit [D3026].
         let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
         if (l.paused && (how == "stopped" || last.is_none())) || moves {
+            continue;
+        }
+        if *direct {
+            report::write_as(data, &l, wid, turn, how, None, true)?;
             continue;
         }
         let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
