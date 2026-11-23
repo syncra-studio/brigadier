@@ -138,13 +138,6 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
         return Ok(false);
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    // Its CLI woke it on its own, as background work ended, or will: a turn that ended meanwhile
-    // goes on in that wake, whose end reports it, but for work that never wakes it [D118].
-    let woke = f.turns.first().is_some_and(|t| t.origin == "agent");
-    let live = f.child.as_ref().is_some_and(|c| !c.exited);
-    let pending = live && (f.pending.wakes() || !f.agents.is_empty());
-    let since = (f.last.as_ref()).map_or(f.finished, |l| l["ts"].as_u64().unwrap_or(0));
-    let pending = pending && log::now_ms().saturating_sub(since) < WAKE_MS;
     let mut waits = false;
     let reports = reported(&l, &f);
     // A turn the user started in it reports too, quietly, on the same rules [D303].
@@ -159,7 +152,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             continue;
         }
         let own = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
-        let last = own.or(f.last.as_ref().filter(|l| l["origin"] == "agent"));
+        let last = end_of(&f, turn);
         // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
         // conversation, whose own end reports instead [D88, D108], unless it ended done first.
         // So does one the network cut, which Brigadier resumes by itself [D339].
@@ -169,18 +162,23 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
         {
             continue;
         }
+        // Its host died in the wake that carried it on: that wake was cut, and so was it.
         // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
         // it reads as finished. Upgrade when the fold keeps each turn's end.
-        let how = match last.map_or(if open { "cut" } else { "done" }, |l| {
-            l["outcome"].as_str().unwrap_or("done")
-        }) {
+        let ended_as = match cut && woken(&f, turn) {
+            true => "cut",
+            false => last.map_or(if open { "cut" } else { "done" }, |l| {
+                l["outcome"].as_str().unwrap_or("done")
+            }),
+        };
+        let how = match ended_as {
             "done" => "finished",
             "stopped" => "stopped",
             "limited" => "limit",
             _ if last.is_some_and(|l| l["why"] == "context") => "context",
             _ => "failed",
         };
-        if woke || (pending && how == "finished") {
+        if !cut && holds(&f, turn) {
             waits = true;
             continue;
         }
@@ -202,6 +200,32 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
         write(data, &l, wid, turn, how, None)?;
     }
     Ok(waits)
+}
+
+/// The end that says how `turn` went: its own, else that of the wake its CLI carried it on in.
+fn end_of<'a>(f: &'a fold::Fold, turn: &str) -> Option<&'a Value> {
+    let l = f.last.as_ref();
+    l.filter(|l| l["id"] == turn || (l["origin"] == "agent" && l["of"] == turn))
+}
+
+/// Whether its CLI carries `turn` on now, in a wake of its own.
+fn woken(f: &fold::Fold, turn: &str) -> bool {
+    f.turns
+        .first()
+        .is_some_and(|t| t.origin == "agent" && t.of == turn)
+}
+
+/// Whether `turn`, ended, waits on its live CLI's background work: it goes on in the wake that
+/// work started, whose end reports it, or, ended done, in the one its work still running will
+/// start, for up to WAKE_MS after it ended, so work that never wakes it can't hold it [D118].
+pub(super) fn holds(f: &fold::Fold, turn: &str) -> bool {
+    if f.child.as_ref().is_none_or(|c| c.exited) {
+        return false;
+    }
+    let done = end_of(f, turn).is_none_or(|l| l["outcome"] == "done");
+    let since = f.ends.get(turn).copied().unwrap_or(0);
+    let soon = log::now_ms().saturating_sub(since) < WAKE_MS;
+    woken(f, turn) || (done && soon && (f.pending.wakes() || !f.agents.is_empty()))
 }
 
 /// A start that failed before its worker could run: its result says why.

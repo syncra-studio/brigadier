@@ -1,7 +1,7 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, path_of, write, write_ended};
+use super::{Res, all, fresh, holds, path_of, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core, fold::Fold};
@@ -120,9 +120,12 @@ pub fn reported<'a>(l: &'a Link, f: &'a Fold) -> Vec<String> {
     l.report.iter().map(on).collect()
 }
 
-/// Whether a turn it reports is still on its way or running.
-pub fn going(l: &Link, f: &Fold) -> bool {
-    (reported(l, f).iter()).any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t))
+/// Whether a turn `wid` reports is still on its way or running, or ended with its result held
+/// for its background work.
+pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold) -> bool {
+    let held = |t: &String| !path_of(data, &l.parent, wid, t).exists() && holds(f, t);
+    (reported(l, f).iter())
+        .any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t) || held(t))
 }
 
 /// Whether each turn it reports has its result written.

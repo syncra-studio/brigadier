@@ -231,7 +231,7 @@ pub fn busy(data: &Path, id: &str) -> bool {
     !made
         || (l.session && brigade::leading(data, id))
         || l.review["state"] == "running"
-        || result::going(&l, &f)
+        || result::going(data, id, &l, &f)
 }
 
 /// Whether parent `pid`'s worker `wid` ended with nothing left to wake it for: not being made, not

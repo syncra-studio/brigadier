@@ -66,6 +66,9 @@ pub struct Fold {
     pub agents: BTreeSet<String>,
     #[serde(default)]
     pub pending: live::Pending,
+    /// When each turn ended (ms), by its id: a result held for its background work waits from it.
+    #[serde(default)]
+    pub ends: BTreeMap<String, u64>,
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
@@ -308,6 +311,7 @@ impl Fold {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
                         origin: "agent".into(),
+                        of: self.woke_of(),
                         backend: self.backend.clone(),
                         ts,
                         delivered: Some(ts),
@@ -374,8 +378,8 @@ impl Fold {
                         self.typed.entry(task.into()).or_insert(typed);
                     }
                 }
-                if item["parent"].is_null() {
-                    self.agents.remove(&str_of("id"));
+                if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
+                    self.pending.due |= self.turns.is_empty();
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
