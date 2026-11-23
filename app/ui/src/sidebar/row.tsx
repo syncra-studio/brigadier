@@ -101,7 +101,7 @@ const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip
 
 /**
  * A sidebar row's one trailing mark, and nothing else [D63]: a spinner while it runs, a small dot when it has
- * something new or needs you. `label` names it.
+ * something new or needs you, blue as the old app's [D173]. `label` names it.
  */
 export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
   if (mark === "working")
@@ -113,7 +113,7 @@ export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
   if (mark === "needs" || mark === "amber" || mark === "unread")
     return (
       <span className={ROW_SLOT}>
-        <span role="img" aria-label={label} className="size-1.5 rounded-capsule bg-primary" />
+        <span role="img" aria-label={label} className="size-1.5 rounded-capsule bg-link" />
       </span>
     );
   return null;
