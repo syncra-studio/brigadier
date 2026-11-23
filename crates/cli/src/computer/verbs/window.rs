@@ -138,25 +138,34 @@ pub(super) fn read(
     w: &Words,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
-    let all = windows(data, s.pid, here)?;
+    let all = live(data, s, here)?;
     if all.is_empty() {
         (s.window, s.snapshot, s.secure, s.frames) = Default::default();
         return menu_bar(data, s, here);
     }
-    let asked: Option<usize> = (w.values.get("--window")).and_then(|n| n.parse().ok());
-    if asked.is_some_and(|n| n == 0 || n > all.len()) {
-        return Err(refuse(&format!(
-            "{} has {} windows: --window 1 to {}.",
-            s.app,
-            all.len(),
-            all.len()
-        )));
-    }
+    let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
+    // By the window's own id, which stays while it's open: a position moves as others come and go.
+    let asked = match w.values.get("--window") {
+        None => None,
+        Some(n) => match all.iter().position(|w| n.parse() == Ok(id(w))) {
+            Some(i) => Some(i + 1),
+            None => {
+                let list: Vec<String> = (all.iter())
+                    .map(|w| format!("{} \"{}\"", id(w), w["title"].as_str().unwrap_or("")))
+                    .collect();
+                return Err(refuse(&format!(
+                    "{} has no window {n}; its windows by id: {}.",
+                    s.app,
+                    list.join(", ")
+                )));
+            }
+        },
+    };
     (s.query, s.full) = (
         w.values.get("--query").map(|q| q.to_string()),
         w.flags.contains("--full"),
     );
-    // Unasked, the first window accessibility knows: list_windows keeps closed ones a while (Cua
+    // Unasked, the window last read or acted on, else the first accessibility knows: list_windows keeps closed ones a while (Cua
     // #4038), and those read as nothing.
     // The window the session is in comes first.
     let order: Vec<usize> = match asked {
@@ -227,8 +236,9 @@ pub(super) fn read(
         None => tree.to_string(),
     };
     let mut text = format!(
-        "{} · \"{title}\" · window {nth} of {} · {total} elements\n{}",
+        "{} · \"{title}\" · --window {} ({nth} of {}) · {total} elements\n{}",
         s.app,
+        s.window,
         all.len(),
         tidy(&mask(&shown, &s.secure))
     );
@@ -300,8 +310,26 @@ pub(super) fn baseline(data: &Path, s: &mut Sess, here: &dyn Fn() -> bool) {
     s.wins = titles(data, s, here);
 }
 
+/// The app's windows, less the untitled ones accessibility sees nothing in: Chromium keeps such a
+/// window that comes and goes, and it moved the count and the default window [D2032].
+fn live(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
+    let mut all = windows(data, s.pid, here)?;
+    if all.len() > 1 {
+        // shortcut: only untitled windows are probed, as a titled one has content; probe all if a
+        // titled empty window turns up. The probe has no session, so the next diff's base stays.
+        all.retain(|w| {
+            let wid = w["window_id"].as_u64().unwrap_or(0);
+            wid == s.window
+                || w["title"].as_str().is_some_and(|t| !t.is_empty())
+                || call(data, "get_window_state", json!({"pid": s.pid, "window_id": wid, "include_screenshot": false, "max_elements": 4, "max_depth": 4}), here)
+                    .is_ok_and(|f| !unresolved(&f) && f["total_element_count"].as_u64().unwrap_or(0) > 0)
+        });
+    }
+    Ok(all)
+}
+
 fn titles(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Vec<(u64, String)> {
-    let all = windows(data, s.pid, here).unwrap_or_default();
+    let all = live(data, s, here).unwrap_or_default();
     (all.iter())
         .map(|w| {
             let title = w["title"].as_str().unwrap_or("");
@@ -326,7 +354,7 @@ pub(super) fn changes(
     };
     let mut wins: Vec<String> = (now.iter())
         .filter(|w| !s.wins.iter().any(|b| b.0 == w.0))
-        .map(|w| format!("+ window {}", name(&w.1)))
+        .map(|w| format!("+ window {} (--window {})", name(&w.1), w.0))
         .collect();
     wins.extend(
         (s.wins.iter())

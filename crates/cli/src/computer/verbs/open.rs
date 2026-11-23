@@ -71,6 +71,17 @@ pub(super) fn open(
     let listed = named(installed["apps"].as_array().map_or(&[][..], |a| a), &name);
     let bundle = listed.and_then(|a| a["bundle_id"].as_str()).unwrap_or("");
     blocked(&name, bundle)?;
+    let titled = |pid: i64| -> Vec<(Value, Value)> {
+        (windows(data, pid, here).unwrap_or_default().iter())
+            .map(|w| (w["window_id"].clone(), w["title"].clone()))
+            .collect()
+    };
+    // A running app's windows as they were, to find the one the url or path lands in: Chrome
+    // puts a url in its last normal window, not a popup in front of it [D2032].
+    let was = listed
+        .filter(|a| a["running"] == true)
+        .and_then(|a| a["pid"].as_i64());
+    let before = was.map(titled).unwrap_or_default();
     let mut launch = std::process::Command::new("open");
     let app_path = listed.and_then(|a| a["launch_path"].as_str());
     launch.args(["-g", "-a", app_path.unwrap_or(&name)]);
@@ -100,11 +111,24 @@ pub(super) fn open(
             found => break found?,
         }
     };
+    let window = match s.pid == pid {
+        true => s.window,
+        false => 0,
+    };
     *s = Sess {
         pid,
         app,
+        window,
         ..Sess::default()
     };
+    let start = Instant::now();
+    while target.is_some() && !before.is_empty() && start.elapsed() < WINDOW_WAIT {
+        if let Some((id, _)) = titled(pid).into_iter().find(|w| !before.contains(w)) {
+            s.window = id.as_u64().unwrap_or(0);
+            break;
+        }
+        thread::sleep(Duration::from_millis(300));
+    }
     // The watch, where there is one, tells what finally happened.
     let watch = user.zip(user_window).filter(|(user, _)| *user != pid);
     if let Some((user, window)) = watch.clone() {

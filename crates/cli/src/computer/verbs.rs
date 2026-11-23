@@ -31,8 +31,9 @@ menus; another profile's tabs show after `menu \"Window > <this window's profile
 
   apps                          the running apps; (front) is the one in front
   open <app> [<url>|<path>]     starts an app in the background, or hands it a url or path, and reads its window
-  read [<app>] [--window N] [--query WORDS] [--full]
-                                one window as text, each control as [n] role \"name\" = \"value\"; about 300 rows, --full for more
+  read [<app>] [--window ID] [--query WORDS] [--full]
+                                one window as text, each control as [n] role \"name\" = \"value\"; about 300 rows, --full for more;
+                                the window you last read or acted in, or --window ID from a read's first line
   click <n> [--double|--right]  clicks control [n] of your last read; click --at X,Y clicks a point of your last screenshot
   type <n> [--submit]           types the text on stdin into control [n]: echo \"…\" | brigadier computer type 4; --submit presses Return
   key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
@@ -228,11 +229,14 @@ fn verb(
         "read" => {
             if !w.rest.is_empty() {
                 let (pid, app) = find(data, &w.rest.join(" "), here)?;
-                s = Sess {
-                    pid,
-                    app,
-                    ..Sess::default()
-                };
+                // The same app keeps its session's window: naming it again moves nothing.
+                if pid != s.pid {
+                    s = Sess {
+                        pid,
+                        app,
+                        ..Sess::default()
+                    };
+                }
             } else if s.pid == 0 {
                 return Err(refuse("Name the app: brigadier computer read Mail."));
             }
