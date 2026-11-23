@@ -202,6 +202,8 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<(
 }
 
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
+    // Its terminals first: none writes into its folder while it is checkpointed or removed.
+    crate::tabs::terminal::stop_all(data, id);
     let _ = owner::call(data, id, json!({"op": "stop", "by": by}));
     owner::release(data, id)
 }

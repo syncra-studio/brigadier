@@ -348,7 +348,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const submit = (other: boolean) => {
     const parts = field.current?.parts() ?? [];
     if (held || files.hold(parts)) return;
-    if (!to && bangOf(parts)) return void (take(), runBang(id, bangOf(parts)!, (reply) => (field.current?.set(parts), setEmpty(false), setError(failure(reply)))));
+    if (!to && !worker && !editing.current && bangOf(parts)) return void (take(), runBang(id, parts, field.current, (reply) => (setEmpty(false), setError(failure(reply)))));
     if (to && !isEmpty({ parts, attachmentIds: files.tiles() })) return sendTo(to, parts, files.tiles(), other);
     if (inProject && parts.some(isNew)) return submitNew();
     const tiles = files.tiles();
@@ -482,7 +482,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           keepDraft(run, id, { parts, attachmentIds: files.tileIds });
           changed(isEmpty({ parts, attachmentIds: [] }));
         }}
-        onSubmit={submit} shell={!toWorker}
+        onSubmit={submit} shell={!toWorker && !worker}
         onSubmitNew={inProject ? submitNew : undefined}
         commands={extras.commands}
         onOpen={extras.onOpen}

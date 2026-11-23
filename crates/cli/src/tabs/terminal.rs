@@ -227,6 +227,20 @@ pub fn sweep(data: &Path) {
     }
 }
 
+/// Stops every terminal and `!` command `owner` holds, before its folder is checkpointed or
+/// removed; the sweep after removes them [repo D35].
+pub(crate) fn stop_all(data: &Path, owner: &str) {
+    let Ok(_sweep) = lock_sweep(data) else {
+        return;
+    };
+    let mut ids = terminals(data, owner);
+    ids.extend(agent::commands(data, owner));
+    for id in ids.iter().map(|t| format!("{TERM}{t}")) {
+        let _ = owner::call(data, &id, json!({"op": "stop", "by": "user"}));
+        let _ = owner::release(data, &id);
+    }
+}
+
 /// Held by every start and every sweep, so a sweep never takes a terminal or command being started.
 fn lock_sweep(data: &Path) -> io::Result<fs::File> {
     projects::lock(data, "terminals.lock")

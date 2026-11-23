@@ -67,6 +67,9 @@ fn start(data: &Path, sid: &str, cmd: &str, line: &str) -> io::Result<Value> {
         }
         spawn(data, &spec, cmd, line, &mark)?
     };
+    // The lead hears of it with its next input, never woken [D316]: after the fence and sweep
+    // locks, as a send takes the queue's before the fence.
+    let _ = crate::workers::told_shell(data, sid, cmd, "run");
     match started {
         Ok(reply) if reply["ok"] == true => {
             let (data, sid, cmd) = (data.to_path_buf(), sid.to_string(), cmd.to_string());
@@ -96,8 +99,6 @@ fn spawn(
     let note = json!({"event": "shell", "phase": "start", "id": cmd, "command": line});
     owner::call(data, &spec.id, json!({"op": "note", "data": note}))?;
     fs::write(mark, "")?;
-    // The lead hears of it with its next input, never woken [D316].
-    let _ = crate::workers::told_shell(data, &spec.id, cmd, "run");
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let run = Spec {
         id: format!("{TERM}{cmd}"),
@@ -153,7 +154,7 @@ fn wait(data: &Path, sid: &str, cmd: &str) {
 
 /// Notes how it ended in the session's log, once, and lets its host go; its log stays.
 fn end(data: &Path, sid: &str, cmd: &str, failed: Option<&str>) -> io::Result<Value> {
-    let _sweep = lock_sweep(data)?;
+    let sweep = lock_sweep(data)?;
     let mark = core::session_dir(data, sid).join("commands").join(cmd);
     if fs::read_to_string(&mark).is_ok_and(|m| m == "ended") {
         return Ok(json!({"ok": true}));
@@ -183,6 +184,7 @@ fn end(data: &Path, sid: &str, cmd: &str, failed: Option<&str>) -> io::Result<Va
     owner::ensure(data, &spec)?;
     owner::call(data, sid, json!({"op": "note", "data": note}))?;
     fs::write(&mark, "ended")?;
+    drop(sweep);
     let _ = crate::workers::told_shell(data, sid, cmd, "end");
     let _ = owner::release(data, &id);
     Ok(json!({"ok": failed.is_none(), "error": failed}))

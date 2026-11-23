@@ -1,5 +1,6 @@
 import { ask } from "../daemon";
-import type { Draft } from "../components/composer/draft";
+import { type Draft, isEmpty } from "../components/composer/draft";
+import type { ComposerFieldHandle } from "../components/composer/field";
 import { newId } from "./store";
 
 /** A `!` line, words only (no chip, file or image), is a command for the session's folder, not a message [D316]. */
@@ -8,9 +9,17 @@ export function bangOf(parts: Draft["parts"]): string | null {
   return text.startsWith("!") && text.slice(1).trim() ? text.slice(1).trim() : null;
 }
 
-/** Runs it at once, even while the agent works; its Shell row comes from Rust. Refused, `back` puts it back with why. */
-export function runBang(session: string, line: string, back: (reply: Record<string, any>) => void): void {
-  ask({ op: "run", args: ["shell", session, "run", `c-${newId()}`, line] }, (reply) => void (reply.ok || back(reply)));
+/**
+ * Runs it at once, even while the agent works; its Shell row comes from Rust. Refused, its words go back above anything
+ * typed meanwhile, never over it, as a refused message's do [D363], and `failed` says why.
+ */
+export function runBang(session: string, parts: Draft["parts"], field: ComposerFieldHandle | null, failed: (reply: Record<string, any>) => void): void {
+  ask({ op: "run", args: ["shell", session, "run", `c-${newId()}`, bangOf(parts)!] }, (reply) => {
+    if (reply.ok) return;
+    const typed = field?.parts() ?? [];
+    field?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...typed]);
+    failed(reply);
+  });
 }
 
 /** The `!` commands running in view, oldest first: Ctrl+C in an empty composer stops the newest only [D320]. */

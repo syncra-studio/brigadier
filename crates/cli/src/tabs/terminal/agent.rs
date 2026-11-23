@@ -227,7 +227,13 @@ fn open(data: &Path, me: &str, line: Option<&str>) -> Value {
     if behind {
         args.push("--behind".into());
     }
-    let full = core::load(data, me).is_ok_and(|s| s.level.as_deref() == Some("full"));
+    // A newline or escape would run or edit past the Enter it waits for.
+    if line.is_some_and(|l| l.chars().any(|c| c.is_control() && c != '\t')) {
+        return refuse("--run takes one line, with no newline or other control character.");
+    }
+    // Full as the session runs now: a project no longer trusted holds it at ask [D129].
+    let full = core::load(data, me)
+        .is_ok_and(|s| s.level.as_deref() == Some("full") && !core::projects::held(data, &s));
     let keys = line.map(|l| {
         if full {
             format!("{l}\r")
