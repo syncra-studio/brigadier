@@ -49,12 +49,19 @@ pub fn branches(checkout: &Checkout) -> io::Result<Value> {
     Ok(json!({"branches": branches}))
 }
 
-/// The sessions that work in this checkout, a subfolder of it included: none may have their branch
-/// switched from under them while busy [D1021, D1082]. Only a folder of the user's own asks.
+/// The sessions that work in this checkout, a subfolder of it or a folder chat above it included:
+/// none may have their branch switched from under them while busy [D1021, D1082, D341]. Only a folder of the user's own asks.
 pub fn sharing(data: &Path, checkout: &Checkout) -> Vec<String> {
     (ids(data).into_iter())
         .filter(|id| !session_dir(data, id).join("archived").exists())
         .filter(|id| {
+            // A folder chat in its own folder works in every repo under it [D341].
+            if !worktrees::made(&session_dir(data, id))
+                && let Ok(spec) = crate::load(data, id)
+                && crate::folder::chat(&spec)
+            {
+                return fs::canonicalize(&spec.cwd).is_ok_and(|f| checkout.root.starts_with(f));
+            }
             // Found without git first: only one under this checkout's folder is asked.
             folder(data, &Target::Session(id))
                 .and_then(fs::canonicalize)
