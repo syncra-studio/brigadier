@@ -160,7 +160,7 @@ fn cause(turn: &Value) -> &'static str {
         .as_str()
         .or_else(|| info.as_object()?.keys().next().map(String::as_str));
     match kind.unwrap_or("") {
-        "serverOverloaded" => "capacity",
+        "serverOverloaded" | "internalServerError" => "capacity",
         "httpConnectionFailed"
         | "responseStreamConnectionFailed"
         | "responseStreamDisconnected"

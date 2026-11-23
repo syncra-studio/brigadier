@@ -348,8 +348,7 @@ pub trait Adapter: Sync {
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch;
     /// Bytes for a message to a child that is already running.
     fn encode(&self, spec: &Spec, text: &str) -> String;
-    /// The most an image may be for this agent, beyond the app's ceiling: its bytes and its
-    /// pixels a side; None where nothing is known [D487, D492].
+    /// The most an image may be for this agent, beyond the app's ceiling: its bytes and its pixels a side; None where nothing is known [D487, D492].
     fn image_limits(&self) -> (Option<u64>, Option<u32>) {
         (None, None)
     }
@@ -410,8 +409,7 @@ pub trait Adapter: Sync {
     fn forget(&self, _spec: &Spec, _resume: &str) -> Result<(), String> {
         Ok(())
     }
-    /// Whether the backend's own record names input `cid`, by id: proof it took it. False proves
-    /// nothing: the backend may not have written it down yet.
+    /// Whether the backend's own record names input `cid`, by id: proof it took it. False proves nothing: it may not have written it down yet.
     fn accepted(&self, _spec: &Spec, _resume: &str, _cid: &str) -> bool {
         false
     }
@@ -419,8 +417,7 @@ pub trait Adapter: Sync {
     fn transcript(&self, _spec: &Spec, _resume: &str) -> Option<(u64, u64)> {
         None
     }
-    /// Thread `resume`'s turn `turn` (from 0) from the backend's own record: each file edit in
-    /// order, as (path, unified diff) per file. None when there's no such record or turn.
+    /// Thread `resume`'s turn `turn` (from 0) from the backend's own record: each file edit in order, as (path, unified diff) per file. None when there's no such record or turn.
     fn diffs(&self, _resume: &str, _turn: u64) -> Option<Vec<Vec<(String, String)>>> {
         None
     }
@@ -440,9 +437,8 @@ pub trait Adapter: Sync {
     fn forking(&self) -> Option<&dyn Fork> {
         None
     }
-    /// The cheapest of `models`, its last check's list, for the message writer, by its own
-    /// reading of them; `current` is the session's model. None: it can't tell, so the writer
-    /// uses the session's model (proposed, D1163) [D1029].
+    /// The cheapest of `models`, its last check's list, for the message writer, by its own reading of them; `current` is
+    /// the session's model. None: it can't tell, so the writer uses the session's model (proposed, D1163) [D1029].
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }
@@ -462,6 +458,10 @@ pub trait Adapter: Sync {
     /// The model a launch of `spec` runs, where it names one when none is picked [D376].
     fn runs(&self, spec: &Spec) -> Option<String> {
         spec.model.clone()
+    }
+    /// `host:port` of its API, whose reaching it again ends a wait to resume a turn the network cut [D339]; None: it waits its backoff alone.
+    fn api_host(&self) -> Option<String> {
+        None
     }
 }
 

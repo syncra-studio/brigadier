@@ -433,14 +433,19 @@ fn decision(r: &Value, msg: &Value) -> Result<Value, String> {
     })
 }
 
-/// An assistant message the CLI wrote for an API error, by the error its SDK types: a limit's own
-/// words (its time comes from its rate_limit_event), no credits, no capacity or no such model.
+/// An assistant message the CLI wrote for an API error, by the error its SDK types, never the
+/// agent's words [D339]: a limit's own words (its time comes from its rate_limit_event), no
+/// credits, no capacity, no such model, a 5xx or no connection, a sign-in, or any other. A reply
+/// cut at its output cap is the agent's own words.
 pub fn api_error(v: &Value, text: String) -> Option<Event> {
     Some(match s(v, &["error"]) {
+        "" | "max_output_tokens" => return None,
         "rate_limit" => Event::Limited(text, None),
         "billing_error" => Event::OutOfCredits,
         "overloaded" => Event::Failed("capacity", text),
         "model_not_found" => Event::Failed("model", text),
-        _ => return None,
+        "server_error" => Event::Failed("connection", text),
+        "authentication_failed" => Event::SignIn(text),
+        _ => super::super::classify(&text).unwrap_or(Event::Failed("", text)),
     })
 }

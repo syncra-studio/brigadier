@@ -137,9 +137,8 @@ pub fn mark(
         .unwrap_or(0);
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
-        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking" => {
-            Some("working")
-        }
+        "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking"
+        | "reconnecting" => Some("working"),
         // Its answer is in, but the block stays open on its subagents or workers: still working [D118, D151].
         "idle" | "idle_jobs" if holding => Some("working"),
         // The agent is done; what it left running is only a calm mark [D68, D105].
@@ -157,6 +156,28 @@ pub fn mark(
         _ if fold.finished > seen => Some("unread"),
         _ => None,
     }
+}
+
+/// How many times Brigadier resumes a turn the network cut, by itself, before Try again [D339].
+pub const RECONNECTS: u64 = 3;
+
+/// The resume due for a last turn a passing failure ended (no connection, busy servers, a timeout)
+/// [D339]: its command id, one per try, so a repeat or a racing pass finds it logged; which try;
+/// the turn it carries on. `now`: the user's Try again, past the tries.
+pub fn reconnect(fold: &Fold, now: bool) -> Option<Value> {
+    let last = fold.last.as_ref().filter(|_| fold.turns.is_empty())?;
+    if last["outcome"] != "failed" || !adapters::temporary(last["why"].as_str()?) {
+        return None;
+    }
+    let cid = last["cid"].as_str().or(last["id"].as_str())?;
+    let (root, n) = match cid.rsplit_once(".n").map(|(r, n)| (r, n.parse::<u64>())) {
+        Some((root, Ok(n))) => (root, n),
+        _ => (cid, 0),
+    };
+    (now || n < RECONNECTS).then(|| {
+        json!({"cid": format!("{root}.n{}", n + 1), "attempt": n + 1, "max": RECONNECTS,
+               "turn": last["id"], "of": cid, "backend": last["backend"]})
+    })
 }
 
 /// Whether a quiet turn runs, its parent handling a worker's ask: it shows as idle [D119].
@@ -252,6 +273,9 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
                 "interrupted",
                 fold.last.clone().unwrap_or_default()["reason"].clone(),
             ),
+            _ if outcome == "failed" && reconnect(fold, false).is_some() => {
+                ("reconnecting", reconnect(fold, false).unwrap_or_default())
+            }
             _ if live.jobs > 0 => ("idle_jobs", live.jobs.into()),
             _ if outcome == "stopped" => ("stopped", Value::Null),
             _ if outcome == "failed" => ("failed", Value::Null),

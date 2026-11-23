@@ -4,7 +4,9 @@ import { Button } from "../components/button";
 import type { Draft } from "../components/composer/draft";
 import { type Notice, Notices } from "../components/composer/rail";
 import { openThread, type Row, useDaemon, useThread } from "../daemon";
-import type { Item, SetupStep } from "../thread/item";
+import type { Item, SetupStep, Turn } from "../thread/item";
+import { Body } from "../components/thread/body";
+import { WorkingLine } from "../components/thread/work";
 import { SessionOfThread } from "../accounts/limit";
 import { ErrorAction } from "../components/thread/error-state";
 import { answeringSource } from "./decisions";
@@ -17,21 +19,53 @@ import { newId } from "./store";
 import { putBack } from "./side";
 import { useGitNotice } from "../panel/notice";
 
+type Failed = Extract<Item, { reason: "failed" }>;
+
+/**
+ * A failed turn's row. While Rust waits for the network to come back to resume it, "Reconnecting…", as work under
+ * way, never failed; then its error and Try again [D339].
+ */
+export function FailedNotice({ item, turn }: { item: Failed & { turnId: string }; turn: Turn | undefined }) {
+  const at = useContext(SessionOfThread);
+  const row = useDaemon().rows?.find((r) => r.id === at?.id);
+  if (row?.reconnect?.turn === item.turnId && !item.resumed) return <WorkingLine state="live">Reconnecting…</WorkingLine>;
+  return <Body item={item} turn={turn} step={false} again={<FailedActions turn={item.turnId} why={item.why} cause={item.cause} state={row?.state} />} />;
+}
+
+/** A passing failure's Try again: the turn carries on in the same conversation, shown at once as reconnecting [D339, D30]. */
+function TryAgain({ id }: { id: string }) {
+  const [state, setState] = useState<{ asking: boolean; error?: string }>({ asking: false });
+  if (state.asking) return <span className="shimmer">Reconnecting…</span>;
+  const go = () => {
+    setState({ asking: true });
+    void daemonRun(["reconnect", id, "--now"]).then((back) => setState(back.ok ? { asking: true } : { asking: false, error: failure(back) }));
+  };
+  return (
+    <>
+      {state.error && <span>· Couldn’t try again: {state.error}</span>}
+      <ErrorAction onClick={go}>Try again</ErrorAction>
+    </>
+  );
+}
+
 /**
  * A failed turn's actions on its row [D54]: what its reason offers, and Retry while it is the last turn and Rust
  * offers a rewind to it: back to its message, files kept, and it again in that attempt's place (D492). Shown at once
  * as under way; a refusal is said on the rail [D30].
  */
-export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, { reason: "failed" }>["why"] }) {
+export function FailedActions({ turn, why, cause, state }: { turn: string; why: Failed["why"]; cause: Failed["cause"]; state: string | undefined }) {
   const at = useContext(SessionOfThread);
   const session = useSyncExternalStore(answeringSource.subscribe, answeringSource.get);
   const retrying = retries.use().get(at?.id ?? "");
   if (why === "ended-for-safety") return <ErrorAction onClick={() => (window.location.hash = "#")}>Start a new one</ErrorAction>;
+  // The last turn a passing failure ended carries on where it was cut, its work kept, never rewound [D339].
+  const last = session?.items.findLast((item) => item.kind === "notice" && "why" in item);
+  if (cause && at && !at.offline && state === "failed" && last?.turnId === turn) return <TryAgain key={turn} id={at.id} />;
   const choose = why === "model-unavailable" && <ErrorAction onClick={() => askModel.dispatchEvent(new Event("ask"))}>Choose another model</ErrorAction>;
   const message = session?.items.findLast((item) => item.kind === "message" && item.role === "user");
   // An agent that never started left nothing to rewind: its message just goes again [D476].
   const fresh = why === "start-failed" && at && !at.offline && message?.kind === "message" && message.turnId === turn;
-  if (fresh) return <ErrorAction onClick={() => void sendMessage(daemonRun, at.id, message.text, turn, message.draft)}>Retry</ErrorAction>;
+  if (fresh) return <ErrorAction onClick={() => void sendMessage(daemonRun, at.id, message.text, turn, message.draft)}>Try again</ErrorAction>;
   if (!at || at.offline || session?.id !== at.id || message?.kind !== "message" || message.turnId !== turn || !session.rewind?.includes(turn) || (retrying && retrying.turn !== turn)) return choose;
   if (retrying && !retrying.error) return <>{choose}<span className="shimmer">Retrying…</span></>;
   const entry = retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false };
@@ -39,7 +73,7 @@ export function FailedActions({ turn, why }: { turn: string; why: Extract<Item, 
     <>
       {choose}
       <ErrorAction disabled={retrying?.asking || retrying?.unknown} onClick={() => rewindRetry(daemonRun, at.id, entry)}>
-        Retry
+        Try again
       </ErrorAction>
     </>
   );

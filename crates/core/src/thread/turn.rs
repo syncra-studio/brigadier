@@ -249,6 +249,14 @@ impl Thread {
         // for a command it left running that ended after its block folded, carries that block on: no
         // new block without the user's words [D117, D179].
         let resume = t.origin == "system" && t.text == crate::send::RESUME;
+        // Brigadier's resume once the network is back: its own block, the failed row saying it carried on [D339].
+        let reconnect = t.origin == "system" && t.text == crate::send::RECONNECT;
+        let failed = self.items.iter().rposition(|i| i["reason"] == "failed");
+        if let Some(at) = failed.filter(|_| reconnect) {
+            self.items[at]["resumed"] = true.into();
+            self.changed_items.insert(at);
+        }
+        let resume = resume || reconnect;
         // Brigadier's send-back of a reply that asked in prose goes on in its block [D529].
         let back = t.origin == "system" && t.text == crate::rules::SEND_BACK;
         let resumed = (self.ended.take())

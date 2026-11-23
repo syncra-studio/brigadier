@@ -22,7 +22,9 @@ pub fn refusal(error: &Value) -> Option<Event> {
 /// A failed turn's error, with the cause its type names [D487]; its words, not its JSON.
 fn failed(error: &Value) -> Event {
     let cause = match s(error, &["type"]) {
-        "provider.internal" if matches!(error["status"].as_u64(), Some(503 | 529)) => "capacity",
+        "provider.internal" => "capacity",
+        "provider.transport" => "connection",
+        "provider.timeout" => "timeout",
         "provider.no-route" => "model",
         "provider.content-filter" => "blocked",
         _ => "",

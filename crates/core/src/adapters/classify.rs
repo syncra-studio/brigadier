@@ -1,7 +1,8 @@
 use super::Event;
 
 /// Whether a failed turn's cause passes by itself: busy servers, a dropped connection, a request
-/// that timed out. Every other failure is final at once; no retry of ours either way [D340, D496].
+/// that timed out. Brigadier resumes such a turn by itself once the network is back; every other
+/// failure is final at once [D340, D496, D339].
 pub fn temporary(why: &str) -> bool {
     matches!(why, "capacity" | "connection" | "timeout")
 }
@@ -57,8 +58,19 @@ pub fn classify(message: &str) -> Option<Event> {
     } else if auth.iter().any(|k| m.contains(k)) {
         Some(Event::SignIn(message.to_string()))
     } else {
-        let busy = ["overloaded", "529", "503", "at capacity", "high demand"];
-        let late = ["timed out", "timeout", "deadline exceeded"];
+        let busy = [
+            "overloaded",
+            "529",
+            "503",
+            "502",
+            "504",
+            "at capacity",
+            "high demand",
+            "internal server error",
+            "bad gateway",
+            "service unavailable",
+        ];
+        let late = ["timed out", "timeout", "deadline exceeded", "etimedout"];
         let dropped = [
             "connection error",
             "connection reset",
@@ -70,6 +82,14 @@ pub fn classify(message: &str) -> Option<Event> {
             "econnrefused",
             "socket hang up",
             "stream disconnected",
+            "can't reach",
+            "enotfound",
+            "eai_again",
+            "getaddrinfo",
+            "enetunreach",
+            "ehostunreach",
+            "network is unreachable",
+            "fetch failed",
         ];
         let why = [
             ("capacity", &busy[..]),

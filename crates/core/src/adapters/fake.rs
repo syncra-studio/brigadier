@@ -271,6 +271,11 @@ impl Adapter for Fake {
                 |_| vec![Event::Unknown(line.into())],
                 |l| vec![Event::Limits(l)],
             ),
+            // Another agent's own line, through that agent's parser: its error shapes, on screen [D339].
+            "as" => super::get(s(&v, &["backend"])).map_or_else(
+                || vec![Event::Unknown(line.into())],
+                |a| a.parse(s(&v, &["line"])),
+            ),
             "fail" => vec![Event::Failed(
                 match s(&v, &["why"]) {
                     "capacity" => "capacity",
@@ -292,6 +297,11 @@ impl Adapter for Fake {
             ],
             _ => vec![Event::Unknown(line.into())],
         }
+    }
+
+    /// Its API's stand-in for a demo of the network coming back [D339].
+    fn api_host(&self) -> Option<String> {
+        std::env::var("BRIGADIER_FAKE_API").ok()
     }
 
     fn timing(&self) -> Timing {

@@ -46,7 +46,7 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
-pub use send::{Call, CallIn, Running, applied, level, recover, relevel, send};
+pub use send::{Call, CallIn, Running, applied, level, reconnect, recover, relevel, send};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {

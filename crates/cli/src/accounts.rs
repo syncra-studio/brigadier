@@ -184,6 +184,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             switching::rebirth::go_on(data, id)
         }
         ("rebirth", Some(id)) => switching::rebirth::run(data, id),
+        ("reconnect", Some(id)) => {
+            switching::reconnect::run(data, id, args.iter().any(|a| a == "--now"))
+        }
         ("switch", Some(id)) => switching::switch_session(
             data,
             id,

@@ -282,6 +282,10 @@ impl Agent {
                 self.told = true;
                 self.say(&format!("Running with {}", self.setup));
             }
+            // Its network down, as a mark in its home names an agent's error, each turn fails so [D339].
+            if let Ok(shape) = fs::read_to_string(self.home.join("offline")) {
+                return directives::api_error(shape.trim());
+            }
         }
         // Directives are lowercase words, so a prompt's own "Retry …" is prose, not a scripted retry.
         for word in words {

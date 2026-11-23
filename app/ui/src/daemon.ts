@@ -52,6 +52,7 @@ export type Row = {
   folder?: string | null;
   /** Its PRs as Rust's watch keeps them, null before any read [D1009]. */
   prs?: KeptPrs | null;
+  /** A turn the network cut that Brigadier resumes by itself once it's back: which try of how many [D339]. */ reconnect?: { turn: string; attempt: number; max: number } | null;
   /** A worker's facts, Rust's, for 4.2's parts; absent for a session that isn't one [D3012]. */
   worker?: import("./workers/live").WorkerRow | null;
 };

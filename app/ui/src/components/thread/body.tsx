@@ -17,7 +17,7 @@ import { openAttachment } from "../../shell/tab-store";
 import { STEPS } from "./activity-row";
 import { ApprovalRow, CompactionDivider, NoticeRow, QuestionRow, UnknownRow } from "./cards";
 import { FileChangeRow } from "./file-change";
-import { Plug, ShieldExclamation } from "../../icons";
+import { ArrowRotateCw, Plug, ShieldExclamation } from "../../icons";
 import { ChangeLine, InlineStatus, ThreadLine } from "./line";
 import { AssistantMessage, ThinkingLine, UserBubble } from "./message";
 import { ErrorState } from "./error-state";
@@ -99,6 +99,13 @@ const FAILED = {
   "model-unavailable": "This model isn’t available",
   "ended-for-safety": "A safety check ended this conversation, so it can’t go on",
   "context-full": "Context full",
+};
+
+/** What a passing failure cut, in one plain line [D339]. */
+const CAUSE = {
+  capacity: "The model’s servers are busy, so this turn didn’t finish",
+  connection: "The connection to the agent’s servers dropped, so this turn didn’t finish",
+  timeout: "The agent’s servers took too long to answer, so this turn didn’t finish",
 };
 
 /**
@@ -205,8 +212,9 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
         );
       }
       if (item.reason === "failed") {
-        const words = item.cause === "capacity" ? "The model’s servers are busy, so this turn didn’t finish" : FAILED[item.why];
-        return <ErrorState summary={words} details={item.text} action={again} />;
+        // Brigadier carried it on once the network was back: a quiet line, the error's words its tip [D339].
+        if (item.resumed) return <ThreadLine icon={ArrowRotateCw} tip={item.text || undefined}>Connection lost · tried again once it was back</ThreadLine>;
+        return <ErrorState summary={item.cause ? CAUSE[item.cause] : FAILED[item.why]} details={item.text} action={again} />;
       }
       if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
       // A library server's, beside the tool call it refused, is a quiet line with its Sign in (`again`) [D761].

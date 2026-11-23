@@ -30,6 +30,7 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         // A turn that ended with background jobs left has ended: its result says how [D324].
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "uncertain"
         | "stalled" | "asking" => ("working", "Working".into()),
+        "reconnecting" => ("working", "Reconnecting…".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),

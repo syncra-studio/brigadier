@@ -416,7 +416,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "routing" => routing::run(data, args),
         "plugins" => plugins::run(data, args),
         "models" | "set" => models::run(data, args),
-        "accounts" | "switching" | "switch" | "rebirth" => accounts::run(data, args),
+        "accounts" | "switching" | "switch" | "rebirth" | "reconnect" => accounts::run(data, args),
         "awake" => settings::awake(data, args.get(1)),
         "transcript" => {
             let id = arg(args, 1)?;

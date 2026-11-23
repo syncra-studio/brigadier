@@ -2,7 +2,7 @@
 
 use super::Claude;
 use crate::Spec;
-use crate::adapters::{Failed, Fork, Forked, cli_home, drop_lines, home_path, s};
+use crate::adapters::{Cut, Failed, Fork, Forked, Rewound, cli_home, drop_lines, home_path, s};
 use crate::fold::Boundary;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -193,4 +193,24 @@ pub(super) fn counts(spec: &Spec, resume: &str) -> Option<(u64, u64)> {
         }
     }
     Some((texts, tools))
+}
+
+/// Nothing changes in its record now: the next launch loads only up to the entry, as the SDK's
+/// `resume_session_at` does, and a turn's new entries branch from there.
+pub fn rewind(spec: &Spec, resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
+    let Some(entry) = cut.kept.and_then(|k| k.end.as_deref()) else {
+        return Ok(Rewound {
+            fresh: true,
+            ..Rewound::default()
+        });
+    };
+    match std::fs::read_to_string(transcript(spec, resume)) {
+        Ok(text) if text.contains(entry) => Ok(Rewound {
+            pin: Some(entry.into()),
+            ..Rewound::default()
+        }),
+        _ => Err(Failed::Refused(
+            "Claude's record of this conversation no longer has that point.".into(),
+        )),
+    }
 }

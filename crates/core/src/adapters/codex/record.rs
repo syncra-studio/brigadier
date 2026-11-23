@@ -1,6 +1,7 @@
 //! Codex's own session record (its rollout files): where they are and the diffs they keep.
 
-use super::super::s;
+use super::super::{cli_home, drop_lines, s};
+use super::Codex;
 use crate::Spec;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -142,4 +143,24 @@ pub(super) fn clear_records(spec: &Spec, id: &str) {
         "DELETE FROM logs WHERE instr(feedback_log_body, ?1) > 0",
         id.to_string(),
     );
+}
+
+/// One thread: Codex's delete, then its prompt history and name by thread id, and a writer lock a
+/// killed process left; one a live writer holds stays, by Codex's own rule [D35].
+pub(super) fn forget_thread(codex: &Codex, spec: &Spec, id: &str) -> Result<(), String> {
+    super::delete_thread(codex, spec, id)?;
+    clear_records(spec, id);
+    for (file, key) in [
+        ("history.jsonl", "session_id"),
+        ("session_index.jsonl", "id"),
+    ] {
+        drop_lines(&cli_home(spec, ".codex", file), key, id).map_err(|e| e.to_string())?;
+    }
+    let lock = cli_home(spec, ".codex", "thread-writer-locks").join(format!("{id}.lock"));
+    if let Ok(f) = std::fs::File::open(&lock)
+        && f.try_lock().is_ok()
+    {
+        let _ = std::fs::remove_file(&lock);
+    }
+    Ok(())
 }

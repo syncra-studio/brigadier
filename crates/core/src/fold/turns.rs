@@ -134,6 +134,10 @@ impl Turn {
         if kind == "text" {
             self.reply += item["text"].as_str().unwrap_or("");
         }
+        // Its first cause stays: a CLI's error message says it, its bare result after it doesn't [D339].
+        if kind == "failed" && self.why.as_deref().is_none_or(str::is_empty) {
+            self.why = item["why"].as_str().map(String::from);
+        }
         let what = [
             "text",
             "text_delta",

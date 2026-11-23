@@ -1,8 +1,10 @@
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 
 /// Moves a session at its limit on by itself, only where the user turned that on [D51]. Off costs
 /// one small read a pass while a session is at its limit, and does nothing else. The switch runs off this loop; the host and
@@ -63,4 +65,41 @@ pub fn rebirth(data: &Path, rows: &BTreeMap<String, Value>) {
             REBIRTHS.lock().unwrap().remove(&id);
         });
     }
+}
+
+/// Sessions waiting in this daemon to resume a turn the network cut: one wait each.
+static RECONNECTS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+/// Resumes each turn the network cut, once its agent's API answers again [D339]: a wait that
+/// doubles each try (15 s, 30 s, 60 s), then a connect to its API's host (its DNS and a route)
+/// until one goes through, 5 s apart and doubling to a minute. Rust sends only the try still due,
+/// under its own command id: a repeat finds it logged, a message sent meanwhile made it not due.
+pub fn reconnect(data: &Path, rows: &BTreeMap<String, Value>) {
+    for (id, row) in rows.iter().filter(|(_, r)| r["reconnect"].is_object()) {
+        if !RECONNECTS.lock().unwrap().insert(id.clone()) {
+            continue;
+        }
+        let (data, id, due) = (data.to_path_buf(), id.clone(), row["reconnect"].clone());
+        thread::spawn(move || {
+            let attempt = due["attempt"].as_u64().unwrap_or(1).clamp(1, 4);
+            thread::sleep(Duration::from_secs(15 << (attempt - 1)));
+            let mut wait = 5;
+            while due["host"].as_str().is_some_and(|h| !reachable(h)) {
+                thread::sleep(Duration::from_secs(wait));
+                wait = (wait * 2).min(60);
+            }
+            match brigadier::run(&data, &["reconnect".into(), id.clone()]) {
+                Ok(r) if r["ok"] == true || r["error"] == "not_due" => {}
+                Ok(r) => eprintln!("brigadierd: reconnect {id}: {}", r["error"]),
+                Err(e) => eprintln!("brigadierd: reconnect {id}: {e}"),
+            }
+            RECONNECTS.lock().unwrap().remove(&id);
+        });
+    }
+}
+
+/// Whether `host:port` resolves and takes a connection within 5 s.
+fn reachable(host: &str) -> bool {
+    let addr = host.to_socket_addrs().ok().and_then(|mut a| a.next());
+    addr.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_secs(5)).is_ok())
 }

@@ -11,6 +11,35 @@ use serde_json::{Value, json};
 /// What Resume says after the user's Stop, the old app's line [D2022].
 pub(crate) const RESUME: &str = "[The user stopped you, then asked you to resume. Continue their request from where you left off.]";
 
+/// What carries on a turn the network cut, once it is back [D339].
+pub(crate) const RECONNECT: &str = "[Your last turn was cut off: the connection to your API dropped. It's back now. Continue from where you left off.]";
+
+/// Carries on a last turn a passing failure ended, in the same conversation, under the command id
+/// `fold::reconnect` gives that try, so it goes once [D339, D54]. `now`: the user's Try again.
+pub fn reconnect(spec: &Spec, f: &Fold, child: Running, call: Call, now: bool) -> Value {
+    let Some(due) = fold::reconnect(f, now) else {
+        return json!({"ok": false, "error": "not_due"});
+    };
+    let (cid, of) = (due["cid"].as_str().unwrap_or(""), due["of"].as_str());
+    if f.cids.contains_key(cid) {
+        return json!({"ok": false, "error": "not_due"});
+    }
+    let backend = due["backend"].as_str().filter(|b| !b.is_empty());
+    let mut reply = send(
+        spec,
+        f,
+        child,
+        call,
+        cid,
+        "system",
+        &Message::plain(RECONNECT),
+        backend,
+        of,
+    );
+    reply["recovered"] = "reconnected".into();
+    reply
+}
+
 /// The one recovery. An unproven delivery is re-sent only when a person asks (never by itself), and
 /// to an agent that acks only when the log proves no child read it [D54, D82, D222]; an interrupted
 /// turn continues through the backend's resume id. `more`: what goes with the user's Resume [D329].

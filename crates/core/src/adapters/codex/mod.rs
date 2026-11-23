@@ -4,8 +4,7 @@ use super::Seed;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
-    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, drop_lines, home_path, probe_as, s,
-    version,
+    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use crate::fold::Boundary;
@@ -21,7 +20,7 @@ mod models;
 mod record;
 mod server;
 mod trust;
-use record::{clear_records, diff, held, helpers, rollouts, thread_files};
+use record::{diff, forget_thread, held, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
@@ -268,6 +267,10 @@ impl Adapter for Codex {
         }
     }
 
+    fn api_host(&self) -> Option<String> {
+        Some("api.openai.com:443".into())
+    }
+
     fn external(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
         let names = spawned(self, spec, resume);
         let mut paths = rollouts(
@@ -475,24 +478,4 @@ fn spawned(codex: &Codex, spec: &Spec, resume: &str) -> Vec<String> {
     ids.into_iter()
         .filter(|id| crate::check_id(id).is_ok())
         .collect()
-}
-
-/// One thread: Codex's delete, then its prompt history and name by thread id, and a writer lock a
-/// killed process left; one a live writer holds stays, by Codex's own rule [D35].
-fn forget_thread(codex: &Codex, spec: &Spec, id: &str) -> Result<(), String> {
-    delete_thread(codex, spec, id)?;
-    clear_records(spec, id);
-    for (file, key) in [
-        ("history.jsonl", "session_id"),
-        ("session_index.jsonl", "id"),
-    ] {
-        drop_lines(&cli_home(spec, ".codex", file), key, id).map_err(|e| e.to_string())?;
-    }
-    let lock = cli_home(spec, ".codex", "thread-writer-locks").join(format!("{id}.lock"));
-    if let Ok(f) = std::fs::File::open(&lock)
-        && f.try_lock().is_ok()
-    {
-        let _ = std::fs::remove_file(&lock);
-    }
-    Ok(())
 }

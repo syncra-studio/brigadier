@@ -292,6 +292,11 @@ impl Agent {
                 emit(json!({"t": "done", "ok": false}));
                 return false;
             }
+            // `apierr:` then claude, claude-other, codex or opencode: that agent's own API error [D339].
+            "apierr" => {
+                api_error(word.split_once(':').map_or("", |w| w.1));
+                return false;
+            }
             "unknown" => {
                 emit(json!({"t": "mystery", "x": 1}));
                 out(b"garbage <<<");
@@ -334,5 +339,34 @@ impl Agent {
             _ => {}
         }
         true
+    }
+}
+
+/// A turn failing as each agent's CLI reports an API error, in its own lines, through its own
+/// parser (the fake's `as`): Claude's API error message and failed result, for no connection or a
+/// bad request; Codex's failed turn; OpenCode's failed execution.
+pub(super) fn api_error(shape: &str) {
+    let dns = "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)";
+    let bad = r#"API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: unexpected tool_use_id"}}"#;
+    let claude = |error: &str, text: &str| {
+        let said = json!({"type": "assistant", "parent_tool_use_id": null, "error": error,
+            "message": {"model": "<synthetic>", "content": [{"type": "text", "text": text}]}});
+        let ended = json!({"type": "result", "subtype": "success", "is_error": true, "result": text, "usage": {}});
+        vec![said, ended]
+    };
+    let lines = match shape {
+        "codex" => vec![
+            json!({"method": "turn/completed", "params": {"turn": {"id": "t1", "status": "failed",
+            "error": {"message": "stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)",
+                      "codexErrorInfo": "responseStreamDisconnected"}}}}),
+        ],
+        "opencode" => vec![json!({"type": "session.execution.failed", "data": {"error":
+            {"type": "provider.transport", "message": "Unable to connect. Is the computer able to access the url?"}}})],
+        "claude-other" => claude("invalid_request", bad),
+        _ => claude("server_error", dns),
+    };
+    let backend = shape.split('-').next().unwrap_or("claude");
+    for line in lines {
+        emit(json!({"t": "as", "backend": backend, "line": line.to_string()}));
     }
 }

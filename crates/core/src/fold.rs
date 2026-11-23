@@ -19,7 +19,10 @@ pub use live::{
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-pub use status::{Owner, held, mark, notice, quiet, resumable, status, switchable, woke, works};
+pub use status::{
+    Owner, RECONNECTS, held, mark, notice, quiet, reconnect, resumable, status, switchable, woke,
+    works,
+};
 use std::collections::{BTreeMap, BTreeSet};
 pub use turns::Turn;
 
@@ -233,11 +236,6 @@ impl Fold {
             }
         }
         match kind {
-            "failed" => {
-                if let Some(t) = self.turns.first_mut() {
-                    t.why = item["why"].as_str().map(String::from);
-                }
-            }
             "retrying" => {
                 if let Some(t) = self.turns.first_mut() {
                     t.retry = json!({"attempt": item["attempt"], "max": item["max"], "at": item["at"], "ts": ts});

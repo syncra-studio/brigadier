@@ -298,11 +298,8 @@ impl Thread {
                 }
                 self.break_group();
                 let why = item["why"].as_str().unwrap_or("");
-                let cause = if why == "capacity" {
-                    json!("capacity")
-                } else {
-                    Value::Null
-                };
+                // A passing cause, its row's words; Try again carries it on [D339].
+                let cause = json!(Some(why).filter(|w| crate::adapters::temporary(w)));
                 let failed = |reason: &str| json!({"kind": "notice", "reason": "failed", "why": reason, "cause": cause, "text": item["message"]});
                 self.add(match why {
                     "review" => json!({"kind": "line", "reason": "review-ended"}),

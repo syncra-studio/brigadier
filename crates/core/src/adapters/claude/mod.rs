@@ -447,24 +447,8 @@ impl Adapter for Claude {
             .is_none_or(|k| k.end.is_some() && k.conv == cut.dropped.conv)
     }
 
-    /// Nothing changes in its record now: the next launch loads only up to the entry, as the
-    /// SDK's `resume_session_at` does, and a turn's new entries branch from there.
     fn rewind(&self, spec: &Spec, resume: &str, cut: &Cut) -> Result<Rewound, Failed> {
-        let Some(entry) = cut.kept.and_then(|k| k.end.as_deref()) else {
-            return Ok(Rewound {
-                fresh: true,
-                ..Rewound::default()
-            });
-        };
-        match std::fs::read_to_string(cleanup::transcript(spec, resume)) {
-            Ok(text) if text.contains(entry) => Ok(Rewound {
-                pin: Some(entry.into()),
-                ..Rewound::default()
-            }),
-            _ => Err(Failed::Refused(
-                "Claude's record of this conversation no longer has that point.".into(),
-            )),
-        }
+        cleanup::rewind(spec, resume, cut)
     }
 
     fn forking(&self) -> Option<&dyn Fork> {
@@ -496,5 +480,9 @@ impl Adapter for Claude {
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {
         cleanup::counts(spec, resume)
+    }
+
+    fn api_host(&self) -> Option<String> {
+        Some("api.anthropic.com:443".into())
     }
 }

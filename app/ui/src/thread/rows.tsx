@@ -8,7 +8,7 @@ import { SwitchRow } from "../accounts/limit";
 import { SideLine } from "../session/side";
 import { BangRow } from "../session/bang-row";
 import { ForkAction, ForkedLine } from "../session/fork";
-import { FailedActions, GoOn, PluginSignIn } from "../session/notices";
+import { FailedNotice, GoOn, PluginSignIn } from "../session/notices";
 import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
 import { ImageRow } from "../components/thread/image";
@@ -66,6 +66,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <ForkedLine item={props.item} />
       ) : props.item.kind === "image" ? (
         <ImageRow item={props.item} />
+      ) : props.item.kind === "notice" && "why" in props.item ? (
+        <FailedNotice item={props.item} turn={props.turn} />
       ) : (
         <Body
           item={props.item}
@@ -76,9 +78,7 @@ export const LineRow = memo(function LineRow(props: LineProps) {
           actions={props.item.kind !== "message" || !props.item.final || props.actions === true}
           fork={fork}
           again={
-            props.item.kind === "notice" && "why" in props.item ? (
-              <FailedActions turn={props.item.turnId} why={props.item.why} />
-            ) : props.item.kind === "notice" && "plugin" in props.item && props.item.plugin ? (
+            props.item.kind === "notice" && "plugin" in props.item && props.item.plugin ? (
               <PluginSignIn plugin={props.item.plugin} />
             ) : (
               props.item.kind === "line" && props.item.reason === "stalled" && <GoOn turn={props.item.turnId} />
