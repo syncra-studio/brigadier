@@ -347,7 +347,7 @@ export function ComposerField({
       <Keys {...props} size={size} onChange={onChange} />
       {mentions && <MentionPlugin {...mentions} />}
       {commands && <SlashPlugin {...commands} />}
-      {commands && <CommandChips commands={commands.commands} />}
+      {commands && <CommandChips commands={commands.commands} shell={props.shell} />}
     </LexicalComposer>
     </ChipContext>
     </ChipNumbers>

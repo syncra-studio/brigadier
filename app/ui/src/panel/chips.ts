@@ -58,7 +58,9 @@ function load(session: string): void {
   void tell(session, []).then((reply) => {
     if (!reply.ok) return;
     const now = chips.get(session) ?? NONE;
-    const theirs = reply.chips as Chip[];
+    // A tool pill saved before tools became chips in the text (kind "tool") goes.
+    const saved = reply.chips as (Chip | { kind: "tool"; id: string })[];
+    const theirs = saved.filter((chip): chip is Chip => chip.kind !== "tool");
     const kept = theirs.filter((chip) => !gone.has(chip.id) && !now.some((each) => each.id === chip.id));
     // The comment being written as it is here reaches Rust again, a save made while it was away included.
     const mine = drafts.get(session);
@@ -67,7 +69,7 @@ function load(session: string): void {
     set(session, [...kept, ...now]);
     // What changed here while Rust was away reaches it now, by id.
     for (const chip of now) if (!theirs.some((each) => each.id === chip.id)) void tell(session, ["add", JSON.stringify(chip)]);
-    const stale = theirs.filter((chip) => dropped.has(chip.id)).map((chip) => chip.id);
+    const stale = saved.filter((chip) => chip.kind === "tool" || dropped.has(chip.id)).map((chip) => chip.id);
     if (stale.length > 0) void tell(session, ["drop", ...stale]);
   });
 }
