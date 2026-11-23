@@ -42,11 +42,13 @@ const SKIPPED = "skipped-updates";
 const readSkipped = (): string[] => JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
 
 /** An agent's update as a row: one newer than it, its run while it goes, or why it failed until tried again or closed. */
-function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined): UpdateItem | null {
+function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined, starting: boolean): UpdateItem | null {
   const run = agent.setup?.action === "update" ? agent.setup : null;
+  // Updating from the click, not only once Rust's run shows: that comes after the run starts and the agent is checked again.
+  const updating = starting || Boolean(run?.running);
   const error = runFailure(run, agent.label) ?? (agent.outdated ? failed : undefined);
-  if (!run?.running && !error && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
-  const progress = run?.running ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: "available" } as const);
+  if (!updating && !error && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
+  const progress = updating ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: "available" } as const);
   return { target: agent.name, name: agent.label, mark: agent.mark, current: versionText(agent) ?? "", latest: agent.latest ? `v${agent.latest}` : "", action: { type: "run" }, progress };
 }
 
@@ -168,7 +170,7 @@ export function UpdatesRow() {
       clearInterval(every);
     };
   }, [online]);
-  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name]) ?? []);
+  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting === agent.name) ?? []);
   const update = (item: UpdateItem): Promise<boolean> => {
     const agent = list?.find((each) => each.name === item.target);
     return agent ? setup.begin(agent, "update") : Promise.resolve(false);
