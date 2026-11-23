@@ -39,7 +39,9 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     void run(["commands", owner, ...(home ? ["--backend", backend!, ...(project ? ["--project", project] : [])] : [])]).then((reply) => {
       if (!live) return;
       const list: Listed[] = reply.ok ? (reply.commands ?? []) : [];
-      setKept({ key, list: list.map((each) => ({ id: `${each.kind}:${each.name}`, kind: each.kind, label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) });
+      // A prompt kept as Claude listed it before prompts had a kind of their own ("mcp", a server's); library names have no `_`.
+      const kindOf = (each: Listed) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
+      setKept({ key, list: list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) });
     });
     ask({ op: "mention", owner, q: "", ...(project ? { project } : {}) }, (reply) => {
       if (live && reply.ok) setChats(reply.groups.flatMap((group: { items: Mention[] }) => group.items.filter((item) => item.type === "chat")));
@@ -84,10 +86,18 @@ const hear = (heard: () => void) => {
 };
 export const useListedCommands = (owner: string | undefined) => useSyncExternalStore(hear, () => (owner ? listedOf.get(owner) : undefined));
 
-/** The settings page a Brigadier tool's chip opens, and the row it brings into view; the mockup and research tools have none. */
+/** The settings page a Brigadier tool's chip opens, and the row it brings into view; the mockup tool has none. */
 // A function, so ROUTING_ROWS is read on a click, not while modules load (settings pages reach this one).
 const toolPage = (id: string): [SettingsPageId, string?] | undefined =>
-  (({ computer: ["computerUse"], browser: ["browser"], image: ["routing", ROUTING_ROWS.images.label], workers: ["routing", ROUTING_ROWS.jobs.label] }) as Record<string, [SettingsPageId, string?]>)[id];
+  (({ computer: ["computerUse"], browser: ["browser"], image: ["routing", ROUTING_ROWS.images.label], research: ["routing", ROUTING_ROWS.jobs.label], workers: ["routing", ROUTING_ROWS.jobs.label] }) as Record<string, [SettingsPageId, string?]>)[id];
+
+const pluginPage = (key: string) => void (location.hash = `#settings/plugins/${encodeURIComponent(key)}`);
+/** A name as the library keys it, as crates/cli/src/plugins/found.rs `plain`: `plugin:slack:slack` → `slack`, `my_db` → `my-db`. */
+const plainName = (name: string) =>
+  Array.from(name.slice(name.lastIndexOf(":") + 1), (c) => (/[a-zA-Z0-9]/.test(c) ? c : "-"))
+    .slice(0, 64)
+    .join("")
+    .replace(/^-+/, "");
 
 /**
  * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in
@@ -99,15 +109,16 @@ export function openChip(owner: string, kind: OpenKind, id: string, command?: Sl
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
   if (kind === "tab") return selectTab(owner, id);
   if (kind === "note") return openTab(owner, "note", id);
-  if (kind === "plugin") return openSettings("plugins");
+  if (kind === "plugin") return pluginPage(id);
   if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].
   if (kind === "paste") return openAttachment(owner, id, name && isPasteLabel(name) ? name : PASTE_LABEL);
-  // Its page under Plugins by the library's key (one not in it lands on Plugins); a prompt, its server's: Claude's `mcp__<server>__<prompt>`, a library server there `b-<name>`.
+  // Its page under Plugins by the library's key (one not in it lands on Plugins); a prompt, its server's: Claude's `mcp__<server>__<prompt>`,
+  // a library server there `b-<name>` (a prompt's chip from before prompts had their own kind is an "mcp" one).
   const listed = id.slice(id.indexOf(":") + 1);
-  if (kind === "skill") return void (location.hash = `#settings/plugins/${encodeURIComponent(`skill:${listed}`)}`);
-  if (kind === "mcp" || kind === "prompt") return void (location.hash = `#settings/plugins/${encodeURIComponent(`server:${kind === "prompt" ? (listed.split("__")[1] ?? "").replace(/^b-/, "") : listed}`)}`);
+  if (kind === "skill") return pluginPage(`skill:${plainName(listed)}`);
+  if (kind === "mcp" || kind === "prompt") return pluginPage(`server:${plainName(listed.startsWith("mcp__") ? (listed.split("__")[1] ?? "").replace(/^b-/, "") : listed)}`);
   if (kind === "tool") {
     const [page, row] = toolPage(id) ?? [];
     return void (page && SETTINGS_PAGES.some((each) => each.id === page) && openSettings(page, row));
