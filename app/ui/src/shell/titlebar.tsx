@@ -4,17 +4,24 @@ import { guestPage } from "../browser/layer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { newChat } from "../home/start";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
-import { settingsOrigin, settingsPageOf } from "../settings/shell";
+import { prPageOf } from "../pull-requests/route";
+import { settingsPageOf } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
 
 // The old app's history (state/history.ts) [kit D170]: Back goes by where you are, never by how you got there, a
 // session to Home, and Home has nowhere to go. Forward redoes what Back left; any other navigation clears it.
 const ahead = store<string | null>(null);
-// Settings walks its own pages since it opened, Back off the first leaving it [D927].
-const walk = store<{ pages: string[]; at: number }>({ pages: [], at: 0 });
+// Settings and Pull Requests, each with its own sidebar, walk their own pages since they opened, Back off the first going
+// where they were opened from [D927 D296].
+type Section = "settings" | "prs";
+type Trail = { pages: string[]; at: number; from: string };
+const sectionOf = (hash: string): Section | null => (settingsPageOf(hash) !== null ? "settings" : prPageOf(hash) !== null ? "prs" : null);
+const walks = store<Partial<Record<Section, Trail>>>({});
+const setWalk = (section: Section, walk: Trail) => walks.set({ ...walks.get(), [section]: walk });
 let stepping: string | null = null;
 window.addEventListener("hashchange", (event) => {
   const hash = window.location.hash;
@@ -22,10 +29,11 @@ window.addEventListener("hashchange", (event) => {
   stepping = null;
   if (ours) return;
   ahead.set(null);
-  if (settingsPageOf(hash) === null) return;
-  const { pages, at } = walk.get();
-  const inside = settingsPageOf(new URL(event.oldURL).hash) !== null;
-  walk.set(inside ? { pages: [...pages.slice(0, at + 1), hash], at: at + 1 } : { pages: [hash], at: 0 });
+  const section = sectionOf(hash);
+  if (section === null) return;
+  const from = new URL(event.oldURL).hash;
+  const now = walks.get()[section];
+  setWalk(section, now && sectionOf(from) === section ? { ...now, pages: [...now.pages.slice(0, now.at + 1), hash], at: now.at + 1 } : { pages: [hash], at: 0, from });
 });
 
 const MOUSE_BACK = 3;
@@ -56,18 +64,20 @@ const LIGHTS_X = 16;
 
 /**
  * Back and Forward right after the traffic lights by their buttons, keys, mouse buttons and menu items, then the sidebar
- * toggle, on every page with the sidebar shown or hidden; the pair walks the app's or Settings' own history [D926 D265].
- * The toggle shows or hides the sidebar [D67].
+ * toggle, on every page with the sidebar shown or hidden, and New chat after them while it's hidden; the pair walks the
+ * app's, Settings' or Pull Requests' own history [D926 D265 D296 D297]. The toggle shows or hides the sidebar [D67].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
   const { open, toggleSidebar } = useSidebar();
   useEffect(() => window.brigadier?.trafficLights?.(LIGHTS_X), []);
-  const page = settingsPageOf(hash);
-  const { pages, at } = walk.use();
+  const section = sectionOf(hash);
+  const all = walks.use();
+  const walk = section ? all[section] : undefined;
   const later = ahead.use();
-  const inSettings = page !== null;
-  const forward = inSettings ? (pages[at + 1] ?? null) : later;
-  const up = inSettings ? (at > 0 ? pages[at - 1]! : settingsOrigin()) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
+  // A section's next page, else what Back left; opened at launch, it has no walk and Back goes to New chat.
+  const next = walk?.pages[walk.at + 1];
+  const forward = next ?? later;
+  const up = section ? (walk && walk.at > 0 ? walk.pages[walk.at - 1]! : (walk?.from ?? "")) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
   // A session deleted since shows Home instead.
   const go = (place: string) => {
     const gone = place.startsWith("#thread/") && rows && !rows.some((row) => row.id === decodeURIComponent(place.slice("#thread/".length)));
@@ -76,13 +86,13 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   };
   const stepBack = () => {
     if (up === null) return;
-    if (inSettings && at > 0) walk.set({ pages, at: at - 1 });
+    if (section && walk && walk.at > 0) setWalk(section, { ...walk, at: walk.at - 1 });
     else ahead.set(hash);
     go(up);
   };
   const stepForward = () => {
     if (forward === null) return;
-    if (inSettings) walk.set({ pages, at: at + 1 });
+    if (section && walk && next) setWalk(section, { ...walk, at: walk.at + 1 });
     else ahead.set(null);
     go(forward);
   };
@@ -165,7 +175,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // Back and Forward (our arrows [D217]), then the toggle, Settings too [D254 D265].
+  // Back and Forward (our arrows [D217]), then the toggle, Settings too [D254 D265]; hidden, New chat as the strip's look [D297].
   return (
     <>
       {chip && (
@@ -185,6 +195,11 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
           <TooltipIconButton look="strip" tip={false} tooltip={open ? "Hide sidebar" : "Show sidebar"} data-slot="sidebar-toggle" onClick={toggleSidebar}>
             {open ? <Sidebar /> : <SidebarFloatingLeft />}
           </TooltipIconButton>
+          {!open && (
+            <TooltipIconButton look="strip" tooltip="New chat" onClick={newChat}>
+              <ComposeEditSquare />
+            </TooltipIconButton>
+          )}
         </TitlebarTips>
       </div>
     </>

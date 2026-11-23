@@ -1526,10 +1526,11 @@
   transition-timing-function: var(--ease-sidebar);
   /* How wide the sidebar or strip shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
-  /* The titlebar's Back, Forward and toggle (2px apart), and 8px past them (titlebar-clear) [D265 D934]. */
-  --toggle-room: calc(var(--spacing) * 27);
+  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them (titlebar-clear) [D265 D297 D934]. */
+  --toggle-room: calc(var(--spacing) * 35);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
+    --toggle-room: calc(var(--spacing) * 27);
     background-color: var(--color-window-fill);
     --sidebar-layer: var(--color-sidebar);
   }
@@ -1644,7 +1645,7 @@
   --spacing-toggle-start: var(--spacing-window-inset);
 }
 
-/* Back, Forward and the sidebar toggle right after the traffic lights on the titlebar's middle line [D34 D265]. */
+/* Back, Forward and the sidebar toggle right after the traffic lights on the titlebar's middle line, New chat after them while it's hidden [D34 D265 D297]. */
 @utility titlebar-nav {
   /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
   --opacity-disabled: var(--opacity-titlebar-nowhere);

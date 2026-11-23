@@ -4,6 +4,8 @@ import { EmptyState } from "../components/empty-state";
 import { StateDot } from "../components/state-dot";
 import { NavHeader, NavList, NavRow, NavSection } from "../components/nav";
 import { ArrowLeft, MagnifyingGlassSearch, XCircleFilled } from "../icons";
+import { view } from "../daemon";
+import { prPageOf } from "../pull-requests/route";
 import { HomeMark } from "../sidebar/strip";
 import { matches } from "../shortcuts";
 import { useRoutingDot } from "./routing";
@@ -18,10 +20,15 @@ import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSear
 const PREFIX = "#settings/";
 export const settingsPageOf = (hash: string): string | null => (hash.startsWith(PREFIX) ? hash.slice(PREFIX.length) : hash === "#settings" ? "general" : null);
 
-// Where Esc goes back to: the last screen that wasn't Settings.
+// Where Esc goes back to: the last screen that wasn't Settings; Back to app's, the last that was a chat, New chat or a
+// project's, neither Settings nor Pull Requests [D296].
+const inApp = (hash: string) => !hash.startsWith("#settings") && prPageOf(hash) === null;
 let back = window.location.hash.startsWith("#settings") ? "" : window.location.hash;
+let app = inApp(window.location.hash) ? window.location.hash : "";
 window.addEventListener("hashchange", () => {
-  if (!window.location.hash.startsWith("#settings")) back = window.location.hash;
+  const hash = window.location.hash;
+  if (!hash.startsWith("#settings")) back = hash;
+  if (inApp(hash)) app = hash;
 });
 
 /** Opens a page, and brings the row labelled `row` into view once it shows. */
@@ -34,8 +41,24 @@ export function closeSettings(): void {
   window.location.hash = back;
 }
 
-/** Where leaving Settings goes: the last screen that wasn't Settings. */
-export const settingsOrigin = (): string => back;
+/**
+ * "Back to app", the first row of Settings' and Pull Requests' sidebars [D296]: back to the chat, New chat or
+ * project page it was opened from; New chat once that chat is gone.
+ */
+export function BackToApp() {
+  const goBack = () => {
+    const id = app.startsWith("#thread/") ? decodeURIComponent(app.slice("#thread/".length)) : null;
+    window.location.hash = id === null || view.rows?.some((row) => row.id === id) ? app : "";
+  };
+  return (
+    <div className="ps-2 pe-2.5 pb-2">
+      <NavRow onClick={goBack}>
+        <ArrowLeft className="text-quiet-foreground" />
+        <span className="truncate">Back to app</span>
+      </NavRow>
+    </div>
+  );
+}
 
 /** ⌘, opens Settings (from the keys, or the app menu's Settings…) and ⌘/ its Keyboard shortcuts [D2013, D2022]. Call once. */
 export function listenToSettingsKeys(): void {
@@ -84,6 +107,7 @@ export function SettingsNav({ current }: { current: string }) {
     <>
       {/* Its title on the app sidebar's name line, and its rows on the sessions' insets, so a swap moves nothing [D48 D227]. */}
       <NavHeader start={<HomeMark />} title="Settings" />
+      <BackToApp />
       <div className="ps-2 pe-2.5 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
@@ -180,13 +204,6 @@ export function SettingsNav({ current }: { current: string }) {
             </NavSection>
           ))
         )}
-      </div>
-      {/* Back to the app, at the foot where the app's sidebar keeps Settings, leaving the title on the name line [D48]. */}
-      <div className="shrink-0 ps-2 pe-2.5 pb-2">
-        <NavRow onClick={closeSettings}>
-          <ArrowLeft className="text-quiet-foreground" />
-          <span className="truncate">Back to app</span>
-        </NavRow>
       </div>
     </>
   );
