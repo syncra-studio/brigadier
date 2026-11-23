@@ -1093,6 +1093,8 @@
 @custom-variant win (:where([data-platform="win32"]) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. aria-expanded, not data-popup-open:
    the + is also a tooltip trigger, whose hover sets data-popup-open too [D681]. */
+/* What starts a composer menu's list: its first heading, 4px under the edge [D332]. */
+@custom-variant list-top (:where([data-slot="composer-menu-list"] > :first-child) &);
 @custom-variant menu-over (&:has(~ [data-slot="composer-card"] :is([data-slot="composer-menu"], [data-slot="plus-trigger"][aria-expanded="true"])));
 
 /* The keyboard focus ring, inside the control's edge. */

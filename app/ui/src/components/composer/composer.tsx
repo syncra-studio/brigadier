@@ -18,9 +18,11 @@ import { ComposerRail } from "./rail";
 export function Composer({ className, ...props }: ComponentProps<"div">) {
   // A block in a full-width box inside the thread's scrollbar gutters, as the thread's rows are, so its box-content column
   // fills the same width theirs does.
+  // Raised over the thread's bottom fade and jump button: the reading column's translate (summary-column) makes the
+  // column a layer of its own, which would draw its `@` and `/` menus under them [D332].
   return (
     <div className="w-full shrink-0 px-scrollbar pb-3">
-      <div data-slot="composer" className={cx("mx-auto box-content flex max-w-reading flex-col px-4", className)} {...props} />
+      <div data-slot="composer" className={cx("relative z-20 mx-auto box-content flex max-w-reading flex-col px-4", className)} {...props} />
     </div>
   );
 }

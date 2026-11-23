@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 import { Paperclip } from "../../icons";
 import { cx } from "../cx";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow, menuSurface } from "../menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow } from "../menu";
 import type { ComposerFieldHandle } from "./field";
 import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
 import { ChipNode } from "./chip";
@@ -153,6 +153,7 @@ function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
 /**
  * The `@` and `/` menus' panel: inside the composer card, as wide as it and just above it (over the rail,
  * hidden meanwhile); it scrolls past 10.5 rows. Headings and notes are `MenuHeading` and `MenuNote`.
+ * The look [D332]: opaque in a hairline, 4px above the card, rows scrolling inside its 4px gutter, never cut.
  */
 export function ComposerMenu({ label, children }: { label?: string; children: ReactNode }) {
   return (
@@ -161,9 +162,9 @@ export function ComposerMenu({ label, children }: { label?: string; children: Re
       // Unlabelled inside Lexical's anchor, which is the listbox the field's aria-controls names.
       role={label ? "listbox" : undefined}
       aria-label={label}
-      className={cx(menuSurface, "absolute start-0 bottom-full mb-2 flex max-h-command-list w-full flex-col overflow-y-auto")}
+      className="absolute start-0 bottom-full z-popup mb-1 flex max-h-command-list w-full flex-col overflow-hidden rounded-menu border border-border bg-popover p-1 text-foreground outline-none"
     >
-      {children}
+      <div data-slot="composer-menu-list" className="flex min-h-0 flex-col overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -199,8 +200,9 @@ function Panel({ anchor, children }: { anchor: RefObject<HTMLElement | null>; ch
 }
 const ANCHOR = "contents!";
 
-export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-sm text-muted-foreground">{children}</p>;
-export const MenuNote = ({ children }: { children: ReactNode }) => <p className="px-2 py-1 text-sm text-muted-foreground">{children}</p>;
+// The rows' size, 8px above a heading and 4px under it, 4px above the list's first [D332].
+export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
+export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
 export const KIND_HEADINGS = { command: "Commands", skill: "Skills", mcp: "MCP prompts" } as const;
 
