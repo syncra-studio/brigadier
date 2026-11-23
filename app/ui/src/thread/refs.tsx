@@ -128,7 +128,7 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
         return hits.length === 1 ? <PrRef owner={owner} pr={hits[0]!} /> : null;
       }
       const command = listed?.find((each) => each.label === word || each.label === `/${word}`);
-      if (command) return chip({ kind: "command", id: command.id, type: command.kind, label: command.label });
+      if (command && command.kind !== "tool") return chip({ kind: "command", id: command.id, type: command.kind, label: command.label });
       const row = word !== owner && rows?.find((each) => each.id === word);
       if (row) return chip({ kind: "mention", id: row.id, type: row.worker ? "worker" : "chat", label: row.title || "New session" });
       const line = LINE.exec(word)?.[1]?.split(":")[1];

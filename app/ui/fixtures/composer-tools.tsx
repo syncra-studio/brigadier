@@ -1,32 +1,22 @@
-// Mockup only: a "Tools" section in the composer's / and + menus, picked into the message. ?v=a, b or c. Fake data,
-// the menus drawn open over the real composer parts. Not the app.
+// Mockup only: the composer's Tools in its / and + menus, switched on as pills beside + (variant C, the pick). Fake
+// data, the menus drawn open over the real composer parts. ?v=real is the real thing, live: a session's `/` and +
+// menus and its tool pills on fake commands, the chips kept here only (no daemon). Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
-import type { ComponentType, ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Check, Desktop, Paperclip, X } from "../src/icons";
-import { Globe } from "../src/icons/thread";
-import { Grid, ImageSquare, Search } from "../src/icons/tab";
-import { TeamGlyph } from "../src/icons/worker-glyphs";
+import { Check, Paperclip } from "../src/icons";
 import { cx } from "../src/components/cx";
-import { ComposerPill, PlusButton, SharedComposer } from "../src/components/composer/composer";
+import { PlusButton, SharedComposer } from "../src/components/composer/composer";
 import { CommandRow, ComposerMenu, ComposerMenuOption, KIND_HEADINGS, MenuHeading, MentionRow, type SlashCommand } from "../src/components/composer/menus";
+import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { SendButton } from "../src/components/composer/send-button";
+import { useComposerCommands } from "../src/session/commands";
+import type { Runner } from "../src/session/composer";
+import { toolOf, TOOLS, ToolPill } from "../src/components/composer/tools";
 import { DropdownMenuLabel, itemClasses, menuSurface, MenuRow } from "../src/components/menu";
-
-type Tool = { id: string; name: string; slash: string; line: string; Icon: ComponentType<{ className?: string }> };
-
-const TOOLS: Tool[] = [
-  { id: "computer", name: "Computer use", slash: "/computer-use", line: "Use the apps on your Mac", Icon: Desktop },
-  { id: "browser", name: "Browser", slash: "/browser", line: "Open pages, click and type in Brigadier's browser", Icon: Globe },
-  { id: "mockup", name: "Mockup", slash: "/mockup", line: "Draw 3 looks to pick from before building", Icon: Grid },
-  { id: "image", name: "Image", slash: "/image", line: "Make or edit a picture", Icon: ImageSquare },
-  { id: "research", name: "Web research", slash: "/research", line: "Search and read the web, with sources", Icon: Search },
-  { id: "workers", name: "Workers", slash: "/workers", line: "Split the job across workers in parallel", Icon: TeamGlyph },
-];
-const tool = (id: string) => TOOLS.find((each) => each.id === id)!;
 
 const COMMANDS: SlashCommand[] = [
   { id: "compact", kind: "command", label: "/compact", description: "Save the context so far", instant: true },
@@ -40,22 +30,6 @@ const CHATS = [
   { id: "c1", type: "chat" as const, label: "Fix the queue's drag order", hint: "2h" },
   { id: "c2", type: "chat" as const, label: "Composer slice 3", hint: "yesterday" },
 ];
-
-/** A tool's colour, beside a command's blue, a skill's magenta and an MCP prompt's cyan. */
-const TONE = "text-success";
-
-const ToolIcon = ({ id, className }: { id: string; className?: string }) => {
-  const { Icon } = tool(id);
-  return <Icon className={cx(TONE, className)} />;
-};
-
-/** A tool in the text, as a command's chip is: its icon and name in its colour. */
-const ToolChip = ({ id, slash }: { id: string; slash?: boolean }) => (
-  <span data-slot="composer-chip" className={TONE}>
-    <ToolIcon id={id} className="mr-0.5 inline-block size-icon-sm align-icon" />
-    {slash ? tool(id).slash : tool(id).name}
-  </span>
-);
 
 /** The field, as it shows a draft: the composer's own text size and padding. */
 const Field = ({ children }: { children: ReactNode }) => <div className="min-h-composer px-2 py-2.5 text-base break-words whitespace-pre-wrap">{children}</div>;
@@ -88,9 +62,11 @@ const Item = ({ highlighted, children }: { highlighted?: boolean; children: Reac
   </div>
 );
 
-const ToolRow = ({ id, slash, end }: { id: string; slash?: boolean; end?: ReactNode }) => (
-  <MenuRow icon={<ToolIcon id={id} />} title={slash ? tool(id).slash : tool(id).name} detail={tool(id).line} hint={end} />
-);
+/** A tool's row, as the session's `/` list makes it (session/commands.tsx). */
+const ToolRow = ({ id, on }: { id: string; on: boolean }) => {
+  const tool = toolOf(id)!;
+  return <CommandRow command={{ id, kind: "tool", label: tool.name, description: tool.line, instant: true, hint: on && <Check className="text-foreground" /> }} query="" />;
+};
 
 const PlusAddRows = () => (
   <>
@@ -124,100 +100,18 @@ const SlashCommands = ({ list }: { list: SlashCommand[] }) =>
     </ComposerMenuOption>
   ));
 
-/** A: Tools is one more section, in both menus, after Commands and after Files; a pick is its name as a chip. */
-function VariantA() {
-  return {
-    slash: (
-      <ComposerMenu label="Commands">
-        <MenuHeading>{KIND_HEADINGS.command}</MenuHeading>
-        <SlashCommands list={COMMANDS} />
-        <MenuHeading>Tools</MenuHeading>
-        {TOOLS.map((each) => (
-          <ComposerMenuOption key={each.id} selected={each.id === "browser"}>
-            <ToolRow id={each.id} />
-          </ComposerMenuOption>
-        ))}
-        <MenuHeading>{KIND_HEADINGS.skill}</MenuHeading>
-        <SlashCommands list={SKILLS} />
-      </ComposerMenu>
-    ),
-    plus: (
-      <PlusPanel>
-        <PlusAddRows />
-        <DropdownMenuLabel variant="heading">Tools</DropdownMenuLabel>
-        {TOOLS.map((each) => (
-          <Item key={each.id} highlighted={each.id === "workers"}>
-            <ToolRow id={each.id} />
-          </Item>
-        ))}
-        <PlusRest />
-      </PlusPanel>
-    ),
-    picked: (
-      <Composer>
-        Check the signup flow on staging in the <ToolChip id="browser" />, and use <ToolChip id="workers" /> for the three forms{" "}
-      </Composer>
-    ),
-  };
-}
-
-/** B: Tools come first, as slash words you can also type (/browser); the + menu opens on a grid of them. */
-function VariantB() {
-  return {
-    slash: (
-      <ComposerMenu label="Commands">
-        <MenuHeading>Tools</MenuHeading>
-        {TOOLS.map((each) => (
-          <ComposerMenuOption key={each.id} selected={each.id === "browser"}>
-            <ToolRow id={each.id} slash />
-          </ComposerMenuOption>
-        ))}
-        <MenuHeading>{KIND_HEADINGS.command}</MenuHeading>
-        <SlashCommands list={COMMANDS} />
-        <MenuHeading>{KIND_HEADINGS.skill}</MenuHeading>
-        <SlashCommands list={SKILLS} />
-      </ComposerMenu>
-    ),
-    plus: (
-      <PlusPanel>
-        <DropdownMenuLabel variant="heading">Tools</DropdownMenuLabel>
-        <div className="grid grid-cols-3 gap-1 pb-1">
-          {TOOLS.map((each) => (
-            <div
-              key={each.id}
-              data-highlighted={each.id === "workers" || undefined}
-              className="flex cursor-pointer flex-col items-center gap-1.5 rounded-menu-item py-3 text-label highlighted:bg-fill hover:bg-fill"
-            >
-              <ToolIcon id={each.id} className="size-icon-lg" />
-              {each.name}
-            </div>
-          ))}
-        </div>
-        <PlusAddRows />
-        <PlusRest />
-      </PlusPanel>
-    ),
-    picked: (
-      <Composer>
-        Check the signup flow on staging with <ToolChip id="browser" slash /> and split the three forms with <ToolChip id="workers" slash />{" "}
-      </Composer>
-    ),
-  };
-}
-
 /** C: a tool is switched on rather than written: a pill beside +, ✓ in the menus, the text left as typed. */
 function VariantC() {
   const on = new Set(["browser", "workers"]);
-  const check = (id: string) => on.has(id) && <Check className="text-foreground" />;
   return {
     slash: (
       <ComposerMenu label="Commands">
         <MenuHeading>{KIND_HEADINGS.command}</MenuHeading>
         <SlashCommands list={COMMANDS} />
-        <MenuHeading>Tools</MenuHeading>
+        <MenuHeading>{KIND_HEADINGS.tool}</MenuHeading>
         {TOOLS.map((each) => (
           <ComposerMenuOption key={each.id} selected={each.id === "computer"}>
-            <ToolRow id={each.id} end={check(each.id)} />
+            <ToolRow id={each.id} on={on.has(each.id)} />
           </ComposerMenuOption>
         ))}
         <MenuHeading>{KIND_HEADINGS.skill}</MenuHeading>
@@ -227,10 +121,10 @@ function VariantC() {
     plus: (
       <PlusPanel>
         <PlusAddRows />
-        <DropdownMenuLabel variant="heading">Tools</DropdownMenuLabel>
+        <DropdownMenuLabel variant="heading">{KIND_HEADINGS.tool}</DropdownMenuLabel>
         {TOOLS.map((each) => (
           <Item key={each.id} highlighted={each.id === "image"}>
-            <ToolRow id={each.id} end={check(each.id)} />
+            <ToolRow id={each.id} on={on.has(each.id)} />
           </Item>
         ))}
         <PlusRest />
@@ -239,11 +133,7 @@ function VariantC() {
     picked: (
       <Composer
         pills={[...on].map((id) => (
-          <ComposerPill key={id} className="text-foreground">
-            <ToolIcon id={id} />
-            {tool(id).name}
-            <X className="text-muted-foreground" />
-          </ComposerPill>
+          <ToolPill key={id} id={id} />
         ))}
       >
         Check the signup flow on staging and split the three forms{" "}
@@ -252,7 +142,6 @@ function VariantC() {
   };
 }
 
-const VARIANTS = { a: VariantA, b: VariantB, c: VariantC };
 
 function Stage({ title, tall = false, children }: { title: string; tall?: boolean; children: ReactNode }) {
   return (
@@ -263,9 +152,30 @@ function Stage({ title, tall = false, children }: { title: string; tall?: boolea
   );
 }
 
+const OWNER = "s-fixture";
+/** Rust's stand-in for the agent's `/` list. */
+const run: Runner = async (args) =>
+  args[0] === "commands" ? { ok: true, commands: [...COMMANDS, ...SKILLS].map((each) => ({ name: each.label.slice(1), kind: each.kind, description: each.description, instant: each.instant })) } : { ok: false, error: "disconnected" };
+
+/** The session's own menus and pills, as session/composer.tsx mounts them. */
+function Real() {
+  const field = useRef<ComposerFieldHandle>(null);
+  const { commands, plus } = useComposerCommands({ owner: OWNER, run, field, onFiles: () => {} });
+  return (
+    <main className="flex min-h-screen flex-col justify-end py-8">
+      <SharedComposer
+        plus={plus}
+        send={<SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />}
+      >
+        <ComposerField ref={field} placeholder="Do anything" commands={commands} autoFocus />
+      </SharedComposer>
+    </main>
+  );
+}
+
 function Page() {
-  const key = (new URLSearchParams(location.search).get("v") ?? "a") as keyof typeof VARIANTS;
-  const { slash, plus, picked } = (VARIANTS[key] ?? VariantA)();
+  if (new URLSearchParams(location.search).get("v") === "real") return <Real />;
+  const { slash, plus, picked } = VariantC();
   return (
     <main className="flex flex-col gap-10 py-8">
       <Stage title="Typing / in the field" tall>

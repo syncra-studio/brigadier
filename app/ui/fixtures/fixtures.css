@@ -6,5 +6,5 @@
 
 /* Room above a composer for its menu, drawn open. */
 @utility mockup-stage {
-  min-height: 26rem;
+  min-height: calc(var(--spacing-command-list) * 1.4);
 }

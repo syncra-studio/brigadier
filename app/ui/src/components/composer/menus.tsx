@@ -12,6 +12,7 @@ import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
 import { ChipNode } from "./chip";
 import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
+import { ToolIcon } from "./tools";
 
 /**
  * A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title, a worker's
@@ -48,13 +49,13 @@ export type SlashCommand = {
   id: string;
   label: string;
   description?: string;
-  /** Listed under its kind's heading: Commands, Skills, MCP prompts. */
-  kind: "command" | "skill" | "mcp";
+  /** Listed under its kind's heading: Commands, Tools, Skills, MCP prompts. A tool is Brigadier's own, switched on or off. */
+  kind: "command" | "tool" | "skill" | "mcp";
   /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
   source?: string;
   /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
   icon?: string | null;
-  hint?: string;
+  hint?: ReactNode;
   disabled?: boolean;
   /** Runs at once when picked (/compact); otherwise picking types its `label` where the `/` was, the rest kept. */
   instant: boolean;
@@ -87,7 +88,7 @@ export function fuzzyMatch(text: string, query: string): { rank: 0 | 1 | 2; at: 
 
 /** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
 function commandMatches(commands: readonly SlashCommand[], query: string): SlashCommand[] {
-  const order = { command: 0, skill: 1, mcp: 2 };
+  const order = { command: 0, tool: 1, skill: 2, mcp: 3 };
   const rank = (command: SlashCommand) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
   return commands
     .map((command) => ({ command, rank: rank(command) }))
@@ -204,7 +205,7 @@ const ANCHOR = "contents!";
 export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
-export const KIND_HEADINGS = { command: "Commands", skill: "Skills", mcp: "MCP prompts" } as const;
+export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP prompts" } as const;
 
 /** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
 export function MentionRow({ item, query }: { item: Mention; query: string }) {
@@ -223,7 +224,7 @@ export function MentionRow({ item, query }: { item: Mention; query: string }) {
 export function CommandRow({ command, query }: { command: SlashCommand; query: string }) {
   return (
     <MenuRow
-      icon={<CommandKindIcon kind={command.kind} icon={command.icon} />}
+      icon={command.kind === "tool" ? <ToolIcon id={command.id} /> : <CommandKindIcon kind={command.kind} icon={command.icon} />}
       title={<MatchedText text={command.label} query={query} />}
       detail={command.description}
       hint={command.hint}
@@ -419,7 +420,7 @@ const CHAT_ROWS = 5;
 
 /**
  * The + ("Add files and more"): a menu as wide as the composer card, just above it (over the rail, hidden
- * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's skills and MCP prompts
+ * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's tools, skills and MCP prompts
  * and the `@` menu's chats in their own rows, each picked into the end of the text. Closed, the keyboard goes
  * back to typing.
  */
@@ -444,7 +445,7 @@ export function PlusMenu({
     const apart = last !== undefined && !(typeof last === "string" && /\s$/.test(last));
     composerField.current!.set([...parts, ...(apart ? [" "] : []), chip, " "]);
   };
-  const kind = (wanted: "skill" | "mcp") => {
+  const kind = (wanted: "tool" | "skill" | "mcp") => {
     const listed = commands.commands?.filter((command) => command.kind === wanted) ?? [];
     return (
       listed.length > 0 && (
@@ -454,7 +455,7 @@ export function PlusMenu({
             <DropdownMenuItem
               key={command.id}
               disabled={command.disabled}
-              onClick={() => (command.instant ? commands.onRun(command) : add({ kind: "command", id: command.id, type: command.kind, label: command.label }))}
+              onClick={() => (command.instant || command.kind === "tool" ? commands.onRun(command) : add({ kind: "command", id: command.id, type: command.kind, label: command.label }))}
             >
               <CommandRow command={command} query="" />
             </DropdownMenuItem>
@@ -472,6 +473,7 @@ export function PlusMenu({
           <DropdownMenuItem onClick={() => input.current?.click()}>
             <MenuRow icon={<Paperclip />} title="Files" />
           </DropdownMenuItem>
+          {kind("tool")}
           {kind("skill")}
           {kind("mcp")}
           {chats.length > 0 && <DropdownMenuLabel variant="heading">Chats</DropdownMenuLabel>}

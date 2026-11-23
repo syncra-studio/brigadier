@@ -86,7 +86,7 @@ export function CommandChips({ commands }: { commands: SlashCommand[] | null }) 
           // Ended by a space; a full stop or comma after it stays text.
           const word = (/^\/[^\s`]+(?=\s)/.exec(text.slice(at))?.[0] ?? "").replace(/[.,;:!?)]+$/, "");
           const command = byLabel.get(word);
-          if (command) {
+          if (command && command.kind !== "tool") {
             const parts = node.splitText(at, at + word.length);
             parts[at === 0 ? 0 : 1]!.replace(new ChipNode({ kind: "command", id: command.id, type: command.kind, label: command.label }));
             // The text after it changed too, so this runs again on it.
