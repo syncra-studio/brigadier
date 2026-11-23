@@ -48,6 +48,23 @@ pub(in crate::workers) fn write(
     how: &str,
     error: Option<&str>,
 ) -> io::Result<()> {
+    write_as(data, l, wid, turn, how, error, false)
+}
+
+/// The most a turn the user started in a worker tells its parent, all of it [D303].
+const DIRECT: usize = 1 << 10;
+
+/// `direct`: a turn the user started in it, whose result is at most 1 KB, how it ended, its merge
+/// and the `read` pointer first, and waits quietly for the parent's next input [D303].
+pub(in crate::workers) fn write_as(
+    data: &Path,
+    l: &Link,
+    wid: &str,
+    turn: &str,
+    how: &str,
+    error: Option<&str>,
+    direct: bool,
+) -> io::Result<()> {
     let dir = core::session_dir(data, wid);
     let spec = core::load(data, wid).ok();
     let cwd = spec.as_ref().map_or(String::new(), |s| s.cwd.clone());
@@ -184,7 +201,18 @@ pub(in crate::workers) fn write(
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
     text += &why.map_or(String::new(), |w| take::retry(wid, w));
-    if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
+    if direct {
+        text = compact(
+            wid,
+            &format!(
+                "{what} {} ({wid}) {word} the turn the user started in it.\n",
+                l.title
+            ),
+            &merge,
+            commits,
+            last_of_turn(data, wid, turn),
+        );
+    } else if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
         if last.len() > super::LAST {
             let mut at = super::LAST;
             while !last.is_char_boundary(at) {
@@ -195,9 +223,11 @@ pub(in crate::workers) fn write(
         }
         text += &format!("Its last message:\n{}\n", last.trim_end());
     }
-    text += &format!("\n`brigadier read {wid}` for more.");
+    if !direct {
+        text += &format!("\n`brigadier read {wid}` for more.");
+    }
     // A lead that waited on this result often went on without ticking its list [D441].
-    if core::rebirth::todo() {
+    if core::rebirth::todo() && !direct {
         text += "\n\nTick off on your to-do list what this settles.";
     }
     let res = Res {
@@ -209,6 +239,7 @@ pub(in crate::workers) fn write(
         at: log::now_ms(),
         // A stopped task's result never wakes the parent: it goes with its next turn [D314].
         state: match how {
+            _ if direct => "quiet",
             _ if l.review["switch"] == true || l.review["plan"].is_string() => "review",
             "stopped" => "held",
             _ => "written",
@@ -218,6 +249,7 @@ pub(in crate::workers) fn write(
         ended: how == "stopped" && matches!(l.last["by"].as_str(), Some("user" | "agent")),
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
+        going: String::new(),
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path_of(data, &l.parent, wid, turn), &res)?;
@@ -238,10 +270,34 @@ pub(in crate::workers) fn write(
             "commits": commits, "added": added, "removed": removed});
         crate::routing::real(&dir, &mut l.ran);
         write_json(&link_path, &l)?;
-        if spec.is_some() {
+        // Its outcomes are its parent's asks; a turn the user started isn't one [D2038].
+        if spec.is_some() && !direct {
             let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why});
             let _ = owner::call(data, wid, json!({"op": "note", "data": end}));
         }
     }
     Ok(())
+}
+
+/// A turn the user started, told in at most 1 KB: how it ended, its merge, its last message cut
+/// to what's left, and the `read` pointer [D303].
+fn compact(wid: &str, head: &str, merge: &str, commits: usize, last: Option<String>) -> String {
+    let merge = match merge.split_once('=') {
+        Some(("merged", base)) => format!("It merged into {base}: {commits} commits.\n"),
+        Some((_, base)) => format!("Not merged into {base}: {commits} commits it doesn't have.\n"),
+        None => String::new(),
+    };
+    let tail = format!("`brigadier read {wid}` for more.");
+    let mut text = format!("{head}{merge}");
+    if let Some(last) = last.map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
+        let lead = "Its last message:\n";
+        let room = DIRECT.saturating_sub(text.len() + lead.len() + tail.len() + 6);
+        let mut at = room.min(last.len());
+        while !last.is_char_boundary(at) {
+            at -= 1;
+        }
+        let cut = if at < last.len() { "…" } else { "" };
+        text += &format!("{lead}{}{cut}\n", &last[..at]);
+    }
+    text + &tail
 }

@@ -265,7 +265,8 @@ pub fn reply(
     let asked = f.fold.turns.first().and_then(|t| {
         let mut questions = t.asks.iter().filter(|(_, r)| {
             let plan = r["action"] == "plan" && (r["to"] == "review") == review;
-            r["items"].is_array() && !review || plan
+            // The user's words never answer what a worker asked its parent [D131, D305].
+            r["items"].is_array() && !review && (by.is_some() || r["to"] != "parent") || plan
         });
         questions.next().map(|(k, _)| k.clone())
     });
@@ -313,6 +314,9 @@ pub fn steer_as(
     }
     let msg = core::message::compose(&spec, text, parts.clone())?;
     let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
+    if core::message::direct(&spec.dir, &cid, origin) {
+        req["direct"] = true.into();
+    }
     if !parts.is_null() {
         req["parts"] = msg.parts;
     }
@@ -459,7 +463,7 @@ pub(crate) fn send(
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
     let mut msg = core::message::compose(spec, text, parts)?;
-    let held = crate::workers::with_next(data, &spec.id, &mut msg.agent);
+    let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg.agent);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
         let running = child(data, &spec.id);

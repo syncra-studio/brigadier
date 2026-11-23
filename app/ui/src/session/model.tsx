@@ -114,7 +114,8 @@ export const useRetiring = (id: string): Retiring | undefined =>
  * id settles it, and a refusal puts the last value back with Rust's words [D30, D40]. Another agent's model asks
  * "Switch to {name}?" first, and the next message goes to it [D90]. Offline it can't be opened.
  */
-export function useSessionModel(id: string, row: ModelRow | undefined, offline: boolean): { pill: ReactNode; strip: ReactNode } {
+/** `locked`: shown, never changed, as a worker's in its own tab [D293]. */
+export function useSessionModel(id: string, row: ModelRow | undefined, offline: boolean, locked = false): { pill: ReactNode; strip: ReactNode } {
   const [chooseAsked, setChooseAsked] = useState(0);
   useEffect(() => {
     const ask = () => setChooseAsked((n) => n + 1);
@@ -205,7 +206,7 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     });
   };
 
-  const disabled = offline || starting || groups === null;
+  const disabled = offline || starting || groups === null || locked;
   const strip = useModelStrip({ disabled, asked: chooseAsked });
   if (!value) return { pill: null, strip: null };
   return {

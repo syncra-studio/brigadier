@@ -1,7 +1,8 @@
 //! The user's message for one of the session's own workers (the composer's To chip), as the old
 //! app's: sent while that worker works, it waits in this session's queue, "To ‹name›" on its row,
 //! and goes to that worker alone as its next turn once it's between turns, never to this session.
-//! A paused worker holds it until Resume [D3006, D3041, D3050].
+//! A paused worker holds it until Resume; an ended one takes it, and works again [D3006, D3041,
+//! D3050, D295].
 
 use super::{DRAINS, Item, Queue, change, locked, read, went};
 use crate::{control, owner};
@@ -27,16 +28,11 @@ pub(super) fn first(q: &Queue, wid: &str) -> Option<String> {
     first.map(|i| i.id.clone())
 }
 
-/// Whether the user or its parent ended it: nothing goes to it any more.
-fn ended(l: &crate::workers::Link) -> bool {
-    !l.paused && l.last["how"] == "stopped"
-}
-
-/// Whether worker `wid` takes a message now: between turns, not paused or ended, nothing of its
-/// own waiting.
+/// Whether worker `wid` takes a message now: between turns, not paused, nothing of its own
+/// waiting. One that was ended takes it too, and works again [D295].
 fn free(data: &Path, wid: &str) -> bool {
     let dir = core::session_dir(data, wid);
-    let open = crate::workers::link(data, wid).is_some_and(|l| !l.paused && !ended(&l));
+    let open = crate::workers::link(data, wid).is_some_and(|l| !l.paused);
     let idle = read(&dir).is_ok_and(|w| w.items.is_empty() && w.editing.is_none() && !w.paused);
     open && idle
         && core::fold(&dir, true).is_ok_and(|f| {
@@ -62,7 +58,7 @@ pub(super) fn give(
         return Ok(None);
     };
     let free = free(data, &wid);
-    let open = crate::workers::link(data, &wid).is_some_and(|l| !l.paused && !ended(&l));
+    let open = crate::workers::link(data, &wid).is_some_and(|l| !l.paused);
     if !(free || steer && open) {
         return Ok(None);
     }
@@ -123,12 +119,10 @@ pub fn held(data: &Path, pid: &str, wid: &str) -> io::Result<()> {
 /// The daemon's pass: a session whose queue holds a message for a worker now between turns gives
 /// it, off the daemon's loop.
 pub(super) fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
-    // An ended one's messages are looked at too, to say so on their row [D96].
     let ready = |w: &Value| {
-        w["worker"]["kind"] == "stopped"
-            || w["queue"].is_null()
-                && w["worker"]["kind"] != "paused"
-                && DRAINS.contains(&w["state"].as_str().unwrap_or(""))
+        w["queue"].is_null()
+            && w["worker"]["kind"] != "paused"
+            && DRAINS.contains(&w["state"].as_str().unwrap_or(""))
     };
     for (id, row) in rows {
         let items = row["queue"]["items"].as_array().into_iter().flatten();
@@ -152,7 +146,7 @@ pub(super) fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
 }
 
 /// Each worker's first message, under the queue's lock (another pass that finds it held leaves
-/// it); one that can't go says why and waits there, as each for a worker that ended does [D96].
+/// it); one that can't go says why and waits there [D96].
 fn give_firsts(data: &Path, id: &str) -> io::Result<()> {
     let dir = core::session_dir(data, id);
     let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
@@ -163,12 +157,6 @@ fn give_firsts(data: &Path, id: &str) -> io::Result<()> {
         wids.sort();
         wids.dedup();
         for wid in wids {
-            if let Some(l) = crate::workers::link(data, &wid).filter(ended) {
-                (q.items.iter_mut())
-                    .filter(|i| i.to.as_deref() == Some(wid.as_str()) && i.error.is_none())
-                    .for_each(|i| i.error = Some(format!("{} has ended", l.title)));
-                continue;
-            }
             let Some(qid) =
                 first(q, &wid).filter(|f| q.items.iter().any(|i| &i.id == f && i.error.is_none()))
             else {

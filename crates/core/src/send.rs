@@ -170,7 +170,7 @@ pub fn send(
     };
     let ruled = run.ruled.clone();
     let setup = adapters::setup(&run);
-    let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup});
+    let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup, "direct": (retry_of.is_none() && crate::message::direct(&spec.dir, cid, origin)).then_some(true)});
     if !msg.parts.is_null() {
         base["parts"] = msg.parts.clone();
     }

@@ -98,6 +98,10 @@ pub struct Turn {
     /// sees it, so it leaves no mark, unread or notice [D119].
     #[serde(default)]
     pub quiet: bool,
+    /// The user's own message to a worker, in its tab or by its To chip, not a turn its parent
+    /// asked for: its asks are the user's [D293, D305].
+    #[serde(default)]
+    pub direct: bool,
     /// Opened only for an ask a subagent made while its parent's ended turn was held for it: it
     /// lasts while that ask waits, and leaves no end of its own [D118, D131].
     #[serde(default)]

@@ -34,6 +34,10 @@ pub struct Child {
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
     pub turns: Vec<Turn>,
+    /// The user's direct messages to this worker, each once by its cid: `{cid, ts, text, steer}`,
+    /// the text cut at 200 characters [D294, D303].
+    #[serde(default)]
+    pub direct: Vec<Value>,
     pub last: Option<Value>,
     pub last_out: u64,
     pub child: Option<Child>,

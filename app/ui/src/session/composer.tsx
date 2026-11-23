@@ -142,10 +142,10 @@ type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string
  * wave 3, D191); ⌘⏎ or ⌥⏎ does the other, steering only where the agent can; ⌘⏎ in an empty field steers the first
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159].
  */
-export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource, placeholder = "Do anything" }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source; placeholder?: string }) {
+export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource, placeholder = "Do anything", worker = false }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source; placeholder?: string; /** A worker's own tab: its model shown but fixed, no permission picker, no Stop or Resume, no new session [D293]. */ worker?: boolean }) {
   const held = offline ? "Reconnecting…" : blocked;
   const field = useRef<ComposerFieldHandle>(null);
-  const model = useSessionModel(id, row, offline);
+  const model = useSessionModel(id, row, offline, worker);
   // An approval takes the composer's place [D199, D317].
   const approval = useApprovalWaiting(id, source);
   const [initial] = useState(() => draftOf(id));
@@ -282,7 +282,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   };
 
   // Send as new, from a project session only: ⌥⌘⏎, ⌘-click on Send, or the /new chip in the text [D183, D204].
-  const inProject = Boolean(row?.project);
+  const inProject = Boolean(row?.project) && !worker;
   const extras = useComposerCommands({ owner: id, run, field, extra: inProject ? [NEW_SESSION] : [], fresh: running, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   /** Empties the field for a message that's going, and answers the queued message it was edited from. */
   const take = () => {
@@ -437,14 +437,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       plus={extras.plus}
       level={
         <>
-          <SessionLevel id={id} row={row} />
+          {!worker && <SessionLevel id={id} row={row} />}
           {toWorker && <ToWorkerChip worker={toWorker} sending={toSending} onClear={() => setTo(null)} />}
         </>
       }
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={model.pill}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline} canResume={resumable} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline && !worker} canResume={resumable && !worker} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}

@@ -97,6 +97,10 @@ impl Thread {
                 });
                 self.end_wait(ts);
             }
+            // The user's own message to it, in its tab or by its To chip [D293, D303].
+            Some("messaged") => {
+                self.team_row(json!({"kind": "team_step", "type": "messaged", "byUser": true, "workers": ids, "text": item["text"]}));
+            }
             // The user's Pause and Resume [D3041].
             Some(p @ ("paused" | "resumed")) => {
                 self.team_row(json!({"kind": "team_step", "type": p, "workers": ids}));

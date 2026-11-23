@@ -109,6 +109,10 @@ impl Fold {
         let Some(g) = self.given.as_ref().filter(|g| g["worker"] == true) else {
             return false;
         };
+        // A turn the user started in it is the user's conversation: its asks are theirs [D305].
+        if self.turns.first().is_some_and(|t| t.direct) {
+            return false;
+        }
         // On Auto while its check gave no verdict, it asks as it would on Auto [D455].
         item["kind"] == "question"
             || self.turns.first().is_some_and(|t| t.unchecked)

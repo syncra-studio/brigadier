@@ -53,7 +53,12 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
 /// after its text: one turn, one answer, never a wake per worker [D95, D314, D329]. Ones the user
 /// or the parent ended come last, the agent told to mention them only if something matters [D330]. Call under
 /// the parent's queue lock; `went_with` once the message is in.
-pub fn with_next(data: &Path, pid: &str, agent: &mut String) -> Vec<PathBuf> {
+/// `cid`: the message's own id, which what the user told its workers goes with first, as it came
+/// first [D303]; a Resume's, unknown here, takes none.
+pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, agent: &mut String) -> Vec<PathBuf> {
+    if let Some(cid) = cid {
+        super::told::with(data, pid, cid, agent);
+    }
     let mut due: Vec<(PathBuf, Res)> = (all(data, pid).into_iter())
         .filter(|(_, r)| matches!(r.state.as_str(), "held" | "written") && r.how != "asks")
         .collect();

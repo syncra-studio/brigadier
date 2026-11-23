@@ -8,6 +8,7 @@
 mod images;
 mod report;
 mod take;
+mod told;
 
 use super::review;
 use super::{Link, Record, closing, link, read_json, write_json};
@@ -26,6 +27,7 @@ use std::sync::Mutex;
 use std::thread;
 use take::said;
 pub use take::{going, hop, reported, take, take_ask, told, unrun, went_with, with_next};
+pub use told::take as told_take;
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
@@ -57,6 +59,9 @@ pub(super) struct Res {
     /// `merged=<base>` or `unmerged=<base>` for a worker with commits of its own; else empty.
     #[serde(default)]
     pub merge: String,
+    /// A `quiet` one's parent input it went with: taken once the parent's log has it (`told`).
+    #[serde(default)]
+    pub going: String,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -98,6 +103,7 @@ pub(super) fn open(data: &Path, pid: &str) {
 /// whose turns changed is folded.
 pub(super) fn written(data: &Path, wid: &str, row: &Value) {
     images::pass(data, wid, row);
+    told::scan(data, wid, row);
     if row["running"] == true {
         return;
     }
@@ -124,7 +130,23 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         return Ok(());
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
-    for turn in &reported(&l, &f) {
+    let reports = reported(&l, &f);
+    // A turn the user started in it reports quietly, once it ended [D303].
+    for turn in told::turns(&f).iter().filter(|t| !reports.contains(t)) {
+        let ended = !f.turns.iter().any(|t| &t.id == turn) || cut;
+        if !ended || path_of(data, &l.parent, wid, turn).exists() {
+            continue;
+        }
+        let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
+        let how = match last.map_or("done", |l| l["outcome"].as_str().unwrap_or("done")) {
+            "done" => "finished",
+            "stopped" => "stopped",
+            "limited" => "limit",
+            _ => "failed",
+        };
+        report::write_as(data, &l, wid, turn, how, None, true)?;
+    }
+    for turn in &reports {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
@@ -334,7 +356,14 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         owner::call(data, pid, req)
     };
     let origin = format!("result:{}", said(&r));
-    super::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &r.text);
+    // What the user told its workers meanwhile goes first, as it came first [D303].
+    let mut notes = String::new();
+    told::with(data, pid, &r.id, &mut notes);
+    let text = match notes.is_empty() {
+        true => r.text.clone(),
+        false => format!("{}\n\n{}", notes.trim_start(), r.text),
+    };
+    super::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &text);
     if core::fold(&dir, true)?.fold.cids.contains_key(&r.id) {
         r.state = "sent".into();
         write_json(&path, &r)?;

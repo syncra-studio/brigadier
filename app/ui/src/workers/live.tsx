@@ -1,6 +1,5 @@
-import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
 import { ask, type Row, useDaemon, useThread } from "../daemon";
@@ -10,7 +9,10 @@ import { Line } from "../panel/source/rows";
 import { showToast } from "../components/toast";
 import { errorText, run } from "../onboarding/api";
 import { openTab } from "../shell/tab-store";
-import type { Item, Setup, StepKind, Turn } from "../thread/item";
+import type { Item, Session, StepKind, Turn } from "../thread/item";
+import type { Source } from "../thread/thread";
+import { SessionOfThread } from "../accounts/limit";
+import { type ComposerRow, SentBubbles, SessionComposer, useSending } from "../session/composer";
 import { finished, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
 import { WORKERS_LABEL, WorkerList } from "./list";
 import { BatchRow, StillRunningRow, TeamStepRow } from "./sentence";
@@ -210,25 +212,47 @@ export function TeamTab({ owner, kind, target }: { owner: string; kind: TeamKind
   );
 }
 
-/** A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes [D3013]. */
+const NO_ITEMS: Item[] = [];
+const NO_TURNS: Turn[] = [];
+
+/**
+ * A worker opened: its header, and its thread or its details, Rust's snapshot of it, asked again as its row changes
+ * [D3013]; under its thread the lead's own composer, to message it directly [D293]. Its asks in a turn the user
+ * started, and its hold, are answered there [D305, D130].
+ */
 function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; onBack: () => void }) {
-  const rows = useDaemon().rows;
-  const updated = rows?.find((row) => row.id === worker.id)?.updated;
+  const { rows, daemon } = useDaemon();
+  const row = rows?.find((row) => row.id === worker.id) as ComposerRow | undefined;
+  const updated = row?.updated;
   // Its asks name the session that answers them [D131].
   const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
-  const [{ items, turns, setup, questions }, setSnapshot] = useState<{ items: Item[]; turns: Turn[]; setup?: Setup | null; questions?: PendingQuestion[] }>({ items: [], turns: [] });
+  const source = useMemo(() => {
+    let session: Session | null = null;
+    const listeners = new Set<() => void>();
+    return {
+      subscribe: (listener: () => void) => (listeners.add(listener), () => void listeners.delete(listener)),
+      get: () => session,
+      set(next: Session) {
+        session = next;
+        for (const listener of listeners) listener();
+      },
+    } satisfies Source & { set(next: Session): void };
+  }, [worker.id]);
   const [details, setDetails] = useState(false);
   useEffect(() => {
     let live = true;
-    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && setSnapshot({ items: reply.session.items, turns: reply.session.turns ?? [], setup: reply.session.setup, questions: reply.session.questions }));
+    ask({ op: "peek", session: worker.id }, (reply) => live && reply.ok && source.set(reply.session));
     return () => {
       live = false;
     };
-  }, [worker.id, updated]);
+  }, [worker.id, updated, source]);
+  const shown = useSyncExternalStore(source.subscribe, source.get);
+  const items = shown?.items ?? NO_ITEMS;
   // Its first message is the brief, which the view shows above.
   const brief = items.find((item) => item.kind === "message" && item.role === "user");
   const rest = useMemo(() => items.filter((item) => item !== brief), [items, brief]);
-  const hold = questions?.find((question) => question.held);
+  // A message on its way shows under its thread until Rust's has it, Try again if refused [D108].
+  const sending = useSending(worker.id);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
@@ -237,12 +261,17 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
         onBack={() => (details ? setDetails(false) : onBack())}
         onToggleDetails={() => setDetails(!details)}
       />
-      <ParentName value={parent}>{details ? <WorkerDetails worker={worker} /> : <WorkerThread worker={worker} items={rest} turns={turns} setup={setup} />}</ParentName>
-      {/* Its hold is the user's call, answered here where "Needs you" leads [D2028, D342]; its other asks are its parent's [D119, D131]. */}
-      {!details && hold && (
-        <div className="mx-2 mb-2 shrink-0 rounded-overlay border border-border bg-rail-glass">
-          <QuestionCard key={hold.id} session={worker.id} question={hold} onDismiss={() => {}} onAnswer={(answers) => run(["answer", worker.id, hold.id, "--answers", JSON.stringify(answers)]).then(() => {})} />
-        </div>
+      <ParentName value={parent}>
+        {details ? (
+          <WorkerDetails worker={worker} />
+        ) : (
+          <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={source} />} />
+        )}
+      </ParentName>
+      {!details && (
+        <SessionOfThread value={{ id: worker.id, offline: daemon === null }}>
+          <SessionComposer id={worker.id} row={row} offline={daemon === null} source={source} placeholder={`Message ${worker.name}`} worker />
+        </SessionOfThread>
       )}
     </section>
   );

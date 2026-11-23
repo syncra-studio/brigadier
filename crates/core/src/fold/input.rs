@@ -2,7 +2,7 @@
 
 use super::{Fold, Turn};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// Another agent's model and effort, picked for the next message.
 #[derive(Serialize, Deserialize, Clone)]
@@ -66,6 +66,17 @@ impl Fold {
         *self.cids.entry(cid.clone()).or_default() += 1;
         if item["ack"] == true {
             self.acking.insert(cid.clone());
+        }
+        // The user's words to a worker, a steer too, for its parent's one-line note [D294, D303].
+        if item["direct"] == true && !self.direct.iter().any(|d| d["cid"] == cid.as_str()) {
+            let text: String = item["text"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .take(200)
+                .collect();
+            self.direct
+                .push(json!({"cid": cid, "ts": ts, "text": text, "steer": item["steer"] == true}));
         }
         if item["setup"].is_object() {
             // A reused child said its real model once, at its start: kept while it runs that model [D383].
@@ -164,6 +175,7 @@ impl Fold {
             ts,
             spawning: item["starts_child"] == true,
             quiet: str_of("origin").starts_with("result:asks:"),
+            direct: item["direct"] == true,
             ..Default::default()
         });
     }

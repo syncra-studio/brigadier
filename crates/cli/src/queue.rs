@@ -445,7 +445,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         };
         let mut msg = core::message::compose(&spec, &item.text, item.parts.clone())?;
         // What's held for the parent's next message goes with it [D329].
-        let held = crate::workers::with_next(data, id, &mut msg.agent);
+        let held = crate::workers::with_next(data, id, Some(&item.id), &mut msg.agent);
         let reply = core::send(
             &crate::routing::told(data, &spec),
             &f.fold,
@@ -488,7 +488,7 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     // The user's Resume takes what's held for the session, as their next message would [D329].
     let mut more = String::new();
     let held = match queued {
-        true => crate::workers::with_next(data, id, &mut more),
+        true => crate::workers::with_next(data, id, None, &mut more),
         false => vec![],
     };
     let spec = crate::routing::told(data, &spec);

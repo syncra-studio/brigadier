@@ -26,6 +26,11 @@ pub(super) fn wait(
                 return refuse(&format!("Session {id} is gone."));
             };
             state = str_of(row, "state").to_string();
+            // What the user told its worker comes at once, once, though it still works [D304].
+            if let Some(told) = workers::told_take(data, me, id) {
+                let done = row["running"] != true && !workers::busy(data, id);
+                return json!({"ok": true, "done": done, "id": id, "state": state, "text": told});
+            }
             // Its worker's ask comes at once, though the worker is still at work [D131].
             if let Some(ask) = workers::take_ask(data, me, id) {
                 return json!({"ok": true, "done": true, "id": id, "state": "asking", "result": ask, "text": ask});

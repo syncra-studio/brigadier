@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
@@ -20,7 +20,7 @@ import { WORKERS_LABEL } from "./list";
 /*
  * One worker in its tab, as the old app's WorkerDetail, WorkerThread and WorkerBrief [D3013] under a
  * header [D82]: back, its glyph, its name and, at the end, "‹model› · ‹effort›"; below, its brief as the thread's first bubble, what routing picked
- * for it [D3018], how long it worked, and its thread, read only. The user talks to it from the parent's composer.
+ * for it [D3018], how long it worked, and its thread; the user messages it from its own composer below or the parent's [D293].
  */
 
 /** Its header [D82]: back, its glyph, its name (which shows its details) and its model at the end. View only. */
@@ -170,7 +170,7 @@ function thinking(rows: readonly Shown[]): boolean {
  * Its thread, read only, as the old WorkerTranscript: the brief, the receipt, how long it worked, its earlier rows
  * folded once it's over ("4 previous messages"), its last three, the live line while it works, and what it waits for.
  */
-export function WorkerThread({ worker, items, turns, setup }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[]; setup?: Setup | null }) {
+export function WorkerThread({ worker, items, turns, setup, footer }: { worker: Worker; items: readonly Item[]; turns: readonly Turn[]; setup?: Setup | null; /** Messages on their way, under its last row [D108]. */ footer?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -228,6 +228,7 @@ export function WorkerThread({ worker, items, turns, setup }: { worker: Worker; 
         {working && thinking(rows) && <div className="shimmer truncate text-sm motion-reduce:animate-none">Thinking</div>}
         {/* What it waits for: the user, or a limit's reset. */}
         {(worker.kind === "needsYou" || worker.kind === "limit") && <p data-slot="worker-waits" className="text-sm text-quiet-foreground">{worker.word}</p>}
+        {footer}
       </div>
     </div>
   );
