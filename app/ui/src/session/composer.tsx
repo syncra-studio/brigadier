@@ -102,8 +102,8 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   // Dated as their rows will be (after the thread's last message, or the bubble before), so a row takes its place without a shift.
   let previous: { sentAt?: number } | undefined = session?.items.findLast((item) => item.kind === "message");
   return (
-    // Under the footer's pt-4, the gaps a turn's row has (pt-6), so Rust's row takes a bubble's place without a shift.
-    <div className="flex flex-col gap-6 pt-2">
+    // In the thread's footer (its pt-3, or pt-8 as the first row), Rust's rows' gaps (rows.tsx) and Thinking 12 under, so a row takes a bubble's place without a shift.
+    <div className={`flex flex-col gap-6 pt-2 in-data-footer:gap-8 ${session?.items.length ? "in-data-footer:pt-5" : "in-data-footer:pt-0"}`}>
       {shown.map((each) => {
         const dated = datedAfter(previous, each.at);
         previous = { sentAt: each.at };
@@ -126,7 +126,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
           />
         );
       })}
-      {!shown.at(-1)!.error && <ThinkingLine />}
+      {!shown.at(-1)!.error && <div className="-mt-3 in-data-footer:-mt-5"><ThinkingLine /></div>}
     </div>
   );
 }
