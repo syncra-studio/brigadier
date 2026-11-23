@@ -3,3 +3,8 @@
 
 @import "tailwindcss/utilities.css" layer(utilities) source("../src");
 @source "./";
+
+/* Room above a composer for its menu, drawn open. */
+@utility mockup-stage {
+  min-height: 26rem;
+}
