@@ -72,7 +72,7 @@ const READS = {
 const ARM = {
   computer: {
     intro: 'You work a Chrome for Testing window on this Mac with the `brigadier computer` command; run `brigadier computer --help` first. The page is already open in it.',
-    args: ['--allowedTools', 'Bash(brigadier computer:*)'],
+    args: ['--allowedTools', 'Bash(brigadier computer:*)', 'Read'],
     env: { PATH: `${process.env.BIN ?? ''}:${process.env.PATH}` },
     async setup(url) {
       spawnSync('pkill', ['-f', `user-data-dir=${PROFILE}`])
@@ -149,8 +149,14 @@ function score(name, task, a, ev) {
   run.actions = run.calls - run.reads
   run.denied = a.calls.filter((c) => c.error && /permission|denied|not allowed/i.test(c.text ?? '')).length
   // A "no change" while the page logged one inside the call; a "change observed" that lists nothing.
-  run.falseNoChange = a.calls.filter((c) => /no change seen/i.test(c.text ?? '') && changes(ev, c.from - 250, c.to).length).length
-  run.emptyChange = a.calls.filter((c) => /change observed\.\s*(Changed:\s*)?$/.test((c.text ?? '').trim())).length
+  // Only a call of one command is judged: in `click 3; key end` the page's change may be the click's.
+  const one = (c) => tool === 'playwright' || String(c.cmd).split(/&&|\|\||;|\n/).filter((x) => x.trim().startsWith('brigadier ')).length === 1
+  const falseNo = a.calls.filter((c) => one(c) && /no change seen/i.test(c.text ?? '') && changes(ev, c.from - 250, c.to).length)
+  const empty = a.calls.filter((c) => /change observed\.\s*(Changed:\s*)?$/.test((c.text ?? '').trim()))
+  run.falseNoChange = falseNo.length
+  run.emptyChange = empty.length
+  // The calls behind those counts, to judge each one by hand.
+  run.flagged = [...falseNo, ...empty].map((c) => ({ cmd: String(c.cmd).slice(0, 200), text: (c.text ?? '').slice(0, 300), changes: changes(ev, c.from - 250, c.to).slice(0, 3) }))
   run.covered = a.calls.filter((c) => /covered by/i.test(c.text ?? '')).length
   // Screenshots, hashed here: one is stale when it matches the last while the page changed between.
   run.shots = []
