@@ -197,6 +197,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             core::write_atomic(&data.join("awake"), value.as_bytes())?;
         }
+        // Settings › General's one Chat layout row: both thread keys in one save, so they never land apart.
+        [_, key, mode] if key == "chat-layout" => {
+            let width = match mode.as_str() {
+                "bubbles" => "centered",
+                "stacked" => "full",
+                _ => return Err(io::Error::other(format!("chat-layout can't be {mode:?}"))),
+            };
+            saved["thread_width"] = width.into();
+            saved["message_layout"] = mode.as_str().into();
+            save(data, saved)?;
+        }
         [_, key, value] => {
             let Some((_, choices)) = KEYS.iter().find(|(k, _)| k == key) else {
                 return Err(io::Error::other(format!("no setting {key:?}")));

@@ -10,7 +10,7 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
-import { type Settings, lidHint, loadLid, setLid, setSetting, useLid, useSettings } from "./api";
+import { type Settings, lidHint, loadLid, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
 import { ChatLayoutChoice } from "./chat-layout";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -125,7 +125,7 @@ export function GeneralPage() {
 }
 
 /** How the thread is laid out, one choice for both settings, applied at once [D914, D915]. */
-export function ThreadSection({ settings }: { settings: Settings }) {
+function ThreadSection({ settings }: { settings: Settings }) {
   const save = useSave();
   return (
     <SettingsSection title="Thread">
@@ -134,15 +134,9 @@ export function ThreadSection({ settings }: { settings: Settings }) {
           <ChatLayoutChoice
             label={GENERAL_ROWS.chatLayout.label}
             value={settings.message_layout}
-            // Only what differs is sent, so picking the shown tile again mends a mixed pair, as left by an older build or a half-failed save.
+            // Picking the shown tile again still saves when the pair is mixed, as an older build could leave it.
             onChange={(mode) => {
-              const width = mode === "bubbles" ? "centered" : "full";
-              save.run(() =>
-                Promise.all([
-                  settings.thread_width !== width && setSetting("thread_width", width),
-                  settings.message_layout !== mode && setSetting("message_layout", mode),
-                ]),
-              );
+              if (settings.message_layout !== mode || settings.thread_width !== (mode === "bubbles" ? "centered" : "full")) save.run(() => setChatLayout(mode));
             }}
           />
         </SettingsRow>
