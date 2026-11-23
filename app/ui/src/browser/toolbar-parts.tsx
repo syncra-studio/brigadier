@@ -9,7 +9,6 @@ import { findInPage, findLabel, useBrowserFind } from "./find";
 import { useTabs } from "../shell/tab-store";
 import { ungroup } from "./give";
 import { stopDriving, takeOver, useAgentHoldsAny, useAgentLit, useAgentPillSlot } from "./overlay";
-import { useAgentPause } from "./pause";
 import { useDriverDone, useDriverName } from "./tab-icon";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
@@ -151,10 +150,8 @@ export function AgentSessionBar({ owner, driver }: { owner: string; driver: stri
   const name = useDriverName(driver);
   const closed = useSyncExternalStore(subscribeBars, () => closedBars.get(owner) === first);
   const done = useDriverDone(driver);
-  // Only while it uses its tabs: it holds one, or the user took one over; a turn that never drives brings none back.
-  const own = tabs.filter((tab) => tab.kind === "browser" && tab.driver === driver).map((tab) => tab.id);
-  const paused = useAgentPause().paused;
-  const using = useAgentHoldsAny(own) || own.some((id) => id in paused);
+  // Only while it holds one of its tabs: a turn that never drives brings none back.
+  const using = useAgentHoldsAny(tabs.filter((tab) => tab.kind === "browser" && tab.driver === driver).map((tab) => tab.id));
   if (!driver || !first || closed || done || !using) return null;
   return (
     <Banner slot="browser-agent-bar" text={`"${name}" started using this browser`} onDismiss={() => closeBar(owner, first)}>

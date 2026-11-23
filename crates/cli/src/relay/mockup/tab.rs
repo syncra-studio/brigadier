@@ -203,7 +203,8 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
         return no("empty", "There are no notes to send.");
     };
     let last = was["rounds"].as_array().map_or(0, Vec::len).max(1);
-    let drawing = working(data, wid)?
+    // As the tab shows it: a round all in is drawn, though its worker's turn goes on.
+    let drawing = (working(data, wid)? && !super::all_in(&was))
         || was["rounds"][last - 1]["variants"]
             .as_array()
             .is_none_or(Vec::is_empty);

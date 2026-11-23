@@ -389,10 +389,14 @@ fn ready(data: &Path, me: &str, m: &mut Value, round: usize) {
         "Your mockup worker {} ({me}) drew {n} of round {round}: the user picks one with Use, on the card in your chat or in the Mockup tab, or sends notes for another round. Nothing for you to do; the pick goes to that worker, and its result comes to you once it's built.",
         l.title
     );
-    let _ = workers::told_notice(data, &l.parent, me, &format!("mockup-ready-{round}"), &text);
-    if m["rounds"][round - 1]["asked"] == true {
+    let new = workers::told_notice(data, &l.parent, me, &format!("mockup-ready-{round}"), &text);
+    let asked = &mut m["rounds"][round - 1]["asked"];
+    // A round from before `asked` was kept had its card go with its notice.
+    if *asked == true || (asked.is_null() && matches!(new, Ok(false))) {
+        *asked = true.into();
         return;
     }
+    *asked = false.into();
     let variants = m["rounds"][round - 1]["variants"]
         .as_array()
         .cloned()
@@ -421,6 +425,28 @@ fn ready(data: &Path, me: &str, m: &mut Value, round: usize) {
         .and_then(|_| owner::call(data, &l.parent, json!({"op": "note", "data": note})));
     if shown.is_ok() {
         m["rounds"][round - 1]["asked"] = true.into();
+    }
+}
+
+/// The daemon's pass: a round all in whose pick card didn't reach the lead, its host down then,
+/// tries it again.
+pub(crate) fn retry(data: &Path, wid: &str) {
+    let due = |m: &Value| {
+        let n = m["rounds"].as_array().map_or(0, Vec::len);
+        (n > 0 && m["rounds"][n - 1]["asked"] == false && m["picked"].is_null()).then_some(n)
+    };
+    if state(data, wid).as_ref().and_then(due).is_none() {
+        return;
+    }
+    let _one = WRITING.lock().unwrap();
+    let Some(mut m) = state(data, wid) else {
+        return;
+    };
+    if let Some(round) = due(&m).filter(|_| all_in(&m)) {
+        ready(data, wid, &mut m, round);
+        if m["rounds"][round - 1]["asked"] == true {
+            let _ = workers::write_json(&file(data, wid), &m);
+        }
     }
 }
 

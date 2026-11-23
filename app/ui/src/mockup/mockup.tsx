@@ -110,6 +110,12 @@ export function MockupView({
   const [grabbing, setGrabbing] = useState(false);
   const [compare, setCompare] = useState<Compare>(start.compare ?? "compare");
   const [confirm, setConfirm] = useState<string | null>(start.confirm ?? null);
+  // A confirm is on the round it was opened on: another shown, it closes, so Build never takes the wrong round's.
+  const [confirmOn, setConfirmOn] = useState(shownRound);
+  if (confirmOn !== shownRound) {
+    setConfirmOn(shownRound);
+    setConfirm(null);
+  }
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
 
   const round = mockup?.rounds[shownRound];

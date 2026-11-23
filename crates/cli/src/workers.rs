@@ -462,6 +462,7 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         }
         if !row["worker"].is_null() {
             result::written(data, id, row);
+            crate::relay::mockup::retry(data, id);
         }
         asks::pass(data, id, row);
         if row["worker"]["kind"] == "doneNotMerged" {
