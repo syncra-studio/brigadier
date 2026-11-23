@@ -90,7 +90,7 @@ export const useSending = (id: string) => useSyncExternalStore(subscribeSent, ()
 export const useOnItsWay = (id: string) => useSyncExternalStore(subscribeSent, () => sent.get(id)?.some((each) => !each.error) ?? false);
 
 /** The messages on their way, under the thread's last row. */
-export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id: string; source?: Source; run?: Runner }) {
+export function SentBubbles({ id, source = threadSource, run = daemonRun, hover = false }: { id: string; source?: Source; run?: Runner; /** Actions only on hover: the worker panel's, whose rows draw none. */ hover?: boolean }) {
   const list = useSyncExternalStore(subscribeSent, () => sent.get(id));
   const session = useSyncExternalStore(source.subscribe, source.get);
   const done = (each: Sent) => inThread(session).has(each.cid);
@@ -102,8 +102,8 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   // Dated as their rows will be (after the thread's last message, or the bubble before), so a row takes its place without a shift.
   let previous: { sentAt?: number } | undefined = session?.items.findLast((item) => item.kind === "message");
   return (
-    // In the thread's footer (its pt-3, or pt-8 as the first row), Rust's rows' gaps (rows.tsx) and Thinking 12 under, so a row takes a bubble's place without a shift.
-    <div className={`flex flex-col gap-6 pt-2 in-data-footer:gap-8 ${session?.items.length ? "in-data-footer:pt-5" : "in-data-footer:pt-0"}`}>
+    // In the thread's footer (its pt-3 under rows, pt-8 as the first row), Rust's rows' gaps (rows.tsx) and Thinking 12 under, so a row takes a bubble's place without a shift.
+    <div className="flex flex-col gap-6 pt-2 in-data-footer:gap-8 in-data-first:pt-0 in-data-rows:pt-5">
       {shown.map((each) => {
         const dated = datedAfter(previous, each.at);
         previous = { sentAt: each.at };
@@ -112,7 +112,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
             key={each.cid}
             keep={each.cid}
             text={each.text}
-            time={each.at} older={each !== shown.at(-1)}
+            time={each.at} older={hover || each !== shown.at(-1)}
             dated={dated}
             owner={id}
             parts={each.parts ? (JSON.parse(each.parts) as Draft).parts : undefined}
@@ -126,7 +126,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
           />
         );
       })}
-      {!shown.at(-1)!.error && <div className="-mt-3 in-data-footer:-mt-5"><ThinkingLine /></div>}
+      {!shown.at(-1)!.error && <div className="in-data-footer:-mt-5"><ThinkingLine /></div>}
     </div>
   );
 }

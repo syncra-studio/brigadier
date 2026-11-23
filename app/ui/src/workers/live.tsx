@@ -270,7 +270,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
         ) : (
           // Its own folder, where its images are kept [D289].
           <SessionOfThread value={{ id: worker.id, offline: daemon === null }}>
-            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={answered} />} />
+            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={answered} hover />} />
           </SessionOfThread>
         )}
       </ParentName>
