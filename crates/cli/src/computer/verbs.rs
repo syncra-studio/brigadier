@@ -31,9 +31,10 @@ menus; another profile's tabs show after `menu \"Window > <this window's profile
 
   apps                          the running apps; (front) is the one in front
   open <app> [<url>|<path>]     starts an app in the background, or hands it a url or path, and reads its window
-  read [<app>] [--window ID] [--query WORDS] [--full]
+  read [<app>] [--window ID] [--query WORDS] [--menus] [--full]
                                 one window as text, each control as [n] role \"name\" = \"value\"; about 300 rows, --full for more;
-                                the window you last read or acted in, or --window ID from a read's first line
+                                the window you last read or acted in, or --window ID from a read's first line;
+                                --query searches the window, --menus adds the menu bar's items
   click <n> [--double|--right]  clicks control [n] of your last read; click --at X,Y clicks a point of your last screenshot
   type <n> [--submit]           types the text on stdin into control [n]: echo \"…\" | brigadier computer type 4; --submit presses Return
   key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
@@ -136,7 +137,7 @@ fn words(args: &[String]) -> Result<Words<'_>, Value> {
                     .ok_or_else(|| refuse(&format!("{a} needs a value.")))?;
                 w.values.insert(a, v);
             }
-            "--full" | "--double" | "--right" | "--submit" | "--json" | "--help" => {
+            "--full" | "--menus" | "--double" | "--right" | "--submit" | "--json" | "--help" => {
                 w.flags.insert(a);
             }
             _ if a.starts_with("--") => {

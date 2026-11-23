@@ -258,8 +258,47 @@ pub(super) fn windows(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> Result<
 
 /// An app with no window: its menus, which work by pid.
 pub(super) fn menu_bar(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<String, Value> {
+    Ok(format!(
+        "{} has no window open. Its menus work without one: brigadier computer menu \"File > New\".\n{}",
+        s.app,
+        menus(data, s, None, here)?.join("\n")
+    ))
+}
+
+/// The app's menus, a line each; with `query`'s `a|b` words, only the items holding one, each as
+/// the path `menu` takes.
+pub(super) fn menus(
+    data: &Path,
+    s: &Sess,
+    query: Option<&str>,
+    here: &dyn Fn() -> bool,
+) -> Result<Vec<String>, Value> {
     let found = own(data, "menus", json!({"pid": s.pid}), here)?;
-    let menus: Vec<String> = (found["menus"].as_array().into_iter().flatten())
+    let all = found["menus"].as_array().into_iter().flatten();
+    if let Some(q) = query {
+        let words: Vec<String> = (q.to_lowercase().split('|'))
+            .map(|w| w.trim().to_string())
+            .filter(|w| !w.is_empty())
+            .collect();
+        let words = &words;
+        return Ok(all
+            .flat_map(|m| {
+                let menu = m["title"].as_str().unwrap_or("?").to_string();
+                (m["items"].as_array().into_iter().flatten()).filter_map(move |i| {
+                    let title = i["title"].as_str().unwrap_or("");
+                    let low = title.to_lowercase();
+                    (words.iter().any(|w| low.contains(w.as_str()))).then(|| {
+                        format!(
+                            "menu \"{menu} > {title}\" {}",
+                            i["key"].as_str().unwrap_or("")
+                        )
+                    })
+                })
+            })
+            .map(|l| l.trim_end().to_string())
+            .collect());
+    }
+    Ok(all
         .map(|m| {
             let items: Vec<String> = (m["items"].as_array().into_iter().flatten())
                 .take(30)
@@ -279,12 +318,7 @@ pub(super) fn menu_bar(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result
                 items.join(" · ")
             )
         })
-        .collect();
-    Ok(format!(
-        "{} has no window open. Its menus work without one: brigadier computer menu \"File > New\", or a key such as cmd+n.\n{}",
-        s.app,
-        menus.join("\n")
-    ))
+        .collect())
 }
 
 /// Presses a menu item by its path or its key equivalent, by pid; where the app has no such item

@@ -1,7 +1,7 @@
 //! One window as the agent reads it: its rows with password fields hidden, what changed since the
 //! last read (Cua's own `since`), and a picture of it.
 
-use super::open::{menu_bar, own, windows};
+use super::open::{menu_bar, menus, own, windows};
 use super::{FULL, ROWS, SECURE, Sess, Words, call, lock, refuse};
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -103,6 +103,21 @@ pub(super) fn state_args(s: &Sess, me: &str) -> Value {
         ROWS
     };
     json!({"pid": s.pid, "window_id": s.window, "session": me, "tree_format": "both", "include_screenshot": false, "max_elements": rows, "max_depth": depth})
+}
+
+/// The window's rows less its menu bar's: a search for a page's word met History and Log Out.
+fn content(md: &str) -> String {
+    let mut bar: Option<usize> = None;
+    let rows = md.lines().filter(|line| {
+        let depth = line.len() - line.trim_start().len();
+        if bar.is_some_and(|d| depth > d) {
+            return false;
+        }
+        bar = (line.contains("] AXMenuBar ") || line.trim_start().starts_with("- AXMenuBar "))
+            .then_some(depth);
+        bar.is_none()
+    });
+    rows.collect::<Vec<_>>().join("\n")
 }
 
 /// The rows holding any of `query`'s `a|b` words, each under its ancestors, as Cua's own
@@ -233,15 +248,31 @@ pub(super) fn read(
         .or(named)
         .unwrap_or("untitled");
     let total = found["total_element_count"].as_u64().unwrap_or(0);
-    let shown = match &s.query {
-        Some(q) => match filter(tree, q) {
+    // The window's content only: the menu bar's items drowned a page's rows [D2032].
+    let menus_too = w.flags.contains("--menus");
+    let mut shown = match &s.query {
+        Some(q) => match filter(
+            &if menus_too {
+                tree.to_string()
+            } else {
+                content(tree)
+            },
+            q,
+        ) {
             rows if rows.is_empty() => format!(
-                "No row holds \"{q}\": try a shorter or another word (\"a|b\" finds either), or read without --query."
+                "No row holds \"{q}\": try a shorter or another word (\"a|b\" finds either), --menus to search the menu bar too, or read without --query."
             ),
             rows => rows,
         },
         None => tree.to_string(),
     };
+    if menus_too {
+        let items = menus(data, s, s.query.as_deref(), here)?;
+        shown.push_str(&match items.is_empty() {
+            true => "\nNo menu item holds it.".to_string(),
+            false => format!("\nThe menu bar:\n{}", items.join("\n")),
+        });
+    }
     let mut text = format!(
         "{} · \"{title}\" · --window {} ({nth} of {}) · {total} elements\n{}",
         s.app,
@@ -682,7 +713,7 @@ fn not_captured(found: &Value) -> Value {
 pub(super) fn ours(text: &str) -> String {
     [
         ("take a fresh get_window_state snapshot and re-address it", "read again"),
-        ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS finds one)"),
+        ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS --menus finds one)"),
         ("retry with a larger max_elements or narrow with query / max_depth", "read with --full, or narrow it with --query WORDS"),
         ("the max_elements node budget", "the row budget"),
         ("get_window_state", "read"),
