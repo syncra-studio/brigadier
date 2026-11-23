@@ -148,16 +148,17 @@ export function UserBubble({
     if (element.firstElementChild) observer.observe(element.firstElementChild);
     return () => observer.disconnect();
   }, [more]);
-  // Stacked: one left-aligned column with the agent's text, the bubble kept so it stands apart [D914, D915].
-  const side = useSettings().value?.message_layout === "stacked" ? "items-start" : "items-end";
+  // Stacked: the agent's full column, the bubble kept so it stands apart; files and actions stay left [D914, D915].
+  const stacked = useSettings().value?.message_layout === "stacked";
+  const side = stacked ? "items-start" : "items-end";
   return (
     <div className={cx("group/user flex flex-col gap-y-1", side)}>
       {dated && time !== undefined && <TimeSeparator at={time} />}
-      <div className={cx("flex max-w-7/10 min-w-0 flex-col gap-y-1", side)}>
+      <div className={cx("flex min-w-0 flex-col gap-y-1", stacked ? "w-full" : "max-w-7/10", side)}>
         {files}
         {/* A message of only files (a paste, an image) has no bubble under them. */}
         {(text.trim() !== "" || chips || !files) && (
-        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-bubble px-4 py-2.5 text-chat text-chat-foreground", dimmed && "opacity-row-disabled")}>
+        <div className={cx("flex max-w-full min-w-0 flex-col rounded-thread bg-bubble px-4 py-2.5 text-chat text-chat-foreground", stacked && "self-stretch", dimmed && "opacity-row-disabled")}>
           <div ref={box} data-bubble className={cx(!more && "user-message-cut")}>
             {chips ? (
               <AttachmentsContext value={chips.files}>
