@@ -1,7 +1,7 @@
 //! The running apps by name, one line each, and an app's menus by path: what an agent names an app
 //! or a menu item with [D922 D928].
 
-use super::open::{front, own};
+use super::open::{front, own, windows};
 use super::{Sess, Words, call, refuse};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -104,7 +104,20 @@ pub(super) fn apps(data: &Path, here: &dyn Fn() -> bool) -> Result<String, Value
             )
         })
         .collect();
-    Ok(format!("Running apps:\n{}", lines.join("\n")))
+    // An app twice under one name is listed once: a name is all an agent can give back.
+    let mut once: Vec<String> = Vec::new();
+    for l in lines {
+        let bare = l.trim_end_matches(" (front)");
+        match once
+            .iter()
+            .position(|o| o.trim_end_matches(" (front)") == bare)
+        {
+            Some(i) if l.ends_with(" (front)") => once[i] = l,
+            Some(_) => {}
+            None => once.push(l),
+        }
+    }
+    Ok(format!("Running apps:\n{}", once.join("\n")))
 }
 
 /// A running app by its name: exact first, else the one it starts.
@@ -114,7 +127,19 @@ pub(super) fn find(
     here: &dyn Fn() -> bool,
 ) -> Result<(i64, String), Value> {
     let all = running(data, here)?;
-    let app = named(&all, name).ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
+    // Two apps can share a name, as a headless Chrome for Testing beside a real one: the one on
+    // screen. A headless one has windows too, off every screen.
+    let of = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase() == name.to_lowercase();
+    let twins: Vec<&Value> = all.iter().filter(of).collect();
+    let shown = (twins.len() > 1)
+        .then(|| {
+            twins.iter().copied().find(|a| {
+                windows(data, a["pid"].as_i64().unwrap_or(0), here)
+                    .is_ok_and(|w| w.iter().any(|w| w["is_on_screen"] == true))
+            })
+        })
+        .flatten();
+    let app = shown.or_else(|| named(&all, name)).ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
     let found = app["name"].as_str().unwrap_or(name).to_string();
     blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
     Ok((app["pid"].as_i64().unwrap_or(0), found))
