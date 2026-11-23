@@ -25,8 +25,9 @@ use window::{drag, ours, read, screenshot};
 pub(crate) const HELP: &str = "brigadier computer <command> [--json]: the apps on the user's Mac, used in the background beside them, by a
 worker: a chat's lead starts one on the job whose line covers computer use (`brigadier start --job`).
 
-Use it when files, the shell or an app's own CLI can't do the job; a web page goes to `brigadier browser` unless the
-user names their own browser. Never drive apps with osascript, System Events, `open -a` or cliclick: they raise
+Use it when files, the shell or an app's own CLI can't do the job. A web page goes to `brigadier browser`: while
+Settings › Computer use › Web pages in Brigadier's browser is on, as it is unless the user turns it off, actions in a
+browser app are refused unless the user named that browser in the chat; reading it stays open. Never drive apps with osascript, System Events, `open -a` or cliclick: they raise
 macOS prompts in Brigadier's name. If this can't do it, say so. In a browser, its history and bookmarks are in its
 menus; another profile's tabs show after `menu \"Window > <this window's profile> > <name>\"` (switch back after):
 `read Dia --query jira` then finds a page you have no address for; `open Dia <url>` opens one.
@@ -94,6 +95,56 @@ struct Sess {
 
 pub(super) const OFF: &str =
     "Computer use is off: ask the user to turn it on in Settings › Computer use.";
+
+/// Why a browser app is closed to computer use, or `None` where it isn't: while Settings › Computer
+/// use › Web pages in Brigadier's browser is on, web pages go to `brigadier browser`, unless the
+/// user named this browser in the chat, this session's or its lead's [D2032]. `address`: its
+/// window has an address bar.
+pub(super) fn web_page(data: &Path, me: &str, app: &str, address: bool) -> Option<String> {
+    // shortcut: browsers by name; an address bar also tells one, once a read has seen it.
+    const BROWSERS: [&str; 11] = [
+        "chrome", "chromium", "safari", "firefox", "edge", "brave", "arc", "dia", "opera",
+        "vivaldi", "helium",
+    ];
+    let words = |t: &str| -> Vec<String> {
+        (t.to_lowercase().split(|c: char| !c.is_alphanumeric()))
+            .filter(|w| !w.is_empty())
+            .map(String::from)
+            .collect()
+    };
+    let named = words(app);
+    let browser = address || named.iter().any(|w| BROWSERS.contains(&w.as_str()));
+    if !browser || crate::settings::get(data, super::WEB) != "true" {
+        return None;
+    }
+    // The user's own words, here and in the chat that started this worker; once named, it stays so.
+    static NAMED: LazyLock<Mutex<HashSet<(String, String)>>> = LazyLock::new(Mutex::default);
+    let key = (me.to_string(), app.to_string());
+    if lock(&NAMED).contains(&key) {
+        return None;
+    }
+    let (root, _) = crate::workers::place(data, me);
+    let said = [me, root.as_str()].iter().any(|id| {
+        (crate::relay::archive(data, id, false).iter())
+            .filter(|e| e.from == "user")
+            .any(|e| {
+                let theirs = words(&e.text);
+                (named.iter())
+                    .filter(|w| {
+                        !["google", "microsoft", "browser", "for", "testing"].contains(&w.as_str())
+                    })
+                    .any(|w| theirs.contains(w))
+            })
+    });
+    if said {
+        lock(&NAMED).insert(key);
+    }
+    (!said).then(|| format!(
+        "{app} is a browser, and web pages go to Brigadier's browser: `brigadier browser open <url>`, then `brigadier browser snapshot`. \
+         Reading {app} stays open to you. The user's sign-ins come over in Settings › Import Browser Data, from {app}'s profile: ask them to bring them there. \
+         Computer use acts in {app} only once the user names it in the chat, or turns off Settings › Computer use › Web pages in Brigadier's browser."
+    ))
+}
 
 /// The session using the computer now [D907].
 static HOLDER: Mutex<Option<String>> = Mutex::new(None);
@@ -238,6 +289,13 @@ fn verb(
             ))
         })
     };
+    let acts = ["click", "type", "key", "scroll", "drag"].contains(&w.verb);
+    if let Some(no) = (acts && s.pid != 0)
+        .then(|| web_page(data, me, &s.app, s.address.is_some()))
+        .flatten()
+    {
+        return Err(refuse(&no));
+    }
     let text = match w.verb {
         "apps" => apps(data, here)?,
         "open" => open::open(data, me, &mut s, w, here)?,

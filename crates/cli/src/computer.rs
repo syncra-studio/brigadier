@@ -30,6 +30,7 @@ const RECHECK: Duration = Duration::from_secs(4);
 const SETTING: &str = "computer_use";
 /// The agent cursor's setting, on unless the user turns it off [D956].
 pub const CURSOR: &str = "computer_cursor";
+pub const WEB: &str = "computer_web";
 /// Where `brigadierd --install` writes the path of the bundle's helper (install.rs).
 pub const HELPER_FILE: &str = "computer-helper";
 

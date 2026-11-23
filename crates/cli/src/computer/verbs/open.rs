@@ -71,6 +71,14 @@ pub(super) fn open(
     let listed = named(installed["apps"].as_array().map_or(&[][..], |a| a), &name);
     let bundle = listed.and_then(|a| a["bundle_id"].as_str()).unwrap_or("");
     blocked(&name, bundle)?;
+    let page = target.as_ref().is_some_and(|t| t.starts_with("http"));
+    let app_name = listed.and_then(|a| a["name"].as_str()).unwrap_or(&name);
+    if let Some(no) = page
+        .then(|| super::web_page(data, me, app_name, false))
+        .flatten()
+    {
+        return Err(refuse(&no));
+    }
     let titled = |pid: i64| -> Vec<(Value, Value)> {
         (windows(data, pid, here).unwrap_or_default().iter())
             .map(|w| (w["window_id"].clone(), w["title"].clone()))

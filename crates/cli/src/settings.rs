@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 15] = [
+const KEYS: [(&str, &[&str]); 16] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -47,6 +47,9 @@ const KEYS: [(&str, &[&str]); 15] = [
     ("computer_use", SWITCH_OFF),
     // An agent cursor shows where computer use acts; on unless turned off [D956].
     (crate::computer::CURSOR, SWITCH),
+    // Computer use leaves a browser's web pages to Brigadier's browser, unless the user names
+    // theirs in the chat; on unless turned off [D2032].
+    (crate::computer::WEB, SWITCH),
     // The thread's column: centred at the reading width, or the pane's full width; and its messages in
     // bubbles on both sides, or stacked in one column, the user's still in bubbles [D914, D915].
     ("thread_width", &["centered", "full"]),
