@@ -120,7 +120,7 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
 }
 
 /// The message as its agent reads it, its files already taken into `spec`'s session: a long
-/// paste whole where it was pasted, an image as "[Image #n]" with the image beside, each other
+/// paste whole where it was pasted, an image as "[Image #n: <path>]" with the image beside, each other
 /// file and each mention as the old app's line after the text [D2007, D2008, D2021].
 pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
     if parts.is_null() {
@@ -172,9 +172,10 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                 notes.push(format!("[mentions the {kind} {label}]"));
             }
             (Some("image"), _) => {
+                // Its path too, so a lead can hand it to a worker that edits images [D298].
                 if let Some(path) = file(part["attachmentId"].as_str().unwrap_or("")) {
+                    agent += &format!("[Image #{}: {}]", images.len() + 1, path.display());
                     images.push(path);
-                    agent += &format!("[Image #{}]", images.len());
                 }
             }
             (Some("paste"), _) => {

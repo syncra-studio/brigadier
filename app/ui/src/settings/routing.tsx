@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ModelGroup } from "../components/composer/model-picker";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
+import { Select } from "../components/select";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
@@ -22,8 +23,8 @@ export type Rule = { never: "model"; agent: string; model: string } | { never: "
 export type Job = { name: string; for: string; entries: Entry[] };
 /** Brigadier's offer, from facts it can see [D383, D386]; `job` null is the quiet line under Jobs. */
 export type Offer = { id: string; job: string | null; kind: "newer" | "results" | "mark" | "alias"; title: string; facts: string; done: string };
-/** Rust's routing table (C5): the jobs in your order, the rules, the review switch, the open offers and the page's grey lines. */
-export type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; offers: Offer[]; notes: { review: string; rules: string } };
+/** Rust's routing table (C5): the jobs in your order, the rules, the review switch, the model images go to first (null: automatic), the open offers and the page's grey lines. */
+export type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; images?: { agent: string; model: string } | null; offers: Offer[]; notes: { review: string; rules: string } };
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const ROUTING_ROWS = {
@@ -32,6 +33,7 @@ export const ROUTING_ROWS = {
     label: "Adversarial review",
     description: "Another agent reviews each worker's code, and each plan before it's acted on, and tries to break it: the first model in your Review job on another agent than the author's.",
   },
+  images: { label: "Images", description: "Images your agents are asked to make or edit go to this model first, else to another that makes images." },
   rules: { label: "Rules", description: "Every model Brigadier starts follows these" },
   results: { label: "Your results", description: "Per job, how much of each model's work was merged and kept. Credited to the model that really ran." },
 } as const;
@@ -157,6 +159,21 @@ export function RoutingPage({
             </SettingsCard>
             <Note>{shown.notes.review}</Note>
           </SettingsSection>
+          <SettingsSection setting={ROUTING_ROWS.images.label}>
+            <SettingsCard>
+              <SettingsRow label={ROUTING_ROWS.images.label} description={ROUTING_ROWS.images.description}>
+                <Select
+                  label={ROUTING_ROWS.images.label}
+                  value={shown.images ? `${shown.images.agent}/${shown.images.model}` : ""}
+                  options={[{ value: "", label: "Automatic" }, ...drawing(groups)]}
+                  onChange={(key) => {
+                    const at = key.indexOf("/");
+                    void change({ ...shown, images: key ? { agent: key.slice(0, at), model: key.slice(at + 1) } : null });
+                  }}
+                />
+              </SettingsRow>
+            </SettingsCard>
+          </SettingsSection>
           <Rules rules={shown.rules} groups={groups} note={shown.notes.rules} onSave={(rules) => void change({ ...shown, rules })} />
           <YourResults results={results} groups={groups} />
         </div>
@@ -164,6 +181,10 @@ export function RoutingPage({
     </SettingsPage>
   );
 }
+
+/** Only the models that make images, by `agent/model` [D298]. */
+const drawing = (groups: ModelGroup[]) =>
+  groups.flatMap((group) => group.models.filter((model) => model.draws).map((model) => ({ value: `${group.provider}/${model.id}`, label: model.name, hint: group.label })));
 
 /** A grey line under a card. */
 export function Note({ children }: { children: string }) {
@@ -208,7 +229,7 @@ export function RoutingSettings() {
     <RoutingPage
       value={value}
       groups={groups}
-      onChange={(next) => send(["routing", "set", JSON.stringify({ jobs: next.jobs, rules: next.rules, review: next.review })])}
+      onChange={(next) => send(["routing", "set", JSON.stringify({ jobs: next.jobs, rules: next.rules, review: next.review, images: next.images ?? null })])}
       onOffer={(id, answer) => send(["routing", "offer", id, answer])}
       error={error}
       offline={!online}

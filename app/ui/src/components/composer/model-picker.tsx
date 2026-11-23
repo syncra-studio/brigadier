@@ -20,6 +20,8 @@ export type Model = {
   retiring?: { at: number | null; to: string | null } | null;
   /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
   images?: boolean | null;
+  /** Whether it makes and edits images with a tool of its own, where its CLI says [D298]. */
+  draws?: boolean | null;
   /** What its fast tier offers, where it has one: the Fast key's tip. */
   fast?: string | null;
   /** An older model its CLI still offers beside a newer one: its chip comes after the others. */

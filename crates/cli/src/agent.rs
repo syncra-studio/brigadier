@@ -113,9 +113,11 @@ Write the brief as a task for someone new: Target, Change, Do not touch, Files i
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
 It reaches MCP servers through `brigadier mcp`, on Brigadier's one sign-in, so such a job can go to it too.
 Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
-A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.",
+A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.
+--images: on a model that makes images (`brigadier models` marks them), no job; the brief gives full paths
+of images to edit. The image shows in the user's chat; copy it elsewhere only when asked.",
             &["--job", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],
-            &["--session"],
+            &["--session", "--images"],
         ),
         "stop" => (
             "brigadier stop <id> [--json]\n\nStops a worker you started. Other sessions are the user's: you can't stop them.",
@@ -249,7 +251,9 @@ pub fn run(
         return json!({"ok": true, "text": text});
     }
     if call.cmd == "start" {
-        let flag = |name: &str| call.value(name).map(String::from);
+        let flag = |name: &str| {
+            (call.value(name).map(String::from)).or_else(|| call.has(name).then(String::new))
+        };
         let running = |id: &str| rows().iter().any(|r| r["id"] == id && r["running"] == true);
         let session = call.has("--session");
         let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running, session);
@@ -460,12 +464,8 @@ fn models(data: &Path, me: &str) -> Value {
     let mut text = String::new();
     for a in &agents {
         text += &format!("{} ({})\n", str_of(a, "label"), str_of(a, "agent"));
-        let levels: Vec<&str> = a["levels"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
+        let levels = a["levels"].as_array().into_iter().flatten();
+        let levels: Vec<&str> = levels.filter_map(Value::as_str).collect();
         if !levels.is_empty() {
             text += &format!("  Levels: {}\n", levels.join(", "));
         }

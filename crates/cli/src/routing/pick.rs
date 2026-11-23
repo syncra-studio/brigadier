@@ -188,6 +188,9 @@ pub(crate) struct Pick {
 /// so the reservation it makes is seen by the next. A review's (`review`: its authors' agents) is
 /// the Review job's first entry on another agent, at high where the model has it; it never holds:
 /// none placed, it doesn't run [D385, D3026].
+/// Where the agent finds the models that make images.
+const DRAWING: &str = "`brigadier models` marks the ones that make images.";
+
 pub(crate) fn resolve(
     data: &Path,
     me: &str,
@@ -199,6 +202,8 @@ pub(crate) fn resolve(
 ) -> Result<Pick, Value> {
     let refuse = |m: &str| workers::refuse(m);
     let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
+    // Image work goes only to a model that makes images, on no job [D298].
+    let images = flags("--images").is_some();
     let _one = lock(data).map_err(|e| refuse(&e.to_string()))?;
     let groups = groups(data, Some(me));
     let t = table(data, &groups);
@@ -210,7 +215,7 @@ pub(crate) fn resolve(
         flags("--job")
     };
     let job = asked.as_deref().and_then(|j| jobs::named(&all, j)).cloned();
-    if review.is_none() && (job.is_none() && (asked.is_some() || model.is_none())) {
+    if review.is_none() && !images && (job.is_none() && (asked.is_some() || model.is_none())) {
         return Err(refuse(&jobs::refusal(&all)));
     }
     let name = job.as_ref().map(|j| str_of(j, "name").to_string());
@@ -228,6 +233,7 @@ pub(crate) fn resolve(
             let a = agent.clone().unwrap_or(mine);
             vec![json!({"agent": a, "model": m, "effort": effort})]
         }
+        None if images => jobs::drawing(&groups, &t["images"]),
         None => {
             let mut list = job
                 .as_ref()
@@ -280,6 +286,12 @@ pub(crate) fn resolve(
             Err(why) if model.is_some() => return Err(refuse(&why)),
             Err(_) => continue,
         };
+        if images && m["draws"] != true {
+            if model.is_some() {
+                return Err(refuse(&format!("{id} doesn't make images. {DRAWING}")));
+            }
+            continue;
+        }
         let high = (m["efforts"].as_array().into_iter().flatten()).any(|x| x == "high");
         let want = if review.is_some() && high {
             Some("high")
@@ -302,6 +314,9 @@ pub(crate) fn resolve(
                 "effort": runs_at.or(m["default_effort"].as_str().map(String::from)), "capped": capped}),
             hold: Value::Null,
         };
+        if images {
+            pick.ran["images"] = true.into();
+        }
         if passed {
             // Its why line: "the first in Review on another agent than Claude" [D385].
             pick.ran["other_than"] = jobs::and(&by).into();
@@ -335,6 +350,11 @@ pub(crate) fn resolve(
         )));
     }
     let Some(mut pick) = first else {
+        if images {
+            return Err(refuse(&format!(
+                "No model you may use makes images. {DRAWING}"
+            )));
+        }
         return Err(refuse(&format!(
             "No model in your {} job is one you may use: Settings › Routing sets it.",
             name.unwrap_or_default()
@@ -381,9 +401,12 @@ pub(crate) fn next(
         .unwrap_or_default();
     let all = t["jobs"].as_array().cloned().unwrap_or_default();
     let job = (l.ran["job"].as_str()).and_then(|j| jobs::named(&all, j));
-    let list = job.map_or(vec![], |j| {
-        j["entries"].as_array().cloned().unwrap_or_default()
-    });
+    let images = l.ran["images"] == true;
+    let list = match job {
+        _ if images => jobs::drawing(&groups, &t["images"]),
+        Some(j) => j["entries"].as_array().cloned().unwrap_or_default(),
+        None => vec![],
+    };
     let job = job.map(|j| str_of(j, "name").to_string());
     let at = list
         .iter()
@@ -404,7 +427,7 @@ pub(crate) fn next(
         let Ok(m) = allowed(data, &groups, &rules, a, id) else {
             continue;
         };
-        let Some(adapter) = adapters::get(a) else {
+        let Some(adapter) = adapters::get(a).filter(|_| !images || m["draws"] == true) else {
             continue;
         };
         // The same model only on another account, where its agent places by quota [D51].
@@ -424,6 +447,10 @@ pub(crate) fn next(
                         "{} hit its limit, so it went on with another account",
                         out[0]
                     ),
+                    false if images => format!(
+                        "{} had no account with room, so another model that makes images ran",
+                        jobs::and(&out)
+                    ),
                     false => format!(
                         "{} had no account with room, so the next in {} ran",
                         jobs::and(&out),
@@ -432,8 +459,11 @@ pub(crate) fn next(
                 };
                 // Said outright, so another model never keeps the last one's effort.
                 let effort = runs_at.or(m["default_effort"].as_str().map(String::from));
-                let ran = json!({"agent": a, "model": id, "account": account, "job": job, "name": name,
+                let mut ran = json!({"agent": a, "model": id, "account": account, "job": job, "name": name,
                     "effort": effort, "label": kept["label"], "quota": kept["quota"], "capped": capped, "note": note});
+                if images {
+                    ran["images"] = true.into();
+                }
                 return Ok(Some(((adapter, account, Some(id.into()), effort), ran)));
             }
             Err(r) => {

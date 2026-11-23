@@ -139,7 +139,8 @@ pub(crate) fn name_of(data: &Path, me: &str, agent: &str, id: &str) -> Option<St
 fn table(data: &Path, groups: &[Value]) -> Value {
     let saved = read(&data.join(FILE));
     let rules = saved["rules"].as_array().cloned().unwrap_or_default();
-    json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true})
+    json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true,
+        "images": saved["images"]})
 }
 
 /// The table without offers, for agents and results: agents never see offers [D386].
@@ -238,6 +239,18 @@ fn checked(groups: &[Value], v: &Value, now: &Value, saved: &Value) -> Result<Va
         }
     }
     (out["rules"], out["review"]) = (rules.into(), (v["review"] == true).into());
+    // The model images go to first: one that makes them, or none for automatic [D298].
+    // Left out, it stays as it was.
+    if let Some(images) = v.get("images") {
+        let (agent, id) = (str_of(images, "agent"), str_of(images, "model"));
+        if !images.is_null()
+            && now["images"] != *images
+            && model_of(groups, agent, id).is_none_or(|m| m["draws"] != true)
+        {
+            return Err("That model doesn't make images.".into());
+        }
+        out["images"] = images.clone();
+    }
     Ok(out)
 }
 

@@ -169,7 +169,24 @@ pub(crate) fn lead(jobs: &[Value]) -> String {
         text += &format!("- {}: {}\n", str_of(j, "name"), str_of(j, "for"));
     }
     // A start with neither --job nor --model is refused with how to fix it, so that isn't said here [D529].
-    text.trim_end().into()
+    text += "An image to make or edit: your own image tool, else `brigadier start --images \"<brief>\"`; never drawn with code.";
+    text
+}
+
+/// The models image work may go to, for `--images` [D298]: the user's Images model first, then
+/// every other one that makes images, in the pickers' order, each at its own default effort.
+pub(super) fn drawing(groups: &[Value], first: &Value) -> Vec<Value> {
+    let all = groups.iter().flat_map(|g| {
+        (g["models"].as_array().into_iter().flatten())
+            .filter(|m| m["draws"] == true)
+            .map(|m| json!({"agent": g["provider"], "model": m["id"], "effort": null}))
+    });
+    let first = json!({"agent": first["agent"], "model": first["model"], "effort": null});
+    let mut list: Vec<Value> = all.collect();
+    if let Some(at) = list.iter().position(|e| *e == first) {
+        list[..=at].rotate_right(1);
+    }
+    list
 }
 
 /// "A", "A and B", "A, B and C".
