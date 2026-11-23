@@ -369,7 +369,8 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           itemSize={54}
           onScrollEnd={letGo}
         >
-          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest} onToggle={toggle} />}
+          {/* A message with only Thinking under it keeps its time and actions in view, which hide their kept room otherwise. */}
+          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest && !(thinking && line.id === tail?.id && line.type === "item" && line.item.kind === "message" && line.item.role === "user")} onToggle={toggle} />}
         </Virtualizer>
         <div data-footer>
           <div className={`${COLUMN} pb-8`}>

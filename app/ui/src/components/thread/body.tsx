@@ -27,7 +27,7 @@ import { ToolRow } from "./tool";
 import { GroupRow, ThoughtRow } from "./work";
 import { BrigadeMessagePill } from "../../sessions/brigade";
 
-function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigade?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
+function UserRow({ id, cid, text, time, dated, files, draft, brigade, older }: { brigade?: boolean; older?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
   const session = useContext(SessionOfThread)?.id;
   const at = (file: string) => `/attachment/${session}/${file}`;
@@ -39,7 +39,7 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade }: { brigad
   );
   // A message asking to repair a PR says so over it, "PR fix" [D171].
   const fix = draft?.parts.some((part) => typeof part !== "string" && part.kind === "paste" && PR_FIX.test(part.preview ?? "")) && <span className="w-fit text-sm text-muted-foreground">PR fix</span>;
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} rewind={cid ? offer : undefined} files={brigade || fix ? <>{sent}{brigade && <BrigadeMessagePill />}{fix}</> : sent} owner={session} parts={draft?.parts} />;
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} older={older} rewind={cid ? offer : undefined} files={brigade || fix ? <>{sent}{brigade && <BrigadeMessagePill />}{fix}</> : sent} owner={session} parts={draft?.parts} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
@@ -124,7 +124,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           <>
             {/* Each side of a turn heads itself for a screen reader. */}
             <h2 className="sr-only">You said:</h2>
-            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} brigade={item.brigade} />
+            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} brigade={item.brigade} older={older} />
           </>
         );
       }

@@ -112,7 +112,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
             key={each.cid}
             keep={each.cid}
             text={each.text}
-            time={each.at}
+            time={each.at} older={each !== shown.at(-1)}
             dated={dated}
             owner={id}
             parts={each.parts ? (JSON.parse(each.parts) as Draft).parts : undefined}
