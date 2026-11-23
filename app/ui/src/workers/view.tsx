@@ -7,6 +7,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { ArrowLeft, ChevronRight } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Body } from "../components/thread/body";
+import { ImageRow } from "../components/thread/image";
 import { SetupRow } from "../components/thread/setup";
 import type { Item, Setup, Turn, Work } from "../thread/item";
 import { type Line, lineMaker } from "../thread/lines";
@@ -147,6 +148,7 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
       </div>
     );
   }
+  if (item.kind === "image") return <ImageRow item={item} />;
   return <Body item={item} turn={line.turn} step={false} />;
 }
 
