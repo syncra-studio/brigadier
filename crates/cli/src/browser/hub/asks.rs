@@ -249,9 +249,14 @@ fn site(url: &str) -> &str {
 }
 
 /// The grant a yes for the session leaves: session `me` on `site`, kept in HUB.grants beside the
-/// one-call yeses, as long as the hub runs.
+/// one-call yeses as long as the hub runs, its value the session's birth so an id made again
+/// inherits nothing.
 fn site_key(me: &str, site: &str) -> (String, String, String) {
     (me.into(), String::new(), format!("site\u{1f}{site}"))
+}
+
+fn born(data: &Path, me: &str) -> Value {
+    brigadier_core::load(data, me).map_or(Value::Null, |s| s.created.into())
 }
 
 /// A card's question for the action that asks, as the user would say it. One that asks because of
@@ -338,7 +343,8 @@ fn said(reason: &str) -> String {
 }
 
 /// Asks the user about an action on a card in session `me`'s thread and waits for the answer.
-/// Ok on a yes, the yes kept for the call; else what the agent hears.
+/// Ok on a yes, the yes kept for the call, or given back for the retry alone when a yes for the
+/// session covers it; else what the agent hears.
 pub(super) fn ask(
     data: &Path,
     me: &str,
@@ -346,7 +352,7 @@ pub(super) fn ask(
     asked: &Value,
     key: Option<(String, String, String)>,
     here: &dyn Fn() -> bool,
-) -> Result<(), Value> {
+) -> Result<Option<Value>, Value> {
     let (url, what) = (
         asked["url"].as_str().unwrap_or(""),
         asked["what"].as_str().unwrap_or(""),
@@ -356,11 +362,12 @@ pub(super) fn ask(
     // A yes for the session covers scripts, clicks, typing, keys, delete and send on its site;
     // never money or identity (pay, card, password, code, sign-in).
     let site = matches!(sensitive, "script" | "action" | "delete" | "send").then(|| site(url));
-    if let (Some(s), Some(k)) = (site, &key)
-        && lock(&HUB.grants).contains_key(&site_key(me, s))
-    {
-        lock(&HUB.grants).insert(k.clone(), approved);
-        return Ok(());
+    let granted = site.and_then(|s| lock(&HUB.grants).get(&site_key(me, s)).cloned());
+    if granted.is_some_and(|b| !b.is_null() && b == born(data, me)) {
+        // `covered`: the page lets it through for these kinds only, should it turn out to pay.
+        return Ok(Some(
+            json!({"generation": asked["generation"], "url": url, "covered": true}),
+        ));
     }
     let question = question(op, sensitive, what, url);
     let id = format!("browser-{}", &core_uuid()[..8]);
@@ -388,7 +395,7 @@ pub(super) fn ask(
     let until = Instant::now() + ANSWER_WAIT;
     while here() && Instant::now() < until {
         match answer.recv_timeout(Duration::from_millis(500)) {
-            Ok((true, _)) => return Ok(()),
+            Ok((true, _)) => return Ok(None),
             Ok((false, why)) => {
                 return Err(
                     json!({"ok": true, "text": format!("The user said no: {question}{} Nothing was done. Don't do it, or anything else that does the same.", said(&why))}),
@@ -431,7 +438,7 @@ pub(crate) fn answered(
     }
     let site = (card.site.as_deref()).filter(|_| control["decision"] == "allowSession");
     if let Some(s) = site {
-        lock(&HUB.grants).insert(site_key(id, s), Value::Null);
+        lock(&HUB.grants).insert(site_key(id, s), born(data, id));
     }
     if let Some(waiter) = &card.waiter
         && waiter.send((allow, reason.to_string())).is_ok()

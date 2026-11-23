@@ -303,6 +303,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         declared: op.declared,
         always: op.always,
         approved,
+        covered: op.approved?.covered === true,
       });
       let answer = await ask(approvedHere(tab, op.approved));
       // Full: nothing asks, so the page's own question is answered yes at once.

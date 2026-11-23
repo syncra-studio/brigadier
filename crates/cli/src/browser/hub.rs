@@ -267,10 +267,12 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
     let key = asks::fingerprint(&op).map(|f| (me.to_string(), tab.clone(), f));
     // Asked first, the call goes on once the user says yes; the page may have moved by then, and
     // then it asks again.
+    let mut next = None;
     for _ in 0..3 {
         let mut sent = op.clone();
         // A yes the user gave this very call goes with it, taken: one yes lets one call through.
-        let granted = key.as_ref().and_then(|k| lock(&HUB.grants).remove(k));
+        let granted =
+            (next.take()).or_else(|| key.as_ref().and_then(|k| lock(&HUB.grants).remove(k)));
         if let Some(g) = &granted {
             sent["approved"] = g.clone();
         }
@@ -282,8 +284,9 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
                 }
             }
             Some("needsApproval") => {
-                if let Err(reply) = asks::ask(data, me, &op, &result, key.clone(), here) {
-                    return reply;
+                match asks::ask(data, me, &op, &result, key.clone(), here) {
+                    Ok(yes) => next = yes,
+                    Err(reply) => return reply,
                 }
                 continue;
             }

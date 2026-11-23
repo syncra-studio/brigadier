@@ -282,8 +282,9 @@
 
   /** Asks the user first: why, and the control as the page names it. */
   const ask = (sensitive, element) => {
-    // The yes was for this page, at this address.
-    if (op.approved && op.approved === location.href) return null;
+    // The yes was for this page, at this address; one for the session covers no paying, card, password, code or sign-in.
+    const covers = !op.covered || ["action", "delete", "send", "script"].includes(sensitive);
+    if (op.approved && op.approved === location.href && covers) return null;
     return { ask: { sensitive, what: `${roleOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
   };
 
