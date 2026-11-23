@@ -1,8 +1,8 @@
-// Mockup only: the sidebar in the main area's fill with a 1px line at its edge (variant B, ?v=b), now the app's own.
-// In the dark theme over a light one (the app has no light theme yet: fixtures.css's mockup-light stands in).
-// ?v=real is the real sidebar and main area alone, in the app's own (dark) theme. Fake sessions; no daemon. Not the app.
+// Mockup only: the sidebar in the main area's fill with a 1px line at its edge (variant B, ?v=b), now the app's own: the
+// real sidebar and main area on fake sessions. ?v=real is the whole app itself, on a stub daemon that hands it the same
+// sessions and answers nothing else. Both keep the sidebar open in a pane narrower than the app's 960px fold. Not the app.
 import "../src/theme.css";
-import "./fixtures.css";
+import "./sidebar-fill.css";
 
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,7 +23,7 @@ const PROJECTS: Project[] = [
   { id: "p1", name: "brigadier", folder: "/Users/me/code/brigadier" },
   { id: "p2", name: "website", folder: "/Users/me/code/website" },
   { id: "p3", name: "notes", folder: "/Users/me/notes" },
-];
+].map((project, at) => ({ ...project, trusted: true, setup: "", include: [], added: NOW - (3 - at) * 86_400_000 }));
 const row = (id: string, title: string, project: string | null, ago: number, extra: Partial<SessionRow> = {}): SessionRow => ({
   id, title, project, state: "idle", mark: null, resets: null, sent: NOW - ago * MIN, finished: NOW - ago * MIN, updated: NOW - ago * MIN, ...extra,
 });
@@ -64,26 +64,42 @@ function Thread() {
   );
 }
 
-/** The window, its fixed parts held inside by `transform-gpu`, in one theme. */
-function Window({ light }: { light?: boolean }) {
+/** The window: the real sidebar and main area. */
+function Window() {
   const [open, setOpen] = useState(true);
   const [active, setActive] = useState("s1");
   return (
-    <div className={cx("mockup-window relative transform-gpu overflow-hidden bg-background text-foreground", light && "mockup-light")}>
-      <SidebarProvider open={open} onOpenChange={setOpen}>
-        <AppSidebar storeKey={`mockup-sidebar-${light ? "light" : "dark"}`} rows={ROWS} projects={PROJECTS} active={active} offline={false} onOpen={setActive} onNewSession={() => {}} onNewChat={() => {}} />
-        <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">
-          <Thread />
-        </div>
-      </SidebarProvider>
-    </div>
+    <SidebarProvider open={open} onOpenChange={setOpen}>
+      <AppSidebar storeKey="mockup-sidebar" rows={ROWS} projects={PROJECTS} active={active} offline={false} onOpen={setActive} onNewSession={() => {}} onNewChat={() => {}} />
+      <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">
+        <Thread />
+      </div>
+    </SidebarProvider>
   );
 }
 
-const real = new URLSearchParams(location.search).get("v") === "real";
-createRoot(document.getElementById("root")!).render(
-  <div className="flex h-full flex-col">
-    <Window />
-    {!real && <Window light />}
-  </div>,
-);
+/** What main hands the page in the app: a port to the daemon, here one that lists the fake sessions, says onboarding is done, and refuses the rest. */
+function fakeDaemon() {
+  const { port1, port2 } = new MessageChannel();
+  const say = (frame: object) => {
+    const json = new TextEncoder().encode(JSON.stringify(frame));
+    const out = new Uint8Array(4 + json.length);
+    new DataView(out.buffer).setUint32(0, json.length);
+    out.set(json, 4);
+    port2.postMessage(out);
+  };
+  port2.onmessage = ({ data }: MessageEvent<Uint8Array>) => {
+    const { id, op, args = [] } = JSON.parse(new TextDecoder().decode(data.subarray(4)));
+    if (op === "subscribe") say({ re: id, n: 1, projects: PROJECTS, rows: ROWS.map((each) => ({ backend: "claude", items: 0, error: null, ...each })) });
+    else if (op === "run" && args[0] === "profile") say({ re: id, ok: true, onboarded: true, intro_seen: true, agents: [] });
+    else say({ re: id, ok: false, error: "not in this mockup", message: "Not in this mockup" });
+  };
+  window.postMessage("daemon-port", "*", [port1]);
+  say({ status: "running", pid: 1, version: "mockup", build: 0 });
+}
+
+if (new URLSearchParams(location.search).get("v") === "real") {
+  location.hash = "#thread/s1";
+  fakeDaemon();
+  void import("../src/main");
+} else createRoot(document.getElementById("root")!).render(<Window />);

@@ -17,7 +17,8 @@
   --color-sidebar: var(--color-background);
   /* The sidebar's fill as it shows on screen, opaque, for what lies over it (a ScrollFade) [D282]. */
   --color-sidebar-solid: var(--color-background);
-  --color-window-fill: transparent;
+  /* Under the sidebar's fill, opaque too: while the two crossfade on a fold, a Mac's clear window never shows through. */
+  --color-window-fill: var(--color-background);
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
   --color-popover-edge: rgb(255 255 255 / 12%);
