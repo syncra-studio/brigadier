@@ -120,6 +120,15 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
+    /// The turn it reports in: its own, or for a wake, the one it carries on.
+    pub fn report(&self) -> &str {
+        if self.origin == "agent" {
+            &self.of
+        } else {
+            &self.id
+        }
+    }
+
     /// Its agent's output of this kind. A message is under way from the reading that opens it
     /// (Claude's), or else its first words, until a step: it may be the reply that ends the turn.
     /// A reading that follows a step (Codex's, OpenCode's) leaves a safe point to cut at [D486].
@@ -261,7 +270,7 @@ impl Fold {
             if !turn.quiet {
                 self.finished = ts;
             }
-            self.ends.insert(turn.id.clone(), ts);
+            (self.ends).insert(turn.report().into(), (ts, outcome.into()));
             // Only an agent whose process lives on keeps its subagents past its turn.
             if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
             {
@@ -281,14 +290,25 @@ impl Fold {
         }
     }
 
-    /// What a wake its CLI starts now carries on: the turn that ended last, or what that one did.
-    pub(super) fn woke_of(&self) -> String {
+    /// A subagent the open turn started, by its id: the wake its end starts is that turn's.
+    pub(super) fn started(&mut self, id: String) {
+        if let Some(t) = self.turns.first() {
+            self.pending.by.insert(id, t.report().into());
+        }
+    }
+
+    /// A turn starts, so the wake on its way came: what one its CLI starts now carries on, the
+    /// turn whose work's end woke it, else the turn that ended last, or what that one did.
+    pub(super) fn woke_of(&mut self) -> String {
+        self.pending.due = false;
+        let woke = std::mem::take(&mut self.pending.woke);
         let of = |l: &Value| {
             l[if l["origin"] == "agent" { "of" } else { "id" }]
                 .as_str()
                 .map(String::from)
         };
-        self.last.as_ref().and_then(of).unwrap_or_default()
+        let last = self.last.as_ref().and_then(of).unwrap_or_default();
+        Some(woke).filter(|w| !w.is_empty()).unwrap_or(last)
     }
 
     /// A Stop between turns ends the wait to resume the one the network cut [D339].

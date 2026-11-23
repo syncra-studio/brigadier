@@ -162,14 +162,10 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
         {
             continue;
         }
-        // Its host died in the wake that carried it on: that wake was cut, and so was it.
-        // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
-        // it reads as finished. Upgrade when the fold keeps each turn's end.
-        let ended_as = match cut && woken(&f, turn) {
+        // Its host died in it, or in the wake that carried it on: that was cut, and so was it.
+        let ended_as = match cut && (open || woken(&f, turn)) {
             true => "cut",
-            false => last.map_or(if open { "cut" } else { "done" }, |l| {
-                l["outcome"].as_str().unwrap_or("done")
-            }),
+            false => f.ends.get(turn).map_or("done", |e| e.1.as_str()),
         };
         let how = match ended_as {
             "done" => "finished",
@@ -217,13 +213,17 @@ fn woken(f: &fold::Fold, turn: &str) -> bool {
 
 /// Whether `turn`, ended, waits on its live CLI's background work: it goes on in the wake that
 /// work started, whose end reports it, or, ended done, in the one its work still running will
-/// start, for up to WAKE_MS after it ended, so work that never wakes it can't hold it [D118].
+/// start, for up to WAKE_MS after it or its last wake ended, so work that never wakes it can't
+/// hold it [D118].
 pub(super) fn holds(f: &fold::Fold, turn: &str) -> bool {
     if f.child.as_ref().is_none_or(|c| c.exited) {
         return false;
     }
-    let done = end_of(f, turn).is_none_or(|l| l["outcome"] == "done");
-    let since = f.ends.get(turn).copied().unwrap_or(0);
+    let (since, how) = f
+        .ends
+        .get(turn)
+        .map_or((0, "done"), |e| (e.0, e.1.as_str()));
+    let done = how == "done";
     let soon = log::now_ms().saturating_sub(since) < WAKE_MS;
     woken(f, turn) || (done && soon && (f.pending.wakes() || !f.agents.is_empty()))
 }

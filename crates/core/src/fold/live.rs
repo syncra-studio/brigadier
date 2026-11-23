@@ -3,7 +3,7 @@
 use super::{Fold, Owner};
 use brigadier_frames::{log, procs};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -45,15 +45,36 @@ pub struct Pending {
     pub ids: BTreeSet<String>,
     /// One of those, or a subagent, ended with no turn open: the wake it starts is on its way.
     pub due: bool,
+    /// Each one, and each subagent, by the turn that started it, the one it reports in.
+    #[serde(default)]
+    pub by: BTreeMap<String, String>,
+    /// The turn the wake on its way carries on: the one whose work ended, where it's known.
+    #[serde(default)]
+    pub woke: String,
 }
 
 impl Pending {
-    /// Its CLI's new list; `idle`: no turn is open.
-    pub(super) fn listed(&mut self, item: &serde_json::Value, idle: bool) {
+    /// Its CLI's new list, with the turns open now: the first, if any, started what's new in it.
+    pub(super) fn listed(&mut self, item: &serde_json::Value, turns: &[super::Turn]) {
+        let open = turns.first().map(super::Turn::report);
         let ids = item["ids"].as_array().into_iter().flatten();
         let now: BTreeSet<String> = ids.filter_map(|i| i.as_str().map(String::from)).collect();
-        self.due |= idle && self.ids.iter().any(|i| !now.contains(i));
+        if let Some(gone) = self.ids.iter().find(|i| !now.contains(*i)).cloned() {
+            self.ended(&gone, open.is_none());
+        }
+        if let Some(t) = open {
+            let new = now.iter().filter(|i| !self.ids.contains(*i));
+            new.for_each(|i| drop(self.by.insert(i.clone(), t.into())));
+        }
         self.ids = now;
+    }
+
+    /// One of them or a subagent ended; `idle`: no turn is open, so it wakes its agent.
+    pub(super) fn ended(&mut self, id: &str, idle: bool) {
+        if idle {
+            self.due = true;
+            self.woke = self.by.get(id).cloned().unwrap_or_default();
+        }
     }
 
     /// Whether its agent will be woken by it.

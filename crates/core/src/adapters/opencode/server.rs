@@ -41,6 +41,8 @@ pub(super) struct State {
     dir: String,
     /// Its commands running in the background, by shell id: each one's end wakes the session.
     shells: BTreeSet<String>,
+    /// Shells that exited, as their exit can come before their call says it went to the background.
+    exited: HashSet<String>,
 }
 
 pub(super) type Shared = Arc<Mutex<State>>;
@@ -296,8 +298,13 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         "form.replied" | "form.cancelled" if st.forms.remove(d["id"].as_str().unwrap_or("")) => {}
         "shell.created" => {}
         // A background command's end, which its session wakes on: the list without it [D118].
-        "shell.exited" if st.shells.remove(d["id"].as_str().unwrap_or("")) => {
-            return say(json!({"type": "brigadier.pending", "data": st.shells}));
+        "shell.exited" => {
+            let id = d["id"].as_str().unwrap_or("").to_string();
+            if st.shells.remove(&id) {
+                say(json!({"type": "brigadier.pending", "data": st.shells}));
+            }
+            st.exited.insert(id);
+            return;
         }
         // A background subagent's report waking its parent: that is when its call ends.
         "session.inbox.enqueued"
@@ -406,7 +413,7 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
 
 /// A command it sent to the background, by its shell id: the list with it, once.
 fn shell(st: &mut State, id: Option<&str>) {
-    if let Some(id) = id
+    if let Some(id) = id.filter(|id| !st.exited.contains(*id))
         && st.shells.insert(id.into())
     {
         say(json!({"type": "brigadier.pending", "data": st.shells}));

@@ -168,7 +168,7 @@ pub(super) fn waited(
         let late = started.elapsed() >= Duration::from_secs(secs) || !here();
         let sent = if ended || late { end() } else { None };
         if ended || sent.is_some() {
-            let mine = || workers::take(data, me, to, Some(&turn));
+            let mine = || workers::take(data, me, to, Some(&turn), false);
             let reply = sent.or_else(mine);
             let reply = reply.or_else(|| workers::last_of_turn(data, to, &turn));
             let reply = reply.unwrap_or_default();
