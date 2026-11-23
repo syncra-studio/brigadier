@@ -5,7 +5,7 @@ import { EmptyState } from "../components/empty-state";
 import { NavRow } from "../components/nav";
 import { Kbd } from "../components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Dock, StickyNote } from "../icons";
+import { Dock, PullRequestOpen, StickyNote } from "../icons";
 import { FileViewer } from "../files/viewer";
 import { useHomeProject } from "../home/start";
 import { Actions } from "../landing/actions";
@@ -14,6 +14,8 @@ import { LivePrTab } from "../landing/live";
 import { BackgroundHistory } from "../panel/background-history";
 import { useFileRead } from "../panel/git";
 import { ago } from "../panel/words";
+import { PrInbox } from "../pull-requests/inbox";
+import { useDaemon } from "../daemon";
 import { ReviewView } from "../review/view";
 import { useNoteRun } from "../note/run";
 import { newId } from "../session/store";
@@ -26,7 +28,7 @@ import { MockupTab } from "../mockup/live";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
-import { CHAT, HOME, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+import { CHAT, HOME, openTab, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint not-has-disabled:hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key along the top, its name under them. */
@@ -72,6 +74,14 @@ function NewTab({ owner, tab, archived, active }: { owner: string; tab: Tab; arc
               <span className={LABEL}>New note</span>
             </button>
           </Card>
+          <Card why={null}>
+            <button type="button" onClick={() => replaceTab(owner, tab.id, "pr", "list")} className={TOOL}>
+              <span className={TOP}>
+                <PullRequestOpen className={ICON} />
+              </span>
+              <span className={LABEL}>Pull requests</span>
+            </button>
+          </Card>
         </div>
         <LocalServers owner={owner} active={active} onOpen={(url) => replaceTab(owner, tab.id, "browser", url)} />
         <NoteList owner={owner} active={active} onOpen={(note) => replaceTab(owner, tab.id, "note", note)} />
@@ -111,6 +121,18 @@ function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; o
   );
 }
 
+/** The Pull Requests page's inbox as a tab, preset to the session's project and its GitHub account; a PR opens in its own tab [D314]. */
+function PrListTab({ owner, tab }: { owner: string; tab: Tab }) {
+  const { rows, projects } = useDaemon();
+  const home = useHomeProject();
+  const id = owner === HOME ? home?.id : rows?.find((row) => row.id === owner)?.project;
+  const account = id ? projects?.find((each) => each.id === id)?.github_account : null;
+  // Preset once the project's known; the menus then keep what's picked here.
+  // shortcut: a closed tab's filters stay in localStorage (a few bytes each); keep them in Rust's tab record if that grows.
+  if (!rows || !projects) return null;
+  return <PrInbox tab={{ key: `pullRequests.tab.${tab.id}`, preset: { ...(id && { project: id }), ...(account && { account }) }, open: (ref) => openTab(owner, "pr", ref) }} />;
+}
+
 /** A checkout file, read by Rust [D1002]. */
 function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
   const path = tab.target ?? "";
@@ -146,7 +168,9 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             {/* Each kind until it's wired: the terminal comes later [D361]. */}
             {/* A PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
             <HostOf.Provider key={host} value={tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
-              {owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (
+              {tab.kind === "pr" && tab.target === "list" ? (
+                <PrListTab owner={owner} tab={tab} />
+              ) : owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (
                 <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
               ) : tab.kind === "file" ? (
                 <FileTab key={tab.target} tab={tab} active={tab.id === active} />

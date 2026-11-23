@@ -19,10 +19,13 @@ import { openPrPage, pastedRef, type PrRow } from "./route";
  * The Pull Requests page with no PR open [D241 D243]: Open / Merged / Closed, a
  * search that takes GitHub's qualifiers (label:bug), the Project and Account menus, then Review requested, Authored and
  * Others, each row its repo, head → base and a checks dot. A pick opens the PR as the sidebar does. The filters are kept.
+ * In a session's Pull requests tab [D314] it's the list alone, preset to the session's project, a pick opening the PR's own tab.
  */
 
 type State = "open" | "merged" | "closed";
 type Filters = { state: State; words: string; project: string; account: string };
+/** A Pull requests tab's: its filters kept under `key`, first `preset`; `open` takes a pick. */
+export type InboxTab = { key: string; preset: Partial<Filters>; open: (ref: string) => void };
 type Scopes = { accounts: string[]; projects: { id: string; name: string; repos: string[] }[] };
 
 const ALL = "all";
@@ -41,8 +44,9 @@ const CHECKS: Record<string, [string, string]> = {
 };
 const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
-export function PrInbox() {
-  const [filters, setFilters] = useStored<Filters>("pullRequests.inbox", { state: "open", words: "", project: ALL, account: ALL });
+export function PrInbox({ tab }: { tab?: InboxTab }) {
+  const [filters, setFilters] = useStored<Filters>(tab?.key ?? "pullRequests.inbox", { state: "open", words: "", project: ALL, account: ALL, ...tab?.preset });
+  const open = (row: PrRow | string) => (tab ? tab.open(typeof row === "string" ? row : row.ref) : openPrPage(row));
   const set = (next: Partial<Filters>) => setFilters({ ...filters, ...next });
   const scopes = useScopes();
   const words = useSettled(filters.words.trim());
@@ -64,12 +68,12 @@ export function PrInbox() {
   // A failed refresh leaves the rows it had in place, as the sidebar does [D262].
   const failed = sections.every((each) => !each.rows?.length) ? (read?.error ?? (sections.every((each) => each.error) ? sections[0]!.error : null)) : null;
   return (
-    // From the window's top, as Settings: the list scrolls under the titlebar's row, fading there [D292].
-    <main className="relative -mt-tab-bar flex min-h-0 flex-1 flex-col">
+    // From the window's top, as Settings: the list scrolls under the titlebar's row, fading there [D292]; a tab's sits under its bar.
+    <main className={cx("relative flex min-h-0 flex-1 flex-col", !tab && "-mt-tab-bar")}>
       <ScrollFade side="top" />
       {/* The titlebar's row stays empty and drags the window, as on a PR and in Settings, over what scrolls under it [D277]. */}
-      <div className="app-drag absolute inset-x-0 top-0 z-10 h-tab-bar" />
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter pt-tab-bar">
+      {!tab && <div className="app-drag absolute inset-x-0 top-0 z-10 h-tab-bar" />}
+      <div className={cx("flex min-h-0 flex-1 flex-col overflow-y-auto scroll-gutter", !tab && "pt-tab-bar")}>
         <div className="flex w-full flex-col gap-5 px-6 pt-8 pb-12">
           <header className="flex items-center gap-4">
             <h1 className="min-w-0 flex-1 text-page-title font-medium">Pull Requests</h1>
@@ -98,7 +102,7 @@ export function PrInbox() {
                 onChange={(event) => {
                   // A pasted link opens its PR at once, as the sidebar's search does [D160].
                   const ref = pastedRef(event.target.value);
-                  if (ref) openPrPage(ref);
+                  if (ref) open(ref);
                   else set({ words: event.target.value });
                 }}
                 onKeyDown={(event) => {
@@ -170,7 +174,7 @@ export function PrInbox() {
                     {each.error && <p className="px-3 text-xs text-destructive">{each.error}</p>}
                     <ul className="flex flex-col">
                       {each.rows.map((row) => (
-                        <InboxRow key={row.ref} row={row} />
+                        <InboxRow key={row.ref} row={row} onOpen={() => open(row)} />
                       ))}
                     </ul>
                   </section>
@@ -184,12 +188,12 @@ export function PrInbox() {
 }
 
 /** A PR in the inbox: its state, title, checks and size; under them its author, age, repo #n and head → base. */
-function InboxRow({ row }: { row: PrRow }) {
+function InboxRow({ row, onOpen }: { row: PrRow; onOpen: () => void }) {
   const repo = row.ref.split("#")[0]!.split("/").slice(1).join("/");
   const checks = row.checks ? CHECKS[row.checks] : undefined;
   return (
     <li>
-      <button type="button" onClick={() => openPrPage(row)} className="flex w-full cursor-pointer gap-3 rounded-row px-3 py-2.5 text-start hover:bg-fill focus-visible:focus-ring">
+      <button type="button" onClick={onOpen} className="flex w-full cursor-pointer gap-3 rounded-row px-3 py-2.5 text-start hover:bg-fill focus-visible:focus-ring">
         <StateIcon state={row.state === "open" && row.draft ? "draft" : row.state} className="pt-0.5" />
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex min-w-0 items-center gap-3">
