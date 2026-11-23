@@ -161,8 +161,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const editing = useRef<{ qid: string; slot: number; text: string; to?: string } | null>(null);
   // A send into the paused queue, asked about first; its words stay in the field meanwhile.
   const [asking, setAsking] = useState<string | null>(null);
-  // What waits above the field for the agent, and the chips the message being asked about carries [D1040].
-  const chips = useChips(id);
+  // What waits above the field for the agent, and the chips the message being asked about carries [D1040]; `carried`, all but the tools switched on, which never go alone.
+  const chips = useChips(id), carried = chips.filter((chip) => chip.kind !== "tool");
   const askingChips = useRef<readonly Chip[]>([]);
   // The To: the worker the next message goes to alone (@ › Message directly); leaving the session takes it away.
   const [to, setTo] = useState<string | null>(null);
@@ -299,7 +299,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
     const tiles = files.tiles();
-    if (held || files.hold(rest) || (isEmpty({ parts: rest, attachmentIds: tiles }) && chips.length === 0)) return;
+    if (held || files.hold(rest) || (isEmpty({ parts: rest, attachmentIds: tiles }) && carried.length === 0)) return;
     const text = withChips(plainText(rest), chips);
     const made = { id: sessionId(), cid: newId() };
     const parts = body(rest, tiles, chips);
@@ -352,7 +352,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (to && !isEmpty({ parts, attachmentIds: files.tiles() })) return sendTo(to, parts, files.tiles(), other);
     if (inProject && parts.some(isNew)) return submitNew();
     const tiles = files.tiles();
-    if (isEmpty({ parts, attachmentIds: tiles }) && chips.length === 0) {
+    if (isEmpty({ parts, attachmentIds: tiles }) && carried.length === 0) {
       // ⌘⏎ with nothing typed steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued") steerQueued(items[0].id);
       return;
@@ -421,9 +421,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       tiles={
         <>
           {files.tilesRow}
-          {chips.length > 0 && (
+          {carried.length > 0 && (
             <div data-slot="composer-attachments" className="flex w-full flex-wrap items-end gap-2 px-1 pt-1 pb-1.5">
-              {chips.map((chip) =>
+              {carried.map((chip) =>
                 chip.kind === "agent" ? (
                   <AgentChipTile key={chip.id} chip={chip.chip} onRemove={() => dropChips(id, [chip.id])} />
                 ) : (
@@ -444,7 +444,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
       model={model.pill}
-      send={<SendButton followUp={followUp} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline && !worker} canResume={resumable && !worker} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
+      send={<SendButton followUp={followUp} empty={empty && carried.length === 0 && files.tileIds.length === 0} running={busy} canStop={busy && !offline && !worker} canResume={resumable && !worker} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
       after={
         <PausedSendDialog
           waiting={asking === null ? null : items.length}
