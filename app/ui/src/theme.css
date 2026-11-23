@@ -11,14 +11,12 @@
   --color-background: #181818;
   /* The window around the sidebar and panels, as the card. */
   --color-chrome: var(--color-card);
-  /* Sidebar, strip, right panel and window fill: an opaque sidebar, in hex for main (Windows' caption buttons). */
+  /* The right panel's fill, as the chrome: opaque. */
   --color-card: #262626;
   /* The strip and sidebar's fill: the page's, one surface with the main area, a 1px line between (main-surface). */
   --color-sidebar: var(--color-background);
   /* The sidebar's fill as it shows on screen, opaque, for what lies over it (a ScrollFade) [D282]. */
   --color-sidebar-solid: var(--color-background);
-  /* Under the sidebar's fill, opaque too: while the two crossfade on a fold, a Mac's clear window never shows through. */
-  --color-window-fill: var(--color-background);
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
   --color-popover-edge: rgb(255 255 255 / 12%);
@@ -738,12 +736,6 @@
 
 :root {
   color-scheme: dark;
-}
-/* A Mac's window is clear behind the shell (main.ts's vibrancy); the sidebar's opaque fill covers it. */
-:root[data-platform="darwin"] {
-  & body:has([data-slot="sidebar-wrapper"]) {
-    background: transparent;
-  }
 }
 
 @layer base {
@@ -1548,7 +1540,6 @@
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
     --toggle-room: calc(var(--spacing) * 27);
-    background-color: var(--color-window-fill);
     --sidebar-layer: var(--color-sidebar);
   }
   @media (prefers-reduced-motion: reduce) {
