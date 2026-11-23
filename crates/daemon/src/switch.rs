@@ -98,8 +98,8 @@ pub fn reconnect(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
-/// Whether `host:port` resolves and takes a connection within 5 s.
+/// Whether `host:port` resolves and one of its addresses takes a connection within 5 s.
 fn reachable(host: &str) -> bool {
-    let addr = host.to_socket_addrs().ok().and_then(|mut a| a.next());
-    addr.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_secs(5)).is_ok())
+    let mut addrs = host.to_socket_addrs().into_iter().flatten();
+    addrs.any(|a| TcpStream::connect_timeout(&a, Duration::from_secs(5)).is_ok())
 }

@@ -276,6 +276,13 @@ impl Fold {
         }
     }
 
+    /// A Stop between turns ends the wait to resume the one the network cut [D339].
+    pub(super) fn halt(&mut self) {
+        if let Some(l) = self.last.as_mut().filter(|_| self.turns.is_empty()) {
+            l["halted"] = true.into();
+        }
+    }
+
     pub(super) fn close_all(&mut self, outcome: &str, reason: Value, ts: u64) {
         while !self.turns.is_empty() {
             self.close(outcome, reason.clone(), ts);

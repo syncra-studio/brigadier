@@ -461,6 +461,7 @@ impl Fold {
                     (self.limit, self.resets, self.refused) = (None, None, None);
                 }
                 self.agents.clear();
+                self.halt();
                 self.close_all("stopped", item["by"].clone(), ts)
             }
             "compaction" if item["progress"] != "running" => self.compactions += 1,

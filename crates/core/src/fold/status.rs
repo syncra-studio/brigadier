@@ -163,10 +163,13 @@ pub const RECONNECTS: u64 = 3;
 
 /// The resume due for a last turn a passing failure ended (no connection, busy servers, a timeout)
 /// [D339]: its command id, one per try, so a repeat or a racing pass finds it logged; which try;
-/// the turn it carries on. `now`: the user's Try again, past the tries.
+/// the turn it carries on. `now`: the user's Try again, past the tries or a Stop.
 pub fn reconnect(fold: &Fold, now: bool) -> Option<Value> {
     let last = fold.last.as_ref().filter(|_| fold.turns.is_empty())?;
-    if last["outcome"] != "failed" || !adapters::temporary(last["why"].as_str()?) {
+    if last["outcome"] != "failed"
+        || !adapters::temporary(last["why"].as_str()?)
+        || (last["halted"] == true && !now)
+    {
         return None;
     }
     let cid = last["cid"].as_str().or(last["id"].as_str())?;

@@ -251,8 +251,8 @@ impl Thread {
         let resume = t.origin == "system" && t.text == crate::send::RESUME;
         // Brigadier's resume once the network is back: its own block, the failed row saying it carried on [D339].
         let reconnect = t.origin == "system" && t.text == crate::send::RECONNECT;
-        let failed = self.items.iter().rposition(|i| i["reason"] == "failed");
-        if let Some(at) = failed.filter(|_| reconnect) {
+        let failed = || self.items.iter().rposition(|i| i["reason"] == "failed");
+        if let Some(at) = reconnect.then(failed).flatten() {
             self.items[at]["resumed"] = true.into();
             self.changed_items.insert(at);
         }
