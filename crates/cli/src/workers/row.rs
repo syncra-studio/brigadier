@@ -43,8 +43,12 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
             Some(_) => ("done", "Done".into()),
             None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),
             None if state == "new" => ("working", "Starting".into()),
-            // A mockup worker between rounds waits on the user's notes or pick [D560].
-            None if !l.asked["mockup"].is_null() => {
+            // A mockup worker between rounds waits on the user's notes or pick [D560]; once picked it builds,
+            // and a turn it ends then waits on its lead, not the user.
+            None if !l.asked["mockup"].is_null()
+                && !read_json::<Value>(&dir.join("mockup.json"))
+                    .is_some_and(|m| m["picked"].is_string()) =>
+            {
                 ("needsYou", "Ready · pick one with Use".into())
             }
             // Its turn ended, its outcome not yet written: still finishing, never back to Starting.
