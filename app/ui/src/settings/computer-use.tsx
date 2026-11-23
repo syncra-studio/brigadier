@@ -14,6 +14,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 export const COMPUTER_USE_ROWS = {
   enable: { label: "Let sessions use apps on this Mac", description: "Sessions, Chats and their workers can see and control apps in the background.", section: "Enable" },
   cursor: { label: "Show cursor", description: "A cursor shows where an agent clicks, types and scrolls. Your own pointer stays yours.", section: "Enable" },
+  web: { label: "Web pages in Brigadier's browser", description: "Agents open web pages in Brigadier's browser, not in yours, unless you name your browser in the chat.", section: "Enable" },
   accessibility: { label: "Accessibility", description: "Read what's in app windows and use their controls", section: "Permissions" },
   screenRecording: { label: "Screen Recording", description: "See app windows, to check what happened", section: "Permissions" },
 } as const;
@@ -39,7 +40,7 @@ const STATE_LABEL: Record<PermissionState, string> = {
 };
 
 /**
- * Settings › Computer use, the old page cut to its switch, Show cursor [D956] and the two macOS permissions [D911, D912]: Rust's status,
+ * Settings › Computer use, the old page cut to its switch, Show cursor [D956], Web pages in Brigadier's browser [D2032] and the two macOS permissions [D911, D912]: Rust's status,
  * read again every 2 s while the page shows, the last one kept painting at once. The switch moves at once and holds until a status after the change.
  */
 export function ComputerUsePage() {
@@ -48,6 +49,7 @@ export function ComputerUsePage() {
   const [wanted, setWanted] = useState<boolean | null>(null);
   const save = useSave();
   const cursorSave = useSave();
+  const webSave = useSave();
   const settings = useSettings().value;
   const load = () =>
     run(["computer", "status"]).then(
@@ -77,6 +79,7 @@ export function ComputerUsePage() {
   };
   const row = COMPUTER_USE_ROWS.enable;
   const cursor = COMPUTER_USE_ROWS.cursor;
+  const web = COMPUTER_USE_ROWS.web;
   const noCursor = status?.noCursor ? `The cursor can't show in this build: ${status.noCursor}` : null;
   return (
     <SettingsPage title="Computer use">
@@ -88,6 +91,11 @@ export function ComputerUsePage() {
           {settings && (
             <SettingsRow label={cursor.label} description={cursor.description} error={cursorSave.error ?? noCursor}>
               <Switch aria-label={cursor.label} checked={settings.computer_cursor} onCheckedChange={(next) => cursorSave.run(() => setSetting("computer_cursor", next))} />
+            </SettingsRow>
+          )}
+          {settings && (
+            <SettingsRow label={web.label} description={web.description} error={webSave.error}>
+              <Switch aria-label={web.label} checked={settings.computer_web} onCheckedChange={(next) => webSave.run(() => setSetting("computer_web", next))} />
             </SettingsRow>
           )}
         </SettingsCard>
