@@ -73,6 +73,13 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
         }
         match (e["role"].as_str(), e["label"].as_str()) {
             (Some("AXMenuItem"), Some(name)) => drop(s.items.insert(n, name.to_string())),
+            // shortcut: Chromium's and Safari's English names; add others as an agent meets them.
+            (Some("AXTextField"), Some(name))
+                if name.to_lowercase().starts_with("address and search") =>
+            {
+                s.address = Some(n);
+                drop(s.items.remove(&n))
+            }
             _ => drop(s.items.remove(&n)),
         }
         if let Some(f) = e["frame"].as_object() {
@@ -216,7 +223,7 @@ pub(super) fn read(
             last = n;
         }
     }
-    (s.secure, s.frames, s.values, s.moved) = Default::default();
+    (s.secure, s.frames, s.values, s.moved, s.address) = Default::default();
     learn(s, &found);
     let tree = found["tree_markdown"].as_str().unwrap_or("");
     // The window's own title, as accessibility gives it: the listed one is often empty.
@@ -448,14 +455,14 @@ fn rows_changed(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) ->
         }
         // Most of it changed (a page loaded): the window as it is now.
         Some("too_much_changed" | "diff_too_large") => {
-            (s.secure, s.values, s.moved) = Default::default();
+            (s.secure, s.values, s.moved, s.address) = Default::default();
             learn(s, &found);
             let tree = tidy(&mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure));
             (Seen::Yes, format!("Most of the window changed; it reads now:\n{tree}"))
         }
         // No baseline to compare: the window as it is now, never called a change.
         _ => {
-            (s.secure, s.values, s.moved) = Default::default();
+            (s.secure, s.values, s.moved, s.address) = Default::default();
             learn(s, &found);
             let tree = tidy(&mask(found["tree_markdown"].as_str().unwrap_or(""), &s.secure));
             match tree.trim().is_empty() {

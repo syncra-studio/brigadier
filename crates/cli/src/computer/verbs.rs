@@ -72,6 +72,8 @@ struct Sess {
     frames: HashMap<u64, [f64; 4]>,
     /// Each control's whole value: `type` reads its text back there.
     values: HashMap<u64, String>,
+    /// The browser's address bar, by number: `type --submit` checks it took the url.
+    address: Option<u64>,
     /// Menu items by number, by name: a menu open in its own window is out of the driver's reach.
     items: HashMap<u64, String>,
     /// The rows were renumbered since the last whole read.
@@ -261,23 +263,27 @@ fn verb(
             };
             press(data, me, &mut s, what, cua, w, here)?
         }
+        // A key goes to the window as keys, never as a menu pick: Chromium runs a picked item in
+        // whichever of its windows was last in front, a popup over the one read [D2032].
         "key" => match key(&s, me, w.rest.first().copied().unwrap_or(""))? {
-            ("hotkey", args) => {
-                let keys = json!({"keys": args["keys"]});
-                press(data, me, &mut s, keys, ("hotkey", args), w, here)?
+            (name, mut args) if s.window != 0 && !s.snapshot.is_empty() => {
+                if window::chromium(data, s.pid, here) {
+                    // Background, Cua sends a menu's key equivalent through the menu bar.
+                    args["delivery_mode"] = "foreground".into();
+                }
+                act(
+                    data,
+                    me,
+                    &mut s,
+                    &format!("Pressed {}", w.rest[0]),
+                    name,
+                    args,
+                    here,
+                )?
             }
-            (name, args) if s.window != 0 && !s.snapshot.is_empty() => act(
-                data,
-                me,
-                &mut s,
-                &format!("Pressed {}", w.rest[0]),
-                name,
-                args,
-                here,
-            )?,
             _ => {
                 return Err(refuse(&format!(
-                    "{} has no window for keys to go to. `brigadier computer read {}` lists its menus; File > New opens a window in most apps.",
+                    "{} has no window for keys to go to: pick a menu item instead, `brigadier computer menu \"File > New\"` opens a window in most apps (`brigadier computer read {}` lists its menus).",
                     s.app, s.app
                 )));
             }
@@ -372,6 +378,12 @@ fn verb(
                     "[{n}] is a password field: ask the user to type it."
                 )));
             }
+            // `type` replaces: the field is emptied first, else the text goes in at its caret.
+            let old = s.values.get(&n).cloned().unwrap_or_default();
+            if !old.is_empty() {
+                let clear = json!({"element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "value": "", "session": me});
+                call(data, "set_value", clear, here)?;
+            }
             let args = json!({"text": text, "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
             let line = format!("Typed {} characters into [{n}]", text.chars().count());
             let mut out = act(data, me, &mut s, &line, "type_text", args, here)?;
@@ -381,18 +393,45 @@ fn verb(
                 return Ok(out);
             }
             let landed = window::shows(&s, n, text);
-            let typed = match landed {
-                true => format!("{line}: done, [{n}] reads it back."),
-                false => format!("{line}: [{n}] doesn't read it back. Read it before going on."),
+            // The old text still there beside the new: it went in at the caret, not over it.
+            let kept = !old.is_empty() && !text.contains(old.trim()) && window::shows(&s, n, &old);
+            let typed = match (landed, kept) {
+                (true, false) => format!("{line}: done, [{n}] reads it back."),
+                (true, true) => format!(
+                    "{line}: [{n}] holds its old text too: \"{}\". Read it before going on.",
+                    s.values[&n]
+                ),
+                (false, _) => {
+                    format!("{line}: [{n}] doesn't read it back. Read it before going on.")
+                }
             };
+            let landed = landed && !kept;
             out = out.replacen(out.lines().next().unwrap_or(""), &typed, 1);
             // Return only after text that landed: never on a refusal or an unknown outcome.
             if w.flags.contains("--submit") && !landed {
                 out.push_str("\nNot submitted: read the window, then `key return`.");
             } else if w.flags.contains("--submit") {
-                let enter =
-                    json!({"key": "return", "pid": s.pid, "window_id": s.window, "session": me});
+                // A real Return to the field: Chromium's address bar takes only a hardware one.
+                let mut enter = json!({"key": "return", "element_token": token(&s, n), "pid": s.pid, "window_id": s.window, "session": me});
+                if window::chromium(data, s.pid, here) {
+                    enter["delivery_mode"] = "foreground".into();
+                }
+                let title =
+                    |s: &Sess| (s.wins.iter().find(|w| w.0 == s.window)).map(|w| w.1.clone());
+                let (address, before) = (s.address == Some(n), title(&s));
                 out = act(data, me, &mut s, "Pressed Return", "press_key", enter, here)?;
+                if address {
+                    let url = s
+                        .address
+                        .and_then(|a| s.values.get(&a))
+                        .cloned()
+                        .unwrap_or_default();
+                    out.push_str(&match (url == old, title(&s) == before) {
+                        (true, _) => format!("\nThe address bar still shows \"{old}\": the page didn't change."),
+                        (false, true) => format!("\nThe address bar shows \"{url}\", but the page title is the same: read to check it loaded."),
+                        (false, false) => format!("\nThe address bar shows \"{url}\": the page changed."),
+                    });
+                }
                 out = format!("{typed}\n{out}");
             }
             out

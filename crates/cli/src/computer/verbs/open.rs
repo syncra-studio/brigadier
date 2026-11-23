@@ -351,10 +351,7 @@ pub(super) fn press(
         // Refused, so no second try through Cua's menu [D903].
         Ok(Err(why)) if why.ends_with("no pasting: ask the user.") => return Err(refuse(&why)),
         Ok(Err(_)) if !cua.0.is_empty() && s.window != 0 && !s.snapshot.is_empty() => {
-            let line = match cua.0 {
-                "hotkey" => format!("Pressed {}", w.rest.join(" ")),
-                _ => format!("Chose {}", w.rest.join(" ")),
-            };
+            let line = format!("Chose {}", w.rest.join(" "));
             return act(data, me, s, &line, cua.0, cua.1, here);
         }
         Ok(Err(why)) => return Err(refuse(&format!("{why} {read_again}"))),
