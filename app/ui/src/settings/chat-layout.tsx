@@ -25,10 +25,10 @@ function ChatLayoutPicture({ mode }: { mode: ChatLayout }) {
   );
 }
 
-/** The two layouts as pictures to pick from, the old app's Sidebar row. A choice is always made: picking the chosen one again keeps it. */
+/** The two layouts as pictures to pick from, the old app's Sidebar row. A choice is always made: picking the chosen one again keeps it, and says so. */
 export function ChatLayoutChoice({ label, value, onChange }: { label: string; value: ChatLayout; onChange: (mode: ChatLayout) => void }) {
   return (
-    <SegmentedRoot aria-label={label} value={[value]} onValueChange={([next]) => next && onChange(next as ChatLayout)} className="flex gap-3">
+    <SegmentedRoot aria-label={label} value={[value]} onValueChange={([next]) => onChange((next ?? value) as ChatLayout)} className="flex gap-3">
       {CHOICES.map((choice) => (
         <Segment
           key={choice.mode}

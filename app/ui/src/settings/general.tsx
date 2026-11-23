@@ -134,9 +134,16 @@ export function ThreadSection({ settings }: { settings: Settings }) {
           <ChatLayoutChoice
             label={GENERAL_ROWS.chatLayout.label}
             value={settings.message_layout}
-            onChange={(mode) =>
-              save.run(() => Promise.all([setSetting("thread_width", mode === "bubbles" ? "centered" : "full"), setSetting("message_layout", mode)]))
-            }
+            // Only what differs is sent, so picking the shown tile again mends a mixed pair, as left by an older build or a half-failed save.
+            onChange={(mode) => {
+              const width = mode === "bubbles" ? "centered" : "full";
+              save.run(() =>
+                Promise.all([
+                  settings.thread_width !== width && setSetting("thread_width", width),
+                  settings.message_layout !== mode && setSetting("message_layout", mode),
+                ]),
+              );
+            }}
           />
         </SettingsRow>
       </SettingsCard>
