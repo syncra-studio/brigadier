@@ -1,5 +1,6 @@
 // How the mockup shows outside its tab: a row in the chat with Open [D2055, D2066, D560], and the tab's icon, the
 // busy spinner only while a round draws or the pick is wired in, told to screen readers after its title (the old tab's).
+import { StateDot } from "../components/state-dot";
 import { ROW } from "../components/thread/activity-row";
 import { ImageSquare, Spinner } from "../icons";
 
@@ -51,13 +52,10 @@ export function MockupRow({ moment, live, onOpen }: { moment: MockupMoment; live
   );
 }
 
-/** The Mockup tab's icon: the spinner while busy, as a running row shows. */
-export function MockupTabIcon({ busy }: { busy: boolean }) {
-  return busy ? (
-    <Spinner data-slot="mockup-tab-busy" className="size-icon-sm shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />
-  ) : (
-    <ImageSquare className="size-icon-sm shrink-0" />
-  );
+/** The Mockup tab's icon: the spinner while busy, as a running row shows; the blue dot while its news is unseen, as a row's reply. */
+export function MockupTabIcon({ busy, unread = false }: { busy: boolean; unread?: boolean }) {
+  if (busy) return <Spinner data-slot="mockup-tab-busy" className="size-icon-sm shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />;
+  return unread ? <StateDot tone="unread" label="New in the mockup" /> : <ImageSquare className="size-icon-sm shrink-0" />;
 }
 
 /** Says the Mockup tab is busy to assistive tech, after its title. */

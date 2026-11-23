@@ -61,6 +61,8 @@ struct Marks {
     /// Its labels' names (`labels`), in the order given [D3101, D3103].
     labels: Value,
     seen: u64,
+    /// When its mockup last had news for the user, a round drawn or its pick built (`news`) [D560].
+    news: u64,
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     archived: Option<u64>,
     lifecycle: Value,
@@ -87,6 +89,7 @@ impl Marks {
                 .and_then(|t| serde_json::from_str(&t).ok())
                 .unwrap_or_else(|| json!([])),
             seen: ms("seen").unwrap_or(0),
+            news: ms("news").unwrap_or(0),
             archived,
             lifecycle,
             with: core::session::went_with(dir),
@@ -253,10 +256,11 @@ impl Index {
             let holds = crate::workers::holds(&self.data, id, &f.fold, live.child.is_some());
             let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, holds);
             // No mark for a PR's checks [D174].
-            let mark = if e.error.is_some() {
-                Some("amber")
-            } else {
-                mark
+            let mark = match mark {
+                _ if e.error.is_some() => Some("amber"),
+                // Its mockup's news unseen: the blue dot, as a reply's.
+                None | Some("background") if e.marks.news > e.marks.seen => Some("unread"),
+                m => m,
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -321,6 +325,7 @@ impl Index {
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             // A worker's images, which its parent's thread shows too [D289].
             row["images"] = json!(f.fold.images);
+            row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
             row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
             row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]

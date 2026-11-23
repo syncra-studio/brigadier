@@ -9,7 +9,8 @@ import type { SessionRow } from "./words";
  */
 export function useSeen(open: SessionRow | undefined): void {
   const id = open?.id;
-  const finished = open?.finished ?? 0;
+  // Its mockup's news counts as an end: seen once the session is open [D560].
+  const finished = Math.max(open?.finished ?? 0, open?.news ?? 0);
   useEffect(() => {
     if (id) seen(id, finished);
   }, [id, finished]);

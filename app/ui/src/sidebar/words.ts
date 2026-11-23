@@ -25,6 +25,8 @@ export type SessionRow = {
   updated?: number;
   /** When a turn last ended (ms); later than the user last saw it, the row is unread. */
   finished: number;
+  /** When its mockup last had news, a round drawn or its pick built (ms): unread as a turn's end is [D560]. */
+  news?: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
   /** Its labels' names, in the order given [D3101, D3103]. */
