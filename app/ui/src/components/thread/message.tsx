@@ -83,6 +83,7 @@ export function UserBubble({
   unconfirmed = false,
   dimmed = false,
   dated = false,
+  older = true,
   files,
   owner,
   parts,
@@ -103,6 +104,8 @@ export function UserBubble({
   dimmed?: boolean;
   /** Its date and time above it (`datedMessages`). */
   dated?: boolean;
+  /** Its actions only on hover; else in view, as a failed one's. */
+  older?: boolean;
   /** Its files, above the bubble. */
   files?: ReactNode;
   /** The session (or Home's draft) its files are kept in. */
@@ -191,7 +194,7 @@ export function UserBubble({
         <div
           className={cx(
             "mb-1 flex items-center gap-0.5 text-muted-foreground",
-            !failed && !unconfirmed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
+            older && !failed && !unconfirmed && "opacity-0 transition-opacity group-focus-within/user:opacity-100 group-hover/user:opacity-100",
           )}
         >
           {unconfirmed ? (
