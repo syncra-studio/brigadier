@@ -354,8 +354,6 @@
   --spacing-tab-bar: 2.875rem;
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
-  /* A project's page, its rows 24 below the titlebar's row, which it scrolls under [D292]. */
-  --spacing-project-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 6);
   /* The titlebar's Back button's start, 88 in, past the traffic lights at 16 (titlebar-nav) [D34]; with none (Windows,
      macOS full screen) 8px in [D861]. */
   --spacing-toggle-start: 5.5rem;

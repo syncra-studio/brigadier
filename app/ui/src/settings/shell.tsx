@@ -42,8 +42,8 @@ export function closeSettings(): void {
 }
 
 /**
- * "Back to app", the first row of Settings' and Pull Requests' sidebars [D296]: back to the chat, New chat or
- * project page it was opened from; New chat once that chat is gone.
+ * "Back to app", the last row of Settings' and Pull Requests' sidebars, where the app sidebar's foot sits [D296]:
+ * back to the chat, New chat or project page it was opened from; New chat once that chat is gone.
  */
 export function BackToApp() {
   const goBack = () => {
@@ -51,7 +51,7 @@ export function BackToApp() {
     window.location.hash = id === null || view.rows?.some((row) => row.id === id) ? app : "";
   };
   return (
-    <div className="ps-2 pe-2.5 pb-2">
+    <div className="shrink-0 ps-2 pe-2.5 pt-1 pb-2">
       <NavRow onClick={goBack}>
         <ArrowLeft className="text-quiet-foreground" />
         <span className="truncate">Back to app</span>
@@ -107,7 +107,6 @@ export function SettingsNav({ current }: { current: string }) {
     <>
       {/* Its title on the app sidebar's name line, and its rows on the sessions' insets, so a swap moves nothing [D48 D227]. */}
       <NavHeader start={<HomeMark />} title="Settings" />
-      <BackToApp />
       <div className="ps-2 pe-2.5 pb-2">
         <label data-slot="settings-search" className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
@@ -205,6 +204,7 @@ export function SettingsNav({ current }: { current: string }) {
           ))
         )}
       </div>
+      <BackToApp />
     </>
   );
 }

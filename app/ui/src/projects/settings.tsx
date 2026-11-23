@@ -171,7 +171,11 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   // Drawn once the account read lands, so the GitHub account row doesn't push the page down [D257].
   if (!github && checking) return null;
   return (
-    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 pt-project-page-top pb-6">
+    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-6 pt-tab-bar pb-6">
+      {/* The Pull Requests page's title, at its spacing. */}
+      <header className="flex items-center gap-4 pt-8 pb-5">
+        <h1 className="min-w-0 flex-1 text-page-title font-medium">Settings</h1>
+      </header>
       <ul aria-label="General">
         <Row label="Name" line="What the sidebar and this page call it; its icon is the folder's logo, else these initials" error={errors.name}>
           <ProjectBadge id={project.id} name={project.name} />
