@@ -68,15 +68,15 @@ export function MentionKindIcon({ type, id, label, className }: { type: "file" |
 
 /** A command's colour by kind, for its icon and its chip's name. */
 /** A tool's is green (components/composer/tools.tsx). */
-export const COMMAND_TONES = { command: "text-link", tool: "text-success", skill: "text-ansi-magenta", mcp: "text-ansi-cyan" };
+export const COMMAND_TONES = { command: "text-link", tool: "text-success", skill: "text-ansi-magenta", mcp: "text-ansi-cyan", prompt: "text-ansi-cyan" };
 
 /**
  * A command's icon: Rust's (an SVG mark, or a same-origin image), else its kind's in colour: a command blue,
- * a skill magenta, an MCP prompt cyan. `className` sizes it (a menu row's own size otherwise).
+ * a skill magenta, an MCP server or prompt cyan. `className` sizes it (a menu row's own size otherwise).
  */
-export function CommandKindIcon({ kind, icon, className }: { kind: "command" | "skill" | "mcp"; icon?: string | null; className?: string }) {
+export function CommandKindIcon({ kind, icon, className }: { kind: "command" | "skill" | "mcp" | "prompt"; icon?: string | null; className?: string }) {
   if (icon?.startsWith("<svg")) return <ProviderMark mark={icon} className={className ?? "size-icon-md"} />;
   if (icon) return <img src={icon} alt="" draggable={false} className={cx("rounded-xs object-contain", className ?? "size-icon-md")} />;
-  const Icon = kind === "skill" ? ToolsSkills : kind === "mcp" ? Mcp : CodeSquareSlash;
+  const Icon = kind === "skill" ? ToolsSkills : kind === "mcp" || kind === "prompt" ? Mcp : CodeSquareSlash;
   return <Icon aria-hidden className={cx(COMMAND_TONES[kind], className)} />;
 }

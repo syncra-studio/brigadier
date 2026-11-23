@@ -116,8 +116,8 @@ pub enum Event {
     /// The agent's to-do list as it last wrote it: `[{text, status}]` [D104].
     Plan(Vec<Value>),
     /// The agent's own commands, as its protocol lists them, replacing any listed before: each
-    /// `{name, description, kind: "command"|"skill"|"mcp", path, instant}`, `path` the file it's
-    /// defined in where the agent says or keeps one, `instant` when it runs at once [D164, D2009].
+    /// `{name, description, kind: "command"|"skill"|"prompt" (an MCP server's), path, instant}`,
+    /// `path` its file where the agent says or keeps one, `instant` if it runs at once [D164, D2009].
     Commands(Vec<Value>),
     /// Where this turn sits in the CLI's own record, for a later cut: its first entry and its
     /// latest, as far as this line says.

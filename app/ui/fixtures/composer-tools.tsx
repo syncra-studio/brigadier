@@ -1,6 +1,6 @@
 // Mockup only: the composer's Tools in its / and + menus, picked as chips inline in the text as commands are. Fake
 // data, the menus drawn open over the real composer parts. ?v=real is the real thing, live: a session's `/` and +
-// menus on fake commands, Send showing the draft Rust would get (no daemon). Not the app.
+// menus on fake commands, Send showing the draft Rust would get (no daemon); a chip's click sets the hash its page would. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
@@ -143,13 +143,22 @@ function Stage({ title, tall = false, children }: { title: string; tall?: boolea
 const OWNER = "s-fixture";
 /** Rust's stand-in for the agent's `/` list. */
 const run: Runner = async (args) =>
-  args[0] === "commands" ? { ok: true, commands: [...COMMANDS, ...SKILLS].map((each) => ({ name: each.label.slice(1), kind: each.kind, description: each.description, instant: each.instant })) } : { ok: false, error: "disconnected" };
+  args[0] === "commands"
+    ? {
+        ok: true,
+        commands: [
+          ...[...COMMANDS, ...SKILLS].map((each) => ({ name: each.label.slice(1), kind: each.kind, description: each.description, instant: each.instant })),
+          { name: "Steady", kind: "mcp", description: "Standups and check-ins", instant: false },
+          { name: "mcp__b-Steady__standup", kind: "prompt", description: "Write today's standup", instant: false },
+        ],
+      }
+    : { ok: false, error: "disconnected" };
 
 /** The session's own menus, as session/composer.tsx mounts them; Send shows the parts it would hand Rust. */
 function Real() {
   const field = useRef<ComposerFieldHandle>(null);
   const [sent, setSent] = useState<string | null>(null);
-  const { commands, plus } = useComposerCommands({ owner: OWNER, run, field, onFiles: () => {} });
+  const { commands, plus, onOpen } = useComposerCommands({ owner: OWNER, run, field, onFiles: () => {} });
   const send = () => {
     setSent(JSON.stringify(field.current?.parts() ?? [], null, 1));
     field.current?.set([]);
@@ -158,7 +167,7 @@ function Real() {
     <main className="flex min-h-screen flex-col justify-end py-8">
       {sent && <pre className="mx-auto w-full max-w-reading px-4 text-xs whitespace-pre-wrap text-muted-foreground">{sent}</pre>}
       <SharedComposer plus={plus} send={<SendButton empty={false} running={false} canStop={false} onSend={send} onStop={() => {}} />}>
-        <ComposerField ref={field} placeholder="Do anything" commands={commands} onSubmit={send} autoFocus />
+        <ComposerField ref={field} placeholder="Do anything" commands={commands} onOpen={onOpen} onSubmit={send} autoFocus />
       </SharedComposer>
     </main>
   );

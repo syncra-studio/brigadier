@@ -49,8 +49,8 @@ export type SlashCommand = {
   id: string;
   label: string;
   description?: string;
-  /** Listed under its kind's heading: Commands, Tools, Skills, MCP prompts. A tool is Brigadier's own (./tools.tsx). */
-  kind: "command" | "tool" | "skill" | "mcp";
+  /** Listed under its kind's heading: Commands, Tools, Skills, MCP servers (the library's), MCP prompts (a server's, as the agent lists them). A tool is Brigadier's own (./tools.tsx). */
+  kind: "command" | "tool" | "skill" | "mcp" | "prompt";
   /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
   source?: string;
   /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
@@ -88,7 +88,7 @@ export function fuzzyMatch(text: string, query: string): { rank: 0 | 1 | 2; at: 
 
 /** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
 function commandMatches(commands: readonly SlashCommand[], query: string): SlashCommand[] {
-  const order = { command: 0, tool: 1, skill: 2, mcp: 3 };
+  const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
   const rank = (command: SlashCommand) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
   return commands
     .map((command) => ({ command, rank: rank(command) }))
@@ -192,7 +192,7 @@ const ANCHOR = "contents!";
 export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
-export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP prompts" } as const;
+export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 
 /** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
 export function MentionRow({ item, query }: { item: Mention; query: string }) {
@@ -407,7 +407,7 @@ const CHAT_ROWS = 5;
 
 /**
  * The + ("Add files and more"): a menu as wide as the composer card, just above it (over the rail, hidden
- * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's tools, skills and MCP prompts
+ * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's tools, skills, MCP servers and prompts
  * and the `@` menu's chats in their own rows, each picked in where the caret last was, as the `/` menu does (the
  * end if the field never had one). Closed, the keyboard goes back to typing.
  */
@@ -427,7 +427,7 @@ export function PlusMenu({
   const [card, setCard] = useState<HTMLElement | null>(null);
   const field = () => card?.querySelector<HTMLElement>("[contenteditable]") ?? null;
   const add = (chip: Chip) => composerField.current!.insert(chip);
-  const kind = (wanted: "tool" | "skill" | "mcp") => {
+  const kind = (wanted: "tool" | "skill" | "mcp" | "prompt") => {
     const listed = commands.commands?.filter((command) => command.kind === wanted) ?? [];
     return (
       listed.length > 0 && (
@@ -458,6 +458,7 @@ export function PlusMenu({
           {kind("tool")}
           {kind("skill")}
           {kind("mcp")}
+          {kind("prompt")}
           {chats.length > 0 && <DropdownMenuLabel variant="heading">Chats</DropdownMenuLabel>}
           {chats.slice(0, CHAT_ROWS).map((chat) => (
             <DropdownMenuItem key={chat.id} onClick={() => add({ kind: "mention", id: chat.id, type: "chat", label: chat.label })}>

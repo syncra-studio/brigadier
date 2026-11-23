@@ -5,9 +5,10 @@ use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-/// Its own commands, from its init line: skills and MCP prompts by name, the rest as commands, less
-/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. The line
-/// names no files: `locate` finds them, knowing the account [D2098].
+/// Its own commands, from its init line: skills and MCP prompts (`mcp__<server>__<prompt>`) by
+/// name, the rest as commands, less those bound to its terminal; none runs at once, each is sent
+/// as text [D164, D2009]. The line names no files: `locate` finds them, knowing the account
+/// [D2098].
 pub fn commands(v: &Value) -> Option<Event> {
     let names = |key: &str| -> Vec<&str> {
         (v[key].as_array().into_iter().flatten())
@@ -28,7 +29,7 @@ pub fn commands(v: &Value) -> Option<Event> {
         let kind = if skills.contains(&name) {
             "skill"
         } else if name.starts_with("mcp__") {
-            "mcp"
+            "prompt"
         } else {
             "command"
         };

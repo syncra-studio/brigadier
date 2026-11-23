@@ -11,6 +11,8 @@ import { ask } from "../daemon";
 import { isPasteLabel, PASTE_LABEL } from "../shell/attachment-tab";
 import { openAttachment, openFile, openTab, selectTab } from "../shell/tab-store";
 import type { Runner } from "./composer";
+import { SETTINGS_PAGES, type SettingsPageId } from "../settings/pages";
+import { ROUTING_ROWS } from "../settings/routing";
 import { openSettings } from "../settings/shell";
 import { HOME_DRAFT } from "./draft";
 import { urlOf } from "./files";
@@ -82,9 +84,14 @@ const hear = (heard: () => void) => {
 };
 export const useListedCommands = (owner: string | undefined) => useSyncExternalStore(hear, () => (owner ? listedOf.get(owner) : undefined));
 
+/** The settings page a Brigadier tool's chip opens, and the row it brings into view; the mockup and research tools have none. */
+// A function, so ROUTING_ROWS is read on a click, not while modules load (settings pages reach this one).
+const toolPage = (id: string): [SettingsPageId, string?] | undefined =>
+  (({ computer: ["computerUse"], browser: ["browser"], image: ["routing", ROUTING_ROWS.images.label], workers: ["routing", ROUTING_ROWS.jobs.label] }) as Record<string, [SettingsPageId, string?]>)[id];
+
 /**
  * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in
- * its panel, an image in the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list;
+ * its panel, an image in the viewer, a paste in its tab, a skill, server or tool its settings page [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list;
  * `name`: a paste's chip's words, its tab's title when it's a PR's ("Pull request #n") [D696].
  */
 export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner, name?: string) {
@@ -97,6 +104,14 @@ export function openChip(owner: string, kind: OpenKind, id: string, command?: Sl
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].
   if (kind === "paste") return openAttachment(owner, id, name && isPasteLabel(name) ? name : PASTE_LABEL);
+  // Its page under Plugins by the library's key (one not in it lands on Plugins); a prompt, its server's: Claude's `mcp__<server>__<prompt>`, a library server there `b-<name>`.
+  const listed = id.slice(id.indexOf(":") + 1);
+  if (kind === "skill") return void (location.hash = `#settings/plugins/${encodeURIComponent(`skill:${listed}`)}`);
+  if (kind === "mcp" || kind === "prompt") return void (location.hash = `#settings/plugins/${encodeURIComponent(`server:${kind === "prompt" ? (listed.split("__")[1] ?? "").replace(/^b-/, "") : listed}`)}`);
+  if (kind === "tool") {
+    const [page, row] = toolPage(id) ?? [];
+    return void (page && SETTINGS_PAGES.some((each) => each.id === page) && openSettings(page, row));
+  }
   if (home) return;
   if (kind === "file") return openFile(owner, id, { preview: false });
   if (kind === "folder") {

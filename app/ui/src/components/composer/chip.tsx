@@ -25,7 +25,7 @@ import type { SlashCommand } from "./menus";
 import { ToolIcon } from "./tools";
 
 /** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
-export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "note" | "plugin" | "command" | "tool" | "skill" | "mcp" | "image" | "paste";
+export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "note" | "plugin" | "command" | "tool" | "skill" | "mcp" | "prompt" | "image" | "paste";
 
 /** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
 export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string, name?: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
