@@ -21,17 +21,17 @@ use std::thread;
 static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// How a worker lands its work: reviewed first [D385], merged into `base` in `to` with plain git
-/// [D97], or kept on its branch.
+/// [D97], or kept on its branch; a commit and merge only if it changed files [D311].
 pub(crate) fn land_line(merge: Option<(&str, &str, &str)>, review: bool) -> String {
     match merge {
         _ if review => super::review::FINDINGS.into(),
         Some((to, branch, base)) => {
             let (dir, b) = (sh(to), sh(branch));
             format!(
-                "When your work is done and right, commit it on your branch and merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why."
+                "If you changed files, commit them on your branch when your work is done and right, then merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why. If you committed nothing, don't merge."
             )
         }
-        None => "Commit your work on your branch and don't merge it.".into(),
+        None => "If you changed files, commit them on your branch and don't merge it.".into(),
     }
 }
 
