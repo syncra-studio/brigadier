@@ -73,8 +73,8 @@ export const linkPath = (href: string) => {
     return path;
   }
 };
-/** Markdown links' targets, which may be paths WORD can't take whole (`~/a.png`, spaces). */
-const LINK = /\]\(<?([^)>\s]+)/g;
+/** Markdown links' targets, which may be paths WORD can't take whole (`~/a.png`, spaces): `<…>` whole, else to a space. */
+const LINK = /\]\((?:<([^>\n]+)>|([^)\s]+))/g;
 
 /**
  * A file link's click, the same in a lead's thread and a worker's [D290]: an image, wherever it is, in the viewer;
@@ -103,7 +103,7 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
   const [found, setFound] = useState<Found>({});
   useEffect(() => {
     if (!owner || !done) return;
-    const links = [...text.matchAll(LINK)].map((match) => linkPath(match[1]!));
+    const links = [...text.matchAll(LINK)].map((match) => linkPath((match[1] ?? match[2])!));
     const paths = [...new Set([...[...text.matchAll(WORD)].map((match) => match[0]), ...links].map((word) => word.replace(LINE, "")).filter(pathish))].slice(0, 200);
     if (!paths.length) return;
     let live = true;
