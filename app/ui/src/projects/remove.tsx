@@ -240,35 +240,57 @@ function Waiting({ title, children, onClose }: { title: string; children: ReactN
   );
 }
 
+/** A path or name as one word for the shell. */
+const shellWord = (word: string) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
+
+/**
+ * Kept branches by repository: a folder chat's come as `<repo> <branch>`, its repo under the project's folder
+ * (branch names have no spaces, so the last one splits them); a session's are the project's own repo's.
+ */
+function byRepo(folder: string, kept: string[]): Map<string, string[]> {
+  const repos = new Map<string, string[]>();
+  for (const each of new Set(kept)) {
+    const cut = each.lastIndexOf(" ");
+    const repo = cut < 0 ? folder : `${folder}/${each.slice(0, cut)}`;
+    repos.set(repo, [...(repos.get(repo) ?? []), each.slice(cut + 1)]);
+  }
+  return repos;
+}
+
 /** Removed with branches kept: what went, the kept ones by name, one command, and one action that deletes them all. */
 export function Removed({ name, repo, kept, preview, onClose }: { name: string; repo: string; kept: string[]; preview: Preview | null; onClose: () => void }) {
-  const [left, setLeft] = useState(kept);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const many = plural(left.length, "kept branch", "kept branches");
-  const command = `git -C ${repo} branch -D ${left.join(" ")}`;
+  const repos = byRepo(repo, kept);
+  const count = [...repos.values()].flat().length;
+  const command = [...repos].map(([at, branches]) => `git -C ${shellWord(at)} branch -D ${branches.join(" ")}`).join(" && ");
   const sessions = preview?.sessions.length ?? 0;
   const notes = preview?.notes ?? 0;
+  // A session's branch the preview counted as merged but that got work before Remove was kept instead.
+  const expected = new Set(preview?.branches.map(({ branch }) => branch));
+  const merged = Math.max(0, (preview?.merged ?? 0) - kept.filter((each) => !each.includes(" ") && !expected.has(each)).length);
   const drop = () => {
     setBusy(true);
     setError(null);
-    run(["projects", "drop-branches", repo, ...left]).then(
-      (reply) => {
-        const gone: Record<string, string> = reply.branches ?? {};
-        const failed: string[] = reply.failed ?? [];
-        const names = Object.keys(gone);
-        if (names.length) {
+    Promise.all([...repos].map(([at, branches]) => run(["projects", "drop-branches", at, ...branches]).then((reply) => ({ at, gone: (reply.branches ?? {}) as Record<string, string>, failed: (reply.failed ?? []) as string[] })))).then(
+      (each) => {
+        // Closed first, so the toasts and their Undo sit above everything.
+        onClose();
+        const failed = each.flatMap(({ failed }) => failed);
+        const count = each.reduce((sum, { gone }) => sum + Object.keys(gone).length, 0);
+        if (count) {
           const undo = () =>
-            run(["projects", "put-branches", repo, ...names.map((each) => `${each}=${gone[each]}`)]).then(
-              () => showToast(`Put back ${plural(names.length, "branch", "branches")}`),
-              (cause) => showToast(`Couldn't put the branches back: ${errorText(cause)}`, { tone: "error" }),
+            Promise.all(each.map(({ at, gone }) => (Object.keys(gone).length ? run(["projects", "put-branches", at, ...Object.entries(gone).map(([branch, commit]) => `${branch}=${commit}`)]) : { failed: [] }))).then(
+              (replies) => {
+                const missed: string[] = replies.flatMap((reply) => reply.failed ?? []);
+                if (missed.length) showToast(`Couldn't put back every branch: ${missed.join(" · ")}`, { tone: "error", stays: true });
+                else showToast(`Put back ${plural(count, "branch", "branches")}`);
+              },
+              (cause) => showToast(`Couldn't put the branches back: ${errorText(cause)}`, { tone: "error", stays: true }),
             );
-          showToast(`Deleted ${plural(names.length, "branch", "branches")}`, { actions: [{ label: "Undo", run: () => void undo() }] });
+          showToast(`Deleted ${plural(count, "branch", "branches")}`, { actions: [{ label: "Undo", run: () => void undo() }] });
         }
-        if (!failed.length) return onClose();
-        setLeft((last) => last.filter((each) => !(each in gone)));
-        setError(failed.join(" · "));
-        setBusy(false);
+        if (failed.length) showToast(`Kept ${plural(failed.length, "branch", "branches")}: ${failed.join(" · ")}`, { tone: "error", stays: true });
       },
       (cause) => {
         setError(errorText(cause));
@@ -293,21 +315,21 @@ export function Removed({ name, repo, kept, preview, onClose }: { name: string; 
             />
           )}
           {(preview?.worktrees ?? 0) > 0 && <SummaryRow icon={<Folder />} label={plural(preview!.worktrees, "worktree", "worktrees")} detail={`${formatBytes(preview!.bytes)} freed`} />}
-          {(preview?.merged ?? 0) > 0 && <SummaryRow icon={<Branch />} label={plural(preview!.merged, "merged branch", "merged branches")} detail="Deleted" />}
+          {merged > 0 && <SummaryRow icon={<Branch />} label={plural(merged, "merged branch", "merged branches")} detail="Deleted" />}
           <li>
             <Collapsible>
               <CollapsibleTrigger className="group flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-start focus-visible:focus-ring">
                 <span className="flex shrink-0 text-muted-foreground svg:size-icon-md">
                   <Branch />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-foreground">{plural(left.length, "branch kept", "branches kept")}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{plural(count, "branch kept", "branches kept")}</span>
                 <span className="shrink-0 text-label text-muted-foreground">Unmerged work</span>
                 <ChevronRightAlt className="size-icon-xs! shrink-0 text-muted-foreground chevron-motion group-aria-expanded:rotate-90" />
               </CollapsibleTrigger>
               <CollapsibleContent>
                 {/* About four rows, then it scrolls. */}
                 <ul aria-label="Kept branches" className="scroll-gutter flex max-h-25 flex-col gap-1 overflow-y-auto ps-10.5 pe-3.5 pb-3">
-                  {left.map((branch) => (
+                  {[...repos].flatMap(([at, branches]) => branches.map((branch) => (at === repo ? branch : `${at.slice(repo.length + 1)}: ${branch}`))).map((branch) => (
                     <li key={branch} className="shrink-0 truncate font-mono text-xs leading-5 text-muted-foreground select-text">
                       {branch}
                     </li>
@@ -331,7 +353,7 @@ export function Removed({ name, repo, kept, preview, onClose }: { name: string; 
       <DialogFooter>
         <Button variant="soft-destructive" disabled={busy} onClick={drop}>
           {busy && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
-          Delete {many}
+          Delete {plural(count, "kept branch", "kept branches")}
         </Button>
         <Button disabled={busy} onClick={onClose}>
           Done

@@ -180,8 +180,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         })
                         .collect::<Option<Vec<_>>>()
                         .ok_or_else(|| io::Error::other("put-branches takes <branch>=<commit>"))?;
-                    core::worktrees::put_branches(Path::new(arg(2)), &pairs)?;
-                    return Ok(json!({"ok": true}));
+                    let failed = core::worktrees::put_branches(Path::new(arg(2)), &pairs)?;
+                    return Ok(json!({"ok": true, "failed": failed}));
                 }
                 "reveal" => {
                     let folder = projects::get(data, arg(2))?.folder;
