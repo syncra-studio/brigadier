@@ -360,8 +360,8 @@ export function MentionPlugin({ results, onQuery, onDirect }: Mentions) {
 }
 
 /**
- * The `/` menu: the agent's commands under their group headings, filtered as typed. A command with `text` types
- * it in place of the `/` and its query; any other runs (`onRun`) and leaves no trace in the text.
+ * The `/` menu: the agent's commands under their group headings, filtered as typed. One not `instant` goes in as its
+ * own chip (a tool's, not a skill's of its name) for the `/` and its query; any other runs (`onRun`), leaving no trace.
  */
 export function SlashPlugin({ commands, onRun }: Commands) {
   const [query, setQuery] = useState("");
@@ -383,7 +383,7 @@ export function SlashPlugin({ commands, onRun }: Commands) {
       onSelectOption={(option, replacing, close) => {
         const command = option.value;
         if (command.disabled) return;
-        if (!command.instant) $putWithSpace($createTextNode(command.label), replacing);
+        if (!command.instant) $putWithSpace(new ChipNode({ kind: "command", id: command.id, type: command.kind, label: command.label }), replacing);
         else {
           replacing?.remove();
           // After the pick's update, so the command sees the text without its `/`.
