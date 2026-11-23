@@ -141,7 +141,9 @@ impl Thread {
         let row = json!({"kind": "image", "progress": item["progress"], "attachment": item["attachment"],
             "name": item["name"], "prompt": item["prompt"], "error": item["error"], "from": item["from"]});
         if let Some(at) = self.named.get(&id).copied() {
-            for (k, v) in row.as_object().into_iter().flatten() {
+            // An end that names no prompt (OpenCode's notice) keeps the start's.
+            let kept = |(k, v): &(&String, &Value)| !(*k == "prompt" && v.is_null());
+            for (k, v) in row.as_object().into_iter().flatten().filter(kept) {
                 self.items[at][k] = v.clone();
             }
             self.changed_items.insert(at);

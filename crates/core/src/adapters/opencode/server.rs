@@ -302,6 +302,15 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
             drop(st);
             return line.into_iter().for_each(say);
         }
+        // shortcut: a notice that lands while the stream is down isn't caught up; replay the inbox if that shows.
+        "session.inbox.enqueued"
+            if d["sessionID"] == st.session.as_str()
+                && d["item"]["payload"]["metadata"]["source"] == super::image::TOOL =>
+        {
+            drop(st);
+            super::image::kept(&mut v["data"]["item"]["payload"]);
+            return say(v);
+        }
         "command.updated" | "skill.updated" => {
             let dir = st.dir.clone();
             drop(st);

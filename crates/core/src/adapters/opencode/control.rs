@@ -75,7 +75,8 @@ fn library(config: &mut Value, kit: &crate::library::Kit, spec: &Spec) {
 
 /// A model from its server's list, as the old app read it: its name, its variants as its efforts,
 /// and images where its input names them or says nothing [D2098].
-pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool) -> ModelInfo {
+/// `images`: whether its server has an image model, by which it makes images [D331].
+pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool, images: Option<bool>) -> ModelInfo {
     let id = format!("{}/{}", s(m, &["providerID"]), s(m, &["id"]));
     let input = m["capabilities"]["input"].as_array();
     let variants = m["variants"].as_array().into_iter().flatten();
@@ -84,6 +85,7 @@ pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool) -> ModelInfo {
         efforts: (variants.filter_map(|v| v["id"].as_str().map(String::from))).collect(),
         images: Some(input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"))),
         window: m["limit"]["context"].as_u64(),
+        draws: super::image::draws(m, images),
         ..ModelInfo::plain(&id, local(&id))
     }
 }

@@ -85,6 +85,11 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
                 Some(answer.collect::<Vec<_>>().join("\n")),
             )]
         }
+        "session.inbox.enqueued"
+            if d["item"]["payload"]["metadata"]["source"] == super::image::TOOL =>
+        {
+            vec![super::image::notice(&d["item"]["payload"])]
+        }
         "session.execution.started" => vec![Event::Resume(id("sessionID")), Event::TurnStart],
         "session.execution.succeeded" => vec![Event::TurnEnd(true)],
         // What the next request reads: this one's input, cache and output [D88].
@@ -119,6 +124,9 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
         "session.tool.called" | "session.tool.success" | "session.tool.failed" => {
             if s(d, &["name"]) == "question" {
                 return Some(vec![]);
+            }
+            if s(d, &["name"]) == super::image::TOOL {
+                return Some(super::image::call(kind, d));
             }
             // Its MCP tools run from code (`execute`): Brigadier's own `show_draft` calls are their
             // cards once it ended, the call itself no step [D529].

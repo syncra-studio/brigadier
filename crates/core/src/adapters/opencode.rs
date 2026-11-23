@@ -7,6 +7,7 @@ mod control;
 mod events;
 mod grants;
 mod http;
+mod image;
 mod rewind;
 mod server;
 
@@ -200,9 +201,10 @@ impl Adapter for OpenCode {
         let listed: Value = (listed
             .and_then(|t| serde_json::from_str(&t[t.find('{').unwrap_or(0)..]).ok()))
         .unwrap_or_default();
+        let images = image::any(text(&["api", "--standalone", "GET", image::LIST]));
         let mut models: Vec<ModelInfo> = (listed["data"].as_array().into_iter().flatten())
             .filter(|m| m["enabled"] != false)
-            .map(|m| model_info(m, &local))
+            .map(|m| model_info(m, &local, images))
             .collect();
         models.sort_by(|a, b| a.id.cmp(&b.id));
         mark_superseded(&mut models);
