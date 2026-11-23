@@ -79,6 +79,9 @@ struct Sess {
     full: bool,
     /// Its actions are steps of a `run`, which reads once at its end.
     batch: bool,
+    /// The last screenshot's window and hash, and whether an action changed the window since.
+    shot: Option<(u64, String)>,
+    changed: bool,
 }
 
 pub(super) const OFF: &str =
@@ -233,7 +236,7 @@ fn verb(
             }
             read(data, me, &mut s, w, here)?
         }
-        "screenshot" => screenshot(data, me, &s, w.values.get("--region").copied(), here)?,
+        "screenshot" => screenshot(data, me, &mut s, w.values.get("--region").copied(), here)?,
         _ if s.pid == 0 => {
             return Err(refuse(
                 "Name the app first: brigadier computer read <app>, or open <app>.",

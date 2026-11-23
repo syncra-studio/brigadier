@@ -246,6 +246,7 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
     args["since"] = "latest".into();
     let Ok(found) = call(data, "get_window_state", args, here) else {
         // The window went (a panel closed, a document replaced it): read what the app shows now.
+        s.changed = true;
         let again = Words {
             verb: "read",
             rest: vec![],
@@ -261,6 +262,7 @@ pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bo
         };
     };
     learn(s, &found);
+    s.changed |= found["since_status"].as_str() != Some("no_change");
     match found["since_status"].as_str() {
         Some("no_change") => NO_CHANGE.into(),
         Some("diff") => {
@@ -338,7 +340,7 @@ pub(super) fn drag(
 pub(super) fn screenshot(
     data: &Path,
     me: &str,
-    s: &Sess,
+    s: &mut Sess,
     region: Option<&str>,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
@@ -364,9 +366,10 @@ pub(super) fn screenshot(
         (Some(w), Some(h)) => format!(" ({w}×{h})"),
         _ => String::new(),
     };
+    let fresh = fresh(data, s, &file, here);
     let Some(r) = region else {
         return Ok(format!(
-            "Saved: {}{size}. `click --at X,Y` clicks a point of it.",
+            "Saved: {}{size}. `click --at X,Y` clicks a point of it.{fresh}",
             file.display()
         ));
     };
@@ -410,9 +413,79 @@ pub(super) fn screenshot(
         return Err(refuse("Couldn't cut that region."));
     }
     Ok(format!(
-        "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.",
+        "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.{fresh}",
         file.display()
     ))
+}
+
+/// Whether a picture can be trusted: its hash against the last one's, and whether the window was
+/// on show. A covered or off-Space window keeps its last frame, or none: Chromium stops painting
+/// a covered window, so its web area comes back stale or blank while the tree is current [D2032].
+fn fresh(data: &Path, s: &mut Sess, file: &Path, here: &dyn Fn() -> bool) -> String {
+    use sha2::{Digest, Sha256};
+    let hash: String = fs::read(file).map_or_else(
+        |_| "unknown".into(),
+        |b| {
+            Sha256::digest(&b)[..6]
+                .iter()
+                .map(|x| format!("{x:02x}"))
+                .collect()
+        },
+    );
+    let same = s
+        .shot
+        .as_ref()
+        .is_some_and(|(w, h)| *w == s.window && *h == hash);
+    let changed = std::mem::take(&mut s.changed);
+    s.shot = Some((s.window, hash.clone()));
+    let mut out = format!(" Hash {hash}.");
+    if same {
+        out.push_str(match changed {
+            true => " Same picture as your last screenshot, though the window changed since: it's stale. Trust your read, not this picture.",
+            false => " Same picture as your last screenshot.",
+        });
+    }
+    if let Some(why) = hidden(data, s, here) {
+        out.push_str(&format!(" {why}: an app such as Chrome stops painting a window then, so this picture may be stale or blank. Your read is current."));
+    }
+    out
+}
+
+/// The window is off this Space, or wholly under one window of another app.
+// shortcut: one window must cover it alone; two side by side that cover it together aren't seen.
+fn hidden(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Option<String> {
+    let all = call(data, "list_windows", json!({"on_screen_only": false}), here).ok()?;
+    let all = all["windows"].as_array()?;
+    let mine = all
+        .iter()
+        .find(|w| w["window_id"].as_u64() == Some(s.window))?;
+    if mine["on_current_space"] == false || mine["is_on_screen"] == false {
+        return Some(format!(
+            "{}'s window isn't on the screen the user sees",
+            s.app
+        ));
+    }
+    let rect = |w: &Value| {
+        let b = &w["bounds"];
+        let n = |k: &str| b[k].as_f64().unwrap_or(0.0);
+        (n("x"), n("y"), n("x") + n("width"), n("y") + n("height"))
+    };
+    let (z, (x0, y0, x1, y1)) = (mine["z_index"].as_i64()?, rect(mine));
+    let over = all.iter().find(|w| {
+        let (a0, b0, a1, b1) = rect(w);
+        w["pid"] != mine["pid"]
+            // The driver's own see-through overlay, where it draws the agent cursor.
+            && w["app_name"] != "cua-driver"
+            && w["layer"].as_i64() == Some(0)
+            && w["is_on_screen"] != false
+            && w["z_index"].as_i64().is_some_and(|wz| wz > z)
+            && a0 <= x0
+            && b0 <= y0
+            && a1 >= x1
+            && b1 >= y1
+    })?;
+    let by = over["app_name"].as_str().unwrap_or("another app");
+    Some(format!("{}'s window is covered by {by}'s", s.app))
 }
 
 /// A capture the driver couldn't make or place, in its own words.
