@@ -305,7 +305,7 @@ export function SummaryPane({ owner, card, room = card !== null, children }: { o
 
 /** The mount near the thread: sessions and project chats, where Source reads the same checkout [D1014, D1039]. */
 export function SummarySlot({ owner, children }: { owner: string; children: ReactNode }) {
-  const { rows, projects } = useDaemon();
+  const { rows, projects, daemon } = useDaemon();
   // An archived session's worktree went with it by design: its page has Restore, its card would only say "gone" [D180].
   const has = useHasPanel(owner) && owner !== HOME && !rows?.find((row) => row.id === owner)?.archived;
   const { data, ops } = useSource(owner);
@@ -338,8 +338,14 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const folderChat = projects?.find((each) => each.id === projectId)?.kind === "folder";
   const picked = useRepoPick(owner);
   const [touched, setTouched] = useState<TouchedRepo[] | null>(null);
-  // Read again after a branch move on one of its repos [D341].
+  // Read again after a branch move on one of its repos, and on focus, as a terminal may have moved one [D341].
   const [moves, setMoves] = useState(0);
+  useEffect(() => {
+    if (!folderChat) return;
+    const again = () => setMoves((n) => n + 1);
+    addEventListener("focus", again);
+    return () => removeEventListener("focus", again);
+  }, [folderChat]);
   useEffect(() => {
     if (!has || !folderChat) return;
     let live = true;
@@ -353,7 +359,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
     return () => {
       live = false;
     };
-  }, [owner, has, folderChat, updated, picked, moves]);
+  }, [owner, has, folderChat, updated, picked, moves, daemon]);
   // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, each with its repo's name.
   const kept = shown.kept ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
   const prs = folderChat ? (touched ?? []).flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name }))) : (shown.prs ?? kept?.prs ?? []);
@@ -372,6 +378,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
           repos={touched ?? []}
           project={projectId ?? ""}
           agentWorking={isWorking(rows?.find((row) => row.id === owner))}
+          offline={!daemon}
           onReview={(repo) => (pickRepo(owner, repo), openReview(owner))}
           onMoved={() => setMoves((n) => n + 1)}
         />

@@ -236,16 +236,19 @@ export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; br
  * branch" with its +/− counts; a claimed one opens Review on that repo. Its "…" copies the branch and, for a repo
  * still in the folder itself, switches it, as the one-checkout card's [D141].
  */
-export function FolderChanges({ repos, project, agentWorking, onReview, onMoved }: { repos: TouchedRepo[]; project: string; agentWorking: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
+export function FolderChanges({ repos, project, agentWorking, offline, onReview, onMoved }: { repos: TouchedRepo[]; project: string; agentWorking: boolean; offline: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
   if (repos.length === 0) return null;
   return (
     <CardSection title="Changes" fold="changes">
-      <Rows items={repos}>{(repo) => <RepoLine key={repo.name} repo={repo} project={project} agentWorking={agentWorking} onReview={onReview} onMoved={onMoved} />}</Rows>
+      {/* Read-only while disconnected, as ChangesCard's branch row. */}
+      <div className={cx(offline && "opacity-disabled")} inert={offline}>
+        <Rows items={repos}>{(repo) => <RepoLine key={repo.name} repo={repo} project={project} agentWorking={agentWorking} offline={offline} onReview={onReview} onMoved={onMoved} />}</Rows>
+      </div>
     </CardSection>
   );
 }
 
-function RepoLine({ repo, project, agentWorking, onReview, onMoved }: { repo: TouchedRepo; project: string; agentWorking: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
+function RepoLine({ repo, project, agentWorking, offline, onReview, onMoved }: { repo: TouchedRepo; project: string; agentWorking: boolean; offline: boolean; onReview: (repo: string) => void; onMoved: () => void }) {
   const row = useRef<HTMLDivElement>(null);
   // Its branch moves on the repo in the project's folder; a claimed copy's branch is the chat's own [D242].
   const target = { project: `${project}@${repo.name}` };
@@ -253,7 +256,7 @@ function RepoLine({ repo, project, agentWorking, onReview, onMoved }: { repo: To
   const branch = op.naming ?? repo.branch;
   const source: SourceState = { checkout: repo.claimed ? "worktree" : "folder", branch, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] };
   const ops = { retry: () => {}, branch: branchOps(target, branch ?? "the branch", onMoved) };
-  const { folder, open, pickers } = useBranchPicker({ data: { source, agentWorking }, ops, nowMs: Date.now(), anchor: row, trigger: row });
+  const { folder, open, pickers } = useBranchPicker({ data: { source, agentWorking, offline }, ops, nowMs: Date.now(), anchor: row, trigger: row });
   useEffect(() => {
     if (op.naming && op.naming === repo.branch) named(target);
   });
@@ -268,7 +271,8 @@ function RepoLine({ repo, project, agentWorking, onReview, onMoved }: { repo: To
             <DropdownMenuItem disabled={!branch} onClick={() => branch && copyWithToast(branch, "branch name")}>
               Copy branch
             </DropdownMenuItem>
-            {folder && <DropdownMenuItem onClick={() => open("branch")}>Switch branch</DropdownMenuItem>}
+            {/* The repos are read again as it opens: a switch from a terminal shows before the pick lists [D341]. */}
+            {folder && <DropdownMenuItem onClick={() => (onMoved(), open("branch"))}>Switch branch</DropdownMenuItem>}
           </RowMenu>
         }
       >
