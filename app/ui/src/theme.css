@@ -1944,6 +1944,7 @@
   align-items: center;
   max-width: 7rem;
   height: var(--spacing-control-md);
+  cursor: pointer;
   padding-inline: 2px;
   & > span {
     display: inline-flex;

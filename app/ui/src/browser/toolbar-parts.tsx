@@ -9,7 +9,7 @@ import { findInPage, findLabel, useBrowserFind } from "./find";
 import { useTabs } from "../shell/tab-store";
 import { ungroup } from "./give";
 import { stopDriving, takeOver, useAgentLit, useAgentPillSlot } from "./overlay";
-import { useDriverNames } from "./tab-icon";
+import { useDriverName } from "./tab-icon";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
 const NAV_BUTTON = "rounded-capsule";
@@ -140,20 +140,18 @@ function closeBar(owner: string, first: string): void {
 const subscribeBars = (listener: () => void) => (barListeners.add(listener), () => void barListeners.delete(listener));
 
 /**
- * The bar under the toolbar of every Browser tab of session `owner` while an agent has tabs there, as Chrome's
- * '"Claude" started debugging this browser': from its first drive until no group of its is left, working or not.
- * Cancel takes every agent's tabs back, as Ungroup; × closes the bar for the session [D894 D909].
+ * The bar under the toolbar of each Browser tab agent `driver` drives in session `owner`, as Chrome's '"Claude" started
+ * debugging this browser': from its first drive until its group is gone, working or not; none on the user's own tabs
+ * [D312]. Cancel takes its tabs back, as Ungroup; × closes the bar for the session [D894 D909].
  */
-export function AgentSessionBar({ owner }: { owner: string }) {
-  const driven = useTabs(owner).tabs.filter((tab) => tab.kind === "browser" && tab.driver);
-  const drivers = [...new Set(driven.map((tab) => tab.driver ?? ""))];
-  const names = useDriverNames(drivers);
-  const first = driven[0]?.id;
+export function AgentSessionBar({ owner, driver }: { owner: string; driver: string | undefined }) {
+  const first = useTabs(owner).tabs.find((tab) => tab.kind === "browser" && tab.driver)?.id;
+  const name = useDriverName(driver);
   const closed = useSyncExternalStore(subscribeBars, () => closedBars.get(owner) === first);
-  if (!first || closed) return null;
+  if (!driver || !first || closed) return null;
   return (
-    <Banner slot="browser-agent-bar" text={`${[...new Set(names)].map((name) => `"${name}"`).join(" and ")} started using this browser`} onDismiss={() => closeBar(owner, first)}>
-      <Button size="sm" onClick={() => drivers.forEach((driver) => ungroup(owner, driver))}>
+    <Banner slot="browser-agent-bar" text={`"${name}" started using this browser`} onDismiss={() => closeBar(owner, first)}>
+      <Button size="sm" onClick={() => ungroup(owner, driver)}>
         Cancel
       </Button>
     </Banner>
