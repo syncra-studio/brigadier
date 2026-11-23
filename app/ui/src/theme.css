@@ -254,6 +254,12 @@
   /* A question's answer square: its frame and number (the old app's foreground/20 and /70). */
   --color-marker: color-mix(in oklab, var(--color-foreground) 20%, transparent);
   --color-marker-foreground: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+  /* A setting's picture choice (the old app's Sidebar row): its label, and its tiny thread's message,
+     lines and composer (the old app's foreground/60, /30, /45 and /15). */
+  --color-picture-label: color-mix(in oklab, var(--color-foreground) 60%, transparent);
+  --color-picture-bubble: color-mix(in oklab, var(--color-foreground) 30%, transparent);
+  --color-picture-line: color-mix(in oklab, var(--color-foreground) 45%, transparent);
+  --color-picture-field: color-mix(in oklab, var(--color-foreground) 15%, transparent);
   /* A mockup's note pin (the old app's --marker, blue) and the stage its frames sit on, a step off the page. */
   --color-mockup-pin: oklch(0.63 0.18 259);
   --color-mockup-stage: color-mix(in oklab, var(--color-foreground) 3%, var(--color-background));
