@@ -2,12 +2,12 @@
 //! (`tag:<0-9>`), an emoji (`emoji:<it>`), or an image copied into the project's folder
 //! (`image:<file>`). None: the folder's logo, else its initials on their own colour.
 
-use super::{Change, Project, dir, err, find};
-use brigadier_frames::log::now_ms;
+use super::{dir, err};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The sidebar's tile colours (app/ui sidebar/row.tsx TAGS).
 const TAGS: u32 = 10;
@@ -15,53 +15,70 @@ const TAGS: u32 = 10;
 const IMAGE_BYTES: u64 = 5 << 20;
 const IMAGE_KINDS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "svg"];
 
-/// Changes `id`'s settings as `change` does, and its icon to `value` when given: "" (back to the
-/// folder's), `tag:<n>`, `emoji:<it>`, or `image:<path>`, whose file is copied in. All is checked
-/// before anything is saved; the image it had before goes once the new one is.
-pub fn set(data: &Path, id: &str, value: Option<&str>, change: Change) -> io::Result<Project> {
-    let Some(value) = value else {
-        return super::set(data, id, change);
-    };
-    // A project that exists, so its folder's path is one of ours.
-    super::get(data, id)?;
-    let (icon, copied) = match value.split_once(':') {
+/// Checks `value`, "" (back to the folder's), `tag:<n>`, `emoji:<it>` or `image:<path>`, and
+/// copies an image in: the icon to save, and the copy to drop should the save fail.
+pub(super) fn checked(
+    data: &Path,
+    id: &str,
+    value: &str,
+) -> io::Result<(Option<String>, Option<String>)> {
+    Ok(match value.split_once(':') {
         None if value.is_empty() => (None, None),
         Some(("tag", n)) if n.parse::<u32>().is_ok_and(|n| n < TAGS) => (Some(value.into()), None),
-        // One emoji, a family or flag's few joined characters at most.
-        Some(("emoji", e))
-            if (1..=8).contains(&e.chars().count())
-                && !e.chars().any(|c| c.is_whitespace() || c.is_control()) =>
-        {
-            (Some(value.into()), None)
-        }
+        Some(("emoji", e)) if one_emoji(e) => (Some(value.into()), None),
         Some(("image", path)) => {
             let name = copy(data, id, Path::new(path))?;
             (Some(format!("image:{name}")), Some(name))
         }
         _ => return err(format!("\"{value}\" isn't an icon.")),
-    };
-    // The rest is checked, then saved, and then the icon: a crash between leaves an orphan copy.
-    let done = super::set(data, id, change).and_then(|_| {
-        super::change(data, |list| {
-            let p = find(list, id)?;
-            Ok((std::mem::replace(&mut p.icon, icon), p.clone()))
-        })
-    });
-    // The image it no longer shows, once the record is written: the old one, else the new copy.
-    let gone = match &done {
-        Ok((_, (old, _))) => old
-            .as_deref()
-            .and_then(|old| old.strip_prefix("image:"))
-            .map(String::from),
-        Err(_) => copied,
+    })
+}
+
+/// After the save: the image it no longer shows goes, the old one once saved, else the new copy
+/// and the folder it made.
+pub(super) fn tidy(data: &Path, id: &str, saved: Option<Option<String>>, copied: Option<String>) {
+    let failed = saved.is_none() && copied.is_some();
+    let gone = match saved {
+        Some(old) => old.and_then(|old| old.strip_prefix("image:").map(String::from)),
+        None => copied,
     };
     if let Some(name) = gone {
         let _ = fs::remove_file(dir(data, id).join(name));
     }
-    done.map(|(_, (_, project))| project)
+    if failed {
+        // Only when empty: the folder may hold the project's other images.
+        let _ = fs::remove_dir(dir(data, id));
+    }
 }
 
-/// Copies a picked image into the project's folder as `icon-<ms>-<n>.<kind>`: a new name each
+/// Whether `e` is one emoji, as near as a check without Unicode's tables gets: one base character,
+/// with its modifiers, selectors and keycap, others joined to it by ZWJ, or a flag's two letters.
+fn one_emoji(e: &str) -> bool {
+    let (mut bases, mut joined, mut letters) = (0, false, 0);
+    for c in e.chars() {
+        match c {
+            '\u{200d}' => joined = true,
+            '\u{fe0e}'
+            | '\u{fe0f}'
+            | '\u{20e3}'
+            | '\u{1f3fb}'..='\u{1f3ff}'
+            | '\u{e0020}'..='\u{e007f}' => {}
+            '\u{1f1e6}'..='\u{1f1ff}' => {
+                letters += 1;
+                bases += usize::from(letters == 1);
+            }
+            _ if c.is_whitespace() || c.is_control() => return false,
+            _ => {
+                bases += usize::from(!joined);
+                joined = false;
+            }
+        }
+    }
+    // A family with its skin tones is 11 characters.
+    bases == 1 && letters <= 2 && e.chars().count() <= 11
+}
+
+/// Copies a picked image into the project's folder as `icon-<ns>-<n>.<kind>`: a new name each
 /// time, so the window never shows the one it had cached and no copy lands on another.
 fn copy(data: &Path, id: &str, from: &Path) -> io::Result<String> {
     let kind = from
@@ -99,9 +116,12 @@ fn copy(data: &Path, id: &str, from: &Path) -> io::Result<String> {
         return not_image();
     }
     fs::create_dir_all(dir(data, id))?;
-    let ms = now_ms();
+    // Nanoseconds, so a name a set in the same instant just freed isn't taken again.
+    let ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
     for n in 0.. {
-        let (name, to) = (format!("icon-{ms}-{n}.{kind}"), dir(data, id));
+        let (name, to) = (format!("icon-{ns}-{n}.{kind}"), dir(data, id));
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -144,7 +164,11 @@ fn svg(text: &str) -> bool {
         let Some(end) = end else { return false };
         rest = after[end..].trim_start();
     }
-    rest.strip_prefix("<svg")
+    // shortcut: a doctype's internal subset (entities) is refused, real icons have none.
+    let open = rest
+        .strip_prefix("<svg")
         .and_then(|r| r.chars().next())
-        .is_some_and(|c| c.is_whitespace() || c == '>' || c == '/')
+        .is_some_and(|c| c.is_whitespace() || c == '>' || c == '/');
+    // Whole, not cut off: closed, or the root closes itself.
+    open && (rest.contains("</svg>") || rest.trim_end().ends_with("/>"))
 }
