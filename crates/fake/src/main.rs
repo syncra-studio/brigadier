@@ -250,16 +250,21 @@ impl Agent {
         self.note(&format!("recv {text}"));
         let words: Vec<&str> = body.split_whitespace().collect();
         // An answer goes on with the waiting turn, acting out its own directives.
+        // `slow:N` holds it N ms, a message's start or, typed in an answer, the turn going on [D327].
+        let slow = || {
+            if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
+                thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
+            }
+        };
         if self.waiting {
             self.waiting = false;
+            slow();
             self.say("thanks for the answer");
         } else {
             if text.contains("noturn") {
                 return;
             }
-            if let Some(ms) = words.iter().find_map(|w| w.strip_prefix("slow:")) {
-                thread::sleep(Duration::from_millis(ms.parse().unwrap_or(0)));
-            }
+            slow();
             // Refused outright, before any turn: what a CLI at its limit answers to a new message.
             if words.contains(&"refuse") && limited() {
                 emit(json!({"t": "error", "code": 429, "message": "usage limit reached"}));

@@ -77,6 +77,10 @@ impl Fold {
             real.inspect(|r| self.took("real", r));
             self.plans.on = item["review"] == true;
         }
+        // An answer starts the agent's silence over: the wait on the user was none of its own [D327].
+        if item["control"]["kind"] == "answer" {
+            self.last_out = self.last_out.max(ts);
+        }
         if self.control(item, &cid) {
             return;
         }

@@ -199,13 +199,16 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
     return undefined;
   }, [all]);
   // Thinking at once while nothing of the running turn is live at its end: under its message on its way, under a reply
-  // it carries on from (not one still being written [D147]), or a turn the agent woke for with nothing of its own yet [D45].
+  // it carries on from (not one still being written [D147]), a turn the agent woke for with nothing of its own yet [D45],
+  // or a question or approval just answered, until the agent's next event [D327].
   const last = turnList?.at(-1);
   const tailTurn = tail && (tail.type === "item" || tail.type === "group" || tail.type === "marks" ? tail.item.turnId : tail.type === "work" ? tail.turn.id : undefined);
+  const answered = tail?.type === "item" && ((tail.item.kind === "question" && tail.item.answer !== null) || (tail.item.kind === "approval" && (tail.item.decision === "approved" || tail.item.decision === "denied")));
   const thinking =
     after === null &&
     running &&
-    ((top?.type === "item" && top.item === newest) ||
+    (answered ||
+      (top?.type === "item" && top.item === newest) ||
       (tail !== undefined && tail.type !== "setup" && tailTurn !== last?.id) ||
       (tail?.type === "item" && tail.item.kind === "message" && tail.item.role === "assistant" && !tail.item.streaming));
   const sourceRef = useRef(source);
