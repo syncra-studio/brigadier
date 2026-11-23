@@ -7,8 +7,8 @@
 
 mod verbs;
 
-pub(crate) use verbs::HELP;
 pub use verbs::turn_ended;
+pub(crate) use verbs::{HELP, VERBS};
 
 use serde_json::{Value, json};
 use std::collections::HashMap;

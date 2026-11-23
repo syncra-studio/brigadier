@@ -84,10 +84,11 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             _ => drop(s.items.remove(&n)),
         }
         if let Some(f) = e["frame"].as_object() {
-            s.frames.insert(
-                n,
-                ["x", "y", "w", "h"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0)),
-            );
+            let f = ["x", "y", "w", "h"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0));
+            if e["role"] == "AXWebArea" {
+                s.web = Some(f);
+            }
+            s.frames.insert(n, f);
         }
     }
     if let Some(id) = found["snapshot_id"].as_str() {
@@ -164,7 +165,15 @@ pub(super) fn read(
     let all = live(data, s, here)?;
     if all.is_empty() {
         (s.window, s.snapshot, s.secure, s.frames) = Default::default();
-        return menu_bar(data, s, here);
+        // A query searches a window's content; the menu bar only when asked, as with a window.
+        return match (w.values.get("--query"), w.flags.contains("--menus")) {
+            (None, _) => menu_bar(data, s, here),
+            (Some(q), true) => Ok(menus(data, s, Some(q), here)?.join("\n")),
+            (Some(_), false) => Ok(format!(
+                "{} has no window open, so it has no content to search: --menus searches its menu bar.",
+                s.app
+            )),
+        };
     }
     let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
     // By the window's own id, which stays while it's open: a position moves as others come and go.

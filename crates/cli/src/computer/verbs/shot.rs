@@ -80,8 +80,8 @@ pub(super) fn screenshot(
         (Some(w), Some(h)) => format!(" ({w}×{h})"),
         _ => String::new(),
     };
-    let fresh = fresh(data, s, &file, here);
     let Some(r) = region else {
+        let fresh = fresh(data, s, &file, here);
         return Ok(format!(
             "Saved: {}{size}. `click --at X,Y` clicks a point of it.{fresh}",
             file.display()
@@ -126,6 +126,8 @@ pub(super) fn screenshot(
     if !cut {
         return Err(refuse("Couldn't cut that region."));
     }
+    // The hash is of the part saved, so two regions of one picture never read as the same.
+    let fresh = fresh(data, s, &file, here);
     Ok(format!(
         "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.{fresh}",
         file.display()

@@ -2,7 +2,7 @@
 //! what changed.
 
 use super::diff::{Seen, baseline, changes};
-use super::open::{front, own};
+use super::open::{front, own, windows};
 use super::window::ours;
 use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
@@ -59,8 +59,9 @@ pub(super) fn act(
             ));
         }
         Ok(Err(why)) if why.contains("-25206") => {
+            let over = target.map_or(String::new(), |n| covered(data, s, n, here));
             return Err(refuse(&format!(
-                "{line}: failed, it takes no press. A field takes `type`; a row or cell, its parent's number or `click N --double`."
+                "{line}: failed, it takes no press.{over} A field takes `type`; a row or cell, its parent's number or `click N --double`."
             )));
         }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
@@ -92,19 +93,66 @@ pub(super) fn act(
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
+/// `act` with the app in front: Chromium takes a shortcut or a real Return only so, Cua's
+/// background keys never reach it [D2032]. The user's app and window are put back in front at
+/// once, and the answer says whether they were [D909].
+pub(super) fn in_front(
+    data: &Path,
+    me: &str,
+    s: &mut Sess,
+    line: &str,
+    name: &str,
+    mut args: Value,
+    here: &dyn Fn() -> bool,
+) -> Result<String, Value> {
+    let user = front(data, here).filter(|u| *u != s.pid);
+    let window =
+        user.and_then(|u| Some(windows(data, u, here).ok()?.first()?["window_id"].clone()));
+    args["delivery_mode"] = "foreground".into();
+    let out = act(data, me, s, line, name, args, here);
+    let Some((user, window)) = user.zip(window) else {
+        return out;
+    };
+    let back = own(
+        data,
+        "restore",
+        json!({"pid": user, "window": window}),
+        here,
+    )
+    .is_ok_and(|b| b["restored"] == true);
+    let note = match back {
+        true => format!(
+            " {} came to the front for it and was put back behind the user's app.",
+            s.app
+        ),
+        false => format!(
+            " {} came to the front for it and couldn't be put back: tell the user.",
+            s.app
+        ),
+    };
+    out.map(|o| o.replacen('\n', &format!("{note}\n"), 1))
+}
+
 /// What sits on control [n]'s centre when it isn't [n] itself: a dialog or a banner over it.
 fn covered(data: &Path, s: &Sess, n: u64, here: &dyn Fn() -> bool) -> String {
+    // An overlay accessibility doesn't show leaves no answer: said so, never taken as uncovered.
+    let unseen = format!(
+        " I couldn't tell what's on [{n}]'s centre: something outside what I can read may cover it, as a consent banner can. `screenshot` shows it."
+    );
     let Some(f) = s.frames.get(&n) else {
-        return String::new();
+        return unseen;
     };
     let at = json!({"pid": s.pid, "x": f[0] + f[2] / 2.0, "y": f[1] + f[3] / 2.0});
     let Ok(hit) = own(data, "hit", at, here) else {
-        return String::new();
+        return unseen;
     };
     let chain = hit["chain"].as_array().cloned().unwrap_or_default();
     let near = |a: &Value| (0..4).all(|i| (a[i].as_f64().unwrap_or(f64::MAX) - f[i]).abs() <= 1.0);
+    if chain.is_empty() {
+        return unseen;
+    }
     // The point is [n], or inside it: nothing covers it.
-    if chain.is_empty() || chain.iter().any(|e| near(&e["frame"])) {
+    if chain.iter().any(|e| near(&e["frame"])) {
         return String::new();
     }
     let named = |e: &&Value| e["name"].as_str().is_some_and(|n| !n.is_empty());

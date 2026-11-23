@@ -86,6 +86,8 @@ struct Sess {
     values: HashMap<u64, String>,
     /// The browser's address bar, by number: `type --submit` checks it took the url.
     address: Option<u64>,
+    /// The web page's frame, as the last read had it: actions inside it go to `brigadier browser`.
+    web: Option<[f64; 4]>,
     /// Menu items by number, by name: a menu open in its own window is out of the driver's reach.
     items: HashMap<u64, String>,
     /// The rows were renumbered since the last whole read.
@@ -194,6 +196,20 @@ pub fn agent(
     }
 }
 
+/// What `brigadier computer` does, as its calls log names them.
+pub(crate) const VERBS: [&str; 10] = [
+    "apps",
+    "open",
+    "read",
+    "click",
+    "type",
+    "key",
+    "scroll",
+    "drag",
+    "menu",
+    "screenshot",
+];
+
 fn verb(
     data: &Path,
     me: &str,
@@ -201,20 +217,7 @@ fn verb(
     rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
-    if ![
-        "apps",
-        "open",
-        "read",
-        "click",
-        "type",
-        "key",
-        "scroll",
-        "drag",
-        "menu",
-        "screenshot",
-    ]
-    .contains(&w.verb)
-    {
+    if !VERBS.contains(&w.verb) {
         return Err(refuse(&format!(
             "`brigadier computer {}` isn't a command. `brigadier computer --help` lists them.",
             w.verb
@@ -224,16 +227,6 @@ fn verb(
         return Err(refuse(OFF));
     }
     take(me, rows)?;
-    // Brigadier's own count, which a worker's result carries so its lead needn't take the
-    // worker's word for it [D2032].
-    let calls = brigadier_core::session_dir(data, me).join("computer");
-    let _ = fs::create_dir_all(&calls).and_then(|()| {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(calls.join("calls"))?;
-        writeln!(f, "{} {}", brigadier_frames::log::now_ms(), w.verb)
-    });
     need(data, w.verb == "screenshot" || w.verb == "drag")?;
     let mut s = lock(&SESSIONS).get(me).cloned().unwrap_or_default();
     let n = |i: usize| -> Result<u64, Value> {
@@ -247,13 +240,36 @@ fn verb(
             ))
         })
     };
-    let acts = ["click", "type", "key", "scroll", "drag"].contains(&w.verb);
+    // In the page: a control inside its frame, or a key that isn't a ⌘ or ⌃ shortcut, as those
+    // reach the browser itself (⌘Q, ⌘L, ⌘T).
+    let inside = |n: u64| {
+        let (Some(f), Some(p)) = (s.frames.get(&n), s.web) else {
+            return false;
+        };
+        let (x, y) = (f[0] + f[2] / 2.0, f[1] + f[3] / 2.0);
+        x >= p[0] && x <= p[0] + p[2] && y >= p[1] && y <= p[1] + p[3]
+    };
+    let acts = match w.verb {
+        "key" => !(w.rest.first()).is_some_and(|k| k.contains("cmd+") || k.contains("ctrl+")),
+        "click" | "type" | "scroll" | "drag" => n(0).is_ok_and(inside),
+        _ => false,
+    };
     if let Some(no) = (acts && s.pid != 0)
         .then(|| web_page(data, me, &s.app, s.address.is_some()))
         .flatten()
     {
         return Err(refuse(&no));
     }
+    // Brigadier's own count of what went past its refusals, which a worker's result carries so its lead needn't take the
+    // worker's word for it [D2032].
+    let calls = brigadier_core::session_dir(data, me).join("computer");
+    let _ = fs::create_dir_all(&calls).and_then(|()| {
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(calls.join("calls"))?;
+        writeln!(f, "{} {}", brigadier_frames::log::now_ms(), w.verb)
+    });
     let text = match w.verb {
         "apps" => apps(data, here)?,
         "open" => open::open(data, me, &mut s, w, here)?,
@@ -292,23 +308,16 @@ fn verb(
             };
             press(data, me, &mut s, what, cua, w, here)?
         }
-        // A key goes to the window as keys, never as a menu pick: Chromium runs a picked item in
-        // whichever of its windows was last in front, a popup over the one read [D2032].
+        // A key goes to the window as keys: Chromium runs a picked menu item in whichever of its
+        // windows was last in front, a popup over the one read [D2032]. A native app in the
+        // background gets a key equivalent as its menu item, in the window named, as only that works.
         "key" => match key(&s, me, w.rest.first().copied().unwrap_or(""))? {
-            (name, mut args) if s.window != 0 && !s.snapshot.is_empty() => {
-                if window::chromium(data, s.pid, here) {
-                    // Background, Cua sends a menu's key equivalent through the menu bar.
-                    args["delivery_mode"] = "foreground".into();
+            (name, args) if s.window != 0 && !s.snapshot.is_empty() => {
+                let line = format!("Pressed {}", w.rest[0]);
+                match window::chromium(data, s.pid, here) {
+                    true => act::in_front(data, me, &mut s, &line, name, args, here)?,
+                    false => act(data, me, &mut s, &line, name, args, here)?,
                 }
-                act(
-                    data,
-                    me,
-                    &mut s,
-                    &format!("Pressed {}", w.rest[0]),
-                    name,
-                    args,
-                    here,
-                )?
             }
             _ => {
                 return Err(refuse(&format!(

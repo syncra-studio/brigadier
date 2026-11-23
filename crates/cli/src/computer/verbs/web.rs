@@ -39,11 +39,21 @@ pub(super) fn web_page(data: &Path, me: &str, app: &str, address: bool) -> Optio
             .filter(|e| e.from == "user")
             .any(|e| {
                 let theirs = words(&e.text);
+                // A name that is a word too counts only capitalised: "the edge of the card" isn't Edge.
+                let capital = |w: &str| {
+                    let w = format!("{}{}", w[..1].to_uppercase(), &w[1..]);
+                    (e.text.split(|c: char| !c.is_alphanumeric())).any(|t| t == w)
+                };
                 (named.iter())
                     .filter(|w| {
                         !["google", "microsoft", "browser", "for", "testing"].contains(&w.as_str())
                     })
-                    .any(|w| theirs.contains(w))
+                    .any(
+                        |w| match ["edge", "arc", "brave", "opera"].contains(&w.as_str()) {
+                            true => capital(w),
+                            false => theirs.contains(w),
+                        },
+                    )
             })
     });
     if said {

@@ -1,7 +1,7 @@
 //! `type`: replacing a field's value, read back to say whether it landed, and `--submit`'s real
 //! Return, which in an address bar says whether the page changed [D2032].
 
-use super::act::{act, token};
+use super::act::{act, in_front, token, wait_for_user};
 use super::{Sess, Words, call, refuse, window};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -29,15 +29,40 @@ pub(super) fn type_into(
             "[{n}] is a password field: ask the user to type it."
         )));
     }
-    // `type` replaces: the field is emptied first, else the text goes in at its caret.
+    // `type` replaces: the field is emptied first, else the text goes in at its caret. Not while
+    // the user is in the app, and put back if the typing doesn't go through.
     let old = s.values.get(&n).cloned().unwrap_or_default();
+    let set = |s: &Sess, value: &str| {
+        let args = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": value, "session": me});
+        call(data, "set_value", args, here)
+    };
     if !old.is_empty() {
-        let clear = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": "", "session": me});
-        call(data, "set_value", clear, here)?;
+        wait_for_user(data, s, here)?;
+        set(s, "")?;
     }
     let args = json!({"text": text, "element_token": token(s, n), "pid": s.pid, "window_id": s.window, "session": me});
     let line = format!("Typed {} characters into [{n}]", text.chars().count());
-    let mut out = act(data, me, s, &line, "type_text", args, here)?;
+    let done = act(data, me, s, &line, "type_text", args, here);
+    let refused = (done.as_ref()).map_or(true, |o| {
+        o.lines().next().is_some_and(|l| l.contains(": refused"))
+    });
+    if refused && !old.is_empty() {
+        let back = set(s, &old).map_or(
+            " Its old text couldn't be put back: read it.",
+            |_| " Its old text is put back.",
+        );
+        return match done {
+            Ok(out) => Ok(out.replacen('\n', &format!("{back}\n"), 1)),
+            Err(e) => Err(refuse(&format!(
+                "{}{back}",
+                e["error"].as_str().unwrap_or("Typing failed.")
+            ))),
+        };
+    }
+    let mut out = done?;
+    if refused {
+        return Ok(out);
+    }
     // Done only when the field reads the text back.
     if s.batch {
         return Ok(out);
@@ -62,13 +87,13 @@ pub(super) fn type_into(
         out.push_str("\nNot submitted: read the window, then `key return`.");
     } else if w.flags.contains("--submit") {
         // A real Return to the field: Chromium's address bar takes only a hardware one.
-        let mut enter = json!({"key": "return", "element_token": token(s, n), "pid": s.pid, "window_id": s.window, "session": me});
-        if window::chromium(data, s.pid, here) {
-            enter["delivery_mode"] = "foreground".into();
-        }
+        let enter = json!({"key": "return", "element_token": token(s, n), "pid": s.pid, "window_id": s.window, "session": me});
         let title = |s: &Sess| (s.wins.iter().find(|w| w.0 == s.window)).map(|w| w.1.clone());
         let (address, before) = (s.address == Some(n), title(s));
-        out = act(data, me, s, "Pressed Return", "press_key", enter, here)?;
+        out = match window::chromium(data, s.pid, here) {
+            true => in_front(data, me, s, "Pressed Return", "press_key", enter, here)?,
+            false => act(data, me, s, "Pressed Return", "press_key", enter, here)?,
+        };
         if address {
             let url = s
                 .address

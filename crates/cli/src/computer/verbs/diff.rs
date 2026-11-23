@@ -34,12 +34,11 @@ pub(super) fn baseline(data: &Path, s: &mut Sess, here: &dyn Fn() -> bool) {
 pub(super) fn live(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
     let mut all = windows(data, s.pid, here)?;
     if all.len() > 1 {
-        // shortcut: only untitled windows are probed, as a titled one has content; probe all if a
-        // titled empty window turns up. The probe has no session, so the next diff's base stays.
+        // Titled ones too, as a "Loading" window can be empty. The probe has no session, so the
+        // next diff's base stays.
         all.retain(|w| {
             let wid = w["window_id"].as_u64().unwrap_or(0);
             wid == s.window
-                || w["title"].as_str().is_some_and(|t| !t.is_empty())
                 || call(data, "get_window_state", json!({"pid": s.pid, "window_id": wid, "include_screenshot": false, "max_elements": 4, "max_depth": 4}), here)
                     .is_ok_and(|f| !unresolved(&f) && f["total_element_count"].as_u64().unwrap_or(0) > 0)
         });
@@ -80,6 +79,17 @@ pub(super) fn changes(
             .filter(|b| !now.iter().any(|w| w.0 == b.0))
             .map(|b| format!("- window {}", name(&b.1))),
     );
+    // Another window kept but retitled, as a page that saved in it.
+    // shortcut: only its title is compared; diff its rows too if a change inside one goes unseen.
+    wins.extend((now.iter()).filter(|w| w.0 != s.window).filter_map(|w| {
+        let b = s.wins.iter().find(|b| b.0 == w.0 && b.1 != w.1)?;
+        Some(format!(
+            "~ window {} is now {} (--window {})",
+            name(&b.1),
+            name(&w.1),
+            w.0
+        ))
+    }));
     s.wins = now;
     let (seen, text) = match (seen, wins.is_empty()) {
         (_, true) => (seen, text),
