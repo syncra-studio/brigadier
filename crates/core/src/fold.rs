@@ -64,6 +64,8 @@ pub struct Fold {
     /// The live child's subagents still running, by step id: an answered turn waits on them [D118].
     #[serde(default)]
     pub agents: BTreeSet<String>,
+    #[serde(default)]
+    pub pending: live::Pending,
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
@@ -266,11 +268,8 @@ impl Fold {
                     exited: false,
                 });
                 self.groups.push((pid, start_us, str_of("dir")));
-                self.windows.clear();
-                self.tasks.clear();
-                self.typed.clear();
-                self.calls.clear();
-                self.agents.clear();
+                (self.windows, self.tasks, self.typed, self.calls) = Default::default();
+                (self.agents, self.pending) = Default::default();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -282,7 +281,7 @@ impl Fold {
                     return;
                 };
                 child.exited = true;
-                self.agents.clear();
+                (self.agents, self.pending) = Default::default();
                 let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
                 let clean = item["code"].as_i64() == Some(0);
                 let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
@@ -297,6 +296,7 @@ impl Fold {
                 }
             }
             "turn_start" => {
+                self.pending.due = false;
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
                     self.close("withdrawn", Value::Null, ts);
@@ -334,6 +334,7 @@ impl Fold {
                     None => self.images.push(image),
                 }
             }
+            "pending" => self.pending.listed(item, self.turns.is_empty()),
             // A command or watch sent to the background, by what the agent said it does [D187].
             "background" => {
                 self.tasks.push((ts, str_of("task")));
