@@ -12,8 +12,9 @@ use std::path::{Path, PathBuf};
 /// other session's wait never does [D3034]. Its text, when there's one to take.
 /// `turn` names the exact report turn waited on (a `send --wait`); none takes its latest. Taken
 /// under the parent's queue lock, which a delivery holds while it sends [D3006, D3034].
-pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>) -> Option<String> {
-    let _ = write_ended(data, wid, false);
+/// `cut`: its host died, so a turn it left open ended too, failed.
+pub fn take(data: &Path, me: &str, wid: &str, turn: Option<&str>, cut: bool) -> Option<String> {
+    let _ = write_ended(data, wid, cut);
     take_if(data, me, wid, |r| turn.is_none_or(|t| r.turn == t))
 }
 

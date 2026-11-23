@@ -66,9 +66,9 @@ pub struct Fold {
     pub agents: BTreeSet<String>,
     #[serde(default)]
     pub pending: live::Pending,
-    /// When each turn ended (ms), by its id: a result held for its background work waits from it.
+    /// How each turn last ended, its own end or its wake's, and when (ms), by the turn it reports in.
     #[serde(default)]
-    pub ends: BTreeMap<String, u64>,
+    pub ends: BTreeMap<String, (u64, String)>,
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
@@ -302,7 +302,7 @@ impl Fold {
                 }
             }
             "turn_start" => {
-                self.pending.due = false;
+                let of = self.woke_of();
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
                     self.close("withdrawn", Value::Null, ts);
@@ -311,7 +311,7 @@ impl Fold {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
                         origin: "agent".into(),
-                        of: self.woke_of(),
+                        of,
                         backend: self.backend.clone(),
                         ts,
                         delivered: Some(ts),
@@ -341,7 +341,7 @@ impl Fold {
                     None => self.images.push(image),
                 }
             }
-            "pending" => self.pending.listed(item, self.turns.is_empty()),
+            "pending" => self.pending.listed(item, &self.turns),
             // A command or watch sent to the background, by what the agent said it does [D187].
             "background" => {
                 self.tasks.push((ts, str_of("task")));
@@ -356,6 +356,7 @@ impl Fold {
                 }
                 if item["step"] == "agent" && item["parent"].is_null() {
                     self.agents.insert(str_of("id"));
+                    self.started(str_of("id"));
                 }
                 if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
                 {
@@ -379,7 +380,7 @@ impl Fold {
                     }
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
-                    self.pending.due |= self.turns.is_empty();
+                    self.pending.ended(&str_of("id"), self.turns.is_empty());
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
