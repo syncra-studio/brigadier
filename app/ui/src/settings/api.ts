@@ -91,7 +91,9 @@ export function loadLid(): void {
 
 /** On or off; the first time on asks for the administrator password once, and without it stays off, as the old app. */
 export async function setLid(on: boolean): Promise<void> {
-  if (on && lid.get().state === "setup") {
+  // Not yet known counts as no rule: Rust's lid-setup asks only when there isn't one.
+  const state = lid.get().state;
+  if (on && state !== "ready" && state !== "low") {
     lid.set({ ...lid.get(), settingUp: true });
     try {
       lid.set({ state: (await run(["awake", "lid-setup"])).lid as LidState });
