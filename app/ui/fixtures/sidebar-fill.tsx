@@ -1,7 +1,6 @@
-// Mockup only: the sidebar in the main area's fill. ?v=a is today's (its own fill, the 0.5px edge), ?v=b the page's fill
-// with a 1px line at its edge, ?v=c the page's fill with no line, its rows' selection and hover the only structure.
-// Each in the dark theme over a light one (the app has no light theme yet: fixtures.css's mockup-light stands in).
-// The real sidebar on fake sessions; no daemon. Not the app.
+// Mockup only: the sidebar in the main area's fill with a 1px line at its edge (variant B, ?v=b), now the app's own.
+// In the dark theme over a light one (the app has no light theme yet: fixtures.css's mockup-light stands in).
+// ?v=real is the real sidebar and main area alone, in the app's own (dark) theme. Fake sessions; no daemon. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
@@ -65,15 +64,12 @@ function Thread() {
   );
 }
 
-const VARIANT = { a: "", b: "mockup-flat-sidebar mockup-edge-1px", c: "mockup-flat-sidebar mockup-no-edge" } as const;
-type V = keyof typeof VARIANT;
-
 /** The window, its fixed parts held inside by `transform-gpu`, in one theme. */
-function Window({ v, light }: { v: V; light?: boolean }) {
+function Window({ light }: { light?: boolean }) {
   const [open, setOpen] = useState(true);
   const [active, setActive] = useState("s1");
   return (
-    <div className={cx("mockup-window relative transform-gpu overflow-hidden bg-background text-foreground", light && "mockup-light", VARIANT[v])}>
+    <div className={cx("mockup-window relative transform-gpu overflow-hidden bg-background text-foreground", light && "mockup-light")}>
       <SidebarProvider open={open} onOpenChange={setOpen}>
         <AppSidebar storeKey={`mockup-sidebar-${light ? "light" : "dark"}`} rows={ROWS} projects={PROJECTS} active={active} offline={false} onOpen={setActive} onNewSession={() => {}} onNewChat={() => {}} />
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">
@@ -84,10 +80,10 @@ function Window({ v, light }: { v: V; light?: boolean }) {
   );
 }
 
-const v = (new URLSearchParams(location.search).get("v") ?? "a") as V;
+const real = new URLSearchParams(location.search).get("v") === "real";
 createRoot(document.getElementById("root")!).render(
   <div className="flex h-full flex-col">
-    <Window v={v in VARIANT ? v : "a"} />
-    <Window v={v in VARIANT ? v : "a"} light />
+    <Window />
+    {!real && <Window light />}
   </div>,
 );

@@ -18,21 +18,6 @@
   border-top: 1px solid #888;
 }
 
-/* Sidebar fill mockup, B and C: the sidebar and strip in the main area's fill, nothing behind them. */
-.mockup-window.mockup-flat-sidebar {
-  --color-sidebar: var(--color-background);
-  --color-sidebar-solid: var(--color-background);
-  --color-window-fill: transparent;
-}
-/* B: a 1px line at the sidebar's edge (today's is 0.5px). */
-.mockup-edge-1px .main-surface {
-  border-inline-start-width: 1px;
-}
-/* C: no line; the rows' selection and hover are the structure. */
-.mockup-no-edge .main-surface {
-  border-inline-start-color: transparent;
-}
-
 /* A stand-in light theme for the mockups (the app has none yet): light neutrals, then every colour made from
    them, declared again here so it mixes from these. */
 .mockup-light {
@@ -71,8 +56,8 @@
   --color-code-card: #f7f7f7;
   --color-code-card-edge: #e5e5e5;
   --color-chrome: var(--color-card);
-  --color-sidebar: var(--color-card);
-  --color-sidebar-solid: var(--color-card);
+  --color-sidebar: var(--color-background);
+  --color-sidebar-solid: var(--color-background);
   --color-menu: color-mix(in oklab, var(--color-popover) 90%, transparent);
   --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
   --color-code-surface: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
