@@ -2103,8 +2103,9 @@
   }
 }
 
-/* A scroll box whose edges fade only while there is more to scroll that way (its scroll position drives
-   the fade lengths). A shell's output fades at the top over 2rem; a diff's body at the bottom. */
+/* A scroll box whose edges fade only while there is more to scroll that way: each edge's fade is as long as the
+   distance scrolled on that side, up to its size, so a box scrolled 3px shows a 3px fade, not a share of its size.
+   A shell's output fades at the top over 2rem; a diff's body at the bottom. */
 @property --edge-top {
   syntax: "<length>";
   inherits: false;
@@ -2115,22 +2116,36 @@
   inherits: false;
   initial-value: 0px;
 }
-@keyframes edge-fade {
+@keyframes edge-fade-top {
   from {
     --edge-top: 0px;
-    --edge-bottom: var(--edge-size-bottom);
   }
   to {
     --edge-top: var(--edge-size-top);
+  }
+}
+@keyframes edge-fade-bottom {
+  from {
+    --edge-bottom: var(--edge-size-bottom);
+  }
+  to {
     --edge-bottom: 0px;
   }
 }
 @utility scroll-edge-fade {
   mask-image: linear-gradient(to bottom, transparent, black var(--edge-top), black calc(100% - var(--edge-bottom)), transparent);
-  animation: edge-fade linear both;
+  animation:
+    edge-fade-top linear both,
+    edge-fade-bottom linear both;
+  /* Else the build writes the shorthand out with 0s, which pins a ranged scroll-driven fade at one end. */
+  animation-duration: auto;
   animation-timeline: scroll(self y);
+  /* The top fade grows over the first edge's length of scroll, the bottom one shrinks over the last. */
+  animation-range:
+    0px var(--edge-size-top),
+    calc(100% - var(--edge-size-bottom)) 100%;
 }
-/* The same fade along a row that scrolls sideways (the model picker's marks past ten). */
+/* The same fade along a row that scrolls sideways (the model picker's marks past ten, the session tabs). */
 @property --edge-start {
   syntax: "<length>";
   inherits: false;
@@ -2141,26 +2156,41 @@
   inherits: false;
   initial-value: 0px;
 }
-@keyframes edge-fade-x {
+@keyframes edge-fade-start {
   from {
     --edge-start: 0px;
-    --edge-end: var(--edge-size-x, var(--spacing-group-fade));
   }
   to {
     --edge-start: var(--edge-size-x, var(--spacing-group-fade));
+  }
+}
+@keyframes edge-fade-end {
+  from {
+    --edge-end: var(--edge-size-x, var(--spacing-group-fade));
+  }
+  to {
     --edge-end: 0px;
   }
 }
 @utility scroll-edge-fade-x {
   mask-image: linear-gradient(to right, transparent, black var(--edge-start), black calc(100% - var(--edge-end)), transparent);
-  animation: edge-fade-x linear both;
+  animation:
+    edge-fade-start linear both,
+    edge-fade-end linear both;
+  animation-duration: auto;
   animation-timeline: scroll(self x);
+  animation-range:
+    0px var(--edge-size-x, var(--spacing-group-fade)),
+    calc(100% - var(--edge-size-x, var(--spacing-group-fade))) 100%;
 }
 @utility edge-fade-shell {
   --edge-size-top: 2rem;
   --edge-size-bottom: 0px;
-  /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
-  animation-direction: reverse;
+  /* Its newest line is at the bottom (column-reverse), where its scroll starts, so its top is the far end. */
+  animation-range:
+    calc(100% - var(--edge-size-top)) 100%,
+    normal;
+  animation-direction: reverse, normal;
 }
 /* An unfolded project's sessions: five rows tall at most, the rest scrolling inside it under its ScrollFades; a row
    focused or opened past an end scrolls in clear of them [D282]. */
