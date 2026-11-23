@@ -3,6 +3,7 @@
 // notes tray; Use with its confirm; and Mockup · Compare · Real once the pick is built [D2069].
 import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useState } from "react";
 
+import { ZOOM_LEAST, ZOOM_MOST } from "../browser/keys";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -16,10 +17,10 @@ import { type MockupNote, noteCount, type Notes } from "./notes";
 import type { Hovered } from "./pins";
 import { type Send, Tray } from "./tray";
 
-/** The zoom menu's steps, and the canvas's bounds for pinch or ⌘-scroll (the old tab's). */
-const ZOOMS = [25, 50, 100, 150, 200] as const;
-const MIN_ZOOM = 10;
-const MAX_ZOOM = 400;
+/** The zoom menu's steps, and the canvas's bounds for pinch or ⌘-scroll: those a live page's zoom follows. */
+const ZOOMS = [30, 50, 100, 150, 200] as const;
+const MIN_ZOOM = ZOOM_LEAST * 100;
+const MAX_ZOOM = ZOOM_MOST * 100;
 
 type Mode = "point" | "try";
 /** Where the canvas is: its pan in px and its scale; fit is none of either. */
@@ -134,11 +135,13 @@ export function MockupView({
   };
   const onKey = useEffectEvent((event: KeyboardEvent) => {
     const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]");
+    // A control the keyboard is on keeps Space for itself: Use, the pills.
+    const control = event.target instanceof HTMLElement && event.target.tabIndex >= 0 && event.target.matches(":focus-visible");
     if (matches(event, "mockup-send")) {
       event.preventDefault();
       if (confirm) build();
       else if (working && !mockup?.stopped && noteCount(notes) && send !== "sending") actions.send(shownRound + 1);
-    } else if (event.key === " " && !typing) {
+    } else if (event.key === " " && !typing && !control) {
       event.preventDefault();
       setSpace(true);
     } else if (event.key === "Escape" && !typing) {
@@ -180,7 +183,8 @@ export function MockupView({
     window.addEventListener("wheel", onWheel, { passive: false });
     return () => window.removeEventListener("wheel", onWheel);
   }, [stage, active]);
-  // A drag on the canvas's empty space pans it; with Space held or the middle button, a drag anywhere does.
+  // A drag on the canvas's empty space pans it; with Space held or the middle button, a drag anywhere does, but on a
+  // page in Try: that page has the pointer and the wheel, which the app never sees.
   const startPan = (event: ReactPointerEvent) => {
     const onCanvas = event.target instanceof Element && !event.target.closest("button, a, input, textarea, [data-slot=mockup-frame], [data-slot=mockup-over-page]");
     if (!(space || event.button === 1 || (event.button === 0 && onCanvas))) return;

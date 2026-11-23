@@ -8,7 +8,8 @@ import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Reload, Search, Spinner,
 import { findInPage, findLabel, useBrowserFind } from "./find";
 import { useTabs } from "../shell/tab-store";
 import { ungroup } from "./give";
-import { stopDriving, takeOver, useAgentLit, useAgentPillSlot } from "./overlay";
+import { stopDriving, takeOver, useAgentHoldsAny, useAgentLit, useAgentPillSlot } from "./overlay";
+import { useAgentPause } from "./pause";
 import { useDriverDone, useDriverName } from "./tab-icon";
 
 /** Back, Forward and Reload: round, and faint while they can't act (the button's own disabled look). */
@@ -141,15 +142,20 @@ const subscribeBars = (listener: () => void) => (barListeners.add(listener), () 
 
 /**
  * The bar under the toolbar of each Browser tab agent `driver` drives in session `owner`, as Chrome's '"Claude" started
- * debugging this browser': from its first drive until its turn ends or its group is gone; none on the user's own
+ * debugging this browser': from its drive until its turn ends, it lets go or its group is gone; none on the user's own
  * tabs [D312]. Cancel takes its tabs back, as Ungroup; × closes the bar for the session [D894 D909].
  */
 export function AgentSessionBar({ owner, driver }: { owner: string; driver: string | undefined }) {
-  const first = useTabs(owner).tabs.find((tab) => tab.kind === "browser" && tab.driver)?.id;
+  const tabs = useTabs(owner).tabs;
+  const first = tabs.find((tab) => tab.kind === "browser" && tab.driver)?.id;
   const name = useDriverName(driver);
   const closed = useSyncExternalStore(subscribeBars, () => closedBars.get(owner) === first);
   const done = useDriverDone(driver);
-  if (!driver || !first || closed || done) return null;
+  // Only while it uses its tabs: it holds one, or the user took one over; a turn that never drives brings none back.
+  const own = tabs.filter((tab) => tab.kind === "browser" && tab.driver === driver).map((tab) => tab.id);
+  const paused = useAgentPause().paused;
+  const using = useAgentHoldsAny(own) || own.some((id) => id in paused);
+  if (!driver || !first || closed || done || !using) return null;
   return (
     <Banner slot="browser-agent-bar" text={`"${name}" started using this browser`} onDismiss={() => closeBar(owner, first)}>
       <Button size="sm" onClick={() => ungroup(owner, driver)}>

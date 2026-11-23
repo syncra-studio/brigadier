@@ -12,7 +12,7 @@ import { daemonRun, failure } from "../session/composer";
 import { CHAT, openTab, selectTab, type Tab } from "../shell/tab-store";
 import type { Zoom } from "./frame";
 import { type MockupActions, MockupView } from "./mockup";
-import { busy, type Load, type Mockup } from "./model";
+import { ready as allIn, busy, type Load, type Mockup } from "./model";
 import { NO_NOTES, type Notes } from "./notes";
 import { type MockupMoment, MockupRow, MockupTabIcon } from "./row";
 import type { Send } from "./tray";
@@ -67,7 +67,8 @@ function momentOf(mockup: Mockup | null, count: number, ready?: number | null): 
   if (mockup.picked) return mockup.building ? { kind: "picked", letter: mockup.picked } : { kind: "built", letter: mockup.picked };
   const open = mockup.rounds.length === (ready ?? mockup.rounds.length);
   if (ready) return { kind: "ready", round: ready, open };
-  return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "ready", round: null, open: true };
+  if (allIn(mockup)) return { kind: "ready", round: null, open: true };
+  return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "waiting" };
 }
 
 /**

@@ -8,6 +8,7 @@ import { ImageSquare, Spinner } from "../icons";
 export type MockupMoment =
   | { kind: "drawing"; count: number }
   | { kind: "ready"; round: number | null; open: boolean }
+  | { kind: "waiting" }
   | { kind: "notes"; count: number; on: string[]; round: number }
   | { kind: "picked"; letter: string }
   | { kind: "built"; letter: string }
@@ -26,6 +27,9 @@ function words(moment: MockupMoment): [string, string] {
       // Still the newest round, nothing picked: the user's move.
       if (!moment.open) return ["Mockup", `round ${moment.round ?? 1} ready`];
       return [moment.round ? `Mockup · round ${moment.round} ready` : "Mockup ready", "pick one with Use, or leave a note"];
+    case "waiting":
+      // Its worker's turn ended before the round was all in.
+      return ["Mockup", "waiting for your notes"];
     case "notes":
       return ["You → mockup", `${notes(moment.count)} on ${listed(moment.on)} · round ${moment.round} drawing`];
     case "picked":

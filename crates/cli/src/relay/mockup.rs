@@ -50,6 +50,13 @@ pub(crate) fn state(data: &Path, wid: &str) -> Option<Value> {
     workers::read_json(&file(data, wid))
 }
 
+/// The newest round has every variant asked for: it's drawn, the user's move.
+pub(crate) fn all_in(m: &Value) -> bool {
+    let count = m["count"].as_u64().unwrap_or(3).min(3) as usize;
+    let last = m["rounds"].as_array().and_then(|r| r.last());
+    last.is_some_and(|r| r["variants"].as_array().map_or(0, Vec::len) == count)
+}
+
 /// A mockup worker's first `mockup.json`: its title, how many variants, round 1 with none yet.
 pub(crate) fn begin(dir: &Path, title: &str, count: u64) -> io::Result<()> {
     let m = json!({"title": title, "count": count, "rounds": [{"variants": [], "sent": []}],
@@ -349,11 +356,9 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
     *list = all.into();
     if full {
         news(data, me, &mut m);
+        ready(data, me, &mut m, rounds);
     }
     workers::write_json(&file(data, me), &m)?;
-    if full {
-        ready(data, me, &m, rounds);
-    }
     Ok(json!({"ok": true, "text": format!("Variant {letter} shows in the user's Mockup tab.")}))
 }
 
@@ -369,8 +374,9 @@ fn news(data: &Path, me: &str, m: &mut Value) {
 }
 
 /// Round `round` has every variant in: a card in the lead's chat asks the user to pick one, as the
-/// tab's Use does, and the lead hears it quietly with its next input; once a round [D560].
-fn ready(data: &Path, me: &str, m: &Value, round: usize) {
+/// tab's Use does, and the lead hears it quietly with its next input; once a round [D560]. The card
+/// is marked on the round once its row is in, so a report while the lead's host is down retries it.
+fn ready(data: &Path, me: &str, m: &mut Value, round: usize) {
     let Some(l) = workers::link(data, me) else {
         return;
     };
@@ -383,8 +389,8 @@ fn ready(data: &Path, me: &str, m: &Value, round: usize) {
         "Your mockup worker {} ({me}) drew {n} of round {round}: the user picks one with Use, on the card in your chat or in the Mockup tab, or sends notes for another round. Nothing for you to do; the pick goes to that worker, and its result comes to you once it's built.",
         l.title
     );
-    let key = format!("mockup-ready-{round}");
-    if !workers::told_notice(data, &l.parent, me, &key, &text).unwrap_or(false) {
+    let _ = workers::told_notice(data, &l.parent, me, &format!("mockup-ready-{round}"), &text);
+    if m["rounds"][round - 1]["asked"] == true {
         return;
     }
     let variants = m["rounds"][round - 1]["variants"]
@@ -410,7 +416,12 @@ fn ready(data: &Path, me: &str, m: &Value, round: usize) {
     let request = json!({"id": format!("{PICK}{me}-{round}"), "title": format!("{} · round {round} is ready", m["title"].as_str().unwrap_or("Mockup")), "items": [item], "held": true});
     let note =
         json!({"event": "mockup", "phase": "asked", "id": request["id"], "request": request});
-    let _ = owner::call(data, &l.parent, json!({"op": "note", "data": note}));
+    let shown = core::load(data, &l.parent)
+        .and_then(|spec| owner::ensure(data, &spec))
+        .and_then(|_| owner::call(data, &l.parent, json!({"op": "note", "data": note})));
+    if shown.is_ok() {
+        m["rounds"][round - 1]["asked"] = true.into();
+    }
 }
 
 fn web(url: &str) -> bool {

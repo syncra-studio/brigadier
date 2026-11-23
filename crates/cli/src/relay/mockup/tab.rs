@@ -95,8 +95,10 @@ fn shown(data: &Path, wid: &str) -> io::Result<Value> {
     let mut m = state(data, wid).ok_or_else(none)?;
     let working = working(data, wid)?;
     let picked = m["picked"].is_string();
+    // A round with every variant in is drawn, though its worker's turn goes on.
+    let drawing = working && !picked && !super::all_in(&m);
     if let Some(last) = m["rounds"].as_array_mut().and_then(|r| r.last_mut()) {
-        last["drawing"] = (working && !picked).into();
+        last["drawing"] = drawing.into();
     }
     m["building"] = (working && picked && m["real"].is_null()).into();
     m["stopped"] = stopped(data, wid).into();
