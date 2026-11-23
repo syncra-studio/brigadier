@@ -1,4 +1,4 @@
-import { Fragment, memo, type ReactNode, useLayoutEffect, useMemo, useRef } from "react";
+import { createContext, Fragment, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -37,8 +37,14 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
     const used = definitions.filter(([label]) => named.includes(label)).map(([, line]) => line);
     return used.length ? `${raw}\n\n${used.join("\n")}` : raw;
   };
+  // Each heading gets GitHub's id, counted over the whole text, not one block; a nested text (a draft) counts its own.
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const seen = new Map<string, number>();
+    for (const heading of box.current!.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) if (heading.closest(".markdown") === box.current) heading.id = slug(heading.textContent ?? "", seen);
+  });
   return (
-    <div className="markdown">
+    <div ref={box} className="markdown">
       {tokens.map((token, n) => {
         const from = start;
         start += token.raw.length;
@@ -51,6 +57,83 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
       })}
     </div>
   );
+}
+
+/** GitHub's heading slug (github-slugger's): lower case, punctuation dropped, spaces as `-`; a repeat gets `-1`, `-2`. */
+function slug(text: string, seen: Map<string, number>): string {
+  const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "").replace(/ /g, "-");
+  let id = base;
+  while (seen.has(id)) {
+    seen.set(base, seen.get(base)! + 1);
+    id = `${base}-${seen.get(base)}`;
+  }
+  seen.set(id, 0);
+  return id;
+}
+
+/** A `#section` link's heading, looked for only in the text the link is in, as each message has its own ids. */
+function toHeading(link: HTMLElement, hash: string): void {
+  let id = hash;
+  try {
+    id = decodeURIComponent(hash);
+  } catch {
+    // Kept as written.
+  }
+  link.closest(".markdown")?.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: "start" });
+}
+
+/**
+ * A file's own relative links and images, given by the file viewer for the file it shows: a link opens its file there,
+ * an image loads by the URL `image` finds. A thread gives none, so its links stay refs.
+ */
+export const FileLinks = createContext<{ open: (href: string) => void; image: (src: string) => Promise<string | null> } | null>(null);
+/** A link or image with no scheme, not `//host` nor `#section`: a path, relative to the file (or its root, from `/`). */
+const RELATIVE = /^(?![a-z][a-z\d+.-]*:|\/\/|#)./i;
+
+function Anchor({ href, chip, ...link }: { href?: string; chip?: (n: number) => ReactNode; children?: ReactNode }) {
+  const files = useContext(FileLinks);
+  if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
+  if (href?.startsWith("#") && href.length > 1)
+    return (
+      <a
+        href={href}
+        {...link}
+        onClick={(event) => {
+          event.preventDefault();
+          toHeading(event.currentTarget, href.slice(1));
+        }}
+      />
+    );
+  const pr = href && pastedRef(href);
+  if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
+  if (files && href && RELATIVE.test(href))
+    return (
+      <a
+        href={href}
+        {...link}
+        onClick={(event) => {
+          event.preventDefault();
+          files.open(href);
+        }}
+      />
+    );
+  if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
+  return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
+}
+
+/** An image; one of a file's own, by a relative path, loads by the URL its viewer finds, nothing until then. */
+function Img({ src, ...image }: { src?: string; alt?: string; title?: string }) {
+  const files = useContext(FileLinks);
+  const local = files && src && RELATIVE.test(src) ? src : null;
+  const [url, setUrl] = useState<{ src: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!files || !local) return;
+    let live = true;
+    void files.image(local).then((found) => live && setUrl({ src: local, url: found }));
+    return () => void (live = false);
+  }, [files, local]);
+  if (!local) return <img src={src} {...image} />;
+  return url?.src === local && url.url ? <img src={url.url} {...image} /> : <span>{image.alt}</span>;
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
@@ -249,13 +332,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     return at === undefined ? <span {...span} /> : <Fade at={at}>{span.children}</Fade>;
   },
   // A new window's open goes to the browser (main.ts); a plain click's navigation is refused there.
-  a: ({ node: _, href, ...link }) => {
-    if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
-    const pr = href && pastedRef(href);
-    if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
-    if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
-    return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
-  },
+  a: ({ node: _, ...link }) => <Anchor chip={chip} {...link} />,
+  img: ({ node: _, ...image }) => <Img {...image} />,
   // Its words from the tree, as a chunk still fading splits them.
   code: ({ node, children, ...rest }) => <RefWord word={textOf(node as Node | undefined)} plain={<code {...rest}>{children}</code>} />,
   ...(chip && {

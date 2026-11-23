@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
@@ -9,7 +9,11 @@ import { Skeleton } from "../components/skeleton";
 import { FolderOpen } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { matches as isShortcut } from "../shortcuts";
-import { Markdown } from "../thread/markdown";
+import { ask } from "../daemon";
+import { daemonRun } from "../session/composer";
+import { urlOf } from "../session/files";
+import { HOME, openFile } from "../shell/tab-store";
+import { FileLinks, Markdown } from "../thread/markdown";
 import "../thread/markdown.css";
 import { CodeLines } from "./code-lines";
 import { baseName, dirName } from "./tree";
@@ -36,7 +40,29 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * MB)).toFixed(1)} GB`;
 }
 
+/** `href` from the file at `path`, as a checkout path: from its folder, or the root for `/…`; never above the root. */
+function within(path: string, href: string): string {
+  const at = new URL(href, `file:///${dirName(path) && `${dirName(path)}/`}`).pathname.slice(1);
+  try {
+    return decodeURIComponent(at);
+  } catch {
+    return at;
+  }
+}
+
+/** A checkout image's URL: Rust finds it in the checkout and copies it under the session's `viewed/`, as a thread's image link [D290]. */
+const imageUrl = (owner: string, path: string) =>
+  new Promise<string | null>((done) =>
+    ask({ op: "paths", owner, paths: [path] }, (reply) => {
+      const hit = reply.ok ? reply.found[path] : undefined;
+      // Only the file itself: Rust also takes a bare name another folder holds.
+      if (hit?.path !== path || !hit.image) return done(null);
+      void daemonRun(["attach", owner, "view", hit.at]).then((viewed) => done(viewed.ok ? urlOf(owner, viewed.id) : null));
+    }),
+  );
+
 export function FileViewer({
+  owner,
   path,
   read,
   line = null,
@@ -44,6 +70,8 @@ export function FileViewer({
   active,
   onReveal,
 }: {
+  /** Whose checkout the file is in, so its relative links open there; left out for a file that isn't a checkout's. */
+  owner?: string;
   /** The file's path in the checkout. */
   path: string;
   read: FileRead;
@@ -75,6 +103,14 @@ export function FileViewer({
     if (line !== null || !seen.startsWith(`${path}:`)) setView(line === null ? "formatted" : "source");
   }
   const formatted = markdown && view === "formatted";
+  // shortcut: Home's draft has no session to copy an image under, so its images show their alt text until it has one.
+  const links = useMemo(
+    () =>
+      owner === undefined
+        ? null
+        : { open: (href: string) => openFile(owner, within(path, href), { preview: true }), image: async (src: string) => (owner === HOME ? null : imageUrl(owner, within(path, src))) },
+    [owner, path],
+  );
   useEffect(() => {
     if (!active || !formatted) return;
     // Left for CodeLines, mounted hidden, to open its find or go-to-line box.
@@ -113,7 +149,9 @@ export function FileViewer({
           {formatted && (
             <div data-selectable className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto w-full max-w-reading px-6 py-6 text-chat text-chat-foreground">
-                <Markdown text={file!.text} keep={`file:${path}`} />
+                <FileLinks value={links}>
+                  <Markdown text={file!.text} keep={`file:${path}`} />
+                </FileLinks>
               </div>
             </div>
           )}
