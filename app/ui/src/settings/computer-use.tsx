@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "../components/badge";
 import { Button } from "../components/button";
@@ -25,6 +25,12 @@ type Status = { on: boolean; helper: "off" | "absent" | "starting" | "ready" | "
 
 const PERMISSIONS: readonly Permission[] = ["accessibility", "screenRecording"];
 const STATUS_MS = 2000;
+// The last status read, kept across launches: the page paints it at once and reads again quietly [D322].
+const KEPT = "computerUse.status";
+const keptStatus = (): Status | undefined => JSON.parse(localStorage.getItem(KEPT) ?? "null") ?? undefined;
+/** The status with each grant Rust can't say now as it was last known. */
+const known = (next: Status, last: Status | undefined): Status =>
+  last ? { ...next, ...Object.fromEntries(PERMISSIONS.map((each) => [each, next[each] === "unknown" ? last[each] : next[each]])) } : next;
 
 const STATE_LABEL: Record<PermissionState, string> = {
   granted: "Granted",
@@ -34,17 +40,24 @@ const STATE_LABEL: Record<PermissionState, string> = {
 
 /**
  * Settings › Computer use, the old page cut to its switch, Show cursor [D956] and the two macOS permissions [D911, D912]: Rust's status,
- * read again every 2 s while the page shows. The switch moves at once and holds until a status after the change.
+ * read again every 2 s while the page shows, the last one kept painting at once. The switch moves at once and holds until a status after the change.
  */
 export function ComputerUsePage() {
-  const [read, setRead] = useState<{ status?: Status; error?: string }>({});
+  const last = useRef(keptStatus());
+  const [read, setRead] = useState<{ status?: Status; error?: string; fresh?: boolean }>({ status: last.current });
   const [wanted, setWanted] = useState<boolean | null>(null);
   const save = useSave();
   const cursorSave = useSave();
   const settings = useSettings().value;
   const load = () =>
     run(["computer", "status"]).then(
-      (reply) => setRead({ status: reply as Status }),
+      (reply) => {
+        const next = reply as Status;
+        last.current = known(next, last.current);
+        localStorage.setItem(KEPT, JSON.stringify({ ...last.current, error: undefined }));
+        // Rust says "unknown" while its helper starts, or when it didn't before ever answering: the last known grant stands, as Rust's own does.
+        setRead({ status: next.helper === "starting" || next.helper === "failed" ? last.current : next, fresh: true });
+      },
       (cause: unknown) => setRead((last) => ({ ...last, error: errorText(cause) })),
     );
   useEffect(() => {
@@ -56,6 +69,8 @@ export function ComputerUsePage() {
   const on = wanted ?? status?.on ?? false;
   // The first status after turning on hasn't come back.
   const checking = wanted === true;
+  // Nothing read this visit yet, or the helper still starting: an unknown grant is being checked, never shown as Unknown.
+  const starting = !read.fresh || status?.helper === "starting";
   const toggle = (next: boolean) => {
     setWanted(next);
     save.run(() => run(["computer", next ? "on" : "off"]).then(load).finally(() => setWanted(null)));
@@ -80,7 +95,7 @@ export function ComputerUsePage() {
       <SettingsSection title="Permissions">
         <SettingsCard>
           {PERMISSIONS.map((permission) => (
-            <PermissionRow key={permission} permission={permission} status={status} checking={checking} enabled={on} />
+            <PermissionRow key={permission} permission={permission} status={status} checking={checking} starting={starting} enabled={on} />
           ))}
         </SettingsCard>
       </SettingsSection>
@@ -88,12 +103,13 @@ export function ComputerUsePage() {
   );
 }
 
-function PermissionRow({ permission, status, checking, enabled }: { permission: Permission; status: Status | null; checking: boolean; enabled: boolean }) {
+function PermissionRow({ permission, status, checking: switching, starting, enabled }: { permission: Permission; status: Status | null; checking: boolean; starting: boolean; enabled: boolean }) {
   const grant = useSave();
   const open = useSave();
   const [busy, setBusy] = useState(false);
   const row = COMPUTER_USE_ROWS[permission];
   const state = status ? status[permission] : "unknown";
+  const checking = switching || (starting && state === "unknown");
   const ask = () => {
     setBusy(true);
     return run(["computer", "grant", permission]).finally(() => setBusy(false));
