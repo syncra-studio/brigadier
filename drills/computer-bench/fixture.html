@@ -1,0 +1,102 @@
+<!doctype html>
+<!-- The computer-use bench's one page [D2032]: each trap of the FreeLogo run, by path. Every real
+     DOM event and each state change is sent to the server's log, the ground truth tool reports are
+     scored against. No styles of its own, as the limits ask: a modal <dialog> scrolls its own tall
+     list, and the consent panel is a popover in the top layer, over the dialog's middle. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bench</title>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const path = location.pathname;
+const q = new URLSearchParams(location.search);
+const app = document.getElementById('app');
+const win = window.opener ? 'preview' : 'main';
+const log = (kind, detail = {}) => navigator.sendBeacon('/log', JSON.stringify({ at: Date.now(), win, path, kind, ...detail }));
+const what = (el) => el && el.nodeType === 1 ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : ''}${el.textContent ? ` "${el.textContent.trim().slice(0, 40)}"` : ''}` : String(el);
+// Every real event, as the page saw it.
+for (const type of ['click', 'dblclick', 'mousedown', 'keydown', 'input', 'change', 'focusin', 'submit']) {
+  addEventListener(type, (e) => log('dom', { type, trusted: e.isTrusted, target: what(e.target), key: e.key }), true);
+}
+let scrolled = 0;
+addEventListener('scroll', (e) => { if (Date.now() - scrolled > 300) { scrolled = Date.now(); log('dom', { type: 'scroll', trusted: e.isTrusted, target: what(e.target) }); } }, true);
+addEventListener('pageshow', () => log('page', { title: document.title, url: location.href }));
+const html = (s) => { app.innerHTML = s; };
+const state = (s) => log('state', s);
+
+if (path === '/' || path === '/home') {
+  document.title = 'Bench Home';
+  html(`<h1>Bench Home</h1>
+    <div id="plastic" aria-label="View Plastic Cards"><h2>Plastic Cards</h2><p>20pt plastic</p></div>
+    <div id="paper"><h2>Paper Cards</h2><p>Coming soon</p></div>
+    <p><button id="editor">Open the editor</button> <button id="popup">Open preview window</button> <button id="finish" disabled>Finish</button></p>
+    <p id="said"></p>`);
+  document.getElementById('plastic').onclick = () => { location.href = '/templates/plastic' + location.search; };
+  document.getElementById('editor').onclick = () => { location.href = '/editor'; };
+  document.getElementById('popup').onclick = () => { window.open('/preview', 'preview', 'popup,width=640,height=480,left=80,top=80'); state({ popup: 'opened' }); };
+  addEventListener('message', (e) => { if (e.data === 'approved') { document.getElementById('finish').disabled = false; document.getElementById('said').textContent = 'Preview approved'; state({ approved: true }); } });
+  document.getElementById('finish').onclick = () => { document.getElementById('said').textContent = 'Finished'; state({ finished: true }); };
+} else if (path === '/target') {
+  document.title = 'Bench Target';
+  html(`<h1>Bench Target</h1><p>You reached the target page.</p>`);
+  state({ reached: 'target' });
+} else if (path === '/templates/plastic') {
+  document.title = 'Plastic Cards template';
+  const options = Array.from({ length: 12 }, (_, i) => `<div role="option" aria-selected="false" aria-label="Logo ${i + 1}" id="logo${i + 1}"><p>Logo ${i + 1}</p><p>Uploaded ${i + 1} days ago</p><hr></div>`).join('');
+  html(`<h1>Plastic Cards</h1><p>Fully customizable to your brand.</p><button id="start">Start designing</button>
+    <dialog id="modal" aria-label="Select your logo">
+      <h2>Select your logo</h2>
+      <p><button id="use" disabled>Use this logo</button> <span id="chosen"></span></p>
+      <div role="listbox" aria-label="Your logos" id="list">${options}</div>
+      <div id="consent" role="dialog" aria-label="Privacy Preference Centre" popover="manual">
+        <h2>Privacy Preference Centre</h2><p>${'We use cookies and similar technologies to improve your experience, measure traffic and personalise content. '.repeat(6)}</p>
+        <p>${'You can choose which categories to allow. Strictly necessary cookies are always on. '.repeat(4)}</p>
+        <button id="confirm">Confirm my choices</button>
+      </div>
+    </dialog>`);
+  document.getElementById('start').onclick = () => {
+    document.getElementById('modal').showModal();
+    state({ modal: 'open' });
+    // The consent panel shows a moment after the modal, as OneTrust's did.
+    if (q.get('consent') === '1') setTimeout(() => { document.getElementById('consent').showPopover(); state({ consent: 'shown' }); }, 300);
+  };
+  document.getElementById('confirm').onclick = () => { document.getElementById('consent').hidePopover(); state({ consent: 'dismissed' }); };
+  // Only the option's own element takes a click: a press on it, a pointer click or Space/Enter.
+  const pick = (el) => {
+    document.querySelectorAll('[role=option]').forEach((o) => o.setAttribute('aria-selected', String(o === el)));
+    document.getElementById('use').disabled = false;
+    state({ selected: el.getAttribute('aria-label'), use: 'enabled' });
+  };
+  document.querySelectorAll('[role=option]').forEach((o) => { o.tabIndex = 0; o.onclick = () => pick(o); o.onkeydown = (e) => (e.key === ' ' || e.key === 'Enter') && pick(o); });
+  document.getElementById('use').onclick = () => { document.getElementById('chosen').textContent = 'Chosen: ' + document.querySelector('[aria-selected=true]').getAttribute('aria-label'); state({ used: document.querySelector('[aria-selected=true]').getAttribute('aria-label') }); };
+} else if (path === '/editor') {
+  document.title = 'Bench Editor';
+  html(`<h1>Editor</h1><label>Card name <input id="name" aria-label="Card name" value="My card"></label>
+    <p><a href="/dashboard" id="leave">Back to dashboard</a></p>
+    <dialog id="guard" role="alertdialog" aria-label="Leave? You have unsaved changes">
+      <h2>Leave? You have unsaved changes</h2><button id="stay">Stay</button> <button id="go">Leave without saving</button>
+    </dialog>`);
+  let dirty = false;
+  document.getElementById('name').oninput = () => { dirty = true; state({ dirty: true }); };
+  // The in-app guard: a link out, or Back, asks first while there are changes.
+  history.pushState({ guard: true }, '', '/editor');
+  const ask = () => { document.getElementById('guard').showModal(); state({ guard: 'shown' }); };
+  document.getElementById('leave').onclick = (e) => { if (dirty) { e.preventDefault(); ask(); } };
+  addEventListener('popstate', () => { if (dirty) { history.pushState({ guard: true }, '', '/editor'); ask(); } else history.back(); });
+  document.getElementById('stay').onclick = () => { document.getElementById('guard').close(); state({ guard: 'stay' }); };
+  document.getElementById('go').onclick = () => { state({ guard: 'leave' }); dirty = false; location.href = '/dashboard'; };
+} else if (path === '/dashboard') {
+  document.title = 'Bench Dashboard';
+  html(`<h1>Dashboard</h1><p>Your saved cards.</p>`);
+  state({ reached: 'dashboard' });
+} else if (path === '/preview') {
+  document.title = 'Bench Preview';
+  html(`<h1>Preview</h1><p>Check the card, then approve it.</p><button id="approve">Approve</button>`);
+  document.getElementById('approve').onclick = () => { window.opener && window.opener.postMessage('approved', '*'); state({ approved: 'clicked' }); document.body.append('Approved'); };
+}
+</script>
+</body>
+</html>
