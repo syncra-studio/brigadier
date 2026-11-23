@@ -361,9 +361,34 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         )));
     }
     let drops: Vec<&str> = flag(args, "--drop").unwrap_or("").split(',').collect();
+    // Each delete stops a host and commits and takes away a worktree, a few hundred ms: run side by
+    // side, 16 at a time, as --check's reads [D463]. Sessions that share a folder or claim one hand
+    // it on between them [D1080], so those go one by one once the rest are done.
+    let alone = |s: &String| {
+        core::load(data, s).is_ok_and(|spec| {
+            Path::new(&spec.cwd) == core::worktrees::path(data, s)
+                && core::share::others(data, &spec).is_empty()
+                && core::folder::claims(&spec.dir).is_empty()
+        })
+    };
+    let (apart, after): (Vec<&String>, Vec<&String>) = ids.iter().partition(|s| alone(s));
+    let one = |s: &String| delete(data, s, drops.contains(&s.as_str()), "remove");
+    let mut done = vec![];
+    std::thread::scope(|t| {
+        for chunk in apart.chunks(16) {
+            let each: Vec<_> = (chunk.iter())
+                .map(|&s| (s, t.spawn(move || one(s))))
+                .collect();
+            done.extend(
+                each.into_iter()
+                    .map(|(s, h)| (s, h.join().expect("remove thread"))),
+            );
+        }
+    });
+    done.extend(after.into_iter().map(|s| (s, one(s))));
     let (mut kept, mut left) = (vec![], vec![]);
-    for s in &ids {
-        match delete(data, s, drops.contains(&s.as_str()), "remove") {
+    for (s, reply) in done {
+        match reply {
             Ok(reply) => {
                 kept.extend(
                     reply["kept_branches"]
