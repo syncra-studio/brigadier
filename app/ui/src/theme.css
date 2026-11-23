@@ -2105,7 +2105,7 @@
 
 /* A scroll box whose edges fade only while there is more to scroll that way: each edge's fade is as long as the
    distance scrolled on that side, up to its size, so a box scrolled 3px shows a 3px fade, not a share of its size.
-   A shell's output fades at the top over 2rem; a diff's body at the bottom. */
+   In a box shorter than both fades each takes half. A shell's output fades at the top over 2rem; a diff's body at the bottom. */
 @property --edge-top {
   syntax: "<length>";
   inherits: false;
@@ -2133,7 +2133,7 @@
   }
 }
 @utility scroll-edge-fade {
-  mask-image: linear-gradient(to bottom, transparent, black var(--edge-top), black calc(100% - var(--edge-bottom)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, black min(var(--edge-top), 50%), black calc(100% - min(var(--edge-bottom), 50%)), transparent);
   animation:
     edge-fade-top linear both,
     edge-fade-bottom linear both;
@@ -2173,7 +2173,7 @@
   }
 }
 @utility scroll-edge-fade-x {
-  mask-image: linear-gradient(to right, transparent, black var(--edge-start), black calc(100% - var(--edge-end)), transparent);
+  mask-image: linear-gradient(to right, transparent, black min(var(--edge-start), 50%), black calc(100% - min(var(--edge-end), 50%)), transparent);
   animation:
     edge-fade-start linear both,
     edge-fade-end linear both;
