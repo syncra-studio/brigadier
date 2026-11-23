@@ -167,7 +167,9 @@ function serveUi(): void {
       const [, , id = "", picked] = url.pathname.split("/");
       const own = picked !== undefined && PLAIN.test(id) && /^icon-\d+(-\d+)?\.(png|jpe?g|gif|webp|svg)$/.test(picked) ? path.join(dataDir, "projects", id, picked) : null;
       const file = own ? (existsSync(own) ? own : null) : await projectIcon(url.pathname);
-      const fetched = file ? await net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+      // A logo found once may since have gone: a 404 too, with the same headers.
+      const missing = () => new Response(null, { status: 404 });
+      const fetched = file ? await net.fetch(pathToFileURL(file).toString()).catch(missing) : missing();
       // An SVG can carry script: none runs, nothing loads, and no file is read as another kind. A fetch's headers are fixed, so they're copied.
       const headers = new Headers(fetched.headers);
       headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
