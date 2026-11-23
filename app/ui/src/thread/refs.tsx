@@ -14,6 +14,9 @@ import { openChip, useListedCommands } from "../session/commands";
 import { daemonRun } from "../session/composer";
 import { openFile } from "../shell/tab-store";
 import { File } from "../icons";
+import { viewImage } from "../components/image-viewer";
+import { showToast } from "../components/toast";
+import { urlOf } from "../session/files";
 
 const SEG = String.raw`\.?[\w@-]+(?:\.[\w@-]+)*`;
 /**
@@ -57,8 +60,36 @@ export const remarkRefs = () => (tree: MdNode) => {
 type MdNode = { type: string; value?: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: MdNode[]; data?: object };
 const SKIP = new Set(["link", "linkReference", "inlineCode", "code", "html"]);
 
-type Found = Record<string, { path: string; folder: boolean }>;
-const RefsContext = createContext<((word: string) => ReactNode) | null>(null);
+type Hit = { path: string; at: string; folder: boolean; image: boolean; outside?: boolean };
+type Found = Record<string, Hit>;
+const RefsContext = createContext<((word: string, label?: ReactNode) => ReactNode) | null>(null);
+
+/** A link's target as a path: `file:///a%20b.png` is `/a b.png`. */
+export const linkPath = (href: string) => {
+  const path = href.replace(/^file:\/\//i, "");
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+};
+/** Markdown links' targets, which may be paths WORD can't take whole (`~/a.png`, spaces). */
+const LINK = /\]\(<?([^)>\s]+)/g;
+
+/**
+ * A file link's click, the same in a lead's thread and a worker's [D290]: an image, wherever it is, in the viewer;
+ * any other file or folder outside the checkout in Finder; one in it in a preview tab.
+ */
+function openHit(owner: string, hit: Hit, line?: string) {
+  const failed = (reply: Record<string, any>) => !reply.ok && showToast(String(reply.error ?? `Couldn't open ${hit.path}`), { tone: "error" });
+  if (hit.image) {
+    return void daemonRun(["attach", owner, "view", hit.at]).then((reply) =>
+      reply.ok ? viewImage([{ name: hit.at.split("/").pop() ?? "Image", url: urlOf(owner, reply.id) }], 0) : failed(reply),
+    );
+  }
+  if (hit.outside) return void daemonRun(["attach", owner, "reveal", hit.at]).then(failed);
+  openFile(owner, hit.path, { line: line ? Number(line) : undefined, preview: true });
+}
 
 /**
  * An answer's refs: the files and folders its words name in the session's checkout (Rust's, asked once it's whole), its
@@ -72,7 +103,8 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
   const [found, setFound] = useState<Found>({});
   useEffect(() => {
     if (!owner || !done) return;
-    const paths = [...new Set([...text.matchAll(WORD)].map((match) => match[0].replace(LINE, "")).filter(pathish))].slice(0, 200);
+    const links = [...text.matchAll(LINK)].map((match) => linkPath(match[1]!));
+    const paths = [...new Set([...[...text.matchAll(WORD)].map((match) => match[0]), ...links].map((word) => word.replace(LINE, "")).filter(pathish))].slice(0, 200);
     if (!paths.length) return;
     let live = true;
     ask({ op: "paths", owner, paths }, (reply) => live && reply.ok && setFound(reply.found));
@@ -90,7 +122,7 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
         <ComposerChip chip={each} />
       </ChipContext>
     );
-    return (word: string): ReactNode => {
+    return (word: string, label?: ReactNode): ReactNode => {
       if (/^#\d+$/.test(word)) {
         const hits = prs?.filter((pr) => pr.number === Number(word.slice(1))) ?? [];
         return hits.length === 1 ? <PrRef owner={owner} pr={hits[0]!} /> : null;
@@ -101,21 +133,21 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
       if (row) return chip({ kind: "mention", id: row.id, type: row.worker ? "worker" : "chat", label: row.title || "New session" });
       const line = LINE.exec(word)?.[1]?.split(":")[1];
       const hit = found[word.replace(LINE, "")];
-      if (hit?.folder) return chip({ kind: "mention", id: hit.path, type: "folder", label: hit.path });
-      if (hit) return <FileRef word={word} open={() => openFile(owner, hit.path, { line: line ? Number(line) : undefined, preview: true })} />;
+      if (hit?.folder && !hit.outside) return chip({ kind: "mention", id: hit.path, type: "folder", label: hit.path });
+      if (hit) return <FileRef word={label ?? word} open={() => openHit(owner, hit, line)} />;
       return null;
     };
   }, [owner, rows, prs, listed, found]);
   return <RefsContext value={value}>{children}</RefsContext>;
 }
 
-/** A word `remarkRefs` marked, or a whole inline code: its chip when the session knows it, else `plain`. */
-export function RefWord({ word, plain }: { word: string; plain: ReactNode }) {
-  return useContext(RefsContext)?.(word) ?? plain;
+/** A word `remarkRefs` marked, a whole inline code or a link's target (`label` its words): its chip when the session knows it, else `plain`. */
+export function RefWord({ word, label, plain }: { word: string; label?: ReactNode; plain: ReactNode }) {
+  return useContext(RefsContext)?.(word, label) ?? plain;
 }
 
 /** A file the answer names: a blue link with a file icon, opening it in a preview tab [D113]. */
-function FileRef({ word, open }: { word: string; open: () => void }) {
+function FileRef({ word, open }: { word: ReactNode; open: () => void }) {
   return (
     <button type="button" onClick={open} className="inline cursor-pointer rounded-xs text-chat-link focus-visible:focus-ring">
       <File className="me-0.5 inline-block size-icon-sm align-icon" />

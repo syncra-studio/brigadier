@@ -4,6 +4,7 @@
 //! query, so an older one drops [D71, D127, D2010, D2021].
 
 use brigadier_core::git::{self, Target, files};
+use brigadier_core::message::is_image;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -143,16 +144,28 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
 /// `{owner, paths}` → `{ok, found: {asked: {path, folder}}}`: which of an answer's path-like words
 /// name a file or folder of the session's checkout, so the answer draws it as the composer's chip
 /// [D251]. A path under the checkout's root counts as the relative one; a bare file name, when
-/// exactly one file has it.
+/// exactly one file has it. A whole path elsewhere that exists (`/Users/me/Downloads/a.png`, `~/a.png`)
+/// counts too, as `outside` [D290]; each hit says where it is on disk (`at`) and whether it's an image.
 pub fn paths(data: &Path, req: &Value) -> Value {
     let target = Target::Session(req["owner"].as_str().unwrap_or(""));
-    let Ok(checkout) = git::checkout(data, &target) else {
-        return json!({"ok": true, "found": {}});
-    };
-    let all = files::mention(&checkout, "", &AtomicBool::new(false)).unwrap_or_default();
-    let root = format!("{}/", checkout.root.display());
+    let checkout = git::checkout(data, &target).ok();
+    let all = (checkout.as_ref())
+        .and_then(|c| files::mention(c, "", &AtomicBool::new(false)).ok())
+        .unwrap_or_default();
+    let root = checkout.map_or_else(String::new, |c| format!("{}/", c.root.display()));
+    let home = std::env::var("HOME").unwrap_or_default();
     let mut found = serde_json::Map::new();
     for asked in (req["paths"].as_array().into_iter().flatten()).filter_map(Value::as_str) {
+        let whole = asked
+            .strip_prefix("~/")
+            .map_or_else(|| asked.to_string(), |rest| format!("{home}/{rest}"));
+        if whole.starts_with('/') && (root.is_empty() || !whole.starts_with(&root)) {
+            if let Ok(meta) = std::fs::metadata(&whole) {
+                let image = !meta.is_dir() && is_image(Path::new(&whole));
+                found.insert(asked.into(), json!({"path": whole, "at": whole, "folder": meta.is_dir(), "image": image, "outside": true}));
+            }
+            continue;
+        }
         let want = asked
             .strip_prefix(&root)
             .unwrap_or(asked)
@@ -162,7 +175,12 @@ pub fn paths(data: &Path, req: &Value) -> Value {
             .filter(|f| !f.2 && f.1.rsplit('/').next() == Some(want));
         let alone = named.next().filter(|_| named.next().is_none());
         if let Some((_, path, folder)) = all.iter().find(|f| f.1 == want).or(alone) {
-            found.insert(asked.into(), json!({"path": path, "folder": folder}));
+            let at = format!("{root}{path}");
+            let image = !folder && is_image(Path::new(path));
+            found.insert(
+                asked.into(),
+                json!({"path": path, "at": at, "folder": folder, "image": image}),
+            );
         }
     }
     json!({"ok": true, "found": found})

@@ -7,7 +7,7 @@ import { marked } from "marked";
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
-import { RefWord, remarkRefs } from "./refs";
+import { linkPath, RefWord, remarkRefs } from "./refs";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 
@@ -254,7 +254,7 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     const pr = href && pastedRef(href);
     if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
     if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
-    return <RefWord word={href} plain={<a href={href} {...link} />} />;
+    return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
   },
   // Its words from the tree, as a chunk still fading splits them.
   code: ({ node, children, ...rest }) => <RefWord word={textOf(node as Node | undefined)} plain={<code {...rest}>{children}</code>} />,

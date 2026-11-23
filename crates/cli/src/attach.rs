@@ -1,4 +1,4 @@
-//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list`
+//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path>`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022]; and
 //! `note`, the session's notes (note.rs).
@@ -101,6 +101,48 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
                 _ => Ok(json!({"ok": true})),
             }
+        }
+        // An image a thread's link names, anywhere on disk, copied under the session's own `viewed/` for
+        // the image viewer to show from there, so it goes with the session [D35, D290].
+        "view" => {
+            let path = Path::new(arg(args, 3)?);
+            let name = path
+                .file_name()
+                .filter(|_| path.is_absolute() && is_image(path));
+            let (Some(name), false) = (name, owner == HOME_DRAFT) else {
+                return Err(io::Error::other("This isn't an image to show."));
+            };
+            if fs::metadata(path)?.len() > MAX_BYTES {
+                return Ok(too_large());
+            }
+            let id = format!("v{:016x}", {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                path.hash(&mut h);
+                h.finish()
+            });
+            let file = core::session_dir(data, owner)
+                .join("viewed")
+                .join(&id)
+                .join(name);
+            fs::create_dir_all(file.parent().unwrap())?;
+            // Copied again on each open: the agent may have changed it since.
+            fs::copy(path, &file)?;
+            Ok(json!({"ok": true, "id": id}))
+        }
+        // A file or folder a thread's link names outside the checkout shows in Finder, as the old app's [D2098, D290].
+        "reveal" => {
+            let path = arg(args, 3)?;
+            if !path.starts_with('/')
+                || !std::process::Command::new("open")
+                    .arg("-R")
+                    .arg(path)
+                    .status()?
+                    .success()
+            {
+                return Err(io::Error::other(format!("Couldn't reveal {path}")));
+            }
+            Ok(json!({"ok": true}))
         }
         // The files the owner holds, oldest first: its draft's again after a restart, and a session's
         // sent ones for its card [D363, D1274].

@@ -88,12 +88,12 @@ const PLAIN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/;
 
 /**
  * An attachment's file, by `/attachment/<home|session id>/<attachment id>`: only from Home's draft folder or that
- * session's own `attachments/` and `draft-attachments/`, so the page shows its thumbnails under its own origin [D127].
+ * session's own `attachments/`, `draft-attachments/` and `viewed/` (a thread's linked images), so the page shows them under its own origin [D127, D290].
  */
 function attachmentFile(pathname: string): string | null {
   const [, kind, owner, id] = pathname.split("/");
   if (kind !== "attachment" || !PLAIN.test(owner ?? "") || !PLAIN.test(id ?? "")) return null;
-  const folders = owner === "home" ? [path.join(dataDir, "home-draft-attachments")] : ["attachments", "draft-attachments"].map((name) => path.join(dataDir, "sessions", owner, name));
+  const folders = owner === "home" ? [path.join(dataDir, "home-draft-attachments")] : ["attachments", "draft-attachments", "viewed"].map((name) => path.join(dataDir, "sessions", owner, name));
   for (const folder of folders) {
     try {
       const [name] = readdirSync(path.join(folder, id));
