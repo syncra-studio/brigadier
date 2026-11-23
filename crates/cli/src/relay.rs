@@ -9,7 +9,7 @@ use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::path::Path;
 
-type Spec = (
+pub(crate) type Spec = (
     &'static str,
     &'static [&'static str],
     &'static [&'static str],
@@ -87,21 +87,25 @@ A mockup worker reports each variant: --round N --variant A|B|C --name \"<name>\
             &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real"],
             &[],
         ),
+        "terminal" => (crate::tabs::terminal::agent::HELP, &[], &[]),
         _ => return None,
     })
 }
 
-/// `mcp`, its own words past the command: its help, or its reply as asked, JSON or capped text.
-pub fn mcp(data: &Path, me: &str, args: &[String]) -> Value {
+/// `mcp` and `terminal`, their own words past the command: its help, or its reply as asked, JSON or capped text.
+pub fn worded(data: &Path, me: &str, args: &[String]) -> Value {
     let json = args.iter().any(|a| a == "--json");
     if args.iter().any(|a| a == "--help") {
-        return json!({"ok": true, "text": spec("mcp").map_or("", |s| s.0)});
+        return json!({"ok": true, "text": spec(&args[0]).map_or("", |s| s.0)});
     }
     let words: Vec<&str> = (args.iter().skip(1))
         .map(String::as_str)
         .filter(|a| *a != "--json")
         .collect();
-    let mut reply = crate::mcp::run(data, me, &words);
+    let mut reply = match args[0].as_str() {
+        "terminal" => crate::tabs::terminal::agent::run(data, me, &words),
+        _ => crate::mcp::run(data, me, &words),
+    };
     if json {
         reply.as_object_mut().map(|o| o.remove("text"));
     } else if reply["ok"] == true {

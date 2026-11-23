@@ -1,7 +1,8 @@
 //! The commands a session's agent runs as `brigadier …` [D2025, D2026, D3023]. The daemon runs
 //! them for a caller it knows as a session's agent, and refuses every other command and flag, so
-//! approving `brigadier` is always safe: no command here runs a program, changes a session or
-//! prints a secret. Every wait has a timeout, and every reply is capped with a hint to read less.
+//! approving `brigadier` is always safe: no command here runs a program past the session's
+//! level, changes a session or prints a secret. Every wait has a timeout, and every reply is
+//! capped with a hint to read less.
 
 mod wait;
 use crate::{models, peers, workers};
@@ -29,6 +30,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier notes [id]        the user's notes in your project, or one whole
   brigadier search \"…\"        every session's past: messages, tool calls, errors holding these words
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
+  brigadier terminal …        the user's terminal tabs and ! commands: list, read their output; open one for the user
   brigadier mcp list|tools|call  the user's MCP servers: list them, their tools, call one
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
   brigadier computer …        the user's Mac apps, in the background, when files, shell and CLIs can't; never osascript
@@ -40,13 +42,7 @@ Every command takes --help, and --json for JSON. Output is capped; each says how
 A separate job (a build, a live run, a change across files, research, an audit) goes to a worker with `start`; your own subagents are for read-only look-ups. If the user says who does a job, that wins.";
 
 /// Each command's help, its value flags and its plain flags.
-fn spec(
-    cmd: &str,
-) -> Option<(
-    &'static str,
-    &'static [&'static str],
-    &'static [&'static str],
-)> {
+fn spec(cmd: &str) -> Option<crate::relay::Spec> {
     Some(match cmd {
         "sessions" => (
             "brigadier sessions [--limit N] [--json]\n\nThe sessions in Brigadier, newest first: id, title, agent and model, state, last change. Yours is marked (you). 20 by default, at most 100.",
@@ -226,7 +222,7 @@ pub fn run(
 ) -> Value {
     let help = args.iter().any(|a| a == "--help");
     match args.first().map(String::as_str) {
-        Some("mcp") => return crate::relay::mcp(data, me, args),
+        Some("mcp" | "terminal") => return crate::relay::worded(data, me, args),
         Some("browser") if help => return json!({"ok": true, "text": crate::browser::HELP}),
         Some("browser") => return crate::browser::agent(data, me, args, here),
         _ => {}

@@ -107,6 +107,8 @@ fn spawn(
     };
     let mut env = adapters::base_env(&run, Path::new(&shell), &[]);
     env.push(("SHELL".into(), shell.clone()));
+    // Over pipes Python holds its output back; a dev server's address should show as printed.
+    env.push(("PYTHONUNBUFFERED".into(), "1".into()));
     env.push((
         "LOGNAME".into(),
         std::env::var("LOGNAME").unwrap_or_default(),
@@ -120,7 +122,7 @@ fn spawn(
 }
 
 /// How it ended, from its log: (exit code, signal, start and end times), once it has.
-fn ended(dir: &Path) -> Option<(Value, Value, u64, u64)> {
+pub(super) fn ended(dir: &Path) -> Option<(Value, Value, u64, u64)> {
     let mut r = Reader::open(&dir.join("log"), 0, 0).ok()?;
     let (mut from, mut out) = (0, None);
     while let Ok(Some(f)) = r.next_with(|k| matches!(k, log::SPAWNED | log::EXITED)) {
@@ -201,12 +203,19 @@ fn settle(data: &Path) {
 }
 
 /// Output as plain text: colours and other escapes gone, a line redrawn with `\r` (a progress
-/// bar) only as it was last drawn.
+/// bar) or backspaces only as it was last drawn.
 pub(crate) fn plain(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
+        // A backspace takes back what it steps over (a shell redrawing its line).
+        if c == '\x08' {
+            if !out.ends_with('\n') {
+                out.pop();
+            }
+            continue;
+        }
         if c != '\x1b' {
             out.push(c);
             continue;
@@ -236,7 +245,7 @@ pub(crate) fn plain(bytes: &[u8]) -> String {
 mod tests {
     #[test]
     fn plain_drops_escapes_and_redrawn_lines() {
-        let raw = b"\x1b[31mred\x1b[0m\n\x1b]0;title\x07ok\n10%\r50%\r100%\r\ndone";
-        assert_eq!(super::plain(raw), "red\nok\n100%\ndone");
+        let raw = b"\x1b[31mred\x1b[0m\n\x1b]0;title\x07ok\n10%\r50%\r100%\r\n% e\x08echo\ndone";
+        assert_eq!(super::plain(raw), "red\nok\n100%\n% echo\ndone");
     }
 }

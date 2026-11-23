@@ -9,6 +9,7 @@
 //! deleted, a project is removed, and at the daemon's start, so a cleanup cut short is finished
 //! [repo D35]. `<owner>` is a session, `@home` or `@home:<project>`, as `tabs` takes.
 
+pub(crate) mod agent;
 mod shell;
 
 use super::{TERMINAL, Tab, Tabs, file, lock, read};
@@ -33,10 +34,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         core::check_id(owner.strip_prefix("@home:").unwrap_or(owner))?;
     }
     let size = |i: usize| args.get(i).and_then(|v| v.parse().ok());
-    // `--run <line>`: typed into the new shell, as the user would (Open in terminal, the agent's own).
-    let typed = crate::flag(args, "--run");
+    // `--run <line>`: typed into the new shell and run, as the user would (Open in terminal).
+    let typed = crate::flag(args, "--run").map(|line| format!("{line}\r"));
     match op {
-        "start" | "restart" => start(data, owner, tab, op == "restart", (size(4), size(5)), typed),
+        "start" | "restart" => start(
+            data,
+            owner,
+            tab,
+            op == "restart",
+            (size(4), size(5)),
+            typed.as_deref(),
+        ),
         _ => Err(io::Error::other(format!("unknown terminal command {op}"))),
     }
 }
@@ -95,7 +103,7 @@ fn start(
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        let keys = json!({"op": "keys", "spawn": reply["spawn"], "bytes": format!("{line}\r")});
+        let keys = json!({"op": "keys", "spawn": reply["spawn"], "bytes": line});
         owner::call(data, &id, keys)?;
     }
     Ok(json!({"ok": true, "id": id, "live": true}))
@@ -155,9 +163,10 @@ fn held(data: &Path) -> HashSet<String> {
 
 /// What each of `owner`'s terminals printed lately, while its shell runs: for Local servers [repo D508].
 pub(crate) fn printed(data: &Path, owner: &str) -> Vec<String> {
-    let ids = terminals(data, owner)
-        .into_iter()
-        .map(|t| format!("{TERM}{t}"));
+    // Its `!` commands too: a dev server run with `!` [D316].
+    let mut ids = terminals(data, owner);
+    ids.extend(agent::commands(data, owner));
+    let ids = ids.into_iter().map(|t| format!("{TERM}{t}"));
     ids.filter(|id| live(data, id))
         .map(|id| String::from_utf8_lossy(&tail(&core::session_dir(data, &id), 256 << 10)).into())
         .collect()
