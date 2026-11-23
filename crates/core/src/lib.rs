@@ -14,6 +14,7 @@ pub mod handoff;
 pub mod host;
 pub mod images;
 pub mod library;
+pub mod lid;
 pub mod message;
 pub mod norm;
 pub mod projects;

@@ -1,8 +1,8 @@
 //! Keeps the Mac awake, screen on, the old app's way [D30, D36]: `caffeinate -d -i -s -w <daemon>`
 //! holds the display, idle and (on power) system sleep assertions. `-w` ends it with the daemon,
 //! SIGKILL included, and powerd drops a dead process's assertions, so normal sleep comes back
-//! however the daemon stops; assertions never outlive a reboot. The lid isn't covered: that needs
-//! root (`pmset disablesleep`), an open question for the owner.
+//! however the daemon stops; assertions never outlive a reboot. The lid needs root
+//! (`pmset disablesleep`): `brigadier_core::lid` holds it [D333].
 
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useId, useState } from "react";
 
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
@@ -6,9 +6,10 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
 import { StateDot } from "../components/state-dot";
+import { Switch } from "../components/switch";
 import { spacingPx } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { setSetting, useSettings } from "../settings/api";
+import { lidHint, loadLid, setLid, setSetting, useLid, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
@@ -33,20 +34,23 @@ export function useFootPlacement() {
 }
 
 /**
- * Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands and when to stay awake.
- * With the lid closed too stays away, as the old app's did where it wasn't supported: nothing here can do it yet.
+ * Keeping the computer awake: a light bulb, lit with a dot while it is; on click, how it stands, when to stay awake, and
+ * with the lid closed too, as the old app's [D333].
  */
 function KeepAwakeMenu() {
   const { rows } = useDaemon();
-  // The same value as Settings › General's row [D2016].
-  const mode = useSettings().value?.awake;
+  // The same values as Settings › General's rows [D2016].
+  const settings = useSettings().value;
+  const mode = settings?.awake;
+  const lid = useLid();
+  const lidId = useId();
   const [error, setError] = useState<string | null>(null);
   const option = KEEP_AWAKE.find((each) => each.value === mode);
   const { row, ...placement } = useFootPlacement();
   const on = mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
-  const text = on ? "Awake now" : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
+  const text = on ? `Awake now${settings?.awake_lid && lid.state === "on" ? ", even with the lid closed" : ""}` : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => open && loadLid()}>
       <PopoverTrigger
         render={<TooltipIconButton look="rail" side={placement.side} tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
       >
@@ -76,8 +80,31 @@ function KeepAwakeMenu() {
             }}
           />
           <p className="text-xs text-muted-foreground">{option?.hint}</p>
-          <ErrorLine error={error} />
         </div>
+        {settings && (
+          <div className="flex items-start gap-3 border-t border-divider pt-3">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span id={`${lidId}-label`} className="text-sm">
+                With the lid closed too
+              </span>
+              <span id={`${lidId}-hint`} className="text-xs text-muted-foreground">
+                {lidHint(settings, lid)}
+              </span>
+            </span>
+            <Switch
+              className="mt-0.5"
+              aria-labelledby={`${lidId}-label`}
+              aria-describedby={`${lidId}-hint`}
+              checked={settings.awake_lid}
+              disabled={lid.settingUp}
+              onCheckedChange={(next) => {
+                setError(null);
+                setLid(next).catch((cause: unknown) => setError(errorText(cause)));
+              }}
+            />
+          </div>
+        )}
+        <ErrorLine error={error} />
       </PopoverContent>
     </Popover>
   );

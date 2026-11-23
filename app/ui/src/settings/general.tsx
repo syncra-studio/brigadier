@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
@@ -10,7 +10,7 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
-import { type Settings, setSetting, useSettings } from "./api";
+import { type Settings, lidHint, loadLid, setLid, setSetting, useLid, useSettings } from "./api";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
 import { closeSettings } from "./shell";
@@ -239,19 +239,25 @@ export function SwitchRow({
   );
 }
 
-/** Power: Keep awake, the same value as the sidebar's menu [D88, D2016]; the lid switch stays drawn and off until the signed helper [D254, D2022]. */
+/** Power: Keep awake, the same value as the sidebar's menu [D88, D2016], and with the lid closed too, as the old app [D333]. */
 function PowerSection({ settings }: { settings: Settings }) {
   const save = useSave();
-  const lid = useId();
+  const lidSave = useSave();
+  const lid = useLid();
+  useEffect(loadLid, []);
   return (
     <SettingsSection title="Power">
       <SettingsCard>
         <SettingsRow label={GENERAL_ROWS.keepAwake.label} description={GENERAL_ROWS.keepAwake.description} error={save.error}>
           <Select label={GENERAL_ROWS.keepAwake.label} value={settings.awake} options={KEEP_AWAKE} onChange={(value) => save.run(() => setSetting("awake", value))} />
         </SettingsRow>
-        {/* shortcut: drawn only, the lid needs the signed helper (D254); wire it when that lands. */}
-        <SettingsRow label={<span id={lid}>{GENERAL_ROWS.lidClosed.label}</span>} description={GENERAL_ROWS.lidClosed.description}>
-          <Switch aria-labelledby={lid} checked={false} disabled />
+        <SettingsRow label={GENERAL_ROWS.lidClosed.label} description={lidHint(settings, lid)} error={lidSave.error}>
+          <Switch
+            aria-label={GENERAL_ROWS.lidClosed.label}
+            checked={settings.awake_lid}
+            disabled={lid.settingUp}
+            onCheckedChange={(on) => lidSave.run(() => setLid(on))}
+          />
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>

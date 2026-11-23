@@ -10,6 +10,8 @@ export type Settings = {
   /** What the last notice did: none sent yet, went through, or macOS refused it [D2024]. */
   notices: "unasked" | "sent" | "blocked";
   awake: "off" | "work" | "always";
+  /** Keeping awake holds with the lid closed too [D333]. */
+  awake_lid: boolean;
   /** How many workers a family runs at once: a number, as Rust keeps it [D3001, D3007]. */
   workers: string;
   /** Each agent's own memory in sessions, off unless turned on; workers never [D2049]. */
@@ -72,4 +74,42 @@ async function saveShown<K extends keyof Settings>(key: K, value: Settings[K], a
     pending.splice(pending.indexOf(change), 1);
     show();
   }
+}
+
+/** How the lid stands, as Rust reads it: no rule yet, battery too low, sleep off now (Brigadier's or another app's), or ready [D333]. */
+export type LidState = "setup" | "low" | "on" | "ready";
+const lid = store<{ state?: LidState; settingUp?: boolean }>({});
+export const useLid = lid.use;
+
+/** Asked as the Power row or the Keep awake menu shows; a failure keeps what was shown. */
+export function loadLid(): void {
+  run(["awake", "lid"]).then(
+    (reply) => lid.set({ ...lid.get(), state: reply.lid as LidState }),
+    (cause: unknown) => console.error(cause),
+  );
+}
+
+/** On or off; the first time on asks for the administrator password once, and without it stays off, as the old app. */
+export async function setLid(on: boolean): Promise<void> {
+  if (on && lid.get().state === "setup") {
+    lid.set({ ...lid.get(), settingUp: true });
+    try {
+      lid.set({ state: (await run(["awake", "lid-setup"])).lid as LidState });
+    } finally {
+      lid.set({ ...lid.get(), settingUp: false });
+    }
+  }
+  await setSetting("awake_lid", on);
+  // The daemon applies it on its next pass.
+  setTimeout(loadLid, 1000);
+}
+
+/** What the lid switch does, as it stands now: the old app's words. */
+export function lidHint(settings: Settings, state: { state?: LidState; settingUp?: boolean }): string {
+  if (state.settingUp) return "Waiting for the administrator password…";
+  if (settings.awake === "off") return "Takes effect once keeping awake is on";
+  if (state.state === "setup") return "Asks for your administrator password once";
+  if (state.state === "low" && settings.awake_lid) return "The battery is low, so closing the lid sleeps the computer; plug it in";
+  if (state.state === "on" && settings.awake_lid) return "Sleep is off, even with the lid closed; keep it plugged in";
+  return "Applied whenever the computer is kept awake; best plugged in";
 }

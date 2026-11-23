@@ -35,7 +35,7 @@
 //! replaces an older one (`replace_older`). A packaged app starts it with `--install` (`install`), as
 //! a launchd job of its own, so quitting the app leaves it and every session running [D60, D606].
 //! While it runs it keeps the Mac awake as `brigadier awake` says: off, while a session works, or
-//! always (`awake`) [D30, D36].
+//! always (`awake`) [D30, D36], and with the lid closed too when set (`lid`) [D333].
 
 use brigadier::index::Index;
 use brigadier_core::{awake_mode, data_dir};
@@ -132,6 +132,9 @@ fn main() -> io::Result<()> {
         },
         None => return Ok(()),
     };
+    // Sleep a daemon that died, or a reboot, left disabled for the lid [D333].
+    brigadier_core::lid::recover(&data);
+    let mut lid = brigadier_core::lid::Lid::default();
     // Before a delete or archive cut short takes the folder a Replace all cut short left files in.
     brigadier_core::git::recover::sweep(&data);
     brigadier_core::worktrees::sweep(&data);
@@ -214,6 +217,7 @@ fn main() -> io::Result<()> {
             _ => index.rows.values().any(|r| r["works"] == true),
         };
         awake.set(on);
+        lid.set(&data, on && brigadier_core::lid::wanted(&data));
         thread::sleep(TICK);
     }
 }

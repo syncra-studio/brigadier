@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 14] = [
+const KEYS: [(&str, &[&str]); 15] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -51,6 +51,8 @@ const KEYS: [(&str, &[&str]); 14] = [
     // bubbles on both sides, or stacked in one column, the user's still in bubbles [D914, D915].
     ("thread_width", &["centered", "full"]),
     ("message_layout", &["bubbles", "stacked"]),
+    // Keeping awake holds with the lid closed too, off until turned on [D333].
+    ("awake_lid", SWITCH_OFF),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.
@@ -169,8 +171,14 @@ pub fn get(data: &Path, key: &str) -> String {
     }
 }
 
-/// `awake [off|work|always]`: the keep-awake mode alone, as the sidebar's bulb sets it [D88].
+/// `awake [off|work|always]`: the keep-awake mode alone, as the sidebar's bulb sets it [D88];
+/// `awake lid` and `awake lid-setup`, with the lid closed too [D333].
 pub fn awake(data: &Path, mode: Option<&String>) -> io::Result<Value> {
+    match mode.map(String::as_str) {
+        Some("lid") => return core::lid::status(data),
+        Some("lid-setup") => return core::lid::set_up(data),
+        _ => {}
+    }
     if let Some(mode) = mode {
         run(data, &["settings".into(), "awake".into(), mode.clone()])?;
     }
