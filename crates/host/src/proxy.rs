@@ -10,6 +10,7 @@
 //! plain JSON-RPC error, and on a tool call a note in the session's log: the thread's Sign in.
 
 mod tool_call;
+mod unreached;
 use brigadier_frames::wire;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
@@ -216,6 +217,7 @@ impl Proxy {
                 );
                 continue;
             }
+            unreached::note(&self.dir, name, &body, status / 100 != 2);
             if status / 100 == 2 {
                 self.told.lock().unwrap().remove(name);
             }
@@ -262,19 +264,19 @@ impl Proxy {
             let _ = child.wait();
             return Ok(());
         }
-        let title = self
-            .known
-            .lock()
-            .unwrap()
+        let why = format!(
+            "{} needs sign-in in Brigadier (Settings › Plugins).",
+            self.title(name)
+        );
+        self.refuse(&mut out, &method, &body, name, &why)
+    }
+
+    /// The server's plain name, as the daemon last gave it.
+    fn title(&self, name: &str) -> String {
+        let known = self.known.lock().unwrap();
+        known
             .get(name)
-            .map_or(name.to_string(), |u| u.title.clone());
-        self.refuse(
-            &mut out,
-            &method,
-            &body,
-            name,
-            &format!("{title} needs sign-in in Brigadier (Settings › Plugins)."),
-        )
+            .map_or(name.to_string(), |u| u.title.clone())
     }
 
     /// The server's address and headers: the daemon's answer (a refresh when `stale` names the
@@ -332,13 +334,9 @@ impl Proxy {
         name: &str,
         why: &str,
     ) -> io::Result<()> {
+        unreached::note(&self.dir, name, body, true);
         if tool_call::calls_tool(body) && self.told.lock().unwrap().insert(name.into()) {
-            let title = self
-                .known
-                .lock()
-                .unwrap()
-                .get(name)
-                .map_or(name.to_string(), |u| u.title.clone());
+            let title = self.title(name);
             (self.note)(
                 &json!({"event": "sign_in", "server": name, "title": title, "message": why}),
             );

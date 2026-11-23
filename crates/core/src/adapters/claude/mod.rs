@@ -215,7 +215,7 @@ impl Adapter for Claude {
                 argv.push("--fork-session".into());
             }
         }
-        let input = text.map(|t| self.encode(spec, t));
+        let input = text.map(|t| control::user(t, &spec.images));
         let mut env = base_env(spec, &exe, self.keys());
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
@@ -228,7 +228,7 @@ impl Adapter for Claude {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        control::user(text, &spec.images)
+        control::redial(spec) + &control::user(text, &spec.images)
     }
 
     /// Anthropic's own limits for an image in a message: 5 MB, 8,000 pixels a side.
