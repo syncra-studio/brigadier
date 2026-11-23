@@ -5,7 +5,7 @@
 use crate::agent::refuse;
 use crate::{owner, workers};
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::procs;
+use brigadier_frames::{lock_held, procs};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -356,7 +356,7 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
     *list = all.into();
     if full {
         news(data, me, &mut m);
-        ready(data, me, &mut m, rounds);
+        ready(data, me, &mut m, rounds, false);
     }
     workers::write_json(&file(data, me), &m)?;
     Ok(json!({"ok": true, "text": format!("Variant {letter} shows in the user's Mockup tab.")}))
@@ -376,7 +376,7 @@ fn news(data: &Path, me: &str, m: &mut Value) {
 /// Round `round` has every variant in: a card in the lead's chat asks the user to pick one, as the
 /// tab's Use does, and the lead hears it quietly with its next input; once a round [D560]. The card
 /// is marked on the round once its row is in, so a report while the lead's host is down retries it.
-fn ready(data: &Path, me: &str, m: &mut Value, round: usize) {
+fn ready(data: &Path, me: &str, m: &mut Value, round: usize, again: bool) {
     let Some(l) = workers::link(data, me) else {
         return;
     };
@@ -420,16 +420,25 @@ fn ready(data: &Path, me: &str, m: &mut Value, round: usize) {
     let request = json!({"id": format!("{PICK}{me}-{round}"), "title": format!("{} · round {round} is ready", m["title"].as_str().unwrap_or("Mockup")), "items": [item], "held": true});
     let note =
         json!({"event": "mockup", "phase": "asked", "id": request["id"], "request": request});
-    let shown = core::load(data, &l.parent)
-        .and_then(|spec| owner::ensure(data, &spec))
-        .and_then(|_| owner::call(data, &l.parent, json!({"op": "note", "data": note})));
-    if shown.is_ok() {
+    let post = || owner::call(data, &l.parent, json!({"op": "note", "data": note})).is_ok();
+    let gone = |s: &core::Spec| {
+        core::session::retired(&s.dir).is_some() || core::projects::removing(data, s)
+    };
+    let done = match core::load(data, &l.parent) {
+        // The lead won't come back: no more tries; the tab and the row still offer Use.
+        Err(e) => e.kind() == io::ErrorKind::NotFound,
+        Ok(s) if gone(&s) => true,
+        // A repeat try never starts the lead's host, so a host that won't come up isn't respawned.
+        Ok(s) if again => lock_held(&s.dir.join("owner.lock")) && post(),
+        Ok(s) => owner::ensure(data, &s).is_ok() && post(),
+    };
+    if done {
         m["rounds"][round - 1]["asked"] = true.into();
     }
 }
 
 /// The daemon's pass: a round all in whose pick card didn't reach the lead, its host down then,
-/// tries it again.
+/// tries it again once that host is up.
 pub(crate) fn retry(data: &Path, wid: &str) {
     let due = |m: &Value| {
         let n = m["rounds"].as_array().map_or(0, Vec::len);
@@ -443,7 +452,7 @@ pub(crate) fn retry(data: &Path, wid: &str) {
         return;
     };
     if let Some(round) = due(&m).filter(|_| all_in(&m)) {
-        ready(data, wid, &mut m, round);
+        ready(data, wid, &mut m, round, true);
         if m["rounds"][round - 1]["asked"] == true {
             let _ = workers::write_json(&file(data, wid), &m);
         }
