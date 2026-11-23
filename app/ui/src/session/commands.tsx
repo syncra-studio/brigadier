@@ -4,9 +4,7 @@ import type { OpenKind } from "../components/composer/chip";
 import { openWorker } from "../workers/live";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../components/composer/menus";
-import { TOOLS, ToolPill } from "../components/composer/tools";
-import { Check } from "../icons";
-import { addChip, dropChips, useChips } from "../panel/chips";
+import { TOOL_COMMANDS } from "../components/composer/tools";
 import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
@@ -55,18 +53,12 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     for (const heard of hearing) heard();
   }, [owner, listed]);
 
-  // Brigadier's tools, on as their chips wait for the next message; Home's composer carries no chips, so none there.
-  const chips = useChips(owner);
-  const tools = useMemo(() => (home ? [] : TOOLS.map((tool): SlashCommand => ({ id: tool.id, kind: "tool", label: tool.name, description: tool.line, instant: true, hint: chips.some((chip) => chip.kind === "tool" && chip.tool === tool.id) && <Check className="text-foreground" /> }))), [home, chips]);
   // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra` is [] or [/new].
-  const all = useMemo(() => listed && [...listed, ...extra, ...tools], [listed, extra.length, tools]);
+  // Brigadier's tools first, so an agent's own command of the same name is the one typing it makes.
+  const all = useMemo(() => listed && [...TOOL_COMMANDS, ...listed, ...extra], [listed, extra.length]);
   const commands: Commands = {
     commands: all,
     onRun: (command) => {
-      if (command.kind === "tool") {
-        const on = chips.filter((chip) => chip.kind === "tool" && chip.tool === command.id).map((chip) => chip.id);
-        return on.length > 0 ? dropChips(owner, on) : addChip(owner, { kind: "tool", id: crypto.randomUUID(), tool: command.id });
-      }
       // Home has no session to run it in yet: the old app's hint (its instant ones are /compact) [D2098].
       if (home) return void showToast("Send a message before compacting.");
       void run(["command", owner, command.label.slice(1)]).then((reply) => {
@@ -77,13 +69,7 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
 
   const onOpen = (kind: OpenKind, id: string, name?: string) => openChip(owner, kind, id, listed?.find((each) => each.id === id), run, name);
 
-  // The tools switched on show beside it; a click switches one off.
-  const plus = (
-    <>
-      <PlusMenu onFiles={onFiles} field={field} commands={commands} chats={chats} />
-      {chips.map((chip) => chip.kind === "tool" && <ToolPill key={chip.id} id={chip.tool} onRemove={() => dropChips(owner, [chip.id])} />)}
-    </>
-  );
+  const plus = <PlusMenu onFiles={onFiles} field={field} commands={commands} chats={chats} />;
   return { commands, onOpen, plus };
 }
 

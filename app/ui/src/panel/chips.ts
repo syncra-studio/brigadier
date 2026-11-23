@@ -5,7 +5,6 @@ import type { LineRange } from "../review/diff-view";
 import type { AgentChip } from "../landing/agent-chip";
 import type { DiffComment } from "../review/types";
 import { HOME } from "../shell/tab-store";
-import { toolOf } from "../components/composer/tools";
 
 /*
  * What waits above a session's composer for the agent, sent with the next message and never on its own [D1019,
@@ -21,9 +20,7 @@ import { toolOf } from "../components/composer/tools";
  */
 export type Chip =
   | { kind: "comment"; id: string; on: string; comment: DiffComment }
-  | { kind: "agent"; id: string; key: string; pr: number | null; chip: AgentChip; text: string }
-  /** A tool switched on from the composer's `/` or + menu (components/composer/tools.tsx), a pill beside +. */
-  | { kind: "tool"; id: string; tool: string };
+  | { kind: "agent"; id: string; key: string; pr: number | null; chip: AgentChip; text: string };
 
 /** The comment box being written: the diff it's on, its lines and its words so far. */
 export type CommentDraft = { on: string; path: string; side: "additions" | "deletions"; start: number; end: number; text: string };
@@ -167,7 +164,6 @@ export function setCommentDraft(session: string, draft: CommentDraft | null): vo
 export function withChips(message: string, sent: readonly Chip[]): string {
   const blocks = sent.map((chip) => {
     if (chip.kind === "agent") return chip.text;
-    if (chip.kind === "tool") return toolOf(chip.tool)?.text ?? "";
     const { on, comment } = chip;
     const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
     const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");

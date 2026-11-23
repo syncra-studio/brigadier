@@ -1,21 +1,22 @@
-// Mockup only: the composer's Tools in its / and + menus, switched on as pills beside + (variant C, the pick). Fake
+// Mockup only: the composer's Tools in its / and + menus, picked as chips inline in the text as commands are. Fake
 // data, the menus drawn open over the real composer parts. ?v=real is the real thing, live: a session's `/` and +
-// menus and its tool pills on fake commands, the chips kept here only (no daemon). Not the app.
+// menus on fake commands, Send showing the draft Rust would get (no daemon). Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Check, Paperclip } from "../src/icons";
+import { Paperclip } from "../src/icons";
 import { cx } from "../src/components/cx";
 import { PlusButton, SharedComposer } from "../src/components/composer/composer";
 import { CommandRow, ComposerMenu, ComposerMenuOption, KIND_HEADINGS, MenuHeading, MentionRow, type SlashCommand } from "../src/components/composer/menus";
+import { ComposerChip } from "../src/components/composer/chip";
 import { ComposerField, type ComposerFieldHandle } from "../src/components/composer/field";
 import { SendButton } from "../src/components/composer/send-button";
 import { useComposerCommands } from "../src/session/commands";
 import type { Runner } from "../src/session/composer";
-import { toolOf, TOOLS, ToolPill } from "../src/components/composer/tools";
+import { TOOL_COMMANDS } from "../src/components/composer/tools";
 import { DropdownMenuLabel, itemClasses, menuSurface, MenuRow } from "../src/components/menu";
 
 const COMMANDS: SlashCommand[] = [
@@ -35,15 +36,10 @@ const CHATS = [
 const Field = ({ children }: { children: ReactNode }) => <div className="min-h-composer px-2 py-2.5 text-base break-words whitespace-pre-wrap">{children}</div>;
 
 /** The composer as a session mounts it: + and Send in the footer, `menu` drawn open over the card. */
-function Composer({ menu, children, pills }: { menu?: ReactNode; children?: ReactNode; pills?: ReactNode }) {
+function Composer({ menu, children }: { menu?: ReactNode; children?: ReactNode }) {
   return (
     <SharedComposer
-      plus={
-        <>
-          <PlusButton />
-          {pills}
-        </>
-      }
+      plus={<PlusButton />}
       send={<SendButton empty={!children} running={false} canStop={false} onSend={() => {}} onStop={() => {}} />}
     >
       {menu}
@@ -62,11 +58,8 @@ const Item = ({ highlighted, children }: { highlighted?: boolean; children: Reac
   </div>
 );
 
-/** A tool's row, as the session's `/` list makes it (session/commands.tsx). */
-const ToolRow = ({ id, on }: { id: string; on: boolean }) => {
-  const tool = toolOf(id)!;
-  return <CommandRow command={{ id, kind: "tool", label: tool.name, description: tool.line, instant: true, hint: on && <Check className="text-foreground" /> }} query="" />;
-};
+/** A tool's chip in the text, as picking it leaves it. */
+const ToolChip = ({ id }: { id: string }) => <ComposerChip chip={{ kind: "command", id, type: "tool", label: `/${id}` }} />;
 
 const PlusAddRows = () => (
   <>
@@ -100,18 +93,17 @@ const SlashCommands = ({ list }: { list: SlashCommand[] }) =>
     </ComposerMenuOption>
   ));
 
-/** C: a tool is switched on rather than written: a pill beside +, ✓ in the menus, the text left as typed. */
+/** A tool is a chip in the text, picked or typed as `/browser`; taking the chip out drops it. */
 function VariantC() {
-  const on = new Set(["browser", "workers"]);
   return {
     slash: (
       <ComposerMenu label="Commands">
         <MenuHeading>{KIND_HEADINGS.command}</MenuHeading>
         <SlashCommands list={COMMANDS} />
         <MenuHeading>{KIND_HEADINGS.tool}</MenuHeading>
-        {TOOLS.map((each) => (
+        {TOOL_COMMANDS.map((each) => (
           <ComposerMenuOption key={each.id} selected={each.id === "computer"}>
-            <ToolRow id={each.id} on={on.has(each.id)} />
+            <CommandRow command={each} query="" />
           </ComposerMenuOption>
         ))}
         <MenuHeading>{KIND_HEADINGS.skill}</MenuHeading>
@@ -122,21 +114,17 @@ function VariantC() {
       <PlusPanel>
         <PlusAddRows />
         <DropdownMenuLabel variant="heading">{KIND_HEADINGS.tool}</DropdownMenuLabel>
-        {TOOLS.map((each) => (
+        {TOOL_COMMANDS.map((each) => (
           <Item key={each.id} highlighted={each.id === "image"}>
-            <ToolRow id={each.id} on={on.has(each.id)} />
+            <CommandRow command={each} query="" />
           </Item>
         ))}
         <PlusRest />
       </PlusPanel>
     ),
     picked: (
-      <Composer
-        pills={[...on].map((id) => (
-          <ToolPill key={id} id={id} />
-        ))}
-      >
-        Check the signup flow on staging and split the three forms{" "}
+      <Composer>
+        Check the signup flow on staging with <ToolChip id="browser" /> and split the three forms <ToolChip id="workers" />{" "}
       </Composer>
     ),
   };
@@ -157,17 +145,20 @@ const OWNER = "s-fixture";
 const run: Runner = async (args) =>
   args[0] === "commands" ? { ok: true, commands: [...COMMANDS, ...SKILLS].map((each) => ({ name: each.label.slice(1), kind: each.kind, description: each.description, instant: each.instant })) } : { ok: false, error: "disconnected" };
 
-/** The session's own menus and pills, as session/composer.tsx mounts them. */
+/** The session's own menus, as session/composer.tsx mounts them; Send shows the parts it would hand Rust. */
 function Real() {
   const field = useRef<ComposerFieldHandle>(null);
+  const [sent, setSent] = useState<string | null>(null);
   const { commands, plus } = useComposerCommands({ owner: OWNER, run, field, onFiles: () => {} });
+  const send = () => {
+    setSent(JSON.stringify(field.current?.parts() ?? [], null, 1));
+    field.current?.set([]);
+  };
   return (
     <main className="flex min-h-screen flex-col justify-end py-8">
-      <SharedComposer
-        plus={plus}
-        send={<SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />}
-      >
-        <ComposerField ref={field} placeholder="Do anything" commands={commands} autoFocus />
+      {sent && <pre className="mx-auto w-full max-w-reading px-4 text-xs whitespace-pre-wrap text-muted-foreground">{sent}</pre>}
+      <SharedComposer plus={plus} send={<SendButton empty={false} running={false} canStop={false} onSend={send} onStop={() => {}} />}>
+        <ComposerField ref={field} placeholder="Do anything" commands={commands} onSubmit={send} autoFocus />
       </SharedComposer>
     </main>
   );
