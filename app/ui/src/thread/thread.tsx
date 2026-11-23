@@ -369,15 +369,15 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
           itemSize={54}
           onScrollEnd={letGo}
         >
-          {/* A message with only Thinking under it keeps its time and actions in view, which hide their kept room otherwise. */}
-          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest && !(thinking && line.id === tail?.id && line.type === "item" && line.item.kind === "message" && line.item.role === "user")} onToggle={toggle} />}
+          {/* The newest row a message: its time and actions in view, as its bubble's on its way, which hide their kept room otherwise. */}
+          {(line: Line) => <LineRow key={line.id} {...line} dated={dated.has(line.id)} older={line.id !== latest && !(after === null && line.id === tail?.id && line.type === "item" && line.item.kind === "message" && line.item.role === "user")} onToggle={toggle} />}
         </Virtualizer>
         <div data-footer>
           <div className={`${COLUMN} pb-8`}>
             {after !== null && <Newer after={after} newer={source.newer} />}
             {thinking && <div className="pt-3"><ThinkingLine /></div>}
             {/* With no rows yet, the footer is the first row, with a first row's gap (rows.tsx). */}
-            {hasFooter && after === null && <div className={`${rows.length > 0 ? "pt-3" : "pt-8"} empty:hidden`}>{footer}</div>}
+            {hasFooter && after === null && <div data-rows={rows.length > 0 || undefined} data-first={rows.length === 0 || undefined} className={`${rows.length > 0 ? "pt-3" : "pt-8"} empty:hidden`}>{footer}</div>}
             <Spacer space={space} />
           </div>
           <div data-end aria-hidden className="end-snap-target" />
