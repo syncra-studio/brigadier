@@ -1754,15 +1754,16 @@
   }
 }
 
-/* The widths [D44]: every tab, Chat too, an even share of the tab area (its container) less "+" and the group
-   labels, from 90 up to 240, then the strip scrolls; Chat stays put. The row is as wide as its tabs, so "+" follows
-   the last [D835 D197]. */
+/* The tabs' widths [D44]: Chat always 240, never shrinking; every other tab an even share of the tab area (its
+   container) less Chat, "+" and the group labels, from 90 up to 240, then the strip scrolls; Chat stays put. The row is
+   as wide as its tabs, so "+" follows the last [D835 D310]. */
 @utility session-tab-list {
   position: relative;
   /* Agents' tab group labels (.browser-tab-group), each at most its width and margins. */
   --session-tab-groups: calc(attr(data-groups type(<number>), 0) * (7rem + 4px));
-  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups));
-  --session-tab-count: max(attr(data-count type(<number>), 1), 1);
+  --session-tab-room: calc(100cqw - var(--spacing) * 10 - var(--session-tab-groups) - var(--spacing-session-tab-max));
+  /* data-count has Chat in it. */
+  --session-tab-count: max(attr(data-count type(<number>), 1) - 1, 1);
   --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
@@ -1818,6 +1819,9 @@
     opacity var(--duration-session-tab) var(--ease-session-tab);
   &[data-tab-id="chat"][data-closing] {
     max-width: 0;
+  }
+  &[data-tab-id="chat"]:not([data-plain], [data-closing]) {
+    flex-basis: var(--spacing-session-tab-max);
   }
   /* Each held at its width after a close with the pointer, until it leaves the row (tab-bar.tsx). */
   &[data-frozen] {
