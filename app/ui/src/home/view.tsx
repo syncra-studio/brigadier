@@ -46,8 +46,6 @@ export type HomeProps = {
   projects: readonly DraftProject[] | undefined;
   project: DraftProject | null;
   onProject: (id: string) => void;
-  /** New session from a project: its project shows but can't be changed [D863]. */
-  locked?: boolean;
   /** Opens Add project, on a typed folder if any. */
   onAddProject: (path: string) => void;
   /** "Don't work in a project": the draft becomes a chat [D388]. */
@@ -194,7 +192,7 @@ export function HomeView(props: HomeProps) {
           <RailItem label="Composer utility bar" shown={!(strip.present && props.model) && !props.review}>
             {/* Hidden, not absent, while the projects load: it holds its place and never reads "Choose project" by mistake. */}
             <UtilityBar className={projects ? undefined : "invisible"}>
-              <ProjectPicker projects={projects ?? []} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
+              <ProjectPicker projects={projects ?? []} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />
               {project?.kind === "folder" && project.folder && <RepoCount folder={project.folder} />}
               {project && project.kind !== "folder" && (
                 <>
@@ -250,7 +248,7 @@ export function HomeView(props: HomeProps) {
           {project && projects ? (
             <>
               What should we build in{" "}
-              <ProjectPicker heading projects={projects} value={project} locked={props.locked} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
+              <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
             </>
           ) : (
             "What should we build?"

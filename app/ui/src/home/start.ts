@@ -40,8 +40,8 @@ export type HomeDraft = {
   level?: PermissionLevel;
   /** Brigade picked here, for the next session only: a session is one from its first message or never [D209]. */
   brigade?: boolean;
-  /** Opened with New session in a project (its page, its row, ⌘N in one of its sessions): the project is fixed and the
-   *  tabs are that project's draft's; New chat's draft is another, with its own tabs whatever project it picks [D863]. */
+  /** Opened with New session in a project (its page, its row, ⌘N in one of its sessions): the words and tabs are that
+   *  project's draft's; New chat's draft is another, with its own tabs whatever project it picks [D863, D330]. */
   locked?: boolean;
   /** Bumped to put the cursor in the field. */
   focus: number;
@@ -92,8 +92,12 @@ export function newChat(): void {
   window.location.hash = "";
 }
 
-/** New chat's own project picker: another project, or none, closes its tabs but Chat; its words stay [D282]. */
+/**
+ * New chat's own project picker: another project, or none, closes its tabs but Chat; its words stay [D282]. In a
+ * project's own draft, another project opens that one's and none New chat's, each as it was left [D330].
+ */
 export function pickHomeProject(next: string | null, shown: string | null): void {
+  if (draft.get().locked && !draft.get().review) return setHomeDraft(next ? { project: next, chat: false } : { locked: false });
   const home = draftKey() === HOME_DRAFT;
   if (next !== shown && home) closeOthers(HOME_DRAFT, CHAT);
   setHomeDraft(next ? { project: next, chat: false } : { chat: true });

@@ -90,7 +90,6 @@ export function ProjectPicker({
   onAdd,
   onNone,
   heading = false,
-  locked = false,
 }: {
   projects: readonly DraftProject[];
   value: DraftProject | null;
@@ -100,8 +99,6 @@ export function ProjectPicker({
   /** "Don't work in a project": the draft becomes a chat. */
   onNone?: () => void;
   heading?: boolean;
-  /** Shows the project but doesn't open: New session from a project's page [D863]. */
-  locked?: boolean | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -154,12 +151,11 @@ export function ProjectPicker({
       }}
     >
       <PopoverTrigger
-        disabled={locked}
         render={
           heading ? (
-            <button type="button" aria-label="Project" className="cursor-pointer underline disabled:cursor-default disabled:no-underline decoration-muted-foreground decoration-dotted underline-offset-link transition-colors enabled:hover:text-muted-foreground focus-visible:focus-ring" />
+            <button type="button" aria-label="Project" className="cursor-pointer underline decoration-muted-foreground decoration-dotted underline-offset-link transition-colors enabled:hover:text-muted-foreground focus-visible:focus-ring" />
           ) : (
-            <ComposerPill aria-label="Project" title={locked ? "This session's project" : value ? "Change the project for this session" : "Choose a project to start a session in"} className={cx(RAIL_PILL, "disabled:cursor-default disabled:bg-transparent disabled:opacity-100")} />
+            <ComposerPill aria-label="Project" title={value ? "Change the project for this session" : "Choose a project to start a session in"} className={RAIL_PILL} />
           )
         }
       >

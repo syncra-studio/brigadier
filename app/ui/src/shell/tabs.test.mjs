@@ -89,6 +89,30 @@ test("New chat is one draft, back as it was left; a project's New chat is that p
   assert.equal(closed.length, 1, "a project's own draft never closes New chat's tabs");
 });
 
+test("A project's own draft picks another project's draft, or No project New chat's, each as it was left [D330]", async () => {
+  const closed = [];
+  globalThis.window = { location: { hash: "" } };
+  const store = (value) => ({ get: () => value, set: (next) => (value = next), use: () => value });
+  const { draftKey, useHomeDraft, setHomeDraft, newSession, pickHomeProject } = await load("../home/start.ts", {
+    "../session/draft": { HOME_DRAFT: "@home", keepDraft: () => {}, keepProject: () => {}, projectOf: () => undefined },
+    "../onboarding/api": { store },
+    "../shell/tab-store": { CHAT: "chat", selectTab: () => {}, closeOthers: (owner, keep) => closed.push([owner, keep]) },
+  });
+  setHomeDraft({ chat: true });
+  newSession("p");
+  setHomeDraft({ model: { provider: "fake", model: "p's" } });
+  pickHomeProject("q", "p");
+  assert.equal(draftKey(), "@home:q", "another project opens its own draft");
+  assert.equal(useHomeDraft().project, "q");
+  setHomeDraft({ model: { provider: "fake", model: "q's" } });
+  pickHomeProject("p", "q");
+  assert.equal(useHomeDraft().model.model, "p's", "p's draft comes back as it was left");
+  pickHomeProject(null, "p");
+  assert.equal(draftKey(), "@home", "No project opens New chat's draft");
+  assert.equal(useHomeDraft().chat, true, "as it was left");
+  assert.equal(closed.length, 0, "no draft's tabs close on a switch");
+});
+
 test("New chat's project is kept with its words, past a send and a relaunch [D284]", async () => {
   const written = [];
   const timers = globalThis.setTimeout;

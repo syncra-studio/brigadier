@@ -143,7 +143,6 @@ export function HomeDraft() {
         // Its project is looked up first: until then it can't start.
         projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
-        locked={draft.locked}
         // Picking a project only sets this draft's, and stays on it [D261 D282].
         onProject={(id) => pickHomeProject(id, project?.id ?? null)}
         onNoProject={() => pickHomeProject(null, project?.id ?? null)}
