@@ -173,8 +173,9 @@ pub(crate) fn lead(jobs: &[Value]) -> String {
     text
 }
 
-/// The models image work may go to, for `--images` [D298]: the user's Images model first, then
-/// every other one that makes images, in the pickers' order, each at its own default effort.
+/// The models image work may go to, for `--images` [D298, D337]: the user's Images model first,
+/// then Codex's that make images, then the other agents', in the pickers' order, each at its own
+/// default effort.
 pub(super) fn drawing(groups: &[Value], first: &Value) -> Vec<Value> {
     let all = groups.iter().flat_map(|g| {
         (g["models"].as_array().into_iter().flatten())
@@ -183,6 +184,7 @@ pub(super) fn drawing(groups: &[Value], first: &Value) -> Vec<Value> {
     });
     let first = json!({"agent": first["agent"], "model": first["model"], "effort": null});
     let mut list: Vec<Value> = all.collect();
+    list.sort_by_key(|e| e["agent"] != "codex");
     if let Some(at) = list.iter().position(|e| *e == first) {
         list[..=at].rotate_right(1);
     }
