@@ -26,20 +26,26 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
         if sent.get(&key) == Some(image) {
             continue;
         }
-        if let (Some(id), Some(name)) = (image["attachment"].as_str(), image["name"].as_str()) {
-            if !sent.contains_key(&key) && core::message::sent(&to).join(id).join(name).exists() {
-                sent.insert(key, image.clone());
-                continue;
-            }
+        let file = (image["attachment"].as_str()).zip(image["name"].as_str());
+        if let Some((id, name)) = file
+            && !sent.contains_key(&key)
+            && core::message::sent(&to).join(id).join(name).exists()
+        {
+            sent.insert(key, image.clone());
+            continue;
+        }
+        let mut note = image.clone();
+        (note["event"], note["from"]) = ("image".into(), wid.into());
+        if owner::call(data, &parent, json!({"op": "note", "data": note})).is_err() {
+            continue;
+        }
+        // Copied only once the parent has the note, so a copy there means it was told.
+        if let Some((id, name)) = file {
             let from = core::message::sent(&core::session_dir(data, wid)).join(id);
             if core::images::keep(&to, id, &from.join(name)).is_err() {
                 continue;
             }
         }
-        let mut note = image.clone();
-        (note["event"], note["from"]) = ("image".into(), wid.into());
-        if owner::call(data, &parent, json!({"op": "note", "data": note})).is_ok() {
-            sent.insert(key, image.clone());
-        }
+        sent.insert(key, image.clone());
     }
 }
