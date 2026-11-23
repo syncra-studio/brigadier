@@ -163,6 +163,10 @@ function serveUi(): void {
       return PLAIN.test(login) && existsSync(file) ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
     if (url.host === APP_ID && url.pathname.startsWith("/project-icon/")) {
+      // `/project-icon/<id>/<file>`: the image picked in its settings, as Rust copied it into the project's folder.
+      const [, , id = "", picked] = url.pathname.split("/");
+      const own = picked !== undefined && PLAIN.test(id) && /^icon-\d+\.(png|jpe?g|gif|webp|svg)$/.test(picked) ? path.join(dataDir, "projects", id, picked) : null;
+      if (own) return existsSync(own) ? net.fetch(pathToFileURL(own).toString()) : new Response(null, { status: 404 });
       const file = await projectIcon(url.pathname);
       return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
