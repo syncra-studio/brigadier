@@ -114,7 +114,26 @@ fn step_of(words: &[String], piped: bool) -> Option<(&'static str, Option<String
         }
     }
     let search = |args: &[String]| Some(("search", pattern(args).map(String::from)));
+    let sub = words.get(1).map(String::as_str);
+    // Asking a program what it is or does only reads: `x --help`, `x --version`, `git help log`, `man x` [D291].
+    if program == "man"
+        || sub == Some("help")
+        || rest().any(|w| w == "--help")
+        || rest().eq(["--version"])
+    {
+        return Some(("read", None));
+    }
     Some(match program {
+        // The thread's own look-ups only read: `brigadier models`, `brigadier read <id>` [D291].
+        "brigadier"
+            if matches!(
+                sub,
+                Some("models" | "sessions" | "read" | "notes" | "skill")
+            ) =>
+        {
+            ("read", None)
+        }
+        "brigadier" if sub == Some("search") => return search(&words[2..]),
         "cd" | "pushd" | "popd" | "echo" | "printf" | "true" | "false" | "pwd" | "export"
         | "set" | "unset" | "source" | "." | ":" | "which" | "type" => return None,
         "sed" if flagged('i') || rest().any(|w| w.starts_with("--in-place")) => ("edit", path),
