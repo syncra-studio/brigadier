@@ -52,7 +52,8 @@ pub(in crate::workers) fn write(
 }
 
 /// The turn's time and computer calls as Brigadier measured them, not as the worker tells them.
-/// shortcut: one turn's; a job carried over a context cut counts from the last cut on.
+/// shortcut: one turn's; a job carried over a context cut counts from the last cut on. The calls
+/// log is the worker's own folder's, so a worker could write lines in it: log in the daemon if one does.
 fn measured(dir: &Path, ended: Option<&Value>) -> String {
     let Some(e) = ended else {
         return String::new();
@@ -69,9 +70,19 @@ fn measured(dir: &Path, ended: Option<&Value>) -> String {
         .filter_map(|l| l.split_once(' '))
         .filter(|(at, _)| at.parse::<u64>().is_ok_and(|at| (from..=to).contains(&at)))
         .map(|(_, verb)| verb)
+        .filter(|v| crate::computer::VERBS.contains(v))
         .collect();
-    let mins = (to - from) as f64 / 60_000.0;
-    let mut said = format!("Measured by Brigadier: {mins:.1} min from its input to its end");
+    // Its time working: what it waited on an answer is left out.
+    let waited = e["waited"].as_u64().unwrap_or(0).min(to - from);
+    let mins = (to - from - waited) as f64 / 60_000.0;
+    let mut said =
+        format!("Measured by Brigadier: {mins:.1} min of work from its input to its end");
+    if waited >= 6_000 {
+        said += &format!(
+            ", and {:.1} min more waiting on an answer",
+            waited as f64 / 60_000.0
+        );
+    }
     if !verbs.is_empty() {
         let looks = (verbs.iter())
             .filter(|v| ["apps", "read", "screenshot"].contains(v))

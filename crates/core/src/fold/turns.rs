@@ -57,6 +57,11 @@ pub struct Turn {
     pub stop_by: Value,
     /// Logged, then its owner died before delivering it.
     pub orphaned: bool,
+    /// How long it waited on an answer (ms), and since when its open asks wait.
+    #[serde(default)]
+    pub waited: u64,
+    #[serde(default)]
+    pub asked_at: u64,
     /// Its input starts a child that no `spawned` record has named yet.
     #[serde(default)]
     pub spawning: bool,
@@ -228,6 +233,22 @@ impl Fold {
         self.turns.is_empty() && (agents || self.workers.iter().any(|w| !over(w)))
     }
 
+    /// One logged item, and the time its turn waits on an answer, which a worker's measured
+    /// time leaves out [D2032].
+    pub fn push(&mut self, item: &Value) {
+        let ts = item["ts"].as_u64().unwrap_or(0);
+        let before = (self.turns.first()).map(|t| (t.id.clone(), t.asks.is_empty()));
+        self.take(item);
+        if let Some(t) = self.turns.first_mut() {
+            let was = before.filter(|b| b.0 == t.id).is_none_or(|b| b.1);
+            match (was, t.asks.is_empty()) {
+                (true, false) => t.asked_at = ts,
+                (false, true) => t.waited += ts.saturating_sub(t.asked_at),
+                _ => {}
+            }
+        }
+    }
+
     pub(super) fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
             if turn.held {
@@ -269,6 +290,7 @@ impl Fold {
             }
             self.last = Some(
                 json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "began_at": turn.delivered.unwrap_or(turn.ts), "quiet": turn.quiet,
+                       "waited": turn.waited + if turn.asks.is_empty() { 0 } else { ts.saturating_sub(turn.asked_at) },
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "reply": turn.reply, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),

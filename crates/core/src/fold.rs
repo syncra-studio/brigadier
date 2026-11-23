@@ -191,7 +191,7 @@ pub struct Fold {
 }
 
 impl Fold {
-    pub fn push(&mut self, item: &Value) {
+    fn take(&mut self, item: &Value) {
         self.items += 1;
         let ts = item["ts"].as_u64().unwrap_or(0);
         if self.sent == 0 {
