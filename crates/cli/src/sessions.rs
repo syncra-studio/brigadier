@@ -21,7 +21,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let spec = match core::load(data, id) {
         // One already deleted, with its Brigade or by another delete, has nothing to check or remove.
         Err(e) if e.kind() == io::ErrorKind::NotFound && args[0] == "delete" => {
-            return Ok(session::gone());
+            return Ok(match has(args, "--check") {
+                true => json!({"ok": true}),
+                false => session::gone(&core::session_dir(data, id)),
+            });
         }
         spec => spec?,
     };
@@ -217,12 +220,10 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
 /// One session's delete: its host stops, then core deletes it, recording its intent first. One
 /// whose folder went meanwhile, by its Brigade's delete or its own, is done [D35].
 pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+    let dir = core::session_dir(data, id);
     match delete_one(data, id, drop, by) {
-        Err(e)
-            if e.kind() == io::ErrorKind::NotFound
-                && !core::session_dir(data, id).join("session.json").exists() =>
-        {
-            Ok(session::gone())
+        Err(e) if e.kind() == io::ErrorKind::NotFound && !dir.join("session.json").exists() => {
+            Ok(session::gone(&dir))
         }
         done => done,
     }
