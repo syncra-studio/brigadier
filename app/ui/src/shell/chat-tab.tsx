@@ -29,10 +29,11 @@ export const TITLE = "tab-title min-w-0 flex-1 text-start";
 // Room for × where it shows: in front always, in back on hover [D44].
 export const TITLE_CLOSABLE = "group-hover/tab:me-5 group-data-active/tab:me-5";
 // ×: a 20 square 7 from the end, its 14 glyph, its own hover square; on the front tab always, others on hover [D44].
-export const CLOSE = cx(
-  "pointer-events-none absolute end-1.75 inset-y-0 my-auto flex size-5 cursor-pointer items-center justify-center rounded-sm opacity-0 hover:bg-fill hover:text-foreground focus-visible:focus-ring focus-visible:opacity-100",
-  "group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-data-active/tab:pointer-events-auto group-data-active/tab:opacity-100",
-);
+const CLOSE_AT_REST = "pointer-events-none absolute end-1.75 inset-y-0 my-auto flex size-5 cursor-pointer items-center justify-center rounded-sm opacity-0 hover:bg-fill hover:text-foreground focus-visible:focus-ring focus-visible:opacity-100";
+export const CLOSE = cx(CLOSE_AT_REST, "group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-data-active/tab:pointer-events-auto group-data-active/tab:opacity-100");
+// Working, the chat's spinner and its "…" share the ×'s slot: the "…" on hover, keyboard focus or while its menu is open, else the spinner [D287].
+const SWAP_IN = "group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-has-focus-visible/tab:pointer-events-auto group-has-focus-visible/tab:opacity-100 data-popup-open:pointer-events-auto data-popup-open:opacity-100";
+const SWAP_OUT = "group-hover/tab:invisible group-has-data-popup-open/tab:invisible group-has-focus-visible/tab:invisible";
 export const noAutoscroll = (event: ReactMouseEvent) => event.button === 1 && event.preventDefault();
 
 /** ⌘N while ⌘ is held, at the tab's end where its × is [D48]. */
@@ -147,18 +148,23 @@ export function ChatTab({ owner, row, active, plain, separator, order, grouped =
           className={cx(BUTTON, plain && "cursor-default!")}
         >
           {icon}
-          <span className={cx(TITLE, !plain && !archived && !keycap && TITLE_CLOSABLE)}>{title}</span>
-          {working && !keycap && <RowMark mark="working" label={words ?? ""} />}
+          <span className={cx(TITLE, !plain && !archived && !keycap && (working ? "me-5" : TITLE_CLOSABLE))}>{title}</span>
           <Keycap keycap={keycap} />
         </button>
         {/* Never at the row's end [D200]: its own toggle right after the plain title [D222], or in the tab where another's × is. */}
         {!archived && !keycap && (
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip="Chat actions" className="shrink-0" /> : <button type="button" aria-label="Chat actions" className={CLOSE} />}>
+            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip="Chat actions" className={cx("shrink-0", working && cx("opacity-0", SWAP_IN))} /> : <button type="button" aria-label="Chat actions" className={working ? cx(CLOSE_AT_REST, SWAP_IN) : CLOSE} />}>
               <DotsHorizontal className={plain ? undefined : "size-icon-sm"} />
             </DropdownMenuTrigger>
             {actions}
           </DropdownMenu>
+        )}
+        {/* Over the "…"'s own square, so the title's width holds as they swap. */}
+        {working && !keycap && (
+          <span className={cx("pointer-events-none absolute inset-y-0 flex items-center justify-center", plain ? "end-0 w-7" : "end-1.75 w-5", SWAP_OUT)}>
+            <RowMark mark="working" label={words ?? ""} />
+          </span>
         )}
       </ContextMenuTrigger>
       <ContextMenuContent>
