@@ -161,6 +161,28 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let repo = core::worktrees::branches(data, Path::new(&folder))?;
                     return Ok(json!({"ok": true, "repo": repo}));
                 }
+                // After Remove: `drop-branches <repo> <branch>…` deletes the kept branches at once, and
+                // `put-branches <repo> <branch>=<commit>…` is its Undo.
+                "drop-branches" => {
+                    let (gone, failed) = core::worktrees::drop_branches(
+                        Path::new(arg(2)),
+                        &args[3.min(args.len())..],
+                    )?;
+                    let gone: serde_json::Map<_, _> =
+                        gone.into_iter().map(|(b, c)| (b, c.into())).collect();
+                    return Ok(json!({"ok": true, "branches": gone, "failed": failed}));
+                }
+                "put-branches" => {
+                    let pairs = (args.iter().skip(3))
+                        .map(|p| {
+                            p.rsplit_once('=')
+                                .map(|(b, c)| (b.to_string(), c.to_string()))
+                        })
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| io::Error::other("put-branches takes <branch>=<commit>"))?;
+                    let failed = core::worktrees::put_branches(Path::new(arg(2)), &pairs)?;
+                    return Ok(json!({"ok": true, "failed": failed}));
+                }
                 "reveal" => {
                     let folder = projects::get(data, arg(2))?.folder;
                     let status = std::process::Command::new("open").arg(&folder).status()?;
