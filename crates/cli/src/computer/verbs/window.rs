@@ -2,7 +2,7 @@
 //! last read (Cua's own `since`), and a picture of it.
 
 use super::apps::{menu_bar, menus};
-use super::diff::live;
+use super::diff::{controls, live};
 use super::open::{own, windows};
 use super::{FULL, ROWS, SECURE, Sess, Words, call, lock, refuse};
 use serde_json::{Value, json};
@@ -250,6 +250,7 @@ pub(super) fn read(
     }
     (s.secure, s.frames, s.values, s.moved, s.address) = Default::default();
     learn(s, &found);
+    s.controls = controls(&found);
     let tree = found["tree_markdown"].as_str().unwrap_or("");
     // The window's own title, as accessibility gives it: the listed one is often empty.
     let named = (tree.split("AXWindow \"").nth(1)).and_then(|t| t.split('"').next());

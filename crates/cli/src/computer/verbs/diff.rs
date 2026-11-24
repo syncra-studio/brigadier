@@ -3,8 +3,9 @@
 
 use super::open::windows;
 use super::window::{learn, mask, read, state_args, tidy, unresolved};
-use super::{Sess, Words, call};
+use super::{Controls, Sess, Words, call};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -65,6 +66,11 @@ pub(super) fn changes(
     here: &dyn Fn() -> bool,
 ) -> (Seen, String) {
     let (seen, text) = rows_changed(data, me, s, here);
+    let (seen, text) = match controls_changed(data, s, seen, here) {
+        lines if lines.is_empty() => (seen, text),
+        lines if seen == Seen::No => (Seen::Yes, format!("Changed:\n{}", lines.join("\n"))),
+        lines => (seen, format!("{text}\n{}", lines.join("\n"))),
+    };
     let now = titles(data, s, here);
     let name = |t: &str| match t {
         "" => "untitled".to_string(),
@@ -104,6 +110,85 @@ pub(super) fn changes(
     };
     s.changed |= seen != Seen::No;
     (seen, text)
+}
+
+/// A read's controls by role, name and which of that name it is: numbers shift, these stay.
+pub(super) fn controls(found: &Value) -> Controls {
+    let mut all = Controls::new();
+    let mut seen: HashMap<(String, String), usize> = HashMap::new();
+    for e in found["elements"].as_array().into_iter().flatten() {
+        let s = |k: &str| e[k].as_str().unwrap_or("").to_string();
+        let f = e["frame"].as_object();
+        let at = f.map(|f| ["x", "y"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0)));
+        let nth = seen.entry((s("role"), s("label"))).or_default();
+        let (number, on) = (e["element_index"].as_u64(), e["selected"].as_bool());
+        all.insert((s("role"), s("label"), *nth), (number.unwrap_or(0), on, at));
+        *nth += 1;
+    }
+    all
+}
+
+/// What the driver's rows don't print, so its diff can't hold: a control selected or no longer, and
+/// content that moved, as a list that scrolled [D2032]. The read has no session: the next diff's
+/// base stays.
+fn controls_changed(data: &Path, s: &mut Sess, seen: Seen, here: &dyn Fn() -> bool) -> Vec<String> {
+    let mut args = state_args(s, "");
+    args["tree_format"] = "elements".into();
+    if let Some(a) = args.as_object_mut() {
+        a.remove("session");
+    }
+    let Ok(found) = call(data, "get_window_state", args, here) else {
+        return vec![];
+    };
+    let now = controls(&found);
+    let was = std::mem::replace(&mut s.controls, now);
+    said(&was, &s.controls, seen)
+}
+
+/// The lines for what differs between two reads' controls.
+fn said(was: &Controls, now: &Controls, seen: Seen) -> Vec<String> {
+    let mut picked: Vec<(u64, String)> = vec![];
+    let mut moved: HashMap<(i64, i64), usize> = HashMap::new();
+    for (key, (n, on, at)) in now {
+        // One that just came says so in its own row.
+        let Some((_, old, from)) = was.get(key) else {
+            continue;
+        };
+        let (role, name, _) = key;
+        // shortcut: of several with one name, which is which is sure only while no row changed;
+        // match them by place if one's selection goes unsaid among other changes.
+        let twin = (role.clone(), name.clone(), 1);
+        let sure = seen == Seen::No || !(was.contains_key(&twin) || now.contains_key(&twin));
+        let line = match (old, on) {
+            (Some(false) | None, Some(true)) if sure => "selected",
+            (Some(true), Some(false)) if sure => "no longer selected",
+            _ => "",
+        };
+        if !line.is_empty() {
+            picked.push((*n, format!("~ [{n}] {role} \"{name}\": {line}")));
+        }
+        if let (Some(a), Some(b)) = (from, at) {
+            let by = ((b[0] - a[0]).round() as i64, (b[1] - a[1]).round() as i64);
+            if by != (0, 0) {
+                *moved.entry(by).or_default() += 1;
+            }
+        }
+    }
+    picked.sort();
+    let mut lines: Vec<String> = picked.into_iter().map(|p| p.1).take(TOP).collect();
+    // Only where no row changed: a change of layout moves rows too, and its rows say what it was.
+    let most = moved.into_iter().max_by_key(|m| m.1);
+    if let Some(((x, y), n)) = most.filter(|m| m.1 > 1 && seen == Seen::No) {
+        let way = match (x, y) {
+            (0, y) if y < 0 => format!("up {} points", -y),
+            (0, y) => format!("down {y} points"),
+            (x, y) => format!("by {x},{y} points"),
+        };
+        lines.push(format!(
+            "~ {n} controls moved {way}, as when a list scrolls"
+        ));
+    }
+    lines
 }
 
 fn rows_changed(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) -> (Seen, String) {
