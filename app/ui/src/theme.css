@@ -1059,6 +1059,12 @@
 /* A part placed in another: a key hint on a button or in a tooltip. */
 @custom-variant in-button (:where([data-slot="button"]) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
+/* The sidebar's foot too narrow for the update pill's every mark: four icons and the pill at its widest. */
+@custom-variant foot-narrow {
+  @container sidebar-foot (width < 15.25rem) {
+    @slot;
+  }
+}
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
 /* The thread's pane as its own width lays the summary card out, set the moment it's measured (summary-card.tsx, the
@@ -1400,6 +1406,11 @@
   &[data-axis="y"][data-open] {
     grid-template-rows: 1fr;
   }
+}
+
+/* The sidebar's foot as a row, whose width `foot-narrow` reads. */
+@utility sidebar-foot-row {
+  container: sidebar-foot / inline-size;
 }
 
 /* Space held for the scrollbar whether or not it's needed, so nothing moves when a view starts to scroll. */

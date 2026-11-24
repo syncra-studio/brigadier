@@ -1,7 +1,10 @@
-// Mockup only: the update pill at the sidebar's foot, three ways (?v=a, b or c), live and in each of its states, on fake
-// updates. The list, its rows and BarItem are the app's own. Not the app.
+// Mockup only: the update pill at the sidebar's foot, the old app's outlined chip (A), live and in each of its states, on
+// fake updates. ?v=real is the whole app itself, on a stub daemon whose Claude Code and Codex are outdated and whose
+// Update runs a moment; it refuses the rest. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
+// The real app's sidebar stays open in a pane narrower than its fold.
+import "./sidebar-fill.css";
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -17,11 +20,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "../src/components/popov
 import { Segmented } from "../src/components/segmented";
 import { spacingPx, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../src/components/tooltip";
 import { ArrowRotateCw, BarChart, Check, ComposeEditSquare, DownloadSimple, Lightbulb, Plugin, PullRequestOpen, Settings, Spinner, ThumbMixed } from "../src/icons";
+import type { Agent } from "../src/onboarding/api";
 import { BrigadierMark } from "../src/onboarding/mark";
 import { BarItem, Glyph, rowLabel, type UpdateItem, UpdateRow } from "../src/sidebar/updates";
 
-type Variant = "a" | "b" | "c";
-const VARIANT = (new URLSearchParams(location.search).get("v") ?? "a") as Variant;
 type Where = "normal" | "narrow" | "strip";
 
 const item = (target: string, name: string, mark: string | null, current: string, latest: string, action: UpdateItem["action"]["type"] = "run"): UpdateItem => ({
@@ -55,8 +57,6 @@ const STATE_GLYPH = {
   restart: <ArrowRotateCw aria-hidden />,
   available: <DownloadSimple aria-hidden />,
 };
-const join = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? ""));
-const namesOf = (items: UpdateItem[]) => join(items.map((each) => each.name));
 
 /** The marks, as many as `most`; past that the last place says how many more. */
 function Marks({ items, most, column = false, gap = "gap-1" }: { items: UpdateItem[]; most: number; column?: boolean; gap?: string }) {
@@ -94,81 +94,6 @@ function lookA(items: UpdateItem[], where: Where): Look {
   };
 }
 
-const WORD = { updating: "Updating", updated: "Updated", restart: "Restart", available: "Update" };
-/** B: a blue pill that says its one word, at the row's end; the marks before it while there's room. */
-function lookB(items: UpdateItem[], where: Where): Look {
-  const state = standing(items);
-  const strip = where === "strip";
-  const lead = state === "available" ? <Marks items={items} most={3} gap="gap-0.5" /> : STATE_GLYPH[state];
-  return {
-    className: cx(MOTION, "h-7 rounded-capsule bg-picked-row text-xs font-medium text-link hover:bg-picked aria-expanded:bg-picked svg:size-icon-sm", strip ? "min-w-9 gap-0.5 px-2" : "gap-1 px-2"),
-    body: strip ? (
-      <>
-        {items.length === 1 && state === "available" ? <Glyph item={items[0]} className="size-icon-md" /> : STATE_GLYPH[state]}
-        {items.length > 1 && state === "available" && <span className="tabular-nums">{items.length}</span>}
-      </>
-    ) : where === "narrow" ? (
-      // Too narrow for both: the word, or while it runs the spinner with the marks.
-      state === "updating" ? <>{STATE_GLYPH.updating}<Marks items={items} most={2} gap="gap-0.5" /></> : WORD[state]
-    ) : (
-      <>
-        {lead}
-        {WORD[state]}
-      </>
-    ),
-  };
-}
-
-/** C: a line of its own over the foot's icons: what to update, and what a click does. */
-function lookC(items: UpdateItem[], where: Where): Look {
-  const state = standing(items);
-  const fill = "bg-control text-foreground hover:bg-fill-hover aria-expanded:bg-fill-hover";
-  if (where === "strip")
-    return {
-      className: cx(MOTION, "size-9 rounded-icon-button", fill),
-      body: state === "available" ? <Marks items={items} most={2} gap="gap-0.5" /> : STATE_GLYPH[state],
-    };
-  const many = items.length > (where === "narrow" ? 1 : 2) ? `${items.length} updates` : namesOf(items);
-  const running = items.filter((each) => each.progress.type === "updating");
-  const says = {
-    available: many,
-    updating: running.length > 1 ? `Updating ${running.length} agents` : `Updating ${namesOf(running)}`,
-    updated: `${namesOf(items)} updated`,
-    restart: `${namesOf(items)} is ready`,
-  }[state];
-  return {
-    className: cx(MOTION, "h-8 w-full min-w-0 gap-2 rounded-row px-2 text-start text-label", fill),
-    body: (
-      <>
-        {state === "updating" || state === "updated" ? <span className="flex text-muted-foreground">{STATE_GLYPH[state]}</span> : <Marks items={items} most={3} />}
-        <span className="min-w-0 flex-1 truncate">{says}</span>
-        {(state === "available" || state === "restart") && <span className="shrink-0 text-xs font-medium text-link">{state === "restart" ? "Restart" : "Update"}</span>}
-      </>
-    ),
-  };
-}
-const LOOKS = { a: lookA, b: lookB, c: lookC };
-
-/** The hover's words: A the old one line, B each update on its own line in a menu's card, C only what its pill leaves out. */
-function Tip({ items, direct }: { items: UpdateItem[]; direct: UpdateItem | null }) {
-  if (VARIANT === "a") return direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(items);
-  const restart = standing(items) === "restart";
-  if (VARIANT === "c")
-    return restart ? "Restart to update" : items.length === 1 ? `${items[0].current} → ${items[0].latest}` : items.map((each) => `${each.name} ${each.latest}`).join(" · ");
-  return (
-    <span className="flex flex-col gap-1">
-      {items.map((each) => (
-        <span key={each.target} className="flex items-center gap-2">
-          <Glyph item={each} className="size-icon-sm shrink-0" />
-          <span className="flex-1 text-start">{each.name}</span>
-          <span className="ps-3 text-xs text-muted-foreground tabular-nums">{restart ? "Restart to update" : each.progress.type === "updating" ? "Updating…" : each.progress.type === "updated" ? each.latest : `${each.current} → ${each.latest}`}</span>
-        </span>
-      ))}
-    </span>
-  );
-}
-const TIP_CLASS = { a: "h-7.5 max-w-96", b: "rounded-surface bg-menu shadow-overlay", c: "max-w-96" };
-
 type Forced = "tip" | "list";
 const STILL = { side: "none", align: "none" } as const;
 
@@ -184,7 +109,7 @@ function Chip({ label, tip, where, forced, children, ...props }: ButtonProps & {
           </Button>
         }
       />
-      <TooltipContent side={where === "strip" ? "right" : "top"} align={where === "strip" ? "center" : VARIANT === "c" ? "start" : "center"} className={TIP_CLASS[VARIANT]} {...(forced && { collisionAvoidance: STILL })}>
+      <TooltipContent side={where === "strip" ? "right" : "top"} className="h-7.5 max-w-96" {...(forced && { collisionAvoidance: STILL })}>
         {tip}
       </TooltipContent>
     </Tooltip>
@@ -205,13 +130,13 @@ function Pill({ items, where, forced, onUpdate, onSkip }: { items: UpdateItem[];
     return () => clearTimeout(timer);
   }, [empty, open]);
   const direct = items.length === 1 && items[0].action.type === "run" && items[0].progress.type === "available" ? items[0] : null;
-  const { className, body } = LOOKS[VARIANT](shown, where);
+  const { className, body } = lookA(shown, where);
   const runnable = shown.filter((each) => each.action.type !== "manual" && each.progress.type === "available");
   return (
-    <BarItem show={!empty || open} axis={strip || VARIANT === "c" ? "y" : "x"}>
+    <BarItem show={!empty || open} axis={strip ? "y" : "x"}>
       <Popover open={forced ? forced === "list" : open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<Chip label={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} tip={<Tip items={shown} direct={direct} />} where={where} forced={forced} className={className} />}
+          render={<Chip label={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} tip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} where={where} forced={forced} className={className} />}
           onClick={direct ? () => onUpdate(direct) : undefined}
         >
           {body}
@@ -265,10 +190,9 @@ function Foot({ where, pill }: { where: Where; pill: ReactNode }) {
     );
   return (
     <div className="flex shrink-0 flex-col px-2 pt-1 pb-2">
-      {VARIANT === "c" && <div className="pb-1">{pill}</div>}
       <div data-foot className="flex items-center gap-0.5">
         {icons.toReversed()}
-        {VARIANT !== "c" && <div className={cx("flex", VARIANT === "b" && "ms-auto")}>{pill}</div>}
+        <div className="flex">{pill}</div>
       </div>
     </div>
   );
@@ -382,4 +306,45 @@ function Page() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Page />);
+/** What main hands the page in the app: a port to the daemon, here one that holds the fake agents, each outdated until updated. */
+function fakeDaemon() {
+  const { port1, port2 } = new MessageChannel();
+  const agents: Agent[] = [CLAUDE, CODEX].map(({ target, name, mark, current, latest }) => ({
+    name: target, label: name, mark, install: true, sign_in: null, enabled: true, update: `${target} update`, models_off: [], setup: null,
+    path: `/usr/local/bin/${target}`, version: current.slice(1), latest: latest.slice(1), outdated: true, signed_in: true, models: [],
+  }));
+  const say = (frame: object) => {
+    const json = new TextEncoder().encode(JSON.stringify(frame));
+    const out = new Uint8Array(4 + json.length);
+    new DataView(out.buffer).setUint32(0, json.length);
+    out.set(json, 4);
+    port2.postMessage(out);
+  };
+  port2.onmessage = ({ data }: MessageEvent<Uint8Array>) => {
+    const { id, op, args = [] } = JSON.parse(new TextDecoder().decode(data.subarray(4)));
+    const [command, name, action] = args as string[];
+    const agent = agents.find((each) => each.name === name);
+    if (op === "subscribe") return say({ re: id, n: 1, projects: [], rows: [] });
+    if (op === "run" && command === "profile") return say({ re: id, ok: true, onboarded: true, intro_seen: true, tour_seen: true, agents });
+    if (op === "run" && command === "agents") return say({ re: id, ok: true, agents: agent ? [agent] : agents });
+    if (op === "run" && command === "setup" && agent && action === "close") {
+      agent.setup = null;
+      return say({ re: id, ok: true });
+    }
+    if (op === "run" && command === "setup" && agent && action === "update") {
+      const run = { id: "fake", action, code: null, signal: null, code_page: null, reason: null } as const;
+      agent.setup = { ...run, running: true };
+      setTimeout(() => Object.assign(agent, { version: agent.latest, outdated: false, setup: { ...run, running: false, code: 0 } }), 2500);
+      return say({ re: id, ok: true });
+    }
+    say({ re: id, ok: false, error: "not in this mockup", message: "Not in this mockup" });
+  };
+  window.postMessage("daemon-port", "*", [port1]);
+  say({ status: "running", pid: 1, version: "mockup", build: 0 });
+}
+
+if (new URLSearchParams(location.search).get("v") === "real") {
+  location.hash = "#home";
+  fakeDaemon();
+  void import("../src/main");
+} else createRoot(document.getElementById("root")!).render(<Page />);

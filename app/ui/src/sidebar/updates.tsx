@@ -16,8 +16,8 @@ import { useDaemon } from "../daemon";
 import { useFootPlacement } from "./foot";
 
 /*
- * The updates icon at the strip's foot, with a dot, above Usage [D57]: one, whatever kinds of update there are, and what to update is chosen
- * in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
+ * The update pill at the foot, after Usage in the row and above it in the strip [D57]: one, whatever kinds of update
+ * there are, and what to update is chosen in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
  * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does.
  * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
  */
@@ -106,6 +106,20 @@ export function rowLabel(items: readonly UpdateItem[]) {
   return `${names} ${items.length > 1 ? "updates" : "update"} available`;
 }
 
+/** What has an update, by its mark: three at most, or two in a narrow foot, the last place then saying how many more. */
+function Marks({ items, column }: { items: readonly UpdateItem[]; column: boolean }) {
+  const count = items.length;
+  return (
+    <span className={cx("flex shrink-0 items-center gap-1 text-foreground foot-narrow:gap-0.5", column && "flex-col")}>
+      {items.slice(0, count > 3 ? 2 : 3).map((item, at) => (
+        <Glyph key={item.target} item={item} className={cx("size-icon-sm shrink-0", count > 2 && at > 0 && "foot-narrow:hidden")} />
+      ))}
+      {count > 3 && <span className="text-2xs font-medium tabular-nums foot-narrow:hidden">+{count - 2}</span>}
+      {count > 2 && <span className="hidden text-2xs font-medium tabular-nums foot-narrow:inline">+{count - 1}</span>}
+    </span>
+  );
+}
+
 /** One update in the list: its mark, name and versions, then Update or Download, its progress or its check, and Skip. */
 export function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () => void; onSkip: () => void }) {
   const { progress, action } = item;
@@ -155,7 +169,7 @@ export function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpda
   );
 }
 
-/** The foot's one update pill, there only while something has a newer version: a chip of marks, lying along the row or standing up in the strip. A click always opens the list. */
+/** The foot's one update pill, there only while something has a newer version: an outlined chip of what it does and the marks, lying along the row or standing up in the strip. */
 export function UpdatesRow() {
   const online = Boolean(useDaemon().daemon);
   const { list } = useAgents();
@@ -213,10 +227,18 @@ export function UpdatesRow() {
     <BarItem show={!empty || open} axis={row ? "x" : "y"}>
       <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
         <PopoverTrigger
-          render={<TooltipIconButton look="rail" side={placement.side} dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          render={
+            <TooltipIconButton
+              look="chip"
+              side={placement.side}
+              tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)}
+              className={row ? "h-7.5 px-2 foot-narrow:gap-1" : "mb-1 w-8 flex-col py-2"}
+            />
+          }
           onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
+          <Marks items={shown} column={!row} />
         </PopoverTrigger>
         <PopoverContent {...placement} padded={false} className="flex w-96 flex-col p-1.5">
           <BarItem axis="y" show={shown.length > 1}>

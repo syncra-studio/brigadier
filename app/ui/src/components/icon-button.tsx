@@ -33,9 +33,10 @@ export type TooltipIconButtonProps = ButtonProps & {
    * from the provider around them (TitlebarTips, the sidebar). `rail`: the strip's 36 square, its tip a 30-tall pill 2px
    * beside it on one line, as wide as its words up to a cap, the foot's too [D11 D204 D279 D280]. `head`: the sidebar header's 29×28 [D23 D24]. `bar`: the tab bar's and the chat's own 28
    * square (its …, Toggle pinned summary), `round` the 32 one at the row's end, the Files toggle; a rounded square, not
-   * a circle [D39 D40 D44 D200 D213].
+   * a circle [D39 D40 D44 D200 D213]. `chip`: the foot's update pill, an outlined round chip filled only on
+   * hover, its box the caller's; its tip as the rail's.
    */
-  look?: "ghost" | "toolbar" | "strip" | "rail" | "head" | "bar" | "round";
+  look?: "ghost" | "toolbar" | "strip" | "rail" | "chip" | "head" | "bar" | "round";
   /** Switched on (aria-pressed). */
   pressed?: boolean;
   /** A small dot on the icon, in this background class ("bg-warning"). */
@@ -59,7 +60,7 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   const ghost = look === "ghost";
-  const flat = look === "strip" || look === "rail" || look === "head" || look === "bar" || look === "round";
+  const flat = look === "strip" || look === "rail" || look === "chip" || look === "head" || look === "bar" || look === "round";
   const button = (
     <Button
       variant={flat ? null : (variant ?? "ghost")}
@@ -73,6 +74,7 @@ export function TooltipIconButton({
         look === "strip" && "h-7.5 min-w-8 rounded-icon-button",
         look === "head" && "h-7 w-7.25 justify-center rounded-icon-button",
         look === "rail" && "size-9 rounded-icon-button",
+        look === "chip" && "rounded-capsule border border-border",
         look === "bar" && "size-7 justify-center rounded-icon-button",
         look === "round" && "size-8 justify-center rounded-icon-button",
         className,
@@ -93,9 +95,9 @@ export function TooltipIconButton({
   return (
     <Tooltip>
       <TooltipTrigger delay={ghost ? 0 : undefined} render={button} />
-      <TooltipContent side={side} {...(look === "rail" && { sideOffset: spacingPx() / 2, className: "h-7.5 max-w-96" })}>
+      <TooltipContent side={side} {...(look === "rail" && { sideOffset: spacingPx() / 2 })} {...((look === "rail" || look === "chip") && { className: "h-7.5 max-w-96" })}>
         {/* The strip's tip stays on one line, a long name cut with … [D279 D280]. */}
-        {look === "rail" ? <span className="min-w-0 truncate">{tooltip}</span> : tooltip}
+        {look === "rail" || look === "chip" ? <span className="min-w-0 truncate">{tooltip}</span> : tooltip}
         {shortcut && <Kbd>{shortcut}</Kbd>}
       </TooltipContent>
     </Tooltip>
