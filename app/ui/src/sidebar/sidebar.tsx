@@ -17,6 +17,7 @@ import { StripFoot } from "./foot";
 import { LabelAsk } from "./labels";
 import { HomeMark } from "./strip";
 import type { Project } from "../projects/projects";
+import { newSession } from "../home/start";
 import { openAddProject, setShowProject } from "../projects/store";
 import { keysOf, matches } from "../shortcuts";
 import { pin, rename, useShown } from "./actions";
@@ -83,7 +84,7 @@ export function AppSidebar({
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
-  /** The New chat button: Home in no project [D421]. */
+  /** The New chat button: the draft last open. */
   onNewChat: () => void;
   /** The strip, given its squares and lists, which only the sidebar has the rows for. */
   rail?: (squares: ReactNode) => ReactNode;
@@ -346,7 +347,7 @@ export function AppSidebar({
                     onOpenChange={(open) => setOpen("none", open)}
                     actions={
                       <Tooltip>
-                        <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={onNewChat} />}>
+                        <TooltipTrigger render={<RowAction header aria-label="New chat" onClick={() => newSession(null)} />}>
                           <Plus />
                         </TooltipTrigger>
                         <TooltipContent side="bottom">New chat</TooltipContent>

@@ -156,7 +156,7 @@ fn planned(data: &Path) -> io::Result<Plan> {
     Ok(Plan { moves })
 }
 
-/// Each Home's open note tabs, by the project its Home is (None: New chat's own).
+/// Each Home's open note tabs, by the project its Home is (None: Chats').
 fn home_tabs(data: &Path) -> Vec<(Option<String>, BTreeSet<String>)> {
     let mut all = vec![];
     for entry in fs::read_dir(data).into_iter().flatten().flatten() {

@@ -40,25 +40,27 @@ export type TabKind = keyof typeof TAB_KINDS;
  * the preview the next file takes; a browser tab its profile, none for the default one.
  */
 export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string; driver?: string };
+/** A PR named in full, the same from any project. */
+export const isRef = (target?: string) => /^[^/#]+\/[^/#]+\/[^/#]+#\d+$/.test(target ?? "");
 export type Tabs = { tabs: Tab[]; active: string };
 
-type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void };
+type Action = { args: string[]; change: (now: Tabs) => Tabs; once?: boolean; out?: boolean; run?: () => void; after?: () => void };
 type Slot = { rev: number | null; rust: Tabs; pending: Action[]; shown: Tabs };
 
 const NONE: Tabs = { tabs: [], active: CHAT };
 const slots = new Map<string, Slot>();
 const listeners = new Set<() => void>();
-/** Home's tabs are its project's, as the old app's draft:<project>; a chat in no project has its own [D706]. */
+/** Home's tabs are its draft's, each project's or Chats', as the old app's draft:<project> [D706]. */
 let homeKey = HOME;
 let homeAt: string | null = null;
 export const own = (owner: string) => (owner === HOME ? homeKey : owner);
-/** `key`: tabs of a draft in no project kept apart from New chat's, a PR's review chat's [D162]. */
+/** `key`: tabs of a draft in no project kept apart from Chats', a PR's review chat's [D162]. */
 export function setHomeTabs(project: string | null, key?: string): void {
   homeAt = project;
   homeKey = key ?? (project ? `${HOME}:${project}` : HOME);
   for (const listener of listeners) listener();
 }
-/** The project Home's tabs are its draft's, or null for New chat's own [D863]. */
+/** The project Home's tabs are its draft's, or null for Chats'. */
 const homeProject = (): string | null => homeAt;
 export const useTabsProject = (): string | null => useSyncExternalStore(subscribe, homeProject);
 const opened = new Set<string>();
@@ -119,12 +121,13 @@ function pump(owner: string): void {
       showToast(String(reply.error), { tone: "error" });
       read(owner);
     }
+    action.after?.();
     pump(owner);
   });
 }
 
-function act(owner: string, action: Action): void {
-  const key = own(owner);
+const act = (owner: string, action: Action): void => push(own(owner), action);
+function push(key: string, action: Action): void {
   const slot = slotOf(key);
   slot.pending.push(action);
   draw(slot);
@@ -168,6 +171,29 @@ export function tabsRead(owner: string): Promise<Tabs> {
     if (reply.ok) land(slot, reply);
     resolve(slot.shown);
   }));
+}
+
+/** Draft `key`'s tabs, by its own key, once Rust has them and every change to them. */
+export function tabsSettled(key: string): Promise<Tabs> {
+  const slot = slotOf(key);
+  if (slot.rev === null) read(key);
+  return new Promise((resolve) => {
+    const look = () => slot.rev !== null && slot.pending.length === 0 && (listeners.delete(look), resolve(slot.shown));
+    listeners.add(look);
+    look();
+  });
+}
+
+/** Settled draft `from`'s tabs `ids` are draft `to`'s, at its end, by the drafts' own keys. Never in neither, so a page stays live. */
+export function takeTabs(from: string, to: string, ids: readonly string[]): void {
+  const left = slotOf(from);
+  const taken = left.shown.tabs.filter((tab) => ids.includes(tab.id));
+  if (taken.length === 0) return;
+  const change = (now: Tabs) => ({ ...now, tabs: [...now.tabs, ...taken.filter((tab) => !has(now, tab.id))] });
+  push(to, { args: ["take", from, ...ids], change, after: () => rereadTabs(from) });
+  const tabs = left.rust.tabs.filter((tab) => !ids.includes(tab.id));
+  left.rust = { tabs, active: tabs.some((tab) => tab.id === left.rust.active) ? left.rust.active : CHAT };
+  draw(left);
 }
 /** Chat first, then the rest. */
 export const tabOrder = ({ tabs }: Tabs): string[] => [CHAT, ...tabs.map((tab) => tab.id)];
@@ -390,10 +416,10 @@ export function carryHome(to: string, start: () => void): void {
   });
 }
 
-/** A refused start may have moved nothing: Rust's Home counts again, even at the rev it had. */
-export function rereadHome(): void {
-  slotOf(homeKey).rev = null;
-  read(homeKey);
+/** A refused start may have moved nothing: Rust's word on draft `key` counts again, even at the rev it had. */
+export function rereadTabs(key: string): void {
+  slotOf(key).rev = null;
+  read(key);
 }
 
 /** The gallery's fixed tabs; Infinity so no answer from Rust replaces them. */

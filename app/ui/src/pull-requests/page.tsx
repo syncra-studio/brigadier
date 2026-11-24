@@ -5,12 +5,12 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { HomeDraft } from "../home/home";
-import { REVIEW_DRAFT, reviewTitle, setHomeDraft } from "../home/start";
+import { reviewTitle, setHomeDraft } from "../home/start";
 import { Chat, Minus, Spinner, X } from "../icons";
 import { HostOf } from "../landing/host";
 import { LivePrTab } from "../landing/live";
 import { usePutBackAsked } from "../session/side";
-import { HOME, setHomeTabs, useTabs } from "../shell/tab-store";
+import { HOME, useTabs } from "../shell/tab-store";
 import { useStored } from "../sidebar/sidebar";
 import { prName } from "./route";
 
@@ -42,10 +42,7 @@ export function PrPage({ target, chat, children }: { target: string; chat: strin
 /** The review chat's draft, before its first message: the composer alone, its send starting the chat here [D162 D198]. */
 export function ReviewDraft({ review }: { review: string }) {
   // Its tabs its own, apart from Home's and a project's draft, which its start must not carry away [D162].
-  useLayoutEffect(() => {
-    setHomeDraft({ review });
-    setHomeTabs(null, REVIEW_DRAFT);
-  }, [review]);
+  useLayoutEffect(() => setHomeDraft({ review }), [review]);
   return <HomeDraft />;
 }
 

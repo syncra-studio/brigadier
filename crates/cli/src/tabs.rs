@@ -219,7 +219,7 @@ impl Tabs {
 
 /// `tabs <id> [open <tab> <kind> [<target>] | replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> |
 /// keep <tab> | scope <tab> <scope> | select <tab> | close <tab> | close-others <tab> | close-right <tab> | move <tab> <to> |
-/// reopen] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
+/// reopen | take <@home…> <tab>…] [--behind]`, for a session or Home; `--behind` keeps the tab in front, as a worker's `show` [D519].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if matches!(args[0].as_str(), "terminal" | "shell") {
         return terminal::run(data, args);
@@ -229,6 +229,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let Some(op) = args.get(2).map(String::as_str) else {
         return Ok(state(&read(&path)));
     };
+    if op == "take" {
+        return home::take(data, id, arg(args, 3)?, &args[4..]);
+    }
     let _one = lock(data, id)?;
     let home = is_home(id);
     if !home {

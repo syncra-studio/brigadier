@@ -6,13 +6,13 @@ import { ResizeHandle } from "../components/resize-handle";
 import { Sidebar } from "../icons";
 import { useDaemon } from "../daemon";
 import { FilesView, useFilesAhead } from "../files/views";
-import { useHomeDraft, useStart } from "../home/start";
+import { useStart } from "../home/start";
 import { useGitWatch } from "../panel/git";
 import { setPanelOpen, setPanelWidth, usePanelFromRust, usePanelMemory } from "../panel/memory";
 import { useArchivedGitNotice } from "../panel/notice";
 import { useProjects } from "../projects/projects";
 import { keysOf, matches } from "../shortcuts";
-import { HOME, openFile, useTabs } from "./tab-store";
+import { HOME, openFile, useTabs, useTabsProject } from "./tab-store";
 
 /*
  * The right panel [D410, D1014], as the old app's (WorkspacePane): a column at the window's end holding Files [D1284],
@@ -22,11 +22,11 @@ import { HOME, openFile, useTabs } from "./tab-store";
 
 /** Sessions and project chats have it; a chat in no project doesn't, before or after its first message [D1014, D1039, D421]. */
 export function useHasPanel(owner: string): boolean {
-  const draft = useHomeDraft();
+  const home = useTabsProject();
   const projects = useProjects();
   const row = useDaemon().rows?.find((each) => each.id === owner);
   const starting = useStart(owner);
-  if (owner === HOME) return !draft.chat && Boolean(projects?.some((each) => !each.pending));
+  if (owner === HOME) return Boolean(projects?.some((each) => !each.pending && each.id === home));
   // Hidden only once it's known to be in no project; an owner not listed yet keeps it, as the toolbar does.
   return (row ?? starting)?.project !== null;
 }

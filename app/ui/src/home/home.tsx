@@ -10,17 +10,18 @@ import { WorkHeader, WorkingLine } from "../components/thread/work";
 import { threadSource, useDaemon } from "../daemon";
 import { errorText, run, useProfile } from "../onboarding/api";
 import { useProjects } from "../projects/projects";
+import { showToast } from "../components/toast";
 import { openAddProject } from "../projects/store";
 import { enterProject } from "../projects/trust";
 import { daemonRun } from "../session/composer";
 import type { Draft } from "../components/composer/draft";
-import { draftOf, HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
+import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
 import { asGroups } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
-import { discard, draftKey, pickHomeProject, restoreHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
+import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
 import { useRepo } from "./branch";
 import { HomeView } from "./view";
 import { prName } from "../pull-requests/route";
@@ -33,8 +34,7 @@ type LevelGroup = ModelGroup & { levels: PermissionLevel[]; level: PermissionLev
 type Ran = { project: string | null; sent: number; backend: string; model?: string | null; effort?: string | null };
 
 /**
- * Home's draft on Rust's data [D161]. The project: the one picked here, else the one last sent to, else the first
- * added. The model: the one picked here, else the project's last session's, else the first an agent offers there,
+ * Home's draft on Rust's data [D161], a project's or Chats'. The model: the one picked here, else the project's last session's, else the first an agent offers there,
  * one on this computer first; only a model the list still has counts [D129].
  */
 export function HomeDraft() {
@@ -45,13 +45,13 @@ export function HomeDraft() {
   const key = draftKey(draft);
   const ran = (rows ?? []) as Ran[];
   const latest = (project?: string) => ran.filter((row) => (project ? row.project === project : row.project)).toSorted((a, b) => b.sent - a.sent)[0];
-  // A project added from here becomes the draft's once Rust has it (the old app opened its draft).
+  // A project added from here is picked once Rust has it (the old app opened its draft).
   const before = useRef<Set<string> | null>(null);
   const added = before.current && projects?.find((each) => !before.current!.has(each.id));
   useEffect(() => {
     if (!added) return;
     before.current = null;
-    setHomeDraft({ project: added.id, chat: false });
+    void pickHomeProject(added.id);
   }, [added]);
   // A PR's review chat is in the project of its repository when there's one, else in none, the agent reading it through gh [D162 D198].
   const home = useHomeProject();
@@ -136,16 +136,16 @@ export function HomeDraft() {
     <>
       <HomeView
         // Drawn again as a PR is sent to the agent, so its field shows the draft with the PR's chip [D699].
-        // and again on another draft's words: the composer reads `initial` as it mounts [D863].
+        // and again on another draft's words: the composer reads `initial` as it mounts.
         key={`${key}:${draft.pr ? draft.focus : 0}`}
         name={name}
         review={draft.review && prName(draft.review)}
         // Its project is looked up first: until then it can't start.
         projects={draft.review && reviewIn === undefined ? undefined : projects}
         project={project}
-        // Picking a project only sets this draft's, and stays on it [D261 D282].
-        onProject={(id) => pickHomeProject(id, project?.id ?? null)}
-        onNoProject={() => pickHomeProject(null, project?.id ?? null)}
+        // What's in the other draft is Rust's to say.
+        onProject={(id) => (daemon ? void pickHomeProject(id) : void showToast("Reconnecting…"))}
+        onNoProject={() => (daemon ? void pickHomeProject(null) : void showToast("Reconnecting…"))}
         onAddProject={(path) => {
           before.current = new Set(projects?.map((each) => each.id));
           openAddProject(path);
@@ -174,14 +174,10 @@ export function HomeDraft() {
         }
         modelError={listError}
         offline={!daemon}
+        draft={key}
         initial={draftOf(key)}
         onDraft={(text) => keepDraft(daemonRun, key, text)}
-        loadDraft={() =>
-          loadDraft(daemonRun, key).then((saved) => {
-            if (key === HOME_DRAFT) restoreHomeProject();
-            return saved;
-          })
-        }
+        loadDraft={() => loadDraft(daemonRun, key)}
         focus={draft.focus}
         onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade)}
       />

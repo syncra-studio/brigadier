@@ -251,7 +251,7 @@ fn refused(a: &dyn adapters::Adapter, bytes: &[u8]) -> Option<String> {
 /// What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
 pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    // A project's New session keeps its words apart from New chat's [D863]; `p` was checked in lib.rs.
+    // Each project's draft keeps its words, and Chats' its own; `p` was checked in lib.rs.
     let path = if id == HOME_DRAFT {
         data.join("home-draft")
     } else if let Some(p) = id.strip_prefix("@home:") {

@@ -3,9 +3,8 @@ import { type ReactNode, useState } from "react";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { TitlebarTips, Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { justStarted, useHomeDraft } from "../home/start";
+import { justStarted } from "../home/start";
 import { Tasks } from "../icons";
-import { useProjects } from "../projects/projects";
 import { RightPanelToggle, useHasPanel } from "./right-panel";
 import { useCardToggle } from "./summary-card";
 import { CHAT, HOME, useTabs } from "./tab-store";
@@ -57,12 +56,10 @@ function ContextButton({ owner, className }: { owner: string; className: string 
  */
 export function Toolbar({ owner }: { owner: string }) {
   const home = owner === HOME;
-  const draft = useHomeDraft();
-  const projects = useProjects();
   const onChat = useTabs(owner).active === CHAT;
   const [fresh] = useState(() => justStarted(owner));
   const enter = fresh ? "motion-safe:animate-fade-in" : "";
-  const panel = !home || (!draft.chat && Boolean(projects?.some((each) => !each.pending)));
+  const panel = useHasPanel(owner);
   if (home && !panel) return null;
   // On every platform, on Windows just before the caption buttons [D60].
   return (

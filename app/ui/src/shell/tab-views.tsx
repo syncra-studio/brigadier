@@ -29,7 +29,7 @@ import { MockupTab } from "../mockup/live";
 import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
-import { CHAT, HOME, openTab, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+import { CHAT, HOME, isRef, openTab, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint not-has-disabled:hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key along the top, its name under them. */
@@ -145,7 +145,6 @@ function FileTab({ owner, tab, active }: { owner: string; tab: Tab; active: bool
  * keeping its place too, with only the one in front showing. Beside it, the right panel's mount point.
  */
 const REVIEW = "@";
-const isRef = (target?: string) => /^[^/#]+\/[^/#]+\/[^/#]+#\d+$/.test(target ?? "");
 
 export function TabbedMain({ owner, archived, children }: { owner: string; archived: boolean; children: ReactNode }) {
   const { tabs, active } = useTabs(owner);

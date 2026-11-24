@@ -7,46 +7,54 @@ import type { Runner } from "./composer";
  */
 export const HOME_DRAFT = "@home";
 const SAVE_MS = 400;
-/** New chat's draft also keeps the project picked in it, an id or null for none, so a relaunch brings it back [D284]. */
+/** `project`: read only, the one picked in New chat's draft of before each project had its own. */
 type Saved = Draft & { project?: string | null };
 const drafts = new Map<string, Saved>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const writing = new Set<string>();
+const loading = new Map<string, Promise<Draft | null>>();
 
 export const draftOf = (id: string) => drafts.get(id);
 
 /** One write at a time per session, so the last words typed are the last written. */
-function write(run: Runner, id: string): void {
+async function write(run: Runner, id: string): Promise<void> {
   if (writing.has(id)) return;
   writing.add(id);
-  const draft: Saved = drafts.get(id) ?? EMPTY_DRAFT;
-  void run(["draft", id, isEmpty(draft) && draft.project === undefined ? "" : JSON.stringify(draft)]).then(() => {
-    writing.delete(id);
-    if (drafts.get(id) !== draft) write(run, id);
-  });
+  const draft = drafts.get(id) ?? EMPTY_DRAFT;
+  await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft)]);
+  writing.delete(id);
+  if (drafts.get(id) !== draft) await write(run, id);
 }
 
 /** Keeps what the composer holds now, its files' ids too; an emptied one (a sent message) drops the draft at once. */
 export function keepDraft(run: Runner, id: string, draft: Draft): void {
-  const project = drafts.get(id)?.project;
-  drafts.set(id, project === undefined ? draft : { ...draft, project });
+  drafts.set(id, draft);
   clearTimeout(timers.get(id));
-  timers.set(id, setTimeout(() => write(run, id), isEmpty(draft) ? 0 : SAVE_MS));
+  timers.set(id, setTimeout(() => void write(run, id), isEmpty(draft) ? 0 : SAVE_MS));
 }
 
-/** The project picked in draft `id`, kept with its words; a send empties the words, not this [D284]. */
-export function keepProject(run: Runner, id: string, project: string | null): void {
-  drafts.set(id, { ...(drafts.get(id) ?? EMPTY_DRAFT), project });
-  clearTimeout(timers.get(id));
-  timers.set(id, setTimeout(() => write(run, id), 0));
+/** Draft `from` becomes `to`'s, saved there before it goes from here. */
+export function moveDraft(run: Runner, from: string, to: string): void {
+  const draft = drafts.get(from);
+  if (!draft || isEmpty(draft)) return;
+  drafts.set(to, { parts: draft.parts, attachmentIds: draft.attachmentIds });
+  drafts.set(from, EMPTY_DRAFT);
+  for (const id of [from, to]) clearTimeout(timers.get(id));
+  void write(run, to).then(() => write(run, from));
 }
 
-/** The project kept with draft `id`: undefined when none was picked there or it isn't loaded yet. */
-export const projectOf = (id: string) => drafts.get(id)?.project;
+/** The project kept with New chat's draft of before each project had its own: null for none, undefined never picked. */
+export const oldProject = (id: string) => drafts.get(id)?.project;
 
-/** The draft Rust holds, the first time this run opens the session; later opens have it in memory. */
-export async function loadDraft(run: Runner, id: string): Promise<Draft | null> {
-  if (drafts.has(id)) return null;
+/** The draft Rust holds, the first time this run opens the session; later opens have it in memory. Asked twice at once, both get it. */
+export function loadDraft(run: Runner, id: string): Promise<Draft | null> {
+  if (drafts.has(id)) return Promise.resolve(null);
+  const asked = loading.get(id) ?? readDraft(run, id).finally(() => loading.delete(id));
+  loading.set(id, asked);
+  return asked;
+}
+
+async function readDraft(run: Runner, id: string): Promise<Draft | null> {
   const reply = await run(["draft", id]);
   if (!reply.ok || drafts.has(id)) return null;
   let saved: unknown = null;
@@ -56,7 +64,7 @@ export async function loadDraft(run: Runner, id: string): Promise<Draft | null> 
     // Not ours to show; the next words typed replace it.
   }
   // Saved before its files were kept, a draft was its parts alone.
-  const draft: Saved = Array.isArray(saved) ? { parts: saved, attachmentIds: [] } : saved && typeof saved === "object" && Array.isArray((saved as Draft).parts) ? { parts: (saved as Draft).parts, attachmentIds: (saved as Draft).attachmentIds ?? [] } : EMPTY_DRAFT;
+  const draft: Saved = Array.isArray(saved) ? { parts: saved, attachmentIds: [] } : saved && typeof saved === "object" && Array.isArray((saved as Draft).parts) ? { parts: (saved as Draft).parts, attachmentIds: (saved as Draft).attachmentIds ?? [] } : { ...EMPTY_DRAFT };
   const project = (saved as Saved | null)?.project;
   if (typeof project === "string" || project === null) draft.project = project;
   drafts.set(id, draft);
