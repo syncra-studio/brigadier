@@ -38,6 +38,7 @@ export type Row = {
   background?: Job[];
   /** Something has run in its background: the card keeps its Background history button [D200]. */ background_ran?: boolean;
   /** Its agent's to-do list as its CLI's todo or plan tool last wrote it [D144]. */ plan?: { text: string; status: string }[] | null;
+  /** Other sessions' messages its agent hasn't got yet, oldest first; one in its queue isn't here. */ arriving?: { id: string; from: string; text: string; at: number }[];
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
   /** It holds its project's own folder, unarchived: Local checkout can't start there again [D306]. */

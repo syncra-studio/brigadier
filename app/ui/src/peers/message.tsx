@@ -11,18 +11,22 @@ import { type PeerRef, sentByCaption, UNKNOWN_SESSION } from "./words";
  * It's never treated as the user [D2034].
  */
 
+/** Why a message waits. */
+const WAITING = "The agent gets this once its turn can take it, often after your answer.";
+
 /**
  * A message another session sent this one, in the user's own bubble on the right, with over it who sent it
  * ("Sent by API work from another session"), opening the sender at its row; the time and Copy on hover. A deleted
  * sender reads "a session" and opens nothing.
  */
-export const PeerMessageBlock: FC<{ from: PeerRef | null; text: string; at: number; worker?: boolean }> = ({ from, text, at, worker }) => {
+export const PeerMessageBlock: FC<{ from: PeerRef | null; text: string; at: number; worker?: boolean; /** Its agent hasn't got it yet. */ waiting?: boolean }> = ({ from, text, at, worker, waiting }) => {
   const open = useContext(PeerOpen);
   const title = from && !from.gone ? from.title : UNKNOWN_SESSION;
   const words = (
     <>
       <Chat aria-hidden className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{sentByCaption(title, worker)}</span>
+      {waiting && <span className="shrink-0">· waiting</span>}
     </>
   );
   const caption =
@@ -42,8 +46,8 @@ export const PeerMessageBlock: FC<{ from: PeerRef | null; text: string; at: numb
     );
   // The user's own bubble, the caption in its place above it, so it sits on the right as theirs do.
   return (
-    <div data-slot="peer-message" role="group" aria-label={`Message from ${title}:`}>
-      <UserBubble keep={`peer:${at}`} text={text} time={at} files={caption} />
+    <div data-slot="peer-message" role="group" aria-label={`Message from ${title}${waiting ? ", waiting" : ""}:`} title={waiting ? WAITING : undefined}>
+      <UserBubble keep={`peer:${at}`} text={text} time={at} files={caption} dimmed={waiting} />
     </div>
   );
 };

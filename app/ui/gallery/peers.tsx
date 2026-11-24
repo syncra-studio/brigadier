@@ -32,7 +32,7 @@ export function PeersGallery() {
         <Row name="Its own brigadier send">
           <Column>
             <SessionSentRow to={DOCS} state="sending" />
-            <SessionSentRow to={DOCS} state="sent" text={MESSAGE} />
+            <SessionSentRow keep="g-sent-1" to={DOCS} state="sent" text={MESSAGE} />
             <SessionSentRow to={DOCS} state="declined" />
             <SessionSentRow to={DOCS} state="refused" refused="That session was deleted." />
             <SessionSentRow to={GONE} state="sent" text={MESSAGE} />
@@ -76,6 +76,11 @@ export function PeersGallery() {
           <State label="From a session">
             <div className="flex w-140 flex-col">
               <PeerMessageBlock from={NOTES} text={MESSAGE} at={NOW - 3 * 60_000} />
+            </div>
+          </State>
+          <State label="Waiting: its agent hasn't got it yet">
+            <div className="flex w-140 flex-col">
+              <PeerMessageBlock from={NOTES} text={MESSAGE} at={NOW - 3 * 60_000} waiting />
             </div>
           </State>
           <State label="Its sender deleted">

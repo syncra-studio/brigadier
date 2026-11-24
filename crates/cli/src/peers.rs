@@ -10,6 +10,7 @@
 //! sent again by itself. A chain stops at 8 hops and a sender at 20 a minute; only the user's
 //! Send anyway lets that message through.
 
+pub mod held;
 mod reply;
 
 use crate::{control, owner, queue, workers};
@@ -284,9 +285,7 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
         let alive = owner::state(data, &to) == core::fold::Owner::Alive;
         if let Some(t) = f.turns.first().filter(|_| alive && steer) {
             if !(can && t.began && t.asks.is_empty()) {
-                (rec.how, rec.turn, rec.state) = ("steer".into(), None, "held".into());
-                save(data, &to, "in", &mid, &rec)?;
-                return Ok(Some("held"));
+                return held::hold(data, &to, &mut rec);
             }
             (rec.how, rec.turn, rec.state) =
                 ("steer".into(), Some(t.id.clone()), "steering".into());
@@ -439,7 +438,7 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
 fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Result<()> {
     let now = log::now_ms();
     let mut open = false;
-    for mut out in all::<Out>(data, from, "out") {
+    for mut out in held::sent(data, from) {
         // A worker's question is its parent's to settle, by its answer.
         if DONE.contains(&out.state.as_str()) || reply::ASKS.contains(&out.state.as_str()) {
             continue;

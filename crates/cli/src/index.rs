@@ -15,7 +15,7 @@ pub use search::search;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
@@ -49,6 +49,8 @@ struct Entry {
     spec: Option<core::Spec>,
     /// Small session files, read again only when the folder changes.
     marks: Marks,
+    /// Other sessions' messages its agent hasn't got yet, read again only when their folder changes.
+    held: (Option<SystemTime>, Vec<Value>),
 }
 
 /// Marks published by creating or renaming entries in the session folder.
@@ -251,6 +253,11 @@ impl Index {
                 e.marks = Marks::read(&dir, at);
                 e.spec = None;
             }
+            let inbox = fs::metadata(dir.join("peers/in")).and_then(|m| m.modified());
+            let inbox = inbox.ok();
+            if inbox != e.held.0 {
+                e.held = (inbox, crate::peers::held::row(&self.data, id));
+            }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let holds = crate::workers::holds(&self.data, id, &f.fold, live.child.is_some());
@@ -325,6 +332,9 @@ impl Index {
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             // A worker's images, which its parent's thread shows too [D289].
             row["images"] = json!(f.fold.images);
+            // Waiting till its record moves on, or its sender is deleted: the thread's waiting bubbles.
+            let waits = |m: &&Value| ids.iter().any(|i| m["from"] == **i);
+            row["arriving"] = json!(e.held.1.iter().filter(waits).collect::<Vec<_>>());
             row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
             row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
