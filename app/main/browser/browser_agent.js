@@ -9,7 +9,7 @@
 //      { kind: "type", target, text, submit, declared, approved } -> the same
 // A password field, seen by its type, its autocomplete, its computed text security or its names, shows only as a line
 // with no ref and nothing goes into it, yes or no: only the user fills those in. An action that pays, sends or signs in
-// (declared by the agent), a click on a button or link named Buy, Pay, Send, Delete and the like, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
+// (declared by the agent), a click on a button or link named or showing Buy, Pay, Send, Delete and the like, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
 // returns `ask` and does nothing unless the user said yes to it on this page (`approved`: the address the yes was given at, which the app
 // passes only while the tab is still on the page it was given on; `approvedFor`: what the control asked for then, none for any).
 //
@@ -149,6 +149,66 @@
     /\b(buy|pay|purchase|checkout|check out|place order|order now|subscribe)\b/i.test(name) ? "pay"
       : /\bsend\b/i.test(name) ? "send"
       : /\b(delete|remove|erase|destroy)\b/i.test(name) ? "delete" : null;
+
+  /** The most of what a control draws that counts as its words, as of a name shown: a card's paragraph doesn't. */
+  const MOST_WORDS = 80;
+
+  /**
+   * The words a control draws, whatever its label says: its text, whole, and each picture's, button's and tooltip's. Its
+   * text is read as its name's is, hidden by opacity or for screen readers too, and without that, so such text can't
+   * make what's seen too long. Never what another control in it draws, unless that takes the control's own click.
+   */
+  const drawnIn = (control) => {
+    const texts = [];
+    const marks = [];
+    let size = 0;
+    const box = control.getBoundingClientRect();
+    const another = (element) => {
+      const role = roleOf(element);
+      if (!role && !element.hasAttribute("onclick") && !handled().has(element)) return false;
+      const own = element.getBoundingClientRect();
+      const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+      const middle = own.left <= x && x <= own.right && own.top <= y && y <= own.bottom;
+      return !middle || (role && getComputedStyle(element).pointerEvents !== "none");
+    };
+    const walk = (element, outer) => {
+      if (element !== control && another(element)) return;
+      if (element.localName === "title") marks.push(element.textContent);
+      const style = getComputedStyle(element);
+      if (!element.checkVisibility() && style.display !== "contents") return;
+      const drawn = style.visibility === "visible";
+      const rect = element.getBoundingClientRect();
+      const clipped = style.overflow !== "visible" && style.display !== "contents" && (rect.width <= 1 || rect.height <= 1);
+      const seen = outer && style.opacity !== "0" && !clipped;
+      if (drawn) {
+        marks.push(element.getAttribute("alt"), element.getAttribute("title"));
+        if (element.localName === "input" && ["button", "submit", "reset"].includes(element.type)) marks.push(element.value);
+        if (element.localName === "svg" || element.getAttribute("role") === "img") marks.push(element.getAttribute("aria-label"));
+      }
+      const slotted = element.localName === "slot" ? element.assignedNodes({ flatten: true }) : [];
+      for (const child of slotted.length ? slotted : (element.shadowRoot ?? element).childNodes) {
+        if (child.nodeType === Node.ELEMENT_NODE) walk(child, seen);
+        else if (child.nodeType === Node.TEXT_NODE && drawn) {
+          texts.push({ text: child.data, seen });
+          if (seen) size += clean(child.data).length;
+        }
+        if (size > MOST_WORDS) return;
+      }
+    };
+    walk(control, true);
+    if (size > MOST_WORDS) return [];
+    // Words split over elements read as one where the page draws them so.
+    const whole = [texts.filter((each) => each.seen), texts].flatMap((some) => [" ", ""].map((by) => some.map((each) => each.text).join(by)));
+    return [...whole, ...marks].map(clean).filter((words) => words && words.length <= MOST_WORDS);
+  };
+
+  /** What a control's name and the words it draws say it does, paying first, and those words where its name doesn't say it. */
+  const saidBy = (element) => {
+    const named = namedKind(nameOf(element));
+    const drawn = drawnIn(element).map((words) => ({ kind: namedKind(words), words })).filter(({ kind }) => kind && kind !== named);
+    const kinds = ["pay", "send", "delete"].filter((kind) => kind === named || drawn.some((each) => each.kind === kind));
+    return { kinds, words: drawn.find((each) => each.kind === kinds.find((kind) => kind !== named))?.words };
+  };
 
   const isPassword = (element) => fieldKind(element) === "credentials";
   const HANDS_OFF = "That is a password field, and only the user fills those in, so nothing was done. Ask them to sign in in this tab, and go on when they say so.";
@@ -375,8 +435,8 @@
     return look().catch(refused).then((answer) => ({ ...answer, before }));
   };
 
-  /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it. */
-  const ask = (reasons, element) => {
+  /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it, with the `words` it draws that ask. */
+  const ask = (reasons, element, words) => {
     const needed = reasons.filter(Boolean);
     // The yes was for this page, at this address, and for what the control was then: not for what it became. One for the
     // session covers no paying, card, password, code or sign-in.
@@ -384,7 +444,8 @@
     const covers = (each) => (op.covered ? ["action", "delete", "send", "script"].includes(each) : each === "action" || !op.approvedFor || op.approvedFor.includes(each));
     const sensitive = needed.find((each) => !yes || !covers(each));
     if (!sensitive) return null;
-    return { ask: { sensitive, reasons: needed, what: `${controlOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
+    const what = `${controlOf(element) || element.localName} ${quoted(nameOf(element))}${words ? `, which shows ${quoted(words)}` : ""}`;
+    return { ask: { sensitive, reasons: needed, what }, url: location.href };
   };
 
   /** What a click on the control is refused or asked for, as it is now. */
@@ -393,8 +454,8 @@
     // A control with no role acts as a button does, whatever it's made of, so it asks as one.
     const role = controlOf(element) || "clickable";
     const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
-    const named = (role === "button" || role === "link" || role === "clickable") && namedKind(nameOf(element));
-    return ask([op.declared, kind, named, op.always && "action"], element) ?? unready(element);
+    const said = role === "button" || role === "link" || role === "clickable" ? saidBy(element) : null;
+    return ask([op.declared, kind, ...(said?.kinds ?? []), op.always && "action"], element, said?.words) ?? unready(element);
   };
 
   /** What typing in the field asks for, as it is now: a card or code field as what it is, whatever the agent declared, so the card never shows the secret typed into it. */
@@ -456,7 +517,8 @@
         const role = controlOf(at);
         if (role && !roled) return { error: `${op.target}'s middle is its ${role} ${quoted(nameOf(at))}, so clicking it would click that: use that one's own ref.` };
         // A handler set with addEventListener can't be seen: what is named as a sensitive control may be one, so it asks.
-        const asked = !hovering && (role || !roled) && within(element, at) && ask([namedKind(nameOf(at))], at);
+        const said = !hovering && (role || !roled) && within(element, at) ? saidBy(at) : null;
+        const asked = said && ask(said.kinds, at, said.words);
         if (asked) return asked;
       }
     }
@@ -498,17 +560,17 @@
     const role = element === document.body ? null : controlOf(element);
     const activates = op.key === "Enter" || op.key === "Space";
     let kind = null;
-    let named = null;
+    let said = null;
     if (activates && (role === "button" || role === "link" || role === "clickable")) {
       kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
-      named = namedKind(nameOf(element));
+      said = saidBy(element);
     } else if (op.key === "Enter" && element !== document.body) {
       kind = fieldKind(element) || filledKind(scopeOf(element), element);
     } else if (op.key !== "Tab" && op.key !== "Escape") {
       // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
       kind = fieldKind(element);
     }
-    return ask([op.declared, kind, named, op.always && "action"], element) ?? (op.target ? unready(element, NO_KEYBOARD) : null);
+    return ask([op.declared, kind, ...(said?.kinds ?? []), op.always && "action"], element, said?.words) ?? (op.target ? unready(element, NO_KEYBOARD) : null);
   };
 
   /** With a ref, that control takes the focus. */
