@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { ProviderMark } from "../components/composer/model-picker";
@@ -41,14 +41,18 @@ const CHECK_EVERY_MS = 6 * 60 * 60_000;
 const SKIPPED = "skipped-updates";
 const readSkipped = (): string[] => JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
 
-/** An agent's update as a row: one newer than it, its run while it goes, or why it failed until tried again or closed. */
-function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined, starting: boolean): UpdateItem | null {
+/** How long an update that went through shows its check before it leaves. */
+const UPDATED_MS = 2000;
+
+/** An agent's update as a row: one newer than it, its run while it goes, its check a moment once it went through, or why it failed until tried again or closed. */
+function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined, starting: boolean, done: boolean): UpdateItem | null {
   const run = agent.setup?.action === "update" ? agent.setup : null;
   // Updating from the click, not only once Rust's run shows: that comes after the run starts and the agent is checked again.
   const updating = starting || Boolean(run?.running);
   const error = runFailure(run, agent.label) ?? (agent.outdated ? failed : undefined);
-  if (!updating && !error && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
-  const progress = updating ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: "available" } as const);
+  const updated = done && !agent.outdated;
+  if (!updating && !error && !updated && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
+  const progress = updating ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: updated ? "updated" : "available" } as const);
   return { target: agent.name, name: agent.label, mark: agent.mark, current: versionText(agent) ?? "", latest: agent.latest ? `v${agent.latest}` : "", action: { type: "run" }, progress };
 }
 
@@ -188,7 +192,19 @@ export function UpdatesRow() {
       clearInterval(every);
     };
   }, [online]);
-  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update") ?? []);
+  const [updated, setUpdated] = useState<readonly string[]>([]);
+  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update", updated.includes(agent.name)) ?? []);
+  // One that was updating and is now neither there nor outdated went through. Before paint, so the pill never starts to leave first.
+  const updating = items.filter((item) => item.progress.type === "updating").map((item) => item.target).join(" ");
+  const before = useRef(updating);
+  useLayoutEffect(() => {
+    const done = before.current.split(" ").filter((name) => !items.some((item) => item.target === name) && list?.some((agent) => agent.name === name && agent.outdated === false));
+    before.current = updating;
+    if (!done.length) return;
+    setUpdated((all) => [...all, ...done]);
+    setTimeout(() => setUpdated((all) => all.filter((name) => !done.includes(name))), UPDATED_MS);
+    // updating changes when a run starts or ends.
+  }, [updating]);
   const update = (item: UpdateItem): Promise<boolean> => {
     const agent = list?.find((each) => each.name === item.target);
     return agent ? setup.begin(agent, "update") : Promise.resolve(false);
@@ -240,7 +256,7 @@ export function UpdatesRow() {
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
           <Marks items={shown} column={!row} />
         </PopoverTrigger>
-        <PopoverContent {...placement} padded={false} className="flex w-96 flex-col p-1.5">
+        <PopoverContent {...placement} padded={false} className="flex w-96 max-w-available flex-col p-1.5">
           <BarItem axis="y" show={shown.length > 1}>
             <div className="flex justify-end px-1.5 pt-1 pb-1.5">
               <Button size="sm" variant="secondary" disabled={runnable.length < 2} onClick={() => runnable.forEach((item) => void update(item))}>

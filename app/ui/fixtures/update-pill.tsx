@@ -95,7 +95,8 @@ function lookA(items: UpdateItem[], where: Where): Look {
 }
 
 type Forced = "tip" | "list";
-const STILL = { side: "none", align: "none" } as const;
+// Held on its side; kept inside a narrow pane.
+const STILL = { side: "none", align: "shift" } as const;
 
 /** The pill's button with its tip; `forced` keeps the tip open. */
 function Chip({ label, tip, where, forced, children, ...props }: ButtonProps & { label: string; tip: ReactNode; where: Where; forced?: Forced }) {
@@ -110,7 +111,7 @@ function Chip({ label, tip, where, forced, children, ...props }: ButtonProps & {
         }
       />
       <TooltipContent side={where === "strip" ? "right" : "top"} className="h-7.5 max-w-96" {...(forced && { collisionAvoidance: STILL })}>
-        {tip}
+        <span className="min-w-0 truncate">{tip}</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -147,7 +148,7 @@ function Pill({ items, where, forced, onUpdate, onSkip }: { items: UpdateItem[];
           sideOffset={() => spacingPx() * (strip ? 3 : 2)}
           padded={false}
           {...(forced && { collisionAvoidance: STILL, initialFocus: false })}
-          className="flex w-96 flex-col p-1.5"
+          className="flex w-96 max-w-available flex-col p-1.5"
         >
           <BarItem axis="y" show={shown.length > 1}>
             <div className="flex justify-end px-1.5 pt-1 pb-1.5">
