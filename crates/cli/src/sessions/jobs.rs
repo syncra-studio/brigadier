@@ -23,21 +23,8 @@ pub(super) fn stop(
         return Ok(json!({"ok": true}));
     }
     let left = fold::live(f, fold::Owner::Alive, &spec.dir, &procs::all()).left;
-    let job = (left.into_iter()).find(|j| j.under && (j.pid, j.start_us) == (pid, start));
-    let tell = || {
-        let Some(job) = job else { return };
-        let msg = json!({"kind": "stop_task", "task": job.task, "command": job.label});
-        let req = json!({"cid": control::new_cid(), "control": msg});
-        let sent = control::deliver(data, &spec.id, req, false, |_| Ok(msg.clone()));
-        let until = Instant::now() + Duration::from_secs(2);
-        while job.task.is_some()
-            && sent.as_ref().is_ok_and(|s| s["ok"] == true)
-            && procs::same(pid, start).is_some()
-            && Instant::now() < until
-        {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    };
+    let job = (left.iter()).find(|j| (j.pid, j.start_us) == (pid, start));
+    let tell = || tell(data, &spec.id, job);
     let why = match core::background::end(&spec.dir, f, Some(&[(pid, start)]), tell) {
         Some(alive) if alive.is_empty() => {
             fold::note_stop(&spec.dir, pid, start);
@@ -47,6 +34,23 @@ pub(super) fn stop(
         None => "it's running, but isn't known to be this session's.".into(),
     };
     Err(io::Error::other(why))
+}
+
+/// Tells the live agent of those under it, through its CLI's own channel, and waits till it ends them.
+fn tell<'a>(data: &Path, id: &str, jobs: impl IntoIterator<Item = &'a fold::Job>) {
+    for job in jobs.into_iter().filter(|j| j.under) {
+        let msg = json!({"kind": "stop_task", "task": job.task, "command": job.label});
+        let req = json!({"cid": control::new_cid(), "control": msg});
+        let sent = control::deliver(data, id, req, false, |_| Ok(msg.clone()));
+        let until = Instant::now() + Duration::from_secs(2);
+        while job.task.is_some()
+            && sent.as_ref().is_ok_and(|s| s["ok"] == true)
+            && procs::same(job.pid, job.start_us).is_some()
+            && Instant::now() < until
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
 
 /// The workers under a session, theirs too; a Brigade's sessions aren't among them [D189].
@@ -61,12 +65,18 @@ pub(super) fn family(data: &Path, id: &str) -> Vec<workers::Record> {
 }
 
 /// Ends what a worker whose turns are over, their results not held for it, left running, a mockup's
-/// server too.
-pub(crate) fn end(data: &Path, id: &str) -> io::Result<()> {
+/// server too, but what it `leaves`. Those that couldn't be ended.
+pub(crate) fn end(
+    data: &Path,
+    id: &str,
+    leaves: impl Fn((i32, u64)) -> bool,
+) -> io::Result<Vec<(i32, u64)>> {
     let dir = core::session_dir(data, id);
     if !dir.join("session.json").exists() {
-        return Ok(());
+        return Ok(vec![]);
     }
+    // Read first: what a turn starts after it's judged over isn't in it.
+    let all = procs::all();
     let f = core::fold(&dir, true)?.fold;
     let paused = workers::link(data, id).is_some_and(|l| l.paused);
     let cut = !f.turns.is_empty();
@@ -75,16 +85,13 @@ pub(crate) fn end(data: &Path, id: &str) -> io::Result<()> {
         false => workers::busy(data, id),
     };
     if paused || works {
-        return Ok(());
+        return Ok(vec![]);
     }
-    let left = fold::live(&f, owner::state(data, id), &dir, &procs::all()).left;
-    let left: Vec<_> = left.iter().map(|j| (j.pid, j.start_us)).collect();
-    match core::background::end(&dir, &f, Some(&left), || ()) {
-        Some(alive) if alive.is_empty() => Ok(()),
-        Some(alive) => Err(io::Error::other(format!(
-            "process {} didn't stop",
-            alive[0].pid
-        ))),
-        None => Err(io::Error::other("one isn't known to be its own any more")),
-    }
+    let mut left = fold::live(&f, owner::state(data, id), &dir, &all).left;
+    left.retain(|j| !leaves((j.pid, j.start_us)));
+    let roots: Vec<_> = left.iter().map(|j| (j.pid, j.start_us)).collect();
+    core::background::end(&dir, &f, Some(&roots), || tell(data, id, &left));
+    Ok((roots.into_iter())
+        .filter(|r| procs::same(r.0, r.1).is_some())
+        .collect())
 }

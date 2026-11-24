@@ -43,8 +43,7 @@ impl Thread {
             if question {
                 o.kept.push(at as u64 + 1);
             }
-            // The turn doesn't wait on what its worker left running.
-            if o.wait.is_none() && self.items[at]["aside"] != true {
+            if o.wait.is_none() {
                 o.wait = Some(ts);
                 self.turns[o.at]["waitingSince"] = ts.into();
                 self.changed_turns.insert(o.at);
@@ -104,14 +103,26 @@ impl Thread {
         let r = &item["request"];
         if item["phase"] == "asked" {
             let q = &r["items"][0];
-            let at = self.add(json!({"kind": "question", "question": q["text"],
-                "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true,
-                "offer": item["event"] != "hold", "aside": item["event"] == "left"}));
+            // What a worker left running asks no more: one never answered reads as ended.
+            let left = item["event"] == "left";
+            let row = json!({"kind": "question", "question": q["text"],
+                "options": q["options"].as_array().cloned().unwrap_or_default(),
+                "answer": left.then_some("It ended"), "request": r, "held": true, "offer": item["event"] == "mockup"});
+            if left {
+                self.kept_row(row);
+                return;
+            }
+            let at = self.add(row);
             self.pending.push(at);
             self.pending_changed = true;
             return self.user_waits(at, ts);
         }
-        if let Some(at) = self.unwait(item["id"].as_str().unwrap_or("")) {
+        let id = item["id"].as_str().unwrap_or("");
+        let at = match item["event"] == "left" {
+            true => (self.items.iter()).rposition(|i| i["request"]["id"] == id),
+            false => self.unwait(id),
+        };
+        if let Some(at) = at {
             self.items[at]["answer"] = item["choice"].clone();
             self.changed_items.insert(at);
             self.end_wait(ts);
@@ -123,8 +134,7 @@ impl Thread {
     pub(super) fn end_wait(&mut self, ts: u64) {
         // Only a worker that still holds the block: a Stop or a failure lets go of them all [D3011].
         if self.asking.iter().any(|w| self.fold.workers.contains(w))
-            || (self.pending.iter())
-                .any(|&at| self.items[at]["to"].is_null() && self.items[at]["aside"] != true)
+            || (self.pending.iter()).any(|&at| self.items[at]["to"].is_null())
         {
             return;
         }
@@ -412,8 +422,7 @@ impl Thread {
 
     pub(super) fn withdraw_all(&mut self) {
         let ids: Vec<String> = (self.pending.iter())
-            // A mockup offer outlives its turn: a later pick comes as a message [D2055]. So does what
-            // a worker left running.
+            // A mockup offer outlives its turn: a later pick comes as a message [D2055].
             .filter(|&&at| self.items[at]["offer"] != true)
             .filter_map(|&at| self.items[at]["request"]["id"].as_str().map(String::from))
             .collect();
