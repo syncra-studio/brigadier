@@ -25,7 +25,7 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         .into_iter()
         .filter(|o| o["in_library"] != true)
     {
-        let name = plain(str(&o["name"]));
+        let name = library::key_name(str(&o["name"]));
         if name.is_empty() {
             continue;
         }
@@ -163,21 +163,6 @@ fn author(text: &str) -> String {
     })
 }
 
-/// Its name as the library takes it [D176]: `plugin:slack:slack` → `slack`, `my_db` → `my-db`.
-pub(super) fn plain(name: &str) -> String {
-    let dashed = shown(name)
-        .chars()
-        .map(|c| match c.is_ascii_alphanumeric() {
-            true => c,
-            false => '-',
-        });
-    dashed
-        .take(64)
-        .collect::<String>()
-        .trim_start_matches('-')
-        .to_string()
-}
-
 /// Whether a listed skill is the user's own, in a folder: not one of an agent's plugin.
 fn ours(k: &Value) -> bool {
     k["path"].is_string() && !str(&k["name"]).contains(':')
@@ -185,7 +170,7 @@ fn ours(k: &Value) -> bool {
 
 /// Whether a listed skill is the user's own of this name in the library.
 pub(super) fn is(k: &Value, name: &str) -> bool {
-    ours(k) && plain(str(&k["name"])) == name
+    ours(k) && library::key_name(str(&k["name"])) == name
 }
 
 /// Each skill (its folder) and server (its URL or command) in the agents' own settings, once
@@ -263,11 +248,6 @@ fn same(own: &Value, item: &Value) -> bool {
         true => own["name"] == item["name"],
         false => library::same(own, item),
     }
-}
-
-/// A plugin's server by its own name: `plugin:slack:slack` → `slack` [D565].
-fn shown(name: &str) -> &str {
-    name.rsplit(':').next().unwrap_or(name)
 }
 
 /// Where the agents have it: "From Claude Code's slack plugin", else "In Codex's settings".

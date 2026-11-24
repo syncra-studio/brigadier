@@ -227,13 +227,15 @@ function ValueRows({ label, rows, onChange }: { label: "Headers" | "Environment"
   );
 }
 
-/** What Remove does: a skill's folders of the user's own stay, where an agent that looks, or `brigadier skill`, can still find it. */
+/** What Remove does: a skill's folders of the user's own stay, where the agent's own CLI may still find it, though the `/` menu and `brigadier skill` don't. */
 function removeLine(item: Item): string {
   if (item.kind === "server") return "Removes it from Brigadier's library. Sessions already running keep it until they end.";
   const folders = item.folders ?? [];
   return [
-    item.from ? "It leaves Brigadier's list, and Brigadier stops giving it to new sessions. Sessions already running keep it until they end." : "It leaves Brigadier's list, its copy is deleted, and Brigadier stops giving it to new sessions.",
-    folders.length > 0 && `Your own ${folders.length === 1 ? "folder stays" : "folders stay"}: ${folders.join(", ")}. Agents that look there can still find the skill.`,
+    item.from
+      ? "It leaves Brigadier's list, the / menu and brigadier skill, and Brigadier stops giving it to new sessions. Agents already running keep it until they end."
+      : "It leaves Brigadier's list, the / menu and brigadier skill, its copy is deleted, and Brigadier stops giving it to new sessions.",
+    folders.length > 0 && `Your own ${folders.length === 1 ? "folder stays" : "folders stay"}: ${folders.join(", ")}. An agent's own CLI may still find the skill there.`,
     "Add it again to bring it back.",
   ]
     .filter(Boolean)
