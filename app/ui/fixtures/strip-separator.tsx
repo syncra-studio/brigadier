@@ -1,4 +1,4 @@
-// Mockup only: the folded sidebar's separator between New chat and the first tab. ?v=a, b or c is a variant's page: four
+// Mockup only: the folded sidebar's separator between New chat and the first tab. ?v=a, b, c or d (round 2's B) is a variant's page: four
 // windows, tabs open and the chat alone, the right panel closed and open. ?v=…&window is one of them: the whole app on a
 // stub daemon with fake sessions, files and tabs, the variant's rules over its own (strip-separator.css). Not the app.
 import "../src/theme.css";

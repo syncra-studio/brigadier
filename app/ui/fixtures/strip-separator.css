@@ -1,8 +1,8 @@
 /* Mockup only: the folded sidebar's separator between New chat and the first tab, its variants laid over the app's own
    rules (session-tab-bar, main-surface). Never in the app's CSS. */
 
-/* A, B: the 1×12 rule between an inactive tab and "+" (session-tab's ::before), on the row's middle line. */
-:is([data-mockup="a"], [data-mockup="b"]) [data-slot="session-tabs"]::before {
+/* A, B, D: the 1×12 rule between an inactive tab and "+" (session-tab's ::before), on the row's middle line. */
+:is([data-mockup="a"], [data-mockup="b"], [data-mockup="d"]) [data-slot="session-tabs"]::before {
   inset-block: 0;
   margin-block: auto;
   width: var(--spacing-session-tab-rule);
@@ -26,4 +26,9 @@
       opacity: 1;
     }
   }
+}
+
+/* D, round 2: no line under the row at all, the sidebar folded or open, nor the right panel's there. */
+[data-mockup="d"] :is([data-slot="session-tabs"], .main-surface)::after {
+  content: none;
 }
