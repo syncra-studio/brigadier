@@ -117,7 +117,7 @@ const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 flex-col round
  * The summary card and, with a plan, the plan's own card under it: short of room, the summary
  * scrolls above the plan, down to its one title row, then the plan's list gives way too.
  */
-export function Cards({ owner, plan, children }: { owner: string; plan?: readonly Step[] | null; children: ReactNode }) {
+function Cards({ owner, plan, children }: { owner: string; plan?: readonly Step[] | null; children: ReactNode }) {
   return (
     <>
       <div className={cx(SURFACE, "min-h-13 shrink-9999 overflow-y-auto hide-scrollbar empty:hidden")}>{children}</div>

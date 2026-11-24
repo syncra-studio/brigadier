@@ -36,7 +36,7 @@ function StepRow({ step }: { step: Step }) {
 }
 
 /** Plans opened by hand, by session: hiding the card unmounts it, and it comes back as it was left. */
-export const planFolds = new Map<string, { open: boolean; earlier: boolean }>();
+const planFolds = new Map<string, { open: boolean; earlier: boolean }>();
 
 /**
  * The agent's own to-do list as its CLI last wrote it (Claude Code's TodoWrite, OpenCode's todowrite, Codex's
