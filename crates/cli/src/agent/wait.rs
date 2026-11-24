@@ -47,7 +47,7 @@ fn until(
             state = str_of(row, "state").to_string();
             // What the user told its worker comes at once, once, though it still works [D304].
             if let Some(told) = workers::told_take(data, me, id) {
-                let done = row["running"] != true && !workers::busy(data, id);
+                let done = row["running"] != true && !workers::owes(data, id);
                 return json!({"ok": true, "done": done, "id": id, "state": state, "result": told, "text": told});
             }
             // Its worker's ask comes at once, though the worker is still at work [D131].
@@ -55,7 +55,7 @@ fn until(
                 return json!({"ok": true, "done": true, "id": id, "state": "asking", "result": ask, "text": ask});
             }
             let idle =
-                row["running"] != true && (state == "interrupted" || !workers::busy(data, id));
+                row["running"] != true && (state == "interrupted" || !workers::owes(data, id));
             if idle || state == "waiting_answer" || state == "asking" {
                 let last = crate::relay::archive(data, id, false)
                     .into_iter()

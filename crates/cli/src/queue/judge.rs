@@ -128,6 +128,10 @@ fn ask(data: &Path, id: &str, qid: &str, reads: &Reads) -> Option<bool> {
             let f = core::fold(&spec.dir, true).ok()?.fold;
             let active = writer::writing(&spec.dir).ok()?;
             active.lock_shared().ok()?;
+            // A Stop while it waited for that.
+            if read(&spec.dir).map_or(true, |q| q.paused || q.stopping) {
+                return None;
+            }
             commit::written_for(&data, &spec, &f, &active, None, |_| prompt.clone()).ok()
         })();
         let _ = tx.send(reply);

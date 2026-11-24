@@ -1,4 +1,4 @@
-//! Whether a worker is still working: the one answer for its row, a wait, Keep or Stop, archive and
+//! Whether a worker is still working: the one answer for its row, Keep or Stop, archive and
 //! delete. A turn held for its background work counts [D105, D118].
 
 use super::Link;
@@ -20,8 +20,9 @@ pub fn busy(data: &Path, id: &str) -> bool {
     super::link(data, id).is_some_and(|l| busy_in(data, id, &l, f, true))
 }
 
-/// The same, but for the user's own turns in it, which its parent never waits on.
-pub(super) fn owes(data: &Path, id: &str) -> bool {
+/// The same, but for the user's own turns in it, which its parent never waits on: for a wait, its
+/// parent's row and a Brigade's.
+pub fn owes(data: &Path, id: &str) -> bool {
     let f = || core::fold(&core::session_dir(data, id), true).map(|r| r.fold);
     super::link(data, id).is_some_and(|l| busy_in(data, id, &l, f, false))
 }
