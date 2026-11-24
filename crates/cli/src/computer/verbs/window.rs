@@ -339,7 +339,7 @@ pub(super) fn read(
         ));
     }
     if pageless {
-        text.push_str(&format!("\n(No page in this read: a Chromium window that's covered or on another Space may have none until it has been on screen, and reads under 3 seconds apart put {}'s page off. Wait 3 seconds, then read again.)", s.app));
+        text.push_str(&format!("\n(No page in this read. {})", no_page(&s.app)));
     } else if thin(&found) {
         text.push_str(&format!("\n{}'s window shows little to accessibility yet: read again in a few seconds, or `brigadier computer screenshot` to look at it.", s.app));
     }
@@ -351,9 +351,16 @@ pub(super) fn unresolved(found: &Value) -> bool {
 }
 
 /// Whether the read holds a page: its web area.
-fn paged(found: &Value) -> bool {
+pub(super) fn paged(found: &Value) -> bool {
     (found["elements"].as_array().into_iter().flatten()).any(|e| e["role"] == "AXWebArea")
         || (found["tree_markdown"].as_str()).is_some_and(|t| t.contains("AXWebArea"))
+}
+
+/// Why a Chromium window may hold no page, and what to do instead [D2032].
+pub(super) fn no_page(app: &str) -> String {
+    format!(
+        "A page that loads, or is first read, while its window is covered or on another Space can't be read: open a web page with `brigadier browser open <url>` instead. If {app}'s window is on screen, wait 3 seconds, then read again: reads closer together put its page off."
+    )
 }
 
 fn thin(found: &Value) -> bool {

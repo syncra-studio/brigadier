@@ -93,11 +93,11 @@ pub(super) fn act(
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
-/// Chromium takes a shortcut or a real Return only in front of the user's windows, as Cua's
-/// background keys never reach it, and it isn't brought there [D909 D2032].
+/// Cua's background keys aren't proved in Chromium, and no app is brought to the front for them
+/// [D909 D2032].
 pub(super) fn no_keys(s: &Sess, what: &str) -> Value {
     refuse(&format!(
-        "{what}: {} is built on Chromium or Electron, where a key lands only with the app in front, and this never brings an app there. Pick its menu item instead (`brigadier computer menu \"File > …\"`, read --menus lists them), click a button, or, in a browser, `brigadier computer open {} <url>`.",
+        "{what}: {} is built on Chromium or Electron, where background keys aren't proved, and no app is brought to the front for one. Pick its menu item instead (`brigadier computer menu \"File > …\"`, read --menus lists them), click a button, or, in a browser, `brigadier computer open {} <url>`.",
         s.app, s.app
     ))
 }
