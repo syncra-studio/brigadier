@@ -471,9 +471,12 @@ async function stoppedAt(id: string): Promise<Result | null> {
     } else if (stopAgent(tab, { ...found, window: isWindow(id) })) stop = found;
   }
   if (!stop) return null;
-  const shown = shownPage(tab);
-  const read = { ...(await agentShown(id, shown?.url ?? "", shown?.title)), generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
-  return { result: "page", tab: id, page: read, user: false, stopped: true };
+  // A window that closed meanwhile leaves its tab.
+  const at = isWindow(id) && !windowOf(id) ? tab : id;
+  const shown = shownPage(at);
+  const { generation } = agentPage(at);
+  const read = { ...(await agentShown(at, shown?.url ?? "", shown?.title)), generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
+  return { result: "page", tab: at, page: read, user: false, stopped: true };
 }
 
 /** `bytes` as base64. */

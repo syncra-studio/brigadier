@@ -308,11 +308,14 @@ fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool)
     let until = Instant::now() + PAUSE_WAIT;
     // A window's id is its tab's and its own (windows.ts): the user takes over the tab.
     let tab_of = |id: &str| id.split('/').next().unwrap_or(id).to_string();
-    let tab = &tab_of(op["tab"].as_str().unwrap_or(""));
+    let on = op["tab"].as_str().unwrap_or("");
+    let tab = &tab_of(on);
     lock(&HUB.owners).insert(me.to_string(), owner.to_string());
     loop {
         if !tab.is_empty() && !unpaused(tab, me, until, here) {
-            return json!({"result": "paused", "tab": tab});
+            // The window it is on stays its target, as any answer's does.
+            lock(&HUB.tabs).insert(me.to_string(), on.to_string());
+            return json!({"result": "paused", "tab": on});
         }
         let let_go = HUB.let_go.load(Ordering::Relaxed);
         let result = call(owner, me, label, op, here);

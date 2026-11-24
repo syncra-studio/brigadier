@@ -146,7 +146,7 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
   await Promise.all(windowsOf(id).map(({ guest }) => script(guest, { kind: "void" }).catch(() => null)));
 }
 
-/** A page's address and title as its agent sees them (main's browserAgentActivity.ts): no sign-in's secrets in them. */
+/** A page's address and title as its agent sees them (main's browserShownUrl.ts): no sign-in's secrets in them. */
 export function agentShown(id: string, url: string, title = ""): Promise<{ url: string; title: string }> {
   return agent({ call: "shown", guest: maybePage(id)?.guest, url, title, query: isWindow(id) || isPaused(tabOf(id)) }) as Promise<{ url: string; title: string }>;
 }
