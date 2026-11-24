@@ -249,12 +249,14 @@ export type Item = Base &
     /**
      * A session this one's message started [D204, D206]: Rust's row from the source's log, its intent (`starting`,
      * with the text) then its result in place. The new session's title and status come from its own row; `title`
-     * here is for when that row is gone. `failed`: Rust's `error`, and what its cleanup couldn't remove (`left`).
+     * here is for when that row is gone. `replay` allows resuming Send as new. `failed`: Rust's `error`, and what
+     * its cleanup couldn't remove (`left`).
      */
     | {
         kind: "started";
         session: string;
         state: "starting" | "started" | "failed";
+        replay: boolean;
         text: string | null;
         base?: string | null;
         title?: string | null;

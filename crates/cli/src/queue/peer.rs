@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
 
-/// Another session's message [D2034]: under the queue's lock, a repeat of its id (queued, being
+/// Another session's message [D2034] or a system notice: under the queue's lock, a repeat of its id (queued, being
 /// edited or in the log) is dropped; else `first` records it and may take it itself (a steer, or
 /// held for the running turn), saying how; else it goes last, as its sender's. Says which happened.
 pub fn add_peer(

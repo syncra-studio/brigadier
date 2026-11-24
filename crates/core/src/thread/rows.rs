@@ -359,7 +359,8 @@ impl Thread {
                         self.break_group();
                         let at = self.add_as(
                             json!({"kind": "started", "session": item["session"],
-                            "state": "starting", "text": item["text"], "title": item["title"]}),
+                            "state": "starting", "text": item["text"], "title": item["title"],
+                            "replay": item["cid"].as_str().is_some_and(|cid| !cid.is_empty())}),
                             Some(id),
                         );
                         // Out of the turn's work fold, like the user's own words [D99].
@@ -377,8 +378,10 @@ impl Thread {
                         "failed"
                     }
                     .into();
-                    for k in ["base", "title", "error", "left"] {
-                        row[k] = item[k].clone();
+                    for k in ["base", "title", "error", "left", "text"] {
+                        if k != "text" || item[k].is_string() {
+                            row[k] = item[k].clone();
+                        }
                     }
                     self.changed_items.insert(at);
                 }
