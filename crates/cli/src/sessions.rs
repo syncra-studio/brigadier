@@ -88,8 +88,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             // Its agent hears first, through its CLI's own channel or its adapter's note: else it
             // reads an unexplained kill and may wake to start it again [D117]. One with neither refuses.
             let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
-            // One already gone is stopped.
+            // One already gone is stopped; one alive but no longer under its agent is refused, never called stopped.
             let Some(job) = left.iter().find(|j| j.pid == pid && j.start_us == start_us) else {
+                if procs::same(pid, start_us).is_some() {
+                    return Err(io::Error::other(
+                        "it's still running, but no longer under its agent.",
+                    ));
+                }
                 return Ok(json!({"ok": true}));
             };
             let task = fold::task_of(&f.fold, start_us);

@@ -26,8 +26,8 @@ const ranFor = (job: Job, now: number) => duration(now - job.start_us / 1000);
  * The card's Background processes, plain rows with our extras [D145, D73, D105]: what the ended turns of the session
  * and its workers left running (a dev server, a watcher), each with its owner, and on hover how long it has run and
  * Stop; those that outlived their worker come apart, with Stop always there and Stop all. Stopped, a row goes at once;
- * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run, then its
- * title keeps the clock that opens Background history [D200].
+ * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run; once
+ * the session itself has run one, its title keeps the clock that opens its Background history [D200].
  */
 export function BackgroundCard({ owner }: { owner: string }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
@@ -59,9 +59,11 @@ export function BackgroundCard({ owner }: { owner: string }) {
       fold="background"
       count={jobs.length}
       end={
-        <TooltipIconButton tooltip="Background history" size="icon-xs" onClick={() => openBackgroundHistory(owner)}>
-          <Clock />
-        </TooltipIconButton>
+        row?.background_ran && (
+          <TooltipIconButton tooltip="Background history" size="icon-xs" onClick={() => openBackgroundHistory(owner)}>
+            <Clock />
+          </TooltipIconButton>
+        )
       }
     >
       <Rows items={jobs.filter((job) => !left(job))}>
