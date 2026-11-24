@@ -20,8 +20,9 @@ use std::time::{Duration, Instant};
 pub(crate) use asks::answered;
 pub(crate) use text::HELP;
 
-/// How long the app may take over a call: a page load it waits for, at most.
-const CALL_WAIT: Duration = Duration::from_secs(45);
+/// How long the app may take over a call: the page loads before and after it and its wait for the
+/// control (hands.ts), at most.
+const CALL_WAIT: Duration = Duration::from_secs(50);
 /// How long a call on a tab the user took over waits for their Continue before the agent hears
 /// it is still paused.
 const PAUSE_WAIT: Duration = Duration::from_secs(50);

@@ -19,6 +19,9 @@
 // error or `ask` as the click or typing would, and for typing refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
+// `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals } instead where
+// waiting may change it, with nothing done: `waits` is what for, `modals` how many dialogs are over the page. A first look then also
+// takes two frames to see that the control isn't moving, and is a promise.
 // `shownUrl`: an address as an agent sees it, from the shell.
 (op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
@@ -308,6 +311,46 @@
     return { element };
   };
 
+  /** A refusal that waiting may change. */
+  const later = (error, waits) => {
+    if (!op.waits) return { error };
+    const modals = [...document.querySelectorAll("dialog:modal, [aria-modal='true']")].filter((each) => boxed(each) && !within(each, find(op.target)));
+    return { error, waits, modals: modals.length };
+  };
+  /** Takes no input, by its own attribute or its fieldset's. */
+  const disabled = (element) => element.matches(":disabled");
+
+  /** The next frame, or its time where the page doesn't paint. */
+  const frame = () => new Promise((next) => {
+    requestAnimationFrame(next);
+    setTimeout(next, 17);
+  });
+  /** Whether the control moves, or grows from nothing. One that grows around its middle, as a pulsing button, is where its click goes all along. */
+  const moves = async (element) => {
+    // Nothing moves by frames on a page that's hidden, and its timers are held back; the pointer's own look is after it paints.
+    if (document.hidden) return false;
+    const from = element.getBoundingClientRect();
+    await frame();
+    await frame();
+    const to = element.getBoundingClientRect();
+    const changed = (side) => Math.abs(to[side] - from[side]) > 0.5;
+    if ((changed("width") || changed("height")) && Math.min(from.width, from.height, to.width, to.height) < 1) return true;
+    return Math.abs(to.left + to.width / 2 - from.left - from.width / 2) > 0.5 || Math.abs(to.top + to.height / 2 - from.top - from.height / 2) > 0.5;
+  };
+  const refused = (error) => ({ error: `The page refused it: ${error && error.message ? error.message : String(error)}` });
+  /** What `verb` does, once what `stop` has nothing against is still: `verb` looks at all of it again itself. */
+  const still = (verb, stop) => {
+    if (!op.waits) return verb();
+    const first = async () => {
+      const found = target();
+      const stopped = found.error ? found : stop(found.element);
+      if (stopped) return stopped;
+      if (await moves(found.element)) return later(`${op.target} keeps moving, so nothing was done.`, "it to stop moving");
+      return verb();
+    };
+    return first().catch(refused);
+  };
+
   /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it. */
   const ask = (reasons, element) => {
     const needed = reasons.filter(Boolean);
@@ -321,7 +364,7 @@
   /** What a click on the control is refused or asked for, as it is now. */
   const clickStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
-    if (element.disabled) return { error: `${op.target} is disabled.` };
+    if (element.disabled || disabled(element)) return later(`${op.target} is disabled.`, "it to be enabled");
     // A control with no role acts as a button does, whatever it's made of, so it asks as one.
     const role = controlOf(element) || "clickable";
     const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
@@ -373,7 +416,7 @@
     const label = hit?.closest?.("label");
     if (hit && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element) {
       const role = controlOf(hit);
-      return { error: `${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.` };
+      return later(`${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
     }
     const hovering = op.kind === "hover";
     // What a frame holds can't be seen here, and the click would be its.
@@ -418,19 +461,16 @@
     return { done: true };
   };
 
+  const NO_KEYBOARD = `${op.target} can't take the keyboard: click it, or press without --ref.`;
+
   /**
    * Where a press's key goes, looked at first: never a password field or a frame we can't see into, and Enter or
-   * Space on a sensitive control asks as its click or submit would. With a ref, that control takes the focus.
+   * Space on a sensitive control asks as its click or submit would.
    */
-  const press = () => {
-    let element;
-    if (op.target) {
-      const found = target();
-      if (found.error) return found;
-      element = found.element;
-    } else element = deepFocused() || document.body;
+  const pressStop = (element) => {
     if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
     if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
+    if (op.target && disabled(element)) return later(NO_KEYBOARD, "it to be enabled");
     const role = element === document.body ? null : controlOf(element);
     const activates = op.key === "Enter" || op.key === "Space";
     let kind = null;
@@ -444,13 +484,24 @@
       // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
       kind = fieldKind(element);
     }
-    const asked = ask([op.declared, kind, named, op.always && "action"], element);
-    if (asked) return asked;
+    return ask([op.declared, kind, named, op.always && "action"], element);
+  };
+
+  /** With a ref, that control takes the focus. */
+  const press = () => {
+    let element;
+    if (op.target) {
+      const found = target();
+      if (found.error) return found;
+      element = found.element;
+    } else element = deepFocused() || document.body;
+    const stop = pressStop(element);
+    if (stop) return stop;
     if (op.target) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
       element.focus?.({ preventScroll: true });
       const focused = deepFocused();
-      if (!focused || !within(element, focused)) return { error: `${op.target} can't take the keyboard: click it, or press without --ref.` };
+      if (!focused || !within(element, focused)) return { error: NO_KEYBOARD };
       // Its focus handler may have made it a password field meanwhile.
       if (isPassword(element) || isPassword(focused)) return { error: HANDS_OFF };
     }
@@ -469,18 +520,22 @@
       key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true,
     }));
 
-  const type = () => {
-    const found = target();
-    if (found.error) return found;
-    const { element } = found;
+  const typeStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
     const role = roleOf(element);
     if (!["textbox", "searchbox", "combobox", "spinbutton"].includes(role)) {
       return { error: `${op.target} isn't a field to type in (it is a ${role || element.localName}).` };
     }
-    if (element.disabled || element.readOnly) return { error: `${op.target} can't be typed in now.` };
-    const asked = typeAsk(element);
-    if (asked) return asked;
+    if (element.disabled || disabled(element) || element.readOnly) return later(`${op.target} can't be typed in now.`, "it to be editable");
+    return typeAsk(element);
+  };
+
+  const type = () => {
+    const found = target();
+    if (found.error) return found;
+    const { element } = found;
+    const stop = typeStop(element);
+    if (stop) return stop;
     element.scrollIntoView({ block: "center", inline: "center" });
     element.focus({ preventScroll: true });
     if (element.localName === "select") {
@@ -510,6 +565,13 @@
       if (going && form && element.localName !== "textarea") form.requestSubmit();
     }
     return { done: true };
+  };
+
+  const hover = () => {
+    const found = target();
+    if (found.error) return found;
+    found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    return placeOf(found.element) ?? later(`${op.target} has no place to hover now.`, "it to show");
   };
 
   /** What an agent's script gave, as text: JSON where it can be, never a field's live value unless the script read one. */
@@ -578,8 +640,8 @@
   try {
     switch (op.kind) {
       case "read": return read(op.max || 20000);
-      case "click": return click();
-      case "type": return type();
+      case "click": return still(click, clickStop);
+      case "type": return still(type, typeStop);
       case "sweep": {
         const answer = { fields: [], values: [], width: innerWidth, frames: [] };
         const plain = (rect) => ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
@@ -598,13 +660,8 @@
         }
         return answer;
       }
-      case "press": return press();
-      case "hover": {
-        const found = target();
-        if (found.error) return found;
-        found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-        return placeOf(found.element) ?? { error: `${op.target} has no place to hover now.` };
-      }
+      case "press": return still(press, pressStop);
+      case "hover": return still(hover, () => null);
       case "scroll": {
         if (op.target) {
           const found = target();
@@ -652,6 +709,6 @@
       default: return { error: `unknown op ${op.kind}` };
     }
   } catch (error) {
-    return { error: `The page refused it: ${error && error.message ? error.message : String(error)}` };
+    return refused(error);
   }
 }

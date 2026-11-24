@@ -259,6 +259,7 @@ type Call =
   | { call: "hover"; guest: number; x: number; y: number }
   | { call: "scroll"; guest: number; x: number; y: number; deltaY: number }
   | { call: "wheel"; guest: number; x: number; y: number; deltaX: number; deltaY: number }
+  | { call: "dialogs"; guest: number; keep: boolean }
   | { call: "events"; guest: number; since: number; kinds: string[] }
   | { call: "capture"; guest: number }
   | { call: "signInStop"; guest: number };
@@ -334,6 +335,8 @@ export function installBrowserAgent(): void {
         // The user's own scroll, which the shield over a driven tab passes on: no debugger, and it pauses nothing.
         guest.sendInputEvent({ type: "mouseWheel", x: Math.round(call.x), y: Math.round(call.y), deltaX: -call.deltaX, deltaY: -call.deltaY });
         return null;
+      case "dialogs":
+        return sweptAndScrubbed(guest, () => dialogsSaid(guest, call.keep));
       case "events":
         return sweptAndScrubbed(guest, () => activityOf(guest.id, call.since, call.kinds));
       case "capture":

@@ -2,7 +2,7 @@ import { setBrowserHandler } from "../daemon";
 import { run } from "../onboarding/api";
 import { newId } from "../session/store";
 import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } from "../shell/tab-store";
-import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun, agentShown } from "./hands";
+import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun, agentShown, waitLimit } from "./hands";
 import { agentPage, go } from "./layer";
 import { agentDoing } from "./overlay";
 import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
@@ -293,7 +293,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const overtaken = pausedAnswer(answer, tab);
       if (overtaken) return overtaken;
       const error = errorOf(answer);
-      if (error) return failed(error);
+      if (error) return withDialogs(failed(error), answer);
       await settled(tab);
       return withDialogs(await page(tab, owner), answer);
     }
@@ -301,6 +301,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "type":
     case "press": {
       const before = idsNow(owner);
+      const until = waitLimit();
       const ask = (yes: { url: string; for?: string[] } | null) => agentRun(tab, {
         kind: op.op,
         label,
@@ -312,7 +313,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         always: op.always,
         approved: yes?.url ?? null,
         approvedFor: yes?.for,
-      }).catch(async (error: unknown) => {
+      }, until).catch(async (error: unknown) => {
         // A window may close on the very click, as Approve's does, before the click's own answer comes.
         await wait(SETTLE_MS);
         if (!isWindow(tab) || windowOf(tab)) throw error;
@@ -329,7 +330,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         return { result: "needsApproval", tab, url: urlOf(answer) ?? shown?.url ?? "", generation: agentPage(tab).generation, ...asked };
       }
       const error = errorOf(answer);
-      if (error) return failed(error);
+      if (error) return withDialogs(failed(error), answer);
       const left = await settled(tab);
       const after = withDialogs(await withPopups(await page(left, owner), owner, before), answer);
       return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
@@ -380,16 +381,17 @@ async function withPopups(result: Result, owner: string, before: Set<string>): P
   return { ...result, page: { ...read, text: `${read.text}\n\n${lines.join("\n")}` } };
 }
 
-/** What the page asked in a box while the agent acted (main's browserAgentDialogs.ts), as a note above the page [D781]. */
+/** What the page asked in a box while the agent acted or waited to (main's browserAgentDialogs.ts), as a note above the page or in the refusal [D781]. */
 function withDialogs(result: Result, answer: unknown): Result {
   const said = (answer as { dialogs?: { kind: string; message: string; yes?: boolean }[] } | null)?.dialogs;
-  if (result.result !== "page" || !Array.isArray(said) || !said.length) return result;
+  if (!Array.isArray(said) || !said.length) return result;
   const lines = said.map(({ kind, message, yes }) => {
     const words = JSON.stringify(message);
     if (kind === "alert") return `The page showed an alert, answered OK: ${words}.`;
     if (kind === "prompt") return `The page asked for text and got none: ${words}.`;
     return yes ? `The page asked to confirm, answered OK: ${words}.` : `The page asked to confirm, answered Cancel, so what it guards wasn't done: ${words}. To answer OK, do it again with --confirm.`;
   });
+  if (result.result === "failed") return failed([result.message, ...lines].join(" "));
   return { ...result, note: [result.note, ...lines].filter(Boolean).join(" ") };
 }
 
