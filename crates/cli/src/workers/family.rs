@@ -37,6 +37,7 @@ pub fn delete(data: &Path, id: &str, drop: bool) -> io::Result<Value> {
             .filter(|r| core::session_dir(data, r).exists())
             .unwrap_or_else(|| id.to_string());
         let _family = family_lock(data, &root)?;
+        crate::agent::new::settle(data, id)?;
         // Under the lock, so a first start can't slip in between the look and the delete.
         if below(data, id).is_empty() && !record.exists() {
             return sessions::delete(data, id, drop, "delete");

@@ -12,6 +12,10 @@ use std::io;
 use std::path::Path;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+    run_named(data, args, None)
+}
+
+pub(crate) fn run_named(data: &Path, args: &[String], name: Option<&str>) -> io::Result<Value> {
     let spec = core::load(data, arg(args, 1)?)?;
     if let Some(at) = flag(args, "--check") {
         check_id(at)?;
@@ -57,7 +61,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     let ask = Ask {
         fork: new,
-        title: &format!("Fork of {named}"),
+        title: &name.map_or_else(|| format!("Fork of {named}"), String::from),
         at,
         place: flag(args, "--where"),
         fingerprint: flag(args, "--fingerprint"),

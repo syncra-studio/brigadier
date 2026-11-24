@@ -359,7 +359,7 @@ impl Thread {
                         self.break_group();
                         let at = self.add_as(
                             json!({"kind": "started", "session": item["session"],
-                            "state": "starting", "text": item["text"]}),
+                            "state": "starting", "text": item["text"], "title": item["title"]}),
                             Some(id),
                         );
                         // Out of the turn's work fold, like the user's own words [D99].

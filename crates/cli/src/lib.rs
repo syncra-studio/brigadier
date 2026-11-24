@@ -218,8 +218,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::load(data, id)?
             };
-            // Home's files, or a message sent as new's, come into the new session first, before
-            // a cleared draft can take them [D204, D2022 #18].
             let parts = parts(args)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             // The tabs are extras: a failure here never stops the session from starting.
@@ -229,12 +227,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(dir) = &scratch {
                 fs::create_dir_all(dir)?;
             }
-            // Only a session made for its worktree: a Local checkout one, started again, never gets one.
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
                 let on = host::pr_branch(data, args, &project, &spec)?;
-                let title = title::from(flag(args, "--text").unwrap_or(""));
+                let title = flag(args, "--text").map_or_else(
+                    || title::from(&fs::read_to_string(spec.dir.join("title")).unwrap_or_default()),
+                    title::from,
+                );
                 let made = core::folder::ensure(&spec, &project, base, &title, on.as_deref());
                 // A fresh session it undid goes too, what it took back with its draft; on a retry it
                 // keeps its log and first message [D35].
