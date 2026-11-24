@@ -1,6 +1,6 @@
 //! A project's settings [D171]: what `set` changes, checked in full before any is saved.
 
-use super::{Project, change, clean, err, find, icon, repo, sessions, taken};
+use super::{Project, change, clean, default_profile, err, find, icon, repo, sessions, taken};
 use std::io;
 use std::path::Path;
 
@@ -13,14 +13,17 @@ pub struct Change {
     pub trusted: Option<Option<bool>>,
     pub setup: Option<String>,
     pub include: Option<Vec<String>>,
+    /// `Some(None)`: found again.
     pub github_account: Option<Option<String>>,
+    /// `Some(None)`: the default one.
     pub browser_profile: Option<Option<String>>,
     pub pinned: Option<Option<u64>>,
     /// `""`, `tag:<n>`, `emoji:<it>` or `image:<path>`, whose file is copied in (icon.rs).
     pub icon: Option<String>,
 }
 
-/// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and is
+/// Changes a project's settings [D171]. A new folder resets its trust, so it's asked again, and its
+/// GitHub account, found again, and is
 /// refused while the project has sessions (proposed), so trust never moves under them [D166].
 /// Every trust change goes through here; its caller then syncs the CLIs' own entries (1i).
 pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
@@ -69,6 +72,7 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
             p.folder = folder.display().to_string();
             p.kind = crate::folder::kind(&folder);
             p.trusted = None;
+            p.github_account = None;
         }
         let p = find(list, id)?;
         if let Some(prefix) = new.branch_prefix {
@@ -90,7 +94,7 @@ pub fn set(data: &Path, id: &str, new: Change) -> io::Result<Project> {
             p.github_account = account;
         }
         if let Some(profile) = new.browser_profile {
-            p.browser_profile = profile;
+            p.browser_profile = profile.or_else(|| default_profile(data));
         }
         if let Some(pinned) = new.pinned {
             p.pinned = pinned;

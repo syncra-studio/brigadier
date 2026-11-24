@@ -25,8 +25,8 @@ import { openPrPage, pastedRef, type PrRow } from "./route";
 type State = "open" | "merged" | "closed";
 type Filters = { state: State; words: string; project: string; account?: string };
 /** A Pull requests tab's: its filters kept under `key`, first `preset`; its project's account until one is picked, null for
- *  none and undefined while it's read; `open` takes a pick. */
-export type InboxTab = { key: string; preset: Partial<Filters>; account: string | null | undefined; open: (ref: string) => void };
+ *  none; `open` takes a pick. */
+export type InboxTab = { key: string; preset: Partial<Filters>; account: string | null; open: (ref: string) => void };
 type Scopes = { accounts: string[]; projects: { id: string; name: string; repos: string[] }[] };
 
 const ALL = "all";
@@ -54,12 +54,10 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
   // A kept pick that's gone (a project removed, an account signed out) reads as all.
   const project = scopes?.projects.find((each) => each.id === filters.project);
   const picked = filters.account ?? (tab ? tab.account : ALL);
-  // Its rows wait for the account, never drawn as every account's first.
-  const reading = picked === undefined;
   const account = !picked || (scopes && !scopes.accounts.includes(picked)) ? ALL : picked;
   const repos = project ? project.repos.map((repo) => `repo:${repo}`).join(" ") : "";
   const scoped = !project || project.repos.length > 0;
-  const queries = scopes && scoped && !reading ? SECTIONS.map((each) => [STATES[filters.state], each.query, repos, words].filter(Boolean).join(" ")) : [];
+  const queries = scopes && scoped ? SECTIONS.map((each) => [STATES[filters.state], each.query, repos, words].filter(Boolean).join(" ")) : [];
   const { read, again } = useSections(queries, account === ALL ? [] : ["--as", account]);
   // A PR that's in an earlier section isn't listed again (two accounts: authored by one, asked of the other).
   const seen = new Set<string>();
@@ -68,7 +66,7 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
     const rows = got?.prs.filter((row) => !seen.has(row.ref) && seen.add(row.ref));
     return { ...each, rows, more: !!got?.next, error: got?.error ?? null };
   });
-  const loading = !scopes || (reading && scoped) || (scoped && !read?.error && sections.some((each) => !each.rows));
+  const loading = !scopes || (scoped && !read?.error && sections.some((each) => !each.rows));
   // A failed refresh leaves the rows it had in place, as the sidebar does [D262].
   const failed = sections.every((each) => !each.rows?.length) ? (read?.error ?? (sections.every((each) => each.error) ? sections[0]!.error : null)) : null;
   return (
@@ -140,7 +138,7 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
               value={account}
               onChange={(login) => set({ account: login })}
               icon={account === ALL ? undefined : <Avatar login={account} size="size-4" />}
-              options={[{ value: ALL, label: "All accounts", shown: reading ? "Account" : undefined }, ...(scopes?.accounts ?? []).map((login) => ({ value: login, label: login }))]}
+              options={[{ value: ALL, label: "All accounts" }, ...(scopes?.accounts ?? []).map((login) => ({ value: login, label: login }))]}
             />
           </div>
           {!scoped ? (

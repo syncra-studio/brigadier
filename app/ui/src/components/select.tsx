@@ -78,6 +78,7 @@ export function Select<T extends string>({
   disabled,
   id,
   icon,
+  placeholder,
   align = "end",
   className,
   open,
@@ -91,6 +92,8 @@ export function Select<T extends string>({
   disabled?: boolean;
   id?: string;
   icon?: ReactNode;
+  /** What the pill says, grey, with none chosen. */
+  placeholder?: string;
   align?: "start" | "end";
   className?: string;
   /** Held open (or shut) from outside. */
@@ -106,8 +109,8 @@ export function Select<T extends string>({
       <Menu.Trigger
         disabled={disabled}
         render={
-          <SelectTrigger id={id} label={label} icon={icon} className={className}>
-            {chosen?.shown ?? chosen?.label}
+          <SelectTrigger id={id} label={label} icon={icon} placeholder={!chosen} className={className}>
+            {chosen ? (chosen.shown ?? chosen.label) : placeholder}
           </SelectTrigger>
         }
       />

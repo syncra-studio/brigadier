@@ -8,7 +8,7 @@ import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string; build: number };
 /** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
-export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null; github_account?: string | null; browser_profile?: string | null; kind?: "folder"; pinned?: number | null; icon?: string | null };
+export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null; github_account?: string | null; /** Its repositories on GitHub (`of`) as last read: each account gh keeps for their server, whether it can see them all (null: not known), and that server when a folder has others; null before any read [D631]. */ github?: { github: boolean; of?: string[]; ssh?: boolean; host?: string | null; logins: { login: string; sees: boolean | null }[] } | null; browser_profile?: string | null; kind?: "folder"; pinned?: number | null; icon?: string | null };
 /** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
 export type Row = {
   id: string;

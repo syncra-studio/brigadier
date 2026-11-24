@@ -19,6 +19,13 @@ pub use hub::{agent, leave, page, turn_ended};
 
 const USAGE: &str = "usage: brigadier browser <session|-> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]\n       brigadier browser <session|-> imports sources|origins|read|place | certs trust|clear | dates record|since|clear [--profile ID] [--json]";
 
+/// Holds a profile through a project pick, in the same lock order as removing the profile.
+pub(crate) fn hold_profile(data: &Path, id: &str) -> io::Result<fs::File> {
+    let lock = core::projects::lock(&data.join("browser"), "profiles.lock")?;
+    profiles::Places::read(data)?.known(id)?;
+    Ok(lock)
+}
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     // The agents' side: the page's answer to a call, and the user's takeover and Continue (hub.rs).
     if args.get(1).is_some_and(|a| a == "answer") || args.get(2).is_some_and(|a| a == "paused") {

@@ -36,7 +36,7 @@ const OFFLINE: [&str; 9] = [
     "Unable to connect",
 ];
 
-/// Settings' optional Write with choice; None keeps the session's automatic model rule [D1224].
+/// Settings' Write with model; None until one is saved, the session's own agent writing meanwhile [D1224].
 #[derive(Serialize, Deserialize)]
 pub struct Choice {
     pub backend: String,
