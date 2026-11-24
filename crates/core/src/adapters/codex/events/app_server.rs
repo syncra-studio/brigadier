@@ -105,7 +105,7 @@ fn commands(list: &Value) -> Vec<Value> {
         .filter(|k| k["enabled"] != false)
         .map(|k| {
             json!({"name": k["name"], "description": k["description"], "kind": "skill",
-            "path": k["path"], "instant": false, "builtin": matches!(s(k, &["scope"]), "system" | "admin")})
+            "path": k["path"], "instant": false})
         });
     std::iter::once(compact()).chain(skills).collect()
 }

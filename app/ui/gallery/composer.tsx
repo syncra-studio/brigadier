@@ -188,7 +188,7 @@ function Live() {
     if (!inText) setTiles((list) => [...list, id]);
     setTimeout(() => put({ ...base, state: "ready", url: file.type.startsWith("image/") ? picture : undefined }), 900);
   };
-  const commands = { commands: COMMANDS, onRun: (command: SlashCommand) => say(`ran ${command.label}`) };
+  const commands = { commands: COMMANDS, onMenu: () => {}, onRun: (command: SlashCommand) => say(`ran ${command.label}`) };
 
   const take = (): Draft => {
     const d = { parts: field.current!.parts(), attachmentIds: tiles };

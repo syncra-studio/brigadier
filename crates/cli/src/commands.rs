@@ -47,8 +47,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         ) {
             a.locate(&run, list);
         }
-        // Before it's kept: the project's other checkouts read the list too.
-        relative(listed.as_mut(), &run.cwd);
         (backend, spec.project, listed, Some(run))
     };
     let at = kept(data, &backend, project.as_deref());
@@ -56,7 +54,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         (Some(list), Some(at)) => {
             // shortcut: written as it's asked for; a list no composer asks for stays stale until one does.
             fs::create_dir_all(at.parent().unwrap())?;
-            core::write_atomic(at, &serde_json::to_vec(&list)?)?;
+            // By its path in the checkout: the project's other checkouts read the list too.
+            let mut inside = list.clone();
+            relative(&mut inside, run.as_ref().map_or("", |run| &run.cwd));
+            core::write_atomic(at, &serde_json::to_vec(&inside)?)?;
             list
         }
         (Some(list), None) => list,
@@ -95,7 +96,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
     }
     if let Some(run) = &run {
-        relative(Some(&mut commands), &run.cwd);
+        relative(&mut commands, &run.cwd);
     }
     // `reveal <name>`: a listed file outside the checkout shows in Finder, as the old app's file links [D2098].
     if args.get(2).map(String::as_str) == Some("reveal") {
@@ -118,8 +119,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 }
 
 /// A file in the checkout opens in Files' viewer by its path there; one outside it keeps its whole path [D146].
-fn relative(list: Option<&mut Value>, cwd: &str) {
-    for each in list.and_then(Value::as_array_mut).into_iter().flatten() {
+fn relative(list: &mut Value, cwd: &str) {
+    for each in list.as_array_mut().into_iter().flatten() {
         let path = Path::new(each["path"].as_str().unwrap_or(""));
         if let Ok(inside) = path.strip_prefix(cwd) {
             each["path"] = inside.to_string_lossy().into();

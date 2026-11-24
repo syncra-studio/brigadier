@@ -113,16 +113,19 @@ impl Hidden {
     }
 
     /// Whether a listed command is one of these: a skill of the user's, in a folder, by its name
-    /// or the folder's, which the library names it by. An agent's own (`builtin`) isn't.
+    /// or the folder's, which the library names it by. An agent's own, with no file, isn't, nor
+    /// Codex's, in `skills/.system` or its admin's `/etc/codex`.
     pub fn has(&self, k: &Value) -> bool {
-        let folder = (k["path"].as_str())
-            .and_then(|p| Path::new(p).parent()?.file_name())
-            .map(|n| n.to_string_lossy());
-        let name = plain_str(&k["name"]);
+        let (name, Some(path)) = (plain_str(&k["name"]), k["path"].as_str()) else {
+            return false;
+        };
+        let folder = (Path::new(path).parent().and_then(Path::file_name))
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned());
         k["kind"] == "skill"
-            && k["builtin"] != true
             && !name.contains(':')
-            && folder.is_some_and(|f| self.why(name).or(self.why(&f)).is_some())
+            && !path.contains("/skills/.system/")
+            && !path.starts_with("/etc/codex/")
+            && self.why(name).or(self.why(&folder)).is_some()
     }
 }
 
