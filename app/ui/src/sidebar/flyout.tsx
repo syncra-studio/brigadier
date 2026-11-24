@@ -186,7 +186,7 @@ export function ProjectSquare({ project, current, attention, chats, ...rows }: R
 /** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
 export function SessionSquare({ row, project, active, attention, onOpen, onRename }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean } & Pick<Rows, "onOpen" | "onRename">) {
   return (
-    <SquareMenu items={<RowMenuItems row={row} onRename={() => onRename(row)} />}>
+    <SquareMenu items={<RowMenuItems row={row} project={project} onRename={() => onRename(row)} />}>
       <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} className={LIT} onClick={() => onOpen(row.id)}>
         <ProjectBadge id={project?.id} name={project?.name ?? null} icon={project?.icon} size="size-4.5 text-badge" />
       </TooltipIconButton>

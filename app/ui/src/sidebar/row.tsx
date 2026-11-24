@@ -207,7 +207,7 @@ export function SessionRowItem({
   const title = row.title || "New session";
   // Archived rows bring their own menu (Restore, Delete), and no Pin or Archive.
   const live = !menu && !row.archived;
-  const items = menu ?? <RowMenuItems row={row} canPin={canPin} onRename={() => onRename(row)} />;
+  const items = menu ?? <RowMenuItems row={row} project={canPin ? project : undefined} canPin={canPin} onRename={() => onRename(row)} />;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<li data-row-id={row.id} className="group/row relative" />}>

@@ -13,7 +13,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "../components/menu";
-import { Copy, FolderOpen, Pencil, Pin, Spinner, Unpin } from "../icons";
+import { Copy, FolderOpen, Pencil, Pin, Settings, Spinner, Unpin } from "../icons";
+import { openProject } from "../projects/page";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { DeleteMenuItem } from "../sessions/archived";
 import { ForkMenuItem } from "../session/fork";
@@ -23,10 +24,10 @@ import { keysOf } from "../shortcuts";
 import { pin } from "./actions";
 import { LabelMenu } from "./labels";
 import { useBranchPreview } from "./rename-branch";
-import type { SessionRow } from "./words";
+import type { Project, SessionRow } from "./words";
 
-/** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]. */
-export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow; canPin?: boolean; onRename: () => void }) {
+/** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]; with `project`, its settings too, where no row of the project's own has them. */
+export function RowMenuItems({ row, project, canPin = true, onRename }: { row: SessionRow; project?: Project; canPin?: boolean; onRename: () => void }) {
   const pinned = Boolean(row.pinned);
   const folder = useFolderChat(row.id);
   const copies: [string, string | null | undefined][] = [
@@ -59,6 +60,12 @@ export function RowMenuItems({ row, canPin = true, onRename }: { row: SessionRow
           {copies.map(([what, value]) => value && <DropdownMenuItem key={what} onClick={() => copyWithToast(value, what)}>{what[0]!.toUpperCase() + what.slice(1)}</DropdownMenuItem>)}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
+      {project && (
+        <DropdownMenuItem onClick={() => openProject(project.id)}>
+          <Settings />
+          Project settings
+        </DropdownMenuItem>
+      )}
       {/* Its working directory [D37]; Rust's Files reveal of the checkout itself (""). */}
       {row.project && row.folder && !folder && (
         <DropdownMenuItem onClick={() => ask({ op: "run", args: ["source", row.id, "reveal", ""] }, (reply) => !reply.ok && showToast(`Couldn't reveal ${row.title}: ${String(reply.error)}`, { tone: "error" }))}>
