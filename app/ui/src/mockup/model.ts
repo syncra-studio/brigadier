@@ -1,4 +1,4 @@
-// A session's mockup as Rust folds it from its mockup worker [D2055, D2056]: the rounds, each with the named variants
+// A mockup as Rust folds it from its mockup worker [D2055, D2056]: the rounds, each with the named variants
 // drawn so far, the pick, and the real screen it was built into.
 import type { MockupNote, Notes } from "./notes";
 

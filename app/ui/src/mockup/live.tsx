@@ -1,4 +1,4 @@
-// The Mockup tab on Rust's mockup (`mockup <wid>`, relay/mockup.rs): each variant's page live in its frame as batch 5's
+// A mockup's tab on Rust's mockup (`mockup <wid>`, relay/mockup.rs): each variant's page live in its frame as batch 5's
 // browser pages are [D2066], the chat row with Open, and the tab's busy icon [D2055, D560].
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
@@ -27,6 +27,8 @@ const listeners = new Set<() => void>();
 
 function poll(wid: string) {
   void daemonRun(["mockup", wid]).then((reply) => {
+    // The link down says nothing of the mockup: it stays as last read.
+    if (reply.error === "disconnected") return;
     const next = reply.ok === false ? null : (reply as Mockup);
     if (JSON.stringify(next) === JSON.stringify(mockups.get(wid))) return;
     mockups.set(wid, next);
@@ -50,7 +52,7 @@ function watch(wid: string) {
   };
 }
 
-/** Worker `wid`'s mockup as Rust has it now; null till read, or when there is none. */
+/** Worker `wid`'s mockup as Rust has it now; null till read, or when there is none (or no `wid`). */
 export function useMockup(wid: string): Mockup | null {
   useEffect(() => (wid ? watch(wid) : undefined), [wid]);
   return useSyncExternalStore(
@@ -72,22 +74,22 @@ function momentOf(mockup: Mockup | null, count: number, ready?: number | null): 
 }
 
 /**
- * "Mockup · drawing 3 variants · Open" in the lead's chat, "Mockup · round 1 ready · pick one with Use, or leave a
- * note · Open" once its variants are in, or a send of the user's notes, "You → mockup · 3 notes on A and B · round 2
- * drawing"; Open brings its tab to the front.
+ * "Plan card mockup · drawing 3 variants · Open" in the lead's chat, "Plan card mockup · round 1 ready · pick one with
+ * Use, or leave a note · Open" once its variants are in, or a send of the user's notes, "You → Plan card mockup · 3
+ * notes on A and B · round 2 drawing"; Open brings its own tab to the front.
  */
 export function LiveMockupRow({ worker, count, on, round, ready }: { worker: string; count: number; on?: string[] | null; round?: number | null; ready?: number | null }) {
   const owner = useThread()?.id ?? "";
   const mockup = useMockup(worker);
   const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count, ready);
-  return <MockupRow moment={moment} live={!round && !ready && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
+  return <MockupRow title={mockup?.title} moment={moment} live={!round && !ready && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
 }
 
-// The news the user last saw in each Mockup tab, kept across restarts.
+// The news the user last saw in each mockup's tab, kept across restarts.
 const SEEN_KEY = "mockup-seen";
 const seenNews = (): Record<string, number> => JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}");
 
-/** The Mockup tab's icon: the spinner while busy, else a blue dot while its news is unseen [D560]. */
+/** A mockup tab's icon: the spinner while busy, else a blue dot while its news is unseen [D560]. */
 export function LiveMockupTabIcon({ worker }: { worker: string }) {
   const mockup = useMockup(worker);
   return <MockupTabIcon busy={busy(mockup)} unread={(mockup?.news ?? 0) > (seenNews()[worker] ?? 0)} />;
@@ -159,7 +161,7 @@ function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; ta
   return <div ref={box} className="size-full" />;
 }
 
-/** The Mockup tab of `owner`'s tabs, on its mockup worker's mockup. */
+/** A mockup's tab of `owner`'s tabs, on its worker's mockup. */
 export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; active: boolean }) {
   const worker = tab.target ?? "";
   const mockup = useMockup(worker);

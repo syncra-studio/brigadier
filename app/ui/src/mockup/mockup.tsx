@@ -1,4 +1,4 @@
-// The session's Mockup tab, the old app's redesigned as w13's direction 1 [D2055, D2066]: a header with the title,
+// A mockup's tab, the old app's redesigned as w13's direction 1 [D2055, D2066]: a header with the title,
 // round pills, the variants' names (All · A · B · C), Point · Try and Fit; the named variants side by side, live; the
 // notes tray; Use with its confirm; and Mockup · Compare · Real once the pick is built [D2069].
 import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useState } from "react";
@@ -221,7 +221,7 @@ export function MockupView({
   };
 
   if (!mockup) {
-    return <EmptyState variant="centered" as="div" title="No mockup in this session yet." detail="Ask for one, or the agent offers one for big UI changes." className="flex-1 bg-mockup-stage p-6" />;
+    return <EmptyState variant="centered" as="div" title="No mockup here." detail="Its worker was deleted, or hasn't started drawing." className="flex-1 bg-mockup-stage p-6" />;
   }
   if (mockup.stopped && !mockup.rounds.some((r) => r.variants.some(drawn))) {
     return (

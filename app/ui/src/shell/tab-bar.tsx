@@ -19,7 +19,7 @@ import { ArrowRight, Pin, Plus, Undo, X } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { keysOf, matches } from "../shortcuts";
 import type { SessionRow } from "../sidebar/words";
-import { LiveMockupTabIcon } from "../mockup/live";
+import { LiveMockupTabIcon, useMockup } from "../mockup/live";
 import { BlankChatTab, BUTTON, ChatTab, CLOSE, CloseAllDialog, Keycap, leave, LOOK, noAutoscroll, TAB, TabMenuItems, TITLE, TITLE_CLOSABLE } from "./chat-tab";
 import { useNoteTitle } from "./note-tab";
 import { useCommandHeld, useTabKeys } from "./tab-keys";
@@ -38,8 +38,8 @@ const SENSORS = [PointerSensor.configure({ activationConstraints: [new PointerAc
 /** Whether the tab at `at` begins an agent's tab group: the first of the tabs side by side one agent drives [D793]. */
 const leadsGroup = (list: readonly Tab[], at: number) => list[at].kind === "browser" && Boolean(list[at].driver) && list[at - 1]?.driver !== list[at].driver;
 
-/** A file tab is named by its file, a PR tab by its number; a Review, Mockup, Workers or Subagents tab keeps its kind's name, whatever it shows. */
-const pathName = (tab: Tab) => (tab.target === undefined || ["review", "mockup", "workers", "subagents"].includes(tab.kind) ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
+/** A file tab is named by its file, a PR tab by its number; a Review, Workers or Subagents tab keeps its kind's name, whatever it shows. */
+const pathName = (tab: Tab) => (tab.target === undefined || ["review", "workers", "subagents"].includes(tab.kind) ? TAB_KINDS[tab.kind].name : tab.kind === "pr" ? (tab.target === "list" ? "Pull requests" : tab.target.includes("#") ? tab.target.slice(tab.target.indexOf("/") + 1).replace("#", " #") : `#${tab.target}`) : baseName(tab.target));
 const nameOf = (tab: Tab) => (tab.kind === "attachment" ? (tab.target?.split("/")[1] ?? TAB_KINDS.attachment.name) : pathName(tab));
 
 function TabIcon({ owner, tab }: { owner: string; tab: Tab }) {
@@ -58,7 +58,9 @@ function OtherTab({ owner, tab, index, last, selected, separator, closing, enter
   const note = useNoteTitle(tab.kind === "note" ? (tab.target ?? "") : "");
   // A page is named by its title, else its site, as a browser's tab.
   const page = useBrowserPage(tab.kind === "browser" ? tab.id : "");
-  const name = tab.kind === "note" ? note : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);
+  // A mockup by its title, its kind's name till it's read.
+  const mockup = useMockup(tab.kind === "mockup" ? (tab.target ?? "") : "");
+  const name = tab.kind === "note" ? note : tab.kind === "mockup" ? mockup?.title || TAB_KINDS.mockup.name : tab.kind === "browser" ? page?.title || shownAddress(tab.target ?? "", false) || TAB_KINDS.browser.name : nameOf(tab);
   return (
     <ContextMenu>
       <ContextMenuTrigger
