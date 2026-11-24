@@ -1429,15 +1429,8 @@
 
 /* A scroll view's edge (ScrollFade): what scrolls under it fades into the surface it sits on, the main area's unless
    data-surface says the sidebar's; raised, it reaches over a floating button. data-while-more shows it only while there
-   is more to scroll that way, by the nearest scroll-fade-source's timeline (scroll-fade-scope) [D282 D284]. */
-@keyframes scroll-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
+   is more to scroll that way, by the nearest scroll-fade-source's timeline (scroll-fade-scope) [D282 D284]. The top one
+   counts the px scrolled, as scroll-edge-fade does: its animation must never finish, or Chromium holds it. */
 @keyframes scroll-fade-out {
   from {
     opacity: 1;
@@ -1460,10 +1453,12 @@
     --fade-fill: var(--color-sidebar-solid);
   }
   &[data-while-more] {
-    opacity: 0;
-    animation: scroll-fade-in linear both;
+    opacity: calc(var(--edge-top) / var(--spacing-fade-bottom));
+    /* Drawn on a layer of its own, as an animated opacity is. */
+    will-change: opacity;
+    animation: edge-fade-top linear both;
     animation-timeline: --scroll-fade;
-    animation-range: 0px var(--spacing-fade-bottom);
+    animation-range: 0px 33554432px;
   }
 }
 @utility fade-bottom {
@@ -1574,11 +1569,13 @@
   background: var(--color-border);
 }
 /* The strip's squares scroll between its actions and its foot; the foot's rule shows only while they can: their
-   scroll timeline (scroll-fade-source, the strip its scope) is active only then [D191 D284]. */
+   scroll timeline (scroll-fade-source, the strip its scope) is active only then [D191 D284]. Its range is past the
+   longest scroll, so it never finishes, or Chromium would hold it. */
 @utility strip-foot-rule {
   opacity: 0;
   animation: strip-touching linear both;
   animation-timeline: --scroll-fade;
+  animation-range: 0px 33554432px;
 }
 @keyframes strip-touching {
   from,
