@@ -185,6 +185,8 @@ pub fn repo(url: &str) -> Option<Repo> {
         "bitbucket.org" => Some(Kind::Bitbucket),
         "gitea.com" => Some(Kind::Gitea),
         "codeberg.org" => Some(Kind::Forgejo),
+        // GitHub's own domain, signed in or not.
+        _ if host.ends_with(".ghe.com") => Some(Kind::GitHub),
         _ if !accounts::logins(&accounts::GH, host).is_empty() => Some(Kind::GitHub),
         _ => None,
     };
@@ -236,8 +238,7 @@ impl Gh {
     }
 }
 
-/// Which account last read each repository (`host/path`; None is the active one), tried first; a
-/// folder's, read together, are one key, a space between.
+/// Which account last read each repository (`host/path`; None is the active one), tried first.
 static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
 
 /// gh as an account that can read `repo`: the project's pick, held unprobed [D631], the one that last did (unprobed, a gh call saved on
@@ -245,24 +246,14 @@ static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::ne
 /// in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
 /// later slice [D1030].
 fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
-    gh_all(&[repo], pick)
-}
-
-/// `gh`, as an account that can read all of `repos`, on one server.
-fn gh_all(repos: &[&Repo], pick: Option<&str>) -> Option<Gh> {
-    let host = &repos.first()?.host;
-    if repos.iter().any(|r| r.kind != Kind::GitHub) {
+    if repo.kind != Kind::GitHub {
         return None;
     }
     let path = setup::find("gh", &[])?.to_str()?.to_string();
-    let keys: Vec<String> = repos.iter().map(|r| r.key()).collect();
-    let key = keys.join(" ");
+    let key = repo.key();
     let last = READER.lock().unwrap().get(&key).cloned();
     let pick = pick.map(|login| Some(login.to_string()));
-    // gh lists its active account first.
-    let others = std::iter::once_with(|| accounts::logins(&accounts::GH, host))
-        .flatten()
-        .skip(1);
+    let others = std::iter::once_with(|| others(&repo.host)).flatten();
     let mut tried = Vec::new();
     for user in (pick.clone().into_iter())
         .chain(last.clone())
@@ -274,7 +265,7 @@ fn gh_all(repos: &[&Repo], pick: Option<&str>) -> Option<Gh> {
         }
         tried.push(user.clone());
         let token = match &user {
-            Some(login) => match token(&path, host, login) {
+            Some(login) => match token(&path, &repo.host, login) {
                 Some(token) => Some(token),
                 // A picked account gh can't give a token for fails, never read as another [D631].
                 None if pick.as_ref() == Some(&user) => return None,
@@ -289,7 +280,7 @@ fn gh_all(repos: &[&Repo], pick: Option<&str>) -> Option<Gh> {
         if last.as_ref() == Some(&user) || pick.as_ref() == Some(&user) {
             return Some(gh);
         }
-        if reads_all(&gh, repos) {
+        if reads(&gh, repo) {
             READER.lock().unwrap().insert(key, user);
             return Some(gh);
         }
@@ -355,9 +346,15 @@ fn reads_all(gh: &Gh, repos: &[&Repo]) -> bool {
 
 /// `repo`'s reader failed a read: the next one probes again.
 fn forget(repo: &Repo) {
-    let gone = repo.key();
-    let mut readers = READER.lock().unwrap();
-    readers.retain(|key, _| !key.split(' ').any(|k| k == gone));
+    READER.lock().unwrap().remove(&repo.key());
+}
+
+/// The accounts gh has signed in for `host` other than its active one, which it lists first.
+fn others(host: &str) -> Vec<String> {
+    accounts::logins(&accounts::GH, host)
+        .into_iter()
+        .skip(1)
+        .collect()
 }
 
 /// `user`'s token for `host`, kept by gh; never printed, logged or stored here.
@@ -396,6 +393,12 @@ pub struct Pr {
 /// A checkout and the repository its branch pushes to, git picking the remote; None with no
 /// known host.
 fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
+    let (checkout, repo) = pushed(checkout)?;
+    Some((checkout, repo?))
+}
+
+/// `hosted`, the repository None on a server it can't name; None with no remote.
+fn pushed(checkout: Checkout) -> Option<(Checkout, Option<Repo>)> {
     let never = AtomicBool::new(false);
     let head = git::read(
         &checkout.root,
@@ -404,7 +407,7 @@ fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
     );
     let branch = head.map(|out| String::from_utf8_lossy(&out).trim().to_string());
     let remote = push::remote(&checkout, &branch.unwrap_or_default()).ok()?;
-    let repo = repo(&push::url(&checkout, &remote).ok()?)?;
+    let repo = repo(&push::url(&checkout, &remote).ok()?);
     Some((checkout, repo))
 }
 
