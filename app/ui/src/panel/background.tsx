@@ -20,8 +20,16 @@ type Process = Job & { session: string; owner: Worker | null };
 const keyOf = (job: Job) => `${job.pid}.${job.start_us}`;
 /** Outlived the worker that started it. */
 const left = (job: Process) => job.owner !== null && !onHand(job.owner);
-const nameOf = (job: Job) => job.app ?? job.label;
+const nameOf = (job: Job) => (job.apps.length === 1 ? job.apps[0]!.label : job.label);
 const portsOf = (job: Job) => job.ports.map((port) => `:${port}`);
+/**
+ * A job that opened several apps is a row each, and one for the ports none of them listens on.
+ * shortcut: that one's Stop ends the job, its apps too; upgrade if a job with both shows.
+ */
+const rowsOf = (job: Process): Process[] =>
+  left(job) || job.apps.length < 2
+    ? [job]
+    : [...job.apps.map((app) => ({ ...job, ...app, apps: [app] })), { ...job, apps: [], ports: job.ports.filter((port) => !job.apps.some((app) => app.ports.includes(port))) }];
 const ranFor = (job: Job, now: number) => duration(now - job.start_us / 1000);
 
 /**
@@ -39,7 +47,9 @@ export function BackgroundCard({ owner }: { owner: string }) {
   const jobs: Process[] = [
     ...(row?.background ?? []).map((job) => ({ ...job, session: owner, owner: null })),
     ...family.flatMap(({ worker, row }) => (row.background ?? []).map((job) => ({ ...job, session: row.id, owner: worker }))),
-  ].filter((job) => !stopping.has(keyOf(job)) && (left(job) || job.app || job.ports.length));
+  ]
+    .flatMap(rowsOf)
+    .filter((job) => !stopping.has(keyOf(job)) && (left(job) || job.apps.length || job.ports.length));
   const now = useSecond(jobs.length > 0);
   const ran = row?.background_ran || family.some((each) => each.row.background_ran);
   if (jobs.length === 0 && !ran) return null;

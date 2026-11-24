@@ -31,8 +31,8 @@ struct Seen {
 
 static SEEN: Mutex<Option<Seen>> = Mutex::new(None);
 
-/// The name of the open app in a job's tree, all of them if it opened several; None: there's none.
-pub fn open(tree: &[Proc]) -> Option<String> {
+/// The open apps in a job's tree, each by its name.
+pub fn open(tree: &[Proc]) -> Vec<(Proc, String)> {
     let apps: Vec<(&Proc, String)> = (tree.iter())
         .filter_map(|p| Some((p, name(p.pid)?)))
         .filter(|(p, _)| shown(p))
@@ -41,13 +41,10 @@ pub fn open(tree: &[Proc]) -> Option<String> {
     let below = |p: &Proc| {
         (apps.iter()).any(|(a, _)| (procs::descendants(tree, a.pid).iter()).any(|d| d.pid == p.pid))
     };
-    let mut names: Vec<&str> = (apps.iter())
+    (apps.iter())
         .filter(|(p, _)| !below(p))
-        .map(|(_, name)| name.as_str())
-        .collect();
-    names.sort();
-    names.dedup();
-    (!names.is_empty()).then(|| names.join(", "))
+        .map(|(p, name)| (**p, name.clone()))
+        .collect()
 }
 
 /// The bundle a process is the main one of, by its name; a helper's is inside its app's.

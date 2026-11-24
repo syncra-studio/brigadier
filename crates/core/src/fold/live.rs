@@ -296,19 +296,31 @@ fn free_bytes(path: &std::path::Path) -> u64 {
 pub const HISTORY: &str = "background";
 
 /// A session row's Background [D105, D200]: what's left running, each with the TCP ports its tree
-/// listens on and the open app in it, by which the card lists it [D145], and whether anything has
+/// listens on and the open apps in it, by which the card lists it [D145], and whether anything has
 /// run (its card keeps the history's button), noting the jobs that started or ended since the last look.
 pub fn background_row(row: &mut serde_json::Value, dir: &Path, live: &Live) {
     row["background_ran"] = note_jobs(dir, &live.left).into();
     let job = |j: &Job| {
-        let mut tree = procs::descendants(&live.mine, j.pid);
-        tree.extend(live.mine.iter().filter(|p| p.pid == j.pid));
-        let ports: BTreeSet<u16> = (tree.iter())
-            .flat_map(|p| procs::listening(p.pid))
+        let tree = |pid: i32| {
+            let mut tree = procs::descendants(&live.mine, pid);
+            tree.extend(live.mine.iter().filter(|p| p.pid == pid));
+            tree
+        };
+        let ports = |tree: &[procs::Proc]| -> BTreeSet<u16> {
+            (tree.iter())
+                .flat_map(|p| procs::listening(p.pid))
+                .collect()
+        };
+        let all = tree(j.pid);
+        let apps: Vec<_> = (crate::background::apps::open(&all).iter())
+            .map(|(p, name)| {
+                serde_json::json!({"pid": p.pid, "start_us": p.start_us, "label": name,
+                    "ports": ports(&tree(p.pid))})
+            })
             .collect();
         let mut job = serde_json::json!(j);
-        job["ports"] = serde_json::json!(ports);
-        job["app"] = serde_json::json!(crate::background::apps::open(&tree));
+        job["ports"] = serde_json::json!(ports(&all));
+        job["apps"] = apps.into();
         job
     };
     row["background"] = live.left.iter().map(job).collect();
