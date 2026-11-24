@@ -9,7 +9,7 @@ import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { AGENT_WORLD, forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
-import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
+import { answerDialogs, dialogsCount, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { shownTitle, shownUrl } from "./browserShownUrl";
 import { stopOf } from "./browserSignIn";
 import { stopForAddress } from "./browserSignInRules";
@@ -259,7 +259,8 @@ type Call =
   | { call: "hover"; guest: number; x: number; y: number }
   | { call: "scroll"; guest: number; x: number; y: number; deltaY: number }
   | { call: "wheel"; guest: number; x: number; y: number; deltaX: number; deltaY: number }
-  | { call: "dialogs"; guest: number; keep: boolean }
+  | { call: "dialogs"; guest: number }
+  | { call: "dialogsCount"; guest: number }
   | { call: "events"; guest: number; since: number; kinds: string[] }
   | { call: "capture"; guest: number }
   | { call: "signInStop"; guest: number };
@@ -336,7 +337,9 @@ export function installBrowserAgent(): void {
         guest.sendInputEvent({ type: "mouseWheel", x: Math.round(call.x), y: Math.round(call.y), deltaX: -call.deltaX, deltaY: -call.deltaY });
         return null;
       case "dialogs":
-        return sweptAndScrubbed(guest, () => dialogsSaid(guest, call.keep));
+        return sweptAndScrubbed(guest, () => dialogsSaid(guest));
+      case "dialogsCount":
+        return dialogsCount(guest);
       case "events":
         return sweptAndScrubbed(guest, () => activityOf(guest.id, call.since, call.kinds));
       case "capture":

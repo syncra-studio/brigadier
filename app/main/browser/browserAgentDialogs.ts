@@ -45,9 +45,15 @@ export async function setConfirm(guest: WebContents, yes: boolean): Promise<void
   await send(guest, "Runtime.evaluate", { expression: `window.__brigadierDialogs && (window.__brigadierDialogs.yes = ${yes})` }).catch(() => {});
 }
 
-/** What the page asked since the last look, which a look that keeps it isn't. */
-export async function dialogsSaid(guest: WebContents, keep = false): Promise<Said[]> {
-  const answer = await send(guest, "Runtime.evaluate", { expression: `window.__brigadierDialogs ? window.__brigadierDialogs.said.${keep ? "slice" : "splice"}(0) : []`, returnByValue: true }).catch(() => null) as { result?: { value?: unknown } } | null;
+/** How many boxes the page asked in since the last look, left for it. */
+export async function dialogsCount(guest: WebContents): Promise<number> {
+  const answer = await send(guest, "Runtime.evaluate", { expression: "window.__brigadierDialogs?.said.length ?? 0", returnByValue: true }).catch(() => null) as { result?: { value?: unknown } } | null;
+  return Number(answer?.result?.value ?? 0);
+}
+
+/** What the page asked since the last look. */
+export async function dialogsSaid(guest: WebContents): Promise<Said[]> {
+  const answer = await send(guest, "Runtime.evaluate", { expression: "window.__brigadierDialogs ? window.__brigadierDialogs.said.splice(0) : []", returnByValue: true }).catch(() => null) as { result?: { value?: unknown } } | null;
   const said = answer?.result?.value;
   if (!Array.isArray(said)) return [];
   return said.filter((each): each is Said => typeof each?.message === "string" && ["alert", "confirm", "prompt"].includes(each?.kind)).slice(0, 10);

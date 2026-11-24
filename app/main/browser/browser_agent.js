@@ -19,9 +19,10 @@
 // error or `ask` as the click or typing would, and for typing refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
-// `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals } instead where
-// waiting may change it, with nothing done: `waits` is what for, `modals` how many dialogs are over the page. With `still: true` it
-// does nothing at all: a promise, two frames long, of such a refusal, any other, or { still: true } where the control isn't moving.
+// `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals, page } instead
+// where waiting may change it, with nothing done: `waits` is what for, `modals` the dialogs over the page, `page` the document. With
+// `still: true` it does nothing at all: a promise, two frames long, of such a refusal, any other, or { still: true, modals, page } where
+// the control isn't moving, with the dialogs there were `before`. With `page` it answers only in that document.
 // `shownUrl`: an address as an agent sees it, from the shell.
 (op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
@@ -311,44 +312,65 @@
     return { element };
   };
 
+  /** The dialogs over the page. */
+  const modals = () => [...document.querySelectorAll("dialog:modal, [aria-modal='true']")].filter(boxed).map(refOf);
+  /** Which document this is: a ref means nothing in another, which may have its own of that name. */
+  const page = performance.timeOrigin;
   /** A refusal that waiting may change. */
-  const later = (error, waits) => {
-    if (!op.waits) return { error };
-    const modals = [...document.querySelectorAll("dialog:modal, [aria-modal='true']")].filter((each) => boxed(each) && !within(each, find(op.target)));
-    return { error, waits, modals: modals.length };
+  const later = (error, waits) => (op.waits ? { error, waits, modals: modals(), page } : { error });
+  /** Takes no input, by its own attribute, its fieldset's, or an aria-disabled on it or around it. */
+  const disabled = (element) => {
+    for (let at = element; at; at = around(at)) if (at.getAttribute("aria-disabled") === "true") return true;
+    return Boolean(element.disabled) || element.matches(":disabled");
   };
-  /** Takes no input, by its own attribute or its fieldset's. */
-  const disabled = (element) => element.matches(":disabled");
+  /** What keeps a control from being used that may pass: it doesn't show, or it's disabled. */
+  const unready = (element, words = `${op.target} is disabled.`) =>
+    !shown(element) ? later(`${op.target} doesn't show now.`, "it to show")
+      : disabled(element) ? later(words, "it to be enabled") : null;
 
-  /** The next frame, or its time where the page doesn't paint. */
-  const frame = () => new Promise((next) => {
+  /** The next frame; nothing where none comes within `most` ms. */
+  const frame = (most) => new Promise((next) => {
     requestAnimationFrame(next);
-    setTimeout(next, 17);
+    setTimeout(next, most);
   });
-  /** Whether the control moves, or grows from nothing. One that grows around its middle, as a pulsing button, is where its click goes all along. */
+  /** Whether it, or what it's in, has an animation that never ends: its box never will be the same. */
+  const endless = (element) => {
+    for (let at = element; at; at = around(at)) if (at.getAnimations().some((each) => each.effect?.getComputedTiming().iterations === Infinity)) return true;
+    return false;
+  };
+  /** Whether the control's box changes. One that pulses for ever about its middle is where its click goes all along. */
   const moves = async (element) => {
     // Nothing moves by frames on a page that's hidden, and its timers are held back; the pointer's own look is after it paints.
     if (document.hidden) return false;
-    const from = element.getBoundingClientRect();
-    await frame();
-    await frame();
-    const to = element.getBoundingClientRect();
-    const changed = (side) => Math.abs(to[side] - from[side]) > 0.5;
-    if ((changed("width") || changed("height")) && Math.min(from.width, from.height, to.width, to.height) < 1) return true;
-    return Math.abs(to.left + to.width / 2 - from.left - from.width / 2) > 0.5 || Math.abs(to.top + to.height / 2 - from.top - from.height / 2) > 0.5;
+    for (let from = element.getBoundingClientRect(), frames = 0; frames < 2; frames++) {
+      // None in two frames' time: the page doesn't paint, so nothing moves. Once it does, a late frame is waited for.
+      if (!(await frame(frames ? 100 : 33))) return false;
+      const to = element.getBoundingClientRect();
+      const changed = (side) => Math.abs(to[side] - from[side]) > 0.5;
+      if (["left", "top", "right", "bottom"].some(changed)) {
+        const off = Math.abs(to.left + to.right - from.left - from.right) > 1 || Math.abs(to.top + to.bottom - from.top - from.bottom) > 1;
+        if (off || Math.min(from.width, from.height, to.width, to.height) < 1 || !endless(element)) return true;
+      }
+      from = to;
+    }
+    return false;
   };
   const refused = (error) => ({ error: `The page refused it: ${error && error.message ? error.message : String(error)}` });
   /** What `verb` does, or, for the look before it, whether what `stop` has nothing against is still. */
-  const still = (verb, stop) => {
+  const still = (verb, ...stops) => {
     if (!op.still) return verb();
+    const before = modals();
     const look = async () => {
       const found = target();
-      const stopped = found.error ? found : stop(found.element);
+      if (found.error) return found;
+      const answers = stops.map((stop) => stop(found.element)).filter((answer) => answer && !answer.point);
+      // What no waiting changes is said at once, whatever else it would wait for.
+      const stopped = answers.find((answer) => !answer.waits) ?? answers[0];
       if (stopped) return stopped;
-      if (await moves(found.element)) return later(`${op.target} keeps moving, so nothing was done.`, "it to stop moving");
-      return { still: true };
+      if (await moves(found.element)) return later(op.kind === "click" ? `${op.target} keeps moving, so it wasn't clicked. Try again in a moment.` : `${op.target} keeps moving, so nothing was done.`, "it to stop moving");
+      return { still: true, modals: modals(), page };
     };
-    return look().catch(refused);
+    return look().catch(refused).then((answer) => ({ ...answer, before }));
   };
 
   /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it. */
@@ -364,12 +386,11 @@
   /** What a click on the control is refused or asked for, as it is now. */
   const clickStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
-    if (element.disabled || disabled(element)) return later(`${op.target} is disabled.`, "it to be enabled");
     // A control with no role acts as a button does, whatever it's made of, so it asks as one.
     const role = controlOf(element) || "clickable";
     const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
     const named = (role === "button" || role === "link" || role === "clickable") && namedKind(nameOf(element));
-    return ask([op.declared, kind, named, op.always && "action"], element);
+    return ask([op.declared, kind, named, op.always && "action"], element) ?? unready(element);
   };
 
   /** What typing in the field asks for, as it is now: a card or code field as what it is, whatever the agent declared, so the card never shows the secret typed into it. */
@@ -403,6 +424,28 @@
     return false;
   };
 
+  /** Whether what is at the control's middle is over it. */
+  const covers = (hit, element) => {
+    const label = hit?.closest?.("label");
+    return Boolean(hit) && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element;
+  };
+  const coveredBy = (hit) => later(`${op.target} is covered by ${controlOf(hit) || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
+  /**
+   * What lies over a control that takes keys, as a person would see it. Not over an editor's own input, which it keeps under its
+   * text (tiny, transparent or sent behind), and not what's drawn on a field and no larger, as its placeholder.
+   */
+  const overlaid = (element) => {
+    const box = element.getClientRects()[0];
+    if (!box || Math.min(box.width, box.height) < 10 || Number(getComputedStyle(element).zIndex) < 0 || !element.checkVisibility({ opacityProperty: true })) return null;
+    const hit = deepest(box.left + box.width / 2, box.top + box.height / 2);
+    if (!covers(hit, element)) return null;
+    for (let at = hit; at && !within(at, element); at = around(at)) {
+      const over = at.getBoundingClientRect();
+      if (over.left < box.left - 4 || over.top < box.top - 4 || over.right > box.right + 4 || over.bottom > box.bottom + 4) return coveredBy(hit);
+    }
+    return null;
+  };
+
   const FRAMES = new Set(["iframe", "frame", "fencedframe", "object", "embed"]);
   /** Where real input reaches the control, or what is over it; null when it has no place to click. */
   const placeOf = (element) => {
@@ -413,11 +456,7 @@
     const y = rect.top + rect.height / 2;
     if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
     const hit = deepest(x, y);
-    const label = hit?.closest?.("label");
-    if (hit && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element) {
-      const role = controlOf(hit);
-      return later(`${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
-    }
+    if (covers(hit, element)) return coveredBy(hit);
     const hovering = op.kind === "hover";
     // What a frame holds can't be seen here, and the click would be its.
     if (!hovering && hit && hit !== element && FRAMES.has(hit.localName)) {
@@ -470,7 +509,6 @@
   const pressStop = (element) => {
     if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
     if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
-    if (op.target && disabled(element)) return later(NO_KEYBOARD, "it to be enabled");
     const role = element === document.body ? null : controlOf(element);
     const activates = op.key === "Enter" || op.key === "Space";
     let kind = null;
@@ -484,7 +522,7 @@
       // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
       kind = fieldKind(element);
     }
-    return ask([op.declared, kind, named, op.always && "action"], element);
+    return ask([op.declared, kind, named, op.always && "action"], element) ?? (op.target ? unready(element, NO_KEYBOARD) : null);
   };
 
   /** With a ref, that control takes the focus. */
@@ -499,6 +537,8 @@
     if (stop) return stop;
     if (op.target) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      const over = overlaid(element);
+      if (over) return over;
       element.focus?.({ preventScroll: true });
       const focused = deepFocused();
       if (!focused || !within(element, focused)) return { error: NO_KEYBOARD };
@@ -526,8 +566,10 @@
     if (!["textbox", "searchbox", "combobox", "spinbutton"].includes(role)) {
       return { error: `${op.target} isn't a field to type in (it is a ${role || element.localName}).` };
     }
-    if (element.disabled || disabled(element) || element.readOnly) return later(`${op.target} can't be typed in now.`, "it to be editable");
-    return typeAsk(element);
+    const asked = typeAsk(element);
+    if (asked) return asked;
+    if (disabled(element) || element.readOnly || element.getAttribute("aria-readonly") === "true") return later(`${op.target} can't be typed in now.`, "it to be editable");
+    return unready(element);
   };
 
   const type = () => {
@@ -536,7 +578,9 @@
     const { element } = found;
     const stop = typeStop(element);
     if (stop) return stop;
-    element.scrollIntoView({ block: "center", inline: "center" });
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    const over = overlaid(element);
+    if (over) return over;
     element.focus({ preventScroll: true });
     if (element.localName === "select") {
       const wanted = clean(op.text).toLowerCase();
@@ -638,9 +682,10 @@
   };
 
   try {
+    if (op.page && op.page !== page) return { error: "The page went to another before its control was ready, so nothing was done. Read it again." };
     switch (op.kind) {
       case "read": return read(op.max || 20000);
-      case "click": return still(click, clickStop);
+      case "click": return still(click, clickStop, placeOf);
       case "type": return still(type, typeStop);
       case "sweep": {
         const answer = { fields: [], values: [], width: innerWidth, frames: [] };
@@ -661,7 +706,7 @@
         return answer;
       }
       case "press": return still(press, pressStop);
-      case "hover": return still(hover, () => null);
+      case "hover": return still(hover);
       case "scroll": {
         if (op.target) {
           const found = target();
@@ -704,7 +749,7 @@
           return typeAsk(found.element) ?? { done: true };
         }
         // The control may have become another under the pointer: it's asked about again, as it is now.
-        return clickStop(found.element) ?? placeOf(found.element) ?? { error: `${op.target} has no place to click now.` };
+        return clickStop(found.element) ?? placeOf(found.element) ?? later(`${op.target} has no place to click now.`, "it to show");
       }
       default: return { error: `unknown op ${op.kind}` };
     }

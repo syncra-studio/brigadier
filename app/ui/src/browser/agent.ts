@@ -2,7 +2,7 @@ import { setBrowserHandler } from "../daemon";
 import { run } from "../onboarding/api";
 import { newId } from "../session/store";
 import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } from "../shell/tab-store";
-import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun, agentShown, waitLimit } from "./hands";
+import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun, agentShown, waitFrom } from "./hands";
 import { agentPage, go } from "./layer";
 import { agentDoing } from "./overlay";
 import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
@@ -301,7 +301,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "type":
     case "press": {
       const before = idsNow(owner);
-      const until = waitLimit();
+      const waited = waitFrom(tab);
       const ask = (yes: { url: string; for?: string[] } | null) => agentRun(tab, {
         kind: op.op,
         label,
@@ -313,7 +313,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         always: op.always,
         approved: yes?.url ?? null,
         approvedFor: yes?.for,
-      }, until).catch(async (error: unknown) => {
+      }, waited).catch(async (error: unknown) => {
         // A window may close on the very click, as Approve's does, before the click's own answer comes.
         await wait(SETTLE_MS);
         if (!isWindow(tab) || windowOf(tab)) throw error;
