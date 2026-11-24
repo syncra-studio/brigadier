@@ -306,7 +306,7 @@ export function AttachmentsCard({ files, onOpen }: { files: readonly CardFile[];
   const gallery = images.map((file) => ({ name: labels.get(file.id)!, url: file.url }));
   return (
     <CardSection title="Attachments" fold="attachments" count={files.length}>
-      <Rows items={files}>
+      <Rows items={files} fold={3}>
         {(file) => (
           <Line
             key={file.id}

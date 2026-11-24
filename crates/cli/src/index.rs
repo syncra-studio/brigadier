@@ -327,7 +327,7 @@ impl Index {
             );
             row["holding"] = holds.into(); // answered, its block open on its subagents or workers: a message waits or steers [D521]
             row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
-            fold::background_row(&mut row, &dir, &live.left);
+            fold::background_row(&mut row, &dir, &live);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
             // It holds its project's own folder: Local checkout can't start there again [D306].
             row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));

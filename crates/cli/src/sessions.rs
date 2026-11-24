@@ -213,12 +213,15 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<V
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
-        .and_then(|()| workers::left::archive(data, spec, with, || stop(data, id, "archive")))?;
+        .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
     // What its finished workers left running goes; one at work keeps its own.
     let running = (family(data, id).iter())
         .filter_map(|w| {
-            let e = end_jobs(data, &w.wid).err()?;
-            Some(format!("{}: {e}", w.title))
+            let why = match end_jobs(data, &w.wid, |_| false) {
+                Ok(left) => format!("process {} didn't stop", left.first()?.0),
+                Err(e) => e.to_string(),
+            };
+            Some(format!("{}: {why}", w.title))
         })
         .collect();
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].

@@ -416,7 +416,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       <SubagentsCard owner={owner} />
       <BackgroundCard owner={owner} />
       <SourcesCard owner={owner} />
-      <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
+      <AttachmentsCard key={owner} files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
     </Cards>
   ) : null;
   return (

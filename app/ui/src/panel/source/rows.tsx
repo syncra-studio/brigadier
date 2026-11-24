@@ -1,4 +1,5 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { cx } from "../../components/cx";
 import { InfoTip } from "../../components/thread/tip";
@@ -14,7 +15,7 @@ export const ROW_HOVER = "hover:bg-summary-row-hover focus-visible:focus-ring";
  * `onClick` makes it a button with the row's hover. `action`: what shows over its end on hover (a Stop, a "…"),
  * the row keeping its hover meanwhile.
  */
-export function Line({ icon, end, onClick, action, title, className, children }: { icon?: ReactNode; end?: ReactNode; onClick?: () => void; action?: ReactNode; title?: string; className?: string; children: ReactNode }) {
+export function Line({ icon, end, onClick, action, title, className, children }: { icon?: ReactNode; end?: ReactNode; onClick?: (event: MouseEvent<HTMLElement>) => void; action?: ReactNode; title?: string; className?: string; children: ReactNode }) {
   const Tag = onClick ? "button" : "div";
   const row = (
     <Tag
@@ -53,15 +54,26 @@ export function Line({ icon, end, onClick, action, title, className, children }:
   );
 }
 
-/** The list: the first 5, then "Show N more", 5 at a time [D139]. */
-export function Rows<T>({ items, children }: { items: readonly T[]; children: (item: T, index: number) => ReactNode }) {
-  const [shown, setShown] = useState(5);
+/**
+ * The list: the first 5, then "Show N more", 5 at a time [D139]. `fold`: the first that many, then all the rest
+ * and "Show less" back to them, the one row taking turns, so it keeps the focus and stays in view.
+ */
+export function Rows<T>({ items, fold, children }: { items: readonly T[]; fold?: number; children: (item: T, index: number) => ReactNode }) {
+  const first = fold ?? 5;
+  const [shown, setShown] = useState(first);
+  const less = fold !== undefined && shown > fold && items.length > fold;
   return (
     <>
       {items.slice(0, shown).map(children)}
-      {items.length > shown && (
-        <Line onClick={() => setShown(shown + 5)} className="text-muted-foreground">
-          Show {items.length - shown} more
+      {(less || items.length > shown) && (
+        <Line
+          onClick={({ currentTarget }) => {
+            flushSync(() => setShown(less ? first : fold ? Infinity : shown + 5));
+            if (less) currentTarget.scrollIntoView({ block: "nearest" });
+          }}
+          className="text-muted-foreground"
+        >
+          {less ? "Show less" : `Show ${items.length - shown} more`}
         </Line>
       )}
     </>

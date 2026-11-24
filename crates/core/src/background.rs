@@ -2,6 +2,8 @@
 //! exit: those its host saw under its agent (`sightings`), else those started with its mark, and what
 //! either proves by descent, group or session. Never by name, port or folder. Each has one owner.
 
+pub mod apps;
+
 use crate::fold::Fold;
 use brigadier_frames::background::{Links, grow, shared};
 use brigadier_frames::forks;

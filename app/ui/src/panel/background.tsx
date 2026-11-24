@@ -20,14 +20,17 @@ type Process = Job & { session: string; owner: Worker | null };
 const keyOf = (job: Job) => `${job.pid}.${job.start_us}`;
 /** Outlived the worker that started it. */
 const left = (job: Process) => job.owner !== null && !onHand(job.owner);
+const nameOf = (job: Job) => job.app ?? job.label;
+const portsOf = (job: Job) => job.ports.map((port) => `:${port}`);
 const ranFor = (job: Job, now: number) => duration(now - job.start_us / 1000);
 
 /**
- * The card's Background processes, plain rows with our extras [D145, D73, D105]: what the ended turns of the session
- * and its workers left running (a dev server, a watcher), each with its owner, and on hover how long it has run and
- * Stop; those that outlived their worker come apart, with Stop always there and Stop all. Stopped, a row goes at once;
- * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run; once
- * one has, the session's or a worker's, its title keeps the clock that opens their Background history [D200].
+ * The card's Background processes [D145, D73, D105]: the servers, each with the ports
+ * it listens on, and the open apps that the ended turns of the session and its workers left running, with their owner,
+ * and on hover how long each has run and Stop; all that outlived its worker comes apart, with Stop always there and Stop
+ * all. Stopped, a row goes at once; Rust's row confirms it, and a failed stop brings it back with a toast. No section
+ * until something has run; once one has, the session's or a worker's, its title keeps the clock that opens their
+ * Background history [D200].
  */
 export function BackgroundCard({ owner }: { owner: string }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
@@ -36,7 +39,7 @@ export function BackgroundCard({ owner }: { owner: string }) {
   const jobs: Process[] = [
     ...(row?.background ?? []).map((job) => ({ ...job, session: owner, owner: null })),
     ...family.flatMap(({ worker, row }) => (row.background ?? []).map((job) => ({ ...job, session: row.id, owner: worker }))),
-  ].filter((job) => !stopping.has(keyOf(job)));
+  ].filter((job) => !stopping.has(keyOf(job)) && (left(job) || job.app || job.ports.length));
   const now = useSecond(jobs.length > 0);
   const ran = row?.background_ran || family.some((each) => each.row.background_ran);
   if (jobs.length === 0 && !ran) return null;
@@ -46,11 +49,11 @@ export function BackgroundCard({ owner }: { owner: string }) {
     setStopping((was) => new Set(was).add(key));
     run(["jobs", job.session, "stop", String(job.pid), String(job.start_us)]).catch((cause: unknown) => {
       setStopping((was) => new Set([...was].filter((each) => each !== key)));
-      showToast(`Couldn't stop ${job.label}: ${errorText(cause)}`, { tone: "error" });
+      showToast(`Couldn't stop ${nameOf(job)}: ${errorText(cause)}`, { tone: "error" });
     });
   };
   const stopButton = (job: Process) => (
-    <TooltipIconButton tooltip="Stop" aria-label={`Stop ${job.label}`} size="icon-xs" className="text-muted-foreground hover:text-foreground" onClick={() => stop(job)}>
+    <TooltipIconButton tooltip="Stop" aria-label={`Stop ${nameOf(job)}`} size="icon-xs" className="text-muted-foreground hover:text-foreground" onClick={() => stop(job)}>
       <StopCircle />
     </TooltipIconButton>
   );
@@ -72,7 +75,7 @@ export function BackgroundCard({ owner }: { owner: string }) {
           <Line
             key={keyOf(job)}
             icon={job.owner ? <WorkerGlyph id={job.owner.id} /> : <Terminal />}
-            title={`${job.label}\n${job.owner?.name ?? "This session"}`}
+            title={`${nameOf(job)}\n${[...portsOf(job), job.owner?.name ?? "This session"].join(", ")}`}
             end={<span className="max-w-20 truncate">{job.owner?.name ?? "This session"}</span>}
             action={
               <span className="flex items-center gap-1.5 text-label text-muted-foreground tabular-nums">
@@ -81,7 +84,10 @@ export function BackgroundCard({ owner }: { owner: string }) {
               </span>
             }
           >
-            {job.label}
+            <span className="flex min-w-0">
+              <span className="truncate">{nameOf(job)}</span>
+              {portsOf(job).length > 0 && <span className="max-w-3/4 shrink-0 truncate whitespace-pre text-muted-foreground tabular-nums"> · {portsOf(job).join(", ")}</span>}
+            </span>
           </Line>
         )}
       </Rows>

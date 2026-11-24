@@ -15,7 +15,7 @@ mod result;
 mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
-pub(crate) use asks::{left, question, told_held};
+pub(crate) use asks::{question, told_held};
 pub(crate) use brigade::ASK_USER;
 pub use brigade::{brigade_row, to_user, user_answer};
 pub(crate) use busy::at_work;

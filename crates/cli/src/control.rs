@@ -118,14 +118,10 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     if let Some(mid) = request.strip_prefix("peer-") {
         return crate::workers::user_answer(data, id, mid, &given);
     }
-    // A worker's routing hold, what it left running or a mockup offer: Rust's own question, the
-    // user's call [D2028, D2058].
+    // A worker's routing hold or a mockup offer: Rust's own question, the user's call [D2028, D2058].
     let choice = given.said.iter().find_map(Value::as_str);
     if request.starts_with("mockup-") {
         return crate::relay::mockup::answered(data, id, request, choice.unwrap_or(""));
-    }
-    if request.starts_with("left-") {
-        return crate::workers::left::answered(data, id, request, choice.unwrap_or(""));
     }
     if request.starts_with("hold-") {
         let args = ["routing", "answer", id, request, choice.unwrap_or("")].map(String::from);

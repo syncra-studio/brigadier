@@ -1,6 +1,7 @@
 //! Process facts from the kernel. A pid is only trusted together with its start time, so a reused
 //! pid is never mistaken for our child.
 
+use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::io;
 use std::mem::{MaybeUninit, size_of};
@@ -118,6 +119,41 @@ pub fn exe(pid: i32) -> Option<std::path::PathBuf> {
     let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
     buf.truncate(usize::try_from(n).ok().filter(|n| *n > 0)?);
     Some(std::ffi::OsString::from_vec(buf).into())
+}
+
+/// The TCP ports a process listens on, one it holds on IPv4 and IPv6 once. Only the same user's
+/// processes answer.
+pub fn listening(pid: i32) -> BTreeSet<u16> {
+    // `struct socket_fdinfo`, which libc has no type for: its size, and where its kind, local port
+    // and TCP state are (`sys/proc_info.h`).
+    const SOCKET: i32 = 3; // PROC_PIDFDSOCKETINFO
+    const SIZE: usize = 792;
+    let (kind, port, state) = (256, 268, 344);
+    let (tcp, listen) = (2, 1); // SOCKINFO_TCP, TSI_S_LISTEN
+    let list = |at: *mut libc::proc_fdinfo, n: usize| unsafe {
+        let bytes = (n * size_of::<libc::proc_fdinfo>()) as i32;
+        libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, at.cast(), bytes)
+    };
+    let room = list(std::ptr::null_mut(), 0).max(0) as usize / size_of::<libc::proc_fdinfo>();
+    let mut fds: Vec<libc::proc_fdinfo> = Vec::with_capacity(room);
+    let n = list(fds.as_mut_ptr(), room).max(0) as usize / size_of::<libc::proc_fdinfo>();
+    unsafe { fds.set_len(n.min(room)) };
+    let mut ports = BTreeSet::new();
+    for fd in fds
+        .iter()
+        .filter(|f| f.proc_fdtype == libc::PROX_FDTYPE_SOCKET as u32)
+    {
+        let mut buf = [0u64; SIZE / 8];
+        let at = buf.as_mut_ptr().cast();
+        let n = unsafe { libc::proc_pidfdinfo(pid, fd.proc_fd, SOCKET, at, SIZE as i32) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr().cast::<u8>(), SIZE) };
+        let int = |at: usize| i32::from_ne_bytes(bytes[at..at + 4].try_into().unwrap());
+        if n as usize == SIZE && int(kind) == tcp && int(state) == listen {
+            // Its low half, in the network's order.
+            ports.insert(u16::from_be(int(port) as u16));
+        }
+    }
+    ports
 }
 
 /// The process, if `pid` is still the one that started at `start_us`.

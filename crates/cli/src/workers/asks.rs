@@ -4,7 +4,7 @@
 //! parent answers with `brigadier send <id> --allow`, `--deny "<reason>"` or its answer as the
 //! message; the user sees no card, and the worker's thread shows the ask and the answer.
 
-pub(crate) mod left;
+mod left;
 
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;
