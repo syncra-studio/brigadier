@@ -26,10 +26,13 @@ use std::{fs, io};
 const SHOWN_CHARS: usize = 60;
 
 /// A note's name as its tab, lists and chip show it: the one it was renamed to, cut, else the first
-/// words of its first line, by the rule a session's title has.
+/// words of its first line, after the emoji that may lead them, by the rule a session's title has.
 fn short(text: &str) -> String {
     match named(split(text).0) {
-        "" => core::title::from(title(text)),
+        "" => {
+            let line = title(text);
+            core::title::from(Some(named(line)).filter(|w| !w.is_empty()).unwrap_or(line))
+        }
         name => core::title::one_line(name, SHOWN_CHARS),
     }
 }
@@ -50,19 +53,19 @@ fn title(text: &str) -> &str {
 /// whole code fence's.
 fn plain(line: &str) -> &str {
     let line = line.trim().trim_start_matches('#').trim_start();
-    if (line.strip_prefix("```")).is_some_and(|language| !language.contains('`')) {
-        return "";
-    }
     let line = ["- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> "]
         .iter()
         .find_map(|mark| line.strip_prefix(mark))
         .unwrap_or(line);
     let digits = line.trim_start_matches(|c: char| c.is_ascii_digit());
-    (digits.len() < line.len())
+    let line = (digits.len() < line.len())
         .then(|| digits.strip_prefix(". "))
         .flatten()
         .unwrap_or(line)
-        .trim()
+        .trim();
+    let fence = line.starts_with("~~~")
+        || (line.strip_prefix("```")).is_some_and(|language| !language.contains('`'));
+    if fence { "" } else { line }
 }
 
 /// The name in a note's `# ` line, without the emoji that may lead it, one before a space as the
