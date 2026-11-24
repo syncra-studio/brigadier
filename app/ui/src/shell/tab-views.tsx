@@ -123,19 +123,20 @@ function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; o
   );
 }
 
-/** The account Automatic uses for project `id`, its last read at once; undefined before any, null for none or unreadable. */
+/** The account Automatic uses for project `id`, its last one read at once; undefined while read with none kept, null for none or unreadable. */
 function useAutoAccount(id: string | undefined): string | null | undefined {
   const { daemon } = useDaemon();
   const key = `pullRequests.account.${id}`;
   const [read, setRead] = useState<{ key: string; account: string | null } | null>(null);
-  const saved = localStorage.getItem(key);
-  const kept = saved === null ? undefined : (JSON.parse(saved) as string | null);
+  const kept = localStorage.getItem(key) ?? undefined;
   useEffect(() => {
     if (!id || !daemon) return;
     let live = true;
     void run(["projects", "accounts", id]).then(
       ({ auto = null }) => {
-        localStorage.setItem(key, JSON.stringify(auto));
+        // None is never kept: it can be a read that failed, and the next tab would open as All accounts first.
+        if (auto) localStorage.setItem(key, auto);
+        else localStorage.removeItem(key);
         if (live) setRead({ key, account: auto });
       },
       () => live && setRead({ key, account: kept ?? null }),

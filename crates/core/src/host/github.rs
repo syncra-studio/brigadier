@@ -157,48 +157,93 @@ fn list(gh: &str, token: Option<String>) -> io::Result<Option<Vec<Value>>> {
     Ok(Some(found))
 }
 
-/// A folder project's checkouts with a known host, read at once: GitHub's first, as only its PRs are
-/// searched, and github.com's before any other server's.
-pub(super) fn homes(data: &Path, p: &Project) -> Vec<(Checkout, Repo)> {
+/// A folder project's checkouts with a remote, read at once, `homes` in order; the repository None
+/// on a server that isn't known.
+fn remotes(data: &Path, p: &Project) -> Vec<(Checkout, Option<Repo>)> {
     let home = Path::new(&p.folder);
-    let mut found: Vec<(Checkout, Repo)> = thread::scope(|s| {
+    let mut found: Vec<(Checkout, Option<Repo>)> = thread::scope(|s| {
         let all: Vec<_> = (crate::folder::repos(home).into_iter())
-            .map(|r| s.spawn(move || super::hosted(git::at(data, &home.join(r)).ok()?)))
+            .map(|r| s.spawn(move || super::pushed(git::at(data, &home.join(r)).ok()?)))
             .collect();
         (all.into_iter())
             .filter_map(|t| t.join().ok().flatten())
             .collect()
     });
-    found.sort_by_key(|(_, r)| (r.kind != Kind::GitHub, r.host != HOST));
+    found.sort_by_key(|(_, r)| {
+        let on = r.as_ref().filter(|r| r.kind == Kind::GitHub);
+        (on.is_none(), on.is_none_or(|r| r.host != HOST))
+    });
     found
 }
 
-/// The repositories a folder project's GitHub account is for, in the order of `homes`: an account
-/// is one server's, so those on github.com when it has any there, else its first one's server's;
-/// none when another server there would be sent the same token. With whether it has GitHub
-/// repositories on other servers, which keep gh's own sign-in there.
-pub(super) fn covered(data: &Path, p: &Project) -> (Vec<(Checkout, Repo)>, bool) {
-    let mut all = homes(data, p);
-    all.retain(|(_, r)| r.kind == Kind::GitHub && super::slug(&r.path));
-    let Some(server) = all.first().map(|(_, r)| r.host.clone()) else {
-        return (all, false);
-    };
-    let (here, elsewhere): (Vec<_>, Vec<_>) = all.into_iter().partition(|(_, r)| r.host == server);
-    let key = accounts::token_key(&server);
-    match (elsewhere.iter()).any(|(_, r)| accounts::token_key(&r.host) == key) {
-        true => (vec![], true),
-        false => (here, !elsewhere.is_empty()),
+/// A folder project's checkouts with a known host: GitHub's first, as only its PRs are searched, and
+/// github.com's before any other server's.
+pub(super) fn homes(data: &Path, p: &Project) -> Vec<(Checkout, Repo)> {
+    (remotes(data, p).into_iter())
+        .filter_map(|(c, r)| Some((c, r?)))
+        .collect()
+}
+
+/// The server a folder project's GitHub account is for, as an account is one server's: the picked
+/// account's where it has repositories there, else github.com where it has any there, else its
+/// first one's.
+fn server<'a>(repos: impl Iterator<Item = &'a Repo>, pick: Option<&str>) -> Option<String> {
+    let all: Vec<&Repo> = repos.filter(|r| r.kind == Kind::GitHub).collect();
+    let held = pick.and_then(|login| {
+        let held = |r: &&&Repo| accounts::logins(&accounts::GH, &r.host).contains(&login.into());
+        all.iter().find(held)
+    });
+    held.or(all.first()).map(|r| r.host.clone())
+}
+
+/// What a folder project's GitHub account is for.
+pub(super) struct Covered {
+    /// On its `server`, in the order of `homes`; none when another server there would be sent the
+    /// same token.
+    pub repos: Vec<(Checkout, Repo)>,
+    /// It has GitHub repositories on other servers, which keep gh's own sign-in there.
+    pub more: bool,
+    /// Automatic's server, when the picked account's is another.
+    pub auto: Option<String>,
+}
+
+pub(super) fn covered(data: &Path, p: &Project) -> Covered {
+    let mut all = remotes(data, p);
+    let unknown = all.iter().any(|(_, r)| r.is_none());
+    all.retain(|(_, r)| {
+        (r.as_ref()).is_some_and(|r| r.kind == Kind::GitHub && super::slug(&r.path))
+    });
+    let all: Vec<(Checkout, Repo)> = (all.into_iter())
+        .filter_map(|(c, r)| Some((c, r?)))
+        .collect();
+    let on = |pick| server(all.iter().map(|(_, r)| r), pick);
+    let here = on(p.github_account.as_deref());
+    let auto = on(None).filter(|auto| here.as_ref() != Some(auto));
+    let (mut repos, elsewhere): (Vec<_>, Vec<_>) =
+        (all.into_iter()).partition(|(_, r)| here.as_ref() == Some(&r.host));
+    let key = here.as_deref().map(accounts::token_key);
+    // An unknown server can be a GitHub Enterprise one gh isn't signed in to; never one of GH_TOKEN's.
+    if (elsewhere.iter()).any(|(_, r)| Some(accounts::token_key(&r.host)) == key)
+        || (unknown && key == Some(accounts::ENTERPRISE))
+    {
+        repos.clear();
+    }
+    Covered {
+        repos,
+        more: !elsewhere.is_empty(),
+        auto,
     }
 }
 
 /// Project `id`'s picked account for reading `repo` [D631]; none on another server than the one a
-/// folder's is for (`covered`).
+/// folder's is for.
 pub(super) fn picked(data: &Path, id: &str, repo: Option<&Repo>) -> Option<String> {
     let p = crate::projects::get(data, id).ok()?;
-    let elsewhere = p.github_account.is_some()
-        && p.kind == crate::folder::KIND
+    let pick = p.github_account.as_deref()?;
+    let elsewhere = p.kind == crate::folder::KIND
         && repo.is_some_and(|r| {
-            r.host != HOST && (covered(data, &p).0.first()).is_none_or(|(_, c)| c.host != r.host)
+            let all = homes(data, &p);
+            server(all.iter().map(|(_, r)| r), Some(pick)).is_none_or(|host| host != r.host)
         });
     p.github_account.filter(|_| !elsewhere)
 }
