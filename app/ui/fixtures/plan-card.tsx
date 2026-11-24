@@ -15,7 +15,7 @@ import { useDaemon } from "../src/daemon";
 import { Globe, Tasks } from "../src/icons";
 import { WorkerGlyph } from "../src/icons/worker-glyphs";
 import { CardSection, ChangesCard } from "../src/panel/card";
-import type { Step } from "../src/panel/plan";
+import { planFolds, type Step } from "../src/panel/plan";
 import type { SourceData } from "../src/panel/source/data";
 import { Line, Rows } from "../src/panel/source/rows";
 import { Cards, SummaryCard } from "../src/shell/summary-card";
@@ -73,6 +73,7 @@ const THREAD = `The plan is its own card now, under the summary card.
 
 /** One state, in a pane of its own: the toolbar's real toggle over a thread. */
 function Stage({ title, plan, tall = false, off = false, open, className = "h-160", step }: { title: string; plan: Step[]; tall?: boolean; off?: boolean; open?: boolean; className?: string; step?: boolean }) {
+  if (open && !planFolds.has(title)) planFolds.set(title, { open, earlier: false });
   const [shown, setShown] = useState(!off);
   const [at, setAt] = useState<number | null>(null);
   const now = at === null ? plan : steps(plan.map((each) => each.text), at);
@@ -95,7 +96,7 @@ function Stage({ title, plan, tall = false, off = false, open, className = "h-16
             <Markdown keep={`answer-${title}`} text={THREAD} />
           </div>
           <SummaryCard shown={shown}>
-            <Cards plan={now} planOpen={open}>
+            <Cards owner={title} plan={now}>
               <Summary tall={tall} />
             </Cards>
           </SummaryCard>

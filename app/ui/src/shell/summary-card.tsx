@@ -113,14 +113,17 @@ window.brigadier?.onMenu((command) => command === "toggle-summary" && toggleSumm
 // The card itself, pinned or floating: 300 wide, radius 16, its edge and faint shadow [D136].
 const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 flex-col rounded-menu bg-popover p-3 shadow-summary";
 
-/** The summary card and, with a plan, the plan's own card under it: short of room, the summary scrolls above the plan. */
-export function Cards({ plan, planOpen, children }: { plan?: readonly Step[] | null; planOpen?: boolean; children: ReactNode }) {
+/**
+ * The summary card and, with a plan, the plan's own card under it: short of room, the summary
+ * scrolls above the plan, down to its one title row, then the plan's list gives way too.
+ */
+export function Cards({ owner, plan, children }: { owner: string; plan?: readonly Step[] | null; children: ReactNode }) {
   return (
     <>
-      <div className={cx(SURFACE, "min-h-0 overflow-y-auto hide-scrollbar")}>{children}</div>
+      <div className={cx(SURFACE, "min-h-13 shrink-9999 overflow-y-auto hide-scrollbar empty:hidden")}>{children}</div>
       {plan && plan.length > 0 && (
-        <section aria-label="Plan" className={cx(SURFACE, "shrink-0")}>
-          <Plan plan={plan} startOpen={planOpen} />
+        <section aria-label="Plan" className={cx(SURFACE, "min-h-13")}>
+          <Plan owner={owner} plan={plan} />
         </section>
       )}
     </>
@@ -387,7 +390,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   });
   // Not drawn until its data is in: no skeleton first. In this order [D128].
   const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
-    <Cards plan={rows?.find((row) => row.id === owner)?.plan}>
+    <Cards owner={owner} plan={rows?.find((row) => row.id === owner)?.plan}>
       {folderChat ? (
         <FolderChanges
           repos={touched ?? []}
