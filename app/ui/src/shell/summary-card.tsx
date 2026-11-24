@@ -352,7 +352,6 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   const named = making?.kind === "worktree" ? making.branch : null;
   const shown = summaryReady(data) || !named ? data : { ...data, source: { checkout: "worktree" as const, branch: named, remote: null, upstream: null, ahead: 0, behind: 0, staged: [], changes: [], merging: null, rebasing: null, sinceBase: [] } };
   // A folder chat's card lists its folder's repos, read again as the session changes [D494, D544, D341].
-  // shortcut: a repo's PRs show as of the session's last change; push them with the row if they lag.
   const folderChat = projects?.find((each) => each.id === projectId)?.kind === "folder";
   const picked = useRepoPick(owner);
   const [touched, setTouched] = useState<TouchedRepo[] | null>(null);
@@ -378,9 +377,10 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       live = false;
     };
   }, [owner, has, folderChat, updated, picked, moves, daemon]);
-  // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, each with its repo's name.
-  const kept = shown.kept ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
-  const prs = folderChat ? (touched ?? []).flatMap((repo) => (repo.kept?.prs ?? []).map((pr) => ({ ...pr, repo: repo.name }))) : (shown.prs ?? kept?.prs ?? []);
+  // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, the row's alone: its own
+  // and each claimed repo's, as they change.
+  const kept = (folderChat ? null : shown.kept) ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
+  const prs = (folderChat ? null : shown.prs) ?? kept?.prs ?? [];
   // ⌘K's PR commands act on this card's branch [D170].
   const source = shown.source;
   useEffect(() => {
@@ -403,11 +403,11 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       ) : (
         <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} owner={owner} prs={prs} onViewPr={(pr) => openPr(owner, pr)} />
       )}
-      {/* shortcut: a folder chat's repo PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
+      {/* shortcut: a folder chat's PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
       <PrsCard
         owner={folderChat ? null : owner}
         prs={prs}
-        kept={folderChat ? null : kept}
+        kept={kept}
         nowMs={Date.now()}
         offline={shown.offline}
         onPr={(pr) => (folderChat ? pr.url && openLink(pr.url) : openPr(owner, pr))}

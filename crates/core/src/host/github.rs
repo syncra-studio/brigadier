@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 use std::{io, thread};
 
-const HOST: &str = "github.com";
+pub(super) const HOST: &str = "github.com";
 /// Each account's list is every repository it sees, 100 a page [D680].
 /// shortcut: stops at 1,000 an account; page on demand if someone sees more.
 const PAGES: usize = 10;

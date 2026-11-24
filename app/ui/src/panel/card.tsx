@@ -229,7 +229,7 @@ export function ChangesCard({
 }
 
 /** A repo of a folder chat's folder, as `source <id> repos` gives it [D494, D341]: `claimed`, its own copy. */
-export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
+export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; branch: string | null; added: number; removed: number };
 
 /**
  * A folder chat's Changes [D494, D544, D151, D341]: a row per repo of its folder, those it claimed first, "repo ·
