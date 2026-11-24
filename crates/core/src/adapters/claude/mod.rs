@@ -219,6 +219,10 @@ impl Adapter for Claude {
         let mut env = base_env(spec, &exe, self.keys());
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
+        // The queue's judge has no tools (code.claude.com/docs/en/cli-reference) [D771].
+        if spec.opts.contains_key("no_tools") {
+            argv.extend(["--tools".into(), "".into()]);
+        }
         Launch {
             argv,
             env,
