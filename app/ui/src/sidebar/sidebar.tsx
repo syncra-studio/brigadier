@@ -214,7 +214,7 @@ export function AppSidebar({
         </BrigadeTree>
       );
     });
-  const listed = { active, offline, onOpen };
+  const listed = { active, offline, onOpen, onRename: setRenaming };
   const projectRow = (project: Project) => {
     const key = `project:${project.id}`;
     const chats = chatsIn(project.id);
@@ -249,6 +249,7 @@ export function AppSidebar({
                       active={each.id === active}
                       attention={attentionOf([each], active)}
                       onOpen={onOpen}
+                      onRename={setRenaming}
                     />
                   ))
                 : [...pinnedProjects, ...unpinnedProjects].map((project) => (

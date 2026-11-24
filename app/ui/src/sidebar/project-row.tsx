@@ -98,7 +98,7 @@ export function ProjectRow({ project, current, open, onToggle, attention, chats,
 }
 
 /** A project's actions, in this order [D29 D30]. */
-function ProjectMenuItems({ project, chats }: { project: Project; chats: SessionRow[] }) {
+export function ProjectMenuItems({ project, chats }: { project: Project; chats: SessionRow[] }) {
   const reveal = () => void run(["projects", "reveal", project.id]).catch((cause) => showToast(`Couldn't reveal ${project.name}: ${errorText(cause)}`, { tone: "error" }));
   return (
     <>

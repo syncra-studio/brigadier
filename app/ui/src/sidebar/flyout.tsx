@@ -1,5 +1,6 @@
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
@@ -10,10 +11,16 @@ import { spacingPx } from "../components/tooltip";
 import { newSession } from "../home/start";
 import { Archive, ArrowUpRight, Chats, ComposeEditSquare, Settings } from "../icons";
 import { openProject } from "../projects/page";
+import type { Project } from "../projects/projects";
+import { readRemoval } from "../projects/remove";
 import { useMark } from "../session/turn";
+import { closed } from "../sessions/archive";
+import { ClosedMenuItems } from "../sessions/archived";
 import { openSettings } from "../settings/shell";
+import { RowMenuItems } from "./menu";
+import { ProjectMenuItems } from "./project-row";
 import { ProjectBadge, SidebarMark } from "./row";
-import { type Project, type SessionRow, useStatusWords } from "./words";
+import { type SessionRow, useStatusWords } from "./words";
 
 /*
  * The strip's squares, a project's or a session's [D805, D811], and its lists, each opening beside it to pick from
@@ -21,7 +28,18 @@ import { type Project, type SessionRow, useStatusWords } from "./words";
  */
 
 type Choose = (choice: () => void) => void;
-type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => void };
+type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => void; onRename: (row: SessionRow) => void };
+
+const LIT = "group-data-popup-open/square:bg-fill group-data-popup-open/square:text-foreground";
+/** A square with its row's right-click menu, lit (`LIT`) while that's open; around the button alone, so a right-click in its flyout isn't the square's. */
+function SquareMenu({ items, onOpen, children }: { items: ReactNode; onOpen?: () => void; children: ReactNode }) {
+  return (
+    <ContextMenu onOpenChange={(open) => open && onOpen?.()}>
+      <ContextMenuTrigger className="group/square">{children}</ContextMenuTrigger>
+      <ContextMenuContent>{items}</ContextMenuContent>
+    </ContextMenu>
+  );
+}
 
 /** A list's section: its heading stays, only its rows scroll, so what's above and below it stays in view [D280]. */
 function Section({ heading, actions, children }: { heading: ReactNode; actions?: ReactNode; children: ReactNode }) {
@@ -46,16 +64,35 @@ function Section({ heading, actions, children }: { heading: ReactNode; actions?:
 }
 
 /** A strip icon and its list, with a blue dot while anything in it needs you, failed or has a new reply. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
-function Flyout({ label, icon, lit = false, pressed, align = "start", children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; align?: "start" | "end"; children: (pick: Choose) => ReactNode }) {
+function Flyout({ label, icon, lit = false, pressed, align = "start", menu, onMenu, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; align?: "start" | "end"; menu?: ReactNode; onMenu?: () => void; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
+  // A line's menu went to another page (Fork).
+  useEffect(() => {
+    const close = () => setOpen(false);
+    addEventListener("hashchange", close);
+    return () => removeEventListener("hashchange", close);
+  }, []);
   const pick: Choose = (choice) => {
     setOpen(false);
     choice();
   };
+  const square = <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} pressed={pressed} dot={lit ? "bg-link" : undefined} className={LIT} />}>{icon}</PopoverTrigger>;
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} pressed={pressed} dot={lit ? "bg-link" : undefined} />}>{icon}</PopoverTrigger>
+      {menu ? (
+        <SquareMenu
+          items={menu}
+          onOpen={() => {
+            setOpen(false);
+            onMenu?.();
+          }}
+        >
+          {square}
+        </SquareMenu>
+      ) : (
+        square
+      )}
       {/* Focus lands on the list itself, not its first row, so Tab goes on into the rows. */}
       <PopoverContent
         ref={list}
@@ -73,20 +110,23 @@ function Flyout({ label, icon, lit = false, pressed, align = "start", children }
   );
 }
 
-/** A session in a list: its title and mark; picking it opens it. */
-function Line({ row, pick, active, offline, onOpen }: Rows & { row: SessionRow; pick: Choose }) {
+/** A session in a list: its title and mark; picking it opens it, a right-click its row's menu. */
+function Line({ row, pick, active, offline, onOpen, onRename }: Rows & { row: SessionRow; pick: Choose }) {
   const here = row.id === active;
   const words = useStatusWords(row);
   const mark = useMark(row, here);
   return (
-    <li>
-      <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className="pe-1.5" onClick={() => pick(() => onOpen(row.id))}>
-        <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
-        <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
-          <SidebarMark mark={mark} label={words ?? ""} />
-        </span>
-      </NavRow>
-    </li>
+    <ContextMenu>
+      <ContextMenuTrigger render={<li className="group/row" />}>
+        <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className="pe-1.5 group-data-popup-open/row:bg-fill" onClick={() => pick(() => onOpen(row.id))}>
+          <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
+          <span className={cx("flex shrink-0 empty:hidden", offline && "opacity-disabled")}>
+            <SidebarMark mark={mark} label={words ?? ""} />
+          </span>
+        </NavRow>
+      </ContextMenuTrigger>
+      <ContextMenuContent>{closed(row) ? <ClosedMenuItems row={row} /> : <RowMenuItems row={row} canPin={false} onRename={() => onRename(row)} />}</ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -109,10 +149,10 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
 export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
 
 /** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its list,
- *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]. */
+ *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]; a right-click its row's menu. */
 export function ProjectSquare({ project, current, attention, chats, ...rows }: Rows & { project: Project; current: boolean; attention: boolean; chats: SessionRow[] }) {
   return (
-    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} pressed={current}>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} pressed={current} menu={<ProjectMenuItems project={project} chats={chats} />} onMenu={() => readRemoval(project.id)}>
       {(pick) => (
         <div className="flex min-h-0 flex-col gap-3">
           <NavList>
@@ -144,11 +184,13 @@ export function ProjectSquare({ project, current, attention, chats, ...rows }: R
 }
 
 /** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
-export function SessionSquare({ row, project, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
+export function SessionSquare({ row, project, active, attention, onOpen, onRename }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean } & Pick<Rows, "onOpen" | "onRename">) {
   return (
-    <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
-      <ProjectBadge id={project?.id} name={project?.name ?? null} icon={project?.icon} size="size-4.5 text-badge" />
-    </TooltipIconButton>
+    <SquareMenu items={<RowMenuItems row={row} onRename={() => onRename(row)} />}>
+      <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} className={LIT} onClick={() => onOpen(row.id)}>
+        <ProjectBadge id={project?.id} name={project?.name ?? null} icon={project?.icon} size="size-4.5 text-badge" />
+      </TooltipIconButton>
+    </SquareMenu>
   );
 }
 
