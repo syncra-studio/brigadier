@@ -15,7 +15,6 @@ ipcRenderer.on("menu", (_event, command) => {
 
 // What the page asks of main (main.ts): the native folder and file pickers, the menu's commands, and the intro's window staging (intro.ts).
 ipcRenderer.on("full-screen", (_event, on: boolean) => document.documentElement.toggleAttribute("data-fullscreen", on));
-ipcRenderer.on("key", (_event, on: boolean) => document.documentElement.toggleAttribute("data-key", on));
 
 // The platform main draws the window for, which a dev flag can stand in for (main.ts).
 const platform = process.argv.find((arg) => arg.startsWith("--brigadier-platform="))?.split("=")[1] ?? process.platform;

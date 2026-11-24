@@ -290,12 +290,12 @@ fn size(path: &Path) -> u64 {
     total
 }
 
-/// `projects remove <id> [--check | --drop <session id,…>]` (PROPOSED flags and replies) [D172,
-/// D179, D181]. `--check` is the old dialog's preview: the sessions (and which are busy), their
-/// worktrees and size, merged branches, and each branch with work that never landed. Without it,
-/// each session goes through 1v's delete, its branch too only when `--drop` names it; the record
-/// goes once none is left. Anything left keeps the record (PROPOSED): a recorded delete retries
-/// at the next start, and Remove can run again.
+/// `projects remove <id> [--check]` (PROPOSED flag and replies) [D172, D179, D181]. `--check` is
+/// the old dialog's preview: the sessions (and which are busy), their worktrees and size, merged
+/// branches, and each branch with work that never landed. Without it, each session goes through
+/// 1v's delete, which keeps a branch with such work; the record goes once none is left. Anything
+/// left keeps the record (PROPOSED): a recorded delete retries at the next start, and Remove can
+/// run again.
 pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 2)?;
     let project = projects::get(data, id)?;
@@ -380,7 +380,6 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
             if working == 1 { "it" } else { "them" },
         )));
     }
-    let drops: Vec<&str> = flag(args, "--drop").unwrap_or("").split(',').collect();
     // Each delete stops a host and commits and takes away a worktree, a few hundred ms: run side by
     // side, 16 at a time, as --check's reads [D463]. Sessions that share a folder or claim one hand
     // it on between them [D1080], so those go one by one once the rest are done.
@@ -392,7 +391,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         })
     };
     let (apart, after): (Vec<&String>, Vec<&String>) = ids.iter().partition(|s| alone(s));
-    let one = |s: &String| delete(data, s, drops.contains(&s.as_str()), "remove");
+    let one = |s: &String| delete(data, s, false, "remove");
     let mut done = vec![];
     std::thread::scope(|t| {
         for chunk in apart.chunks(16) {
