@@ -190,7 +190,7 @@ pub(crate) fn stopped(data: &Path, wid: &str, by: &str) {
 }
 
 /// The daemon's: a hold whose reset has passed goes on as picked.
-pub(super) fn resume(data: &Path, wid: &str) -> io::Result<Value> {
+pub(crate) fn resume(data: &Path, wid: &str) -> io::Result<Value> {
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
     let Some(hold) = f.hold.clone().filter(|h| h["phase"] == "waiting") else {
         return Ok(json!({"ok": false, "error": "not_waiting"}));

@@ -31,10 +31,10 @@ pub use row::{holding, holds, row};
 
 use crate::{arg, owner, queue, settings};
 use brigadier_core as core;
-use brigadier_frames::procs;
+use brigadier_frames::{log, procs};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -437,9 +437,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 }
 
 /// The daemon's pass: makes what a restart left reserved, then writes and delivers results.
-pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
+/// `looked`: the sessions whose rows the index worked out now, all of them in its full passes.
+pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<String>) {
     family::resume(data);
-    for (id, row) in rows {
+    for (id, row) in rows.iter().filter(|(id, _)| looked.contains(*id)) {
         for r in records(data, id).iter().filter(|r| r.state == "starting") {
             make::begin(data, id, &r.wid);
         }
@@ -451,12 +452,12 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         if row["worker"]["kind"] == "doneNotMerged" {
             row::merged(data, id);
         }
-        // A hold the user said to wait out goes on once its reset has passed [D2028]. Its row says
-        // limit: `due` folds the whole log, too slow to do for every idle worker each pass.
-        if row["worker"]["kind"] == "limit"
+        // A hold the user said to wait out goes on as picked once its reset has passed [D2028].
+        if (row["worker"]["due"].as_u64()).is_some_and(|at| at <= log::now_ms())
             && matches!(row["state"].as_str(), Some("new" | "idle" | "limited"))
         {
-            crate::routing::due(data, id);
+            let (data, id) = (data.to_path_buf(), id.clone());
+            std::thread::spawn(move || crate::routing::resume(&data, &id));
         }
     }
     deliver(data, rows);

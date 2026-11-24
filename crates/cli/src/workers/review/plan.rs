@@ -125,11 +125,13 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
 /// waits on it (its turn stopped, the session closed, or it was answered without the review) is
 /// stopped as `brigadier stop` does; its one result is written as any stopped reviewer's [D385].
 pub(crate) fn plan_gone(data: &Path, id: &str) {
+    let mut open = records(data, id);
+    open.retain(|x| x.review["plan"].is_string() && x.state == "started");
+    if open.is_empty() {
+        return;
+    }
     let ended = super::result::all(data, id);
-    let open: Vec<_> = (records(data, id).into_iter())
-        .filter(|x| x.review["plan"].is_string() && x.state == "started")
-        .filter(|x| ended.iter().all(|(_, r)| r.wid != x.wid))
-        .collect();
+    open.retain(|x| ended.iter().all(|(_, r)| r.wid != x.wid));
     if open.is_empty() {
         return;
     }

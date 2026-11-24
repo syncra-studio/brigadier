@@ -43,8 +43,10 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 pub use account::{account_home, as_run, data_of};
 pub use send::{Call, CallIn, Running, applied, level, reconnect, recover, relevel, send};
@@ -286,25 +288,56 @@ pub struct Folded {
 
 const CHECKPOINT_EVERY: u64 = 16 << 20;
 
-/// Folds the whole log, starting from the checkpoint when one is valid, and writes a new one when
-/// the log grew a lot. The checkpoint is only a cache: deleting it changes nothing but speed.
+/// A session's last clean fold in this process, and the checkpoint's position then.
+struct Kept {
+    of: (u64, u64, SystemTime),
+    saved: u64,
+    fold: Folded,
+}
+
+// shortcut: a deleted session's stays until the process ends, about 40 KB each; drop it on delete
+// if a daemon's memory shows it.
+static KEPT: Mutex<BTreeMap<PathBuf, Kept>> = Mutex::new(BTreeMap::new());
+
+/// Which log, and which `session.json`, whose `starts_on` a fold begins from: a hold's answer
+/// rewrites it after the log has notes.
+fn folds_of(dir: &Path) -> Option<(u64, u64, SystemTime)> {
+    let log = fs::metadata(dir.join("log")).ok()?;
+    let spec = fs::metadata(dir.join("session.json")).ok()?;
+    Some((log.ino(), spec.ino(), spec.modified().ok()?))
+}
+
+/// Folds the whole log, carrying on from this process's last fold of it, else from the checkpoint
+/// when one is valid, and writes a new one when the log grew a lot. Both are only caches: losing
+/// them changes nothing but speed.
 pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
+    if !use_checkpoint {
+        return fold_from(dir, Folded::default(), |_| {});
+    }
     let ckpt = dir.join("fold.json");
+    let of = folds_of(dir);
     let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
-    let f = use_checkpoint
-        .then(|| {
-            fs::read(&ckpt)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
-        })
-        .flatten()
-        .filter(|f| f.v == norm::VERSION && f.pos <= log_len)
-        .unwrap_or_default();
-    let start = f.pos;
+    let kept = (KEPT.lock().unwrap().get(dir))
+        .filter(|k| Some(k.of) == of && k.fold.pos <= log_len)
+        .map(|k| (k.saved, k.fold.clone()));
+    let (mut saved, f) = kept.unwrap_or_else(|| {
+        let f = (fs::read(&ckpt).ok())
+            .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
+            .filter(|f| f.v == norm::VERSION && f.pos <= log_len)
+            .unwrap_or_default();
+        (f.pos, f)
+    });
     let f = fold_from(dir, f, |_| {})?;
     // Only a fold that ended clean has its state and offset at the same frame.
-    if use_checkpoint && f.norm.clean() && f.pos - start >= CHECKPOINT_EVERY {
-        let _ = write_atomic(&ckpt, &serde_json::to_vec(&f)?);
+    if f.norm.clean() {
+        if f.pos - saved >= CHECKPOINT_EVERY {
+            let _ = write_atomic(&ckpt, &serde_json::to_vec(&f)?);
+            saved = f.pos;
+        }
+        if let Some(of) = of {
+            let fold = f.clone();
+            (KEPT.lock().unwrap()).insert(dir.into(), Kept { of, saved, fold });
+        }
     }
     Ok(f)
 }
