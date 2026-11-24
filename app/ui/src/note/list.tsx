@@ -10,7 +10,7 @@ import { StickyNote } from "../icons/tab";
 import { EditPencil, Trash } from "../icons/thread";
 import { ago } from "../panel/words";
 import { setNoteTitle, UNTITLED_NOTE } from "../shell/note-tab";
-import { splitHead } from "./top-bar";
+import { DeletedLine, splitHead } from "./top-bar";
 import { useNoteChanges } from "./run";
 import type { daemonRun } from "../session/composer";
 
@@ -145,7 +145,7 @@ export function NotesColumn({
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title="Delete this note?"
-        description={`“${deleting?.title || UNTITLED_NOTE}” is removed with its chat. This can't be undone.`}
+        description={<DeletedLine name={deleting?.title || UNTITLED_NOTE} />}
         confirm="Delete"
         destructive
         onConfirm={() => {

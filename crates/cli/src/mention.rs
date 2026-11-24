@@ -76,14 +76,9 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         })
         .collect();
     // The project's notes, which a message can hand to its agent whole [D913].
-    let notes: Vec<Value> = crate::attach::note::listed(data, owner, req["project"].as_str())
-        .unwrap_or_default()
-        .iter()
-        .map(|n| {
-            let label = crate::attach::note::shown_name(n);
-            json!({"id": n["id"], "type": "note", "name": n["title"], "label": label, "whole": n["name"]})
-        })
-        .collect();
+    let notes =
+        crate::attach::note::listed(data, owner, req["project"].as_str()).unwrap_or_default();
+    let note = |n: &Value| json!({"id": n["id"], "type": "note", "name": n["title"], "label": crate::attach::note::shown_name(n)});
     let groups = if q.is_empty() {
         let top = found
             .iter()
@@ -91,7 +86,7 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .take(SECTION_ROWS);
         json!([
             {"title": "Workers", "items": workers.iter().map(|r| worker(r)).collect::<Vec<_>>()},
-            {"title": "Notes", "items": notes.iter().take(SECTION_ROWS).collect::<Vec<_>>()},
+            {"title": "Notes", "items": notes.iter().take(SECTION_ROWS).map(note).collect::<Vec<_>>()},
             {"title": "Message directly", "items": workers.iter().filter(|r| !ended(r)).map(|r| direct(r, None)).collect::<Vec<_>>()},
             {"title": "Files", "items": [], "note": "Type to search for files"},
             {"title": "Folders", "items": top.map(path).collect::<Vec<_>>()},
@@ -124,13 +119,18 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
                 all.push((rank, 3, 0, title));
             }
         }
-        for n in notes {
-            // A long name's words past what the row shows still find it.
-            let whole = n["whole"].as_str().unwrap_or("").to_lowercase();
-            if let Some(rank) = files::rank(n["label"].as_str().unwrap_or(""), &query)
-                .or_else(|| whole.contains(&query).then_some(1))
-            {
-                all.push((rank, 0, 1, n));
+        for n in &notes {
+            let row = note(n);
+            let of = |v: &Value| files::rank(v.as_str().unwrap_or(""), &query);
+            // Past what the row shows, a long name is found too: a given one as any name, a paragraph
+            // by its words only, as nearly any letters are in one in order.
+            let ranks = [
+                of(&row["label"]),
+                of(&n["name"]),
+                of(&n["whole"]).filter(|r| *r < 2),
+            ];
+            if let Some(rank) = ranks.into_iter().flatten().min() {
+                all.push((rank, 0, 1, row));
             }
         }
         for t in tabs {

@@ -64,6 +64,13 @@ export function EmojiButton({ emoji, onChange }: { emoji: string | null; onChang
   );
 }
 
+/** What deleting a note does, its name on one line whatever its length. */
+export const DeletedLine = ({ name }: { name: string }) => (
+  <>
+    “<span className="inline-block max-w-11/12 truncate align-bottom">{name}</span>” is removed with its chat. This can't be undone.
+  </>
+);
+
 /** The note's bar, the old app's page bar: the File menu and Insert. `name` is the note's as shown. */
 export function NoteTopBar({ content, name, listing, editor, onList, onRename, onDelete }: { content: Content; name: string; listing: boolean; editor: () => LexicalEditor | null; onList: () => void; onRename: () => void; onDelete: () => Promise<string | null> }) {
   const [deleting, setDeleting] = useState(false);
@@ -79,7 +86,9 @@ export function NoteTopBar({ content, name, listing, editor, onList, onRename, o
   const download = () => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([asMarkdown(content)], { type: "text/markdown" }));
-    link.download = `${[...content.title.replace(/[\\/:*?"<>|\n]+/g, " ").trim()].slice(0, 120).join("") || "Untitled note"}.md`;
+    const name = content.title.replace(/[\\/:*?"<>|\n]+/g, " ").trim();
+    // Cut at 120, before a drawn character (an emoji of several) that crosses it.
+    link.download = `${name.slice(0, new Intl.Segmenter().segment(name).containing(120)?.index).trim() || "Untitled note"}.md`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 0);
   };
@@ -141,7 +150,7 @@ export function NoteTopBar({ content, name, listing, editor, onList, onRename, o
         open={deleting}
         onOpenChange={setDeleting}
         title="Delete this note?"
-        description={`“${name}” is removed with its chat. This can't be undone.`}
+        description={<DeletedLine name={name} />}
         confirm="Delete"
         destructive
         onConfirm={() => {

@@ -58,10 +58,18 @@ fn plain(line: &str) -> &str {
         .trim()
 }
 
-/// The name in a note's `# ` line, without the emoji that may lead it; empty: it was never renamed.
+/// The name in a note's `# ` line, without the emoji that may lead it, one before a space as the
+/// page reads it; empty: it was never renamed.
 fn named(head: &str) -> &str {
-    head.trim_start_matches(|c: char| !c.is_ascii() && !c.is_alphanumeric())
-        .trim()
+    let head = head.trim();
+    let first = head.split_whitespace().next().unwrap_or("");
+    let emoji = first.starts_with(|c: char| !c.is_ascii() && !c.is_alphanumeric())
+        && core::title::one_drawn(first);
+    if emoji {
+        head[first.len()..].trim()
+    } else {
+        head
+    }
 }
 
 /// A project's notes folder, removed with it [D920], or the one chats in no project share [D921].
