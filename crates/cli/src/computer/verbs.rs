@@ -75,9 +75,6 @@ const BUSY: f64 = 2.0;
 const PAUSE_WAIT: Duration = Duration::from_secs(50);
 const SECURE: &str = "AXSecureTextField";
 
-/// By role, name and which of that name: its number, whether it's selected, where it is.
-type Controls = HashMap<(String, String, usize), (u64, Option<bool>, Option<[f64; 2]>)>;
-
 /// A session's window: the app, the read the numbers belong to and which rows are password fields.
 #[derive(Clone, Default)]
 struct Sess {
@@ -90,8 +87,8 @@ struct Sess {
     frames: HashMap<u64, [f64; 4]>,
     /// Each control's whole value: `type` reads its text back there.
     values: HashMap<u64, String>,
-    /// Each control's number, whether it's selected and its place, for what a diff can't hold.
-    controls: Controls,
+    /// The controls as the last read had them, for what a diff can't hold.
+    controls: Vec<diff::Control>,
     /// The browser's address bar, by number: `type --submit` checks it took the url.
     address: Option<u64>,
     /// The web page's frame, as the last read had it: actions inside it go to `brigadier browser`.

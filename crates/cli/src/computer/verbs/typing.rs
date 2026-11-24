@@ -136,7 +136,7 @@ impl Field {
     fn of(s: &Sess, n: u64) -> Field {
         Field {
             window: s.window,
-            role: (s.controls.iter().find(|(_, c)| c.0 == n)).map(|(key, _)| key.0.clone()),
+            role: (s.controls.iter().find(|c| c.n == n)).map(|c| c.role.clone()),
             frame: s.frames.get(&n).copied(),
         }
     }
