@@ -5,6 +5,7 @@ import { agentPage, focusPage, loadPage, pageBounds, whilePainting } from "./lay
 import { dropOverlay, glideTo, pressAt, raiseShield } from "./overlay";
 import { takeBackTab } from "./give";
 import { driverOf, isPaused, userUsed } from "./pause";
+import { tabOf } from "./windows";
 
 type Answer = Record<string, unknown>;
 const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(call);
@@ -12,7 +13,7 @@ const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(cal
 const script = (guest: number, op: Answer) => agent({ call: "script", guest, op }) as Promise<Answer | null>;
 
 /** The user has the tab now: they took it over, or took it back (Stop), so nothing more goes into the page. */
-const overtaken = (id: string) => isPaused(id) || !driverOf(id);
+const overtaken = (id: string) => isPaused(tabOf(id)) || !driverOf(tabOf(id));
 
 /** How long a scroll gets to move the page. */
 const SCROLL_MS = 350;
@@ -21,13 +22,12 @@ const pointOf = (answer: unknown) => (answer as { point?: { x: number; y: number
 
 /** Reads a page, or acts on one of its controls. */
 export async function agentRun(id: string, op: Answer): Promise<unknown> {
-  const { guest, element } = agentPage(id);
+  const { guest, element, zoom } = agentPage(id);
   if (op.kind === "press") return press(id, op);
   if (op.kind === "hover" || op.kind === "scroll") {
     const answer = await script(guest, op);
     const point = pointOf(answer);
     if (!point) return answer;
-    const zoom = element.getZoomFactor();
     const at = { x: point.x * zoom, y: point.y * zoom };
     if (op.kind === "hover") await glideTo(id, String(op.label ?? "Brigadier"), at);
     if (overtaken(id)) return { paused: "user" };
@@ -46,7 +46,6 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
   const point = (answer as { point?: { x: number; y: number } } | null)?.point;
   if (!point) return answer;
 
-  const zoom = element.getZoomFactor();
   await glideTo(id, String(op.label ?? "Brigadier"), { x: point.x * zoom, y: point.y * zoom });
   if (overtaken(id)) return { paused: "user" };
 
@@ -101,12 +100,13 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
     return;
   }
   const page = maybePage(id);
-  if (!page || !driverOf(id)) return;
-  raiseShield(id, page.element, pageBounds(id), () => {
+  const element = page?.element;
+  if (!element || !driverOf(id)) return;
+  raiseShield(id, element, pageBounds(id), () => {
     // Take over: the tab is the user's until they hand it back, and so is the keyboard.
     dropOverlay(id);
     userUsed(id);
-    page.element.focus();
+    element.focus();
   }, ({ x, y, deltaX, deltaY }) => void agent({ call: "wheel", guest: page.guest, x, y, deltaX, deltaY }), () => {
     // Stop: as the tab menu's Take back, the tab is the user's for good.
     const owner = driverOf(id);

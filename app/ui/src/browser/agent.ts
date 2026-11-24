@@ -9,6 +9,7 @@ import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
 import { askedOf, devToolsOpen, driverOf, isPaused, onPauseChanged, pausedFor } from "./pause";
 import { onProfileChanged } from "./profiles";
 import { signInCleared, signInStopOf, stopAgent, stoppedWords } from "./sign-in";
+import { isWindow, tabOf, windowOf, windowsOf } from "./windows";
 
 /**
  * Agents' browser calls (crates/cli/src/browser.rs), as the app runs them, ported from the old app's agentBrowser: a
@@ -124,7 +125,7 @@ const notCancelled = () => {};
 
 /** What `call` comes to on its tab. */
 async function runCall(call: Call): Promise<Result> {
-  const tab: string | null = call.op.tab ?? null;
+  const tab: string | null = typeof call.op.tab === "string" ? tabOf(call.op.tab) : null;
   if (tab !== null && moved.delete(tab)) return failed(PROFILE_CHANGED);
   let end: (result: Result) => void = notCancelled;
   const cancelled = new Promise<Result>((resolve) => { end = resolve; });
@@ -195,14 +196,19 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
   }
   if (op.op === "tabs") {
     const { active } = tabsOf(owner);
-    const tabs = browserTabs(owner).map((each) => {
+    const tabs = browserTabs(owner).flatMap((each) => {
       const shown = browserPage(each.id);
-      return { id: each.id, title: shown?.title ?? "", url: shown?.url || each.target || "", driver: each.driver ?? "", paused: isPaused(each.id), asked: Boolean(askedOf(each.id)), front: active === each.id };
+      const whose = { driver: each.driver ?? "", paused: isPaused(each.id), asked: Boolean(askedOf(each.id)) };
+      const opened = windowsOf(each.id).map(({ id, title, url }) => ({ id, title, url, ...whose, front: false, window: true }));
+      return [{ id: each.id, title: shown?.title ?? "", url: shown?.url || each.target || "", ...whose, front: active === each.id }, ...opened];
     });
     return { result: "tabs", tabs };
   }
-  const tab: Tab | undefined = browserTabs(owner).find((each) => each.id === op.tab);
+  const tab: Tab | undefined = browserTabs(owner).find((each) => each.id === tabOf(String(op.tab)));
   if (!tab) return failed(`There is no tab ${op.tab} in this session now: open one with \`brigadier browser open <url>\`.`);
+  const opened = isWindow(op.tab) ? op.tab as string : null;
+  if (opened && !windowOf(opened)) return failed(`The window ${opened} closed. Its tab is ${tab.id}.`);
+  if (opened && TABS_ONLY.has(op.op)) return failed(`\`${op.op}\` works on a tab, not on a window its page opened: ${opened} is one, of ${tab.id}.`);
   // Showing never moves the window or the session: only which tab the session has in front.
   if (op.op === "show") {
     selectTab(owner, tab.id);
@@ -227,12 +233,14 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     agentDoing(tab.id, DOING[op.op] ?? null);
     await agentDrive(tab.id, true);
   }
-  const result = await act(tab.id, op, owner, label);
+  const result = await act(opened ?? tab.id, op, owner, label);
   return !tab.driver && result.result === "page" ? { ...result, user: true } : result;
 }
 
 /** The calls that only look, which work on any tab of the session. */
 const READ_ONLY = new Set(["read", "screenshot", "events", "wait"]);
+/** The calls a window a page opened doesn't take. */
+const TABS_ONLY = new Set(["navigate", "go", "eval", "ask", "show", "close"]);
 /** The longest an agent's `wait` waits. */
 const WAIT_MOST_MS = 20_000;
 
@@ -248,7 +256,7 @@ async function waited(tab: string, op: Op, owner: string): Promise<Result> {
   const deadline = Date.now() + ms;
   const needle = wanted.toLowerCase();
   for (;;) {
-    if (isPaused(tab)) return { result: "paused", tab };
+    if (isPaused(tabOf(tab))) return { result: "paused", tab: tabOf(tab) };
     const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
     const there = String((answer as { text?: unknown } | null)?.text ?? "").toLowerCase().includes(needle);
     if (there === Boolean(op.text)) return page(tab, owner);
@@ -292,7 +300,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "click":
     case "type":
     case "press": {
-      const before = new Set(browserTabs(owner).map((each) => each.id));
+      const before = idsNow(owner);
       const ask = (approved: string | null) => agentRun(tab, {
         kind: op.op,
         label,
@@ -303,6 +311,11 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         declared: op.declared,
         always: op.always,
         approved,
+      }).catch(async (error: unknown) => {
+        // A window may close on the very click, as Approve's does, before the click's own answer comes.
+        await wait(SETTLE_MS);
+        if (!isWindow(tab) || windowOf(tab)) throw error;
+        return { done: true };
       });
       let answer = await ask(approvedHere(tab, op.approved));
       // Full: nothing asks, so the page's own question is answered yes at once.
@@ -311,13 +324,14 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       if (overtaken) return overtaken;
       const asked = askOf(answer);
       if (asked) {
-        const shown = browserPage(tab);
+        const shown = shownPage(tab);
         return { result: "needsApproval", tab, url: urlOf(answer) ?? shown?.url ?? "", generation: agentPage(tab).generation, ...asked };
       }
       const error = errorOf(answer);
       if (error) return failed(error);
-      await settled(tab);
-      return withDialogs(withPopups(await page(tab, owner), owner, before), answer);
+      const left = await settled(tab);
+      const after = withDialogs(withPopups(await page(left, owner), owner, before), answer);
+      return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
     }
     case "eval": {
       // At Auto a run asks: a yes goes with one call, on the page it was given on.
@@ -332,7 +346,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     }
     case "screenshot": {
       const png = await agentCapture(tab);
-      return { result: "shot", tab, url: browserPage(tab)?.url ?? "", png: base64(png) };
+      return { result: "shot", tab, url: shownPage(tab)?.url ?? "", png: base64(png) };
     }
     case "ask": {
       // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
@@ -348,12 +362,18 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
   }
 }
 
-/** The page after an action, naming the tabs it opened (a popup, such as a sign-in window): the agent goes on in them by their ids. */
+/** The session's browser tabs and the windows their pages opened. */
+const idsNow = (owner: string) => new Set(browserTabs(owner).flatMap((each) => [each.id, ...windowsOf(each.id).map(({ id }) => id)]));
+
+/** The page after an action, naming the tabs and windows it opened: the agent goes on in them by their ids. */
 function withPopups(result: Result, owner: string, before: Set<string>): Result {
-  const opened = browserTabs(owner).filter((each) => !before.has(each.id));
+  const opened = [...idsNow(owner)].filter((id) => !before.has(id));
   if (result.result !== "page" || !opened.length) return result;
   const read = result.page as { text: string };
-  const lines = opened.map((each) => `(This opened a new tab: ${each.id} at ${each.target}. Use it with --tab.)`);
+  const lines = opened.map((id) => {
+    const at = windowOf(id)?.url ?? browserTabs(owner).find((each) => each.id === id)?.target;
+    return `(This opened a new ${isWindow(id) ? "window" : "tab"}: ${id} at ${at}. Use it with --tab.)`;
+  });
   return { ...result, page: { ...read, text: `${read.text}\n\n${lines.join("\n")}` } };
 }
 
@@ -393,21 +413,29 @@ function urlOf(answer: unknown): string | null {
   return typeof answer === "object" && answer && "url" in answer ? String(answer.url) : null;
 }
 
+/** What's loaded in a tab, or in a window its page opened. */
+const shownPage = (id: string): { url: string; title: string; loading: boolean; ready?: boolean } | undefined => {
+  const opened = windowOf(id);
+  return opened ? { ...opened, ready: true } : browserPage(id);
+};
+
 /** Waits for the tab's page to finish loading, `LOAD_WAIT_MS` at most. */
 async function loaded(tab: string): Promise<void> {
   const deadline = Date.now() + LOAD_WAIT_MS;
   while (Date.now() < deadline) {
-    const shown = browserPage(tab);
+    const shown = shownPage(tab);
     if (!shown) throw new Error("The tab closed.");
     if (shown.ready && !shown.loading) return;
     await wait(100);
   }
 }
 
-/** After an action: a moment for a load to start, then the load, if one did. */
-async function settled(tab: string): Promise<void> {
+/** After an action: a moment for a load to start, then the load, if one did. A window that closed leaves its tab. */
+async function settled(tab: string): Promise<string> {
   await wait(SETTLE_MS);
-  await loaded(tab);
+  const left = isWindow(tab) && !windowOf(tab) ? tabOf(tab) : tab;
+  await loaded(left);
+  return left;
 }
 
 /** The tab's page, read for the agent. */
@@ -415,13 +443,13 @@ async function page(tab: string, owner: string): Promise<Result> {
   const stopped = await stoppedAt(tab);
   if (stopped) return stopped;
   const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
-  if (devToolsOpen(tab)) return failed(PAUSED_DEVTOOLS);
+  if (devToolsOpen(tabOf(tab))) return failed(PAUSED_DEVTOOLS);
   const error = errorOf(answer);
   if (error) return failed(error);
   const read = answer as { url: string; title: string; text: string };
   // A tab no one has on screen follows its page here, so it opens there again after a restart (8192: tabs.rs's URL_MAX).
   if (/^https?:/i.test(read.url) && read.url.length <= 8192 && browserTabs(owner).some((each) => each.id === tab && each.target !== read.url)) setTabUrl(owner, tab, read.url);
-  const shown = browserPage(tab);
+  const shown = shownPage(tab);
   return { result: "page", tab, page: { url: read.url, title: read.title, generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: read.text }, user: false };
 }
 
@@ -429,16 +457,18 @@ async function page(tab: string, owner: string): Promise<Result> {
  * What the agent hears on a page that stops it: the action it asked for is done, so this is its answer and not `paused`,
  * which the daemon would run again after Continue. Its next call on the tab waits.
  */
-async function stoppedAt(tab: string): Promise<Result | null> {
+async function stoppedAt(id: string): Promise<Result | null> {
+  const tab = tabOf(id);
   if (!driverOf(tab)) return null;
   let stop = askedOf(tab);
   if (!stop && !isPaused(tab)) {
-    const found = await signInStopOf(tab);
-    if (!found) signInCleared(tab);
-    else if (stopAgent(tab, found)) stop = found;
+    const found = await signInStopOf(id);
+    if (!found) {
+      if (!isWindow(id)) signInCleared(tab);
+    } else if (stopAgent(tab, { ...found, window: isWindow(id) })) stop = found;
   }
   if (!stop) return null;
-  const shown = browserPage(tab);
+  const shown = shownPage(tab);
   const read = { url: shown?.url ?? "", title: shown?.title ?? "", generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
   return { result: "page", tab, page: read, user: false, stopped: true };
 }

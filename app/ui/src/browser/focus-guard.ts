@@ -25,8 +25,9 @@ export function watchUserComposition(): void {
 
 export const userComposing = (): boolean => composingElement !== null && composingElement === document.activeElement;
 
-/** Holds the user's focus through an input to `page`; the answer puts it back. */
-export function guardFocus(page: HTMLElement, giveBack: () => void): () => void {
+/** Holds the user's focus through an input to `page`; the answer puts it back. A window's page (null) isn't in this one. */
+export function guardFocus(page: HTMLElement | null, giveBack: () => void): () => void {
+  if (!page) return () => {};
   if (inFlight === 0) userElement = document.activeElement;
   inFlight += 1;
   const previous = userElement;

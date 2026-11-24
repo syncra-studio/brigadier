@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld("brigadierShell", {
   profilePartition: (profileId: string) => ipcRenderer.invoke("brigadier:profile-partition", profileId),
   guestFavicon: (id: number, href: string) => ipcRenderer.invoke("brigadier:guest-favicon", id, href),
   onGuestPopup: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-popup", (_event, details) => listener(details)),
+  onGuestWindow: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-window", (_event, details) => listener(details)),
   onGuestPermission: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-permission", (_event, details) => listener(details)),
   onGuestPermissionRefused: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-permission-refused", (_event, details) => listener(details)),
   onGuestEscape: (listener: (details: unknown) => void) => void ipcRenderer.on("brigadier:guest-escape", (_event, details) => listener(details)),

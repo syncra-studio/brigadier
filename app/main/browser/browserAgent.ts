@@ -11,6 +11,7 @@ import { forgetSecrets, pictureForAgent, runScript, sweptAndScrubbed } from "./b
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { stopOf } from "./browserSignIn";
+import { openerTab } from "./guestPopups";
 
 export { watchNetwork };
 
@@ -24,10 +25,11 @@ const held = new Map<number, Held>();
 const opened = new Set<number>();
 export const devToolsOpen = (guest: WebContents): boolean => opened.has(guest.id) || guest.isDevToolsOpened();
 
-/** The guest of a call from `sender`, which must be the page hosting it. */
+/** The guest of a call from `sender`, which must be the page hosting it, or the tab whose window it is. */
 function guestFor(sender: WebContents, id: unknown): WebContents {
   const guest = typeof id === "number" ? webContents.fromId(id) : undefined;
-  if (!guest || guest.isDestroyed() || guest.getType() !== "webview" || guest.hostWebContents !== sender) throw new Error("That page is gone.");
+  const tab = guest && (openerTab(guest) ?? guest);
+  if (!guest || !tab || guest.isDestroyed() || tab.isDestroyed() || tab.getType() !== "webview" || tab.hostWebContents !== sender) throw new Error("That page is gone.");
   return guest;
 }
 
@@ -198,6 +200,11 @@ export function installBrowserAgent(): void {
       case "attach":
         return attach(guest);
       case "release":
+        // Its windows go with it.
+        for (const id of held.keys()) {
+          const window = webContents.fromId(id);
+          if (window && openerTab(window) === guest) void release(window);
+        }
         return release(guest);
       case "click":
         return acting(guest, async (send) => {
@@ -217,7 +224,8 @@ export function installBrowserAgent(): void {
         // Widget events, as Enter's. The page gets its focus first, so a focus handler that makes the field a
         // password field has run, and then the last look: keys never go into one [D518 D725].
         return acting(guest, async (send) => {
-          guest.focus();
+          // A window's would come to the front of the user's screen; its page has the emulated focus already.
+          if (!openerTab(guest)) guest.focus();
           const looked = await send("Runtime.evaluate", { expression: FOCUSED_SECRET, returnByValue: true }) as { result?: { value?: unknown } };
           if (looked.result?.value !== false) throw new Error("That is a password field, and only the user fills those in, so no key was sent. Ask them to sign in in this tab, and go on when they say so.");
           for (const each of events) guest.sendInputEvent(each);

@@ -300,7 +300,9 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
 /// the pause's wait at most, then hears `paused`. A call whose agent went never reaches the tab.
 fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool) -> Value {
     let until = Instant::now() + PAUSE_WAIT;
+    // A window's id is its tab's and its own (windows.ts): the user takes over the tab.
     let tab = op["tab"].as_str().unwrap_or("");
+    let tab = tab.split('/').next().unwrap_or(tab);
     lock(&HUB.owners).insert(me.to_string(), owner.to_string());
     loop {
         if !tab.is_empty() && !unpaused(tab, me, until, here) {
