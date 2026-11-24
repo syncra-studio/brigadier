@@ -1,0 +1,4 @@
+/* Mockup fixtures only: their own classes. Never in the app's CSS. */
+@reference "../src/theme.css";
+
+@import "tailwindcss/utilities.css" layer(utilities) source("./");
