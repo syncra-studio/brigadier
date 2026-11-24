@@ -311,7 +311,8 @@ function onFrame(frame: Record<string, any>): void {
     if (onBrowser) send({ op: "browser" });
     // The open thread's snapshot reaches the rows it still shows, so a place far up stays put [D537].
     watch(reachOf(session));
-  } else if (frame.status === "refused") {
+  } else if (frame.status === "refused" || (frame.re === listId && frame.ok === false)) {
+    // The daemon refuses an app a session's agent opened by its answer to the list, which has no rows then.
     set({ daemon: null, refused: frame.error });
   } else if (frame.re === listId) {
     rows = new Map(frame.rows.map((row: Row) => [row.id, row]));
