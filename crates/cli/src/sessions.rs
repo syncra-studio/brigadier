@@ -30,14 +30,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let specs: Vec<_> = ids
                 .map(|id| core::load(data, id).map(|s| (id, s)))
                 .collect::<io::Result<_>>()?;
+            let mut running = vec![];
             for (id, spec) in specs {
-                archive(data, id, &spec, false)?;
+                running.extend(archive(data, id, &spec, false)?);
                 // A Brigade's sessions go with it, each archived as it would be alone; one that
                 // fails stays and is named, and those archived stay archived [D3111].
                 let failed: Vec<String> = (subs(data, &spec, unarchived).iter())
                     .filter_map(|sub| {
-                        let e = core::load(data, sub).and_then(|s| archive(data, sub, &s, true));
-                        e.err().map(|e| format!("{sub}: {e}"))
+                        match core::load(data, sub).and_then(|s| archive(data, sub, &s, true)) {
+                            Ok(more) => running.extend(more),
+                            Err(e) => return Some(format!("{sub}: {e}")),
+                        }
+                        None
                     })
                     .collect();
                 if !failed.is_empty() {
@@ -46,6 +50,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         "its sessions not archived: {failed}"
                     )));
                 }
+            }
+            // All are archived; a worker's process that wouldn't stop is named.
+            if !running.is_empty() {
+                let running = running.join("; ");
+                return Err(io::Error::other(format!(
+                    "archived, but its workers' processes still run: {running}"
+                )));
             }
         }
         // The Brigade's restore brings back the sessions archived with it, not one archived on
@@ -217,22 +228,26 @@ fn unarchived(dir: &Path) -> bool {
 }
 
 /// One session's archive: what a rewind or Replace all cut short settles first, its host stops,
-/// then core archives it. `with`: a Brigade's session going with it [D3111].
-fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<()> {
+/// then core archives it. `with`: a Brigade's session going with it [D3111]. Archived, its workers
+/// whose processes didn't stop.
+fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
         .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
     // What its finished workers left running goes; one at work keeps its own.
-    for w in family(data, id) {
-        end_jobs(data, &w.wid)?;
-    }
+    let running = (family(data, id).iter())
+        .filter_map(|w| {
+            let e = end_jobs(data, &w.wid).err()?;
+            Some(format!("{}: {e}", w.title))
+        })
+        .collect();
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].
     let parent = crate::workers::link(data, id).map(|l| l.parent);
     for owner in [Some(id.to_string()), parent].into_iter().flatten() {
         let args = ["tabs", &owner, "ungroup", id].map(String::from);
         crate::tabs::run(data, &args)?;
     }
-    Ok(())
+    Ok(running)
 }
 
 /// The workers under a session, theirs too; a Brigade's sessions aren't among them [D189].
@@ -246,10 +261,10 @@ fn family(data: &Path, id: &str) -> Vec<workers::Record> {
         .collect()
 }
 
-/// Ends what a worker whose turns are over left running, but a mockup's server.
+/// Ends what a worker whose turns are over left running, a mockup's server too.
 pub(crate) fn end_jobs(data: &Path, id: &str) -> io::Result<()> {
     let dir = core::session_dir(data, id);
-    if !dir.join("session.json").exists() || crate::relay::mockup::state(data, id).is_some() {
+    if !dir.join("session.json").exists() {
         return Ok(());
     }
     let f = core::fold(&dir, true)?.fold;
@@ -272,6 +287,8 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
     // Its terminals first: none writes into its folder while it is checkpointed or removed.
     crate::tabs::terminal::stop_all(data, id);
     let _ = owner::call(data, id, json!({"op": "stop", "by": by}));
+    // First: the host waits for whoever still holds its agent's output.
+    core::background::end_left(&core::session_dir(data, id))?;
     owner::release(data, id)
 }
 

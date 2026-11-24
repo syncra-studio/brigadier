@@ -321,7 +321,6 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
     let swept = kill_left(f, dir);
-    // A mockup's server too.
     let alive = crate::background::end(dir, f, None, || ()).unwrap_or_default();
     if let Some(p) = alive.first() {
         return fail(vec![format!("process {} didn't stop", p.pid)], swept);

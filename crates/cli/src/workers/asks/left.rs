@@ -1,6 +1,7 @@
 //! A finished worker that left a process running: the user keeps or stops it, on Rust's question
-//! card in their own chat, once per finish. Unanswered, it runs on. Never a mockup's server.
+//! card in their own chat, once per finish. Unanswered, it runs on. A mockup's only after the pick.
 
+use crate::relay::mockup;
 use crate::workers::{link, place, read_json, write_json};
 use crate::{owner, sessions};
 use brigadier_core::{self as core, adapters};
@@ -57,7 +58,9 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
             _ => return,
         }
     }
-    if finished && !jobs.is_empty() && crate::relay::mockup::state(data, wid).is_none() {
+    // Until the pick the user may still compare a mockup's variants.
+    let comparing = || mockup::state(data, wid).is_some_and(|m| m["picked"].is_null());
+    if finished && !jobs.is_empty() && !comparing() {
         let _ = ask(data, wid, w, jobs);
     }
 }

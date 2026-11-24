@@ -347,12 +347,12 @@ pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
             return Ok(stopped);
         }
         match owner::call(data, id, json!({"op": "stop", "by": by})) {
-            Ok(v) if by != "pause" => core::background::end_left(&dir).map(|()| v),
             Ok(v) => Ok(v),
             // No owner: nothing can be running under us, but leftovers recorded in the log still go.
-            Err(e) => Ok(
-                json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&core::fold(&dir, true)?.fold, &dir)}),
-            ),
+            Err(e) => {
+                let f = core::fold(&dir, true)?;
+                Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold, &dir)}))
+            }
         }
     })();
     change(&dir, |q| {

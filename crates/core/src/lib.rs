@@ -390,19 +390,16 @@ pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
     }
 }
 
-/// Kills what is left of process groups this session recorded, checked by start time, and ends
-/// what's proven its own outside them. Only for when no owner holds them any more. Only groups
-/// recorded under `dir` itself: a copied log names another folder's, maybe live, and an old record
-/// names none [D220].
+/// Kills what is left of process groups this session recorded, checked by start time; what runs
+/// outside them goes on. Only for when no owner holds them any more. Only groups recorded under
+/// `dir` itself: a copied log names another folder's, maybe live, and an old record names none [D220].
 pub fn sweep(f: &Fold, dir: &Path) -> usize {
     let here = fs::canonicalize(dir).unwrap_or_else(|_| dir.into());
-    let killed = fold::live_groups(f, &procs::all())
+    fold::live_groups(f, &procs::all())
         .iter()
         .filter(|g| here.to_str() == Some(g.2.as_str()))
         .map(|&&(g, s, _)| procs::signal_group(g, s, libc::SIGKILL))
-        .sum();
-    let _ = background::end_left(dir);
-    killed
+        .sum()
 }
 
 /// The backend's CLI version, cached by executable path and modification time.

@@ -162,12 +162,8 @@ pub fn end(
     Some(alive(&tree))
 }
 
-/// Ends all of the session's for good, its agent gone; but a mockup's server, which the user may
-/// still compare: only its delete says that's over.
+/// Ends all of the session's as it's archived, its agent gone.
 pub fn end_left(dir: &Path) -> io::Result<()> {
-    if dir.join("mockup.json").exists() {
-        return Ok(());
-    }
     let fold = crate::fold(dir, true)?.fold;
     match end(dir, &fold, None, || ()).unwrap_or_default().first() {
         Some(p) => Err(io::Error::other(format!("process {} didn't stop", p.pid))),
