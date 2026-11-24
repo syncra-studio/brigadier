@@ -111,7 +111,7 @@ const asked = new Set<string>();
 /**
  * Rust's row for a session started from this one: its title and live status from that session's row, Open to go
  * there; a failed start says why and what stayed, with Put back [D204, D35]. PROPOSED: an intent with no result
- * (a crash in between) is asked again once per app run, while this thread is open.
+ * (a crash in between) is asked again once per app run for Send as new, while this thread is open.
  */
 export function SideLine({ item }: { item: Started }) {
   const { daemon, rows } = useDaemon();
@@ -119,13 +119,13 @@ export function SideLine({ item }: { item: Started }) {
   const local = pending.use().get(item.session);
   const busy = local?.asking;
   useEffect(() => {
-    if (item.state !== "starting" || !daemon || !source || busy || asked.has(item.session)) return;
+    if (item.state !== "starting" || !item.replay || !daemon || !source || busy || asked.has(item.session)) return;
     asked.add(item.session);
     ask({ op: "run", args: ["side", source, item.session] });
-  }, [item.state, daemon, source, busy]);
+  }, [item.state, item.replay, daemon, source, busy]);
   if (item.state === "failed") {
     const left = item.left?.length ? ` · left behind: ${item.left.join(", ")}` : "";
-    return <StartedLine title="" error={`${item.error ?? "Refused"}${left}`} onPutBack={source && item.text ? () => putBack(source, item.text!) : undefined} />;
+    return <StartedLine title={item.title ?? ""} error={`${item.error ?? "Refused"}${left}`} onPutBack={source && item.text ? () => putBack(source, item.text!) : undefined} />;
   }
   const row = rows?.find((each) => each.id === item.session);
   // PROPOSED: any mark but working, needs and amber reads Done; no row (deleted) shows no status [D204].
