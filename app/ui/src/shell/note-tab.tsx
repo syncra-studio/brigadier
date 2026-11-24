@@ -187,6 +187,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
         <div data-slot="note-tab" className="note-tab">
           <NoteTopBar
             content={content}
+            name={title}
             listing={list}
             editor={() => editor.current}
             onList={() => showList(!list)}

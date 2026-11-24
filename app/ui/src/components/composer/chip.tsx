@@ -67,13 +67,15 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
     </>
   );
   const tone = command ? COMMAND_TONES[chip.type] : chip.type === "note" ? NOTE_TONE : (chip.type === "file" && fileTone(chip.label)) || "text-link";
+  // A note's name holds one line whatever its length, as drafts and messages from before names were cut keep theirs whole.
+  const line = chip.type === "note" ? "inline-block max-w-full truncate align-bottom" : "inline";
   // A button where it opens, so Tab reaches it and Enter or Space opens it (the field leaves those to buttons).
   return open ? (
-    <button type="button" data-slot="composer-chip" onClick={open} className={cx("inline cursor-pointer rounded-xs focus-visible:focus-ring", tone)}>
+    <button type="button" data-slot="composer-chip" onClick={open} className={cx(line, "cursor-pointer rounded-xs focus-visible:focus-ring", tone)}>
       {content}
     </button>
   ) : (
-    <span data-slot="composer-chip" className={tone}>
+    <span data-slot="composer-chip" className={cx(line, tone)}>
       {content}
     </span>
   );

@@ -2,7 +2,7 @@
 //! with its first line under its name; with words typed, the notes holding every one of them
 //! anywhere in their text, with the line around the first [D921].
 
-use super::{check_id, moved, plain, split, title};
+use super::{check_id, moved, named, plain, short, split, title};
 use crate::remove;
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -44,7 +44,7 @@ fn preview<'a>(text: &'a str, name: &str) -> &'a str {
     let mut lines = body.lines().map(plain).filter(|l| !l.is_empty());
     let first = lines.next().unwrap_or("");
     // An unnamed note is named by its first line: the line after it shows.
-    match super::named(head).is_empty() && first == name {
+    match named(head).is_empty() && first == name {
         true => lines.next().unwrap_or(""),
         false => first,
     }
@@ -105,8 +105,8 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
                 None => continue,
             },
         };
-        let (name, pin) = (title(&text), pinned.contains(&note));
-        let shown = preview(&text, name);
+        let (whole, pin) = (title(&text), pinned.contains(&note));
+        let (name, shown) = (short(whole), preview(&text, whole));
         // A match already in sight, in the name or the line under it, isn't shown again.
         let hit = hit.filter(|h| {
             !name
@@ -115,7 +115,12 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
                 && !shown.contains(h.trim_matches('…'))
         });
         let head = split(&text).0;
-        notes.push((pin, at, json!({"id": note, "title": name, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
+        // What a rename starts from: the user's whole name, or what its text is called, without the cut's "…".
+        let from = match named(head).is_empty() && name != whole {
+            true => name.trim_end_matches('…'),
+            false => whole,
+        };
+        notes.push((pin, at, json!({"id": note, "title": name, "name": from, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
     }
     notes.sort_by_key(|n| (!n.0, std::cmp::Reverse(n.1)));
     json!({"ok": true, "notes": notes.into_iter().map(|(.., n)| n).collect::<Vec<_>>()})
