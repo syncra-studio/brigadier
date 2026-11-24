@@ -2,7 +2,7 @@
 //! asked for one, fresh as New chat or forked as Fork. Recorded in its starter's folder before
 //! anything is made, every step safe to run again under the same ids: the daemon's pass finishes
 //! one a restart cut short, and a failed one takes its session away [D54]. Not a worker and no
-//! link between them: the first message goes as a peer's, and nothing comes back.
+//! link between them: the first message goes as a peer's, and only setup failures are reported here.
 
 use super::refuse;
 use crate::{control, models, owner, peers, queue, routing, side, title, workers};
@@ -26,6 +26,8 @@ struct Record {
     at: u64,
     /// starting | started | failed
     state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
     title: String,
     text: String,
     /// What was asked: a call that asks the same again is the same start.
@@ -142,7 +144,7 @@ fn start(
         .collect();
     if let Some(r) = recent.iter().find(|r| r.asked == asked) {
         return Ok(
-            json!({"ok": true, "id": r.id, "title": r.title, "fork": fork, "text": format!("Already started {} ({}).", r.title, r.id)}),
+            json!({"ok": true, "id": r.id, "title": r.title, "fork": fork, "state": r.state, "text": format!("Already started {} ({}).", r.title, r.id)}),
         );
     }
     if recent.len() >= MOST {
@@ -165,7 +167,7 @@ fn start(
         },
     };
     let mut reply = format!(
-        "Starting session {} ({}), {how}. It works and answers the user in its own chat. Tell the user where to find it.",
+        "Starting session {} ({}), {how}. Tell the user it's starting and where to find it. It works and answers in its own chat. Brigadier will tell you here if setup fails.",
         r.title, r.id
     );
     let dirty = || workers::git(&parent.cwd, &["status", "--porcelain"]);
@@ -175,7 +177,7 @@ fn start(
     save(data, me, &r).map_err(said)?;
     let intent = json!({"event": "side", "phase": "intent", "session": r.id, "title": r.title});
     let _ = owner::call(data, me, json!({"op": "note", "data": intent}));
-    let reply = json!({"ok": true, "id": r.id, "title": r.title, "fork": fork, "text": reply});
+    let reply = json!({"ok": true, "id": r.id, "title": r.title, "fork": fork, "state": "starting", "text": reply});
     let (data, me) = (data.to_path_buf(), me.to_string());
     thread::spawn(move || {
         let _family = family;
@@ -308,6 +310,7 @@ fn reserve(
         mid: control::new_cid(),
         at: log::now_ms(),
         state: "starting".into(),
+        error: None,
         title,
         text: text.into(),
         asked,
@@ -320,8 +323,14 @@ fn reserve(
 /// nothing left of it. One whose message is on its way was made.
 fn finish(data: &Path, me: &str, mut r: Record) -> io::Result<()> {
     let dir = core::session_dir(data, &r.id);
-    let made = make(data, me, &r, &dir);
-    if made.is_err() {
+    // A failure already recorded is only cleaned up and reported after a restart.
+    if r.error.is_none()
+        && let Err(e) = make(data, me, &r, &dir)
+    {
+        r.error = Some(e.to_string());
+        save(data, me, &r)?;
+    }
+    if r.error.is_some() {
         if dir.join("session.json").exists() {
             let reply = crate::sessions::delete(data, &r.id, true, "delete")?;
             if reply["ok"] != true {
@@ -331,13 +340,35 @@ fn finish(data: &Path, me: &str, mut r: Record) -> io::Result<()> {
             fs::remove_dir_all(&dir)?;
         }
     }
-    let note = json!({"event": "side", "phase": "done", "session": r.id, "ok": made.is_ok(),
-        "base": worktrees::base(&dir), "title": r.title, "error": made.as_ref().err().map(|e| e.to_string())});
-    owner::ensure(data, &core::load(data, me)?)?;
+    let src = core::load(data, me)?;
+    let mut note = json!({"event": "side", "phase": "done", "session": r.id, "ok": r.error.is_none(),
+        "base": worktrees::base(&dir), "title": r.title, "error": r.error});
+    if r.error.is_some() {
+        note["text"] = json!(r.text);
+    }
+    owner::ensure(data, &src)?;
     owner::call(data, me, json!({"op": "note", "data": note}))?;
-    r.state = if made.is_ok() { "started" } else { "failed" }.into();
+    if let Some(error) = &r.error {
+        let text = format!(
+            "[Brigadier] Couldn't start session {} ({}): {error}. The user can put its first message back from the failed start row.",
+            r.title, r.id
+        );
+        queue::add_peer(
+            &src.dir,
+            &format!("{}-failed", r.mid),
+            "system",
+            &text,
+            || Ok(None),
+        )?;
+    }
+    r.state = if r.error.is_none() {
+        "started"
+    } else {
+        "failed"
+    }
+    .into();
     save(data, me, &r)?;
-    made
+    r.error.map_or(Ok(()), |e| Err(io::Error::other(e)))
 }
 
 fn make(data: &Path, me: &str, r: &Record, dir: &Path) -> io::Result<()> {

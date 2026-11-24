@@ -42,7 +42,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let note = |data_: Value| owner::call(data, source, json!({"op": "note", "data": data_}));
     // A replay keeps the logged command id and text: the log holds the operation.
     let (cid, text, parts) = match intent {
-        Some(i) => (str_of(&i, "cid"), str_of(&i, "text"), i["parts"].clone()),
+        Some(i) => {
+            let cid = str_of(&i, "cid");
+            if cid.is_empty() {
+                return Err(io::Error::other(
+                    "Brigadier is already handling this start.",
+                ));
+            }
+            core::check_id(&cid)?;
+            (cid, str_of(&i, "text"), i["parts"].clone())
+        }
         None => {
             let (cid, text) = (need("--cid")?.to_string(), need("--text")?.to_string());
             core::check_id(&cid)?;
