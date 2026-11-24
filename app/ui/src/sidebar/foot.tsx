@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useState } from "react";
+import { createContext, type ReactNode, useContext, useId, useState } from "react";
 
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
@@ -27,6 +27,8 @@ import { type Agent, errorText, useAgents } from "../onboarding/api";
 
 // Whether the foot lies as the expanded sidebar's row, or stands in the strip [D226].
 const FootRow = createContext(false);
+/** Archived, the strip's only by list, over the foot's buttons: what `SidebarPanel`'s rail is given goes through the shell's Strip. */
+export const FootArchived = createContext<ReactNode>(null);
 /** Where a foot menu and its tooltips open: beside the strip [D56], or above the expanded sidebar's row. */
 export function useFootPlacement() {
   const row = useContext(FootRow);
@@ -219,11 +221,12 @@ const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item
 /**
  * The foot, in the strip top to bottom: updates (only while there are some), Usage, Keep awake, Feedback, Settings, lit
  * while `settings` shows [D56 D57 D18 D19]; the top's size, closer together [D190 D204], under a rule while the top
- * reaches it [D191]. As the expanded sidebar's `row` the same reversed, Settings first, as the old app's [D226].
+ * reaches it [D191]; by list, Archived first, over a rule of its own. As the expanded sidebar's `row` the same reversed, Settings first, as the old app's [D226].
  */
 export function StripFoot({ settings = false, row = false }: { settings?: boolean; row?: boolean }) {
   // An offer on a job is open [D386].
   const offered = useRoutingDot();
+  const archived = useContext(FootArchived);
   const side = row ? "top" : "right";
   const items = [
     <UpdatesRow key="updates" />,
@@ -241,6 +244,12 @@ export function StripFoot({ settings = false, row = false }: { settings?: boolea
     <FootRow.Provider value={row}>
       <div data-slot="sidebar-foot" className={row ? "sidebar-foot-row flex shrink-0 items-center gap-0.5 px-2 pt-1 pb-2" : "flex flex-col items-center gap-0.5"}>
         {!row && <span aria-hidden className="strip-rule strip-foot-rule mt-2 mb-1.5" />}
+        {!row && archived && (
+          <>
+            {archived}
+            <span aria-hidden className="strip-rule my-1.5" />
+          </>
+        )}
         {row ? items.toReversed() : items}
       </div>
     </FootRow.Provider>
