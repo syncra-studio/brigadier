@@ -46,7 +46,7 @@ function Section({ heading, actions, children }: { heading: ReactNode; actions?:
 }
 
 /** A strip icon and its list, with a blue dot while anything in it needs you, failed or has a new reply. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
-function Flyout({ label, icon, lit = false, pressed, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; children: (pick: Choose) => ReactNode }) {
+function Flyout({ label, icon, lit = false, pressed, align = "start", children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; align?: "start" | "end"; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const pick: Choose = (choice) => {
@@ -61,7 +61,7 @@ function Flyout({ label, icon, lit = false, pressed, children }: { label: string
         ref={list}
         initialFocus={list}
         side="right"
-        align="start"
+        align={align}
         sideOffset={() => spacingPx() * 3}
         aria-label={label}
         padded={false}
@@ -180,10 +180,10 @@ export function ArchivedActions({ count }: { count: number }) {
   );
 }
 
-/** The archived sessions, opened read-only as from the Archived section. */
+/** The archived sessions, opened read-only as from the Archived section; at the strip's foot, so aligned as its menus. */
 export function ArchivedFlyout({ archived, ...rows }: Rows & { archived: SessionRow[] }) {
   return (
-    <Flyout label="Archived" icon={<Archive />}>
+    <Flyout label="Archived" icon={<Archive />} align="end">
       {(pick) => (
         <Section heading="Archived" actions={<ArchivedActions count={archived.length} />}>
           {archived.map((row) => (

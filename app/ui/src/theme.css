@@ -1654,8 +1654,8 @@
   [data-state="collapsed"] > & {
     border-color: transparent;
   }
-  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]; folded, the
-     row's own line is there instead (session-tab-bar), and it fades with the sidebar. */
+  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]; folded, no
+     line, as the row's own (session-tab-bar): it fades with the sidebar. */
   &::after {
     content: "";
     position: absolute;
@@ -1666,7 +1666,7 @@
     opacity: 0;
     pointer-events: none;
     z-index: 11;
-    /* A fade, so Reduce Motion keeps it, as the row's line fades in for it. */
+    /* A fade, so Reduce Motion keeps it. */
     transition: background-color var(--duration-fold) var(--ease-sidebar);
   }
   &:has([data-slot="right-panel"][data-state="expanded"])::after {
@@ -1772,55 +1772,40 @@
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
   /* A 1px rule under the row across the main area, with tabs and with the chat alone, steady as one turns into
-     the other; none over New chat with no tabs [D201 D219]. Folded, it runs from the window's edge, under a separator as
-     tall as the row (::before) between New chat and the first tab, 8 from each; both ease with the sidebar, at once while
-     it's dragged. */
+     the other; none over New chat with no tabs [D201 D219]. Folded, no line: it fades as it keeps to the sidebar's edge,
+     and the tabs' own 1×12 rule (::before, session-tab) fades in between New chat and the first tab, 8 from each; both
+     ease with the sidebar, at once while it's dragged. */
   &::before,
   &::after {
     content: "";
     position: absolute;
-    inset-inline-start: calc(var(--tabs-start) - var(--spacing) * 2);
+    background-color: var(--color-border);
     opacity: 0;
     pointer-events: none;
     transition:
       opacity var(--duration-session-tab) var(--ease-session-tab),
       inset-inline-start var(--duration-fold) var(--ease-sidebar),
-      background-color var(--duration-fold) var(--ease-sidebar),
-      border-color var(--duration-fold) var(--ease-sidebar);
+      background-color var(--duration-fold) var(--ease-sidebar);
   }
   &::before {
-    /* Down to the line, not over it: crossed, their corner would draw twice. */
-    inset-block: 0 1px;
-    width: 1px;
-    background-color: var(--color-border);
+    inset-inline-start: calc(var(--tabs-start) - var(--spacing) * 2);
+    inset-block: 0;
+    margin-block: auto;
+    height: var(--spacing-session-tab-rule-height);
+    width: var(--spacing-session-tab-rule);
   }
-  /* Its part over the strip is a border, fading in as the sidebar's own edge fades out: the rest starts at that edge all
-     through the fold. */
   &::after {
-    inset-inline: calc(var(--sidebar-shown) - var(--spacing-rail)) calc(var(--spacing) * -2);
+    inset-inline: var(--sidebar-shown) calc(var(--spacing) * -2);
     bottom: 0;
     height: 1px;
-    border-inline-start: var(--spacing-rail) solid var(--color-border);
-    background: var(--color-border) padding-box;
   }
   &[data-ruled]::before,
   &[data-ruled]::after {
     opacity: 1;
   }
-  /* Over New chat with no tabs, only with the right panel open, in place of its hairline (main-surface). */
-  [data-slot="sidebar-wrapper"][data-state="collapsed"]:has([data-slot="right-panel"][data-state="expanded"]) & {
-    &::before,
-    &::after {
-      opacity: 1;
-    }
-  }
-  [data-slot="sidebar-wrapper"][data-state="expanded"] & {
-    &::before {
-      background-color: transparent;
-    }
-    &::after {
-      border-color: transparent;
-    }
+  [data-slot="sidebar-wrapper"][data-state="expanded"] &::before,
+  [data-slot="sidebar-wrapper"][data-state="collapsed"] &::after {
+    background-color: transparent;
   }
   [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) & {
     &::before,

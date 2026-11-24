@@ -13,7 +13,7 @@ import { openSearch } from "../palette/palette";
 import { ArchiveAsk, clickRow, useArchiveKeys, useArchiveSplit, usePicked } from "../sessions/archive";
 import { ArchivedSection, DeleteAsk } from "../sessions/archived";
 import { openSettings } from "../settings/shell";
-import { StripFoot } from "./foot";
+import { FootArchived, StripFoot } from "./foot";
 import { LabelAsk } from "./labels";
 import { HomeMark } from "./strip";
 import type { Project } from "../projects/projects";
@@ -236,26 +236,29 @@ export function AppSidebar({
 
   return (
     <SidebarPanel
-      rail={rail?.(
-        <>
-          {pinsSessions
-            ? order.map((each) => (
-                <SessionSquare
-                  key={each.id}
-                  row={each}
-                  project={each.project === null ? undefined : projectOf.get(each.project)}
-                  active={each.id === active}
-                  attention={attentionOf([each], active)}
-                  onOpen={onOpen}
-                />
-              ))
-            : [...pinnedProjects, ...unpinnedProjects].map((project) => (
-                <ProjectSquare key={project.id} project={project} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
-              ))}
-          {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
-          {pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />}
-        </>,
-      )}
+      rail={
+        <FootArchived.Provider value={pinsSessions && archived.length > 0 && <ArchivedFlyout archived={archived} {...listed} />}>
+          {rail?.(
+            <>
+              {pinsSessions
+                ? order.map((each) => (
+                    <SessionSquare
+                      key={each.id}
+                      row={each}
+                      project={each.project === null ? undefined : projectOf.get(each.project)}
+                      active={each.id === active}
+                      attention={attentionOf([each], active)}
+                      onOpen={onOpen}
+                    />
+                  ))
+                : [...pinnedProjects, ...unpinnedProjects].map((project) => (
+                    <ProjectSquare key={project.id} project={project} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
+                  ))}
+              {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
+            </>,
+          )}
+        </FootArchived.Provider>
+      }
     >
       {/* The sessions and a page's nav share the one panel and crossfade: its column, width and edge stay [D225]. */}
       <div className="grid min-h-0 flex-1 grid-rows-1">

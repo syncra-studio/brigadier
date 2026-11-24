@@ -1,4 +1,4 @@
-// Mockup only: the folded sidebar's separator and the row's line edge to edge (round 3's A, ?v=e), now the app's own:
+// Mockup only: the folded sidebar's separator, the tabs' own short rule with no line under the row, the app's own (?v=e):
 // four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the whole app on a
 // stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
 import "../src/theme.css";
