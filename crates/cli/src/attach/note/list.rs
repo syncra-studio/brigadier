@@ -109,11 +109,10 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
         let (name, shown) = (short(&text), preview(&text, whole));
         // A match already in sight, in the name or the line under it, isn't shown again.
         let hit = hit.filter(|h| {
-            !words
-                .iter()
-                .take(1)
-                .any(|w| name.to_lowercase().contains(w))
-                && !shown.contains(h.trim_matches('…'))
+            let (name, h) = (name.to_lowercase(), h.trim_matches('…'));
+            !name.contains(&h.to_lowercase())
+                && !words.iter().all(|w| name.contains(w))
+                && !shown.contains(h)
         });
         let head = split(&text).0;
         // What a rename starts from: the user's whole name, or the title its text gives it, without the cut's "…".
