@@ -9,7 +9,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { ArrowRotateCw, Check, DownloadSimple, Spinner, X } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { type Agent, checkAll, useAgents } from "../onboarding/api";
+import { type Agent, checkAll, store, useAgents } from "../onboarding/api";
 import { runFailure, useAgentSetup } from "../onboarding/agents";
 import { versionText } from "../accounts/parts";
 import { useDaemon } from "../daemon";
@@ -37,9 +37,9 @@ export type UpdateItem = {
 /** The old app's: the agents are checked a minute after launch, then this often. */
 const FIRST_CHECK_MS = 60_000;
 const CHECK_EVERY_MS = 6 * 60 * 60_000;
-/** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them. */
+/** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them; one list for the row's pill and the strip's. */
 const SKIPPED = "skipped-updates";
-const readSkipped = (): string[] => JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
+const skippedVersions = store(JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[]);
 
 /** How long an update that went through shows its check before it leaves. */
 const UPDATED_MS = 2000;
@@ -179,7 +179,7 @@ export function UpdatesRow() {
   const { list } = useAgents();
   const setup = useAgentSetup(list, online);
   const { row, ...placement } = useFootPlacement();
-  const [skipped, setSkipped] = useState(readSkipped);
+  const skipped = skippedVersions.use();
   useEffect(() => {
     if (!online) return;
     let every: number | undefined;
@@ -217,9 +217,9 @@ export function UpdatesRow() {
     // A failed run is closed; an available version is hidden until a newer one comes out.
     if (item.progress.type === "failed") void setup.close(item.target);
     else if (agent) {
-      const next = [...skipped, `${agent.name}@${agent.latest}`];
+      const next = [...skippedVersions.get(), `${agent.name}@${agent.latest}`];
       localStorage.setItem(SKIPPED, JSON.stringify(next));
-      setSkipped(next);
+      skippedVersions.set(next);
     }
   };
   const [open, setOpen] = useState(false);
@@ -241,7 +241,8 @@ export function UpdatesRow() {
   const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
     <BarItem show={!empty || open} axis={row ? "x" : "y"}>
-      <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
+      {/* A direct click never opens the list, but one left open on its last update still closes. */}
+      <Popover open={open} onOpenChange={(next) => setOpen(next && !direct)}>
         <PopoverTrigger
           render={
             <TooltipIconButton
