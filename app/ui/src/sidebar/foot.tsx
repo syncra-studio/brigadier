@@ -243,7 +243,7 @@ export function StripFoot({ settings = false, row = false }: { settings?: boolea
   return (
     <FootRow.Provider value={row}>
       <div data-slot="sidebar-foot" className={row ? "sidebar-foot-row flex shrink-0 items-center gap-0.5 px-2 pt-1 pb-2" : "flex flex-col items-center gap-0.5"}>
-        {!row && <span aria-hidden className="strip-rule strip-foot-rule mt-2 mb-1.5" />}
+        {!row && <span aria-hidden className={cx("strip-rule strip-foot-rule mt-2 mb-1.5", Boolean(archived) && "invisible")} />}
         {!row && archived && (
           <>
             {archived}
