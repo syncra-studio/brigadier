@@ -15,7 +15,7 @@ const path = location.pathname;
 const q = new URLSearchParams(location.search);
 const app = document.getElementById('app');
 const win = window.opener ? 'preview' : 'main';
-const log = (kind, detail = {}) => navigator.sendBeacon('/log', JSON.stringify({ at: Date.now(), win, path, kind, ...detail }));
+const log = (kind, detail = {}) => navigator.sendBeacon('/log', JSON.stringify({ at: Date.now(), born: performance.timeOrigin, win, path, search: location.search, kind, ...detail }));
 const what = (el) => el && el.nodeType === 1 ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : ''}${el.textContent ? ` "${el.textContent.trim().slice(0, 40)}"` : ''}` : String(el);
 // Every real event, as the page saw it.
 for (const type of ['click', 'dblclick', 'mousedown', 'keydown', 'input', 'change', 'focusin', 'submit']) {
@@ -72,6 +72,19 @@ if (path === '/' || path === '/home') {
   };
   document.querySelectorAll('[role=option]').forEach((o) => { o.tabIndex = 0; o.onclick = () => pick(o); o.onkeydown = (e) => (e.key === ' ' || e.key === 'Enter') && pick(o); });
   document.getElementById('use').onclick = () => { document.getElementById('chosen').textContent = 'Chosen: ' + document.querySelector('[aria-selected=true]').getAttribute('aria-label'); state({ used: document.querySelector('[aria-selected=true]').getAttribute('aria-label') }); };
+} else if (path === '/covered') {
+  // A press that does nothing while a panel covers the button, as a site that asks what is at the point does.
+  document.title = 'Bench Offer';
+  const lines = '<p>Terms apply.</p>'.repeat(4);
+  html(`<h1>Offer</h1><button id="open">Open the offer</button>
+    <dialog id="offer" aria-label="Offer">${lines}<p><button id="coupon">Use coupon</button></p>${lines}
+      <div id="panel" role="dialog" aria-label="Privacy Preference Centre" popover="manual"><h2>Privacy Preference Centre</h2><p>${'We use cookies and similar technologies. '.repeat(20)}</p></div>
+    </dialog>`);
+  document.getElementById('open').onclick = () => { document.getElementById('offer').showModal(); document.getElementById('panel').showPopover(); state({ consent: 'shown' }); };
+  document.getElementById('coupon').onclick = (e) => {
+    const at = e.target.getBoundingClientRect();
+    if (document.elementFromPoint(at.x + at.width / 2, at.y + at.height / 2) === e.target) state({ used: 'coupon' });
+  };
 } else if (path === '/editor') {
   document.title = 'Bench Editor';
   html(`<h1>Editor</h1><label>Card name <input id="name" aria-label="Card name" value="My card"></label>

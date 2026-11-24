@@ -9,6 +9,8 @@ import { pathToFileURL } from 'node:url'
 
 const page = fs.readFileSync(new URL('./fixture.html', import.meta.url))
 let events = []
+// A page loaded before the last reset is an earlier run's: what it still sends isn't this run's.
+let since = 0
 
 export function serve(port = 8765) {
   const server = http.createServer((req, res) => {
@@ -16,13 +18,13 @@ export function serve(port = 8765) {
       let body = ''
       req.on('data', (c) => (body += c))
       req.on('end', () => {
-        try { events.push(JSON.parse(body)) } catch {}
+        try { const e = JSON.parse(body); if (e.born >= since) events.push(e) } catch {}
         res.end()
       })
       return
     }
     if (req.url === '/events') return res.end(JSON.stringify(events))
-    if (req.url === '/reset') { events = []; return res.end('[]') }
+    if (req.url === '/reset') { events = []; since = Date.now(); return res.end('[]') }
     if (req.url === '/favicon.ico') { res.statusCode = 404; return res.end() }
     res.setHeader('content-type', 'text/html; charset=utf-8')
     res.end(page)
