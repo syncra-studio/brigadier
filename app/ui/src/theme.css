@@ -1535,13 +1535,16 @@
   transition-timing-function: var(--ease-sidebar);
   /* How wide the sidebar or strip shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
-  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them (titlebar-clear) [D265 D297 D934]. */
-  --toggle-room: calc(var(--spacing) * 35);
+  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them; hidden,
+     the rule's 1px (session-tab-bar) and 8px past that [D265 D297 D934]. */
+  --toggle-room: calc(var(--spacing) * 37.5);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
     --toggle-room: calc(var(--spacing) * 27);
     --sidebar-layer: var(--color-sidebar);
   }
+  /* Where the titlebar row's tabs start (titlebar-clear); its rules 8px before, the open sidebar's edge. */
+  --tabs-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room)), calc(var(--spacing) * 2 + var(--sidebar-shown)));
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
@@ -1632,16 +1635,21 @@
   [data-state="collapsed"] > & {
     border-color: transparent;
   }
-  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]. */
+  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41], folded from
+     the row's separator on (session-tab-bar); both ends ease with the sidebar. Its start is past the 1px border. */
   &:has([data-slot="right-panel"][data-state="expanded"])::after {
     content: "";
     position: absolute;
-    inset-inline: 0;
+    inset-inline: calc(var(--tabs-start) - var(--spacing) * 2 - var(--sidebar-shown) - 1px) 0;
     top: var(--spacing-tab-bar);
     height: 0.5px;
     background: var(--color-divider);
     pointer-events: none;
     z-index: 11;
+    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -1723,7 +1731,6 @@
    room, sidebar-width-source), or past the traffic lights and the toggle with 8px [D934], where
    that's further, easing with the sidebar [D48 D838 D862]. */
 @utility titlebar-clear {
-  --tabs-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room, 0px)), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
   padding-inline-start: var(--tabs-start);
   transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
@@ -1741,20 +1748,54 @@
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
   /* A 1px rule under the row across the main area, with tabs and with the chat alone, steady as one turns into
-     the other; none over New chat with no tabs [D201 D219]. */
+     the other; none over New chat with no tabs [D201 D219]. Folded, it starts at a separator as tall as the row (::before)
+     between New chat and the first tab, 8 from each; both ease with the sidebar, at once while it's dragged. */
+  &::before,
   &::after {
     content: "";
     position: absolute;
-    inset-inline: var(--sidebar-shown, 0px) calc(var(--spacing) * -2);
-    bottom: 0;
-    height: 1px;
-    background: var(--color-border);
+    inset-inline-start: calc(var(--tabs-start) - var(--spacing) * 2);
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--duration-session-tab) var(--ease-session-tab);
+    transition:
+      opacity var(--duration-session-tab) var(--ease-session-tab),
+      inset-inline-start var(--duration-fold) var(--ease-sidebar),
+      background-color var(--duration-fold) var(--ease-sidebar);
   }
+  &::before {
+    /* Down to the rule, not over it: crossed, their corner would draw twice. */
+    inset-block: 0 1px;
+    width: 1px;
+    background-color: var(--color-border);
+  }
+  &::after {
+    inset-inline-end: calc(var(--spacing) * -2);
+    bottom: 0;
+    height: 1px;
+    background-color: var(--color-border);
+  }
+  &[data-ruled]::before,
   &[data-ruled]::after {
     opacity: 1;
+  }
+  /* Over New chat with no tabs, only with the right panel's line to meet (main-surface). */
+  &:not([data-ruled])::before {
+    bottom: 0;
+  }
+  [data-slot="sidebar-wrapper"]:has([data-slot="right-panel"][data-state="expanded"]) &::before {
+    opacity: 1;
+  }
+  [data-slot="sidebar-wrapper"][data-state="expanded"] &::before {
+    background-color: transparent;
+  }
+  [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) &::after {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before,
+    &::after {
+      transition: opacity var(--duration-session-tab) var(--ease-session-tab);
+    }
   }
   /* Until the tabs read on opening have drawn, they don't grow in [D423]. */
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
@@ -1775,26 +1816,6 @@
   --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
-    opacity: 0;
-  }
-  /* The same rule between the sidebar toggle and the first tab, with the sidebar folded (shown, the tabs start past
-     its edge); none beside the front tab or a hovered one. Centred between the toggle's icon and the tab's, 13 to each,
-     as "+"'s rule is 10 from both its neighbours' [D291]. */
-  &::before {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    margin-block: auto;
-    inset-inline-start: -3px;
-    height: var(--spacing-session-tab-rule-height);
-    width: var(--spacing-session-tab-rule);
-    background: var(--color-border);
-    pointer-events: none;
-  }
-  [data-slot="sidebar-wrapper"][data-state="expanded"] &::before {
-    opacity: 0;
-  }
-  &:has(> .session-tab:first-child:is([data-active], [data-closing], :hover))::before {
     opacity: 0;
   }
 }
