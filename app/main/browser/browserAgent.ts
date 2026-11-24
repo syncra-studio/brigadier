@@ -7,7 +7,7 @@ import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
-import { AGENT_WORLD, forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
+import { AGENT_WORLD, forgetSecrets, keepAwake, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsCount, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { shownTitle, shownUrl } from "./browserShownUrl";
@@ -82,6 +82,7 @@ async function acting(guest: WebContents, input: (send: Send) => Promise<void>, 
   const run = hold.queue.then(async () => {
     const stillHeld = () => held.get(guest.id) === hold;
     if (!stillHeld()) return { paused: devToolsOpen(guest) ? "devtools" : "user" };
+    keepAwake(guest);
     if (confirm) await setConfirm(guest, true);
     try {
       await input((method, params) => guest.debugger.sendCommand(method, params));
@@ -284,6 +285,7 @@ export function installBrowserAgent(): void {
         if (call.op.kind === "sweep") throw new Error("Unknown agent call");
         // The one way code from outside reaches a page: the user read it on a card and said yes (agentBrowser.ts).
         if (call.op.kind === "eval") return evalOnPage(guest, String(call.op.script));
+        keepAwake(guest);
         return sweptAndScrubbed(guest, () => (SEES_HANDLERS.has(call.op.kind) ? runSeeingHandlers : runScript)(guest, call.op));
       case "attach":
         return attach(guest);

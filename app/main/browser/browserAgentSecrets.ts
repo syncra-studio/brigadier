@@ -203,18 +203,31 @@ const FRAMES = `new Promise((drawn) => {
   const next = () => (left-- > 0 ? requestAnimationFrame(next) : drawn(true));
   next();
 })`;
-/** The pictures under way in each of the app's windows. */
-const drawing = new Map<WebContents, number>();
+/** How long after its agent's last call a page's window goes on as if it were on screen: longer than a take. */
+const AWAKE_MS = 5000;
+const awake = new Map<WebContents, NodeJS.Timeout>();
+
+/**
+ * Keeps a page's window from being throttled while its agent acts. One that is hidden, covered or on another Space draws
+ * nothing, its timers run once a second, and the first input after a picture waits 5 s for a frame.
+ */
+export function keepAwake(guest: WebContents): void {
+  const host = guest.hostWebContents ?? guest;
+  const last = awake.get(host);
+  if (last) clearTimeout(last);
+  else host.setBackgroundThrottling(false);
+  awake.set(host, setTimeout(() => {
+    awake.delete(host);
+    if (!host.isDestroyed()) host.setBackgroundThrottling(true);
+  }, AWAKE_MS));
+}
 
 /**
  * The page as drawn. A window that is hidden, covered or on another Space draws nothing, and neither do the pages in it:
- * no surface to take (UnknownVizError), or the last one they drew. It draws while its throttling is off, and the page's
- * first frame takes a moment, and for some a take that fails: one taken before the page drew again is thrown away.
+ * no surface to take (UnknownVizError), or the last one they drew. It draws while it's kept awake, and the page's first
+ * frame takes a moment, and for some a take that fails: one taken before the page drew again is thrown away.
  */
 async function pictureOf(guest: WebContents): Promise<NativeImage> {
-  const host = guest.hostWebContents ?? guest;
-  drawing.set(host, (drawing.get(host) ?? 0) + 1);
-  host.setBackgroundThrottling(false);
   let asked = Promise.resolve();
   let drew = false;
   const ask = () => {
@@ -226,6 +239,7 @@ async function pictureOf(guest: WebContents): Promise<NativeImage> {
     const until = Date.now() + DRAW_MS;
     ask();
     for (;;) {
+      keepAwake(guest);
       await Promise.race([asked, new Promise((resolve) => setTimeout(resolve, DRAW_STEP_MS))]);
       const fresh = drew;
       const taken = await Promise.race([guest.capturePage(), new Promise<null>((resolve) => setTimeout(() => resolve(null), DRAW_MS))]).catch((error: unknown) => {
@@ -238,12 +252,6 @@ async function pictureOf(guest: WebContents): Promise<NativeImage> {
     }
   } finally {
     guest.off("did-navigate", ask);
-    const left = (drawing.get(host) ?? 1) - 1;
-    if (left > 0) drawing.set(host, left);
-    else {
-      drawing.delete(host);
-      if (!host.isDestroyed()) host.setBackgroundThrottling(true);
-    }
   }
 }
 
