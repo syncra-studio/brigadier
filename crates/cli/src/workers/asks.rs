@@ -138,6 +138,7 @@ fn write(
         hop: crate::peers::hop_of(data, wid, turn),
         merge: String::new(),
         going: String::new(),
+        end: 0,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path, &res)?;

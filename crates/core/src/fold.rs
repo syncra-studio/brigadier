@@ -66,10 +66,10 @@ pub struct Fold {
     pub agents: BTreeSet<String>,
     #[serde(default)]
     pub pending: live::Pending,
-    /// How each turn last ended, its own end or its wake's, and when (ms), by the turn it reports in.
+    /// How each turn last ended, its own end or its wake's, when (ms) and in which of them, by the turn it reports in.
     #[serde(default)]
-    pub ends: BTreeMap<String, (u64, String)>,
-    /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
+    pub ends: BTreeMap<String, (u64, String, String)>,
+    /// Workers its turns started or messaged, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
     /// The images its agent made, each as its last `image` item said: a worker's go to its parent [D289].

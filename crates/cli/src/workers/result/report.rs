@@ -48,7 +48,16 @@ pub(in crate::workers) fn write(
     how: &str,
     error: Option<&str>,
 ) -> io::Result<()> {
-    write_as(data, l, wid, turn, how, error, false)
+    write_as(data, l, wid, turn, how, error, Of::default())
+}
+
+/// What one result reports: a turn the user started in it (`direct`), when it ended (`Res::end`),
+/// a wake that ended after that turn's own result was written (`late`).
+#[derive(Default)]
+pub(in crate::workers) struct Of {
+    pub direct: bool,
+    pub end: u64,
+    pub late: bool,
 }
 
 /// The most a turn the user started in a worker tells its parent, all of it [D303].
@@ -63,8 +72,9 @@ pub(in crate::workers) fn write_as(
     turn: &str,
     how: &str,
     error: Option<&str>,
-    direct: bool,
+    of: Of,
 ) -> io::Result<()> {
+    let direct = of.direct;
     let dir = core::session_dir(data, wid);
     let spec = core::load(data, wid).ok();
     let cwd = spec.as_ref().map_or(String::new(), |s| s.cwd.clone());
@@ -196,11 +206,12 @@ pub(in crate::workers) fn write_as(
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
     // A sub-session's last word is its last turn's, after its workers' results woke it [D189];
     // so is a turn's its CLI carried on in a wake of its own, as its background work ended.
-    let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
-    let said = ended
-        .as_ref()
-        .filter(|e| l.session || (e["origin"] == "agent" && e["of"] == turn));
-    let said = said.and_then(|l| l["id"].as_str());
+    let f = core::fold(&dir, true).map(|f| f.fold).unwrap_or_default();
+    let (ended, ends) = (f.last, f.ends);
+    let said = match l.session {
+        true => ended.as_ref().and_then(|l| l["id"].as_str()),
+        false => ends.get(turn).map(|e| e.2.as_str()),
+    };
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
@@ -256,13 +267,20 @@ pub(in crate::workers) fn write_as(
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
         going: String::new(),
+        end: of.end,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
-    write_json(&path_of(data, &l.parent, wid, turn), &res)?;
+    let key = match of.late {
+        true => format!("{turn}.{}", of.end),
+        false => turn.into(),
+    };
+    write_json(&path_of(data, &l.parent, wid, &key), &res)?;
     // A review's result goes to the work it reviewed, never its parent: its end row all the same [D115, D456].
     // A stopped one's waits for the parent's next turn, so its log says it holds no block open [D314].
     let note = match res.state.as_str() {
-        "review" => json!({"event": "worker", "phase": "result", "result": take::said(&res)}),
+        "review" => {
+            json!({"event": "worker", "phase": "result", "result": take::said(data, &l.parent, &res)})
+        }
         "held" => json!({"event": "worker", "phase": "held", "ids": [wid]}),
         _ => Value::Null,
     };

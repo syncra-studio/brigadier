@@ -110,6 +110,9 @@ pub struct Turn {
     /// one that ended before it or the one that one carried on [D118].
     #[serde(default)]
     pub of: String,
+    /// The workers it messaged: the result that woke it doesn't end its wait on these.
+    #[serde(default)]
+    pub messaged: BTreeSet<String>,
 }
 
 /// The paths a FileChange list names.
@@ -205,13 +208,26 @@ impl Turn {
     }
 }
 
-/// The worker a result (`<how>:<worker>[:…]`) is from; none for its ask, which ends nothing [D121].
+/// The worker a result (`<how>:<worker>[:…]`) ends the wait on; none for its ask, which ends
+/// nothing [D121], one that came while a later task of its worker was `open`, or one whose worker's
+/// work left running `wakes` it: a wait till then is `over`'s to say.
 fn result_of(said: &str) -> Option<&str> {
     let (how, wid) = said.split_once(':').unwrap_or(("finished", said));
-    (how != "asks").then(|| wid.split(':').next().unwrap_or(wid))
+    let on = said.ends_with(":open") || said.ends_with(":wakes");
+    (how != "asks" && !on).then(|| wid.split(':').next().unwrap_or(wid))
 }
 
 impl Fold {
+    /// A message a running turn sent its own worker holds that turn open as its start does: it
+    /// reports back too.
+    pub(super) fn messaged(&mut self, item: &Value) {
+        let to = item["to"].as_str().filter(|_| item["worker"] == true);
+        if let (Some(to), Some(t)) = (to, self.turns.first_mut()) {
+            t.messaged.insert(to.into());
+            self.workers.insert(to.into());
+        }
+    }
+
     /// A `worker` note: one a running turn started holds that turn open; its end, its stop (its
     /// result `held` for the parent's next turn), or the result its parent's own `wait` or next
     /// message took, lets go [D151, D3009, D314].
@@ -262,7 +278,9 @@ impl Fold {
             // [D3011, D108]; the turn a worker's result woke ends that worker's hold [D151].
             if outcome != "done" && reason != "rebirth" {
                 self.workers.clear();
-            } else if let Some(w) = turn.origin.strip_prefix("result:").and_then(result_of) {
+            } else if let Some(w) = (turn.origin.strip_prefix("result:").and_then(result_of))
+                .filter(|w| !turn.messaged.contains(*w))
+            {
                 self.workers.remove(w);
             }
             // A plan sent back, unbuilt when its turn ends, ends its review: the next is reviewed anew.
@@ -270,7 +288,7 @@ impl Fold {
             if !turn.quiet {
                 self.finished = ts;
             }
-            (self.ends).insert(turn.report().into(), (ts, outcome.into()));
+            (self.ends).insert(turn.report().into(), (ts, outcome.into(), turn.id.clone()));
             // Only an agent whose process lives on keeps its subagents past its turn.
             if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
             {

@@ -102,8 +102,9 @@ impl Fold {
         }
     }
 
-    /// A sub-session's ask its boss passed to the user [D189]: its own request now waits on the
-    /// user, or the question it sent its boss (`peer-<mid>`) is the user's to answer, till answered.
+    /// A `peer` note: a message to its own worker (`messaged`), or a sub-session's ask its boss
+    /// passed to the user [D189]: its own request now waits on the user, or the question it sent
+    /// its boss (`peer-<mid>`) is the user's to answer, till answered.
     pub(super) fn passed_to_user(&mut self, item: &Value) {
         let mid = item["mid"].as_str().map(|m| format!("peer-{m}"));
         match (item["phase"].as_str(), mid) {
@@ -119,6 +120,7 @@ impl Fold {
                 r.and_then(Value::as_object_mut).map(|r| r.remove("to"));
             }
             (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
+            (Some("sent"), Some(_)) => self.messaged(item),
             _ => {}
         }
     }
