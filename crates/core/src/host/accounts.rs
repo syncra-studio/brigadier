@@ -149,7 +149,8 @@ fn sees(repos: &[&Repo], logins: &[String]) -> Vec<Option<bool>> {
                         },
                         repos,
                     ),
-                    None => None,
+                    // A listed login without a token cannot read, even while GitHub is reachable.
+                    None => Some(false),
                 }
             })
         });
@@ -169,8 +170,8 @@ fn kept_path(data: &Path, id: &str) -> PathBuf {
     crate::projects::dir(data, id).join("github.json")
 }
 
-/// `p`'s GitHub facts as last read (`read`), with no wait; null before any read of its folder.
-fn known(data: &Path, p: &Project) -> Value {
+/// `p`'s last GitHub facts, or null before any read of its folder. Publication only uses this cache.
+pub fn known(data: &Path, p: &Project) -> Value {
     let mut seen = SEEN.lock().unwrap();
     let facts = seen.entry(p.id.clone()).or_insert_with(|| {
         let kept = fs::read(kept_path(data, &p.id)).ok();
@@ -181,17 +182,6 @@ fn known(data: &Path, p: &Project) -> Value {
         true => facts.clone(),
         false => Value::Null,
     }
-}
-
-/// A project's first snapshot needs its local GitHub facts even before its first network answer.
-pub fn snapshot(data: &Path, p: &Project) -> Value {
-    let facts = known(data, p);
-    if facts.is_null()
-        && let Ok((_, _, read)) = read(data, p)
-    {
-        return read;
-    }
-    facts
 }
 
 fn keep(data: &Path, p: &Project, facts: &Value) -> io::Result<()> {
@@ -218,8 +208,10 @@ fn read(data: &Path, p: &Project) -> io::Result<(Vec<Repo>, Vec<String>, Value)>
     let found = match p.kind == crate::folder::KIND {
         true => covered(data, p),
         false => {
-            let one = super::hosted(git::checkout(data, &Target::Project(&p.id))?);
-            let one = one.filter(|(_, r)| r.kind == Kind::GitHub);
+            let one = git::at(data, Path::new(&p.folder))
+                .ok()
+                .and_then(super::hosted)
+                .filter(|(_, r)| r.kind == Kind::GitHub);
             Covered {
                 repos: one.into_iter().collect(),
                 more: false,
@@ -310,9 +302,6 @@ pub fn find_behind(data: &Path, id: &str) {
 pub fn read_ahead(data: PathBuf) {
     thread::spawn(move || {
         let mut all = crate::projects::list(&data).unwrap_or_default();
-        for p in &all {
-            let _ = read(&data, p);
-        }
         all.sort_by_key(|p| p.github_account.is_some());
         for p in all {
             let _ = find(&data, &p.id);

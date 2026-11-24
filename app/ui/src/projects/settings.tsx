@@ -160,6 +160,28 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : `${known ? "Can" : "Can't"} see ${several ? several + on : "this repository"}`);
   const used = `${several ? `Pull requests and sessions in ${several}` : "Its pull requests and sessions"}${on} use it`;
 
+  const showGithub = github?.github ?? Boolean(account);
+  // If its GitHub facts arrive after opening Settings, add the row below the existing controls.
+  const [githubAtTop] = useState(showGithub);
+  const githubRow = showGithub && (
+    <Row label="GitHub account" line={github?.ssh ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
+      <Select
+        label="GitHub account"
+        value={account}
+        disabled={!account && logins.length === 0}
+        align="end"
+        className="w-full"
+        placeholder={checking && logins.some((each) => each.sees === null) ? "Checking…" : "Choose an account"}
+        onChange={(login) => save("github_account", { github_account: login }, ["--github-account", login])}
+        options={[
+          ...logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
+          // A pick gh has since signed out of stays shown, so it can be seen and changed.
+          ...(account && !logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: github ? "Not signed in to gh" : undefined }] : []),
+        ]}
+      />
+    </Row>
+  );
+
   return (
     <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-6 pt-tab-bar pb-6">
       {/* The Pull Requests page's title, at its spacing. */}
@@ -191,24 +213,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
           </span>
         </Row>
         )}
-        {(github ? github.github : Boolean(account) || checking) && (
-        <Row label="GitHub account" line={github?.ssh ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
-          <Select
-            label="GitHub account"
-            value={account}
-            disabled={!account && logins.length === 0}
-            align="end"
-            className="w-full"
-            placeholder={checking && logins.some((each) => each.sees === null) ? "Checking…" : "Choose an account"}
-            onChange={(login) => save("github_account", { github_account: login }, ["--github-account", login])}
-            options={[
-              ...logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
-              // A pick gh has since signed out of stays shown, so it can be seen and changed.
-              ...(account && !logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: github ? "Not signed in to gh" : undefined }] : []),
-            ]}
-          />
-        </Row>
-        )}
+        {githubAtTop && githubRow}
         <Row label="Browser profile" line="Its sessions' browser tabs open signed in as this profile; a tab can still switch" error={errors.browser_profile}>
           <Select
             label="Browser profile"
@@ -255,6 +260,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
             <CodeEditor value={setup} onChange={setSetup} language="bash" label="Setup script" placeholder="pnpm install" className="h-29 rounded-control bg-fill" />
           </div>
         </Row>
+        {!githubAtTop && githubRow}
       </ul>
       {/* Apart, last: nothing above it can lose anything [D782]. */}
       <section className="mt-10 rounded-control border border-destructive-border p-1">
