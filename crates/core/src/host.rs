@@ -88,6 +88,11 @@ impl Repo {
         format!("https://{}/{}", self.host, self.path)
     }
 
+    /// Its key in `READER`.
+    fn key(&self) -> String {
+        format!("{}/{}", self.host, self.path)
+    }
+
     /// The host's own name, for the UI to show.
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -229,7 +234,8 @@ impl Gh {
     }
 }
 
-/// Which account last read each repository (`host/path`; None is the active one), tried first.
+/// Which account last read each repository (`host/path`; None is the active one), tried first; a
+/// folder's, read together, are one key, a space between.
 static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
 
 /// gh as an account that can read `repo`: the project's pick, held unprobed [D631], the one that last did (unprobed, a gh call saved on
@@ -237,14 +243,24 @@ static READER: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::ne
 /// in for its server [D175]. Only GitHub has a CLI here yet; GitLab's glab is a
 /// later slice [D1030].
 fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
-    if repo.kind != Kind::GitHub {
+    gh_all(&[repo], pick)
+}
+
+/// `gh`, as an account that can read all of `repos`, on one server.
+fn gh_all(repos: &[&Repo], pick: Option<&str>) -> Option<Gh> {
+    let host = &repos.first()?.host;
+    if repos.iter().any(|r| r.kind != Kind::GitHub) {
         return None;
     }
     let path = setup::find("gh", &[])?.to_str()?.to_string();
-    let key = format!("{}/{}", repo.host, repo.path);
+    let keys: Vec<String> = repos.iter().map(|r| r.key()).collect();
+    let key = keys.join(" ");
     let last = READER.lock().unwrap().get(&key).cloned();
     let pick = pick.map(|login| Some(login.to_string()));
-    let others = std::iter::once_with(|| others(&repo.host)).flatten();
+    // gh lists its active account first.
+    let others = std::iter::once_with(|| accounts::logins(&accounts::GH, host))
+        .flatten()
+        .skip(1);
     let mut tried = Vec::new();
     for user in (pick.clone().into_iter())
         .chain(last.clone())
@@ -256,7 +272,7 @@ fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
         }
         tried.push(user.clone());
         let token = match &user {
-            Some(login) => match token(&path, &repo.host, login) {
+            Some(login) => match token(&path, host, login) {
                 Some(token) => Some(token),
                 // A picked account gh can't give a token for fails, never read as another [D631].
                 None if pick.as_ref() == Some(&user) => return None,
@@ -271,7 +287,7 @@ fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
         if last.as_ref() == Some(&user) || pick.as_ref() == Some(&user) {
             return Some(gh);
         }
-        if reads(&gh, repo) {
+        if reads_all(&gh, repos) {
             READER.lock().unwrap().insert(key, user);
             return Some(gh);
         }
@@ -327,20 +343,19 @@ fn reads(gh: &Gh, repo: &Repo) -> bool {
     setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success())
 }
 
-/// `repo`'s reader failed a read: the next one probes again.
-fn forget(repo: &Repo) {
-    READER
-        .lock()
-        .unwrap()
-        .remove(&format!("{}/{}", repo.host, repo.path));
+/// Whether `gh` can read every one of `repos`, asked at once.
+fn reads_all(gh: &Gh, repos: &[&Repo]) -> bool {
+    std::thread::scope(|s| {
+        let all: Vec<_> = (repos.iter()).map(|r| s.spawn(|| reads(gh, r))).collect();
+        (all.into_iter()).all(|read| read.join().unwrap_or(false))
+    })
 }
 
-/// The accounts gh has signed in for `host` other than its active one, which it lists first.
-fn others(host: &str) -> Vec<String> {
-    accounts::logins(&accounts::GH, host)
-        .into_iter()
-        .skip(1)
-        .collect()
+/// `repo`'s reader failed a read: the next one probes again.
+fn forget(repo: &Repo) {
+    let gone = repo.key();
+    let mut readers = READER.lock().unwrap();
+    readers.retain(|key, _| !key.split(' ').any(|k| k == gone));
 }
 
 /// `user`'s token for `host`, kept by gh; never printed, logged or stored here.
@@ -419,15 +434,9 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // A folder project reads through its first repository and searches them all [D780].
     let folder = (crate::projects::get(data, id).ok()).filter(|p| p.kind == crate::folder::KIND);
     let homes: Vec<(Checkout, Repo)> = (folder.iter())
-        .flat_map(|p| {
-            let home = Path::new(&p.folder);
-            let found = crate::folder::repos(home).into_iter();
-            found.filter_map(move |r| hosted(git::at(data, &home.join(r)).ok()?))
-        })
+        .flat_map(|p| github::homes(data, p))
         .collect();
-    // One on GitHub first, as only GitHub's are searched; a repository with no host is passed over.
-    let first = (homes.iter().find(|(_, r)| r.kind == Kind::GitHub)).or(homes.first());
-    let checkout = match first {
+    let checkout = match homes.first() {
         Some((first, _)) => first.clone(),
         None => git::checkout(data, &target)?,
     };
@@ -459,6 +468,11 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
+    let account = match target {
+        Target::Project(id) => Some(id.to_string()),
+        Target::Session(id) | Target::Repo(id, _) => load(data, id).ok().and_then(|s| s.project),
+    }
+    .and_then(|p| github::picked(data, &p, repo.as_ref()));
     let scope = (homes.into_iter().map(|(_, r)| r))
         .filter(|r| r.kind == Kind::GitHub && slug(&r.path))
         .collect();
@@ -478,12 +492,6 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         },
         dir: dir(data, id),
         avatars: data.join("avatars"),
-        account: match target {
-            Target::Project(id) => Some(id.to_string()),
-            Target::Session(id) | Target::Repo(id, _) => {
-                load(data, id).ok().and_then(|s| s.project)
-            }
-        }
-        .and_then(|p| crate::projects::get(data, &p).ok()?.github_account),
+        account,
     })
 }
