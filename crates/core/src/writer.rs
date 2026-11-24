@@ -304,6 +304,10 @@ pub fn write(
                 Event::Approval(_) | Event::Question(_) => {
                     done = Some(Err("it asked to use a tool".into()))
                 }
+                // Whatever its CLI allows unasked, a run told it has none ends at its first [D771].
+                Event::ToolStart(_) if run.opts.contains_key("no_tools") => {
+                    done = Some(Err("it used a tool".into()))
+                }
                 Event::Limited(why, _)
                 | Event::SignIn(why)
                 | Event::Unresumable(why)
