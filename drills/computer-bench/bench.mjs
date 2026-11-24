@@ -160,7 +160,13 @@ function agent(prompt, raw) {
             const parts = Array.isArray(c.content) ? c.content : [{ type: 'text', text: String(c.content ?? '') }]
             const text = parts.filter((x) => x.type === 'text').map((x) => x.text).join('\n')
             if (c.is_error && /permission|denied|not allowed/i.test(text)) a.denied++
-            Object.assign(tools.get(c.tool_use_id), { to: at, text, image: parts.find((x) => x.type === 'image')?.source?.data })
+            const call = Object.assign(tools.get(c.tool_use_id), { to: at, text, image: parts.find((x) => x.type === 'image')?.source?.data })
+            // Playwright saves its picture in the agent's folder when asked to: read now, the folder goes with the run.
+            const file = /take_screenshot/.test(call.verb) && text.match(/\]\(([^)]+\.(?:png|jpe?g))\)/i)?.[1]
+            if (file && !call.image && fs.existsSync(path.resolve(cwd, file))) {
+              call.image = fs.readFileSync(path.resolve(cwd, file)).toString('base64')
+              fs.writeFileSync(path.join(raw, `shot-${at}${path.extname(file)}`), call.image, 'base64')
+            }
           }
           if (c.type === 'text' && m.type === 'assistant') a.said = c.text
         }
