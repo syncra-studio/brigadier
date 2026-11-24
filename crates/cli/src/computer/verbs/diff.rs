@@ -2,7 +2,9 @@
 //! Cua's own `since` read, and the app's windows that opened or closed, never an empty list [D2032].
 
 use super::open::windows;
-use super::window::{chromium, learn, mask, no_page, paged, read, state_args, tidy, unresolved};
+use super::window::{
+    chromium, learn, mask, no_page, page_missing, read, state_args, tidy, unresolved,
+};
 use super::{Controls, Sess, Words, call};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -66,7 +68,7 @@ pub(super) fn changes(
     here: &dyn Fn() -> bool,
 ) -> (Seen, String) {
     let (seen, text) = rows_changed(data, me, s, here);
-    let (lines, page) = controls_changed(data, s, seen, here);
+    let (lines, pageless) = controls_changed(data, s, seen, here);
     let (seen, text) = match lines {
         lines if lines.is_empty() => (seen, text),
         lines if seen == Seen::No => (Seen::Yes, format!("Changed:\n{}", lines.join("\n"))),
@@ -110,7 +112,7 @@ pub(super) fn changes(
         ),
     };
     // A page it can't read may have changed, whatever else did or didn't.
-    let (seen, text) = match page == Some(false) && chromium(data, s.pid, here) {
+    let (seen, text) = match pageless && chromium(data, s.pid, here) {
         true => unread(seen, &text, &s.app),
         false => (seen, text),
     };
@@ -149,23 +151,23 @@ pub(super) fn controls(found: &Value) -> Controls {
 
 /// What the driver's rows don't print, so its diff can't hold: a control selected or no longer, and
 /// content that moved, as a list that scrolled [D2032]. The read has no session: the next diff's
-/// base stays. Also whether it holds a page; none when it failed.
+/// base stays. Also whether it lacks the page it should hold; not told when it failed.
 fn controls_changed(
     data: &Path,
     s: &mut Sess,
     seen: Seen,
     here: &dyn Fn() -> bool,
-) -> (Vec<String>, Option<bool>) {
+) -> (Vec<String>, bool) {
     let mut args = state_args(s, "");
     if let Some(a) = args.as_object_mut() {
         a.remove("session");
     }
     let Ok(found) = call(data, "get_window_state", args, here) else {
-        return (vec![], None);
+        return (vec![], false);
     };
     let now = controls(&found);
     let was = std::mem::replace(&mut s.controls, now);
-    (said(&was, &s.controls, seen), Some(paged(&found)))
+    (said(&was, &s.controls, seen), page_missing(&found))
 }
 
 /// The lines for what differs between two reads' controls.

@@ -273,7 +273,7 @@ pub(super) fn read(
     let window = &all[nth - 1];
     // Chromium's page, waited for in one sleep: a poll would put it off.
     if chromium(data, s.pid, here) {
-        if !paged(&found) && !lock(&PAGED).contains(&s.pid) {
+        if page_missing(&found) && !lock(&PAGED).contains(&s.pid) {
             thread::sleep(PAGE_WAIT);
             found = call(data, "get_window_state", state_args(s, me), here)?;
         }
@@ -293,7 +293,7 @@ pub(super) fn read(
             last = n;
         }
     }
-    let pageless = !paged(&found) && chromium(data, s.pid, here);
+    let pageless = page_missing(&found) && chromium(data, s.pid, here);
     (s.secure, s.frames, s.values, s.moved, s.address) = Default::default();
     learn(s, &found);
     s.controls = controls(&found);
@@ -345,7 +345,7 @@ pub(super) fn read(
     }
     if pageless {
         text.push_str(&format!("\n(No page in this read. {})", no_page(&s.app)));
-    } else if thin(&found) {
+    } else if thin(&found) && !dialog(&found) {
         text.push_str(&format!("\n{}'s window shows little to accessibility yet: read again in a few seconds, or `brigadier computer screenshot` to look at it.", s.app));
     }
     Ok(text)
@@ -358,7 +358,43 @@ pub(super) fn unresolved(found: &Value) -> bool {
 /// Whether the read holds a page: its web area.
 pub(super) fn paged(found: &Value) -> bool {
     (found["elements"].as_array().into_iter().flatten()).any(|e| e["role"] == "AXWebArea")
-        || (found["tree_markdown"].as_str()).is_some_and(|t| t.contains("AXWebArea"))
+        || (found["tree_markdown"].as_str()).is_some_and(|t| t.lines().any(web_area))
+}
+
+/// A row whose role is the web area's, numbered or not: its words may hold any role's name.
+fn web_area(line: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix("- ") else {
+        return false;
+    };
+    let role = match rest.strip_prefix('[') {
+        Some(r) => r.split_once("] ").map_or("", |(_, r)| r),
+        None => rest,
+    };
+    role.split(' ').next() == Some("AXWebArea")
+}
+
+/// Whether a Chromium window lacks the page it should hold.
+pub(super) fn page_missing(found: &Value) -> bool {
+    !paged(found) && !dialog(found)
+}
+
+/// A window drawn by the app itself, with no page by design: a dialog, with a button of its own
+/// beside its title bar's.
+/// shortcut: an app's own window that isn't a dialog reads as a page that can't be read; a dialog
+/// with its own buttons round an unread page reads as whole. Nothing in a read tells them apart.
+fn dialog(found: &Value) -> bool {
+    const BAR: [&str; 4] = [
+        "AXCloseButton",
+        "AXMinimizeButton",
+        "AXZoomButton",
+        "AXFullScreenButton",
+    ];
+    let has = |role: &str, like: &dyn Fn(&str) -> bool| {
+        (found["elements"].as_array().into_iter().flatten())
+            .any(|e| e["role"] == role && like(e["subrole"].as_str().unwrap_or("")))
+    };
+    has("AXWindow", &|s| s == "AXDialog" || s == "AXSystemDialog")
+        && has("AXButton", &|s| !BAR.contains(&s))
 }
 
 /// Why a Chromium window may hold no page, and what to do instead [D2032].
