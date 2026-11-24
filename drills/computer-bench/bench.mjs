@@ -96,6 +96,15 @@ const READS = {
 const ASKED = /No answer yet:|needs the user's yes|Run this script on/
 
 const brigadier = (...args) => spawnSync(BRIGADIER, args, { encoding: 'utf8' })
+// The session's tabs, less the windows their pages opened, which go with them.
+const tabs = () => {
+  const r = brigadier('browser', 'tabs', '--json')
+  const all = JSON.parse(r.stdout || '{}').result?.tabs
+  if (!all) throw new Error(`the session's tabs can't be listed: ${r.stdout}${r.stderr}`)
+  return all.filter((t) => !t.window).map((t) => String(t.id))
+}
+// Its tabs from before the bench: never closed.
+const before = tool === 'browser' ? new Set(tabs()) : null
 const ARM = {
   computer: {
     intro: 'You work a Chrome for Testing window on this Mac with the `brigadier computer` command; run `brigadier computer --help` first. The page is already open in it.',
@@ -116,10 +125,8 @@ const ARM = {
   browser: {
     intro: 'You work a web page with the `brigadier browser` command; run `brigadier browser --help` first. Open the start page with it first.',
     args: ['--allowedTools', 'Bash(brigadier browser:*)'],
-    // A window goes with its tab.
     clear: async () => {
-      const r = brigadier('browser', 'tabs', '--json')
-      for (const t of JSON.parse(r.stdout || '{}').result?.tabs ?? []) if (!t.window) brigadier('browser', 'close', '--tab', String(t.id))
+      for (const id of tabs()) if (!before.has(id)) brigadier('browser', 'close', '--tab', id)
     },
   },
   playwright: {
