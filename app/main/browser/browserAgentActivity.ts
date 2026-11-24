@@ -37,8 +37,11 @@ function add(guest: number, kind: Kind, text: string): void {
 
 const SECRET_NAME = /pass|pwd|token|secret|auth|session|sid|code|key|otp/i;
 
-/** An address as a line shows it: what a query's sensitive names hold stays out. */
-export function shownUrl(url: string): string {
+/**
+ * An address as an agent sees it: what a query's or a fragment's sensitive names hold stays out. `query` false keeps
+ * the query, and the address whole, for a page the agent may have to open again.
+ */
+export function shownUrl(url: string, query = true): string {
   let shown = url;
   try {
     const parsed = new URL(url);
@@ -46,14 +49,35 @@ export function shownUrl(url: string): string {
       parsed.username = "";
       parsed.password = "";
     }
-    for (const name of Array.from(parsed.searchParams.keys())) {
+    for (const name of query ? Array.from(parsed.searchParams.keys()) : []) {
       if (SECRET_NAME.test(name)) parsed.searchParams.set(name, "(hidden)");
     }
+    // A sign-in's answer (#access_token=…), or a route with a query of its own (#/callback?code=…).
+    if (parsed.hash) parsed.hash = parsed.hash.replace(/([^#?&=]+)=[^&]*/g, (pair, name: string) => (SECRET_NAME.test(decoded(name)) ? `${name}=(hidden)` : pair));
     shown = parsed.toString();
   } catch {
     // Not an address to take apart: shown as it came, cut.
   }
-  return shown.length > URL_MOST ? `${shown.slice(0, URL_MOST)}…` : shown;
+  return query && shown.length > URL_MOST ? `${shown.slice(0, URL_MOST)}…` : shown;
+}
+
+function decoded(name: string): string {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+}
+
+/** A title as an agent sees it: Chromium titles a page with none by its address, which is told apart. */
+export function shownTitle(title: string, url: string): string {
+  try {
+    const { host } = new URL(url);
+    const rest = title.replace(/^[a-z]+:\/\//i, "");
+    return host && rest.startsWith(host) && /^[/?#]/.test(rest.slice(host.length)) ? "" : title;
+  } catch {
+    return title;
+  }
 }
 
 /** The session's requests, by the guest each came from. Observers only: they can't hold up or change a request. */

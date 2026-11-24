@@ -6,11 +6,12 @@
 import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
-import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
+import { activityOf, forgetActivity, shownTitle, shownUrl, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { stopOf } from "./browserSignIn";
+import { stopForAddress } from "./browserSignInRules";
 import { openerTab } from "./guestPopups";
 
 export { watchNetwork };
@@ -174,6 +175,7 @@ export function watchGuest(guest: WebContents): void {
 }
 
 type Call =
+  | { call: "shown"; guest?: number; url: string; title: string; query: boolean }
   | { call: "script"; guest: number; op: Record<string, unknown> }
   | { call: "attach"; guest: number }
   | { call: "release"; guest: number }
@@ -192,6 +194,13 @@ const SEES_HANDLERS = new Set<unknown>(["read", "click", "place", "hover"]);
 
 export function installBrowserAgent(): void {
   handleFromApp("brigadier:agent", async (event, call: Call) => {
+    // A page's address and title for its agent. An ordinary page's query stays, as the agent may have to open it again;
+    // `query` hides a popup's and a paused tab's, and a sign-in page's is hidden here.
+    if (call.call === "shown") {
+      const page = call.guest === undefined ? undefined : webContents.fromId(call.guest);
+      const query = call.query || stopForAddress(call.url) !== null || (page !== undefined && (await stopOf(page)) !== null);
+      return { url: shownUrl(call.url, query), title: shownTitle(call.title, call.url) };
+    }
     const guest = guestFor(event.sender, call.guest);
     switch (call.call) {
       case "script":

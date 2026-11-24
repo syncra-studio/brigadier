@@ -2,7 +2,7 @@ import { setBrowserHandler } from "../daemon";
 import { run } from "../onboarding/api";
 import { newId } from "../session/store";
 import { closeTab, driveTab, selectTab, setTabUrl, type Tab, tabsOf, tabsRead } from "../shell/tab-store";
-import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun } from "./hands";
+import { agentCapture, agentDrive, agentEvents, agentLoad, agentRun, agentShown } from "./hands";
 import { agentPage, go } from "./layer";
 import { agentDoing } from "./overlay";
 import { browserPage, closeBrowserPage, loadStarts, openPage } from "./pages";
@@ -196,12 +196,12 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
   }
   if (op.op === "tabs") {
     const { active } = tabsOf(owner);
-    const tabs = browserTabs(owner).flatMap((each) => {
+    const tabs = await Promise.all(browserTabs(owner).flatMap((each) => {
       const shown = browserPage(each.id);
       const whose = { driver: each.driver ?? "", paused: isPaused(each.id), asked: Boolean(askedOf(each.id)) };
       const opened = windowsOf(each.id).map(({ id, title, url }) => ({ id, title, url, ...whose, front: false, window: true }));
       return [{ id: each.id, title: shown?.title ?? "", url: shown?.url || each.target || "", ...whose, front: active === each.id }, ...opened];
-    });
+    }).map(async (each) => ({ ...each, ...(await agentShown(each.id, each.url, each.title)) })));
     return { result: "tabs", tabs };
   }
   const tab: Tab | undefined = browserTabs(owner).find((each) => each.id === tabOf(String(op.tab)));
@@ -330,7 +330,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return failed(error);
       const left = await settled(tab);
-      const after = withDialogs(withPopups(await page(left, owner), owner, before), answer);
+      const after = withDialogs(await withPopups(await page(left, owner), owner, before), answer);
       return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
     }
     case "eval": {
@@ -342,11 +342,13 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const answer = await agentRun(tab, { kind: "eval", script: op.script });
       const error = errorOf(answer);
       if (error) return failed(error);
-      return { result: "evaluated", tab, url: urlOf(answer) ?? shown?.url ?? "", text: String((answer as { text?: unknown }).text ?? "") };
+      const { url } = await agentShown(tab, urlOf(answer) ?? shown?.url ?? "");
+      return { result: "evaluated", tab, url, text: String((answer as { text?: unknown }).text ?? "") };
     }
     case "screenshot": {
       const png = await agentCapture(tab);
-      return { result: "shot", tab, url: shownPage(tab)?.url ?? "", png: base64(png) };
+      const { url } = await agentShown(tab, shownPage(tab)?.url ?? "");
+      return { result: "shot", tab, url, png: base64(png) };
     }
     case "ask": {
       // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
@@ -366,14 +368,14 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
 const idsNow = (owner: string) => new Set(browserTabs(owner).flatMap((each) => [each.id, ...windowsOf(each.id).map(({ id }) => id)]));
 
 /** The page after an action, naming the tabs and windows it opened: the agent goes on in them by their ids. */
-function withPopups(result: Result, owner: string, before: Set<string>): Result {
+async function withPopups(result: Result, owner: string, before: Set<string>): Promise<Result> {
   const opened = [...idsNow(owner)].filter((id) => !before.has(id));
   if (result.result !== "page" || !opened.length) return result;
   const read = result.page as { text: string };
-  const lines = opened.map((id) => {
-    const at = windowOf(id)?.url ?? browserTabs(owner).find((each) => each.id === id)?.target;
-    return `(This opened a new ${isWindow(id) ? "window" : "tab"}: ${id} at ${at}. Use it with --tab.)`;
-  });
+  const lines = await Promise.all(opened.map(async (id) => {
+    const { url } = await agentShown(id, windowOf(id)?.url ?? browserTabs(owner).find((each) => each.id === id)?.target ?? "");
+    return `(This opened a new ${isWindow(id) ? "window" : "tab"}: ${id} at ${url}. Use it with --tab.)`;
+  }));
   return { ...result, page: { ...read, text: `${read.text}\n\n${lines.join("\n")}` } };
 }
 
@@ -450,7 +452,7 @@ async function page(tab: string, owner: string): Promise<Result> {
   // A tab no one has on screen follows its page here, so it opens there again after a restart (8192: tabs.rs's URL_MAX).
   if (/^https?:/i.test(read.url) && read.url.length <= 8192 && browserTabs(owner).some((each) => each.id === tab && each.target !== read.url)) setTabUrl(owner, tab, read.url);
   const shown = shownPage(tab);
-  return { result: "page", tab, page: { url: read.url, title: read.title, generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: read.text }, user: false };
+  return { result: "page", tab, page: { ...(await agentShown(tab, read.url, read.title)), generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: read.text }, user: false };
 }
 
 /**
@@ -469,7 +471,7 @@ async function stoppedAt(id: string): Promise<Result | null> {
   }
   if (!stop) return null;
   const shown = shownPage(tab);
-  const read = { url: shown?.url ?? "", title: shown?.title ?? "", generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
+  const read = { ...(await agentShown(id, shown?.url ?? "", shown?.title)), generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
   return { result: "page", tab, page: read, user: false, stopped: true };
 }
 

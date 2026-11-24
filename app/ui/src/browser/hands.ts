@@ -5,7 +5,7 @@ import { agentPage, focusPage, loadPage, pageBounds, whilePainting } from "./lay
 import { dropOverlay, glideTo, pressAt, raiseShield } from "./overlay";
 import { takeBackTab } from "./give";
 import { driverOf, isPaused, userUsed } from "./pause";
-import { tabOf } from "./windows";
+import { isWindow, tabOf } from "./windows";
 
 type Answer = Record<string, unknown>;
 const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(call);
@@ -116,6 +116,11 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
   // Continue: the hold comes back as it was, and refs from before the user's turn mean nothing now.
   await agent({ call: "attach", guest: page.guest });
   await script(page.guest, { kind: "void" });
+}
+
+/** A page's address and title as its agent sees them (main's browserAgentActivity.ts): no sign-in's secrets in them. */
+export function agentShown(id: string, url: string, title = ""): Promise<{ url: string; title: string }> {
+  return agent({ call: "shown", guest: maybePage(id)?.guest, url, title, query: isWindow(id) || isPaused(tabOf(id)) }) as Promise<{ url: string; title: string }>;
 }
 
 function maybePage(id: string) {
