@@ -8,13 +8,14 @@ import { tokenMs } from "../components/tooltip";
 import { threadSource, useDaemon } from "../daemon";
 import { useStart } from "../home/start";
 import { BackgroundCard } from "../panel/background";
-import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, PlanCard, summaryReady, type TouchedRepo } from "../panel/card";
+import { AttachmentsCard, type CardFile, ChangesCard, FolderChanges, summaryReady, type TouchedRepo } from "../panel/card";
 import { PrsCard } from "../panel/card-prs";
 import { frontBranch } from "../panel/create-pr";
 import { SourcesCard } from "../panel/card-sources";
 import { isWorking, pickRepo, useRepoPick } from "../panel/git";
 import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
+import { Plan, type Step } from "../panel/plan";
 import { openPr, openReview } from "../panel/open";
 import { openLink } from "../browser/links";
 import { useSource } from "../panel/source/view";
@@ -110,9 +111,23 @@ export function toggleSummary() {
 window.brigadier?.onMenu((command) => command === "toggle-summary" && toggleSummary());
 
 // The card itself, pinned or floating: 300 wide, radius 16, its edge and faint shadow [D136].
-const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 shrink-0 flex-col overflow-hidden rounded-menu bg-popover p-3 shadow-summary";
+const SURFACE = "pointer-events-auto flex w-75 max-w-full min-w-0 flex-col rounded-menu bg-popover p-3 shadow-summary";
 
-/** The card's surface, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
+/** The summary card and, with a plan, the plan's own card under it: short of room, the summary scrolls above the plan. */
+export function Cards({ plan, planOpen, children }: { plan?: readonly Step[] | null; planOpen?: boolean; children: ReactNode }) {
+  return (
+    <>
+      <div className={cx(SURFACE, "min-h-0 overflow-y-auto hide-scrollbar")}>{children}</div>
+      {plan && plan.length > 0 && (
+        <section aria-label="Plan" className={cx(SURFACE, "shrink-0")}>
+          <Plan plan={plan} startOpen={planOpen} />
+        </section>
+      )}
+    </>
+  );
+}
+
+/** The card's place, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
 export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
@@ -122,14 +137,14 @@ export function SummaryCard({ shown, settled = true, surface, children }: { show
         aria-hidden={!shown || undefined}
         className={cx(
           // 8 from the pane's top and end, a right panel's edge too [D136].
-          "pointer-events-none flex max-h-full min-h-0 w-77 max-w-full flex-col overflow-y-auto pe-2 pt-2 pb-2",
+          "pointer-events-none flex max-h-full min-h-0 w-77 max-w-full flex-col gap-2 overflow-y-auto pe-2 pt-2 pb-2",
           // Hidden in a pane that floats it as soon as the pane is measured, with no render between (the old app's). Shown or
           // hidden, it slides in from the right and fades, cut at the pane's end [D137].
           shown ? "summary-floats:invisible summary-floats:translate-x-4 summary-floats:opacity-0" : "invisible translate-x-4 opacity-0",
           settled && "summary-card-motion",
         )}
       >
-        <div ref={surface} className={SURFACE}>
+        <div ref={surface} className="contents">
           {children}
         </div>
       </aside>
@@ -164,9 +179,9 @@ function FloatingCard({ open, onClose, surface }: { open: boolean; onClose: () =
               initialFocus={() => (document.activeElement?.closest('[role="dialog"], [role="alertdialog"]') ? false : popup.current)}
               aria-label="Context"
               // The pinned card's own room (SummaryCard's aside), so it keeps the same gap to the right panel [D59]; below, room for its shadow.
-              className="pointer-events-none flex max-h-available w-77 max-w-available flex-col overflow-y-auto pe-2 pt-2 pb-2 outline-none menu-motion"
+              className="pointer-events-none flex max-h-available w-77 max-w-available flex-col gap-2 overflow-y-auto pe-2 pt-2 pb-2 outline-none menu-motion"
             >
-              <div ref={surface} className={SURFACE} />
+              <div ref={surface} className="contents" />
             </Popover.Popup>
           </Popover.Positioner>
         </Popover.Portal>
@@ -372,7 +387,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
   });
   // Not drawn until its data is in: no skeleton first. In this order [D128].
   const card = has && (folderChat ? touched !== null : summaryReady(shown)) ? (
-    <>
+    <Cards plan={rows?.find((row) => row.id === owner)?.plan}>
       {folderChat ? (
         <FolderChanges
           repos={touched ?? []}
@@ -394,13 +409,12 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
         offline={shown.offline}
         onPr={(pr) => (folderChat ? pr.url && openLink(pr.url) : openPr(owner, pr))}
       />
-      <PlanCard owner={owner} />
       <WorkersCard owner={owner} />
       <SubagentsCard owner={owner} />
       <BackgroundCard owner={owner} />
       <SourcesCard owner={owner} />
       <AttachmentsCard files={files} onOpen={(file, label) => openAttachment(owner, file.id, label)} />
-    </>
+    </Cards>
   ) : null;
   return (
     <SummaryPane owner={owner} card={card} room={has}>
