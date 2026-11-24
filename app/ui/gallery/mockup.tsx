@@ -17,6 +17,7 @@ import picture from "./sample.svg?no-inline";
 
 const act = () => Promise.resolve();
 const noop = () => {};
+const run = async () => ({});
 
 const offer = (reuse: boolean): PendingQuestion => ({
   id: reuse ? "offer-reuse" : "offer",
@@ -109,14 +110,14 @@ export function MockupGallery() {
           <State label="big UI change">
             <div className="w-140">
               <RailItem variant="decision" label="Waiting for you">
-                <QuestionCard question={offer(false)} onAnswer={act} onDismiss={noop} />
+                <QuestionCard question={offer(false)} onAnswer={act} onDismiss={noop} session="" run={run} />
               </RailItem>
             </div>
           </State>
           <State label="another session built it">
             <div className="w-140">
               <RailItem variant="decision" label="Waiting for you">
-                <QuestionCard question={offer(true)} onAnswer={act} onDismiss={noop} session="reuse" />
+                <QuestionCard question={offer(true)} onAnswer={act} onDismiss={noop} session="reuse" run={run} />
               </RailItem>
             </div>
           </State>

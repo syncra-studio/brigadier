@@ -352,8 +352,14 @@ pub fn answer(spec: &Spec, msg: &Value) -> Result<Value, String> {
         line["grant"] = r.clone();
     }
     let why = msg["reason"].as_str().map_or("", str::trim);
-    if !allowed && !why.is_empty() {
-        line["before"] = crate::adapters::denied(msg).into();
+    // Its answer takes words alone, so its images go in the same way: read straight after it. Not
+    // taken, the answer still names each one's file.
+    let before = match msg["beside"].as_str() {
+        Some(beside) => Some(input(spec, beside)),
+        None => (!allowed && !why.is_empty()).then(|| crate::adapters::denied(msg).into()),
+    };
+    if let Some(before) = before {
+        line["before"] = before;
         line["thread"] = cli["thread"].clone();
         line["turn"] = cli["turn"].clone();
     }

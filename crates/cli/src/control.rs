@@ -6,6 +6,7 @@
 use crate::{call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::{self, Fold};
+use brigadier_core::message::answers::{Answers, answers as answers_of};
 use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
@@ -16,7 +17,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{io, process, thread};
 
+mod given;
 mod steer;
+pub use given::beside;
+use given::{told, with};
 pub use steer::{steer_as, steer_turn};
 
 pub(crate) fn refused(error: &str, why: Value) -> Value {
@@ -95,7 +99,8 @@ pub(crate) fn deliver(
 }
 
 /// `answer <id> <request> allow|allowSession|deny [--reason R]` for an approval, or
-/// `answer <id> <request> --answers JSON` for a question: one answer per item, null skipped [D177].
+/// `answer <id> <request> --answers JSON` for a question: one answer per item, null skipped, one
+/// with images or files as its draft [D177].
 pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     let usage = || io::Error::other(crate::USAGE);
     let id = args.get(1).ok_or_else(usage)?;
@@ -105,13 +110,17 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     let answers: Option<Vec<Value>> = (flag(args, "--answers").map(serde_json::from_str))
         .transpose()
         .map_err(|e| io::Error::other(format!("--answers: {e}")))?;
+    let given = match &answers {
+        Some(given) => answers_of(data, &core::load(data, id)?, given)?,
+        None => Answers::default(),
+    };
     // A question a Brigade's session sent its boss, passed to the user: back to its wait [D189].
     if let Some(mid) = request.strip_prefix("peer-") {
-        return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
+        return crate::workers::user_answer(data, id, mid, &given);
     }
     // A worker's routing hold, what it left running or a mockup offer: Rust's own question, the
     // user's call [D2028, D2058].
-    let choice = (answers.iter().flatten()).find_map(Value::as_str);
+    let choice = given.said.iter().find_map(Value::as_str);
     if request.starts_with("mockup-") {
         return crate::relay::mockup::answered(data, id, request, choice.unwrap_or(""));
     }
@@ -122,8 +131,8 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         let args = ["routing", "answer", id, request, choice.unwrap_or("")].map(String::from);
         return crate::routing::run(data, &args);
     }
-    let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
-    answered(data, id, request, control)
+    let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers.map(|_| &given.said)});
+    answered(data, id, request, control, &given)
 }
 
 /// A worker's parent answers its approval, as the parent's (`by`), never the user's [D131].
@@ -136,7 +145,7 @@ pub fn answer_as(
     by: &str,
 ) -> io::Result<Option<Value>> {
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "by": by});
-    answered(data, id, request, control).map(Some)
+    answered(data, id, request, control, &Answers::default()).map(Some)
 }
 
 /// Brigadier's own answer to an exact repeat of a command allowed for the session, which its
@@ -216,13 +225,19 @@ pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
-fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
+fn answered(
+    data: &Path,
+    id: &str,
+    request: &str,
+    mut control: Value,
+    given: &Answers,
+) -> io::Result<Value> {
     if request.starts_with("browser-") {
         return crate::browser::answered(data, id, request, &control);
     }
     let decision = control["decision"].as_str().map(String::from);
     let answers = control["answers"].as_array().cloned();
-    let req = json!({"cid": new_cid(), "control": control});
+    let req = with(json!({"cid": new_cid()}), &mut control, given);
     deliver(data, id, req, true, |f| {
         let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request)) else {
             let why = f.closed.get(request).map_or("unknown", String::as_str);
@@ -246,8 +261,10 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
                 _ => return wrong("decision"),
             },
         }
-        let mut msg = control.clone();
-        msg["request"] = asked.clone();
+        let mut msg = told(&control, asked, given);
+        if answers.is_some() {
+            msg["answers"] = given.told.clone().into();
+        }
         Ok(msg)
     })
 }
@@ -261,6 +278,7 @@ pub fn reply(
     data: &Path,
     id: &str,
     text: &str,
+    parts: &Value,
     cid: Option<&str>,
     by: Option<&str>,
 ) -> io::Result<Option<Value>> {
@@ -277,14 +295,16 @@ pub fn reply(
     let Some(request) = asked else {
         return Ok(None);
     };
-    let control = json!({"kind": "answer", "request": request, "reply": text, "by": by});
+    let given = Answers::of(&core::load(data, id)?, text, parts)?;
+    let mut control =
+        json!({"kind": "answer", "request": request, "reply": given.said[0], "by": by});
     let cid = cid.map_or_else(new_cid, String::from);
-    let req = json!({"cid": cid, "control": control});
+    let req = with(json!({"cid": cid}), &mut control, &given);
     let reply = deliver(data, id, req, true, |f| {
         match f.turns.first().and_then(|t| t.asks.get(request.as_str())) {
             Some(asked) => {
-                let mut msg = control.clone();
-                msg["request"] = asked.clone();
+                let mut msg = told(&control, asked, &given);
+                msg["reply"] = given.told[0].clone();
                 Ok(msg)
             }
             None => Err(refused("not_pending", Value::Null)),

@@ -149,9 +149,17 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         );
         ("POST", path, body)
     } else if f.is_object() {
+        let asked = f["session"].as_str().unwrap_or("");
+        // Not taken, the answer still goes: it names each image's file.
+        if c["before"].is_object() {
+            let path = format!("/api/session/{asked}/prompt");
+            match server.request("POST", &path, &c["before"]) {
+                Ok((code, _)) if code < 300 => {}
+                other => eprintln!("OpenCode took no images with the answer: {other:?}"),
+            }
+        }
         let path = format!(
-            "/api/session/{}/form/{}/reply",
-            f["session"].as_str().unwrap_or(""),
+            "/api/session/{asked}/form/{}/reply",
             f["id"].as_str().unwrap_or("")
         );
         ("POST", path, json!({"answer": f["answer"]}))

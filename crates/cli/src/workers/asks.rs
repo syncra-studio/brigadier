@@ -281,7 +281,7 @@ pub fn answer(
     let (question, plan) = (r["items"].is_array(), r["action"] == "plan");
     let reply = match (question || plan, allow, deny) {
         (true, false, None) if !text.trim().is_empty() => {
-            control::reply(data, wid, text, None, Some("parent"))
+            control::reply(data, wid, text, &Value::Null, None, Some("parent"))
         }
         (true, true, None) if plan => control::answer_as(data, wid, &id, "allow", None, "parent"),
         (true, ..) if plan => {

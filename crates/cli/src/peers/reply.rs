@@ -97,26 +97,35 @@ pub(crate) fn asked(data: &Path, wid: &str) -> usize {
 /// The parent's answer to its worker's question `mid`: back to the send that waits, or, with none
 /// waiting any more, as a message from the parent. The worker's step shows it [D121, D122].
 pub(crate) fn answer(data: &Path, parent: &str, wid: &str, mid: &str, text: &str) -> Value {
+    let note = json!({"phase": "answered", "mid": mid, "reply": text});
+    match hand_back(data, wid, mid, text, note) {
+        Ok(true) => json!({"ok": true, "text": format!("Sent to {wid}.")}),
+        Ok(false) => send(data, parent, &json!({"id": wid}), text, None, &|| true),
+        Err(refusal) => refusal,
+    }
+}
+
+/// Answers `wid`'s question `mid`, noted as `said`; whether a send still waits for it.
+pub(crate) fn hand_back(
+    data: &Path,
+    wid: &str,
+    mid: &str,
+    text: &str,
+    said: Value,
+) -> Result<bool, Value> {
     let one = COUNTING.lock().unwrap_or_else(|e| e.into_inner());
     let p = path(data, wid, "out", mid);
     let Some(mut out) = workers::read_json::<Out>(&p) else {
-        return refuse(&format!("{wid} isn't waiting on you."));
+        return Err(refuse(&format!("{wid} isn't waiting on you.")));
     };
     let waits = out.state == "asking";
     (out.state, out.reply) = ("answered".into(), Some(text.into()));
     if let Err(e) = workers::write_json(&p, &out) {
-        return refuse(&e.to_string());
+        return Err(refuse(&e.to_string()));
     }
     drop(one);
-    note(
-        data,
-        wid,
-        json!({"phase": "answered", "mid": mid, "reply": text}),
-    );
-    if !waits {
-        return send(data, parent, &json!({"id": wid}), text, None, &|| true);
-    }
-    json!({"ok": true, "text": format!("Sent to {wid}.")})
+    note(data, wid, said);
+    Ok(waits)
 }
 
 /// Waits running now, by their message's id: who waits, on whom, and the answer sent to it once

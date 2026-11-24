@@ -239,6 +239,7 @@ impl Thread {
         if answering {
             if let Some(at) = self.open.as_mut().and_then(|o| o.asked.take()) {
                 self.items[at]["answer"] = item["text"].clone();
+                self.items[at]["files"] = json!([item["parts"]["files"]]);
                 self.changed_items.insert(at);
                 self.unwait_row(at);
             }

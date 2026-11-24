@@ -3,6 +3,7 @@
 //! an image in the agent's own form, any other file as its path, a long paste whole, a mention as
 //! the old app's line [D2007, D2008, D2021].
 
+pub mod answers;
 pub mod notes;
 
 use crate::{Spec, check_id, data_of, session_dir};
@@ -129,8 +130,19 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
 pub fn compose(
     spec: &Spec,
     text: &str,
+    parts: Value,
+    backend: Option<&str>,
+) -> io::Result<Message> {
+    compose_on(spec, text, parts, backend, vec![])
+}
+
+/// The same, its images numbered on from `images`, which it carries too.
+fn compose_on(
+    spec: &Spec,
+    text: &str,
     mut parts: Value,
     backend: Option<&str>,
+    mut images: Vec<PathBuf>,
 ) -> io::Result<Message> {
     if parts.is_null() {
         return Ok(Message::plain(text));
@@ -138,7 +150,7 @@ pub fn compose(
     let data = data_of(spec);
     notes::freeze(&data, &spec.dir, &mut parts)?;
     let mut mentioned = vec![];
-    let (mut agent, mut notes, mut images) = (String::new(), vec![], vec![]);
+    let (mut agent, mut notes) = (String::new(), vec![]);
     let file = |id: &str| file_in(&sent(&spec.dir), id);
     for part in parts["parts"].as_array().into_iter().flatten() {
         let label = part["label"].as_str().unwrap_or("");

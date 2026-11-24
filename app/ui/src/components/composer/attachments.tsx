@@ -290,12 +290,15 @@ type SentTile = { id: string; name: string; mime: string; bytes: number; pasted?
 export function SentAttachments({
   files,
   onOpen,
+  start = false,
 }: {
   files: readonly SentTile[];
+  /** At the left, in an answer's row. */
+  start?: boolean;
   onOpen: (file: SentTile) => void;
 }) {
   // Stacked: wrapped rows start at the left with the bubble's column, not its far end [D914].
-  const stacked = useSettings().value?.message_layout === "stacked";
+  const stacked = useSettings().value?.message_layout === "stacked" || start;
   if (files.length === 0) return null;
   const images = files.filter((file) => file.mime.startsWith("image/"));
   return (

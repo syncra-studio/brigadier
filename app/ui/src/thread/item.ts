@@ -181,7 +181,7 @@ export type Item = Base &
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" | "brigadier" | "review"; by?: "parent" | "review" }
-    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent"; /** A worker's routing hold: it waits with no turn running [D2028]. */ held?: true }
+    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; /** Each answer's files, as a sent message's. */ files?: (SentFile[] | null)[] | null; withdrawn?: boolean; to?: "parent"; /** A worker's routing hold: it waits with no turn running [D2028]. */ held?: true }
     | {
         kind: "childAgent";
         sessionId: string;

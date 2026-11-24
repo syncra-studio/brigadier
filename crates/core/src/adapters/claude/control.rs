@@ -374,6 +374,7 @@ const SKIPPED: &str = "The user skipped this question. Use your own judgment.";
 
 /// A control message as the line Claude reads [D159, D192, D193].
 pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
+    let mut before = String::new();
     let line = match msg["kind"].as_str() {
         Some("steer") => return Ok(Delivery::Stdin(user(s(msg, &["text"]), &spec.images))),
         Some("interrupt") => {
@@ -393,11 +394,16 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
             } else {
                 decision(r, msg)?
             };
+            // An answer takes words alone: its images wait as a steer, which Claude reads straight
+            // after the answer that lets its turn go on, in the same write.
+            if let Some(beside) = msg["beside"].as_str() {
+                before = user(beside, &spec.images);
+            }
             json!({"type": "control_response", "response": {"subtype": "success", "request_id": r["id"], "response": response}})
         }
         _ => return Err("unknown control message".into()),
     };
-    Ok(Delivery::Stdin(format!("{line}\n")))
+    Ok(Delivery::Stdin(format!("{before}{line}\n")))
 }
 
 /// A question's answers by question text, or the user's own message as a reply to the round.

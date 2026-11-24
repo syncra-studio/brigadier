@@ -82,7 +82,9 @@ impl Thread {
                 (row["state"], row["why"]) = (phase.into(), item["why"].clone())
             }
             "replied" => row["waited"] = "replied".into(),
-            "answered" => row["answer"] = item["reply"].clone(),
+            "answered" => {
+                (row["answer"], row["files"]) = (item["reply"].clone(), item["files"].clone())
+            }
             "waited" => row["waited"] = "timeout".into(),
             _ => return,
         }
