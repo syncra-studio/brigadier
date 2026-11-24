@@ -1,0 +1,49 @@
+/* Mockup only, round 3: the folded sidebar's lines edge to edge, laid over the app's own rules (session-tab-bar,
+   main-surface). ?v=e is its A, ?v=f its B, the strip's border too. Never in the app's CSS. */
+@property --mockup-edge {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+:is([data-mockup="e"], [data-mockup="f"]) {
+  /* The separator from the window's top down to the row's line, not over it: crossed, their corner would draw twice. */
+  & [data-slot="session-tabs"]::before {
+    inset-block: 0 var(--spacing-session-tab-rule);
+    margin-block: 0;
+    height: auto;
+  }
+  & [data-slot="sidebar-wrapper"][data-state="collapsed"] {
+    & [data-slot="session-tabs"]::after {
+      inset-inline-start: 0;
+    }
+    /* New chat with no tabs and the right panel open: the row's own line too, in the place of the panel's hairline,
+       which main-surface clips at the strip. */
+    &:has([data-slot="right-panel"][data-state="expanded"]) {
+      & .main-surface::after {
+        background-color: transparent;
+      }
+      & [data-slot="session-tabs"]::after {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+/* B: the main area's edge, the open sidebar's border, stays as it folds, under the row's line alone; its part beside the
+   row fades in and out with the sidebar. One line drawn in the border's own column, so nothing meets it twice. */
+[data-mockup="f"] .main-surface {
+  --mockup-edge: var(--color-border);
+  border-color: transparent;
+  background-image: linear-gradient(to bottom, var(--mockup-edge) var(--spacing-tab-bar), var(--color-border) 0);
+  background-origin: border-box;
+  background-size: var(--spacing-session-tab-rule) auto;
+  background-repeat: no-repeat;
+  transition: --mockup-edge var(--duration-fold) var(--ease-sidebar);
+  [data-state="collapsed"] > & {
+    --mockup-edge: transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
