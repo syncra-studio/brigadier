@@ -35,14 +35,22 @@ function StepRow({ step }: { step: Step }) {
   );
 }
 
+/** Plans opened by hand, by session: hiding the card unmounts it, and it comes back as it was left. */
+export const planFolds = new Map<string, { open: boolean; earlier: boolean }>();
+
 /**
  * The agent's own to-do list as its CLI last wrote it (Claude Code's TodoWrite, OpenCode's todowrite, Codex's
  * update_plan): one line, the step under way (else the next one) and the count, a cancelled step in neither number; it
  * opens to the list, what's ended gathered in one row.
  */
-export function Plan({ plan, startOpen = false }: { plan: readonly Step[]; startOpen?: boolean }) {
-  const [open, setOpen] = useState(startOpen);
-  const [earlier, setEarlier] = useState(false);
+export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) {
+  const [fold, setFold] = useState(() => planFolds.get(owner) ?? { open: false, earlier: false });
+  const { open, earlier } = fold;
+  const change = (next: Partial<typeof fold>) => {
+    const now = { ...fold, ...next };
+    planFolds.set(owner, now);
+    setFold(now);
+  };
   const past = useId();
   const ended = plan.filter((step) => ENDED.has(step.status));
   const left = plan.filter((step) => !ENDED.has(step.status));
@@ -51,7 +59,7 @@ export function Plan({ plan, startOpen = false }: { plan: readonly Step[]; start
   const over = left.length === 0;
   const current = left.find((step) => step.status === "in_progress") ?? left[0];
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col">
+    <Collapsible open={open} onOpenChange={(next) => change({ open: next })} className="flex min-h-0 flex-col">
       <CollapsibleTrigger className={cx(ROW, ROW_HOVER, "shrink-0 cursor-pointer")}>
         <span aria-hidden className="flex min-w-5 shrink-0 items-center justify-center svg:size-4">
           {over ? <CheckCircle className="text-success" /> : open ? <Tasks /> : (MARK[current?.status ?? ""] ?? <Dot />)}
@@ -60,10 +68,10 @@ export function Plan({ plan, startOpen = false }: { plan: readonly Step[]; start
         <span className="shrink-0 text-muted-foreground tabular-nums">{done}/{total}</span>
         <ChevronDown aria-hidden className={cx("size-icon-xs shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="-me-2.5 flex max-h-60 flex-col overflow-y-auto pt-1 scroll-gutter">
+      <CollapsibleContent className="flex min-h-0 flex-col">
+        <div className="-me-2.5 flex max-h-60 min-h-0 flex-col overflow-y-auto pt-1 scroll-gutter">
           {ended.length > 0 && !over && (
-            <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => setEarlier(!earlier)} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground hover:bg-summary-row-hover focus-visible:focus-ring">
+            <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => change({ earlier: !earlier })} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground hover:bg-summary-row-hover focus-visible:focus-ring">
               <span aria-hidden className="flex min-w-5 justify-center svg:size-4"><CheckCircle /></span>
               {[done && `${done} done`, ended.length > done && `${ended.length - done} cancelled`].filter(Boolean).join(", ")}
               <ChevronDown aria-hidden className={cx("size-icon-xs transition motion-reduce:transition-none", !earlier && "-rotate-90")} />
