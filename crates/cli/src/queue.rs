@@ -22,7 +22,7 @@ mod peer;
 mod to;
 pub mod wake;
 pub use cut::{goes_on, off as cut_off, recover};
-pub use drain::drain;
+pub use drain::{drain, takes};
 pub use peer::{UNSURE, add_peer, pending, send_back, waits_for};
 pub use to::held as give_held;
 
@@ -90,20 +90,13 @@ struct Editing {
 }
 
 impl Queue {
-    /// Whether its item `at` may go to this session now. While a block is `holding` the user's
-    /// messages wait, and while a command runs so do those and the commands behind it; a command's
-    /// report and another session's message wait for neither.
-    fn goes(&self, at: usize, holding: bool) -> bool {
+    /// Whether its item `at` may go to this session now, as a block's next turn where its workers
+    /// hold one open [D521]. While a command runs the user's messages wait, and the commands behind
+    /// it; a command's report and another session's message don't.
+    fn goes(&self, at: usize) -> bool {
         let i = &self.items[at];
-        let first = || self.items.iter().position(Item::own) == Some(at);
-        match i.shell.as_deref() {
-            _ if i.to.is_some() => false,
-            _ if i.origin.is_some() => true,
-            Some("ended") => true,
-            _ if !self.running.is_empty() => false,
-            Some(_) => !holding || first(),
-            None => !holding,
-        }
+        i.to.is_none()
+            && (i.origin.is_some() || i.shell.as_deref() == Some("ended") || self.running.is_empty())
     }
 }
 

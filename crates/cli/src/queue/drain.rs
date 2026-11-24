@@ -18,14 +18,13 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
     for (id, row) in rows {
         judge::pass(data, id, row);
         let q = &row["queue"];
-        // While its block is held open the user's own wait, as mid-turn; another session's goes [D521, D300].
         let state = row["state"].as_str().unwrap_or("");
         let cut = state == "interrupted";
         let Ok(q) = serde_json::from_value::<Queue>(q.clone()) else {
             continue;
         };
         let first = (q.items.iter().enumerate()).find(|(at, i)| {
-            q.goes(*at, row["holding"] == true)
+            q.goes(*at)
                 && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
         });
         if first.is_none_or(|(_, i)| i.error.is_some())
@@ -45,6 +44,13 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
+/// Whether session `dir` takes a message from its queue as its next turn: what's first may go.
+pub fn takes(dir: &Path) -> bool {
+    let q = read(dir).unwrap_or_default();
+    let first = (0..q.items.len()).find(|at| q.goes(*at));
+    !q.paused && first.is_some_and(|at| q.items[at].error.is_none())
+}
+
 /// Sends the first queued message, judged and sent under the queue's lock (another pass that finds
 /// it held leaves it). The host takes it only if nothing reached the log since the session was
 /// judged between turns; a changed session keeps it queued. It leaves the queue only once the log
@@ -56,13 +62,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     };
     let spec = core::load(data, id)?;
     crate::rewind::settle_held(data, &spec)?;
-    let holding = crate::workers::holding(data, id);
     locked(&dir, |q| {
         let (f, state) = cut::now(data, id)?;
         let cut = state == "interrupted";
         let goes = |at: &usize| {
             let origin = q.items[*at].origin.as_deref();
-            q.goes(*at, holding) && (!cut || cut::carries(&dir, &f, origin))
+            q.goes(*at) && (!cut || cut::carries(&dir, &f, origin))
         };
         let Some(at) = (0..q.items.len()).find(goes) else {
             return Ok(());

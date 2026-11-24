@@ -437,11 +437,11 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
     if !TAKES.contains(&state) {
         return Ok(());
     }
-    // Under the parent's queue lock: the user's queued messages go first, but those that wait
-    // for a block this result's worker holds open, which it carries on [D521].
+    // Under the parent's queue lock: the user's queued messages go first; those that can't go now
+    // don't hold a block this result's worker holds open, which it carries on [D521].
     let (_lock, waiting) = queue::hold(&dir)?;
     // A wait may have taken it since it was read.
-    if (waiting && !super::holding(data, pid))
+    if (waiting && (queue::takes(&dir) || !super::holding(data, pid)))
         || read_json::<Res>(&path).is_none_or(|now| now.state != "written")
     {
         return Ok(());

@@ -74,14 +74,11 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     let link = cut::link(&dir);
     let origin = format!("peer:{from}");
     let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
-    let holding = workers::holding(data, id);
     // What goes before it: past a cut-off run only its parent's do.
-    let goes = |i: &&Item| {
-        i.to.is_none()
-            && (!holding || i.origin.is_some())
-            && (!carries || cut::parents(&dir, i.origin.as_deref()))
+    let goes = |n: &usize| {
+        q.goes(*n) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()))
     };
-    let ahead = q.items.iter().take(at.unwrap_or(0)).find(goes);
+    let ahead = (0..at.unwrap_or(0)).find(goes).map(|n| &q.items[n]);
     let after = |i: &Item| match i.error {
         Some(_) => "a message before it couldn't be sent, so it waits for its user to settle that",
         None => "it goes after the messages sent to it before",
