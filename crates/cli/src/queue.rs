@@ -96,7 +96,9 @@ impl Queue {
     fn goes(&self, at: usize) -> bool {
         let i = &self.items[at];
         i.to.is_none()
-            && (i.origin.is_some() || i.shell.as_deref() == Some("ended") || self.running.is_empty())
+            && (i.origin.is_some()
+                || i.shell.as_deref() == Some("ended")
+                || self.running.is_empty())
     }
 }
 
@@ -207,7 +209,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     deciding: origin.is_none()
                         && to.is_none()
                         && shell.is_none()
-                        && judge::judges(q, qid, at),
+                        && judge::judges(&dir, q, qid, at),
                     shell,
                     origin,
                     to: to.clone(),

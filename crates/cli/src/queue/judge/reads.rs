@@ -44,10 +44,12 @@ pub struct Reads {
     asked: VecDeque<String>,
     steps: Vec<Value>,
     said: String,
+    /// The reply being written, as far as the user sees it.
+    saying: String,
     /// The input the work began with: a resume or a wake carries it on.
     pub work: String,
-    /// The card up now, and each card's words for the answer that names it.
-    asks: String,
+    /// The cards up now, by id, and each card's words for the answer that names it.
+    asks: Vec<(String, String)>,
     cards: BTreeMap<String, String>,
 }
 
@@ -56,9 +58,15 @@ impl Reads {
         let text = item["text"].as_str().unwrap_or("");
         match item["kind"].as_str() {
             Some("input") => self.input(item, text),
-            Some("text") => self.said = ends(text),
+            Some("text") => {
+                self.said = ends(text);
+                self.saying.clear();
+            }
+            Some("text_delta") => self.saying += text,
             // A turn's end takes its questions down, answered or not.
             Some("turn_end" | "exited" | "stopped") => self.asks.clear(),
+            // So does one answered elsewhere, or withdrawn.
+            Some("resolved" | "answer") => self.closed(item["id"].as_str()),
             Some("plan") => self.steps = item["steps"].as_array().cloned().unwrap_or_default(),
             Some("question") => {
                 let items = item["request"]["items"].as_array().into_iter().flatten();
@@ -66,22 +74,38 @@ impl Reads {
                 // Each of its questions, short enough that none hides the others.
                 let each = 300 / all.len().max(1);
                 let all: Vec<_> = all.iter().map(|q| line(q, each)).collect();
-                self.asks = match all.is_empty() {
+                let asks = match all.is_empty() {
                     true => line(text, 320),
                     false => line(&all.join(" / "), 320),
                 };
                 let id = item["id"].as_str().unwrap_or("");
-                self.cards.insert(id.into(), self.asks.clone());
+                self.closed(Some(id));
+                self.asks.push((id.into(), asks.clone()));
+                self.cards.insert(id.into(), asks);
             }
             _ => {}
         }
+    }
+
+    fn closed(&mut self, id: Option<&str>) {
+        self.asks.retain(|(card, _)| Some(card.as_str()) != id);
     }
 
     /// A Stop or a retune has no words and asks nothing; Brigadier's own words carry the work on. A
     /// worker's first message is its parent's.
     fn input(&mut self, item: &Value, text: &str) {
         let origin = item["origin"].as_str().unwrap_or("");
-        let (words, answer) = (!text.trim().is_empty(), &item["control"]);
+        let answer = &item["control"];
+        // Files alone are a message too; an answer's, or those sent beside one, aren't.
+        let files: Vec<_> = (item["parts"]["files"].as_array().into_iter().flatten())
+            .filter(|_| matches!(answer["kind"].as_str(), None | Some("steer")))
+            .filter_map(|f| f["name"].as_str())
+            .collect();
+        let text = &match text.trim().is_empty() && !files.is_empty() {
+            true => format!("the files {}", files.join(", ")),
+            false => text.into(),
+        };
+        let words = !text.trim().is_empty();
         let who = match origin {
             "user" => "the user",
             o if o.starts_with("result:") => "a worker's result",
@@ -102,8 +126,9 @@ impl Reads {
         } else if origin == "user" && answer["kind"] == "answer" {
             let said = answer["answers"].as_array().into_iter().flatten();
             let said: Vec<_> = said.filter_map(Value::as_str).collect();
-            self.asks.clear();
-            let card = self.cards.get(answer["request"].as_str().unwrap_or(""));
+            let request = answer["request"].as_str();
+            self.closed(request);
+            let card = self.cards.get(request.unwrap_or(""));
             match card.filter(|_| !said.is_empty()) {
                 Some(c) => format!("- the user, asked \"{c}\": {}", line(&said.join("; "), 200)),
                 None => return,
@@ -122,6 +147,7 @@ impl Reads {
         let now = self.steps.iter().filter(|s| s["status"] == "in_progress");
         let steps =
             (now.take(STEPS)).map(|s| format!("- {}", line(s["text"].as_str().unwrap_or(""), 160)));
+        let asks: Vec<_> = self.asks.iter().map(|(_, q)| q.as_str()).collect();
         let parts = [
             ("The work running now began with ", self.began.clone()),
             (
@@ -129,8 +155,14 @@ impl Reads {
                 Vec::from(self.asked.clone()).join("\n"),
             ),
             ("Its step now:\n", steps.collect::<Vec<_>>().join("\n")),
-            ("The agent's last words: ", self.said.clone()),
-            ("It asks the user now: ", self.asks.clone()),
+            (
+                "The agent's last words: ",
+                match self.saying.trim().is_empty() {
+                    true => self.said.clone(),
+                    false => ends(&self.saying),
+                },
+            ),
+            ("It asks the user now: ", line(&asks.join(" / "), 1000)),
         ];
         let mut all = format!("{JUDGE}\n\n");
         for (what, text) in parts.iter().filter(|(_, text)| !text.is_empty()) {

@@ -4,7 +4,8 @@
 //! message, and answers FITS or WAITS. The session's turn is never asked.
 //!
 //! - FITS: it is about that very work, and is steered into the turn, as the user's Steer does.
-//!   Where another turn began meanwhile it is judged again, against that one's work.
+//!   Where another turn began meanwhile it is judged again, against that one's work, in what is
+//!   left of its 5 s.
 //! - WAITS, unsure, a late answer or none: it stays queued, no longer Deciding, and goes at the
 //!   turn's end, workers or not (the user's, 2026-11-24, over steering in doubt) [D771].
 //! - The user moved, edited, steered or deleted it meanwhile: the answer is dropped.
@@ -13,7 +14,7 @@
 //! queue (after the user's Stop) judges nothing, nor does a session between turns, its block held
 //! open or not; another session's message is never judged: it goes in at once [D300].
 
-use super::{Queue, change, drain::DRAINS, read, went};
+use super::{Queue, change, read, went};
 use crate::{commit, control};
 use brigadier_core::{self as core, writer};
 use serde_json::Value;
@@ -21,7 +22,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Mutex, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod reads;
 use reads::Reads;
@@ -36,32 +37,24 @@ const TRIES: u32 = 30;
 /// Every message this daemon has judged or is judging: none is judged twice.
 static JUDGED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
-/// Whether the user's own message `qid`, added to `q` now, is judged: the queue isn't paused, it
-/// isn't there already (a retry), it isn't put back in a slot `at` after an edit, and it doesn't
-/// go after a `!` command.
-pub(super) fn judges(q: &Queue, qid: &str, at: Option<usize>) -> bool {
+/// Whether the user's own message `qid`, added to `q` now, is judged: a turn runs, the queue isn't
+/// paused, it isn't there already (a retry), it isn't put back in a slot `at` after an edit, and
+/// it doesn't go after a `!` command.
+pub(super) fn judges(dir: &Path, q: &Queue, qid: &str, at: Option<usize>) -> bool {
     at.is_none()
         && !q.paused
         && !q.stopping
         && q.running.is_empty()
         && !q.items.iter().any(|i| i.id == qid || i.shell.is_some())
+        && core::fold(dir, true).is_ok_and(|f| !f.fold.turns.is_empty())
 }
 
 /// The daemon's pass over one session's row: each message newly Deciding is judged off the
-/// daemon's loop while a turn runs. Between turns it stays Deciding for a turn that starts before
-/// the drain sends it (a worker's result, a hand-off's fresh conversation); where no drain will, it
-/// just waits its turn.
+/// daemon's loop while a turn runs; where that turn is over by now it just waits its turn.
 pub(super) fn pass(data: &Path, id: &str, row: &Value) {
-    let q = &row["queue"];
-    let items = || q["items"].as_array().into_iter().flatten();
+    let items = || row["queue"]["items"].as_array().into_iter().flatten();
     // A turn takes it only from an agent that can be steered.
     let busy = row["running"] == true && row["steer"] == true;
-    let drains = DRAINS.contains(&row["state"].as_str().unwrap_or(""))
-        && q["paused"] != true
-        && (items().find(|i| i["to"].is_null())).is_none_or(|i| i["error"].is_null());
-    if !busy && drains {
-        return;
-    }
     for qid in items()
         .filter(|i| i["deciding"] == true)
         .filter_map(|i| i["id"].as_str())
@@ -71,14 +64,16 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
         }
         let (data, id, qid) = (data.to_path_buf(), id.to_string(), qid.to_string());
         thread::spawn(move || {
-            let mut verdict = busy.then(|| judge(&data, &id, &qid));
+            // One deadline, however often the work it's judged against moves on.
+            let until = Instant::now() + PATIENCE;
+            let mut verdict = busy.then(|| judge(&data, &id, &qid, until));
             for tried in 0..=TRIES {
                 // Out of tries it waits in the queue, no longer Deciding.
                 let v = verdict.as_ref().filter(|_| tried < TRIES);
                 match settle(&data, &id, &qid, v) {
                     Ok(Settled::Done) => return,
                     Ok(Settled::Moved) => {
-                        verdict = Some(judge(&data, &id, &qid));
+                        verdict = Some(judge(&data, &id, &qid, until));
                         continue;
                     }
                     Ok(Settled::Again) => {}
@@ -96,17 +91,18 @@ struct Verdict {
     work: String,
 }
 
-/// The judge's verdict on queued `qid`; with no answer in time it waits.
-fn judge(data: &Path, id: &str, qid: &str) -> Verdict {
+/// The judge's verdict on queued `qid`; with no answer by `until` it waits.
+fn judge(data: &Path, id: &str, qid: &str, until: Instant) -> Verdict {
     let reads = reads(&core::session_dir(data, id));
     Verdict {
-        fits: ask(data, id, qid, &reads).unwrap_or(false),
+        fits: ask(data, id, qid, &reads, until).unwrap_or(false),
         work: reads.work,
     }
 }
 
-/// The judge's answer, none when it gave none in time.
-fn ask(data: &Path, id: &str, qid: &str, reads: &Reads) -> Option<bool> {
+/// The judge's answer, none when it gave none by `until`.
+fn ask(data: &Path, id: &str, qid: &str, reads: &Reads, until: Instant) -> Option<bool> {
+    until.checked_duration_since(Instant::now())?;
     let mut spec = core::load(data, id).ok()?;
     let q = read(&spec.dir).ok()?;
     let item = q.items.into_iter().find(|i| i.id == qid)?;
@@ -134,7 +130,10 @@ fn ask(data: &Path, id: &str, qid: &str, reads: &Reads) -> Option<bool> {
         })();
         let _ = tx.send(reply);
     });
-    fits(&rx.recv_timeout(PATIENCE).ok()??)
+    fits(
+        &rx.recv_timeout(until.saturating_duration_since(Instant::now()))
+            .ok()??,
+    )
 }
 
 enum Settled {

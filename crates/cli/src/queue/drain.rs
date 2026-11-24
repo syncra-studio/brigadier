@@ -24,8 +24,7 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
             continue;
         };
         let first = (q.items.iter().enumerate()).find(|(at, i)| {
-            q.goes(*at)
-                && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
+            q.goes(*at) && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
         });
         if first.is_none_or(|(_, i)| i.error.is_some())
             || q.paused

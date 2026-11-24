@@ -2,7 +2,7 @@
 //! Brigadier's own send-back, which never waits there [D529].
 
 use super::{Item, change, cut, read};
-use crate::{owner, workers};
+use crate::owner;
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::take_lock;
 use serde_json::{Value, json};
@@ -75,9 +75,8 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     let origin = format!("peer:{from}");
     let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
     // What goes before it: past a cut-off run only its parent's do.
-    let goes = |n: &usize| {
-        q.goes(*n) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()))
-    };
+    let goes =
+        |n: &usize| q.goes(*n) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()));
     let ahead = (0..at.unwrap_or(0)).find(goes).map(|n| &q.items[n]);
     let after = |i: &Item| match i.error {
         Some(_) => "a message before it couldn't be sent, so it waits for its user to settle that",
