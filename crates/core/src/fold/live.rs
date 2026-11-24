@@ -14,6 +14,8 @@ pub struct Live {
     pub jobs: usize,
     /// What its ended turns left running, its agent's end notwithstanding: a dev server, a watcher [D105].
     pub left: Vec<Job>,
+    /// Every process proven the session's.
+    pub mine: Vec<procs::Proc>,
     pub orphans: usize,
     pub disk_full: bool,
     pub now: u64,
@@ -269,6 +271,7 @@ pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live 
         running_below,
         jobs,
         left,
+        mine,
         orphans,
         disk_full: free_bytes(dir) < (2 << 20),
         now: log::now_ms(),
@@ -292,11 +295,23 @@ fn free_bytes(path: &std::path::Path) -> u64 {
 /// restart) or a second end changes nothing when read.
 pub const HISTORY: &str = "background";
 
-/// A session row's Background [D105, D200]: what's left running, and whether anything has run (its
-/// card keeps the history's button), noting the jobs that started or ended since the last look.
-pub fn background_row(row: &mut serde_json::Value, dir: &Path, left: &[Job]) {
-    row["background_ran"] = note_jobs(dir, left).into();
-    row["background"] = serde_json::json!(left);
+/// A session row's Background [D105, D200]: what's left running, each with the TCP ports its tree
+/// listens on and the open app in it, by which the card lists it [D145], and whether anything has
+/// run (its card keeps the history's button), noting the jobs that started or ended since the last look.
+pub fn background_row(row: &mut serde_json::Value, dir: &Path, live: &Live) {
+    row["background_ran"] = note_jobs(dir, &live.left).into();
+    let job = |j: &Job| {
+        let mut tree = procs::descendants(&live.mine, j.pid);
+        tree.extend(live.mine.iter().filter(|p| p.pid == j.pid));
+        let ports: BTreeSet<u16> = (tree.iter())
+            .flat_map(|p| procs::listening(p.pid))
+            .collect();
+        let mut job = serde_json::json!(j);
+        job["ports"] = serde_json::json!(ports);
+        job["app"] = serde_json::json!(crate::background::apps::open(&tree));
+        job
+    };
+    row["background"] = live.left.iter().map(job).collect();
 }
 
 /// What each session's jobs were at the last look, by its folder.

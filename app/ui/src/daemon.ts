@@ -34,7 +34,7 @@ export type Row = {
   /** It uses the computer now, holding its lock: the menu bar item says so [D907, D957]. */ computer?: boolean;
   /** An agent is working in it now: what keeps the computer awake "while agents work". */
   works?: boolean;
-  /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
+  /** What its ended turns left running (a dev server, a watcher), each with the TCP ports it listens on and the open app in it, by which the card's Background lists it [D105, D145]. */
   background?: Job[];
   /** Something has run in its background: the card keeps its Background history button [D200]. */ background_ran?: boolean;
   /** Its agent's to-do list as its CLI's todo or plan tool last wrote it, after the finished steps it left out [D144]. */ plan?: { text: string; status: string }[] | null;
@@ -59,7 +59,7 @@ export type Row = {
 };
 
 /** One process tree a turn left running: its topmost process, checked by its start time (μs), and its command. */
-export type Job = { pid: number; start_us: number; label: string };
+export type Job = { pid: number; start_us: number; label: string; ports: number[]; app: string | null };
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */

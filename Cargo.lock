@@ -120,6 +120,7 @@ name = "brigadier-core"
 version = "0.1.0"
 dependencies = [
  "brigadier-frames",
+ "core-foundation",
  "crc32fast",
  "deunicode",
  "libc",

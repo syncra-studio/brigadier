@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 brigadier-frames = { path = "../frames" }
+core-foundation = "=0.10.1"
 crc32fast = "=1.5.4"
 deunicode = "=1.6.2"
 libc.workspace = true
