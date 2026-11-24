@@ -38,8 +38,8 @@
 //! always (`awake`) [D30, D36], and with the lid closed too when set (`lid`) [D333].
 
 use brigadier::index::Index;
-use brigadier_core::projects::{self, Project};
 use brigadier_core::{awake_mode, data_dir};
+use brigadier_core::{host::accounts, projects};
 use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -155,7 +155,7 @@ fn main() -> io::Result<()> {
     if let Err(e) = projects::to_default_profile(&data, None) {
         eprintln!("brigadierd: projects: {e}");
     }
-    brigadier_core::host::accounts::read_ahead(data.clone());
+    accounts::read_ahead(data.clone());
     git::auto_fetch(data.clone());
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
@@ -322,9 +322,9 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
     let (mut projects, mut projects_gone) = (vec![], vec![]);
     match projects::list(data) {
         Ok(list) => {
-            let shown = |p: Project| {
+            let shown = |p: projects::Project| {
                 let mut shown = json!(p);
-                shown["github"] = brigadier_core::host::accounts::snapshot(data, &p);
+                shown["github"] = accounts::known(data, &p);
                 (p.id, shown)
             };
             let list: BTreeMap<String, Value> = list.into_iter().map(shown).collect();
@@ -336,10 +336,7 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
                 let old = s.projects.get(p["id"].as_str().unwrap_or(""));
                 if old.is_none_or(|o| o["folder"] != p["folder"] || !o["github_account"].is_null())
                 {
-                    brigadier_core::host::accounts::find_behind(
-                        data,
-                        p["id"].as_str().unwrap_or(""),
-                    );
+                    accounts::find_behind(data, p["id"].as_str().unwrap_or(""));
                 }
             }
             projects_gone = s
