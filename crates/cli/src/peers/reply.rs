@@ -58,6 +58,17 @@ pub(super) fn ask(
     }
 }
 
+/// A send cut short, tried again. A worker's question its parent has no record of goes as a
+/// question still, with nobody left waiting on it; never as a message in its parent's thread.
+pub(super) fn again(data: &Path, from: &str, out: &mut Out, fresh: bool) -> std::io::Result<()> {
+    if fresh && workers::link(data, from).is_some_and(|l| l.parent == out.to) {
+        workers::question(data, from, &out.mid, &out.text)?;
+        out.state = "asked".into();
+        return workers::write_json(&path(data, from, "out", &out.mid), out);
+    }
+    super::held::hand(data, from, out).map(|_| ())
+}
+
 /// The id of the open question worker `wid` asks its parent.
 pub(crate) fn question(data: &Path, wid: &str) -> Option<String> {
     open_question(data, wid).map(|(mid, _)| mid)

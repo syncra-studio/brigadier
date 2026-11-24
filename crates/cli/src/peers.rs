@@ -85,6 +85,7 @@ fn all<T: for<'a> Deserialize<'a>>(data: &Path, id: &str, way: &str) -> Vec<T> {
     let dir = core::session_dir(data, id).join("peers").join(way);
     (fs::read_dir(dir).into_iter().flatten())
         .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json")) // never one half written
         .filter_map(|e| workers::read_json(&e.path()))
         .collect()
 }
@@ -232,7 +233,7 @@ pub fn send(
     if asks {
         return reply::ask(data, me, &mut out, wait.unwrap_or(crate::agent::WAIT), here);
     }
-    let how = match hand(data, me, &mut out) {
+    let how = match held::hand(data, me, &mut out) {
         Ok(how) => how,
         Err(e) => return refuse(&format!("Couldn't send it: {e}")),
     };
@@ -350,7 +351,7 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
 
 /// Moves the sender's record on, and its row with it.
 fn settle_out(data: &Path, from: &str, out: &mut Out, state: &str, why: Option<&str>) {
-    if out.state == state {
+    if out.state == state || held::done(data, from, &out.mid) {
         return;
     }
     out.state = state.into();
@@ -383,7 +384,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     save(data, id, "out", mid, &out)?;
     note(data, id, json!({"phase": "sent", "mid": mid}));
     open(data, id);
-    let how = hand(data, id, &mut out)?;
+    let how = held::hand(data, id, &mut out)?;
     Ok(json!({"ok": true, "how": how, "at": crate::index::touched(&core::session_dir(data, id))}))
 }
 
@@ -438,7 +439,7 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
 fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Result<()> {
     let now = log::now_ms();
     let mut open = false;
-    for mut out in held::sent(data, from) {
+    for mut out in all::<Out>(data, from, "out") {
         // A worker's question is its parent's to settle, by its answer.
         if DONE.contains(&out.state.as_str()) || reply::ASKS.contains(&out.state.as_str()) {
             continue;
@@ -462,7 +463,7 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
             }
         };
         if cut {
-            hand(data, from, &mut out)?;
+            reply::again(data, from, &mut out, rec.is_none())?;
             continue;
         }
         let Some(mut rec) = rec else { continue };

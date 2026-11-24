@@ -333,7 +333,7 @@ impl Index {
             // A worker's images, which its parent's thread shows too [D289].
             row["images"] = json!(f.fold.images);
             // Waiting till its record moves on, or its sender is deleted: the thread's waiting bubbles.
-            let waits = |m: &&Value| ids.iter().any(|i| m["from"] == **i);
+            let waits = |m: &&Value| crate::peers::held::kept(&self.data, m);
             row["arriving"] = json!(e.held.1.iter().filter(waits).collect::<Vec<_>>());
             row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
