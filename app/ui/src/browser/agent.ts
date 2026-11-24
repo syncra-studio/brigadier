@@ -222,12 +222,12 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
       : `Tab ${tab.id} is the user's: you may read it, not click, type, navigate or close it. Open your own with \`brigadier browser open <url>\`.`);
   if (devToolsOpen(tab.id) && op.op !== "events") return failed(DEVTOOLS_OPEN);
   // The user took it over: nothing is done until they press Continue.
-  if (!users && isPaused(tab.id)) return { result: "paused", tab: tab.id };
+  if (!users && isPaused(tab.id)) return { result: "paused", tab: opened ?? tab.id };
   // Its page goes with a restart: it loads again where it was. The user may take it over meanwhile.
   if (!browserPage(tab.id)) {
     await openPage(owner, tab.id, tab.target || "about:blank", backgroundBounds());
     await loaded(tab.id);
-    if (!users && isPaused(tab.id)) return { result: "paused", tab: tab.id };
+    if (!users && isPaused(tab.id)) return { result: "paused", tab: opened ?? tab.id };
   }
   if (!users) {
     agentDoing(tab.id, DOING[op.op] ?? null);
@@ -256,7 +256,7 @@ async function waited(tab: string, op: Op, owner: string): Promise<Result> {
   const deadline = Date.now() + ms;
   const needle = wanted.toLowerCase();
   for (;;) {
-    if (isPaused(tabOf(tab))) return { result: "paused", tab: tabOf(tab) };
+    if (isPaused(tabOf(tab))) return { result: "paused", tab };
     const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
     const there = String((answer as { text?: unknown } | null)?.text ?? "").toLowerCase().includes(needle);
     if (there === Boolean(op.text)) return page(tab, owner);
@@ -472,7 +472,7 @@ async function stoppedAt(id: string): Promise<Result | null> {
   if (!stop) return null;
   const shown = shownPage(tab);
   const read = { ...(await agentShown(id, shown?.url ?? "", shown?.title)), generation: agentPage(tab).generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
-  return { result: "page", tab, page: read, user: false, stopped: true };
+  return { result: "page", tab: id, page: read, user: false, stopped: true };
 }
 
 /** `bytes` as base64. */

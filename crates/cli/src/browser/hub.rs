@@ -301,8 +301,8 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
 fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool) -> Value {
     let until = Instant::now() + PAUSE_WAIT;
     // A window's id is its tab's and its own (windows.ts): the user takes over the tab.
-    let tab = op["tab"].as_str().unwrap_or("");
-    let tab = tab.split('/').next().unwrap_or(tab);
+    let tab_of = |id: &str| id.split('/').next().unwrap_or(id).to_string();
+    let tab = &tab_of(op["tab"].as_str().unwrap_or(""));
     lock(&HUB.owners).insert(me.to_string(), owner.to_string());
     loop {
         if !tab.is_empty() && !unpaused(tab, me, until, here) {
@@ -311,7 +311,7 @@ fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool)
         let result = call(owner, me, label, op, here);
         // The user took the tab over as the call reached it: wait as for any pause.
         if result["result"] == "paused" && Instant::now() < until && here() {
-            set_paused(result["tab"].as_str().unwrap_or(tab), true);
+            set_paused(&tab_of(result["tab"].as_str().unwrap_or(tab)), true);
             continue;
         }
         if let Some(t) = result["tab"]
