@@ -96,9 +96,9 @@ pub struct Fold {
     /// asked, then while it waits for the reset (`until`) [D2028, D342].
     #[serde(default)]
     pub hold: Option<Value>,
-    /// The mockup cards waiting on the user's pick, each turn over or not, with its turn's id [D2067].
+    /// The mockup cards waiting on the user's pick, and the mockups opened in it [D2067].
     #[serde(default)]
-    pub offers: Vec<(String, String)>,
+    pub mockups: asks::Mockups,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,

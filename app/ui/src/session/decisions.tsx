@@ -254,7 +254,7 @@ export function SessionQuestions({ id, run, source }: { id: string; run: Runner;
   if (aside) return <WaitingRow count={questions.length} onShow={() => setAside(false)} />;
   const pictured = !drawn
     ? question
-    : { ...question, items: question.items.map((item) => ({ ...item, options: item.options.map((option) => ({ ...option, shot: drawn.find((each) => each.letter === option.letter)?.shot ?? option.shot })) })) };
+    : { ...question, items: question.items.map((item) => ({ ...item, options: item.options.map((option) => ({ ...option, shot: drawn.find((each) => each.letter === option.letter)?.shot })) })) };
   return (
     <RailItem variant="decision" label="Waiting for you">
       <QuestionCard

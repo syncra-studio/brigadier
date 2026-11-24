@@ -314,12 +314,12 @@ function QuestionPage({
     if (!idle || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     const digit = matches(event.nativeEvent, "answer") ? Number(event.key) : NaN;
     const lastOption = options.length - 1;
-    // With an answer focused, focus follows the light, so Enter (which clicks the focused answer) picks the lit one.
+    // With a button of the card focused, focus follows the light, so Enter (which clicks the focused one) picks the lit answer.
     const move = (index: number) => {
       setHighlight(index);
       const answer = card.current?.querySelectorAll<HTMLElement>("[data-slot=action-option]")[index];
       answer?.scrollIntoView({ block: "nearest" });
-      if (event.target instanceof Element && event.target.matches("[data-slot=action-option]")) answer?.focus();
+      if (event.target !== event.currentTarget) answer?.focus();
     };
     if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, options.length)) move(digit - 1);
     else if (digit === options.length + 1 && digit <= 9) field.current?.focus();

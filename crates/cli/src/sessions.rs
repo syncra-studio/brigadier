@@ -245,7 +245,12 @@ fn delete_one(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> 
     stop(data, id, by)?;
     let f = core::fold(&spec.dir, false)?;
     crate::attach::sweep_home(data);
-    Ok(session::delete(&spec, &f.fold, drop))
+    let lead = crate::workers::link(data, id).map(|l| l.parent);
+    let reply = session::delete(&spec, &f.fold, drop);
+    if let Some(lead) = lead.filter(|_| reply["ok"] == true) {
+        crate::relay::mockup::deleted(data, &lead, id);
+    }
+    Ok(reply)
 }
 
 /// Whether a session is busy, by core's one test [D172]. One that can't be read isn't: its

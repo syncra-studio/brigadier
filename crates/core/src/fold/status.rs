@@ -138,7 +138,7 @@ pub fn mark(
     match state {
         "waiting_answer" | "sign_in" => Some("needs"),
         // A mockup card its ended turn left up: between turns still, so its queue and results go in.
-        "idle" | "idle_jobs" if !fold.offers.is_empty() => Some("needs"),
+        "idle" | "idle_jobs" if !fold.mockups.cards.is_empty() => Some("needs"),
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "asking"
         | "reconnecting" => Some("working"),
         // Its answer is in, but the block stays open on its subagents or workers: still working [D118, D151].
@@ -339,7 +339,7 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
     }
     // Its own mockup card, the call that asked it waiting on the pick; one left up from an earlier
     // turn doesn't hide this one's work.
-    if let Some((id, _)) = fold.offers.iter().find(|(_, t)| *t == turn.id) {
+    if let Some((id, _)) = fold.mockups.cards.iter().find(|(_, t)| *t == turn.id) {
         return ("waiting_answer", json!({"offer": id}));
     }
     // Brigadier answers an exact repeat of a command allowed for the session: it works on [D389].

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 mod tab;
 mod which;
-pub(crate) use tab::run as app;
+pub(crate) use tab::{deleted, run as app};
 
 /// How long the offer waits for the pick; a later one still counts, told to the agent as a message.
 const ANSWER_WAIT: Duration = Duration::from_secs(300);
@@ -122,7 +122,7 @@ pub(super) fn run(
         Some(_) => return refuse("--title takes two or three words."),
     };
     let reuse = match value("--reuse") {
-        Some(s) => match which::one(data, &s, value("--of")) {
+        Some(s) => match which::one(data, &s, value("--of"), false) {
             Ok(w) => Some((s, w)),
             Err(e) => return refuse(&e),
         },

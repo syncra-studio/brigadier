@@ -2,7 +2,17 @@
 //! besides a message: answers, steers and stops [D159, D177].
 
 use super::Fold;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// A session's mockups [D2067].
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Mockups {
+    /// The cards waiting on the user's pick, each turn over or not, with its turn's id.
+    pub cards: Vec<(String, String)>,
+    /// The workers whose mockup it opened: its own, and the ones it reuses.
+    pub opened: Vec<String>,
+}
 
 impl Fold {
     /// A lost host ends delivered turns; unproven inputs stay available for explicit recovery.
@@ -24,15 +34,16 @@ impl Fold {
         self.granting.clear();
     }
 
-    /// A mockup card shown, or picked [D2067].
+    /// A mockup card shown, or picked [D2067]; a mockup opened.
     pub(super) fn offered(&mut self, item: &Value) {
         let id = item["id"].as_str().unwrap_or("").to_string();
         match item["phase"].as_str() {
             Some("asked") => {
                 let turn = self.turns.first().map(|t| t.id.clone());
-                self.offers.push((id, turn.unwrap_or_default()));
+                self.mockups.cards.push((id, turn.unwrap_or_default()));
             }
-            Some("answered") => self.offers.retain(|o| o.0 != id),
+            Some("answered") => self.mockups.cards.retain(|c| c.0 != id),
+            Some("started") if !self.mockups.opened.contains(&id) => self.mockups.opened.push(id),
             _ => {}
         }
     }

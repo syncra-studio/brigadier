@@ -67,6 +67,24 @@ pub(super) fn from_card(data: &Path, lead: &str, on: &str, choice: &str) -> io::
     Ok(r)
 }
 
+/// Mockup worker `wid` was deleted: the cards it left up in its lead's chat stop asking, unless the
+/// lead goes too.
+pub(crate) fn deleted(data: &Path, lead: &str, wid: &str) {
+    let dir = core::session_dir(data, lead);
+    let mine = format!("{}{wid}-", super::PICK);
+    let Ok(f) = core::fold(&dir, true) else {
+        return;
+    };
+    let mut cards = (f.fold.mockups.cards.iter().map(|c| &c.0)).filter(|c| c.starts_with(&mine));
+    if cards.clone().next().is_none()
+        || dir.join(workers::CLOSING).exists()
+        || !core::load(data, lead).is_ok_and(|s| owner::ensure(data, &s).is_ok())
+    {
+        return;
+    }
+    let _ = cards.try_for_each(|c| super::settle(data, lead, c, "Deleted"));
+}
+
 /// The lead's cards on this mockup's rounds, up to `rounds`, stop asking, answered by `how`.
 fn settle_cards(data: &Path, wid: &str, rounds: usize, how: &str) {
     let lead = workers::link(data, wid).map(|l| l.parent);
@@ -312,8 +330,17 @@ pub(super) fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::R
     let mut link = workers::link(data, wid).ok_or_else(none)?;
     let dir = core::session_dir(data, wid);
     let branch = core::worktrees::branch(&dir)?;
-    let (pins, all) = parts(notes);
-    let with = message(&m, round, &pins, all).map_or(String::new(), |t| format!("\n\n{t}"));
+    let (mut pins, all) = parts(notes);
+    let (mut all, mut on) = (all.to_string(), round);
+    // Not from the tab, which sends its own: the notes saved in it go too, on the round they're on.
+    if notes["pins"].is_null() {
+        let (saved, for_all) = parts(&m["draft"]);
+        if !saved.is_empty() || !for_all.is_empty() {
+            (pins, on) = (saved, on_round(&m, &m["draft"]));
+            all = format!("{for_all}\n\n{all}").trim().to_string();
+        }
+    }
+    let with = message(&m, on, &pins, &all).map_or(String::new(), |t| format!("\n\n{t}"));
     let picked = format!("The user picked {letter} ({name}) from round {round} of the mockup");
     let keep = format!(
         "{letter}'s fixture code into the app's real screen as it is, without redrawing it"
