@@ -1,12 +1,11 @@
 // Mockup only: the summary card's Background processes with its workers' processes too, each with its owner and Stop,
-// those that outlived a finished worker among them. ?v=a, b or c; fake processes kept in memory. Not the app.
+// those that outlived a finished worker apart (variant C, ?v=c); fake processes kept in memory. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
 import { type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { cx } from "../src/components/cx";
 import { TooltipIconButton } from "../src/components/icon-button";
 import { UserBubble } from "../src/components/thread/message";
 import { TooltipProvider } from "../src/components/tooltip";
@@ -18,9 +17,8 @@ import { Line, Rows } from "../src/panel/source/rows";
 import { SummaryPane, useCardToggle } from "../src/shell/summary-card";
 import { Markdown } from "../src/thread/markdown";
 import { duration, useSecond } from "../src/thread/words";
-import { finished, lowerFirst, type Worker, WorkerName } from "../src/workers/chip";
+import { finished, type Worker } from "../src/workers/chip";
 import { TeamCard } from "../src/workers/live";
-import { RowTime } from "../src/workers/strip";
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -73,70 +71,6 @@ const StopButton = ({ job: each, stop }: { job: Job; stop: Stop }) => (
     <StopCircle />
   </TooltipIconButton>
 );
-
-/** A worker as an owner: its name, which opens it, and its state word once it's finished. */
-function Owner({ owner, glyph = true }: { owner: Worker; glyph?: boolean }) {
-  const done = finished(owner);
-  return (
-    <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-      <WorkerName worker={owner} glyph={glyph} />
-      <span className={cx("flex shrink-0 items-center gap-1", done && "text-warning")}>
-        {lowerFirst(owner.word.split(" · ")[0]!)}
-        {done && <RowTime worker={owner} ago />}
-      </span>
-    </span>
-  );
-}
-
-/** A: one list, longest running first, the owner on a line of its own under each command. */
-function VariantA({ jobs, stop }: { jobs: readonly Job[]; stop: Stop }) {
-  const now = useSecond(jobs.length > 0);
-  return (
-    <Section fold="a" count={jobs.length}>
-      <Rows items={jobs.toSorted((a, b) => a.startedAt - b.startedAt)}>
-        {(each) => (
-          <div key={each.pid} className="group/row relative flex min-w-0 items-start gap-2 rounded-sm px-2 py-1 text-label hover:bg-summary-row-hover" title={each.label}>
-            <span aria-hidden className="flex h-4.5 min-w-5 shrink-0 items-center justify-center">
-              {each.owner ? <WorkerGlyph id={each.owner.id} className="size-4" /> : <Terminal className="size-4" />}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="flex min-w-0 gap-2">
-                <span className="min-w-0 flex-1 truncate">{each.label}</span>
-                <span className="shrink-0 text-muted-foreground tabular-nums">{duration(now - each.startedAt)}</span>
-              </span>
-              {each.owner ? <Owner owner={each.owner} glyph={false} /> : <span className="text-xs text-muted-foreground">This session</span>}
-            </span>
-            <span className="row-backing row-backing-hover absolute inset-y-0 end-0 flex items-center rounded-e-sm ps-4 pe-1 opacity-0 transition-opacity group-hover/row:opacity-100 group-has-focus-visible/row:opacity-100">
-              <StopButton job={each} stop={stop} />
-            </span>
-          </div>
-        )}
-      </Rows>
-    </Section>
-  );
-}
-
-/** B: a group per owner, its rows as today's under it. */
-function VariantB({ jobs, stop }: { jobs: readonly Job[]; stop: Stop }) {
-  const now = useSecond(jobs.length > 0);
-  const owners = [...new Set(jobs.map((each) => each.owner))];
-  return (
-    <Section fold="b" count={jobs.length}>
-      {owners.map((owner) => (
-        <div key={owner?.id ?? "own"} role="group" aria-label={owner?.name ?? "This session"} className="flex min-w-0 flex-col pb-1 last:pb-0">
-          <div className="flex h-6 min-w-0 items-center px-2">{owner ? <Owner owner={owner} /> : <span className="text-xs text-muted-foreground">This session</span>}</div>
-          <Rows items={jobs.filter((each) => each.owner === owner)}>
-            {(each) => (
-              <Line key={each.pid} icon={<Terminal />} title={each.label} end={duration(now - each.startedAt)} action={<StopButton job={each} stop={stop} />}>
-                {each.label}
-              </Line>
-            )}
-          </Rows>
-        </div>
-      ))}
-    </Section>
-  );
-}
 
 /** C: one line each with its owner at the end; those left by finished workers apart, with Stop always there. */
 function VariantC({ jobs, stop }: { jobs: readonly Job[]; stop: Stop }) {
@@ -203,9 +137,6 @@ const ANSWER = `The tab test waits for the panel's own transition now, and two w
 - **Fix the flaky tab test** runs the app on port 5188 to check it.
 - **Mockup: sidebar fill** keeps its page up until you pick one.`;
 
-const VARIANTS = { a: VariantA, b: VariantB, c: VariantC };
-const v = new URLSearchParams(location.search).get("v") as keyof typeof VARIANTS | null;
-const Variant = VARIANTS[v ?? "a"] ?? VariantA;
 const OWNER = "mockup";
 
 function Page() {
@@ -223,7 +154,7 @@ function Page() {
         project="brigadier"
       />
       <TeamCard owner={OWNER} title="Workers" workers={WORKERS} />
-      <Variant jobs={jobs} stop={(gone) => setJobs((was) => was.filter((each) => !gone.includes(each)))} />
+      <VariantC jobs={jobs} stop={(gone) => setJobs((was) => was.filter((each) => !gone.includes(each)))} />
     </>
   );
   return (

@@ -85,6 +85,12 @@ export function useWorkers(parent: string): Worker[] {
   return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent && !row.boss).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
 }
 
+/** A session's whole worker family, its workers' own workers too, each with its row; a Brigade's sessions aren't in it [D189]. */
+export function useFamily(root: string): { worker: Worker; row: Row }[] {
+  const rows = useDaemon().rows ?? [];
+  return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.root === root && !row.boss).map((row) => ({ worker: asWorker(row), row })).toSorted((a, b) => a.worker.startedAt - b.worker.startedAt);
+}
+
 /** Workers named by id, a gone one as "a worker". */
 function useNamed(ids: readonly string[]): Worker[] {
   const rows = useDaemon().rows ?? [];
