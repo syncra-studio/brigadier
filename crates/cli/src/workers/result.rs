@@ -75,7 +75,7 @@ pub(super) struct Res {
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
 static OPEN: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
-/// Each worker's `finished` time last looked at, so a pass folds only one that changed.
+/// Each worker's end last looked at, so a pass folds only one that changed.
 static SEEN: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
 /// Parents a delivery runs for now.
 static SENDING: Mutex<Option<BTreeSet<String>>> = Mutex::new(None);
@@ -116,7 +116,8 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
     if row["running"] == true {
         return;
     }
-    let at = json!([row["finished"], row["state"]]);
+    // Its log's length too: a turn cut off again leaves both others as the last cut did.
+    let at = json!([row["finished"], row["state"], row["items"]]);
     {
         let mut seen = SEEN.lock().unwrap();
         if seen
@@ -372,7 +373,9 @@ pub(crate) fn settled(f: &fold::Fold, id: &str, state: &str) -> Option<&'static 
     Some(match (turn, last) {
         (Some(t), _) if t.delivered.is_some() => "delivered",
         // The agent may have taken it or not: shown, never sent again by itself [D54, D82].
-        (Some(_), _) if matches!(state, "uncertain" | "undelivered" | "interrupted") => "uncertain",
+        (Some(_), _) if matches!(state, "uncertain" | "undelivered") => "uncertain",
+        // The turn before it was cut off: one that carries that on is `state` a moment behind.
+        (Some(t), _) if state == "interrupted" && f.turns[0].id != t.id => "uncertain",
         (Some(_), _) => return None,
         (None, Some(l)) if l["delivered"] == true => "delivered",
         (None, Some(_)) => "uncertain",

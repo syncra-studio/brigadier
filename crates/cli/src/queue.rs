@@ -15,11 +15,13 @@ use std::io;
 use std::path::Path;
 use std::thread;
 
+mod cut;
 mod judge;
 mod peer;
 mod to;
 pub mod wake;
-pub use peer::{add_peer, pending, send_back};
+pub use cut::{goes_on, off as cut_off, recover};
+pub use peer::{add_peer, pending, send_back, waits_for};
 pub use to::held as give_held;
 
 #[derive(Serialize, Deserialize, Default, PartialEq)]
@@ -348,6 +350,11 @@ pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
         }
         match owner::call(data, id, json!({"op": "stop", "by": by})) {
             Ok(v) => Ok(v),
+            // A cut-off worker's is logged, so its parent's next message waits for Resume.
+            Err(_) if by == "user" && cut::stoppable(data, id) => {
+                owner::ensure(data, &core::load(data, id)?)?;
+                owner::call(data, id, json!({"op": "stop", "by": by}))
+            }
             // No owner: nothing can be running under us, but leftovers recorded in the log still go.
             Err(e) => {
                 let f = core::fold(&dir, true)?;
@@ -363,7 +370,8 @@ pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
 }
 
 /// The states a session takes its next queued message in: between turns, however the last ended
-/// but at a limit, a sign-in or a cut-off run, which need the user (D237).
+/// but at a limit, a sign-in or a cut-off run, which need the user (D237); but for a cut-off
+/// worker, which its parent's message carries on (`cut`).
 const DRAINS: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
 
 /// The daemon's pass: each session between turns whose queue waits and isn't paused sends its
@@ -375,14 +383,18 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
         let q = &row["queue"];
         let mine = q["items"].as_array().into_iter().flatten();
         // While its block is held open the user's own wait, as mid-turn; another session's goes [D521, D300].
-        let goes =
-            |i: &&Value| i["to"].is_null() && (row["holding"] != true || !i["origin"].is_null());
-        let first = mine.into_iter().find(goes).unwrap_or(&Value::Null);
         let state = row["state"].as_str().unwrap_or("");
+        let cut = state == "interrupted";
+        let goes = |i: &&Value| {
+            i["to"].is_null()
+                && (row["holding"] != true || !i["origin"].is_null())
+                && (!cut || cut::parents(&core::session_dir(data, id), i["origin"].as_str()))
+        };
+        let first = mine.into_iter().find(goes).unwrap_or(&Value::Null);
         if !first.is_object()
             || q["paused"] == true
             || !first["error"].is_null()
-            || !DRAINS.contains(&state)
+            || !(cut || DRAINS.contains(&state))
             // A rebirth due goes first: what's queued lands in its fresh conversation [D88].
             || !row["rebirth"].is_null()
         {
@@ -410,7 +422,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     crate::rewind::settle_held(data, &spec)?;
     let holding = crate::workers::holding(data, id);
     locked(&dir, |q| {
-        let goes = |i: &Item| i.to.is_none() && (!holding || i.origin.is_some());
+        let cut = cut::off(data, id)?;
+        let goes = |i: &Item| {
+            i.to.is_none()
+                && (!holding || i.origin.is_some())
+                && (!cut || cut::carries(&dir, i.origin.as_deref()))
+        };
         let at = q.items.iter().position(goes).unwrap_or(0);
         let Some(item) = (q.items.get(at))
             .filter(|i| !q.paused && goes(i) && i.error.is_none())
@@ -430,8 +447,17 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         let f = core::fold(&dir, true)?;
         let live = fold::live(&f.fold, owner::state(data, id), &dir, &procs::all());
         let status = fold::status(&f.fold, &live);
-        if live.owner != Owner::Alive || !DRAINS.contains(&status["state"].as_str().unwrap_or("")) {
+        let state = status["state"].as_str().unwrap_or("");
+        let free = match cut {
+            // A turn still open in the log is ended by its child's exit, on its way.
+            true => state == "interrupted" && f.fold.turns.is_empty(),
+            false => DRAINS.contains(&state),
+        };
+        if live.owner != Owner::Alive || !free {
             return Ok(());
+        }
+        if cut {
+            core::sweep(&f.fold, &dir);
         }
         let child = ping["child"]
             .as_i64()
@@ -469,32 +495,4 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         }
         Ok(())
     })
-}
-
-/// Rust's one recovery for a session; `queued`: the caller holds its queue's lock.
-pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
-    let spec = core::load(data, id)?;
-    owner::ensure(data, &spec)?;
-    let settle = if queued {
-        crate::rewind::settle_held
-    } else {
-        crate::rewind::settled
-    };
-    settle(data, &spec)?;
-    let _fence = core::session::fence(data, &spec)?;
-    let f = core::fold(&spec.dir, true)?;
-    let live = fold::live(&f.fold, Owner::Alive, &spec.dir, &procs::all());
-    let call = crate::call_fn(data, id);
-    // The user's Resume takes what's held for the session, as their next message would [D329].
-    let mut more = String::new();
-    let held = match queued {
-        true => crate::workers::with_next(data, id, None, &mut more),
-        false => vec![],
-    };
-    let spec = crate::routing::told(data, &spec);
-    let reply = core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more);
-    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
-        crate::workers::went_with(data, id, held);
-    }
-    Ok(reply)
 }

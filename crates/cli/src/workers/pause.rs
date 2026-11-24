@@ -105,11 +105,22 @@ fn resume(data: &Path, wid: &str) -> Value {
     if let Err(e) = crate::queue::give_held(data, &l.parent, wid) {
         return refuse(&e.to_string());
     }
-    let cid = crate::control::new_cid();
-    let add = ["queue", wid, "add", CONTINUE, "--qid", &cid].map(String::from);
-    if let Err(e) = crate::run(data, &add) {
-        return refuse(&e.to_string());
-    }
+    let cid = match crate::queue::cut_off(data, wid) {
+        // A cut-off turn goes on by its one recovery, or its parent's message that waits.
+        Ok(true) => match crate::queue::recover(data, wid, false) {
+            Ok(r) if r["ok"] == true => r["cid"].as_str().unwrap_or_default().to_string(),
+            Ok(r) => return refuse(r["error"].as_str().unwrap_or("Couldn't resume the worker")),
+            Err(e) => return refuse(&e.to_string()),
+        },
+        _ => {
+            let cid = crate::control::new_cid();
+            let add = ["queue", wid, "add", CONTINUE, "--qid", &cid].map(String::from);
+            if let Err(e) = crate::run(data, &add) {
+                return refuse(&e.to_string());
+            }
+            cid
+        }
+    };
     // Only the continue reports back, once what was held went before it: one result at the end.
     // A mockup worker not yet picked reports nothing till Use [D560].
     l.report = match l.asked["mockup"].is_null() || !l.report.is_empty() {

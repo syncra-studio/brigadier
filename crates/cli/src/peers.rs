@@ -217,11 +217,9 @@ pub fn send(
         Err(e) => return refuse(&format!("Couldn't send it: {e}")),
     };
     let said = match how {
-        "steered" => "It went into the turn it's working on.",
-        "held" => "It goes into the turn it's working on as soon as that turn can take it.",
+        "steered" => "It went into the turn it's working on.".into(),
         "dropped" => return refuse(&format!("{to} was deleted.")),
-        _ if row["running"] == true => "It's queued: it gets it when its turn ends.",
-        _ => "It's queued and starts its next turn.",
+        _ => queue::waits_for(data, me, to, &out.mid, how == "held"),
     };
     let Some(secs) = wait else {
         let text = format!(
