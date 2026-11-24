@@ -5,7 +5,7 @@ import { agentPage, focusPage, loadPage, pageBounds, whilePainting } from "./lay
 import { dropOverlay, glideTo, pressAt, raiseShield } from "./overlay";
 import { takeBackTab } from "./give";
 import { driverOf, isPaused, userUsed } from "./pause";
-import { isWindow, tabOf } from "./windows";
+import { isWindow, tabOf, windowsOf } from "./windows";
 
 type Answer = Record<string, unknown>;
 const agent = (call: Record<string, unknown>) => window.brigadierShell.agent(call);
@@ -116,6 +116,7 @@ export async function agentDrive(id: string, on: boolean, resumed = false): Prom
   // Continue: the hold comes back as it was, and refs from before the user's turn mean nothing now.
   await agent({ call: "attach", guest: page.guest });
   await script(page.guest, { kind: "void" });
+  await Promise.all(windowsOf(id).map(({ guest }) => script(guest, { kind: "void" }).catch(() => null)));
 }
 
 /** A page's address and title as its agent sees them (main's browserAgentActivity.ts): no sign-in's secrets in them. */

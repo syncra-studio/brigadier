@@ -16,11 +16,15 @@ import { openerTab } from "./guestPopups";
 
 export { watchNetwork };
 
+type AgentEvent = "devtools-opened" | "devtools-closed" | "detached" | "used";
 type Held = {
   /** Calls run in order: a let-go waits for a click under way, so no button stays pressed. */
   queue: Promise<unknown>;
 };
 const held = new Map<number, Held>();
+
+/** Pages an agent's own input is going into now. */
+const sending = new Set<number>();
 
 /** Tabs with DevTools open. `isDevToolsOpened` answers false for DevTools in a view of ours (browserDevtools.ts). */
 const opened = new Set<number>();
@@ -34,8 +38,10 @@ function guestFor(sender: WebContents, id: unknown): WebContents {
   return guest;
 }
 
-function tellHost(guest: WebContents, event: "devtools-opened" | "devtools-closed" | "detached"): void {
-  guest.hostWebContents?.send("brigadier:agent-event", { from: guest.id, event });
+/** Tells the page hosting the tab; of a window, the tab it's of. */
+function tellHost(guest: WebContents, event: AgentEvent): void {
+  const tab = openerTab(guest) ?? guest;
+  if (!tab.isDestroyed()) tab.hostWebContents?.send("brigadier:agent-event", { from: tab.id, event });
 }
 
 async function attach(guest: WebContents): Promise<void> {
@@ -73,9 +79,11 @@ async function acting(guest: WebContents, input: (send: (method: string, params:
     const stillHeld = () => held.get(guest.id) === hold;
     if (!stillHeld()) return { paused: devToolsOpen(guest) ? "devtools" : "user" };
     if (confirm) await setConfirm(guest, true);
+    sending.add(guest.id);
     try {
       await input((method, params) => guest.debugger.sendCommand(method, params));
     } finally {
+      sending.delete(guest.id);
       if (confirm) await setConfirm(guest, false);
     }
     // A box's words may quote a field's value: password values come out as any page text's do.
@@ -141,7 +149,8 @@ function watchDevTools(guest: WebContents): void {
     // Ours forgets the hold first, so a hold still here was ended from outside: nothing resumes by itself.
     if (!held.delete(guest.id) || guest.isDestroyed()) return;
     void showDialogs(guest);
-    tellHost(guest, devToolsOpen(guest) ? "devtools-opened" : "detached");
+    // A window that closes ends its debugger as one ended from outside does, so only its tab's own says so.
+    if (devToolsOpen(guest) || !openerTab(guest)) tellHost(guest, devToolsOpen(guest) ? "devtools-opened" : "detached");
   });
 }
 
@@ -161,6 +170,24 @@ export function devToolsEnded(guest: WebContents): void {
   if (!guest.isDestroyed()) tellHost(guest, "devtools-closed");
 }
 
+/**
+ * The user's click or key in a window a tab's page opened takes the tab over: no shield lies over it, as one does over
+ * a tab's page. Input while the agent's goes in is taken for its own: they reach here alike.
+ * shortcut: a click in a cross-site frame of the window may not be heard, only a key there; watch the frames' input if that matters.
+ */
+export function watchUserInput(window: WebContents): void {
+  const used = () => {
+    if (!sending.has(window.id)) tellHost(window, "used");
+  };
+  window.on("before-mouse-event", (_event, mouse) => {
+    if (mouse.type === "mouseDown") used();
+  });
+  window.on("before-input-event", (_event, input) => {
+    // A modifier alone may be ⌘Tab on its way to another app.
+    if (input.type === "keyDown" && !["Meta", "Shift", "Control", "Alt"].includes(input.key)) used();
+  });
+}
+
 /** Every tab's guest, from when it is made. */
 export function watchGuest(guest: WebContents): void {
   const id = guest.id;
@@ -168,7 +195,9 @@ export function watchGuest(guest: WebContents): void {
   watchDevTools(guest);
   guest.once("destroyed", () => {
     held.delete(id);
-    opened.delete(id);
+    sending.delete(id);
+    // A window that closed with its DevTools open says so, or its tab would wait for them.
+    if (opened.delete(id) && openerTab(guest)) tellHost(guest, "devtools-closed");
     forgetActivity(id);
     forgetSecrets(id);
   });

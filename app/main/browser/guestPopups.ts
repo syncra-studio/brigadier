@@ -3,7 +3,7 @@
 // postMessage, and anything else (target=_blank, window.open with no features) is a tab of the opener, with none.
 import { BrowserWindow, type HandlerDetails, type WebContents } from "electron";
 
-import { watchGuest } from "./browserAgent";
+import { watchGuest, watchUserInput } from "./browserAgent";
 import { watchSiteActivity } from "./browserClearData";
 import { watchSignIn } from "./browserSignIn";
 import { installFailedLoad } from "./guestFailedLoad";
@@ -68,6 +68,7 @@ function adopt(window: BrowserWindow, opener: WebContents): void {
   tabGuest.set(page, tab);
   installGuest(page);
   watchGuest(page);
+  watchUserInput(page);
   tellWindow(window, tab);
   // A popup has no address bar: its title always says whose page this is, which a sign-in needs.
   const title = (text: string) => {

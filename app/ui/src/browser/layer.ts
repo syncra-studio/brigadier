@@ -43,7 +43,7 @@ declare global {
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       /** A local dev site's untrusted certificate opened anyway (main's browser/localCerts.ts), for Rust to keep. */
       onLocalCert(listener: (details: { profile: string; host: string }) => void): void;
-      onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
+      onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" | "used" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
       agent(call: Record<string, unknown>): Promise<unknown>;
       /** What a tab's page, or a window it opened, shows that only the user goes through (main's browser/browserSignIn.ts). */
@@ -210,8 +210,9 @@ export function installTabLayer(): void {
   window.brigadierShell.onAgentEvent(({ from, event }) => {
     const page = pageOf(from);
     if (!page) return;
-    // Nothing resumes by itself: DevTools closing, or a debugger ended from outside, leaves the tab with the user.
-    if (event === "detached") userUsed(page.id);
+    // Nothing resumes by itself: DevTools closing, a debugger ended from outside, or the user's click or key in a window
+    // the page opened, leaves the tab with the user.
+    if (event === "detached" || event === "used") userUsed(page.id);
     else devToolsChanged(page.id, event === "devtools-opened");
   });
 }
