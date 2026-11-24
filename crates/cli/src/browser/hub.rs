@@ -282,7 +282,7 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
                 }
             }
             Some("needsApproval") => {
-                if let Err(reply) = asks::ask(data, me, &op, &result, key.clone(), here) {
+                if let Err(reply) = asks::ask(data, me, &op, &result, key.clone(), granted, here) {
                     return reply;
                 }
                 continue;

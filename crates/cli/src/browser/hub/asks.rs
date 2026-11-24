@@ -337,6 +337,7 @@ pub(super) fn ask(
     op: &Value,
     asked: &Value,
     key: Option<(String, String, String)>,
+    before: Option<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<(), Value> {
     let (url, what) = (
@@ -348,12 +349,20 @@ pub(super) fn ask(
     let id = format!("browser-{}", &core_uuid()[..8]);
     let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url)});
     let (to, answer) = mpsc::channel();
+    // What the yes is for: all the control asked for, and what this call's yes before it on this page was.
+    let of = |v: &Value, k: &str| v[k].as_array().cloned().unwrap_or_default();
+    let mut approved = json!({"generation": asked["generation"], "url": url});
+    let mut reasons = of(asked, "reasons");
+    if let Some(b) = before.filter(|b| b["url"] == url && b["generation"] == asked["generation"]) {
+        reasons.extend(of(&b, "for"));
+    }
+    approved["for"] = Value::Array(reasons);
     lock(&CARDS).insert(
         id.clone(),
         Card {
             session: me.into(),
             key,
-            approved: json!({"generation": asked["generation"], "url": url}),
+            approved,
             question: question.clone(),
             tab: asked["tab"].as_str().unwrap_or("").into(),
             waiter: Some(to),

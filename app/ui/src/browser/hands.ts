@@ -15,10 +15,16 @@ const script = (guest: number, op: Answer) => agent({ call: "script", guest, op 
 /** The user has the tab now: they took it over, or took it back (Stop), so nothing more goes into the page. */
 const overtaken = (id: string) => isPaused(tabOf(id)) || !driverOf(tabOf(id));
 
+const COMPOSING = "The user is typing with an input method in Brigadier, so nothing was sent, to keep their unfinished text. Try again in a moment.";
+
 /** How long a scroll gets to move the page. */
 const SCROLL_MS = 350;
 
-const pointOf = (answer: unknown) => (answer as { point?: { x: number; y: number } } | null)?.point;
+/** How often the pointer follows a control that moves from under it. */
+const FOLLOWS = 5;
+
+type Point = { x: number; y: number; depth: number };
+const pointOf = (answer: unknown) => (answer as { point?: Point } | null)?.point;
 
 /** Reads a page, or acts on one of its controls. */
 export async function agentRun(id: string, op: Answer): Promise<unknown> {
@@ -43,34 +49,55 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
   }
   if (op.kind !== "click" && op.kind !== "type") return script(guest, op);
   const answer = await script(guest, { ...op, trusted: true });
-  const point = (answer as { point?: { x: number; y: number } } | null)?.point;
+  const point = pointOf(answer);
   if (!point) return answer;
 
   await glideTo(id, String(op.label ?? "Brigadier"), { x: point.x * zoom, y: point.y * zoom });
   if (overtaken(id)) return { paused: "user" };
 
-  // The real pointer goes there first, so a menu that opened on hover closes and the page settles before the check.
-  if (op.kind === "click") {
-    await whilePainting(id, () => agent({ call: "hover", guest, x: point.x * zoom, y: point.y * zoom }));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  // The page may have moved while the cursor went; a field must still be the one with the focus.
-  const place = await script(guest, { kind: "place", target: op.target, typing: op.kind === "type", approved: op.approved });
+  if (op.kind === "click") return await whilePainting(id, () => clickAt(id, op, point));
+  // The field must still be the one with the focus, and what it was.
+  const place = await script(guest, { ...op, kind: "place", typing: true });
   if (place && ("error" in place || "ask" in place)) return place;
-  const there = (place as { point?: { x: number; y: number } } | null)?.point ?? point;
 
   if (overtaken(id)) return { paused: "user" };
-  if (userComposing()) return { error: "The user is typing with an input method in Brigadier, so nothing was sent, to keep their unfinished text. Try again in a moment." };
+  if (userComposing()) return { error: COMPOSING };
   const release = guardFocus(element, () => focusPage(null));
   try {
-    if (op.kind === "type") {
-      const typed = await script(guest, { kind: "insert", target: op.target, text: op.text });
-      return typed && "error" in typed || op.submit !== true ? typed : await whilePainting(id, () => agent({ call: "enter", guest }));
-    }
-    if (Math.abs(there.x - point.x) > 0.5 || Math.abs(there.y - point.y) > 0.5) await glideTo(id, String(op.label ?? "Brigadier"), { x: there.x * zoom, y: there.y * zoom });
+    const typed = await script(guest, { kind: "insert", target: op.target, text: op.text });
+    return typed && "error" in typed || op.submit !== true ? typed : await whilePainting(id, () => agent({ call: "enter", guest }));
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Clicks a control whose middle was at `from`. The real pointer goes there first, so what the page does about it is done
+ * before the last look at where and what the control is, and nothing moves between that look and the press. Meanwhile
+ * the page paints: one behind its tab is visibility:hidden, and input sent to it reaches nothing though the call succeeds.
+ */
+async function clickAt(id: string, op: Answer, from: Point): Promise<unknown> {
+  const { guest, element, zoom } = agentPage(id);
+  let at = from;
+  for (let follows = 0; ; follows++) {
+    await agent({ call: "hover", guest, x: at.x * zoom, y: at.y * zoom });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const place = await script(guest, { ...op, kind: "place" });
+    const there = pointOf(place);
+    if (!there) return place;
+    const moved = Math.abs(there.x - at.x) > 0.5 || Math.abs(there.y - at.y) > 0.5;
+    at = there;
+    if (!moved) break;
+    if (follows === FOLLOWS) return { error: `${op.target} keeps moving, so it wasn't clicked. Try again in a moment.` };
+    await glideTo(id, String(op.label ?? "Brigadier"), { x: at.x * zoom, y: at.y * zoom });
+    if (overtaken(id)) return { paused: "user" };
+  }
+  if (overtaken(id)) return { paused: "user" };
+  if (userComposing()) return { error: COMPOSING };
+  const release = guardFocus(element, () => focusPage(null));
+  try {
     pressAt(id);
-    // A page behind its tab is visibility:hidden, and input sent to it reaches nothing though the call succeeds.
-    return await whilePainting(id, () => agent({ call: "click", guest, x: there.x * zoom, y: there.y * zoom, confirm: op.confirm === true }));
+    return await agent({ call: "click", guest, x: at.x * zoom, y: at.y * zoom, look: at, confirm: op.confirm === true });
   } finally {
     release();
   }

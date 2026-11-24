@@ -301,7 +301,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "type":
     case "press": {
       const before = idsNow(owner);
-      const ask = (approved: string | null) => agentRun(tab, {
+      const ask = (yes: { url: string; for?: string[] } | null) => agentRun(tab, {
         kind: op.op,
         label,
         target: op.target,
@@ -310,7 +310,8 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         confirm: op.confirm,
         declared: op.declared,
         always: op.always,
-        approved,
+        approved: yes?.url ?? null,
+        approvedFor: yes?.for,
       }).catch(async (error: unknown) => {
         // A window may close on the very click, as Approve's does, before the click's own answer comes.
         await wait(SETTLE_MS);
@@ -319,7 +320,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       });
       let answer = await ask(approvedHere(tab, op.approved));
       // Full: nothing asks, so the page's own question is answered yes at once.
-      if (askOf(answer) && !op.asks) answer = await ask(urlOf(answer));
+      if (askOf(answer) && !op.asks) answer = await ask({ url: urlOf(answer) ?? "" });
       const overtaken = pausedAnswer(answer, tab);
       if (overtaken) return overtaken;
       const asked = askOf(answer);
@@ -336,7 +337,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "eval": {
       // At Auto a run asks: a yes goes with one call, on the page it was given on.
       const shown = browserPage(tab);
-      if (op.asks && approvedHere(tab, op.approved) !== shown?.url) {
+      if (op.asks && (approvedHere(tab, op.approved)?.url ?? null) !== shown?.url) {
         return { result: "needsApproval", tab, url: shown?.url ?? "", generation: agentPage(tab).generation, sensitive: "script", what: "" };
       }
       const answer = await agentRun(tab, { kind: "eval", script: op.script });
@@ -392,18 +393,18 @@ function withDialogs(result: Result, answer: unknown): Result {
   return { ...result, note: [result.note, ...lines].filter(Boolean).join(" ") };
 }
 
-/** The address of the user's yes, while the tab is still on the page it was given on. */
-function approvedHere(tab: string, approved: { generation: number; url: string } | undefined): string | null {
-  return approved && approved.generation === agentPage(tab).generation ? approved.url : null;
+/** The user's yes, while the tab is still on the page it was given on: its address, and what it was for. */
+function approvedHere(tab: string, approved: { generation: number; url: string; for: string[] } | undefined): { url: string; for: string[] } | null {
+  return approved && approved.generation === agentPage(tab).generation ? approved : null;
 }
 
 const SENSITIVE = ["pay", "send", "delete", "signIn", "credentials", "card", "oneTimeCode", "script", "action"];
 
-function askOf(answer: unknown): { sensitive: string; what: string } | null {
+function askOf(answer: unknown): { sensitive: string; reasons: string[]; what: string } | null {
   if (typeof answer !== "object" || !answer || !("ask" in answer)) return null;
-  const ask = answer.ask as { sensitive?: unknown; what?: unknown };
+  const ask = answer.ask as { sensitive?: unknown; reasons?: unknown[]; what?: unknown };
   const sensitive = SENSITIVE.find((each) => each === ask.sensitive);
-  return sensitive ? { sensitive, what: String(ask.what ?? "") } : null;
+  return sensitive ? { sensitive, reasons: SENSITIVE.filter((each) => ask.reasons?.includes(each)), what: String(ask.what ?? "") } : null;
 }
 
 function errorOf(answer: unknown): string | null {

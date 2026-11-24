@@ -17,6 +17,9 @@ import { openerTab } from "./guestPopups";
 export { watchNetwork };
 
 type AgentEvent = "devtools-opened" | "devtools-closed" | "detached" | "used";
+type Send = (method: string, params: object) => Promise<unknown>;
+/** A control's middle in its page, and how many elements up from what is there the control is. */
+type Look = { x: number; y: number; depth: number };
 type Held = {
   /** Calls run in order: a let-go waits for a click under way, so no button stays pressed. */
   queue: Promise<unknown>;
@@ -70,7 +73,7 @@ async function release(guest: WebContents): Promise<void> {
  * Runs `input` in the tab's order; an answer the user's take-over overtook is `paused`. It answers what the page asked
  * in a box meanwhile; `confirm` answers OK to a confirm box, for this input only.
  */
-async function acting(guest: WebContents, input: (send: (method: string, params: object) => Promise<unknown>) => Promise<void>, confirm = false): Promise<unknown> {
+async function acting(guest: WebContents, input: (send: Send) => Promise<void>, confirm = false): Promise<unknown> {
   if (devToolsOpen(guest)) return { paused: "devtools" };
   await attach(guest);
   const hold = held.get(guest.id);
@@ -106,6 +109,35 @@ const FOCUSED_SECRET = `(() => {
   if (!at || !at.getAttribute) return false;
   return at.type === "password" || /\\b(current|new)-password\\b/i.test(at.getAttribute("autocomplete") || "") || (getComputedStyle(at).webkitTextSecurity || "none") !== "none";
 })()`;
+
+/** The elements under a point of the page, the one a click there reaches first, up to `depth` of them, through open shadow roots. */
+const UNDER = ({ x, y, depth }: Look) => `((x, y, depth) => {
+  let at = document.elementFromPoint(x, y);
+  while (at?.shadowRoot) {
+    const inner = at.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === at) break;
+    at = inner;
+  }
+  const found = [];
+  for (; at && found.length < depth; at = at.parentElement || at.getRootNode().host) found.push(at);
+  return found;
+})(${Number(x)}, ${Number(y)}, ${Number(depth)})`;
+
+/** Whether a click at a point of the page goes into a closed shadow root, which no script sees into: only the debugger tells. */
+async function intoClosedRoot(send: Send, look: Look): Promise<boolean> {
+  const { frameTree } = await send("Page.getFrameTree", {}) as { frameTree: { frame: { id: string } } };
+  // A world of its own, as the agent's script has: the page can't stand in for what it calls.
+  const { executionContextId } = await send("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: "brigadier-look" }) as { executionContextId: number };
+  const { result: list } = await send("Runtime.evaluate", { expression: UNDER(look), contextId: executionContextId }) as { result: { objectId?: string } };
+  if (!list.objectId) return false;
+  const { result: members } = await send("Runtime.getProperties", { objectId: list.objectId, ownProperties: true }) as { result: { value?: { objectId?: string } }[] };
+  for (const { value } of members) {
+    if (!value?.objectId) continue;
+    const { node } = await send("DOM.describeNode", { objectId: value.objectId, depth: 0 }) as { node: { shadowRoots?: { shadowRootType?: string }[] } };
+    if (node.shadowRoots?.some((root) => root.shadowRootType === "closed")) return true;
+  }
+  return false;
+}
 
 const mouse = (type: string, x: number, y: number, buttons: number) => ({
   type,
@@ -208,7 +240,7 @@ type Call =
   | { call: "script"; guest: number; op: Record<string, unknown> }
   | { call: "attach"; guest: number }
   | { call: "release"; guest: number }
-  | { call: "click"; guest: number; x: number; y: number; confirm?: boolean }
+  | { call: "click"; guest: number; x: number; y: number; look: Look; confirm?: boolean }
   | { call: "enter"; guest: number }
   | { call: "key"; guest: number; key: string; modifiers: string[] }
   | { call: "hover"; guest: number; x: number; y: number }
@@ -248,8 +280,9 @@ export function installBrowserAgent(): void {
         }
         return release(guest);
       case "click":
+        // The pointer is there already, put there before the last look (hands.ts): another move could change the page again.
         return acting(guest, async (send) => {
-          await send("Input.dispatchMouseEvent", mouse("mouseMoved", call.x, call.y, 0));
+          if (await intoClosedRoot(send, call.look)) throw new Error("That control's middle is inside a closed shadow root, which agents can't see into, so nothing was clicked: use another control, or ask the user.");
           await send("Input.dispatchMouseEvent", mouse("mousePressed", call.x, call.y, 1));
           await send("Input.dispatchMouseEvent", mouse("mouseReleased", call.x, call.y, 0));
         }, call.confirm === true);
