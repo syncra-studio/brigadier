@@ -13,7 +13,7 @@ import { shownUrl } from "./browserShownUrl";
 const agentScript = readFileSync(path.join(__dirname, "../../browser/browser_agent.js"), "utf8");
 
 /** The script's own world: the page can't reach its variables, or stand in for what it calls. */
-const AGENT_WORLD = 1010;
+export const AGENT_WORLD = 1010;
 const scriptBody = agentScript.trim().replace(/;$/, "");
 /** The agent's script, for what runs it elsewhere: the eval verb's answer and the picker's description. */
 export const agentScriptBody = scriptBody;

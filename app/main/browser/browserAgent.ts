@@ -7,7 +7,7 @@ import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
-import { forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
+import { AGENT_WORLD, forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { shownTitle, shownUrl } from "./browserShownUrl";
@@ -27,8 +27,8 @@ type Held = {
 };
 const held = new Map<number, Held>();
 
-/** Pages an agent's own input is going into now. */
-const sending = new Set<number>();
+/** The one press or key of an agent's that is on its way into a page, not heard there yet (watchUserInput). */
+const sending = new Map<number, "mouseDown" | "keyDown">();
 
 /** Tabs with DevTools open. `isDevToolsOpened` answers false for DevTools in a view of ours (browserDevtools.ts). */
 const opened = new Set<number>();
@@ -83,7 +83,6 @@ async function acting(guest: WebContents, input: (send: Send) => Promise<void>, 
     const stillHeld = () => held.get(guest.id) === hold;
     if (!stillHeld()) return { paused: devToolsOpen(guest) ? "devtools" : "user" };
     if (confirm) await setConfirm(guest, true);
-    sending.add(guest.id);
     try {
       await input((method, params) => guest.debugger.sendCommand(method, params));
     } finally {
@@ -203,21 +202,34 @@ export function devToolsEnded(guest: WebContents): void {
   if (!guest.isDestroyed()) tellHost(guest, "devtools-closed");
 }
 
+/** Waits for the next text the user composes with an input method, which reaches the page with no key; an agent composes none. */
+const COMPOSED = `new Promise((told) => addEventListener("compositionstart", function heard({ isTrusted }) {
+  if (!isTrusted) return;
+  removeEventListener("compositionstart", heard, true);
+  told(true);
+}, true))`;
+
 /**
- * The user's click or key in a window a tab's page opened takes the tab over: no shield lies over it, as one does over
- * a tab's page. Input while the agent's goes in is taken for its own: they reach here alike.
- * shortcut: a click in a cross-site frame of the window may not be heard, only a key there; watch the frames' input if that matters.
+ * The user's click, key or composed text in a window a tab's page opened takes the tab over: no shield lies over it, as
+ * one does over a tab's page. An agent's press or key is one event here, so one more than it sent is the user's.
+ * shortcut: a click or composed text in a cross-site frame of the window, and text with no key or composition (the
+ * emoji picker, a drop, the menu's Paste), may not be heard; watch the frames' own input if that matters.
  */
 export function watchUserInput(window: WebContents): void {
-  const used = () => {
-    if (!sending.has(window.id)) tellHost(window, "used");
+  const used = (type?: "mouseDown" | "keyDown") => {
+    if (type && sending.get(window.id) === type) sending.delete(window.id);
+    else tellHost(window, "used");
   };
   window.on("before-mouse-event", (_event, mouse) => {
-    if (mouse.type === "mouseDown") used();
+    if (mouse.type === "mouseDown") used(mouse.type);
   });
   window.on("before-input-event", (_event, input) => {
     // A modifier alone may be ⌘Tab on its way to another app.
-    if (input.type === "keyDown" && !["Meta", "Shift", "Control", "Alt"].includes(input.key)) used();
+    if (input.type === "keyDown" && !["Meta", "Shift", "Control", "Alt"].includes(input.key)) used(input.type);
+  });
+  window.on("dom-ready", async () => {
+    // Ends with its document, when nothing answers any more.
+    while (await window.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: COMPOSED }]).catch(() => false)) used();
   });
 }
 
@@ -284,12 +296,14 @@ export function installBrowserAgent(): void {
         // The pointer is there already, put there before the last look (hands.ts): another move could change the page again.
         return acting(guest, async (send) => {
           if (await intoClosedRoot(send, call.look)) throw new Error("That control's middle is inside a closed shadow root, which agents can't see into, so nothing was clicked: use another control, or ask the user.");
+          sending.set(guest.id, "mouseDown");
           await send("Input.dispatchMouseEvent", mouse("mousePressed", call.x, call.y, 1));
           await send("Input.dispatchMouseEvent", mouse("mouseReleased", call.x, call.y, 0));
         }, call.confirm === true);
       case "enter":
         // Widget events, not the debugger's keys, which follow the window's focus (as Orca found, its #20595).
         return acting(guest, async () => {
+          sending.set(guest.id, "keyDown");
           guest.sendInputEvent({ type: "keyDown", keyCode: "Return" });
           guest.sendInputEvent({ type: "char", keyCode: "Return" });
           guest.sendInputEvent({ type: "keyUp", keyCode: "Return" });
@@ -303,6 +317,7 @@ export function installBrowserAgent(): void {
           if (!openerTab(guest)) guest.focus();
           const looked = await send("Runtime.evaluate", { expression: FOCUSED_SECRET, returnByValue: true }) as { result?: { value?: unknown } };
           if (looked.result?.value !== false) throw new Error("That is a password field, and only the user fills those in, so no key was sent. Ask them to sign in in this tab, and go on when they say so.");
+          sending.set(guest.id, "keyDown");
           for (const each of events) guest.sendInputEvent(each);
         });
       }
