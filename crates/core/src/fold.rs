@@ -11,6 +11,7 @@ pub mod plan;
 mod rewind;
 pub mod runs;
 mod status;
+mod todo;
 mod turns;
 pub use input::Picked;
 pub use live::{HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop};
@@ -176,9 +177,9 @@ pub struct Fold {
     /// a new conversation began [D88].
     #[serde(default)]
     pub context: Option<Value>,
-    /// The agent's to-do list as it last wrote it [D104].
+    /// The agent's to-do list, and what it finished [D104].
     #[serde(default)]
-    pub plan: Option<Value>,
+    pub plan: todo::Todo,
     /// The turn Brigadier stopped for a rebirth: it goes on in a fresh conversation [D108].
     #[serde(default)]
     pub cut: Option<String>,
@@ -437,7 +438,7 @@ impl Fold {
                 self.resume.insert(backend, id);
             }
             "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
-            "plan" => self.plan = Some(item["steps"].clone()),
+            "plan" => self.plan.wrote(&item["steps"]),
             "limits" => {
                 let account = self
                     .accounts

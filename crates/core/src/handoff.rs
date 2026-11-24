@@ -415,6 +415,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     // The agent's own last to-do list, as it wrote it [D104].
     if let Some(steps) = f
         .plan
+        .written
         .as_ref()
         .and_then(Value::as_array)
         .filter(|s| !s.is_empty())

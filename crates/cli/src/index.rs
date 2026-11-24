@@ -317,7 +317,7 @@ impl Index {
             row["arriving"] = json!(e.held.1.iter().filter(waits).collect::<Vec<_>>());
             row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
-            row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
+            row["plan"] = f.fold.plan.shown(); // its agent's to-do list and what it finished, the summary card's Plan [D144]
             row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]
             row["created"] = json!(e.spec.as_ref().map(|s| s.created)); // when it was made: a Brigade's fixed order [D33]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]

@@ -367,6 +367,12 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
             for item in items.drain(..) {
                 each(&item);
                 f.fold.push(&item);
+                // A fork's plan goes on from its source's [D1063].
+                if item["kind"] == "note" && item["event"] == "forked" {
+                    let copy = fork::inherited(dir);
+                    let plans = copy.iter().filter(|i| i["kind"] == "plan");
+                    plans.for_each(|i| f.fold.plan.wrote(&i["steps"]));
+                }
             }
             // Any output is a sign of life, even bytes that make no item (heartbeats).
             if matches!(frame.kind, log::OUT | log::ERR) {
