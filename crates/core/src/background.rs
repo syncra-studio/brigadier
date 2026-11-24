@@ -1,12 +1,12 @@
 //! A session's own processes, proven by pid and start time through its agent's, host's and daemon's
 //! exit: those its host saw under its agent (`sightings`), else those started with its mark, and what
-//! either proves by descent, group or session. Never by name, port or folder.
+//! either proves by descent, group or session. Never by name, port or folder. Each has one owner.
 
 use crate::fold::Fold;
 use brigadier_frames::background::{Links, grow, shared};
 use brigadier_frames::forks;
 use brigadier_frames::procs::{self, Proc};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -19,22 +19,24 @@ const MARKS_FOR: Duration = Duration::from_millis(900);
 const SETTLED_US: u64 = 10_000_000;
 /// How long a stopped process has before the KILL.
 const GRACE: Duration = Duration::from_secs(2);
+/// How often what's started as the rest is killed is looked for and killed too.
+const ROUNDS: usize = 3;
 
-/// The session folder each process was started for, where it shows its environment.
+/// The session folder each process was started for, where it shows its environment, and the
+/// session of one data folder that owns it.
 #[derive(Default)]
 struct Marks {
-    at: Option<Instant>,
+    at: Option<(Instant, PathBuf)>,
     of: HashMap<(i32, u64), Option<String>>,
-    by: BTreeMap<String, Vec<Proc>>,
+    owner: HashMap<(i32, u64), String>,
 }
 
 static MARKS: Mutex<Option<Marks>> = Mutex::new(None);
 
 impl Marks {
-    fn read(&mut self, all: &[Proc]) {
+    fn read(&mut self, dir: &Path, all: &[Proc]) {
         let now = brigadier_frames::log::now_ms() * 1000;
         let mut was = std::mem::take(&mut self.of);
-        self.by.clear();
         for p in all {
             let key = (p.pid, p.start_us);
             let mark = was.remove(&key).unwrap_or_else(|| {
@@ -44,23 +46,85 @@ impl Marks {
                     .find_map(|v| v.strip_prefix(&name))
                     .map(Into::into)
             });
-            if let Some(m) = &mark {
-                self.by.entry(m.clone()).or_default().push(*p);
-            }
             if mark.is_some() || now.saturating_sub(p.start_us) > SETTLED_US {
                 self.of.insert(key, mark);
             }
         }
-        self.at = Some(Instant::now());
+        self.own(dir, all);
+        self.at = Some((Instant::now(), sessions(dir)));
     }
+
+    /// One owner each: the session whose host saw it under its agent, or an ancestor of it, else
+    /// the one whose mark it carries.
+    fn own(&mut self, dir: &Path, all: &[Proc]) {
+        let at: HashMap<i32, &Proc> = all.iter().map(|p| (p.pid, p)).collect();
+        let root = sessions(dir);
+        let real = fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+        let marked = |key: &(i32, u64)| {
+            let mark = Path::new(self.of.get(key)?.as_ref()?);
+            let here = mark.parent().is_some_and(|d| d == root || d == real);
+            let id = mark.file_name()?.to_str()?;
+            (here && mark.join("session.json").exists()).then(|| id.to_string())
+        };
+        let mut seen = HashMap::new();
+        let mut ids: Vec<_> = (fs::read_dir(&root).into_iter().flatten().flatten())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        ids.sort();
+        for id in &ids {
+            for key in forks::read(&root.join(id)) {
+                if at.get(&key.0).is_none_or(|p| p.start_us != key.1) {
+                    continue;
+                }
+                // Two hosts saw it: its mark says, else the first.
+                if !seen.contains_key(&key) || marked(&key).as_ref() == Some(id) {
+                    seen.insert(key, id.clone());
+                }
+            }
+        }
+        self.owner = seen.clone();
+        for key in self.of.keys().filter(|k| !seen.contains_key(k)) {
+            if let Some(id) = marked(key) {
+                let above = (at.get(&key.0)).and_then(|p| seen_above(dir, p, &at, &seen));
+                self.owner.insert(*key, above.unwrap_or(id));
+            }
+        }
+    }
+}
+
+/// The session whose host saw its nearest seen ancestor; a shared server's are nobody's.
+fn seen_above(
+    dir: &Path,
+    p: &Proc,
+    at: &HashMap<i32, &Proc>,
+    seen: &HashMap<(i32, u64), String>,
+) -> Option<String> {
+    let mut p = *p;
+    // The bound only guards against a cycle that can't be.
+    for _ in 0..256 {
+        let up = **at.get(&p.ppid).filter(|up| up.start_us <= p.start_us)?;
+        if let Some(id) = seen.get(&(up.pid, up.start_us)) {
+            return Some(id.clone());
+        }
+        if shared(dir, &up) {
+            return None;
+        }
+        p = up;
+    }
+    None
+}
+
+/// The folder of this data folder's sessions.
+fn sessions(dir: &Path) -> PathBuf {
+    dir.parent().unwrap_or(dir).into()
 }
 
 /// Every process proven to be the session's, its agent too while it runs.
 pub fn proven(dir: &Path, fold: &Fold, all: &[Proc]) -> Vec<Proc> {
-    of(dir, fold, all, MARKS_FOR)
+    of(dir, fold, all, MARKS_FOR, &mut Links::default())
 }
 
-fn of(dir: &Path, fold: &Fold, all: &[Proc], fresh: Duration) -> Vec<Proc> {
+fn of(dir: &Path, fold: &Fold, all: &[Proc], fresh: Duration, links: &mut Links) -> Vec<Proc> {
     if fold.groups.is_empty() {
         return vec![];
     }
@@ -77,33 +141,32 @@ fn of(dir: &Path, fold: &Fold, all: &[Proc], fresh: Duration) -> Vec<Proc> {
             .filter(|c| !c.exited)
             .map(|c| (c.pid, c.start_us)),
     );
+    let (all, owned) = ours(dir, all, fresh);
+    // What launchd started only inherited its mark; under a shared server it's the server's.
+    let own = (owned.iter())
+        .filter(|p| p.sid > 1 && p.start_us > first && !under_shared(dir, p, &at))
+        .map(|p| (p.pid, p.start_us));
+    seeds.extend(own);
+    seeds.retain(|(pid, start)| at.get(pid).is_some_and(|p| p.start_us == *start));
+    grow(dir, &all, &seeds, links)
+}
+
+/// Every process but another session's, whoever started it, and those known to be this one's.
+fn ours(dir: &Path, all: &[Proc], fresh: Duration) -> (Vec<Proc>, Vec<Proc>) {
     let mut marks = MARKS.lock().unwrap_or_else(|e| e.into_inner());
     let marks = marks.get_or_insert_default();
-    if marks.at.is_none_or(|t| t.elapsed() >= fresh) {
-        marks.read(all);
+    let stale = |(t, root): &(Instant, PathBuf)| t.elapsed() >= fresh || *root != sessions(dir);
+    if marks.at.as_ref().is_none_or(stale) {
+        marks.read(dir, all);
     }
-    let names = [dir.display().to_string(), here.display().to_string()];
-    for p in (names.iter()).filter_map(|n| marks.by.get(n)).flatten() {
-        // What launchd started only inherited it; under a shared server it's the server's.
-        if p.sid > 1 && p.start_us > first && !under_shared(dir, p, &at) {
-            seeds.push((p.pid, p.start_us));
-        }
-    }
-    seeds.retain(|(pid, start)| at.get(pid).is_some_and(|p| p.start_us == *start));
-    if seeds.is_empty() {
-        return vec![];
-    }
-    // One started for another session of this data folder is that one's, whoever started it.
-    let sessions = [dir.parent(), here.parent()].map(|d| d.map(Path::to_path_buf));
-    let elsewhere = |p: &Proc| {
-        (marks.of.get(&(p.pid, p.start_us)).cloned().flatten()).is_some_and(|m| {
-            !names.contains(&m)
-                && sessions.contains(&Path::new(&m).parent().map(Path::to_path_buf))
-                && Path::new(&m).join("session.json").exists()
-        })
-    };
-    let all: Vec<Proc> = all.iter().filter(|p| !elsewhere(p)).copied().collect();
-    grow(dir, &all, &seeds, &mut Links::default())
+    let me = dir.file_name().and_then(|n| n.to_str());
+    let owner = |p: &Proc| marks.owner.get(&(p.pid, p.start_us)).map(String::as_str);
+    let all: Vec<Proc> = (all.iter())
+        .filter(|p| owner(p).is_none_or(|id| Some(id) == me))
+        .copied()
+        .collect();
+    let owned = all.iter().filter(|p| owner(p).is_some()).copied().collect();
+    (all, owned)
 }
 
 fn under_shared(dir: &Path, p: &Proc, at: &HashMap<i32, &Proc>) -> bool {
@@ -130,7 +193,8 @@ pub fn end(
     first: impl FnOnce(),
 ) -> Option<Vec<Proc>> {
     let all = procs::all();
-    let mine = of(dir, fold, &all, Duration::ZERO);
+    let mut links = Links::default();
+    let mine = of(dir, fold, &all, Duration::ZERO, &mut links);
     let mut tree = vec![];
     for root in roots.unwrap_or_default() {
         match mine.iter().find(|p| (p.pid, p.start_us) == *root) {
@@ -143,22 +207,37 @@ pub fn end(
     if roots.is_none() {
         tree = mine;
     }
-    // One another session's host saw under its own agent is never ended here.
-    let others = others(dir);
-    tree.retain(|p| !others.contains(&(p.pid, p.start_us)));
     first();
     signal(&tree, libc::SIGTERM);
     wait(&tree, GRACE);
-    // What they started meanwhile goes too.
-    let all = procs::all();
-    let more: Vec<Proc> = (alive(&tree).iter())
-        .flat_map(|p| procs::descendants(&all, p.pid))
-        .filter(|p| !shared(dir, p) && !tree.iter().any(|t| t.pid == p.pid))
-        .filter(|p| !others.contains(&(p.pid, p.start_us)))
-        .collect();
-    tree.extend(more);
-    signal(&tree, libc::SIGKILL);
-    wait(&tree, Duration::from_secs(1));
+    // What they started meanwhile goes too. With the agent gone (no `roots`), also what one that
+    // ended left in its place; else that can't be told from what the agent just started.
+    for _ in 0..ROUNDS {
+        let all = procs::all();
+        let more: Vec<Proc> = if roots.is_none() {
+            links.prune(&all);
+            of(dir, fold, &all, Duration::ZERO, &mut links)
+        } else {
+            let all = ours(dir, &all, Duration::ZERO).0;
+            (alive(&tree).iter())
+                .flat_map(|p| procs::descendants(&all, p.pid))
+                .filter(|p| !shared(dir, p))
+                .collect()
+        };
+        for p in more {
+            if !(tree.iter()).any(|t: &Proc| (t.pid, t.start_us) == (p.pid, p.start_us)) {
+                tree.push(p);
+            }
+        }
+        if alive(&tree).is_empty() {
+            break;
+        }
+        signal(&tree, libc::SIGKILL);
+        wait(&tree, Duration::from_secs(1));
+        if roots.is_some() {
+            break;
+        }
+    }
     Some(alive(&tree))
 }
 
@@ -192,18 +271,6 @@ fn wait(tree: &[Proc], grace: Duration) {
     while Instant::now() < until && !alive(tree).is_empty() {
         std::thread::sleep(Duration::from_millis(25));
     }
-}
-
-/// What the other sessions of this data folder have seen under their agents.
-fn others(dir: &Path) -> HashSet<(i32, u64)> {
-    (dir.parent()
-        .and_then(|d| fs::read_dir(d).ok())
-        .into_iter()
-        .flatten())
-    .flatten()
-    .filter(|e| Some(e.file_name().as_os_str()) != dir.file_name())
-    .flat_map(|e| forks::read(&e.path()))
-    .collect()
 }
 
 /// A session's throwaway files and test instances, its own folder's `tmp`: gone with it.

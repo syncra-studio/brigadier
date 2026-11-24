@@ -113,7 +113,7 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         return crate::relay::mockup::answered(data, id, request, choice.unwrap_or(""));
     }
     if request.starts_with("left-") {
-        return crate::workers::left_answered(data, id, request, choice.unwrap_or(""));
+        return crate::workers::left::answered(data, id, request, choice.unwrap_or(""));
     }
     if request.starts_with("hold-") {
         let args = ["routing", "answer", id, request, choice.unwrap_or("")].map(String::from);

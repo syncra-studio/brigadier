@@ -13,6 +13,8 @@ use std::sync::Mutex;
 
 const KEEP: &str = "Keep";
 const STOP: &str = "Stop";
+/// What a card says its chat's archive settled, true of one that then failed too.
+const ARCHIVING: &str = "Archiving the chat";
 /// How much of a command the question says, and how many.
 const SHOWN: usize = 60;
 const NAMED: usize = 3;
@@ -25,7 +27,7 @@ struct Ask {
     id: String,
     /// The session whose chat it's in.
     to: String,
-    /// The finish it's about, when that was.
+    /// The finish it's about: when its result said it ended, then when its turn did.
     at: Value,
     open: bool,
 }
@@ -39,33 +41,41 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
     let w = &row["worker"];
     let jobs = row["background"].as_array().map_or(&[][..], Vec::as_slice);
     let was = read_json::<Ask>(&file(data, wid));
+    // The summary card's finished kinds but `paused`, which goes on at Resume.
     let finished = matches!(
         w["kind"].as_str(),
-        Some("done" | "doneNotMerged" | "merged")
+        Some("done" | "doneNotMerged" | "merged" | "failed" | "stopped")
     ) && row["running"] != true;
+    // A turn a dead host cut ends later, as another reads it: only its result's time is its own.
+    let turn = match row["state"] == "interrupted" {
+        true => Value::Null,
+        false => row["finished"].clone(),
+    };
+    let at = json!([w["ended"], turn]);
+    // Either is enough: its result comes after its turn's end, and an End's mark before both.
+    let same = |a: &Ask| (0..2).any(|i| !at[i].is_null() && a.at[i] == at[i]);
     let why = match () {
         _ if jobs.is_empty() => Some("It ended"),
-        _ if !finished || was.as_ref().is_some_and(|a| a.at != w["ended"]) => {
-            Some("It went back to work")
-        }
+        _ if !finished || was.as_ref().is_some_and(|a| !same(a)) => Some("It went back to work"),
         _ => None,
     };
     let _one = WRITING.lock().unwrap();
     if let Some(a) = was {
         match why {
             Some(why) if a.open => drop(close(data, wid, a, why)),
-            Some(_) if a.at != w["ended"] => {}
+            Some(_) if !same(&a) => {}
             _ => return,
         }
     }
     // Until the pick the user may still compare a mockup's variants.
     let comparing = || mockup::state(data, wid).is_some_and(|m| m["picked"].is_null());
-    if finished && !jobs.is_empty() && !comparing() {
-        let _ = ask(data, wid, w, jobs);
+    let over = finished && (0..2).any(|i| !at[i].is_null());
+    if over && !jobs.is_empty() && !comparing() {
+        let _ = ask(data, wid, at, jobs);
     }
 }
 
-fn ask(data: &Path, wid: &str, w: &Value, jobs: &[Value]) -> io::Result<()> {
+fn ask(data: &Path, wid: &str, at: Value, jobs: &[Value]) -> io::Result<()> {
     let Some(l) = link(data, wid) else {
         return Ok(());
     };
@@ -100,7 +110,7 @@ fn ask(data: &Path, wid: &str, w: &Value, jobs: &[Value]) -> io::Result<()> {
     let ask = Ask {
         id,
         to,
-        at: w["ended"].clone(),
+        at,
         open: true,
     };
     // Kept first: a crash between asks never, and the card's row still shows what runs.
@@ -113,12 +123,54 @@ fn ask(data: &Path, wid: &str, w: &Value, jobs: &[Value]) -> io::Result<()> {
 }
 
 /// The card shows how it was settled and stops waiting on the user.
-fn close(data: &Path, wid: &str, mut ask: Ask, choice: &str) -> io::Result<()> {
+fn close(data: &Path, wid: &str, ask: Ask, choice: &str) -> io::Result<()> {
     owner::ensure(data, &core::load(data, &ask.to)?)?;
+    note(data, wid, ask, choice)
+}
+
+fn note(data: &Path, wid: &str, mut ask: Ask, choice: &str) -> io::Result<()> {
     let note = json!({"event": "left", "phase": "answered", "id": ask.id, "choice": choice});
     owner::call(data, &ask.to, json!({"op": "note", "data": note}))?;
     ask.open = false;
     write_json(&file(data, wid), &ask)
+}
+
+/// Archives chat `spec`, the cards waiting in it settled once no new one can come, its host
+/// still there to write them, then it stops. If the archive fails they're asked again.
+pub(crate) fn archive(
+    data: &Path,
+    spec: &core::Spec,
+    with: bool,
+    stop: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let open = || {
+        core::ids(data).into_iter().filter_map(|w| {
+            let ask = read_json::<Ask>(&file(data, &w))?;
+            (ask.open && ask.to == spec.id).then_some((w, ask))
+        })
+    };
+    // None gets a host once it's being archived.
+    if open().next().is_some() {
+        let _ = owner::ensure(data, spec);
+    }
+    let mut settled = vec![];
+    let done = core::session::archive(spec, with, || {
+        let one = WRITING.lock().unwrap();
+        for (w, ask) in open() {
+            if note(data, &w, ask, ARCHIVING).is_ok() {
+                settled.push(w);
+            }
+        }
+        drop(one);
+        stop()
+    });
+    if done.is_err() {
+        let _one = WRITING.lock().unwrap();
+        for w in &settled {
+            let _ = std::fs::remove_file(file(data, w));
+        }
+    }
+    done
 }
 
 /// The user's answer on question `request` in session `id`.

@@ -1,5 +1,6 @@
 //! Following what a session's agent starts: the kernel says when a followed process forks, so a
-//! short-lived parent is seen before what it started is reparented. With nothing followed it sleeps.
+//! short-lived parent is seen before what it started is reparented, and when it exits, so a group
+//! it leaves empty is forgotten. With nothing followed it sleeps.
 
 use crate::background::{self, Links};
 use crate::procs::{self, Proc};
@@ -16,7 +17,7 @@ use std::time::{Duration, Instant};
 pub const SEEN: &str = "sightings";
 /// What lives at least this long is kept; the rest is a step's own command.
 const KEEP_US: u64 = 2_000_000;
-/// A full look this soon after a fork, then each second while something's still young.
+/// A full look this soon after a fork or an exit, then each second while something's still young.
 const LOOK: Duration = Duration::from_millis(250);
 /// The sightings are rewritten with only the live ones past this many.
 const LINES: usize = 4000;
@@ -104,7 +105,8 @@ impl Forks {
                 }
             }
             if n > 0 {
-                due = due.or(Some(Instant::now() + LOOK));
+                let soon = Instant::now() + LOOK;
+                due = Some(due.map_or(soon, |d| d.min(soon)));
             }
             if due.is_some_and(|d| d <= Instant::now()) {
                 due = state
@@ -116,17 +118,18 @@ impl Forks {
 }
 
 impl State {
-    fn watch(&self, pid: i32) {
+    /// False: it's gone already.
+    fn watch(&self, pid: i32) -> bool {
         let event = libc::kevent {
             ident: pid as usize,
             filter: libc::EVFILT_PROC,
             flags: libc::EV_ADD | libc::EV_CLEAR,
-            fflags: libc::NOTE_FORK,
+            fflags: libc::NOTE_FORK | libc::NOTE_EXIT,
             data: 0,
             udata: std::ptr::null_mut(),
         };
         let (none, null) = (std::ptr::null_mut(), std::ptr::null());
-        unsafe { libc::kevent(self.kq, &event, 1, none, 0, null) };
+        unsafe { libc::kevent(self.kq, &event, 1, none, 0, null) == 0 }
     }
 
     /// One more of the session's, and what it has started by now.
@@ -156,9 +159,8 @@ impl State {
         let (mut fresh, mut young) = (String::new(), false);
         for p in &mine {
             let key = (p.pid, p.start_us);
-            if !was.contains_key(&key) {
-                self.watch(p.pid);
-            }
+            // One gone as it was found tells no exit: the next look sees it.
+            young |= !was.contains_key(&key) && !self.watch(p.pid);
             let kept = was.get(&key) == Some(&true);
             if !kept && old(p) {
                 fresh += &format!("{} {}\n", p.pid, p.start_us);

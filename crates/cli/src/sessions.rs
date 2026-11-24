@@ -233,7 +233,7 @@ fn unarchived(dir: &Path) -> bool {
 fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
-        .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
+        .and_then(|()| workers::left::archive(data, spec, with, || stop(data, id, "archive")))?;
     // What its finished workers left running goes; one at work keeps its own.
     let running = (family(data, id).iter())
         .filter_map(|w| {
@@ -275,11 +275,12 @@ pub(crate) fn end_jobs(data: &Path, id: &str) -> io::Result<()> {
     let left = fold::live(&f, owner::state(data, id), &dir, &procs::all()).left;
     let left: Vec<_> = left.iter().map(|j| (j.pid, j.start_us)).collect();
     match core::background::end(&dir, &f, Some(&left), || ()) {
-        Some(alive) if !alive.is_empty() => Err(io::Error::other(format!(
+        Some(alive) if alive.is_empty() => Ok(()),
+        Some(alive) => Err(io::Error::other(format!(
             "process {} didn't stop",
             alive[0].pid
         ))),
-        _ => Ok(()),
+        None => Err(io::Error::other("one isn't known to be its own any more")),
     }
 }
 

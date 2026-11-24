@@ -88,8 +88,9 @@ fn own_host(dir: &Path, pid: i32) -> bool {
 /// `seeds` still alive and what they prove: their descendants, and what started after them in a
 /// group or session of theirs. A live leader that isn't proven makes a group no proof: the id was
 /// reused, or the group is someone else's.
-/// shortcut: a group whose dead leader's id a stranger's group took and whose leader died too
-/// still passes; its members' starts would have to be kept to tell.
+/// shortcut: a group emptied, its id taken by a stranger's whose leader died too, still passes if
+/// all that happens between two looks of `links`' keeper: a host's 250 ms after the last member's
+/// exit, an archive's or delete's two-second grace. Its members' starts would have to be kept to tell.
 pub fn grow(dir: &Path, all: &[Proc], seeds: &[(i32, u64)], links: &mut Links) -> Vec<Proc> {
     let at: HashMap<i32, &Proc> = all.iter().map(|p| (p.pid, p)).collect();
     let seeds: BTreeSet<(i32, u64)> = seeds.iter().copied().collect();
