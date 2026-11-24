@@ -114,7 +114,9 @@ pub(super) fn sweep(note: &Path, text: &str) {
     let real = |p: &Path| fs::symlink_metadata(p).is_ok_and(|m| m.is_dir());
     let shown = named(note, text);
     let own = notes::folder(note);
-    if note.exists() && real(&own) {
+    // A path there written in a form `find` doesn't read (a reference, HTML) keeps them all.
+    let unread = text.matches(".images").count() > notes::find(text).len();
+    if note.exists() && real(&own) && !unread {
         for path in files(&own) {
             if !shown.contains(&path) && old(&path) {
                 let _ = fs::remove_file(path);

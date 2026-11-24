@@ -36,7 +36,7 @@ type Run = ReturnType<typeof useNoteRun>;
 /** The note an editor shows, whose images it draws and adds to. */
 export const NoteOfEditor = createContext<{ note: string; run: Run } | null>(null);
 
-/** An image in a note's Markdown, `![alt](<note>.images/<path>)`: `path` as written, `title` with its space and quotes. */
+/** An image in a note's Markdown, `![alt](<note>.images/<path>)`: `path` as written, in `<>` where it holds spaces, `title` with its space and quotes. */
 type Picture = { note: string; path: string; alt: string; title: string };
 type SerializedImageNode = Spread<Picture, SerializedLexicalNode>;
 
@@ -47,7 +47,10 @@ const decoded = (path: string) => {
     return path;
   }
 };
-const written = ({ note, path, alt, title }: Picture) => `![${alt.replace(/[\\[\]]/g, "\\$&")}](${note}.images/${path}${title})`;
+const written = ({ note, path, alt, title }: Picture) => {
+  const to = `${note}.images/${path}`;
+  return `![${alt.replace(/[\\[\]]/g, "\\$&")}](${/[\s()]/.test(path) ? `<${to}>` : to}${title})`;
+};
 
 /** An image where it sits in the note's text, in a line, a list or a table cell. */
 export class ImageNode extends DecoratorNode<ReactNode> {
@@ -102,15 +105,17 @@ export class ImageNode extends DecoratorNode<ReactNode> {
 }
 
 /** The form Rust reads too (crates/core/src/message/notes.rs). */
-const FORM = /(?<!\\)!\[((?:\\.|[^[\]\\])*)\]\((?:\.\/)?([A-Za-z0-9_][A-Za-z0-9_-]{0,127})\.images\/([^().\s/\\][^()\s/\\]*\.(?:png|jpe?g|gif|webp))(\s+"[^"()]*")?\)/i;
+const NOTE = /(?:\.\/)?([A-Za-z0-9_][A-Za-z0-9_-]{0,127})\.images\//.source;
+const KIND = /\.(?:png|jpe?g|gif|webp)/.source;
+const FORM = new RegExp(`(?<!\\\\)!\\[((?:\\\\.|[^[\\]\\\\])*)\\]\\((?:${NOTE}([^()<>.\\s/\\\\][^()\\s/\\\\]*${KIND})|<${NOTE}([^.<>/\\\\][^<>/\\\\]*${KIND})>)(\\s+"[^"()]*")?\\)`, "i");
 
 export const IMAGE: TextMatchTransformer = {
   dependencies: [ImageNode],
   export: (node) => (node instanceof ImageNode ? written(node.getPicture()) : null),
   importRegExp: FORM,
   regExp: new RegExp(`${FORM.source}$`, "i"),
-  replace: (text, [, alt = "", note = "", path = "", title = ""]) => {
-    text.replace(new ImageNode({ note, path, title, alt: alt.replace(/\\([^\w\s])/g, "$1") }));
+  replace: (text, [, alt = "", plain, plainPath, angled = "", angledPath = "", title = ""]) => {
+    text.replace(new ImageNode({ note: plain ?? angled, path: plainPath ?? angledPath, title, alt: alt.replace(/\\([^\w\s])/g, "$1") }));
   },
   trigger: ")",
   type: "text-match",
@@ -264,8 +269,11 @@ function NoteImage({ picture, nodeKey }: { picture: Picture; nodeKey: NodeKey })
   // The address that didn't load, so the next one is tried.
   const [lost, setLost] = useState<string | null>(null);
   const button = useRef<HTMLButtonElement | null>(null);
+  // Saved, or tried again: what didn't load before may now.
+  useEffect(() => setLost(null), [state]);
+  const saving = state && (!state.preview || lost === url);
   const broken = picture.note !== note || lost === url;
-  const shown = !state?.error && !broken;
+  const shown = !state?.error && !saving && !broken;
   // Its own keys, before the editor takes them as typing: Enter and Space open it, Backspace and Delete take it out.
   useEffect(() => {
     const element = button.current;
@@ -292,6 +300,8 @@ function NoteImage({ picture, nodeKey }: { picture: Picture; nodeKey: NodeKey })
       </span>
     );
   }
+  // Nothing to show of it yet: one copied from another note.
+  if (saving) return <span className="note-image-line"><Spinner aria-label={`Saving ${picture.alt || "image"}`} className="size-icon-md motion-safe:animate-spin" /></span>;
   // Another note's and the web's are never read; one of this note's may be gone.
   if (broken) return <span className="note-image-line">{picture.alt ? `“${picture.alt}” isn't in this note.` : "This image isn't in this note."}</span>;
   const name = picture.alt || "Image";

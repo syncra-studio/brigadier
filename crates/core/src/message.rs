@@ -168,7 +168,7 @@ fn compose_on(
             // told last, so its images number after those the user attached.
             (Some("mention"), Some("note")) => {
                 agent += label;
-                mentioned.push((notes.len(), part["id"].as_str().unwrap_or(""), label));
+                mentioned.push((notes.len(), part));
                 notes.push(String::new());
             }
             // By its id, which its `brigadier` commands take, as the old app's `[mentions task-N: title]`.
@@ -233,8 +233,10 @@ fn compose_on(
     }
     if !mentioned.is_empty() {
         let to = notes::Takes::of(spec, backend)?;
-        for (at, id, label) in mentioned {
-            notes[at] = notes::told(spec, &to, &parts, id, label, &mut images);
+        // The message's own files count first, whatever their kind.
+        let most = images.len() + MAX_FILES.saturating_sub(ids(&parts).len());
+        for (at, part) in mentioned {
+            notes[at] = notes::told(spec, &to, part, &mut images, most);
         }
     }
     for note in notes {
@@ -251,8 +253,8 @@ fn compose_on(
     let files: Vec<Value> = (own.into_iter())
         .chain(notes::kept(&parts))
         .filter_map(|id| file(&id).map(|path| (id, path)))
-        // A note's text shows as its chip; its images as any sent one.
-        .filter(|(id, path)| !id.starts_with(notes::KEPT) || is_image(path))
+        // A note's text shows as its chip; its images that went as any sent one.
+        .filter(|(id, path)| !id.starts_with(notes::KEPT) || images.contains(path))
         .map(|(id, path)| {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             let bytes = fs::metadata(&path).map_or(0, |m| m.len());

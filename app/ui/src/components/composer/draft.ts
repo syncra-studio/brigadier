@@ -5,7 +5,8 @@
  */
 
 /**
- * A chip in the text. A mention keeps what it names (`label`: the path or title it shows), a command, tool, skill,
+ * A chip in the text. A mention keeps what it names (`label`: the path or title it shows; a note's as it was sent,
+ * Rust's own `kept`, so one put back is sent as that), a command, tool, skill,
  * MCP server or prompt its id and its `/name`; an image or a long paste keeps its stored attachment's id. Taking a chip out of the text never deletes that attachment:
  * it goes when the draft holding it is sent or cleared, so undo can bring the chip back.
  */

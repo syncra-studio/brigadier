@@ -114,25 +114,27 @@ fn image(line: &str, from: usize) -> Option<(usize, String, String, String)> {
         }
     }
     let inside = line[i..].strip_prefix('(')?;
-    let len = inside.find(['(', ')'])?;
-    if inside.as_bytes()[len] != b')' {
+    // Its path, in `<>` where it holds spaces, then a title, which is kept as written.
+    let (dest, rest) = match inside.strip_prefix('<') {
+        Some(angled) => angled.split_once('>').filter(|(d, _)| !d.contains('<'))?,
+        None => inside.split_at(inside.find([' ', '\t', '(', ')'])?),
+    };
+    let len = rest.find(['(', ')'])?;
+    if rest.as_bytes()[len] != b')' {
         return None;
     }
-    // Its path, then a title, which is kept as written.
-    let (dest, title) = inside[..len]
-        .split_once(' ')
-        .unwrap_or((&inside[..len], ""));
-    let title = title.trim();
-    if !title.is_empty() && !(title.len() > 1 && title.starts_with('"') && title.ends_with('"')) {
+    let title = rest[..len].trim();
+    let quoted = title.len() > 1 && title.starts_with('"') && title.ends_with('"');
+    if !title.is_empty() && !(quoted && rest.starts_with([' ', '\t'])) {
         return None;
     }
+    let end = line.len() - rest.len() + len + 1;
     let (note, name) = dest
         .strip_prefix("./")
         .unwrap_or(dest)
         .split_once(".images/")?;
     let name = unescaped(name)?;
-    (check_id(note).is_ok() && plain_name(&name))
-        .then(|| (i + 1 + len + 1, alt, note.to_string(), name))
+    (check_id(note).is_ok() && plain_name(&name)).then(|| (end, alt, note.to_string(), name))
 }
 
 /// A URL path's `%20`s as the characters they are.
@@ -196,27 +198,52 @@ fn keep(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<String> {
 
 /// The ids of what a message keeps of its notes: each note's text, then its images.
 pub fn kept(parts: &Value) -> Vec<String> {
-    (parts["notes"].as_array().into_iter().flatten())
-        .flat_map(|n| {
-            let images = (n["images"].as_object().into_iter().flatten()).map(|(_, id)| id);
-            [&n["text"]].into_iter().chain(images)
-        })
-        .filter_map(|id| id.as_str().map(String::from))
-        .collect()
+    let mut ids: Vec<String> = vec![];
+    for part in parts["parts"].as_array().into_iter().flatten() {
+        let images = (part["kept"]["images"].as_object().into_iter().flatten()).map(|(_, id)| id);
+        for id in [&part["kept"]["text"]].into_iter().chain(images) {
+            let id = id.as_str().map(String::from);
+            ids.extend(id.filter(|id| !ids.contains(id)));
+        }
+    }
+    ids
 }
 
-/// Keeps each note `parts` mentions, with its images, under session `dir` as it is now: what's sent
-/// now, queued or sent again later is that. One already kept stays.
+/// A sent message's files under `sent`, its own, then each note as it was with its images in order.
+pub fn files(parts: &Value) -> Vec<String> {
+    let own = (parts["files"].as_array().into_iter().flatten()).filter_map(|f| {
+        let (id, name) = (f["id"].as_str()?, f["name"].as_str()?);
+        (!id.starts_with(KEPT)).then(|| format!("{id}/{name}"))
+    });
+    let mut all: Vec<String> = own.collect();
+    for part in parts["parts"].as_array().into_iter().flatten() {
+        let (label, kept) = (part["label"].as_str().unwrap_or(""), &part["kept"]);
+        if let (Some(id), Some(text)) = (part["id"].as_str(), kept["text"].as_str()) {
+            all.push(format!(
+                "{text}/{id}.md, the note \"{label}\" as it was sent"
+            ));
+        }
+        for (n, (name, id)) in (kept["images"].as_object().into_iter().flatten()).enumerate() {
+            let id = id.as_str().unwrap_or("");
+            all.push(format!("{id}, image {} of that note, {name}", n + 1));
+        }
+    }
+    all
+}
+
+/// Keeps each note `parts` mentions, with its images, under session `dir` as it is now, named in its
+/// chip's `kept`: what's sent now, queued, put back or sent again later is that. One already kept stays.
 pub fn freeze(data: &Path, dir: &Path, parts: &mut Value) -> io::Result<()> {
-    let ids: Vec<String> = (parts["parts"].as_array().into_iter().flatten())
-        .filter(|p| p["kind"] == "mention" && p["type"] == "note")
-        .filter_map(|p| p["id"].as_str().map(String::from))
-        .collect();
-    let mut notes = parts["notes"].as_array().cloned().unwrap_or_default();
-    for id in ids {
-        if notes.iter().any(|n| n["note"] == id.as_str()) {
+    let chips = parts.get_mut("parts").and_then(Value::as_array_mut);
+    for part in chips.into_iter().flatten() {
+        let held = |id: &str| file_in(&sent(dir), id).is_some();
+        if part["kind"] != "mention"
+            || part["type"] != "note"
+            || part["kept"]["text"].as_str().is_some_and(held)
+        {
             continue;
         }
+        let id = part["id"].as_str().unwrap_or("").to_string();
         let Some((path, mut text)) = located(data, &id) else {
             continue;
         };
@@ -261,10 +288,7 @@ pub fn freeze(data: &Path, dir: &Path, parts: &mut Value) -> io::Result<()> {
             }
         }
         let text = keep(dir, &format!("{id}.md"), text.as_bytes())?;
-        notes.push(json!({"note": id, "path": path, "text": text, "images": images}));
-    }
-    if !notes.is_empty() {
-        parts["notes"] = notes.into();
+        part["kept"] = json!({"path": path, "text": text, "images": images});
     }
     Ok(())
 }
@@ -277,20 +301,17 @@ pub fn taken(data: &Path, dir: &Path, mut parts: Value, from: Option<&str>) -> i
 }
 
 /// A mentioned note as the agent reads it: its text as kept, each image's number and path after it,
-/// the image added to `images`; one that can't go says why.
+/// the image added to `images`, as far as `most` in all; one that can't go says why.
 pub(super) fn told(
     spec: &Spec,
     to: &Takes,
-    parts: &Value,
-    id: &str,
-    title: &str,
+    part: &Value,
     images: &mut Vec<PathBuf>,
+    most: usize,
 ) -> String {
+    let title = part["label"].as_str().unwrap_or("");
+    let (id, kept) = (part["id"].as_str().unwrap_or(""), &part["kept"]);
     let gone = || format!("[mentions the note \"{title}\", which is gone]");
-    let kept = (parts["notes"].as_array().into_iter().flatten()).find(|n| n["note"] == id);
-    let Some(kept) = kept else {
-        return gone();
-    };
     let of = |id: &Value| file_in(&sent(&spec.dir), id.as_str()?);
     let Some(text) = of(&kept["text"]).and_then(|p| fs::read_to_string(p).ok()) else {
         return gone();
@@ -312,7 +333,7 @@ pub(super) fn told(
                 .is_some_and(|i| i.len() >= MAX_FILES)
             {
                 true => format!(
-                    " [Image not sent, at most {MAX_FILES} go with a message: {}]",
+                    " [Image not sent, at most {MAX_FILES} attachments go with a message: {}]",
                     live().display()
                 ),
                 false => format!(
@@ -326,8 +347,8 @@ pub(super) fn told(
             Some(at) => Ok(at + 1),
             None => match to.refuses(&file) {
                 Some(why) => Err(why),
-                None if images.len() >= MAX_FILES => {
-                    Err(format!("at most {MAX_FILES} go with a message"))
+                None if images.len() >= most => {
+                    Err(format!("at most {MAX_FILES} attachments go with a message"))
                 }
                 None => {
                     images.push(file.clone());
