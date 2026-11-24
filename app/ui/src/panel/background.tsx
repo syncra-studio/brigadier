@@ -86,7 +86,7 @@ export function BackgroundCard({ owner }: { owner: string }) {
           >
             <span className="flex min-w-0">
               <span className="truncate">{nameOf(job)}</span>
-              {portsOf(job).length > 0 && <span className="max-w-1/2 shrink-0 truncate whitespace-pre text-muted-foreground tabular-nums"> · {portsOf(job).join(", ")}</span>}
+              {portsOf(job).length > 0 && <span className="max-w-3/4 shrink-0 truncate whitespace-pre text-muted-foreground tabular-nums"> · {portsOf(job).join(", ")}</span>}
             </span>
           </Line>
         )}
