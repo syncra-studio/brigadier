@@ -2,7 +2,7 @@
 //! card in their own chat, once per finish. Unanswered, it runs on. A mockup's only after the pick.
 
 use crate::relay::mockup;
-use crate::workers::{link, place, read_json, write_json};
+use crate::workers::{link, place, read_json, unreported, write_json};
 use crate::{owner, sessions};
 use brigadier_core::{self as core, adapters};
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,12 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
     // Until the pick the user may still compare a mockup's variants.
     let comparing = || mockup::state(data, wid).is_some_and(|m| m["picked"].is_null());
     let over = finished && (0..2).any(|i| !at[i].is_null());
-    if over && !jobs.is_empty() && !comparing() {
+    // One whose result waits on what it left running still works.
+    let held = || {
+        let f = core::fold(&core::session_dir(data, wid), true);
+        f.is_ok_and(|f| unreported(data, wid, &f.fold, row["state"] == "interrupted"))
+    };
+    if over && !jobs.is_empty() && !comparing() && !held() {
         let _ = ask(data, wid, at, jobs);
     }
 }

@@ -129,6 +129,20 @@ pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold) -> bool {
         .any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t) || held(t))
 }
 
+/// Whether an ended turn of `wid`, one the user started too, has its result held for its background
+/// work: it's still working. `cut`: its host died in a turn, so none is.
+pub fn unreported(data: &Path, wid: &str, f: &Fold, cut: bool) -> bool {
+    let Some(l) = link(data, wid).filter(|_| !cut) else {
+        return false;
+    };
+    (reported(&l, f).iter().chain(&super::told::turns(f))).any(|t| {
+        f.cids.contains_key(t)
+            && !f.turns.iter().any(|x| &x.id == t)
+            && !path_of(data, &l.parent, wid, t).exists()
+            && holds(f, t)
+    })
+}
+
 /// Whether each turn it reports has its result written.
 pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
     let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);

@@ -60,7 +60,8 @@ pub(super) fn family(data: &Path, id: &str) -> Vec<workers::Record> {
         .collect()
 }
 
-/// Ends what a worker whose turns are over left running, a mockup's server too.
+/// Ends what a worker whose turns are over, their results not held for it, left running, a mockup's
+/// server too.
 pub(crate) fn end(data: &Path, id: &str) -> io::Result<()> {
     let dir = core::session_dir(data, id);
     if !dir.join("session.json").exists() {
@@ -68,7 +69,11 @@ pub(crate) fn end(data: &Path, id: &str) -> io::Result<()> {
     }
     let f = core::fold(&dir, true)?.fold;
     let paused = workers::link(data, id).is_some_and(|l| l.paused);
-    if paused || !f.turns.is_empty() && owner::state(data, id) != fold::Owner::Dead {
+    let cut = !f.turns.is_empty();
+    if paused
+        || cut && owner::state(data, id) != fold::Owner::Dead
+        || workers::unreported(data, id, &f, cut)
+    {
         return Ok(());
     }
     let left = fold::live(&f, owner::state(data, id), &dir, &procs::all()).left;

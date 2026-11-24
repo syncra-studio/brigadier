@@ -26,7 +26,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 use take::said;
-pub use take::{going, hop, reported, take, take_ask, told, unrun, went_with, with_next};
+pub use take::{
+    going, hop, reported, take, take_ask, told, unreported, unrun, went_with, with_next,
+};
 pub use told::{notice as told_notice, shell as told_shell, take as told_take, take_shell};
 
 /// The most of its last message a result carries [D3006].

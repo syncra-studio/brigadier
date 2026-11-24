@@ -21,7 +21,9 @@ pub use make::start;
 pub(crate) use make::{begin, full, land_line};
 pub use pause::held;
 pub use result::{deliver, take, take_ask, told_take, went_with, with_next};
-pub(crate) use result::{hop as result_hop, settled, take_shell, told_notice, told_shell, unrun};
+pub(crate) use result::{
+    hop as result_hop, settled, take_shell, told_notice, told_shell, unreported, unrun,
+};
 pub(crate) use review::{last_of_turn, moves};
 pub use row::{holding, holds, row};
 
