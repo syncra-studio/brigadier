@@ -115,6 +115,18 @@ pub struct Turn {
     pub messaged: BTreeSet<String>,
 }
 
+/// One end of a turn: its own, or that of a wake its CLI carried it on in.
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct End {
+    /// When (ms).
+    pub at: u64,
+    pub how: String,
+    /// The turn's own id, or the wake's.
+    pub id: String,
+    /// When that one began (ms).
+    pub began: u64,
+}
+
 /// The paths a FileChange list names.
 pub(super) fn paths_of(changes: &Value) -> Vec<String> {
     (changes.as_array().into_iter().flatten())
@@ -218,6 +230,11 @@ fn result_of(said: &str) -> Option<&str> {
 }
 
 impl Fold {
+    /// How `turn` last ended, itself or in a wake.
+    pub fn end(&self, turn: &str) -> Option<&End> {
+        self.ends.get(turn).and_then(|e| e.last())
+    }
+
     /// A message a running turn sent its own worker holds that turn open as its start does: it
     /// reports back too.
     pub(super) fn messaged(&mut self, item: &Value) {
@@ -288,7 +305,14 @@ impl Fold {
             if !turn.quiet {
                 self.finished = ts;
             }
-            (self.ends).insert(turn.report().into(), (ts, outcome.into(), turn.id.clone()));
+            let end = End {
+                at: ts,
+                how: outcome.into(),
+                id: turn.id.clone(),
+                began: turn.ts,
+            };
+            let ends = self.ends.entry(turn.report().into()).or_default();
+            ends.push(end);
             // Only an agent whose process lives on keeps its subagents past its turn.
             if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
             {

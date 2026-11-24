@@ -167,11 +167,15 @@ fn save(data: &Path, id: &str, l: &Link) -> io::Result<()> {
 
 /// Held while a review moves on, across the daemon's pass and a parent's `wait`.
 fn lock(data: &Path) -> io::Result<fs::File> {
+    lock_at(&data.join("review.lock"))
+}
+
+pub(super) fn lock_at(path: &Path) -> io::Result<fs::File> {
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(data.join("review.lock"))?;
+        .open(path)?;
     file.lock()?;
     Ok(file)
 }
@@ -470,7 +474,16 @@ pub(super) fn said(data: &Path, l: &Link, wid: &str, turn: &str) -> String {
 /// A turn's own last message, by the turn's stable id: its own rows, a wake's or a rebirth's
 /// carry-on of it included, over the whole thread [D88, D118].
 pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
+    last_by(data, id, turn, u64::MAX)
+}
+
+/// The same, as it was at `until` (ms).
+pub(super) fn last_by(data: &Path, id: &str, turn: &str, until: u64) -> Option<String> {
     let mut thread = core::thread::Thread::default();
-    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| thread.push(i));
+    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| {
+        if i["ts"].as_u64().is_none_or(|ts| ts <= until) {
+            thread.push(i);
+        }
+    });
     thread.last_said(turn)
 }
