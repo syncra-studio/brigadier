@@ -369,17 +369,14 @@ pub fn still(data: &Path, id: &str) {
     }
 }
 
-/// The start and end outcomes in a worker's log, folded [D2038].
+/// The start and end outcomes in a worker's log [D2038].
 pub(crate) fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
-    let mut all = vec![];
-    let _ = core::read(&core::session_dir(data, wid), |i| {
-        if i["kind"] == "note" && i["event"] == "outcome" {
-            let mut o = i.clone();
-            o.as_object_mut()
-                .map(|o| (o.remove("kind"), o.remove("n"), o.remove("f")));
-            all.push(o);
-        }
-    });
+    let f = core::fold(&core::session_dir(data, wid), true);
+    let mut all = f.map(|f| f.fold.outcomes).unwrap_or_default();
+    for o in &mut all {
+        o.as_object_mut()
+            .map(|o| (o.remove("kind"), o.remove("n"), o.remove("f")));
+    }
     all
 }
 
@@ -459,8 +456,7 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<Strin
                 Some("new" | "idle" | "limited" | "out_of_credits")
             )
         {
-            let (data, id) = (data.to_path_buf(), id.clone());
-            std::thread::spawn(move || crate::routing::resume(&data, &id));
+            crate::routing::due(data, id);
         }
     }
     deliver(data, rows);

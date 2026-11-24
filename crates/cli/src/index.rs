@@ -200,6 +200,7 @@ impl Index {
                                 .collect();
                             resets.push(id.clone());
                         }
+                        core::keep(&dir, &f);
                         e.title = title;
                         e.done = f;
                         e.ahead = None;

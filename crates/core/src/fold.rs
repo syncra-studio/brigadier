@@ -14,7 +14,9 @@ mod status;
 pub mod todo;
 mod turns;
 pub use input::Picked;
-pub use live::{HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop};
+pub use live::{
+    Child, HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop,
+};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -24,14 +26,6 @@ pub use status::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 pub use turns::{End, Turn};
-
-#[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Child {
-    pub pid: i32,
-    pub start_us: u64,
-    pub backend: String,
-    pub exited: bool,
-}
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
@@ -101,6 +95,8 @@ pub struct Fold {
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
+    /// The agent and account its `session.json` started it on, as last read.
+    pub started: Option<(String, String)>,
     /// Each conversation it had, as (backend, account, id): delete cleans each where it lives [D35].
     #[serde(default)]
     pub convs: BTreeSet<(String, String, String)>,
@@ -195,6 +191,9 @@ pub struct Fold {
     /// Its plans' adversarial reviews [§6].
     #[serde(default)]
     pub plans: plan::Reviews,
+    /// A worker's outcome notes, in order: its start, its reviews and its ends [D2038].
+    #[serde(default)]
+    pub outcomes: Vec<Value>,
 }
 
 impl Fold {
@@ -491,6 +490,7 @@ impl Fold {
                 Some("mockup") => self.offered(item),
                 Some("owner_started") => self.owner_started(ts),
                 Some("worker") => self.worker(item),
+                Some("outcome") => self.outcomes.push(item.clone()),
                 _ => {}
             },
             _ => {}
