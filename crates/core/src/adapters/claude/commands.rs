@@ -70,7 +70,11 @@ fn file_of(roots: &[PathBuf], kind: &str, name: &str) -> Option<PathBuf> {
 pub fn locate(run: &Spec, list: &mut [Value]) {
     let roots = roots(Some(Path::new(&run.cwd)), Some(run));
     for each in list {
-        if let Some(path) = file_of(&roots, s(each, &["kind"]), s(each, &["name"])) {
+        let (kind, name) = (s(each, &["kind"]), s(each, &["name"]));
+        // A library skill's link from its launch, kept though the skill it points at was removed since.
+        let link = run.dir.join("plugins/.claude/skills").join(name);
+        let link = (kind == "skill" && link.is_symlink()).then(|| link.join("SKILL.md"));
+        if let Some(path) = file_of(&roots, kind, name).or(link) {
             each["path"] = json!(path);
         }
     }

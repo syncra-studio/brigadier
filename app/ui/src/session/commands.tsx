@@ -92,7 +92,7 @@ const toolPage = (id: string): [SettingsPageId, string?] | undefined =>
   (({ computer: ["computerUse"], browser: ["browser"], image: ["routing", ROUTING_ROWS.images.label], research: ["routing", ROUTING_ROWS.jobs.label], workers: ["routing", ROUTING_ROWS.jobs.label] }) as Record<string, [SettingsPageId, string?]>)[id];
 
 const pluginPage = (key: string) => void (location.hash = `#settings/plugins/${encodeURIComponent(key)}`);
-/** A name as the library keys it, as crates/cli/src/plugins/found.rs `plain`: `plugin:slack:slack` → `slack`, `my_db` → `my-db`. */
+/** A name as the library keys it, as crates/core/src/library.rs `key_name`: `plugin:slack:slack` → `slack`, `my_db` → `my-db`. */
 const plainName = (name: string) =>
   Array.from(name.slice(name.lastIndexOf(":") + 1), (c) => (/[a-zA-Z0-9]/.test(c) ? c : "-"))
     .slice(0, 64)

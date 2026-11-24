@@ -78,6 +78,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 json!(fixed.unwrap_or_default())
             }),
     };
+    // The user's skills removed or not on for the project, whichever agent lists them.
+    let hidden = core::library::hidden(data, project.as_deref());
+    if let Some(l) = commands.as_array_mut() {
+        l.retain(|each| !hidden.has(each));
+    }
     // The library's skills and servers on for the project, at once, before any CLI ran [D409].
     for i in core::library::on_for(data, project.as_deref()) {
         let skill = i["kind"] == "skill";

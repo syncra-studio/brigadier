@@ -206,7 +206,7 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     let name = match skill {
         true => Path::new(str(&v["folder"]))
             .file_name()
-            .map(|n| found::plain(&n.to_string_lossy())),
+            .map(|n| library::key_name(&n.to_string_lossy())),
         false => v["name"].as_str().map(String::from),
     };
     let name = name.unwrap_or_default();
