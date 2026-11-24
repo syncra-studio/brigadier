@@ -131,7 +131,7 @@ function Cards({ owner, plan, children }: { owner: string; plan?: readonly Step[
 }
 
 /** The card's place, shrinking and fading in and out where it sits, inside the pane [D63, D67]; `shown` is all it's told. */
-export function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
+function SummaryCard({ shown, settled = true, surface, children }: { shown: boolean; settled?: boolean; surface?: Ref<HTMLDivElement>; children?: ReactNode }) {
   return (
     // Over the thread's top fade (z-10).
     <div className="pointer-events-none absolute inset-y-0 end-0 z-20 flex max-w-full flex-col">

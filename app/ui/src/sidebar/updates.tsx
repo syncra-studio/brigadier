@@ -22,7 +22,7 @@ import { useFootPlacement } from "./foot";
  * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
  */
 
-export type UpdateItem = {
+type UpdateItem = {
   /** "app" for Brigadier, or the agent's id. */
   target: string;
   name: string;
@@ -39,7 +39,15 @@ const FIRST_CHECK_MS = 60_000;
 const CHECK_EVERY_MS = 6 * 60 * 60_000;
 /** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them; one list for the row's pill and the strip's. */
 const SKIPPED = "skipped-updates";
-const skippedVersions = store(JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[]);
+function readSkipped(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
+  } catch {
+    // Read as the module loads: one that can't be read must not keep the window from starting.
+    return [];
+  }
+}
+const skippedVersions = store(readSkipped());
 
 /** How long an update that went through shows its check before it leaves. */
 const UPDATED_MS = 2000;
