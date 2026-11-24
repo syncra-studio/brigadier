@@ -261,7 +261,10 @@ impl Index {
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let holds = crate::workers::holds(&self.data, id, &f.fold, live.child.is_some());
-            let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, holds);
+            let worker = crate::workers::row(&dir, state.as_str().unwrap_or(""), &f.fold);
+            // A worker's mark says working as its row does.
+            let held = holds || worker["kind"] == "working";
+            let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, held);
             // No mark for a PR's checks [D174].
             let mark = match mark {
                 _ if e.error.is_some() => Some("amber"),
@@ -328,7 +331,7 @@ impl Index {
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
-                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
+                             "worker": worker,
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             // A worker's images, which its parent's thread shows too [D289].
             row["images"] = json!(f.fold.images);

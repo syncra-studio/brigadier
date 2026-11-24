@@ -24,7 +24,7 @@ pub use status::{
     works,
 };
 use std::collections::{BTreeMap, BTreeSet};
-pub use turns::Turn;
+pub use turns::{End, Turn};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Child {
@@ -66,9 +66,9 @@ pub struct Fold {
     pub agents: BTreeSet<String>,
     #[serde(default)]
     pub pending: live::Pending,
-    /// How each turn last ended, its own end or its wake's, when (ms) and in which of them, by the turn it reports in.
+    /// Each end of each turn, its own then its wakes', by the turn it reports in.
     #[serde(default)]
-    pub ends: BTreeMap<String, (u64, String, String)>,
+    pub ends: BTreeMap<String, Vec<End>>,
     /// Workers its turns started or messaged, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,

@@ -1,7 +1,7 @@
 //! The text one result writes [D3006]: how it ended, its branch and commits, the diff stat,
 //! uncommitted files, the receipt and the `read` pointer [D3029].
 
-use super::review::{self, last_of_turn};
+use super::review::{self, last_by};
 use super::{Res, dir_of, open, path_of, take};
 use crate::owner;
 use crate::workers::{Link, git, read_json, write_json};
@@ -58,6 +58,8 @@ pub(in crate::workers) struct Of {
     pub direct: bool,
     pub end: u64,
     pub late: bool,
+    /// The turn or wake whose last message it carries, and up to when (ms): none finds it.
+    pub said: Option<(String, u64)>,
 }
 
 /// The most a turn the user started in a worker tells its parent, all of it [D303].
@@ -204,14 +206,13 @@ pub(in crate::workers) fn write_as(
     text += &format!("Ran on {}.\n", ran.join(" · "));
     text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
-    // A sub-session's last word is its last turn's, after its workers' results woke it [D189];
-    // so is a turn's its CLI carried on in a wake of its own, as its background work ended.
     let f = core::fold(&dir, true).map(|f| f.fold).unwrap_or_default();
-    let (ended, ends) = (f.last, f.ends);
-    let said = match l.session {
-        true => ended.as_ref().and_then(|l| l["id"].as_str()),
-        false => ends.get(turn).map(|e| e.2.as_str()),
-    };
+    let (said, until) = of.said.unwrap_or_else(|| {
+        let end = f.end(turn);
+        (end.map_or(turn, |e| &e.id).into(), u64::MAX)
+    });
+    let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
+    let ended = f.last;
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
@@ -225,11 +226,9 @@ pub(in crate::workers) fn write_as(
             ),
             &merge,
             commits,
-            last_of_turn(data, wid, turn),
+            last,
         );
-    } else if let Some(mut last) =
-        (said.and_then(|s| last_of_turn(data, wid, s))).or_else(|| last_of_turn(data, wid, turn))
-    {
+    } else if let Some(mut last) = last {
         if last.len() > super::LAST {
             let mut at = super::LAST;
             while !last.is_char_boundary(at) {
@@ -274,7 +273,15 @@ pub(in crate::workers) fn write_as(
         true => format!("{turn}.{}", of.end),
         false => turn.into(),
     };
-    write_json(&path_of(data, &l.parent, wid, &key), &res)?;
+    let path = path_of(data, &l.parent, wid, &key);
+    {
+        // The daemon and the parent's own `wait` may both write it: the first one's stands.
+        let _one = review::lock_at(&core::session_dir(data, &l.parent).join("results.lock"))?;
+        if path.exists() {
+            return Ok(());
+        }
+        write_json(&path, &res)?;
+    }
     // A review's result goes to the work it reviewed, never its parent: its end row all the same [D115, D456].
     // A stopped one's waits for the parent's next turn, so its log says it holds no block open [D314].
     let note = match res.state.as_str() {

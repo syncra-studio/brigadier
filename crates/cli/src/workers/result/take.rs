@@ -1,7 +1,7 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, holds, late, path_of, woken, write, write_ended};
+use super::{Res, all, fresh, holds, path_of, unsaid, woken, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core, fold::Fold};
@@ -29,25 +29,31 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
     let _ = crate::workers::asks::asked(data, wid);
     let (_lock, _) = queue::hold(&core::session_dir(data, me)).ok()?;
     let results = all(data, &l.parent);
-    let (path, mut res) = (results.iter().rev())
-        .find(|(_, r)| r.wid == wid && r.state == "written" && pick(r) && fresh(data, r))
-        .cloned()?;
+    let due = |r: &Res| r.wid == wid && r.state == "written";
+    let at = (results.iter()).rposition(|(_, r)| due(r) && pick(r) && fresh(data, r))?;
+    let (path, mut res) = results[at].clone();
     res.state = "taken".into();
     write_json(&path, &res).ok()?;
     if res.how == "asks" {
         return Some(res.text);
     }
-    // Its earlier turns' results go with it, so none wakes the parent after it [D151].
-    for (path, mut r) in results
-        .into_iter()
-        .filter(|(_, r)| r.wid == wid && r.state == "written" && r.how != "asks" && r.at < res.at)
-    {
-        r.state = "taken".into();
-        let _ = write_json(&path, &r);
+    // Its earlier results go with it, oldest first, so none wakes the parent after it [D151].
+    let mut took = vec![];
+    for (path, mut r) in results.into_iter().take(at) {
+        if due(&r) && r.how != "asks" {
+            r.state = "taken".into();
+            if write_json(&path, &r).is_ok() {
+                took.push(r);
+            }
+        }
     }
-    let note = json!({"event": "worker", "phase": "result", "result": said(data, me, &res)});
-    let _ = owner::call(data, me, json!({"op": "note", "data": note}));
-    Some(res.text)
+    took.push(res);
+    for r in &took {
+        let note = json!({"event": "worker", "phase": "result", "result": said(data, me, r)});
+        let _ = owner::call(data, me, json!({"op": "note", "data": note}));
+    }
+    let texts: Vec<String> = took.into_iter().map(|r| r.text).collect();
+    Some(texts.join("\n\n"))
 }
 
 /// The results held for the parent's next message, or waiting to wake it, go with that message,
@@ -151,7 +157,10 @@ pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold) -> bool {
 pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
     let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
     let told = |f: &Fold, t: &String| match f.cids.contains_key(t) {
-        true => path_of(data, pid, wid, t).exists() && !late(data, pid, wid, f, t, false),
+        true => {
+            path_of(data, pid, wid, t).exists()
+                && unsaid(data, l, wid, f, t, false, false).is_empty()
+        }
         false => off(data, wid, t),
     };
     f.is_ok_and(|f| reported(l, &f).iter().all(|t| told(&f, t)))
