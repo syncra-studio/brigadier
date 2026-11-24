@@ -299,8 +299,9 @@ pub fn turn(spec: &Spec, text: &str) -> Value {
     let mut turn = json!({"input": input(spec, text), "approvalPolicy": policy,
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     // A folder chat's copies commit into their repos' own git folders [D494].
-    let roots = crate::folder::git_dirs(spec);
-    if sandbox == "workspaceWrite" && !roots.is_empty() {
+    let mut roots = crate::folder::git_dirs(spec);
+    roots.push(crate::background::tmp(&spec.dir).display().to_string());
+    if sandbox == "workspaceWrite" {
         turn["sandboxPolicy"]["writableRoots"] = roots.into();
     }
     if let Some(model) = &spec.model {

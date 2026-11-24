@@ -142,6 +142,7 @@ impl Runner {
             let _ = self.append(log::EXITED, exited.to_string().as_bytes(), false);
             return json!({"ok": false, "cid": cid, "result": "logged", "error": "stopped while starting"});
         }
+        self.forks.follow(pid);
         // Open the gate. A child that already died is seen by the wait below.
         let _ = go.write_all(b"\n");
         let (done, pumped) = mpsc::channel();

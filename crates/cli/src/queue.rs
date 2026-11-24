@@ -265,7 +265,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "resume" => {
             let refused = change(&dir, |q| {
                 let f = core::fold(&dir, true)?.fold;
-                let live = fold::live(&f, owner::state(data, id), data, &procs::all());
+                let live = fold::live(&f, owner::state(data, id), &dir, &procs::all());
                 let status = fold::status(&f, &live);
                 if fold::resumable(&f, status["state"].as_str().unwrap_or("")) {
                     let reply = recover(data, id, true)?;
@@ -428,7 +428,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             return Ok(());
         };
         let f = core::fold(&dir, true)?;
-        let live = fold::live(&f.fold, owner::state(data, id), data, &procs::all());
+        let live = fold::live(&f.fold, owner::state(data, id), &dir, &procs::all());
         let status = fold::status(&f.fold, &live);
         if live.owner != Owner::Alive || !DRAINS.contains(&status["state"].as_str().unwrap_or("")) {
             return Ok(());
@@ -483,7 +483,7 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     settle(data, &spec)?;
     let _fence = core::session::fence(data, &spec)?;
     let f = core::fold(&spec.dir, true)?;
-    let live = fold::live(&f.fold, Owner::Alive, data, &procs::all());
+    let live = fold::live(&f.fold, Owner::Alive, &spec.dir, &procs::all());
     let call = crate::call_fn(data, id);
     // The user's Resume takes what's held for the session, as their next message would [D329].
     let mut more = String::new();

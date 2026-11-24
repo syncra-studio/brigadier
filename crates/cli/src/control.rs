@@ -102,20 +102,21 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     let request = args.get(2).ok_or_else(usage)?;
     let decision = args.get(3).filter(|d| !d.starts_with("--")).cloned();
     let reason = flag(args, "--reason");
-    let answers: Option<Vec<Value>> = match flag(args, "--answers") {
-        Some(a) => {
-            Some(serde_json::from_str(a).map_err(|e| io::Error::other(format!("--answers: {e}")))?)
-        }
-        None => None,
-    };
+    let answers: Option<Vec<Value>> = (flag(args, "--answers").map(serde_json::from_str))
+        .transpose()
+        .map_err(|e| io::Error::other(format!("--answers: {e}")))?;
     // A question a Brigade's session sent its boss, passed to the user: back to its wait [D189].
     if let Some(mid) = request.strip_prefix("peer-") {
         return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
     }
-    // A worker's routing hold or a mockup offer: Rust's own question, the user's call [D2028, D2058].
+    // A worker's routing hold, what it left running or a mockup offer: Rust's own question, the
+    // user's call [D2028, D2058].
     let choice = (answers.iter().flatten()).find_map(Value::as_str);
     if request.starts_with("mockup-") {
         return crate::relay::mockup::answered(data, id, request, choice.unwrap_or(""));
+    }
+    if request.starts_with("left-") {
+        return crate::workers::left::answered(data, id, request, choice.unwrap_or(""));
     }
     if request.starts_with("hold-") {
         let args = ["routing", "answer", id, request, choice.unwrap_or("")].map(String::from);

@@ -239,7 +239,7 @@ impl Index {
                 }
             }
             let f = e.ahead.as_ref().unwrap_or(&e.done);
-            let live = fold::live(&f.fold, owner::state(&self.data, id), &self.data, &all);
+            let live = fold::live(&f.fold, owner::state(&self.data, id), &dir, &all);
             let status = fold::status(&f.fold, &live);
             let (state, reason) = match &e.error {
                 Some(_) => ("error".into(), Value::Null),

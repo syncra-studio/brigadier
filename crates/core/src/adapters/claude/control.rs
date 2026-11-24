@@ -192,7 +192,9 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     if fresh {
         args.extend(["--system-prompt-snapshot".into(), "off".into()]);
     }
-    args.extend(home.into_iter().flat_map(|h| ["--add-dir".into(), h]));
+    let tmp = crate::background::tmp(&spec.dir).display().to_string();
+    let dirs = home.into_iter().chain([tmp]);
+    args.extend(dirs.flat_map(|d| ["--add-dir".into(), d]));
     args
 }
 

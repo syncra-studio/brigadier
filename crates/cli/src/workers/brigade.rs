@@ -5,7 +5,7 @@
 //! back to the user [D144]. A session is a Brigade from its first message, `start --brigade`, or
 //! never: nothing turns a started one on or off [D209].
 
-use super::{Link, busy, link, records, refuse, result};
+use super::{Link, busy, busy::owes, link, records, refuse, result};
 use crate::{owner, peers};
 use brigadier_core::{self as core};
 use serde_json::{Value, json};
@@ -72,7 +72,7 @@ pub(super) fn line(boss: &str, bid: &str, land: &str) -> String {
 pub(super) fn leading(data: &Path, sid: &str) -> bool {
     records(data, sid)
         .iter()
-        .any(|r| r.state == "starting" || busy(data, &r.wid))
+        .any(|r| r.state == "starting" || owes(data, &r.wid))
         || (result::all(data, sid).iter())
             .any(|(_, r)| r.how != "asks" && matches!(r.state.as_str(), "written" | "sent"))
 }

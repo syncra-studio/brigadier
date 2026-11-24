@@ -1,6 +1,8 @@
 //! Provider-free pieces shared by every owner of agent processes: the frame log, process facts,
 //! the socket protocol and the runner that holds one session's child.
 
+pub mod background;
+pub mod forks;
 pub mod log;
 pub mod procs;
 pub mod runner;

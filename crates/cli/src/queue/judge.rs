@@ -166,7 +166,7 @@ fn settle(data: &Path, id: &str, qid: &str, verdict: Option<&Verdict>) -> std::i
             let reply = if f.turns.is_empty() {
                 // Between turns, where the drain wouldn't send it neither does this: a limit, a
                 // sign-in or a cut-off run needs the user.
-                let live = fold::live(&f, owner::state(data, id), data, &procs::all());
+                let live = fold::live(&f, owner::state(data, id), &dir, &procs::all());
                 let status = fold::status(&f, &live);
                 if !DRAINS.contains(&status["state"].as_str().unwrap_or("")) {
                     q.items[at].deciding = false;

@@ -4,6 +4,8 @@
 //! parent answers with `brigadier send <id> --allow`, `--deny "<reason>"` or its answer as the
 //! message; the user sees no card, and the worker's thread shows the ask and the answer.
 
+pub(crate) mod left;
+
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;
 use super::{family_lock, link, place, record, save};
@@ -45,6 +47,7 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
     super::review::plan_gone(data, id);
     if !row["worker"].is_null() {
         user_waits(data, id, row["worker"]["kind"] == "needsYou");
+        left::pass(data, id, row);
     }
 }
 

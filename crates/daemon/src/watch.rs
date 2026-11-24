@@ -71,7 +71,7 @@ pub(super) fn watch(
             return;
         }
         let owner = brigadier::owner::state(data, id);
-        let live = fold::live(thread.status_fold(), owner, data, &procs::all());
+        let live = fold::live(thread.status_fold(), owner, &dir, &procs::all());
         if fold::status(thread.status_fold(), &live)["state"] == "interrupted" {
             thread.interrupt(now_ms());
         }

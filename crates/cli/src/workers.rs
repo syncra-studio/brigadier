@@ -7,6 +7,7 @@
 
 mod asks;
 mod brigade;
+mod busy;
 mod family;
 mod make;
 mod pause;
@@ -14,8 +15,11 @@ mod result;
 mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
-pub(crate) use asks::{question, told_held};
+pub(crate) use asks::{left, question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
+pub(crate) use busy::at_work;
+pub use busy::busy;
+use busy::{busy_in, owes};
 pub use family::{delete, unlanded};
 pub use make::start;
 pub(crate) use make::{begin, full, land_line};
@@ -26,11 +30,10 @@ pub(crate) use review::{last_of_turn, moves};
 pub use row::{holding, holds, row};
 
 use crate::{arg, owner, queue, settings};
-use brigadier_core::{self as core, fold::Fold};
+use brigadier_core as core;
 use brigadier_frames::procs;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
@@ -207,41 +210,6 @@ pub(crate) fn setting(data: &Path, key: &str, default: u64) -> u64 {
     settings::get(data, key).parse().unwrap_or(default)
 }
 
-/// Whether worker `id` is still being made or a task it reports back on hasn't ended, so a
-/// `wait` keeps waiting though its row may not show the turn yet.
-pub fn busy(data: &Path, id: &str) -> bool {
-    let f = || core::fold(&core::session_dir(data, id), true).map(|r| r.fold);
-    link(data, id).is_some_and(|l| busy_in(data, id, &l, f))
-}
-
-/// The same, for its row, which has its fold at hand.
-fn busy_in<F: Borrow<Fold>>(
-    data: &Path,
-    id: &str,
-    l: &Link,
-    f: impl FnOnce() -> io::Result<F>,
-) -> bool {
-    // A paused one isn't waited on, and (proposed) doesn't count toward Workers at once [D3042].
-    if l.paused {
-        return false;
-    }
-    let r = record(data, &l.parent, id);
-    // A start that failed or was stopped before its brief went has nothing left to wait for.
-    if r.as_ref()
-        .is_some_and(|r| matches!(r.state.as_str(), "failed" | "stopped"))
-    {
-        return false;
-    }
-    let made = r.is_some_and(|r| r.state != "starting");
-    let Ok(f) = f() else {
-        return !made;
-    };
-    !made
-        || (l.session && brigade::leading(data, id))
-        || l.review["state"] == "running"
-        || result::going(data, id, l, f.borrow())
-}
-
 /// Whether parent `pid`'s worker `wid` ended with nothing left to wake it for: not being made, not
 /// paused, each task it reports ended with its result written, and none still on its way. A
 /// stopped one's result, held for the parent's next turn, wakes no one [D314].
@@ -258,7 +226,7 @@ fn over_but(data: &Path, pid: &str, wid: &str, but: &str) -> bool {
         r.wid == wid && r.id != but && matches!(r.state.as_str(), "written" | "sent")
     };
     !l.paused
-        && !busy(data, wid)
+        && !owes(data, wid)
         && result::told(data, pid, wid, &l)
         && !result::all(data, pid).iter().any(|(_, r)| due(r))
 }
@@ -274,7 +242,7 @@ pub fn waited(data: &Path, me: &str, id: &str) -> Result<Vec<String>, Value> {
         (results.iter()).any(|(_, r)| r.wid == w && r.state == "written" && result::fresh(data, r))
     };
     let ids: Vec<String> = (records(data, me).into_iter().map(|r| r.wid))
-        .filter(|w| busy(data, w) || pending(w))
+        .filter(|w| owes(data, w) || pending(w))
         .collect();
     match ids.is_empty() {
         true => Err(refuse(
@@ -331,8 +299,8 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
     let all = procs::all();
     // Marked ended before its stop, so nothing sent to it meanwhile goes in [D96]; a finished
     // one keeps how it finished. Its stopped turn's result, if it has one, says more.
-    if let Some(mut l) = link(data, wid)
-        .filter(|l| l.paused || l.last.is_null() || crate::sessions::working(data, wid, &all))
+    if let Some(mut l) =
+        link(data, wid).filter(|l| l.paused || l.last.is_null() || at_work(data, wid, &all))
     {
         l.paused = false;
         // Who ended it, for its result: one the user ended goes quietly [D330].
@@ -344,7 +312,7 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
     let mine: Vec<String> = (records(data, wid).into_iter())
         .filter(|r| {
             r.state == "starting"
-                || crate::sessions::working(data, &r.wid, &all)
+                || at_work(data, &r.wid, &all)
                 || link(data, &r.wid).is_some_and(|l| l.paused)
         })
         .map(|r| r.wid)
@@ -383,7 +351,7 @@ fn ended(data: &Path, pid: &str, ids: &[String], by: &str) {
 fn working(data: &Path, id: &str) -> Vec<String> {
     let all = procs::all();
     (below(data, id).into_iter())
-        .filter(|r| r.state == "starting" || crate::sessions::working(data, &r.wid, &all))
+        .filter(|r| r.state == "starting" || at_work(data, &r.wid, &all))
         .map(|r| r.wid)
         .collect()
 }

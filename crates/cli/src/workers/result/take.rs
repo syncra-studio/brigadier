@@ -143,14 +143,14 @@ pub fn reported<'a>(l: &'a Link, f: &'a Fold) -> Vec<String> {
 }
 
 /// Whether a turn `wid` reports is still on its way or running, or ended with its result held
-/// for its background work, or a wake carries it on.
-pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold) -> bool {
+/// for its background work, or a wake carries it on. `direct`: or one the user started in it has.
+pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold, direct: bool) -> bool {
     let held =
         |t: &String| holds(f, t) && (woken(f, t) || !path_of(data, &l.parent, wid, t).exists());
     (reported(l, f).iter()).any(|t| match f.cids.contains_key(t) {
         true => f.turns.iter().any(|x| &x.id == t) || held(t),
         false => !off(data, wid, t),
-    })
+    }) || (direct && super::told::turns(f).iter().any(held))
 }
 
 /// Whether each turn it reports has its result written, and each wake that carried one on.

@@ -36,7 +36,7 @@ fn free(data: &Path, wid: &str) -> bool {
     let idle = read(&dir).is_ok_and(|w| w.items.is_empty() && w.editing.is_none() && !w.paused);
     open && idle
         && core::fold(&dir, true).is_ok_and(|f| {
-            let live = fold::live(&f.fold, owner::state(data, wid), data, &procs::all());
+            let live = fold::live(&f.fold, owner::state(data, wid), &dir, &procs::all());
             DRAINS.contains(&fold::status(&f.fold, &live)["state"].as_str().unwrap_or(""))
         })
 }

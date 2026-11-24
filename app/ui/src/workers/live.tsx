@@ -86,6 +86,17 @@ export function useWorkers(parent: string): Worker[] {
   return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent && !row.boss).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
 }
 
+/** The workers under a session, theirs too, oldest first, each with its row; a Brigade's sessions aren't among them [D189]. */
+export function useFamily(id: string): { worker: Worker; row: Row }[] {
+  const rows = useDaemon().rows ?? [];
+  const workers = rows.filter((row): row is Row & { worker: WorkerRow } => Boolean(row.worker) && !row.boss);
+  const under = new Set([id]);
+  // A Set's own loop reaches the ones added as it goes: each worker's own workers in turn.
+  for (const parent of under) for (const row of workers) if (row.worker.parent === parent) under.add(row.id);
+  under.delete(id);
+  return workers.filter((row) => under.has(row.id)).map((row) => ({ worker: asWorker(row), row })).toSorted((a, b) => a.worker.startedAt - b.worker.startedAt);
+}
+
 /** Workers named by id, a gone one as "a worker". */
 function useNamed(ids: readonly string[]): Worker[] {
   const rows = useDaemon().rows ?? [];

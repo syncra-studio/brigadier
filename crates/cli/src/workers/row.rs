@@ -88,7 +88,8 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
 /// `busy`, for the row in `dir`.
 fn reports(dir: &Path, l: &Link, f: &Fold) -> bool {
     let wid = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    (dir.parent().and_then(Path::parent)).is_some_and(|data| super::busy_in(data, wid, l, || Ok(f)))
+    (dir.parent().and_then(Path::parent))
+        .is_some_and(|data| super::busy_in(data, wid, l, || Ok(f), true))
 }
 
 /// "15:10", or a day or more away "Mon 09:00", as the model picker says when a limit resets.
