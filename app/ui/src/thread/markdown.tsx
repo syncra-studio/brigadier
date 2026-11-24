@@ -8,6 +8,7 @@ import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { linkPath, RefWord, remarkRefs } from "./refs";
+import { fenceWalk } from "./tidy";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 
@@ -211,14 +212,8 @@ function settle(raw: string) {
 
 /** Whether a block ends inside a fence it opened: its code is still arriving. */
 function openFence(raw: string): boolean {
-  let mark = "";
-  for (const line of raw.split("\n")) {
-    const fence = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
-    if (!fence) continue;
-    if (!mark) mark = fence[1]!;
-    else if (fence[1]![0] === mark[0] && fence[1]!.length >= mark.length && !fence[2]!.trim()) mark = "";
-  }
-  return mark !== "";
+  const codeAt = fenceWalk();
+  return raw.trimEnd().split("\n").map(codeAt).at(-1) !== null;
 }
 
 const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
@@ -271,13 +266,14 @@ const fadeChunks = (chunks: Chunk[]) => (tree: Node) => {
 };
 
 /** GitHub's alert, a quote opening with `[!WARNING]` or its kin: the quote is marked as that callout and loses the marker [D477]. */
-const callouts = () => (tree: Node) => {
+const callouts = () => (tree: Node, file: { value: unknown }) => {
   const walk = (node: Node) => {
     for (const child of node.children ?? []) walk(child);
     if (node.tagName !== "blockquote") return;
-    const p = node.children?.find((c) => c.tagName === "p");
-    const first = p?.children?.[0];
-    const hit = first?.type === "text" ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(first.value ?? "") : null;
+    // Its first block, opening with the bracket itself: an escaped `\[` is the text it says.
+    const p = node.children?.find((c) => c.type === "element");
+    const first = p?.tagName === "p" ? p.children?.[0] : undefined;
+    const hit = first?.type === "text" && String(file.value)[p?.position?.start.offset ?? -1] === "[" ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(first.value ?? "") : null;
     if (!p || !first || !hit) return;
     node.properties = { ...node.properties, dataCallout: hit[1] };
     first.value = first.value!.slice(hit[0].length);
@@ -303,8 +299,8 @@ function Fade({ at, children }: { at: number; children: ReactNode }) {
 }
 
 const Block = memo(function Block({ text, keep, chip, open, chunks }: { text: string; keep: string; chip?: (n: number) => ReactNode; open: boolean; chunks: Chunk[] }) {
-  // Where a fence still being written ends: the block's end, as it never closed.
-  const end = open ? text.trimEnd().length : -1;
+  // Where a fence still being written ends: the block's end, as it never closed, less a quote's next `>`.
+  const end = open ? text.replace(/[\s>]+$/, "").length : -1;
   const components = useMemo(() => fences(keep, chip, end), [keep, chip, end]);
   return (
     <ReactMarkdown
