@@ -20,7 +20,7 @@ const SESSIONS: usize = 6;
 const WORKERS: usize = 12;
 /// A sub-session's question to its boss that goes to the user instead.
 const THIRD: usize = 3;
-const ASK_USER: &str = "Ask the user before starting more";
+pub(crate) const ASK_USER: &str = "Ask the user before starting more";
 
 /// A row's Brigade facts: a Brigade, or the Brigade a sub-session works in, its row under it.
 pub fn brigade_row(row: &mut Value, spec: Option<&core::Spec>) {
@@ -32,7 +32,7 @@ pub fn brigade_row(row: &mut Value, spec: Option<&core::Spec>) {
 pub(super) fn capped(data: &Path, me: &str, spec: &core::Spec, session: bool) -> Option<Value> {
     if session && !spec.brigade {
         return Some(refuse(
-            "Only a Brigade starts sessions: `brigadier start` without --session starts a worker.",
+            "Only a Brigade uses `start --session`. If the user asked for a new session, use `brigadier new`.",
         ));
     }
     let boss = if spec.brigade {

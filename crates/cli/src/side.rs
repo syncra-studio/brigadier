@@ -6,7 +6,7 @@
 //! in its log is never sent again or removed [D54].
 
 use crate::{arg, flag, models, owner, queue, title};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, Spec, fold::Fold};
 use serde_json::{Value, json};
 use std::fs::OpenOptions;
 use std::io;
@@ -108,22 +108,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// that's Full access, which falls to the project default [D187, D205].
 fn start_args(
     data: &Path,
-    src: &core::Spec,
+    src: &Spec,
     project: &str,
     target: &str,
     text: &str,
     parts: &Value,
     cid: &str,
 ) -> io::Result<Vec<String>> {
-    let f = core::fold(&src.dir, true)?.fold;
-    let backend = models::next_agent(src, &f).to_string();
-    let (model, effort) = match &f.picked {
-        Some(p) => (Some(p.model.clone()), p.effort.clone()),
-        None => {
-            let run = core::as_run(src, &f, &backend, None);
-            (run.model, run.effort)
-        }
-    };
+    let Spec {
+        backend,
+        model,
+        effort,
+        ..
+    } = next_run(src, &core::fold(&src.dir, true)?.fold);
     let mut args: Vec<String> = ["start", target, "--backend", &backend, "--project", project]
         .map(String::from)
         .into();
@@ -147,6 +144,17 @@ fn start_args(
     push("--from", (!parts.is_null()).then(|| src.id.clone()));
     push("--cid", Some(cid.into()));
     Ok(args)
+}
+
+/// `src` as its next turn runs it: its agent, model, effort and fast tier [D129, D225].
+pub(crate) fn next_run(src: &Spec, f: &Fold) -> Spec {
+    let backend = models::next_agent(src, f).to_string();
+    let mut run = core::as_run(src, f, &backend, None);
+    if let Some(p) = &f.picked {
+        (run.model, run.effort, run.fast) = (Some(p.model.clone()), p.effort.clone(), p.fast);
+    }
+    run.backend = backend;
+    run
 }
 
 /// The operation's intent and result notes in the source's log, by target id.

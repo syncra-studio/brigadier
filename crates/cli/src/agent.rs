@@ -4,6 +4,7 @@
 //! level, changes a session or prints a secret. Every wait has a timeout, and every reply is
 //! capped with a hint to read less.
 
+pub(crate) mod new;
 mod wait;
 use crate::{models, peers, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
@@ -25,6 +26,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier wait [<id>]       wait until a session, else one of your workers, stops working, up to a timeout
   brigadier start \"<brief>\"   start a worker: another agent, a worktree of its own, or a long job
   brigadier stop <id>         stop a worker you started
+  brigadier new \"<message>\"   only when the user asks for a new session, or a fork: starts theirs, not a worker
   brigadier models            the agents, models and efforts you may use
   brigadier skill [name]      the user's skills, or one whole
   brigadier notes [id]        the user's notes in your project, or one whole
@@ -83,37 +85,14 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
             &[],
         ),
         "start" => (
-            "brigadier start --job \"<job>\" \"<brief>\" [--agent A] [--effort E] [--title T] [--json]
-brigadier start --model M \"<brief>\" [--agent A] [--effort E] [--title T] [--json]
-brigadier start --retry <id> \"<what failed>\" [--title T] [--json]
-brigadier start --reviewing <id>|session [\"<brief>\"] [--title T] [--json]
-
-Starts a worker: a session of its own, in its own worktree off your branch, that gets only its brief.
-It returns at once. When the worker finishes, its result comes to you by itself: how it ended, its
-last message, its branch and commits. So end your turn.
-Its permission prompts and questions come to you the same way, never to the user: judge each and
-answer with `brigadier send <id> --allow`, `--deny \"<reason>\"` or your answer as the message.
-Every start names a job, or a model. A job runs on the user's list for it (Settings › Routing): the
-first model with an account that has room; the next only when one is out of quota, and the worker's
-thread says so. Pick the job whose line fits; `brigadier models` lists them. --model runs that model
-where the user's rules allow it, never replaced; --agent keeps to one agent. A job whose models are
-all out of quota holds the worker for the user.
---retry starts a fresh worker on your failed worker's first brief, on its job: the same model one effort
-up, then the job's next model, at most two steps, then the user decides; after a temporary failure it
-runs on the same pick again.
---reviewing starts an adversarial review on the user's Review job, on another agent than the author's,
-that tries to break the work and commits nothing. <id> reviews your worker's commits against its brief; session
-your own plan or merged work, given in the brief. `brigadier help reviews` says when.
-
-Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
-Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
-It reaches MCP servers through `brigadier mcp`, on Brigadier's one sign-in, so such a job can go to it too.
-Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
-A Brigade's boss starts a full session instead with --session: `brigadier help brigade`.
---images: on a model that makes images (`brigadier models` marks them), no job; the brief gives full paths
-of images to edit. The image shows in the user's chat; copy it elsewhere only when asked.",
+            include_str!("agent/start.txt"),
             &["--job", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],
             &["--session", "--images"],
+        ),
+        "new" => (
+            include_str!("agent/new.txt"),
+            &["--title", "--model", "--agent", "--effort"],
+            &["--fork", "--branch"],
         ),
         "stop" => (
             "brigadier stop <id> [--json]\n\nStops a worker you started. Other sessions are the user's: you can't stop them.",
@@ -256,6 +235,10 @@ pub fn run(
         return finish(&call, reply);
     }
     let value = |name: &str| call.value(name).map(String::from);
+    if call.cmd == "new" {
+        let reply = new::new(data, me, call.id.unwrap_or(""), &value, &|f| call.has(f));
+        return finish(&call, reply);
+    }
     if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &value, &rows(), here) {
         return finish(&call, reply);
     }

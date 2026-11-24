@@ -16,6 +16,7 @@ mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
 pub(crate) use asks::{left, question, told_held};
+pub(crate) use brigade::ASK_USER;
 pub use brigade::{brigade_row, to_user, user_answer};
 pub(crate) use busy::at_work;
 use busy::busy_in;
@@ -444,6 +445,7 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<Strin
         for r in records(data, id).iter().filter(|r| r.state == "starting") {
             make::begin(data, id, &r.wid);
         }
+        crate::agent::new::resume(data, id);
         if !row["worker"].is_null() {
             result::written(data, id, row);
             crate::relay::mockup::retry(data, id);
