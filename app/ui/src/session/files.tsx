@@ -125,7 +125,7 @@ export function useComposerFiles({ owner, draft = owner, run, field, backend, pr
     onQuery: (query) => {
       asked.current = query;
       if (query === null) return setResults(null);
-      ask({ op: "mention", owner, q: query, ...(project ? { project } : {}) }, (reply) => {
+      ask({ op: "mention", owner, tabs: draft, q: query, ...(project ? { project } : {}) }, (reply) => {
         // An older query's answer drops: only the one asked last shows [D127].
         if (reply.ok && reply.query === asked.current) setResults({ query: reply.query, groups: reply.groups });
       });

@@ -11,19 +11,24 @@ const SAVE_MS = 400;
 type Saved = Draft & { project?: string | null };
 const drafts = new Map<string, Saved>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
-const writing = new Set<string>();
+const writing = new Map<string, Promise<boolean>>();
 const loading = new Map<string, Promise<Draft | null>>();
 
 export const draftOf = (id: string) => drafts.get(id);
 
-/** One write at a time per session, so the last words typed are the last written. */
-async function write(run: Runner, id: string): Promise<void> {
-  if (writing.has(id)) return;
-  writing.add(id);
+/** One write at a time per session, so the last words typed are the last written; whether they were. */
+function write(run: Runner, id: string): Promise<boolean> {
+  const job = writing.get(id) ?? save(run, id);
+  writing.set(id, job);
+  return job;
+}
+
+async function save(run: Runner, id: string): Promise<boolean> {
   const draft = drafts.get(id) ?? EMPTY_DRAFT;
-  await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft)]);
+  const reply = await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft)]);
+  if ((drafts.get(id) ?? EMPTY_DRAFT) !== draft) return save(run, id);
   writing.delete(id);
-  if (drafts.get(id) !== draft) await write(run, id);
+  return Boolean(reply.ok);
 }
 
 /** Keeps what the composer holds now, its files' ids too; an emptied one (a sent message) drops the draft at once. */
@@ -33,14 +38,17 @@ export function keepDraft(run: Runner, id: string, draft: Draft): void {
   timers.set(id, setTimeout(() => void write(run, id), isEmpty(draft) ? 0 : SAVE_MS));
 }
 
-/** Draft `from` becomes `to`'s, saved there before it goes from here. */
+/** Draft `from` becomes `to`'s, saved there before it goes from here; not saved, it's in both. */
 export function moveDraft(run: Runner, from: string, to: string): void {
   const draft = drafts.get(from);
   if (!draft || isEmpty(draft)) return;
   drafts.set(to, { parts: draft.parts, attachmentIds: draft.attachmentIds });
   drafts.set(from, EMPTY_DRAFT);
   for (const id of [from, to]) clearTimeout(timers.get(id));
-  void write(run, to).then(() => write(run, from));
+  void write(run, to).then((saved) => {
+    if (saved) void write(run, from);
+    else if (isEmpty(drafts.get(from)!)) drafts.set(from, draft);
+  });
 }
 
 /** The project kept with New chat's draft of before each project had its own: null for none, undefined never picked. */

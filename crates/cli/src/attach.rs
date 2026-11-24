@@ -1,11 +1,11 @@
-//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path>`
+//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | back <session> <parts JSON or null> [--carry-tabs] | view <path> | reveal <path>`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022]; and
 //! `note`, the session's notes (note.rs).
 
 pub(crate) mod note;
 
-use super::{HOME_DRAFT, arg, flag, remove};
+use super::{HOME_DRAFT, arg, flag, has, remove};
 use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};
 use brigadier_core::{self as core, adapters, check_id};
 use serde_json::{Value, json};
@@ -101,6 +101,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
                 _ => Ok(json!({"ok": true})),
             }
+        }
+        // A start that's discarded: its session, if made, goes next.
+        "back" if owner == HOME_DRAFT => {
+            let id = arg(args, 3)?;
+            check_id(id)?;
+            if core::session_dir(data, id).join("session.json").exists() {
+                let parts = serde_json::from_str(arg(args, 4)?)?;
+                let carried = has(args, "--carry-tabs");
+                back(data, &core::load(data, id)?, &parts, carried)?;
+            }
+            Ok(json!({"ok": true}))
         }
         // An image a thread's link names, anywhere on disk, copied under the session's own `viewed/` for
         // the image viewer to show from there, so it goes with the session [D35, D290].
@@ -218,6 +229,23 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "files": files.into_iter().map(|(_, f)| f).collect::<Vec<_>>()}))
         }
         _ => Err(io::Error::other(crate::USAGE)),
+    }
+}
+
+/// What a start took from its draft goes back: its tabs, and its files copied, so a session that
+/// can't go keeps its own.
+pub fn back(data: &Path, spec: &core::Spec, parts: &Value, carried: bool) -> io::Result<()> {
+    let folder = message::home(data);
+    for id in message::ids(parts) {
+        if let (Some(file), None) = (file_in(&sent(&spec.dir), &id), file_in(&folder, &id)) {
+            let to = folder.join(&id);
+            fs::create_dir_all(&to)?;
+            fs::copy(&file, to.join(file.file_name().unwrap()))?;
+        }
+    }
+    match carried {
+        true => crate::tabs::back(data, spec),
+        false => Ok(()),
     }
 }
 

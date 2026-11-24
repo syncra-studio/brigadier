@@ -100,7 +100,7 @@ function moveWords(from: string, to: string): void {
 }
 
 /** A tab that shows the same in any project, or none: files, terminals and the like read their draft's. */
-const anywhere = (tab: Tab, project: string | null) => tab.kind === "browser" || tab.kind === "attachment" || (tab.kind === "note" && project === null) || (tab.kind === "pr" && isRef(tab.target));
+const anywhere = (tab: Tab, project: string | null) => tab.kind === "new" || tab.kind === "browser" || tab.kind === "attachment" || (tab.kind === "note" && project === null) || (tab.kind === "pr" && isRef(tab.target));
 
 /**
  * A draft's own project picker: another project's draft, or Chats'. What's typed here goes along when that one is
@@ -128,7 +128,7 @@ export async function pickHomeProject(project: string | null): Promise<void> {
 /**
  * Once, on the first launch with a draft for each project: the one New chat draft of before goes to the project it
  * showed, words and tabs: the one picked in it, else the one last sent to, else the first added. That project's own
- * words stay, and New chat's are then Chats'.
+ * words stay, and New chat's are then Chats', with the tabs that show the same there.
  */
 export async function splitNewChat(projects: Shown[], rows: Row[]): Promise<void> {
   if (localStorage.getItem(LAST) !== null) return;
@@ -144,8 +144,9 @@ export async function splitNewChat(projects: Shown[], rows: Row[]): Promise<void
     await Promise.all([tabsSettled(to), loadDraft(daemonRun, to)]);
     const theirs = draftOf(to);
     if (!theirs) return;
-    if (isEmpty(theirs)) moveWords(HOME_DRAFT, to);
-    takeTabs(HOME_DRAFT, to, old.tabs.map((tab) => tab.id));
+    const goes = isEmpty(theirs) || isEmpty(words);
+    if (goes) moveWords(HOME_DRAFT, to);
+    takeTabs(HOME_DRAFT, to, old.tabs.filter((tab) => goes || !anywhere(tab, project)).map((tab) => tab.id));
     if (draft.get().project === null && isEmpty(draftOf(HOME_DRAFT)!)) setHomeDraft({ project });
   }
   if (localStorage.getItem(LAST) === null) localStorage.setItem(LAST, "");
@@ -311,11 +312,13 @@ export function retry(id: string): void {
   ask({ op: "run", args: ["recover", id] }, (reply) => land(id, reply));
 }
 
-/** The start goes: a session Rust made is deleted through Rust first [D35]; Home then shows the text again. */
-export function discard(id: string): void {
+/** The start goes: a session Rust made is deleted through Rust first [D35]; Home then shows the message again, its files Home's. */
+export async function discard(id: string): Promise<void> {
   const entry = get(id);
   if (!entry || entry.asking) return;
   put(id, { asking: true });
+  const back = entry.fork ? { ok: true } : await daemonRun(["attach", HOME_DRAFT, "back", id, entry.parts ?? "null", ...entry.args.filter((each) => each === "--carry-tabs")]);
+  if (!back.ok) return put(id, { asking: false, error: `Couldn't discard it: ${reason(back)}` });
   ask({ op: "run", args: ["delete", id] }, (reply) => {
     // Never made (no session.json): nothing of it is anywhere but here.
     const gone = reply.ok || /os error 2\b/.test(String(reply.error));
@@ -327,8 +330,10 @@ export function discard(id: string): void {
     }
     // Over what's been typed there since.
     const key = entry.draft ?? HOME_DRAFT;
+    const words: Draft = entry.parts ? JSON.parse(entry.parts) : { parts: [entry.text], attachmentIds: [] };
     const since = draftOf(key);
-    keepDraft(daemonRun, key, since && !isEmpty(since) ? { ...since, parts: [entry.text, "\n\n", ...since.parts] } : { parts: [entry.text], attachmentIds: [] });
+    keepDraft(daemonRun, key, since && !isEmpty(since) ? { parts: [...words.parts, "\n\n", ...since.parts], attachmentIds: [...words.attachmentIds, ...since.attachmentIds] } : words);
+    rereadTabs(key);
     if (isOpen(id)) newSession(entry.project);
   });
 }

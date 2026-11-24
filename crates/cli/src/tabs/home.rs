@@ -12,12 +12,15 @@ pub(super) fn is_home(id: &str) -> bool {
     id == HOME_DRAFT || id.starts_with("@home:")
 }
 
+fn key_of(spec: &core::Spec) -> String {
+    (spec.project.as_ref()).map_or(HOME_DRAFT.into(), |p| format!("@home:{p}"))
+}
+
 /// A session made from Home takes its project's Home tabs, in order, with the one in front, as the
 /// old app's did. The session's file is written first: a crash between the two leaves tabs in both
 /// places rather than in neither.
 pub fn carry(data: &Path, to: &str) -> io::Result<()> {
-    let spec = core::load(data, to)?;
-    let key = (spec.project.as_ref()).map_or(HOME_DRAFT.into(), |p| format!("@home:{p}"));
+    let key = key_of(&core::load(data, to)?);
     let _home = lock(data, &key)?;
     let _one = lock(data, to)?;
     let from = file(data, &key);
@@ -35,6 +38,25 @@ pub fn carry(data: &Path, to: &str) -> io::Result<()> {
     home.active = CHAT.into();
     home.rev += 1;
     write(&from, &home)
+}
+
+/// A start that failed or was discarded gives its tabs back, before any its draft has had since.
+pub fn back(data: &Path, spec: &core::Spec) -> io::Result<()> {
+    let key = key_of(spec);
+    let _home = lock(data, &key)?;
+    let _one = lock(data, &spec.id)?;
+    let (mine, theirs) = (file(data, &spec.id), file(data, &key));
+    let (mut from, mut home) = (read(&mine), read(&theirs));
+    if from.tabs.is_empty() {
+        return Ok(());
+    }
+    from.tabs.retain(|t| !home.exists(&t.id));
+    home.tabs.splice(0..0, from.tabs.drain(..));
+    home.rev += 1;
+    write(&theirs, &home)?;
+    from.active = CHAT.into();
+    from.rev += 1;
+    write(&mine, &from)
 }
 
 /// Draft `to` takes `ids` from draft `from`, after its own tabs and in their order, its tab in front

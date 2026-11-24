@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 const RESULT_ROWS: usize = 8;
 const SECTION_ROWS: usize = 5;
 
-/// `{owner: "@home" | id, project?, q}` → `{ok, query, groups}`.
+/// `{owner: "@home" | id, tabs?, project?, q}`, `tabs` the Home draft whose tabs these are → `{ok, query, groups}`.
 pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
     let (owner, q) = (
         req["owner"].as_str().unwrap_or(""),
@@ -66,7 +66,9 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         json!({"id": p, "type": if *folder { "folder" } else { "file" }, "label": p, "name": name, "detail": detail})
     };
     // The session's browser tabs, which a message can hand to its agent [D775]: by address, as Rust knows them.
-    let tabs: Vec<Value> = (crate::tabs::browser(data, owner).into_iter())
+    let bare = |t: &&str| brigadier_core::check_id(t.strip_prefix("@home:").unwrap_or(t)).is_ok();
+    let shown = (req["tabs"].as_str().filter(bare)).unwrap_or(owner);
+    let tabs: Vec<Value> = (crate::tabs::browser(data, shown).into_iter())
         .filter(|(_, _, driver)| driver.as_deref().is_none_or(|d| d == owner))
         .map(|(id, url, driver)| {
             let shown = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);

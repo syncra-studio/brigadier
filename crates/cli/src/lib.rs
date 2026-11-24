@@ -234,14 +234,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
                 let on = host::pr_branch(data, args, &project, &spec)?;
-                core::folder::ensure(
-                    &spec,
-                    &project,
-                    fresh,
-                    base,
-                    &title::from(flag(args, "--text").unwrap_or("")),
-                    on.as_deref(),
-                )?;
+                let title = title::from(flag(args, "--text").unwrap_or(""));
+                let made = core::folder::ensure(&spec, &project, base, &title, on.as_deref());
+                // A fresh session it undid goes too, what it took back with its draft; on a retry it
+                // keeps its log and first message [D35].
+                if made.is_err() && fresh && !spec.dir.join(core::worktrees::RECORD).exists() {
+                    attach::back(data, &spec, &parts, has(args, "--carry-tabs"))?;
+                    fs::remove_dir_all(&spec.dir)?;
+                }
+                made?;
             }
             drop(projects_lock);
             owner::ensure(data, &spec)?;

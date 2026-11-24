@@ -8,8 +8,8 @@ mod home;
 pub(crate) mod target;
 pub(crate) mod terminal;
 
-pub use home::carry;
 use home::is_home;
+pub use home::{back, carry};
 
 use crate::{HOME_DRAFT, USAGE, arg};
 use brigadier_core::{self as core, projects, session, worktrees};

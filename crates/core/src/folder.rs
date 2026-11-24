@@ -28,14 +28,13 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
 pub fn ensure(
     spec: &Spec,
     project: &projects::Project,
-    fresh: bool,
     base: Option<&str>,
     title: &str,
     on: Option<&str>,
 ) -> io::Result<()> {
     match project.kind == KIND {
         true => fs::create_dir_all(&spec.cwd),
-        false => worktrees::ensure(spec, project, fresh, base, title, on),
+        false => worktrees::ensure(spec, project, base, title, on),
     }
 }
 
