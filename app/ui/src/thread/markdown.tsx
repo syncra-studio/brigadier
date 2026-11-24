@@ -282,6 +282,8 @@ const callouts = () => (tree: Node) => {
     node.properties = { ...node.properties, dataCallout: hit[1] };
     first.value = first.value!.slice(hit[0].length);
     if (!first.value && p.children![1]?.tagName === "br") p.children!.splice(0, 2);
+    // The marker alone in its paragraph: the next block is the first line, beside the icon.
+    else if (!first.value && p.children!.length === 1) node.children = node.children!.filter((c) => c !== p);
   };
   walk(tree);
 };
@@ -400,11 +402,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     const Mark = warn ? Warning : Info;
     return (
       <div data-callout={kind.toLowerCase()} className={warn ? "callout callout-warn" : "callout"}>
-        <div className="callout-head">
-          <Mark className="size-icon-sm" />
-          {warn ? "Watch out" : "Note"}
-        </div>
-        {children}
+        <Mark role="img" aria-hidden={undefined} aria-label={warn ? "Warning" : "Note"} />
+        <div>{children}</div>
       </div>
     );
   },

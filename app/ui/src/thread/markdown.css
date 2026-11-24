@@ -72,24 +72,28 @@
     @apply my-0.5;
   }
   /* Someone's words, set off by a rounded bar [D477, D520]. */
-  & blockquote {
-    @apply relative ps-4 text-muted-foreground;
+  & blockquote,
+  & .callout {
+    @apply relative ps-4;
     &::before {
       @apply absolute inset-y-0 start-0 w-1 rounded-capsule bg-quote-edge;
       content: "";
     }
   }
-  /* A GitHub alert drawn as a callout (markdown.tsx) [D477]. */
+  & blockquote {
+    @apply text-muted-foreground;
+  }
+  /* A GitHub alert drawn as a callout (markdown.tsx): the quote's bar, its icon on the first line [D477]. */
   & .callout {
-    @apply my-3 rounded-thread border border-border bg-code-surface px-3 py-2 first:mt-0 last:mb-0;
+    @apply my-3.5 flex gap-2 first:mt-0 last:mb-0;
+    & > svg {
+      @apply h-lh w-icon-md shrink-0 text-muted-foreground;
+    }
+    & > div {
+      @apply min-w-0 flex-1;
+    }
   }
-  & .callout-warn {
-    @apply border-warning-edge;
-  }
-  & .callout-head {
-    @apply mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground;
-  }
-  & .callout-warn .callout-head {
+  & .callout-warn > svg {
     @apply text-warning;
   }
   & hr {
