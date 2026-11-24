@@ -21,8 +21,8 @@
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
 // `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals, page } instead
 // where waiting may change it, with nothing done: `waits` is what for, `modals` the dialogs over the page, `page` the document. With
-// `still: true` it does nothing at all: a promise, two frames long, of such a refusal, any other, or { still: true, modals, page } where
-// the control isn't moving, with the dialogs there were `before`. With `page` it answers only in that document.
+// `still: true` it does nothing at all: a promise of such a refusal, any other, or { still: true, modals, page } where a click or a hover's
+// control isn't moving over two frames, and typing's or a press's may go on, with the dialogs there were `before`. With `page` it answers only in that document.
 // `shownUrl`: an address as an agent sees it, from the shell.
 (op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
@@ -367,7 +367,9 @@
       // What no waiting changes is said at once, whatever else it would wait for.
       const stopped = answers.find((answer) => !answer.waits) ?? answers[0];
       if (stopped) return stopped;
-      if (await moves(found.element)) return later(op.kind === "click" ? `${op.target} keeps moving, so it wasn't clicked. Try again in a moment.` : `${op.target} keeps moving, so nothing was done.`, "it to stop moving");
+      // Keys go in wherever a field is.
+      const placed = op.kind === "click" || op.kind === "hover";
+      if (placed && (await moves(found.element))) return later(op.kind === "click" ? `${op.target} keeps moving, so it wasn't clicked. Try again in a moment.` : `${op.target} keeps moving, so nothing was done.`, "it to stop moving");
       return { still: true, modals: modals(), page };
     };
     return look().catch(refused).then((answer) => ({ ...answer, before }));
@@ -424,28 +426,6 @@
     return false;
   };
 
-  /** Whether what is at the control's middle is over it. */
-  const covers = (hit, element) => {
-    const label = hit?.closest?.("label");
-    return Boolean(hit) && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element;
-  };
-  const coveredBy = (hit) => later(`${op.target} is covered by ${controlOf(hit) || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
-  /**
-   * What lies over a control that takes keys, as a person would see it. Not over an editor's own input, which it keeps under its
-   * text (tiny, transparent or sent behind), and not what's drawn on a field and no larger, as its placeholder.
-   */
-  const overlaid = (element) => {
-    const box = element.getClientRects()[0];
-    if (!box || Math.min(box.width, box.height) < 10 || Number(getComputedStyle(element).zIndex) < 0 || !element.checkVisibility({ opacityProperty: true })) return null;
-    const hit = deepest(box.left + box.width / 2, box.top + box.height / 2);
-    if (!covers(hit, element)) return null;
-    for (let at = hit; at && !within(at, element); at = around(at)) {
-      const over = at.getBoundingClientRect();
-      if (over.left < box.left - 4 || over.top < box.top - 4 || over.right > box.right + 4 || over.bottom > box.bottom + 4) return coveredBy(hit);
-    }
-    return null;
-  };
-
   const FRAMES = new Set(["iframe", "frame", "fencedframe", "object", "embed"]);
   /** Where real input reaches the control, or what is over it; null when it has no place to click. */
   const placeOf = (element) => {
@@ -456,7 +436,11 @@
     const y = rect.top + rect.height / 2;
     if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
     const hit = deepest(x, y);
-    if (covers(hit, element)) return coveredBy(hit);
+    const label = hit?.closest?.("label");
+    if (hit && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element) {
+      const role = controlOf(hit);
+      return later(`${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
+    }
     const hovering = op.kind === "hover";
     // What a frame holds can't be seen here, and the click would be its.
     if (!hovering && hit && hit !== element && FRAMES.has(hit.localName)) {
@@ -537,8 +521,6 @@
     if (stop) return stop;
     if (op.target) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-      const over = overlaid(element);
-      if (over) return over;
       element.focus?.({ preventScroll: true });
       const focused = deepFocused();
       if (!focused || !within(element, focused)) return { error: NO_KEYBOARD };
@@ -579,8 +561,6 @@
     const stop = typeStop(element);
     if (stop) return stop;
     element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-    const over = overlaid(element);
-    if (over) return over;
     element.focus({ preventScroll: true });
     if (element.localName === "select") {
       const wanted = clean(op.text).toLowerCase();
