@@ -148,7 +148,7 @@ export function RefWord({ word, label, plain }: { word: string; label?: ReactNod
 }
 
 /** A file the answer names: a blue link with a file icon, opening it in a preview tab [D113]. */
-function FileRef({ word, open }: { word: ReactNode; open: () => void }) {
+export function FileRef({ word, open }: { word: ReactNode; open: () => void }) {
   return (
     <button type="button" onClick={open} className="inline cursor-pointer rounded-xs text-chat-link focus-visible:focus-ring">
       <File className="me-0.5 inline-block size-icon-sm align-icon" />

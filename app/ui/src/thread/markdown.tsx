@@ -4,6 +4,8 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
+import { SessionOfThread } from "../accounts/limit";
+import { drawable, ImageWords, InLink, ReplyImage } from "../components/thread/image";
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
@@ -45,7 +47,10 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
     for (const heading of box.current!.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) {
       // One drawn with an id keeps it: GFM's footnotes heading, which its references name.
       if (heading.closest(".markdown") !== box.current || (heading.id && heading.dataset.slug === undefined)) continue;
-      heading.id = heading.dataset.slug = slug(heading.textContent ?? "", seen);
+      // As GitHub's, with no words of its images.
+      const words = heading.cloneNode(true) as HTMLElement;
+      for (const image of words.querySelectorAll('[data-slot="image-words"]')) image.remove();
+      heading.id = heading.dataset.slug = slug(words.textContent ?? "", seen);
     }
   });
   return (
@@ -129,19 +134,29 @@ function Anchor({ href, chip, ...link }: { href?: string; chip?: (n: number) => 
   return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
 }
 
-/** An image; one of a file's own, by a relative path, loads by the URL its viewer finds, nothing until then. */
-function Img({ src, ...image }: { src?: string; alt?: string; title?: string }) {
+/**
+ * An image: a file's own, by a relative path, loads by the URL its viewer finds, nothing until then; a thread's, by any
+ * path, from the session's copy. A web one is never fetched (the page's CSP refuses it): it and any that can't be
+ * drawn are their words.
+ */
+function Img({ src, keep, ...image }: { src?: string; alt?: string; title?: string; keep: string }) {
   const files = useContext(FileLinks);
+  const owner = useContext(SessionOfThread)?.id;
   const local = files && src && RELATIVE.test(src) ? src : null;
   const [url, setUrl] = useState<{ src: string; url: string | null } | null>(null);
   useEffect(() => {
     if (!files || !local) return;
     let live = true;
-    void files.image(local).then((found) => live && setUrl({ src: local, url: found }));
+    void files.image(local).then(async (found) => {
+      const drawn = found && (await drawable(found)) ? found : null;
+      if (live) setUrl({ src: local, url: drawn });
+    });
     return () => void (live = false);
   }, [files, local]);
-  if (!local) return <img src={src} {...image} />;
-  return url?.src === local && url.url ? <img src={url.url} {...image} /> : <span>{image.alt}</span>;
+  if (local && url?.src !== local) return null;
+  if (local && url?.url) return <img src={url.url} {...image} />;
+  if (!files && owner && src && (RELATIVE.test(src) || /^file:/i.test(src))) return <ReplyImage key={src} src={src} owner={owner} keep={keep} {...image} />;
+  return <ImageWords src={src} alt={image.alt} />;
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
@@ -201,7 +216,8 @@ function nestUnderItems(text: string): string {
  * link's address) is closed, and a half-written image is held back, so neither ever shows raw [D520].
  */
 function settle(raw: string) {
-  const text = raw.replace(/(\*\*|`)\s*$/, "").replace(/!\[[^\]\n]*(\]\([^)\n]*)?$/, "").trimEnd();
+  // Its address may be in `<>`, or hold its own brackets: `<a (1).png>`, `a(1).png`.
+  const text = raw.trimEnd().replace(/(\*\*|`)$/, "").replace(/!\[[^\]\n]*(\]$|\]\((<[^>\n]*>?|([^()\n]|\([^()\n]*(\)|$))*))?$/, "").trimEnd();
   const odd = (mark: RegExp) => (text.match(mark)?.length ?? 0) % 2 === 1;
   const bold = odd(/`/g) ? `${text}\`` : odd(/\*\*/g) ? `${text}**` : text;
   // A lone `*` opening italics on the last line; one before a space is a bullet or a times sign.
@@ -216,7 +232,8 @@ function openFence(raw: string): boolean {
   return raw.trimEnd().split("\n").map(codeAt).at(-1) !== null;
 }
 
-const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
+const imageFiles = (url: string, key: string) => (key === "src" && /^file:/i.test(url) ? url : defaultUrlTransform(url));
+const keepChips = (url: string, key: string) => (url.startsWith("chip:") ? url : imageFiles(url, key));
 
 /** Text that arrived from offset `from` to `to` at `at` (ms since the epoch). */
 type Chunk = { from: number; to: number; at: number };
@@ -307,7 +324,7 @@ const Block = memo(function Block({ text, keep, chip, open, chunks }: { text: st
       remarkPlugins={plugins}
       rehypePlugins={chunks.length ? [callouts, [fadeChunks, chunks]] : [callouts]}
       components={components}
-      urlTransform={chip ? keepChips : defaultUrlTransform}
+      urlTransform={chip ? keepChips : imageFiles}
     >
       {text}
     </ReactMarkdown>
@@ -337,8 +354,12 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     return at === undefined ? <span {...span} /> : <Fade at={at}>{span.children}</Fade>;
   },
   // A new window's open goes to the browser (main.ts); a plain click's navigation is refused there.
-  a: ({ node: _, ...link }) => <Anchor chip={chip} {...link} />,
-  img: ({ node: _, ...image }) => <Img {...image} />,
+  a: ({ node: _, ...link }) => (
+    <InLink value>
+      <Anchor chip={chip} {...link} />
+    </InLink>
+  ),
+  img: ({ node: _, src, alt, title }) => <Img src={src as string | undefined} alt={alt} title={title} keep={keep} />,
   // Its words from the tree, as a chunk still fading splits them.
   code: ({ node, children, ...rest }) => <RefWord word={textOf(node as Node | undefined)} plain={<code {...rest}>{children}</code>} />,
   ...(chip && {

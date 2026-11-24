@@ -137,8 +137,9 @@
   & tr {
     @apply border-b border-table-rule last:border-b-0;
   }
-  /* Not an image chip's thumbnail in a user's message: that keeps the composer's look [D2107]. */
-  & img:not([data-slot="inline-image"] *) {
+  /* Not an image chip's thumbnail in a user's message: that keeps the composer's look [D2107]; nor a thread's
+     image, drawn as one the agent makes. */
+  & img:not([data-slot="inline-image"] *, [data-slot="reply-image"] *) {
     @apply my-3 max-h-80 max-w-full rounded-icon-button;
   }
 }

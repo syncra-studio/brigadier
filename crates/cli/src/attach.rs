@@ -6,12 +6,13 @@
 pub(crate) mod note;
 
 use super::{HOME_DRAFT, arg, flag, has, remove};
+use brigadier_core::git::{self, Target};
 use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};
 use brigadier_core::{self as core, adapters, check_id};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     if args[0] == "note" {
@@ -113,33 +114,50 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(json!({"ok": true}))
         }
-        // An image a thread's link names, anywhere on disk, copied under the session's own `viewed/` for
-        // the image viewer to show from there, so it goes with the session [D35, D290].
+        // An image a thread's link or reply names, anywhere on disk, copied under the session's own `viewed/` for
+        // the page to show from there, so it goes with the session [D35, D290]. `at` is its file, while there.
         "view" => {
-            let path = Path::new(arg(args, 3)?);
-            let name = path
-                .file_name()
-                .filter(|_| path.is_absolute() && is_image(path));
-            let (Some(name), false) = (name, owner == HOME_DRAFT) else {
+            let asked = arg(args, 3)?;
+            if owner == HOME_DRAFT {
                 return Err(io::Error::other("This isn't an image to show."));
-            };
-            if fs::metadata(path)?.len() > MAX_BYTES {
-                return Ok(too_large());
             }
+            let path = named(data, owner, asked);
+            let at = path.as_ref().filter(|p| p.is_file());
+            let Some(name) = Path::new(asked)
+                .file_name()
+                .filter(|n| is_image(n.as_ref()))
+            else {
+                return Ok(json!({"ok": false, "error": "This isn't an image to show.", "at": at}));
+            };
+            // By the path as asked, so a copy is found with its checkout gone too.
             let id = format!("v{:016x}", {
                 use std::hash::{Hash, Hasher};
                 let mut h = std::collections::hash_map::DefaultHasher::new();
-                path.hash(&mut h);
+                Path::new(asked).hash(&mut h);
                 h.finish()
             });
-            let file = core::session_dir(data, owner)
-                .join("viewed")
-                .join(&id)
-                .join(name);
-            fs::create_dir_all(file.parent().unwrap())?;
-            // Copied again on each open: the agent may have changed it since.
-            fs::copy(path, &file)?;
-            Ok(json!({"ok": true, "id": id}))
+            let viewed = core::session_dir(data, owner).join("viewed");
+            let file = viewed.join(&id).join(name);
+            match path.as_ref().map(fs::metadata) {
+                Some(Ok(meta)) if meta.len() > MAX_BYTES => {
+                    let mut reply = too_large();
+                    reply["at"] = json!(at);
+                    return Ok(reply);
+                }
+                // Copied again on each open, the agent may have changed it since; whole before it takes the old one's place.
+                Some(Ok(_)) => {
+                    fs::create_dir_all(viewed.join(&id))?;
+                    let tmp = viewed.join(adapters::uuid());
+                    fs::copy(path.as_ref().unwrap(), &tmp)
+                        .and_then(|_| fs::rename(&tmp, &file))
+                        .inspect_err(|_| drop(fs::remove_file(&tmp)))?;
+                }
+                // Its file gone (a worker's folder goes with it), its copy shows.
+                _ if file.exists() => {}
+                Some(Err(e)) => return Err(e),
+                None => return Err(io::ErrorKind::NotFound.into()),
+            }
+            Ok(json!({"ok": true, "id": id, "at": at}))
         }
         // A file or folder a thread's link names outside the checkout shows in Finder, as the old app's [D2098, D290].
         // An attachment by its id (an image the agent made) shows its file [D300].
@@ -234,6 +252,24 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => Err(io::Error::other(crate::USAGE)),
     }
+}
+
+/// Where an image's path, as a message writes it, is on disk: whole, under `~/`, or in the session's checkout, where
+/// a bare name is found as its refs find it [D251].
+fn named(data: &Path, owner: &str, asked: &str) -> Option<PathBuf> {
+    if asked.starts_with('/') {
+        return Some(asked.into());
+    }
+    if let Some(rest) = asked.strip_prefix("~/") {
+        return Some(Path::new(&std::env::var_os("HOME")?).join(rest));
+    }
+    let checkout = git::checkout(data, &Target::Session(owner)).ok()?;
+    let at = checkout.root.join(asked);
+    if at.is_file() {
+        return Some(at);
+    }
+    let reply = crate::mention::paths(data, &json!({"owner": owner, "paths": [asked]}));
+    reply["found"][asked]["at"].as_str().map(PathBuf::from)
 }
 
 /// What a start took from its draft goes back: its tabs, and its files copied, so a session that
