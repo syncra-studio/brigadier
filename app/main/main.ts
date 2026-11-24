@@ -31,8 +31,6 @@ const [daemonPath, daemonArgs] = app.isPackaged
 
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
-// The window's own fill where it has no vibrancy, the sidebar's [D830].
-const themeFrame = /--color-card:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
 // Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
@@ -44,10 +42,6 @@ const LIGHTS_Y = TAB_BAR / 2 - 7;
 const FIRST_PAINT_MS = 3000;
 // The intro's staging: the desktop's dim, and the clear its window shows (intro.ts).
 const introColours = { dim: /--color-intro-dim:\s*([^;]+);/.exec(theme)![1], clear: /--color-intro-clear:\s*([^;]+);/.exec(theme)![1] };
-// A Mac's window is clear over macOS's menu vibrancy, which the page's strip and sidebar let through [D76].
-const vibrant = process.platform === "darwin" && platform === "darwin";
-// Clear as the intro's.
-const windowFill = vibrant ? introColours.clear : themeFrame;
 // The menu's keys, from the one list of shortcuts the page shows and matches too (app/ui/src/shortcuts.ts) [D2013].
 const shortcuts: { id: string; keys: string[] }[] = JSON.parse(readFileSync(path.join(uiDir, "src/shortcuts.json"), "utf8"));
 const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!.keys[0];
@@ -163,8 +157,18 @@ function serveUi(): void {
       return PLAIN.test(login) && existsSync(file) ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
     if (url.host === APP_ID && url.pathname.startsWith("/project-icon/")) {
-      const file = await projectIcon(url.pathname);
-      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+      // `/project-icon/<id>/<file>`: the image picked in its settings, as Rust copied it into the project's folder.
+      const [, , id = "", picked] = url.pathname.split("/");
+      const own = picked !== undefined && PLAIN.test(id) && /^icon-\d+(-\d+)?\.(png|jpe?g|gif|webp|svg)$/.test(picked) ? path.join(dataDir, "projects", id, picked) : null;
+      const file = own ? (existsSync(own) ? own : null) : await projectIcon(url.pathname);
+      // A logo found once may since have gone: a 404 too, with the same headers.
+      const missing = () => new Response(null, { status: 404 });
+      const fetched = file ? await net.fetch(pathToFileURL(file).toString()).catch(missing) : missing();
+      // An SVG can carry script: none runs, nothing loads, and no file is read as another kind. A fetch's headers are fixed, so they're copied.
+      const headers = new Headers(fetched.headers);
+      headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      headers.set("X-Content-Type-Options", "nosniff");
+      return new Response(fetched.body, { status: fetched.status, headers });
     }
     const file = path.join(uiDist, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
     if (url.host !== APP_ID || !file.startsWith(uiDist + path.sep)) return new Response(null, { status: 403 });
@@ -190,9 +194,9 @@ function openWindow(): void {
     minWidth: 900,
     minHeight: 560,
     title: APP_NAME,
-    backgroundColor: hold ? introColours.clear : windowFill,
-    ...(vibrant ? { vibrancy: "menu" as const } : {}),
-    // Shown at its first paint, the launch screen, so macOS's material never shows before it [D285].
+    // The page's fill, one surface with the sidebar, before and under it.
+    backgroundColor: hold ? introColours.clear : themeBackground,
+    // Shown at its first paint, the launch screen, so an empty window never shows before it [D285].
     show: false,
     ...(hold ? { transparent: true } : {}),
     titleBarStyle: "hidden",
@@ -202,7 +206,7 @@ function openWindow(): void {
     // without it a click on the chat's "…" over a window already showing its tooltip did nothing [D211].
     ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 }, acceptFirstMouse: true } : {}),
     // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
-    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeFrame, symbolColor: themeForeground } } : {}),
+    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
     webPreferences: {
       additionalArguments: [`--brigadier-platform=${platform}`],
       preload: path.join(__dirname, "preload.js"),
@@ -260,11 +264,6 @@ function openWindow(): void {
   window.on("enter-full-screen", tellFullScreen);
   window.on("leave-full-screen", tellFullScreen);
   window.webContents.on("did-finish-load", tellFullScreen);
-  // Whether it's the key window: the sidebar's fill follows it (theme.css's data-key) [D188].
-  const tellKey = (): void => window.webContents.send("key", window.isFocused());
-  window.on("focus", tellKey);
-  window.on("blur", tellKey);
-  window.webContents.on("did-finish-load", tellKey);
   // A scroll's news for swiping Back and Forward (shell/titlebar.tsx): a mouse's, the fingers' lift, its end [D3110].
   watchScrolls(window.webContents, {
     begin: (trackpad) => trackpad || window.webContents.send("scroll", "mouse"),
@@ -273,7 +272,7 @@ function openWindow(): void {
   });
   // A reload starts with no tab bar until the new page says so.
   window.webContents.on("did-navigate", () => closesTab.delete(window.webContents));
-  if (hold) holdForIntro(window, vibrant ? windowFill : themeBackground, introColours);
+  if (hold) holdForIntro(window, themeBackground, introColours);
   else {
     // One that never paints still shows, once.
     let pending = true;

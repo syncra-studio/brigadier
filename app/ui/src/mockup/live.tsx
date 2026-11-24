@@ -12,7 +12,7 @@ import { daemonRun, failure } from "../session/composer";
 import { CHAT, openTab, selectTab, type Tab } from "../shell/tab-store";
 import type { Zoom } from "./frame";
 import { type MockupActions, MockupView } from "./mockup";
-import { busy, type Load, type Mockup } from "./model";
+import { ready as allIn, busy, type Load, type Mockup } from "./model";
 import { NO_NOTES, type Notes } from "./notes";
 import { type MockupMoment, MockupRow, MockupTabIcon } from "./row";
 import type { Send } from "./tray";
@@ -59,28 +59,38 @@ export function useMockup(wid: string): Mockup | null {
   );
 }
 
-/** The chat row's moment, from where the mockup is now. */
-function momentOf(mockup: Mockup | null, count: number): MockupMoment {
-  if (!mockup) return { kind: "drawing", count };
+/** The chat row's moment, from where the mockup is now; `ready`: the row of that round's every variant in. */
+function momentOf(mockup: Mockup | null, count: number, ready?: number | null): MockupMoment {
+  if (!mockup) return ready ? { kind: "ready", round: ready, open: false } : { kind: "drawing", count };
   if (mockup.picked && mockup.real) return { kind: "built", letter: mockup.picked };
   if (mockup.stopped) return { kind: "stopped" };
-  if (mockup.picked) return { kind: "picked", letter: mockup.picked };
+  if (mockup.picked) return mockup.building ? { kind: "picked", letter: mockup.picked } : { kind: "built", letter: mockup.picked };
+  const open = mockup.rounds.length === (ready ?? mockup.rounds.length);
+  if (ready) return { kind: "ready", round: ready, open };
+  if (allIn(mockup)) return { kind: "ready", round: null, open: true };
   return busy(mockup) ? { kind: "drawing", count: mockup.count } : { kind: "waiting" };
 }
 
 /**
- * "Mockup · drawing 3 variants · Open" in the lead's chat, or a send of the user's notes, "You → mockup · 3 notes on A
- * and B · round 2 drawing"; Open brings its tab to the front.
+ * "Mockup · drawing 3 variants · Open" in the lead's chat, "Mockup · round 1 ready · pick one with Use, or leave a
+ * note · Open" once its variants are in, or a send of the user's notes, "You → mockup · 3 notes on A and B · round 2
+ * drawing"; Open brings its tab to the front.
  */
-export function LiveMockupRow({ worker, count, on, round }: { worker: string; count: number; on?: string[] | null; round?: number | null }) {
+export function LiveMockupRow({ worker, count, on, round, ready }: { worker: string; count: number; on?: string[] | null; round?: number | null; ready?: number | null }) {
   const owner = useThread()?.id ?? "";
   const mockup = useMockup(worker);
-  const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count);
-  return <MockupRow moment={moment} live={!round && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
+  const moment: MockupMoment = round ? { kind: "notes", count, on: on ?? [], round } : momentOf(mockup, count, ready);
+  return <MockupRow moment={moment} live={!round && !ready && busy(mockup)} onOpen={() => openTab(owner, "mockup", worker)} />;
 }
 
+// The news the user last saw in each Mockup tab, kept across restarts.
+const SEEN_KEY = "mockup-seen";
+const seenNews = (): Record<string, number> => JSON.parse(localStorage.getItem(SEEN_KEY) ?? "{}");
+
+/** The Mockup tab's icon: the spinner while busy, else a blue dot while its news is unseen [D560]. */
 export function LiveMockupTabIcon({ worker }: { worker: string }) {
-  return <MockupTabIcon busy={busy(useMockup(worker))} />;
+  const mockup = useMockup(worker);
+  return <MockupTabIcon busy={busy(mockup)} unread={(mockup?.news ?? 0) > (seenNews()[worker] ?? 0)} />;
 }
 
 /** Saves the notes still unsaved as the mockup's draft, once. */
@@ -97,6 +107,15 @@ const boundsOf = (element: HTMLElement): BrowserBounds => {
   const rect = element.getBoundingClientRect();
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 };
+
+/** The part of `a` inside `b`, or null when none is. */
+function clip(a: BrowserBounds, b: BrowserBounds): BrowserBounds | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const width = Math.min(a.x + a.width, b.x + b.width) - x;
+  const height = Math.min(a.y + a.height, b.y + b.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
 
 /** One frame's live page, opened while its tab is in front and placed over its box as a Browser tab's is. */
 function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; tab: string; url: string; zoom: Zoom; active: boolean; onLoad: (load: Load | null) => void }) {
@@ -121,11 +140,14 @@ function LivePage({ owner, tab, url, zoom, active, onLoad }: { owner: string; ta
     const place = () => {
       const rect = boundsOf(element);
       const bounds = !element.closest("[inert]") && rect.width > 0 && rect.height > 0 ? rect : null;
-      const key = JSON.stringify(bounds);
+      // The page is placed whole on the canvas, and shows only where the stage does.
+      const stage = element.closest("[data-slot=mockup-stage]");
+      const shown = bounds && stage ? clip(bounds, boundsOf(stage as HTMLElement)) : bounds;
+      const key = JSON.stringify([bounds, shown]);
       if (key === placed) return;
       placed = key;
       placePage(id, bounds);
-      showPage(id, bounds);
+      showPage(id, shown);
     };
     const stop = followLayout(() => [element], place);
     return () => {
@@ -156,6 +178,13 @@ export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; act
   }, [worker, changed]);
   // A change still waiting to save when the tab closes saves then.
   useEffect(() => () => saveDraft(worker, unsaved), [worker]);
+  // The tab in front sees its news: the icon's dot goes till the next.
+  useEffect(() => {
+    const news = mockup?.news ?? 0;
+    if (!active || news <= (seenNews()[worker] ?? 0)) return;
+    localStorage.setItem(SEEN_KEY, JSON.stringify({ ...seenNews(), [worker]: news }));
+    listeners.forEach((l) => l());
+  }, [active, worker, mockup?.news]);
   const [loads, setLoads] = useState<Record<string, Load>>({});
   // A frame's page by letter and address, so a new address loads anew; Retry bumps its try. A round shown remounts its frames.
   const [tries, setTries] = useState<Record<string, number>>({});

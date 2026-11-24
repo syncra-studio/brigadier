@@ -13,7 +13,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
 /// How often an open thread checks its log for new frames.
@@ -123,9 +122,10 @@ pub(super) fn watch(
         frame["watch"] = re.clone();
         frame.to_string()
     };
-    let mut n = 0u64;
+    let (mut n, mut changed) = (0u64, 0);
     for tick in 1u64.. {
-        thread::sleep(FOLLOW);
+        // A queue change can be a message steered in: shown as it leaves the queue [D30].
+        changed = brigadier::queue::wake::changed(changed, FOLLOW);
         if watching.load(Ordering::SeqCst) != mine {
             return;
         }

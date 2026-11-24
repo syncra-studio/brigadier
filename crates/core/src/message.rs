@@ -167,6 +167,12 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                     false => notes.push(format!("[mentions the browser page {label}]")),
                 }
             }
+            // A tool chip (the composer's Tools): its name in the text, never a `/` the agent runs, and
+            // what it asks after it.
+            (Some("command"), Some("tool")) => {
+                agent += label.trim_start_matches('/');
+                notes.push(tool(part["id"].as_str().unwrap_or("")).into());
+            }
             (Some("mention"), Some(kind)) => {
                 agent += label;
                 notes.push(format!("[mentions the {kind} {label}]"));
@@ -230,11 +236,28 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
     })
 }
 
+/// What a tool chip asks of the agent, by its id in app/ui/src/components/composer/tools.tsx.
+fn tool(id: &str) -> &'static str {
+    match id {
+        "computer" => {
+            "Use computer use (`brigadier computer`) for this, and have your workers use it too."
+        }
+        "browser" => {
+            "Use Brigadier's browser (`brigadier browser`) for this, and have your workers use it too."
+        }
+        "mockup" => "Draw me a mockup first (`brigadier mockup`), before building it.",
+        "image" => "Make or edit the images this needs with your image tool.",
+        "research" => "Research this on the web, and give me your sources.",
+        "workers" => "Split this job across workers (`brigadier start`) that run in parallel.",
+        _ => "",
+    }
+}
+
 /// Each command chip as its agent last listed it, so its adapter can send it in the agent's own
 /// form; one not listed keeps its name and kind [D164, D2009].
 fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
     let chips: Vec<&Value> = (parts["parts"].as_array().into_iter().flatten())
-        .filter(|p| p["kind"] == "command")
+        .filter(|p| p["kind"] == "command" && p["type"] != "tool")
         .collect();
     if chips.is_empty() {
         return Ok(vec![]);

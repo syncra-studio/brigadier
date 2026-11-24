@@ -10,15 +10,15 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
-import { type Settings, lidHint, loadLid, setLid, setSetting, useLid, useSettings } from "./api";
+import { type Settings, lidHint, loadLid, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
+import { ChatLayoutChoice } from "./chat-layout";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
 import { closeSettings } from "./shell";
 
 /** The General page's rows, for the page and for Settings search (the old app's words). */
 export const GENERAL_ROWS = {
-  threadWidth: { label: "Thread width", description: "The conversation and composer centered, or across the whole panel", section: "Thread" },
-  messageLayout: { label: "Message layout", description: "Your messages on the right, or everything in one column", section: "Thread" },
+  chatLayout: { label: "Chat layout", description: "Centered with your messages in bubbles, or stacked across the panel", section: "Thread" },
   followUp: { label: "Follow-up behaviour", description: "What a message sent while an agent works does", section: "Composer" },
   notifyFinished: { label: "Notify when a session finishes", description: "A notification when a chat or session is done", section: "Notifications" },
   needsYou: { label: "When something needs you", description: "Approvals and questions waiting for your answer", section: "Notifications" },
@@ -42,16 +42,6 @@ const NOTIFY_FINISHED: readonly { value: Settings["notify_finished"]; label: str
   { value: "always", label: "Always", hint: "Also while you're in Brigadier" },
   { value: "never", label: "Never", hint: "No notification when work is done" },
 ];
-
-const THREAD_WIDTHS = [
-  { value: "centered", label: "Centered" },
-  { value: "full", label: "Full width" },
-] as const;
-
-const MESSAGE_LAYOUTS = [
-  { value: "bubbles", label: "Bubbles" },
-  { value: "stacked", label: "Stacked" },
-] as const;
 
 const FOLLOW_UPS = [
   { value: "queue", label: "Queue" },
@@ -134,18 +124,21 @@ export function GeneralPage() {
   );
 }
 
-/** How the thread is laid out, applied at once [D914, D915]. */
+/** How the thread is laid out, one choice for both settings, applied at once [D914, D915]. */
 function ThreadSection({ settings }: { settings: Settings }) {
-  const width = useSave();
-  const layout = useSave();
+  const save = useSave();
   return (
     <SettingsSection title="Thread">
       <SettingsCard>
-        <SettingsRow label={GENERAL_ROWS.threadWidth.label} description={GENERAL_ROWS.threadWidth.description} error={width.error}>
-          <Segmented label={GENERAL_ROWS.threadWidth.label} value={settings.thread_width} options={THREAD_WIDTHS} onChange={(value) => width.run(() => setSetting("thread_width", value))} />
-        </SettingsRow>
-        <SettingsRow label={GENERAL_ROWS.messageLayout.label} description={GENERAL_ROWS.messageLayout.description} error={layout.error}>
-          <Segmented label={GENERAL_ROWS.messageLayout.label} value={settings.message_layout} options={MESSAGE_LAYOUTS} onChange={(value) => layout.run(() => setSetting("message_layout", value))} />
+        <SettingsRow label={GENERAL_ROWS.chatLayout.label} description={GENERAL_ROWS.chatLayout.description} error={save.error}>
+          <ChatLayoutChoice
+            label={GENERAL_ROWS.chatLayout.label}
+            value={settings.message_layout}
+            // Picking the shown tile again still saves when the pair is mixed, as an older build could leave it.
+            onChange={(mode) => {
+              if (settings.message_layout !== mode || settings.thread_width !== (mode === "bubbles" ? "centered" : "full")) save.run(() => setChatLayout(mode));
+            }}
+          />
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>

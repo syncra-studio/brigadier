@@ -1,5 +1,19 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getNodeByKey, DecoratorNode, type LexicalNode, type NodeKey, type SerializedLexicalNode, type Spread } from "lexical";
+import {
+  $createTextNode,
+  $getNodeByKey,
+  $getRoot,
+  $getSelection,
+  $isTextNode,
+  $setSelection,
+  DecoratorNode,
+  type LexicalNode,
+  type NodeKey,
+  type RangeSelection,
+  type SerializedLexicalNode,
+  type Spread,
+  type TextNode,
+} from "lexical";
 import { createContext, type ReactNode, useContext } from "react";
 
 import { cx } from "../cx";
@@ -8,9 +22,10 @@ import { InlineAttachment } from "./attachments";
 import type { Chip } from "./draft";
 import { COMMAND_TONES, CommandKindIcon, fileTone, MentionKindIcon, NOTE_TONE, noteName } from "./kind-icons";
 import type { SlashCommand } from "./menus";
+import { ToolIcon } from "./tools";
 
 /** What a chip opens: a mention's file, folder or chat, a command's source, an image or a pasted text. */
-export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "note" | "plugin" | "command" | "skill" | "mcp" | "image" | "paste";
+export type OpenKind = "file" | "folder" | "chat" | "worker" | "tab" | "note" | "plugin" | "command" | "tool" | "skill" | "mcp" | "prompt" | "image" | "paste";
 
 /** What the chips in a field reach: the field's `onOpen`, and the `/` menu's commands by id for their icons. */
 export const ChipContext = createContext<{ onOpen?: (kind: OpenKind, id: string, name?: string) => void; commands: ReadonlyMap<string, SlashCommand> }>({
@@ -42,7 +57,7 @@ export function ComposerChip({ chip, onRemove }: { chip: Chip; onRemove?: () => 
   const command = chip.kind === "command";
   const content = command ? (
     <>
-      <CommandKindIcon kind={chip.type} icon={commands.get(chip.id)?.icon} className="mr-0.5 inline-block size-icon-sm align-icon" />
+      {chip.type === "tool" ? <ToolIcon id={chip.id} className="mr-0.5 inline-block size-icon-sm align-icon" /> : <CommandKindIcon kind={chip.type} icon={commands.get(chip.id)?.icon} className="mr-0.5 inline-block size-icon-sm align-icon" />}
       {chip.label}
     </>
   ) : (
@@ -119,3 +134,27 @@ export class ChipNode extends DecoratorNode<ReactNode> {
 }
 
 export const $isChipNode = (node: LexicalNode | null | undefined): node is ChipNode => node instanceof ChipNode;
+
+/** `node` in the text, then a space after it unless one follows, the caret after that. */
+export function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
+  if (replacing) replacing.replace(node);
+  const next = node.getNextSibling();
+  if ($isTextNode(next) && /^\s/.test(next.getTextContent())) {
+    next.select(1, 1);
+    return;
+  }
+  const space = $createTextNode(" ");
+  node.insertAfter(space);
+  space.select(1, 1);
+}
+
+/** `chip` where `caret` was (the end when it's gone or never was), spaced off what's around it, the caret after it. */
+export function $insertChip(chip: Chip, caret: RangeSelection | null): void {
+  if (caret && $getNodeByKey(caret.anchor.key) && $getNodeByKey(caret.focus.key)) $setSelection(caret.clone());
+  else $getRoot().selectEnd();
+  const node = new ChipNode(chip);
+  $getSelection()!.insertNodes([node]);
+  const before = node.getPreviousSibling();
+  if (before && !($isTextNode(before) && /\s$/.test(before.getTextContent()))) node.insertBefore($createTextNode(" "));
+  $putWithSpace(node, null);
+}

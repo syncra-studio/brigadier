@@ -1,8 +1,9 @@
 // The session's Mockup tab, the old app's redesigned as w13's direction 1 [D2055, D2066]: a header with the title,
 // round pills, the variants' names (All · A · B · C), Point · Try and Fit; the named variants side by side, live; the
 // notes tray; Use with its confirm; and Mockup · Compare · Real once the pick is built [D2069].
-import { useEffect, useEffectEvent, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useEffect, useEffectEvent, useState } from "react";
 
+import { ZOOM_LEAST, ZOOM_MOST } from "../browser/keys";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
@@ -11,17 +12,26 @@ import { type Choice, Segmented } from "../components/segmented";
 import { Check, CheckCircle, ChevronDown, Spinner } from "../icons";
 import { matches } from "../shortcuts";
 import { type PageOf, VariantColumn, type Zoom } from "./frame";
-import { drawn, type Load, type Mockup, slots, statusOf } from "./model";
+import { drawn, type Load, type Mockup, ready as allIn, slots, statusOf } from "./model";
 import { type MockupNote, noteCount, type Notes } from "./notes";
 import type { Hovered } from "./pins";
 import { type Send, Tray } from "./tray";
 
-/** The zoom menu's steps, and pinch or ⌘-scroll's bounds (the old tab's). */
-const ZOOMS = [25, 50, 100, 150, 200] as const;
-const MIN_ZOOM = 10;
-const MAX_ZOOM = 400;
+/** The zoom menu's steps, and the canvas's bounds for pinch or ⌘-scroll: those a live page's zoom follows. */
+const ZOOMS = [30, 50, 100, 150, 200] as const;
+const MIN_ZOOM = ZOOM_LEAST * 100;
+const MAX_ZOOM = ZOOM_MOST * 100;
 
 type Mode = "point" | "try";
+/** Where the canvas is: its pan in px and its scale; fit is none of either. */
+type Camera = { x: number; y: number; s: number };
+const FIT: Camera = { x: 0, y: 0, s: 1 };
+
+/** The camera at scale `next`, the canvas point under `at` (in the stage) staying put. */
+function zoomed(camera: Camera, next: number, at: { x: number; y: number }): Camera {
+  const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next * 100)) / 100;
+  return { x: at.x - ((at.x - camera.x) * s) / camera.s, y: at.y - ((at.y - camera.y) * s) / camera.s, s };
+}
 type Compare = "mockup" | "compare" | "real";
 
 const MODES: readonly Choice<Mode>[] = [
@@ -92,9 +102,20 @@ export function MockupView({
   const shownRound = Math.min(pinned ?? ready, newest);
   const [view, setView] = useState(start.view ?? "all");
   const [mode, setMode] = useState<Mode>(start.mode ?? "point");
-  const [zoom, setZoom] = useState<Zoom>("fit");
+  // The frames sit on a canvas: drag or scroll pans it, pinch or ⌘-scroll zooms it, as a design canvas does.
+  const [camera, setCamera] = useState<Camera>(FIT);
+  const zoom: Zoom = camera.x === 0 && camera.y === 0 && camera.s === 1 ? "fit" : Math.round(camera.s * 100);
+  // Space held: a drag anywhere pans, over the pages and pins too.
+  const [space, setSpace] = useState(false);
+  const [grabbing, setGrabbing] = useState(false);
   const [compare, setCompare] = useState<Compare>(start.compare ?? "compare");
   const [confirm, setConfirm] = useState<string | null>(start.confirm ?? null);
+  // A confirm is on the round it was opened on: another shown, it closes, so Build never takes the wrong round's.
+  const [confirmOn, setConfirmOn] = useState(shownRound);
+  if (confirmOn !== shownRound) {
+    setConfirmOn(shownRound);
+    setConfirm(null);
+  }
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
 
   const round = mockup?.rounds[shownRound];
@@ -120,10 +141,15 @@ export function MockupView({
   };
   const onKey = useEffectEvent((event: KeyboardEvent) => {
     const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable]");
+    // A control the keyboard is on keeps Space for itself: Use, the pills.
+    const control = event.target instanceof HTMLElement && event.target.tabIndex >= 0 && event.target.matches(":focus-visible");
     if (matches(event, "mockup-send")) {
       event.preventDefault();
       if (confirm) build();
       else if (working && !mockup?.stopped && noteCount(notes) && send !== "sending") actions.send(shownRound + 1);
+    } else if (event.key === " " && !typing && !control) {
+      event.preventDefault();
+      setSpace(true);
     } else if (event.key === "Escape" && !typing) {
       if (confirm) setConfirm(null);
       else setMode("point");
@@ -135,20 +161,64 @@ export function MockupView({
   });
   useEffect(() => {
     if (!active) return;
+    const up = (event: KeyboardEvent) => event.key === " " && setSpace(false);
+    const blur = () => setSpace(false);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [active]);
-  // Pinch or ⌘-scroll zooms the frames (the old tab's).
-  useEffect(() => {
-    if (!stage) return;
-    const onWheel = (event: WheelEvent) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
-      setZoom((now) => Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (now === "fit" ? 100 : now) * Math.exp(-event.deltaY * 0.01)))));
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
-    stage.addEventListener("wheel", onWheel, { passive: false });
-    return () => stage.removeEventListener("wheel", onWheel);
-  }, [stage]);
+  }, [active]);
+  // Pinch or ⌘-scroll zooms the canvas about the pointer; a plain scroll pans it. Over a page in Try, the page scrolls.
+  // On the window: the pins over a live page are drawn outside the stage (frame.tsx's OverPage).
+  useEffect(() => {
+    if (!stage || !active) return;
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !(stage.contains(target) || target.closest("[data-slot=mockup-over-page]"))) return;
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      const at = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      setCamera((now) =>
+        event.ctrlKey || event.metaKey ? zoomed(now, now.s * Math.exp(-event.deltaY * 0.01), at) : { ...now, x: now.x - event.deltaX, y: now.y - event.deltaY },
+      );
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [stage, active]);
+  // A drag on the canvas's empty space pans it; with Space held or the middle button, a drag anywhere does, but on a
+  // page in Try: that page has the pointer and the wheel, which the app never sees.
+  const startPan = (event: ReactPointerEvent) => {
+    const onCanvas = event.target instanceof Element && !event.target.closest("button, a, input, textarea, [data-slot=mockup-frame], [data-slot=mockup-over-page]");
+    if (!(space || event.button === 1 || (event.button === 0 && onCanvas))) return;
+    // Captured first, so a pin isn't dropped where the drag starts.
+    event.preventDefault();
+    event.stopPropagation();
+    let last = { x: event.clientX, y: event.clientY };
+    setGrabbing(true);
+    const move = (next: PointerEvent) => {
+      const by = { x: next.clientX - last.x, y: next.clientY - last.y };
+      last = { x: next.clientX, y: next.clientY };
+      setCamera((now) => ({ ...now, x: now.x + by.x, y: now.y + by.y }));
+    };
+    const end = () => {
+      setGrabbing(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  // The menu's steps zoom about the stage's middle; Zoom to fit puts the canvas back.
+  const zoomTo = (next: Zoom) => {
+    if (next === "fit" || !stage) return setCamera(FIT);
+    setCamera((now) => zoomed(now, next / 100, { x: stage.clientWidth / 2, y: stage.clientHeight / 2 }));
+  };
 
   if (!mockup) {
     return <EmptyState variant="centered" as="div" title="No mockup in this session yet." detail="Ask for one, or the agent offers one for big UI changes." className="flex-1 bg-mockup-stage p-6" />;
@@ -164,12 +234,14 @@ export function MockupView({
     );
   }
   const status = statusOf(mockup);
+  // Every variant in and none picked: Use stands out on each, and the status says so.
+  const picking = allIn(mockup) && shownRound === newest;
   const picked = mockup.picked;
   const pickedRound = mockup.pickedRound ?? shownRound + 1;
   const pickedVariant = (mockup.pickedRound ? (mockup.rounds[pickedRound - 1]?.variants ?? []) : variants).find((v) => v.letter === picked);
   const firstWaiting = variants.find((v) => !drawn(v))?.letter;
   const drawnCount = variants.filter(drawn).length;
-  const hint = !round?.drawing ? "Click anything to comment on it." : drawnCount ? `You can comment on ${variants.filter(drawn).map((v) => v.letter).join(", ")} now. Comments wait until you send them.` : null;
+  const hint = picking ? "Pick one with Use, or click anything to leave a note." : !round?.drawing ? "Click anything to comment on it." : drawnCount ? `You can comment on ${variants.filter(drawn).map((v) => v.letter).join(", ")} now. Comments wait until you send them.` : null;
   const columns =
     mockup.real && pickedVariant
       ? [
@@ -194,8 +266,8 @@ export function MockupView({
         )}
         <span className="flex-1" />
         {status && (
-          <span role="status" className={cx("flex shrink-0 items-center gap-1.5 text-xs", mockup.real ? "text-success" : "text-muted-foreground")}>
-            {mockup.real ? <CheckCircle className="size-icon-sm" /> : mockup.stopped ? null : <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
+          <span role="status" className={cx("flex shrink-0 items-center gap-1.5 text-xs", mockup.real ? "text-success" : picking ? "font-medium text-foreground" : "text-muted-foreground")}>
+            {mockup.real ? <CheckCircle className="size-icon-sm" /> : mockup.stopped || picking ? null : <Spinner className="size-icon-sm animate-spin motion-reduce:animate-none" />}
             {status}
           </span>
         )}
@@ -212,11 +284,17 @@ export function MockupView({
               />
             )}
             <Segmented label="Point or try" value={mode} options={MODES} onChange={setMode} />
-            <ZoomMenu zoom={zoom} onChange={setZoom} />
+            <ZoomMenu zoom={zoom} onChange={zoomTo} />
           </>
         )}
       </header>
-      <div ref={setStage} className="flex min-h-0 flex-1 gap-2.5 p-2.5">
+      <div
+        ref={setStage}
+        data-slot="mockup-stage"
+        className={cx("relative min-h-0 flex-1 overflow-hidden", grabbing ? "cursor-grabbing" : space && "cursor-grab")}
+        onPointerDownCapture={startPan}
+      >
+        <div data-slot="mockup-canvas" className="mockup-canvas flex size-full gap-2.5 p-2.5" data-pan-x={camera.x} data-pan-y={camera.y} data-scale={camera.s}>
         {columns.map(({ variant, label, why }) => (
           <VariantColumn
             // A new page or round starts the frame afresh, its screenshot fallback off.
@@ -232,13 +310,14 @@ export function MockupView({
             pointing={takes && mode === "point"}
             hovered={hovers[variant.letter]}
             onNotes={takes && !older && send !== "sending" ? changePins : undefined}
-            use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm === variant.letter } : null}
+            use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
             picked={!mockup.real && (confirm ?? picked) === variant.letter}
             dim={!mockup.real && Boolean(confirm ?? picked) && (confirm ?? picked) !== variant.letter}
             onName={view === "all" && !mockup.real && variants.length > 1 ? () => setView(variant.letter) : undefined}
             onRetry={() => actions.retry(variant.letter)}
           />
         ))}
+        </div>
       </div>
       <Tray
         notes={notes}

@@ -1,6 +1,6 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { LexicalTypeaheadMenuPlugin, MenuOption, type MenuRenderFn, type MenuTextMatch } from "@lexical/react/LexicalTypeaheadMenuPlugin";
-import { $createTextNode, $isTextNode, COMMAND_PRIORITY_HIGH, type LexicalNode, type TextNode } from "lexical";
+import { COMMAND_PRIORITY_HIGH } from "lexical";
 import { type ComponentProps, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -9,9 +9,10 @@ import { cx } from "../cx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, itemClasses, MenuRow } from "../menu";
 import type { ComposerFieldHandle } from "./field";
 import { CommandKindIcon, MentionKindIcon } from "./kind-icons";
-import { ChipNode } from "./chip";
+import { $putWithSpace, ChipNode } from "./chip";
 import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
+import { ToolIcon } from "./tools";
 
 /**
  * A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title, a worker's
@@ -48,8 +49,8 @@ export type SlashCommand = {
   id: string;
   label: string;
   description?: string;
-  /** Listed under its kind's heading: Commands, Skills, MCP prompts. */
-  kind: "command" | "skill" | "mcp";
+  /** Listed under its kind's heading: Commands, Tools, Skills, MCP servers (the library's), MCP prompts (a server's, as the agent lists them). A tool is Brigadier's own (./tools.tsx). */
+  kind: "command" | "tool" | "skill" | "mcp" | "prompt";
   /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
   source?: string;
   /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
@@ -87,7 +88,7 @@ export function fuzzyMatch(text: string, query: string): { rank: 0 | 1 | 2; at: 
 
 /** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
 function commandMatches(commands: readonly SlashCommand[], query: string): SlashCommand[] {
-  const order = { command: 0, skill: 1, mcp: 2 };
+  const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
   const rank = (command: SlashCommand) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
   return commands
     .map((command) => ({ command, rank: rank(command) }))
@@ -135,19 +136,6 @@ class Row<T> extends MenuOption {
   ) {
     super(key);
   }
-}
-
-/** `node` in the text, then a space after it unless one follows, the caret after that. */
-function $putWithSpace(node: LexicalNode, replacing: TextNode | null): void {
-  if (replacing) replacing.replace(node);
-  const next = node.getNextSibling();
-  if ($isTextNode(next) && /^\s/.test(next.getTextContent())) {
-    next.select(1, 1);
-    return;
-  }
-  const space = $createTextNode(" ");
-  node.insertAfter(space);
-  space.select(1, 1);
 }
 
 /**
@@ -204,7 +192,7 @@ const ANCHOR = "contents!";
 export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
-export const KIND_HEADINGS = { command: "Commands", skill: "Skills", mcp: "MCP prompts" } as const;
+export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 
 /** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
 export function MentionRow({ item, query }: { item: Mention; query: string }) {
@@ -223,7 +211,7 @@ export function MentionRow({ item, query }: { item: Mention; query: string }) {
 export function CommandRow({ command, query }: { command: SlashCommand; query: string }) {
   return (
     <MenuRow
-      icon={<CommandKindIcon kind={command.kind} icon={command.icon} />}
+      icon={command.kind === "tool" ? <ToolIcon id={command.id} /> : <CommandKindIcon kind={command.kind} icon={command.icon} />}
       title={<MatchedText text={command.label} query={query} />}
       detail={command.description}
       hint={command.hint}
@@ -359,8 +347,8 @@ export function MentionPlugin({ results, onQuery, onDirect }: Mentions) {
 }
 
 /**
- * The `/` menu: the agent's commands under their group headings, filtered as typed. A command with `text` types
- * it in place of the `/` and its query; any other runs (`onRun`) and leaves no trace in the text.
+ * The `/` menu: the agent's commands under their group headings, filtered as typed. One not `instant` goes in as its
+ * own chip (a tool's, not a skill's of its name) for the `/` and its query; any other runs (`onRun`), leaving no trace.
  */
 export function SlashPlugin({ commands, onRun }: Commands) {
   const [query, setQuery] = useState("");
@@ -382,7 +370,7 @@ export function SlashPlugin({ commands, onRun }: Commands) {
       onSelectOption={(option, replacing, close) => {
         const command = option.value;
         if (command.disabled) return;
-        if (!command.instant) $putWithSpace($createTextNode(command.label), replacing);
+        if (!command.instant) $putWithSpace(new ChipNode({ kind: "command", id: command.id, type: command.kind, label: command.label }), replacing);
         else {
           replacing?.remove();
           // After the pick's update, so the command sees the text without its `/`.
@@ -419,9 +407,9 @@ const CHAT_ROWS = 5;
 
 /**
  * The + ("Add files and more"): a menu as wide as the composer card, just above it (over the rail, hidden
- * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's skills and MCP prompts
- * and the `@` menu's chats in their own rows, each picked into the end of the text. Closed, the keyboard goes
- * back to typing.
+ * meanwhile): "Add" then Files, which opens the system's file picker, then the `/` menu's tools, skills, MCP servers and prompts
+ * and the `@` menu's chats in their own rows, each picked in where the caret last was, as the `/` menu does (the
+ * end if the field never had one). Closed, the keyboard goes back to typing.
  */
 export function PlusMenu({
   onFiles,
@@ -438,13 +426,8 @@ export function PlusMenu({
   const input = useRef<HTMLInputElement>(null);
   const [card, setCard] = useState<HTMLElement | null>(null);
   const field = () => card?.querySelector<HTMLElement>("[contenteditable]") ?? null;
-  const add = (chip: Chip) => {
-    const parts = composerField.current!.parts();
-    const last = parts.at(-1);
-    const apart = last !== undefined && !(typeof last === "string" && /\s$/.test(last));
-    composerField.current!.set([...parts, ...(apart ? [" "] : []), chip, " "]);
-  };
-  const kind = (wanted: "skill" | "mcp") => {
+  const add = (chip: Chip) => composerField.current!.insert(chip);
+  const kind = (wanted: "tool" | "skill" | "mcp" | "prompt") => {
     const listed = commands.commands?.filter((command) => command.kind === wanted) ?? [];
     return (
       listed.length > 0 && (
@@ -472,8 +455,10 @@ export function PlusMenu({
           <DropdownMenuItem onClick={() => input.current?.click()}>
             <MenuRow icon={<Paperclip />} title="Files" />
           </DropdownMenuItem>
+          {kind("tool")}
           {kind("skill")}
           {kind("mcp")}
+          {kind("prompt")}
           {chats.length > 0 && <DropdownMenuLabel variant="heading">Chats</DropdownMenuLabel>}
           {chats.slice(0, CHAT_ROWS).map((chat) => (
             <DropdownMenuItem key={chat.id} onClick={() => add({ kind: "mention", id: chat.id, type: "chat", label: chat.label })}>

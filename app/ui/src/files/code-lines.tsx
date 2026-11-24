@@ -71,6 +71,8 @@ export function CodeLines({
   const [query, setQuery] = useState("");
   const [current, setCurrent] = useState(0);
   const [going, setGoing] = useState(false);
+  // Each ⌃G draws the box anew, so its field takes focus again even while it's already open.
+  const [goAsks, setGoAsks] = useState(0);
   const findInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -133,6 +135,7 @@ export function CodeLines({
         event.preventDefault();
         setFinding(false);
         setGoing(true);
+        setGoAsks((n) => n + 1);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -157,6 +160,7 @@ export function CodeLines({
     <div className="relative flex min-h-0 flex-1 flex-col">
       {(finding || going) && (
         <FindLineBox
+          key={goAsks}
           finding={finding}
           query={query}
           count={matches.length}

@@ -1,9 +1,12 @@
 //! A worker's row facts [D3010, D3012, D3018].
 
-use super::{Link, read_json};
+use super::{Link, link, read_json, write_json};
 use brigadier_core::{self as core, fold::Fold};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// A worker's row facts, for its row [D3010, D3012, D3018]: its parent and brief, its state in
 /// a word as the old `workerState`, and its receipt. Null for a session that isn't a worker.
@@ -43,8 +46,19 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
             Some(_) => ("done", "Done".into()),
             None if state == "failed" || state == "interrupted" => ("failed", "Failed".into()),
             None if state == "new" => ("working", "Starting".into()),
-            // A mockup worker between rounds waits on the user's notes or pick [D560].
-            None if !l.asked["mockup"].is_null() => ("needsYou", "Waiting for your notes".into()),
+            // A mockup worker between rounds waits on the user's pick once the round is all in, else
+            // on their notes [D560]; once picked it builds, and a turn it ends then waits on its lead,
+            // not the user.
+            None if !l.asked["mockup"].is_null()
+                && !read_json::<Value>(&dir.join("mockup.json"))
+                    .is_some_and(|m| m["picked"].is_string()) =>
+            {
+                let m = read_json::<Value>(&dir.join("mockup.json")).unwrap_or_default();
+                match crate::relay::mockup::all_in(&m) {
+                    true => ("needsYou", "Ready · pick one with Use".into()),
+                    false => ("needsYou", "Waiting for your notes".into()),
+                }
+            }
             // Its turn ended, its outcome not yet written: still finishing, never back to Starting.
             None => ("working", "Working".into()),
         },
@@ -97,4 +111,26 @@ pub fn holds(data: &Path, id: &str, f: &Fold, child: bool) -> bool {
 pub fn holding(data: &Path, id: &str) -> bool {
     core::fold(&core::session_dir(data, id), true)
         .is_ok_and(|f| holds(data, id, &f.fold, crate::child(data, id).is_some()))
+}
+
+/// A worker done but not merged is looked at again now and then, so once its parent merges it
+/// with git, its row says Done [D3003].
+pub(super) fn merged(data: &Path, wid: &str) {
+    static CHECKED: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+    {
+        let mut checked = CHECKED.lock().unwrap();
+        let at = checked.get_or_insert_with(HashMap::new).entry(wid.into());
+        let at = at.or_insert_with(|| Instant::now() - Duration::from_secs(10));
+        if at.elapsed() < Duration::from_secs(10) {
+            return;
+        }
+        *at = Instant::now();
+    }
+    let dir = core::session_dir(data, wid);
+    if core::worktrees::unlanded(&dir).is_ok_and(|b| b.is_none())
+        && let Some(mut l) = link(data, wid)
+    {
+        l.last["landed"] = true.into();
+        let _ = write_json(&dir.join("worker.json"), &l);
+    }
 }

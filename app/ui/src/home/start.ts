@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { daemonRun } from "../session/composer";
-import { EMPTY_DRAFT } from "../components/composer/draft";
+import { type Draft, EMPTY_DRAFT } from "../components/composer/draft";
 import { HOME_DRAFT, keepDraft, keepProject, projectOf } from "../session/draft";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
@@ -212,13 +212,14 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const id = sessionId();
   const cid = newId();
   const key = draftKey();
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", place.review ? reviewText(text, place.review) : text, "--cid", cid, ...(place.pr || place.review ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
+  const link = place.review && `\n\n${prUrl(place.review)}`;
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text + (link || ""), "--cid", cid, ...(place.pr || place.review ? [] : [draft.get().locked ? "--carry-tabs" : "--carry-chat-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
   if (brigade) args.push("--brigade");
   // Its files move from Home's draft folder into the session [D2022 #18].
-  if (parts) args.push("--parts", parts);
+  if (parts) args.push("--parts", link ? withLink(parts, link) : parts);
   const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
@@ -239,7 +240,12 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
 
 export const reviewTitle = (ref: string) => `Reviewing ${prName(ref)}`;
 // shortcut: the PR rides in the first message as its link, not a PR chip; a chip once the composer's PR chips exist [D171].
-const reviewText = (text: string, ref: string) => `${text}\n\n${ref.replace(/^([^#]+)#(\d+)$/, "https://$1/pull/$2")}`;
+const prUrl = (ref: string) => ref.replace(/^([^#]+)#(\d+)$/, "https://$1/pull/$2");
+// Rust builds the prompt from the parts when there are any, so the link goes in them too.
+function withLink(parts: string, link: string): string {
+  const draft = JSON.parse(parts) as Draft;
+  return JSON.stringify({ ...draft, parts: [...draft.parts, link] });
+}
 
 /** A review chat stays on the Pull Requests page as the PR's, its PR tab carried from the draft's, then kept by Rust [D162]. */
 function reviewStarted(id: string, ref: string): () => void {

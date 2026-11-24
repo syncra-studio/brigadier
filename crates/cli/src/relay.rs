@@ -82,9 +82,12 @@ line the user reads. It waits up to 5 minutes and prints what the pick did. On Y
 draws the variants from your repo's own components and the user compares them in the Mockup tab;
 the variant they pick there is wired in by that worker, so don't build the change yourself. On Skip,
 build it. --reuse <session>: another session already drew this change; the card offers its mockup.
+When the user names their pick in your chat, pass it on with --use A [--note \"<their changes>\"],
+never as a message, so the Mockup tab follows.
 A mockup worker reports each variant: --round N --variant A|B|C --name \"<name>\" --why \"<line>\"
---url <page> [--shot <png>], and --real <url> once the pick is wired in.",
-            &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real"],
+--url <page> [--shot <png>], each step it starts with --doing \"<a few words>\", and --real <url>
+once the pick is wired in.",
+            &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real", "--doing", "--use", "--note"],
             &[],
         ),
         "terminal" => (crate::tabs::terminal::agent::HELP, &[], &[]),

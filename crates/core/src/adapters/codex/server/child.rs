@@ -1,6 +1,6 @@
 //! A subagent's own thread, as Codex's app-server reports it to the helper.
 
-use super::{Pending, State, ask, input, say};
+use super::{Pending, State, ask, say};
 use serde_json::{Value, json};
 use std::sync::mpsc::channel;
 
@@ -40,4 +40,12 @@ pub(super) fn activity(st: &mut State, item: &mut Value) {
         }
         _ => {}
     }
+}
+
+/// A steer's input as the adapter built it, or a plain text's.
+pub(super) fn input(text: &Value) -> Value {
+    if text.is_array() {
+        return text.clone();
+    }
+    json!([{"type": "text", "text": text}])
 }

@@ -21,7 +21,7 @@ pub use make::start;
 pub(crate) use make::{begin, full, land_line};
 pub use pause::held;
 pub use result::{deliver, take, take_ask, told_take, went_with, with_next};
-pub(crate) use result::{hop as result_hop, settled, take_shell, told_shell, unrun};
+pub(crate) use result::{hop as result_hop, settled, take_shell, told_notice, told_shell, unrun};
 pub(crate) use review::{last_of_turn, moves};
 pub use row::{holding, holds, row};
 
@@ -30,12 +30,11 @@ use brigadier_core::{self as core};
 use brigadier_frames::procs;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// A worker's reservation, in its parent's `workers/` folder: all its making needs, so a restart
@@ -231,7 +230,7 @@ pub fn busy(data: &Path, id: &str) -> bool {
     !made
         || (l.session && brigade::leading(data, id))
         || l.review["state"] == "running"
-        || result::going(&l, &f)
+        || result::going(data, id, &l, &f)
 }
 
 /// Whether parent `pid`'s worker `wid` ended with nothing left to wake it for: not being made, not
@@ -462,10 +461,11 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         }
         if !row["worker"].is_null() {
             result::written(data, id, row);
+            crate::relay::mockup::retry(data, id);
         }
         asks::pass(data, id, row);
         if row["worker"]["kind"] == "doneNotMerged" {
-            merged(data, id);
+            row::merged(data, id);
         }
         // A hold the user said to wait out goes on once its reset has passed [D2028].
         if !row["worker"].is_null()
@@ -475,26 +475,4 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         }
     }
     deliver(data, rows);
-}
-
-/// A worker done but not merged is looked at again now and then, so once its parent merges it
-/// with git, its row says Done [D3003].
-fn merged(data: &Path, wid: &str) {
-    static CHECKED: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
-    {
-        let mut checked = CHECKED.lock().unwrap();
-        let at = checked.get_or_insert_with(HashMap::new).entry(wid.into());
-        let at = at.or_insert_with(|| Instant::now() - Duration::from_secs(10));
-        if at.elapsed() < Duration::from_secs(10) {
-            return;
-        }
-        *at = Instant::now();
-    }
-    let dir = core::session_dir(data, wid);
-    if core::worktrees::unlanded(&dir).is_ok_and(|b| b.is_none())
-        && let Some(mut l) = link(data, wid)
-    {
-        l.last["landed"] = true.into();
-        let _ = write_json(&dir.join("worker.json"), &l);
-    }
 }

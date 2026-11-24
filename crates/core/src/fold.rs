@@ -62,6 +62,11 @@ pub struct Fold {
     /// The live child's subagents still running, by step id: an answered turn waits on them [D118].
     #[serde(default)]
     pub agents: BTreeSet<String>,
+    #[serde(default)]
+    pub pending: live::Pending,
+    /// How each turn last ended, its own end or its wake's, and when (ms), by the turn it reports in.
+    #[serde(default)]
+    pub ends: BTreeMap<String, (u64, String)>,
     /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
@@ -89,6 +94,9 @@ pub struct Fold {
     /// asked, then while it waits for the reset (`until`) [D2028, D342].
     #[serde(default)]
     pub hold: Option<Value>,
+    /// A mockup card waiting on the user's pick, its turn over or not, and its turn's id [D2067].
+    #[serde(default)]
+    pub offer: Option<(String, String)>,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
@@ -264,10 +272,8 @@ impl Fold {
                     exited: false,
                 });
                 self.groups.push((pid, start_us, str_of("dir")));
-                self.tasks.clear();
-                self.typed.clear();
-                self.calls.clear();
-                self.agents.clear();
+                (self.tasks, self.typed, self.calls) = Default::default();
+                (self.agents, self.pending) = Default::default();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -279,7 +285,7 @@ impl Fold {
                     return;
                 };
                 child.exited = true;
-                self.agents.clear();
+                (self.agents, self.pending) = Default::default();
                 let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
                 let clean = item["code"].as_i64() == Some(0);
                 let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
@@ -294,6 +300,7 @@ impl Fold {
                 }
             }
             "turn_start" => {
+                let of = self.woke_of();
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
                     self.close("withdrawn", Value::Null, ts);
@@ -302,6 +309,7 @@ impl Fold {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
                         origin: "agent".into(),
+                        of,
                         backend: self.backend.clone(),
                         ts,
                         delivered: Some(ts),
@@ -331,6 +339,7 @@ impl Fold {
                     None => self.images.push(image),
                 }
             }
+            "pending" => self.pending.listed(item, &self.turns),
             // A command or watch sent to the background, by what the agent said it does [D187].
             "background" => {
                 self.tasks.push((ts, str_of("task")));
@@ -345,6 +354,7 @@ impl Fold {
                 }
                 if item["step"] == "agent" && item["parent"].is_null() {
                     self.agents.insert(str_of("id"));
+                    self.started(str_of("id"));
                 }
                 if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
                 {
@@ -367,8 +377,8 @@ impl Fold {
                         self.typed.entry(task.into()).or_insert(typed);
                     }
                 }
-                if item["parent"].is_null() {
-                    self.agents.remove(&str_of("id"));
+                if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
+                    self.pending.ended(&str_of("id"), self.turns.is_empty());
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
@@ -477,16 +487,8 @@ impl Fold {
                 Some("peer") => self.passed_to_user(item),
                 Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
-                Some("owner_started") => {
-                    self.interrupt(json!({"owner_restarted": true}), ts);
-                    self.turns
-                        .iter_mut()
-                        .filter(|t| t.delivered.is_none())
-                        .for_each(|t| t.orphaned = true);
-                    // Session grants live as long as the host that holds them [D193, D238].
-                    self.grants.clear();
-                    self.granting.clear();
-                }
+                Some("mockup") => self.offered(item),
+                Some("owner_started") => self.owner_started(ts),
                 Some("worker") => self.worker(item),
                 _ => {}
             },

@@ -152,8 +152,8 @@ export function AccountRows({
         <div className="flex flex-col">
           <LinkRow
             label={addLabel}
-            busy={starting || (oneHome && setup.starting === agent.name)}
-            disabled={!online || !agent.path || starting || setup.starting !== null || (!oneHome && !accounts?.installed)}
+            busy={starting || (oneHome && Boolean(setup.starting[agent.name]))}
+            disabled={!online || !agent.path || starting || Object.keys(setup.starting).length > 0 || (!oneHome && !accounts?.installed)}
             onClick={() => void (oneHome ? setup.begin(agent, "sign-in") : add())}
           />
           <ErrorLine error={failed.add} className="px-4 pb-3" />

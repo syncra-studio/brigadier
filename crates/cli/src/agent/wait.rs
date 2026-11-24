@@ -63,7 +63,7 @@ fn until(
                     .find(|e| e.from == "agent");
                 let last = last.map(|e| e.text).unwrap_or_default();
                 // Its parent's own wait takes the worker's result, which then isn't sent again.
-                if let Some(result) = workers::take(data, me, id, None) {
+                if let Some(result) = workers::take(data, me, id, None, state == "interrupted") {
                     return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "result": result, "text": result});
                 }
                 let text = (state == "waiting_answer")

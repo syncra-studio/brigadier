@@ -11,6 +11,12 @@ import { ComposerField, type ComposerFieldHandle } from "./field";
 import { ComposerRail } from "./rail";
 
 /**
+ * The column, the thread's rows and the composer alike, so their edges line up: 736 of text inside 16 each side,
+ * centred (box-content, so the reading width is the text's) [D84].
+ */
+export const COLUMN = "mx-auto box-content max-w-reading px-4";
+
+/**
  * The composer's column under the thread (below its scroller, not over it): the thread's column, its card's edges on
  * the thread's text edges [D208], its bottom as far up the page's panel as the panel is in the frame
  * [D55 D823]. What sits above the card (the rail, a decision) stacks in it too.
@@ -22,7 +28,7 @@ export function Composer({ className, ...props }: ComponentProps<"div">) {
   // column a layer of its own, which would draw its `@` and `/` menus under them [D332].
   return (
     <div className="w-full shrink-0 px-scrollbar pb-3">
-      <div data-slot="composer" className={cx("relative z-20 mx-auto box-content flex max-w-reading flex-col px-4", className)} {...props} />
+      <div data-slot="composer" className={cx(COLUMN, "relative z-20 flex flex-col", className)} {...props} />
     </div>
   );
 }

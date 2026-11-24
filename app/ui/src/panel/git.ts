@@ -301,11 +301,13 @@ export function useGit(): { source: SourceState | null; error: string | null; ve
 // again [D1310].
 const files = new Map<string, FileRead>();
 
+/** Whose files the viewer reads: a folder chat's from the chat, `<repo>/<path>`, whichever repo its watch follows [D776]. */
+export const readFrom = (watched: Target | null): Target | null => (watched && "session" in watched ? { session: watched.session.split("@")[0]! } : watched);
+
 /** A checkout file as the viewer shows it, read again on each watch read that changed something [D1002]. */
 export function useFileRead(path: string): FileRead {
   const { target: watched, version, error } = useSyncExternalStore(subscribe, () => git);
-  // A folder chat's files are read from the chat, `<repo>/<path>`, whichever repo its watch follows [D776].
-  const target = watched && "session" in watched ? { session: watched.session.split("@")[0]! } : watched;
+  const target = readFrom(watched);
   const key = target && `${JSON.stringify(target)}\0${path}`;
   const [read, setRead] = useState<FileRead>(() => (key && files.get(key)) || { state: "loading" });
   // Another file in the same view: its own last read, not the one before's [D1310].

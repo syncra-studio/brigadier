@@ -18,6 +18,7 @@ use std::thread;
 mod judge;
 mod peer;
 mod to;
+pub mod wake;
 pub use peer::{add_peer, pending, send_back};
 pub use to::held as give_held;
 
@@ -101,14 +102,13 @@ pub fn hold(dir: &Path) -> io::Result<(fs::File, bool)> {
 
 /// The same, for a caller that holds the lock.
 fn locked<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Result<T> {
-    let was = read(dir)?;
-    let mut q = read(dir)?;
+    let (was, mut q) = (read(dir)?, read(dir)?);
     let out = f(&mut q)?;
     if q.items.is_empty() && !q.stopping {
         q.paused = false;
     }
     if q != was {
-        core::write_atomic(&dir.join("queue.json"), &serde_json::to_vec(&q)?)?;
+        wake::write(dir, &q)?;
     }
     Ok(out)
 }

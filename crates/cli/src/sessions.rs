@@ -4,22 +4,33 @@
 //! of its sessions [D172, D179].
 //! A job a turn left running is stopped here too, alone [D105].
 
-use crate::{arg, control, flag, has, index, owner, workers};
-use brigadier_core::{self as core, fold, fold::Fold, projects, session};
+use crate::{arg, flag, has, index, owner, workers};
+use brigadier_core::{self as core, fold, projects, session};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 mod audit;
+mod jobs;
 mod servers;
+pub(crate) use jobs::end as end_jobs;
+use jobs::family;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
-    let spec = core::load(data, id)?;
+    let spec = match core::load(data, id) {
+        // One already deleted, with its Brigade or by another delete, has nothing to check or remove.
+        Err(e) if e.kind() == io::ErrorKind::NotFound && args[0] == "delete" => {
+            return Ok(match has(args, "--check") {
+                true => json!({"ok": true}),
+                false => session::gone(&core::session_dir(data, id)),
+            });
+        }
+        spec => spec?,
+    };
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
@@ -113,7 +124,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, true)?;
             let num = |i| arg(args, i)?.parse().map_err(io::Error::other);
             let (pid, start_us) = (num(3)? as i32, num(4)?);
-            return stop_job(data, &spec, &f.fold, pid, start_us);
+            return jobs::stop(data, &spec, &f.fold, pid, start_us);
         }
         // Off for a folder chat that claimed a repo: its confirm doesn't name the repos' branches
         // yet [D3102]. A start that never took still goes.
@@ -148,41 +159,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     crate::tabs::terminal::sweep(data);
     Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
-}
-
-/// Stops one process tree proven the session's; its agent hears first, through its CLI's own channel
-/// or its adapter's note: else it reads an unexplained kill and may wake to start it again [D117].
-/// One out of its agent's tree it doesn't follow.
-fn stop_job(data: &Path, spec: &core::Spec, f: &Fold, pid: i32, start: u64) -> io::Result<Value> {
-    // One already gone is stopped.
-    if procs::same(pid, start).is_none() {
-        return Ok(json!({"ok": true}));
-    }
-    let left = fold::live(f, fold::Owner::Alive, &spec.dir, &procs::all()).left;
-    let job = (left.into_iter()).find(|j| j.under && (j.pid, j.start_us) == (pid, start));
-    let tell = || {
-        let Some(job) = job else { return };
-        let msg = json!({"kind": "stop_task", "task": job.task, "command": job.label});
-        let req = json!({"cid": control::new_cid(), "control": msg});
-        let sent = control::deliver(data, &spec.id, req, false, |_| Ok(msg.clone()));
-        let until = Instant::now() + Duration::from_secs(2);
-        while job.task.is_some()
-            && sent.as_ref().is_ok_and(|s| s["ok"] == true)
-            && procs::same(pid, start).is_some()
-            && Instant::now() < until
-        {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    };
-    let why = match core::background::end(&spec.dir, f, Some(&[(pid, start)]), tell) {
-        Some(alive) if alive.is_empty() => {
-            fold::note_stop(&spec.dir, pid, start);
-            return Ok(json!({"ok": true}));
-        }
-        Some(alive) => format!("process {} is still running.", alive[0].pid),
-        None => "it's running, but isn't known to be this session's.".into(),
-    };
-    Err(io::Error::other(why))
 }
 
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
@@ -250,40 +226,6 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<V
     Ok(running)
 }
 
-/// The workers under a session, theirs too; a Brigade's sessions aren't among them [D189].
-fn family(data: &Path, id: &str) -> Vec<workers::Record> {
-    (workers::records(data, id).into_iter())
-        .filter(|r| !r.session)
-        .flat_map(|r| {
-            let below = family(data, &r.wid);
-            std::iter::once(r).chain(below)
-        })
-        .collect()
-}
-
-/// Ends what a worker whose turns are over left running, a mockup's server too.
-pub(crate) fn end_jobs(data: &Path, id: &str) -> io::Result<()> {
-    let dir = core::session_dir(data, id);
-    if !dir.join("session.json").exists() {
-        return Ok(());
-    }
-    let f = core::fold(&dir, true)?.fold;
-    let paused = workers::link(data, id).is_some_and(|l| l.paused);
-    if paused || !f.turns.is_empty() && owner::state(data, id) != fold::Owner::Dead {
-        return Ok(());
-    }
-    let left = fold::live(&f, owner::state(data, id), &dir, &procs::all()).left;
-    let left: Vec<_> = left.iter().map(|j| (j.pid, j.start_us)).collect();
-    match core::background::end(&dir, &f, Some(&left), || ()) {
-        Some(alive) if alive.is_empty() => Ok(()),
-        Some(alive) => Err(io::Error::other(format!(
-            "process {} didn't stop",
-            alive[0].pid
-        ))),
-        None => Err(io::Error::other("one isn't known to be its own any more")),
-    }
-}
-
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
     // Its terminals first: none writes into its folder while it is checkpointed or removed.
     crate::tabs::terminal::stop_all(data, id);
@@ -293,8 +235,19 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
     owner::release(data, id)
 }
 
-/// One session's delete: its host stops, then core deletes it, recording its intent first.
+/// One session's delete: its host stops, then core deletes it, recording its intent first. One
+/// whose folder went meanwhile, by its Brigade's delete or its own, is done [D35].
 pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+    let dir = core::session_dir(data, id);
+    match delete_one(data, id, drop, by) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound && !dir.join("session.json").exists() => {
+            Ok(session::gone(&dir))
+        }
+        done => done,
+    }
+}
+
+fn delete_one(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
     crate::rewind::settled(data, &spec)?;
@@ -356,12 +309,12 @@ fn size(path: &Path) -> u64 {
     total
 }
 
-/// `projects remove <id> [--check | --drop <session id,…>]` (PROPOSED flags and replies) [D172,
-/// D179, D181]. `--check` is the old dialog's preview: the sessions (and which are busy), their
-/// worktrees and size, merged branches, and each branch with work that never landed. Without it,
-/// each session goes through 1v's delete, its branch too only when `--drop` names it; the record
-/// goes once none is left. Anything left keeps the record (PROPOSED): a recorded delete retries
-/// at the next start, and Remove can run again.
+/// `projects remove <id> [--check]` (PROPOSED flag and replies) [D172, D179, D181]. `--check` is
+/// the old dialog's preview: the sessions (and which are busy), their worktrees and size, merged
+/// branches, and each branch with work that never landed. Without it, each session goes through
+/// 1v's delete, which keeps a branch with such work; the record goes once none is left. Anything
+/// left keeps the record (PROPOSED): a recorded delete retries at the next start, and Remove can
+/// run again.
 pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 2)?;
     let project = projects::get(data, id)?;
@@ -446,10 +399,34 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
             if working == 1 { "it" } else { "them" },
         )));
     }
-    let drops: Vec<&str> = flag(args, "--drop").unwrap_or("").split(',').collect();
+    // Each delete stops a host and commits and takes away a worktree, a few hundred ms: run side by
+    // side, 16 at a time, as --check's reads [D463]. Sessions that share a folder or claim one hand
+    // it on between them [D1080], so those go one by one once the rest are done.
+    let alone = |s: &String| {
+        core::load(data, s).is_ok_and(|spec| {
+            Path::new(&spec.cwd) == core::worktrees::path(data, s)
+                && core::share::others(data, &spec).is_empty()
+                && core::folder::claims(&spec.dir).is_empty()
+        })
+    };
+    let (apart, after): (Vec<&String>, Vec<&String>) = ids.iter().partition(|s| alone(s));
+    let one = |s: &String| delete(data, s, false, "remove");
+    let mut done = vec![];
+    std::thread::scope(|t| {
+        for chunk in apart.chunks(16) {
+            let each: Vec<_> = (chunk.iter())
+                .map(|&s| (s, t.spawn(move || one(s))))
+                .collect();
+            done.extend(
+                each.into_iter()
+                    .map(|(s, h)| (s, h.join().expect("remove thread"))),
+            );
+        }
+    });
+    done.extend(after.into_iter().map(|s| (s, one(s))));
     let (mut kept, mut left) = (vec![], vec![]);
-    for s in &ids {
-        match delete(data, s, drops.contains(&s.as_str()), "remove") {
+    for (s, reply) in done {
+        match reply {
             Ok(reply) => {
                 kept.extend(
                     reply["kept_branches"]

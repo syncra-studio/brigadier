@@ -23,9 +23,6 @@ import { type Project, type SessionRow, useStatusWords } from "./words";
 type Choose = (choice: () => void) => void;
 type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => void };
 
-/** The mark a row draws: needs-you and unread aren't drawn on the session you're looking at. */
-const markOf = (row: SessionRow, active: string | null) => (row.id === active && (row.mark === "needs" || row.mark === "unread") ? null : row.mark);
-
 /** A list's section: its heading stays, only its rows scroll, so what's above and below it stays in view [D280]. */
 function Section({ heading, actions, children }: { heading: ReactNode; actions?: ReactNode; children: ReactNode }) {
   const title = (
@@ -48,7 +45,7 @@ function Section({ heading, actions, children }: { heading: ReactNode; actions?:
   );
 }
 
-/** A strip icon and its list, with a blue dot while anything in it has a mark. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
+/** A strip icon and its list, with a blue dot while anything in it needs you, failed or has a new reply. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
 function Flyout({ label, icon, lit = false, pressed, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
@@ -115,7 +112,7 @@ export const attentionOf = (rows: SessionRow[], active: string | null) => rows.s
  *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]. */
 export function ProjectSquare({ project, current, attention, chats, ...rows }: Rows & { project: Project; current: boolean; attention: boolean; chats: SessionRow[] }) {
   return (
-    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} size="size-6 text-2xs" />} lit={attention} pressed={current}>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} pressed={current}>
       {(pick) => (
         <div className="flex min-h-0 flex-col gap-3">
           <NavList>
@@ -150,7 +147,7 @@ export function ProjectSquare({ project, current, attention, chats, ...rows }: R
 export function SessionSquare({ row, project, active, attention, onOpen }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean; onOpen: (id: string) => void }) {
   return (
     <TooltipIconButton look="rail" side="right" tooltip={row.title || "New session"} pressed={active} dot={attention ? "bg-link" : undefined} onClick={() => onOpen(row.id)}>
-      <ProjectBadge id={project?.id} name={project?.name ?? null} size="size-4.5 text-badge" />
+      <ProjectBadge id={project?.id} name={project?.name ?? null} icon={project?.icon} size="size-4.5 text-badge" />
     </TooltipIconButton>
   );
 }
@@ -158,7 +155,7 @@ export function SessionSquare({ row, project, active, attention, onOpen }: { row
 /** The chats: this branch has no chats, so those are the sessions in no project, as View's filter counts them. */
 export function ChatsFlyout({ chats, ...rows }: Rows & { chats: SessionRow[] }) {
   return (
-    <Flyout label="Chats" icon={<Chats />} lit={chats.some((row) => markOf(row, rows.active))}>
+    <Flyout label="Chats" icon={<Chats />} lit={attentionOf(chats, rows.active)}>
       {(pick) => (
         <Section heading="Chats">
           {chats.map((row) => (

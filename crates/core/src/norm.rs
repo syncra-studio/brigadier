@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 34;
+pub const VERSION: u32 = 38;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -237,9 +237,9 @@ impl Norm {
                 Event::Background(task, label) => {
                     json!({"kind": "background", "task": task, "label": label})
                 }
-                Event::Awaiting(ids) => {
+                Event::Awaiting(all, ids) => {
                     self.awaiting = ids;
-                    continue;
+                    json!({"kind": "pending", "ids": all})
                 }
                 // A subagent's run that ended while it waits on its own work: it runs again [D67].
                 Event::ToolEnd(d)

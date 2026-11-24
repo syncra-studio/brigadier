@@ -87,7 +87,7 @@ function KeepAwakeMenu() {
               <span id={`${lidId}-label`} className="text-sm">
                 With the lid closed too
               </span>
-              <span id={`${lidId}-hint`} className="text-xs text-muted-foreground">
+              <span id={`${lidId}-hint`} className="min-h-8 text-xs text-muted-foreground">
                 {lidHint(settings, lid)}
               </span>
             </span>

@@ -253,3 +253,13 @@ pub(super) fn before_2(version: &str) -> bool {
     let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
     matches!(number.split('.').next(), Some("0" | "1"))
 }
+
+/// The servers the session's proxy couldn't connect OpenCode to, to connect again ahead of the
+/// message: it never dials a failed one again itself.
+pub fn redial(spec: &Spec) -> String {
+    let names = crate::library::unreached(spec);
+    match names.is_empty() {
+        true => String::new(),
+        false => format!("{}\n", json!({"redial": names})),
+    }
+}

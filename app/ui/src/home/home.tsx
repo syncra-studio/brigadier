@@ -249,6 +249,8 @@ export function StartingBubble({ id }: { id: string }) {
       keep={entry.cid}
       text={entry.text}
       time={entry.sent}
+      // Its time and actions in view while only the starting line is under it, as over Thinking (thread.tsx).
+      older={Boolean(entry.worktree || (session?.id === id && session.setup))}
       // Rust moves its files into the session as the start begins, before the worktree is made.
       // shortcut: a start held back by a tab move, or refused before the move, shows broken thumbnails until Rust's row; upgrade when the start reply says the files moved.
       owner={id}
@@ -294,8 +296,9 @@ export function StartingLine({ id }: { id: string }) {
   if (session?.id === id && session.turns.some((turn) => turn.id === entry.cid)) return null;
   const setup = session?.id === id ? session.setup : null;
   if (setup ? setup.state !== "done" : entry.worktree) return null;
+  // Straight under the message, where Thinking takes its place: 12 under its actions, as in the thread.
   return (
-    <div className="pt-4">
+    <div className={setup ? "pt-4" : "pt-3"}>
       <WorkingLine state="live">Starting the conversation</WorkingLine>
     </div>
   );

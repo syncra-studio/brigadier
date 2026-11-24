@@ -96,9 +96,7 @@ export function VariantColumn({
     );
   } else {
     content = (
-      <div className="size-full overflow-auto">
-        <img src={variant.shot ?? ""} alt={`${label}, its screenshot`} draggable={false} className={cx("select-none", zoom === "fit" ? "size-full object-contain object-top" : "mockup-zoom max-w-none")} data-zoom={zoom === "fit" ? undefined : zoom / 100} />
-      </div>
+      <img src={variant.shot ?? ""} alt={`${label}, its screenshot`} draggable={false} className="size-full object-contain object-top select-none" />
     );
   }
   const pins = drawn(variant) && <PinLayer variant={letter} notes={notes} pointing={pointing} hovered={hovered} onNotes={onNotes} />;
@@ -119,7 +117,7 @@ export function VariantColumn({
           </Button>
         )}
       </div>
-      <div className={cx("relative min-h-0 flex-1 overflow-hidden rounded-control border border-border bg-background", picked && "outline-2 outline-primary", dim && "opacity-40")}>
+      <div data-slot="mockup-frame" className={cx("relative min-h-0 flex-1 overflow-hidden rounded-control border border-border bg-background", picked && "outline-2 outline-primary", dim && "opacity-40")}>
         {content}
         {pins && (live ? <OverPage>{pins}</OverPage> : pins)}
       </div>
@@ -133,7 +131,7 @@ export function VariantColumn({
  */
 function OverPage({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [rect, setRect] = useState<{ frame: DOMRect; stage: DOMRect } | null>(null);
   useEffect(() => {
     const element = box.current;
     if (!element) return;
@@ -142,7 +140,8 @@ function OverPage({ children }: { children: ReactNode }) {
       () => [element],
       () => {
         const r = element.getBoundingClientRect();
-        const next = !element.closest("[inert]") && element.checkVisibility({ visibilityProperty: true }) && r.width > 0 && r.height > 0 ? r : null;
+        const stage = element.closest("[data-slot=mockup-stage]")?.getBoundingClientRect() ?? r;
+        const next = !element.closest("[inert]") && element.checkVisibility({ visibilityProperty: true }) && r.width > 0 && r.height > 0 ? { frame: r, stage } : null;
         const key = JSON.stringify(next);
         if (key !== placed) {
           placed = key;
@@ -157,8 +156,17 @@ function OverPage({ children }: { children: ReactNode }) {
       <div ref={box} className="pointer-events-none absolute inset-0" />
       {rect &&
         createPortal(
-          <div data-slot="mockup-over-page" className="mockup-over pointer-events-none fixed overflow-hidden rounded-control" data-left={rect.left} data-top={rect.top} data-width={rect.width} data-height={rect.height}>
-            {children}
+          <div className="mockup-over pointer-events-none fixed overflow-hidden" data-left={rect.stage.left} data-top={rect.stage.top} data-width={rect.stage.width} data-height={rect.stage.height}>
+            <div
+              data-slot="mockup-over-page"
+              className="mockup-over absolute overflow-hidden rounded-control"
+              data-left={rect.frame.left - rect.stage.left}
+              data-top={rect.frame.top - rect.stage.top}
+              data-width={rect.frame.width}
+              data-height={rect.frame.height}
+            >
+              {children}
+            </div>
           </div>,
           document.body,
         )}

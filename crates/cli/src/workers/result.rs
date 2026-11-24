@@ -15,7 +15,7 @@ use super::{Link, Record, closing, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core};
-use brigadier_frames::procs;
+use brigadier_frames::{log, procs};
 pub(super) use report::write;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,10 +27,15 @@ use std::sync::Mutex;
 use std::thread;
 use take::said;
 pub use take::{going, hop, reported, take, take_ask, told, unrun, went_with, with_next};
-pub use told::{shell as told_shell, take as told_take, take_shell};
+pub use told::{notice as told_notice, shell as told_shell, take as told_take, take_shell};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
+
+/// How long a turn that ended with background work still running waits for that work to wake it
+/// before it reports as it ended. shortcut: work left running for good (a dev server) holds the
+/// result this long, and a wake later than this comes too late; upgrade if either shows.
+const WAKE_MS: u64 = 10 * 60_000;
 
 /// The states a parent takes a result in: between turns, as the queue's.
 const TAKES: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
@@ -118,18 +123,22 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
             return;
         }
     }
-    let _ = write_ended(data, wid, row["state"] == "interrupted");
+    // One waiting on its background work is looked at again each pass, so its wait can run out.
+    if write_ended(data, wid, row["state"] == "interrupted").unwrap_or(false) {
+        SEEN.lock().unwrap().as_mut().map(|s| s.remove(wid));
+    }
 }
 
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
-/// died, so a turn it left open ended too, failed.
-pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
+/// died, so a turn it left open ended too, failed. Says whether one waits on its background work.
+pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool> {
     let Some(mut l) =
         link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
     else {
-        return Ok(());
+        return Ok(false);
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
+    let mut waits = false;
     let reports = reported(&l, &f);
     // A turn the user started in it reports too, quietly, on the same rules [D303].
     let direct = told::turns(&f).into_iter().filter(|t| !reports.contains(t));
@@ -142,7 +151,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         if !ended || path_of(data, &l.parent, wid, turn).exists() {
             continue;
         }
-        let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
+        let own = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
+        let last = end_of(&f, turn);
         // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
         // conversation, whose own end reports instead [D88, D108], unless it ended done first.
         // So does one the network cut, which Brigadier resumes by itself [D339].
@@ -152,23 +162,28 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         {
             continue;
         }
-        // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
-        // it reads as finished. Upgrade when the fold keeps each turn's end.
-        let how = match last.map_or(if open { "cut" } else { "done" }, |l| {
-            l["outcome"].as_str().unwrap_or("done")
-        }) {
+        // Its host died in it, or in the wake that carried it on: that was cut, and so was it.
+        let ended_as = match cut && (open || woken(&f, turn)) {
+            true => "cut",
+            false => f.ends.get(turn).map_or("done", |e| e.1.as_str()),
+        };
+        let how = match ended_as {
             "done" => "finished",
             "stopped" => "stopped",
             "limited" => "limit",
             _ if last.is_some_and(|l| l["why"] == "context") => "context",
             _ => "failed",
         };
+        if !cut && holds(&f, turn) {
+            waits = true;
+            continue;
+        }
         // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
         // ended by itself before the Pause took reports as ever; one a later wake hid, as stopped.
         // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
         // A reviewer and a fix turn end at their limit [D3026].
         let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
-        if (l.paused && (how == "stopped" || last.is_none())) || moves {
+        if (l.paused && (how == "stopped" || own.is_none())) || moves {
             continue;
         }
         if *direct {
@@ -180,7 +195,37 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
         };
         write(data, &l, wid, turn, how, None)?;
     }
-    Ok(())
+    Ok(waits)
+}
+
+/// The end that says how `turn` went: its own, else that of the wake its CLI carried it on in.
+fn end_of<'a>(f: &'a fold::Fold, turn: &str) -> Option<&'a Value> {
+    let l = f.last.as_ref();
+    l.filter(|l| l["id"] == turn || (l["origin"] == "agent" && l["of"] == turn))
+}
+
+/// Whether its CLI carries `turn` on now, in a wake of its own.
+fn woken(f: &fold::Fold, turn: &str) -> bool {
+    f.turns
+        .first()
+        .is_some_and(|t| t.origin == "agent" && t.of == turn)
+}
+
+/// Whether `turn`, ended, waits on its live CLI's background work: it goes on in the wake that
+/// work started, whose end reports it, or, ended done, in the one its work still running will
+/// start, for up to WAKE_MS after it or its last wake ended, so work that never wakes it can't
+/// hold it [D118].
+pub(super) fn holds(f: &fold::Fold, turn: &str) -> bool {
+    if f.child.as_ref().is_none_or(|c| c.exited) {
+        return false;
+    }
+    let (since, how) = f
+        .ends
+        .get(turn)
+        .map_or((0, "done"), |e| (e.0, e.1.as_str()));
+    let done = how == "done";
+    let soon = log::now_ms().saturating_sub(since) < WAKE_MS;
+    woken(f, turn) || (done && soon && (f.pending.wakes() || !f.agents.is_empty()))
 }
 
 /// A start that failed before its worker could run: its result says why.

@@ -5,7 +5,7 @@
 use crate::agent::refuse;
 use crate::{owner, workers};
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::procs;
+use brigadier_frames::{lock_held, procs};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -25,6 +25,8 @@ const YES_3: &str = "Yes, 3 variants";
 const YES_1: &str = "Yes, just 1";
 const SKIP: &str = "Skip, build it";
 const REUSE: &str = "Reuse the other build";
+/// The lead's card asking for a round's pick: `mockup-pick-<worker>-<round>`.
+const PICK: &str = "mockup-pick-";
 
 /// An offer waiting on the user: its session, the change, the mockup it may reuse (session,
 /// worker), and the call that waits for the pick.
@@ -48,6 +50,13 @@ pub(crate) fn state(data: &Path, wid: &str) -> Option<Value> {
     workers::read_json(&file(data, wid))
 }
 
+/// The newest round has every variant asked for: it's drawn, the user's move.
+pub(crate) fn all_in(m: &Value) -> bool {
+    let count = m["count"].as_u64().unwrap_or(3).min(3) as usize;
+    let last = m["rounds"].as_array().and_then(|r| r.last());
+    last.is_some_and(|r| r["variants"].as_array().map_or(0, Vec::len) == count)
+}
+
 /// A mockup worker's first `mockup.json`: its title, how many variants, round 1 with none yet.
 pub(crate) fn begin(dir: &Path, title: &str, count: u64) -> io::Result<()> {
     let m = json!({"title": title, "count": count, "rounds": [{"variants": [], "sent": []}],
@@ -63,7 +72,7 @@ fn brief(what: &str, count: usize) -> String {
         _ => format!("{count} named variants ({})", LETTERS[..count].join(", ")),
     };
     format!(
-        "{what}\n\n[mockup] You draw the user's mockup of this change before it is built: {n}. Build each as a fixture page from this repo's own components with fake data, served by the project's dev server (start it if it isn't running), one page per variant; plain HTML pages only when the project has no dev server. Keep the fixture code apart from the app's real screens, and change no real screen yet. As each variant's page works, report it, with its screenshot (a PNG) if you can take one: `brigadier mockup --round 1 --variant A --name \"<a name of two words or so>\" --why \"<one line: what it tries>\" --url <its page> --shot <png>`. The user sees them live side by side in the Mockup tab. Their notes come as messages, each naming the round to report next; Use tells you which variant to wire in."
+        "{what}\n\n[mockup] You draw the user's mockup of this change before it is built: {n}. Build each as a fixture page from this repo's own components with fake data, served by the project's dev server (start it if it isn't running), one page per variant; plain HTML pages only when the project has no dev server. Keep the fixture code apart from the app's real screens, and change no real screen yet. As each variant's page works, report it, with its screenshot (a PNG) if you can take one: `brigadier mockup --round 1 --variant A --name \"<a name of two words or so>\" --why \"<one line: what it tries>\" --url <its page> --shot <png>`. The user sees them live side by side in the Mockup tab. Before each step, tell the user in a few words what it is, so the tab doesn't sit silent: `brigadier mockup --doing \"Starting the dev server\"`, `--doing \"Drawing B\"`, `--doing \"Fixing your notes on A\"`. Their notes come as messages, each naming the round to report next; Use tells you which variant to wire in."
     )
 }
 
@@ -78,6 +87,27 @@ pub(super) fn run(
     if state(data, me).is_some() {
         return report(data, me, value).unwrap_or_else(|e| refuse(&e.to_string()));
     }
+    // The user named their pick in the lead's chat: it goes as the tab's Use, so the tab follows.
+    if let Some(letter) = value("--use") {
+        let Some(wid) = newest(data, me) else {
+            return refuse("You have no mockup to pick from.");
+        };
+        let notes = json!({"all": value("--note").unwrap_or_default()});
+        let r = tab::pick(data, &wid, letter.trim(), &notes)
+            .unwrap_or_else(|e| json!({"ok": false, "message": e.to_string()}));
+        let said = r["message"].as_str().unwrap_or("");
+        if r["ok"] != true {
+            return refuse(said);
+        }
+        let text = if said.is_empty() {
+            format!(
+                "{letter} went to mockup worker {wid} to build; the Mockup tab shows it, and its result comes to you once it's built."
+            )
+        } else {
+            said.to_string()
+        };
+        return json!({"ok": true, "text": text});
+    }
     let reports = [
         "--round",
         "--variant",
@@ -86,6 +116,7 @@ pub(super) fn run(
         "--url",
         "--shot",
         "--real",
+        "--doing",
     ];
     if reports.iter().any(|k| value(k).is_some()) {
         return refuse("Only a mockup worker reports variants.");
@@ -169,6 +200,9 @@ fn offer(
 /// The user's pick on offer `request` of session `id`: Yes starts the mockup worker, Skip says
 /// build it, Reuse opens the other session's mockup. The call that asked hears it, else a message.
 pub(crate) fn answered(data: &Path, id: &str, request: &str, choice: &str) -> io::Result<Value> {
+    if let Some(on) = request.strip_prefix(PICK) {
+        return tab::from_card(data, id, on, choice);
+    }
     let mut cards = CARDS.lock().unwrap();
     let Some(card) = cards.get(request).filter(|c| c.session == id) else {
         drop(cards);
@@ -263,6 +297,15 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
     let no = |m: String| Ok(refuse(&m));
     let _one = WRITING.lock().unwrap();
     let mut m = state(data, me).unwrap_or_default();
+    let rounds = m["rounds"].as_array().map_or(0, Vec::len);
+    // What it does now, shown while it works: alone, or with the report it goes with.
+    if let Some(line) = value("--doing").filter(|d| !d.trim().is_empty()) {
+        m["doing"] = json!({"text": line.trim(), "round": rounds});
+        if value("--variant").is_none() && value("--real").is_none() {
+            workers::write_json(&file(data, me), &m)?;
+            return Ok(json!({"ok": true, "text": "The user sees it in the Mockup tab."}));
+        }
+    }
     if let Some(url) = value("--real") {
         if !web(&url) {
             return no(format!(
@@ -270,12 +313,12 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
             ));
         }
         m["real"] = url.into();
+        news(data, me, &mut m);
         workers::write_json(&file(data, me), &m)?;
         return Ok(
             json!({"ok": true, "text": "The real screen shows beside the mockup in the user's Mockup tab."}),
         );
     }
-    let rounds = m["rounds"].as_array().map_or(0, Vec::len);
     if value("--round") != Some(rounds.to_string()) {
         return no(format!(
             "Report with --round {rounds}, the round you draw now; an older round stays as it was."
@@ -309,9 +352,115 @@ fn report(data: &Path, me: &str, value: &dyn Fn(&str) -> Option<String>) -> io::
     all.retain(|x| x["letter"] != letter.as_str());
     all.push(v);
     all.sort_by_key(|x| x["letter"].as_str().unwrap_or("").to_string());
+    let full = all.len() == letters.len();
     *list = all.into();
+    if full {
+        news(data, me, &mut m);
+        ready(data, me, &mut m, rounds, false);
+    }
     workers::write_json(&file(data, me), &m)?;
     Ok(json!({"ok": true, "text": format!("Variant {letter} shows in the user's Mockup tab.")}))
+}
+
+/// The mockup has news for the user, a round drawn or its pick built: the Mockup tab's dot and
+/// the lead's row's, each till the user sees it [D560].
+fn news(data: &Path, me: &str, m: &mut Value) {
+    let now = brigadier_frames::log::now_ms();
+    m["news"] = now.into();
+    if let Some(l) = workers::link(data, me) {
+        let dir = core::session_dir(data, &l.parent);
+        let _ = core::write_atomic(&dir.join("news"), now.to_string().as_bytes());
+    }
+}
+
+/// Round `round` has every variant in: a card in the lead's chat asks the user to pick one, as the
+/// tab's Use does, and the lead hears it quietly with its next input; once a round [D560]. The card
+/// is marked on the round once its row is in, so a report while the lead's host is down retries it.
+fn ready(data: &Path, me: &str, m: &mut Value, round: usize, again: bool) {
+    let Some(l) = workers::link(data, me) else {
+        return;
+    };
+    let count = m["count"].as_u64().unwrap_or(3);
+    let n = match count {
+        1 => "its variant".to_string(),
+        _ => format!("all {count} variants"),
+    };
+    let text = format!(
+        "Your mockup worker {} ({me}) drew {n} of round {round}: the user picks one with Use, on the card in your chat or in the Mockup tab, or sends notes for another round. Nothing for you to do; the pick goes to that worker, and its result comes to you once it's built.",
+        l.title
+    );
+    let new = workers::told_notice(data, &l.parent, me, &format!("mockup-ready-{round}"), &text);
+    let asked = &mut m["rounds"][round - 1]["asked"];
+    // A round from before `asked` was kept had its card go with its notice.
+    if *asked == true || (asked.is_null() && matches!(new, Ok(false))) {
+        *asked = true.into();
+        return;
+    }
+    *asked = false.into();
+    let variants = m["rounds"][round - 1]["variants"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let options: Vec<Value> = (variants.iter())
+        .map(|v| {
+            let (letter, name) = (v["letter"].as_str().unwrap_or(""), v["name"].as_str().unwrap_or(""));
+            json!({"label": format!("Use {letter}"), "description": format!("{letter} · {name}: built for real, the others' code deleted")})
+        })
+        .collect();
+    let ask = if count == 1 {
+        "Build it for real"
+    } else {
+        "Pick one to build for real"
+    };
+    let what = format!(
+        "{ask}, or open the Mockup tab to pin notes on it and send them for round {}.",
+        round + 1
+    );
+    let item = json!({"text": what, "options": options, "multiSelect": false});
+    let request = json!({"id": format!("{PICK}{me}-{round}"), "title": format!("{} · round {round} is ready", m["title"].as_str().unwrap_or("Mockup")), "items": [item], "held": true});
+    let note =
+        json!({"event": "mockup", "phase": "asked", "id": request["id"], "request": request});
+    // The host answers a note it couldn't log with ok false, not an error.
+    let post = || {
+        owner::call(data, &l.parent, json!({"op": "note", "data": note}))
+            .is_ok_and(|r| r["ok"] == true)
+    };
+    let gone = |s: &core::Spec| {
+        core::session::retired(&s.dir).is_some() || core::projects::removing(data, s)
+    };
+    let done = match core::load(data, &l.parent) {
+        // The lead won't come back: no more tries; the tab and the row still offer Use.
+        Err(e) => e.kind() == io::ErrorKind::NotFound,
+        Ok(s) if gone(&s) => true,
+        // A repeat try never starts the lead's host, so a host that won't come up isn't respawned.
+        Ok(s) if again => lock_held(&s.dir.join("owner.lock")) && post(),
+        Ok(s) => owner::ensure(data, &s).is_ok() && post(),
+    };
+    if done {
+        m["rounds"][round - 1]["asked"] = true.into();
+    }
+}
+
+/// The daemon's pass: a round all in whose pick card didn't reach the lead, its host down then,
+/// tries it again once that host is up.
+pub(crate) fn retry(data: &Path, wid: &str) {
+    let due = |m: &Value| {
+        let n = m["rounds"].as_array().map_or(0, Vec::len);
+        (n > 0 && m["rounds"][n - 1]["asked"] == false && m["picked"].is_null()).then_some(n)
+    };
+    if state(data, wid).as_ref().and_then(due).is_none() {
+        return;
+    }
+    let _one = WRITING.lock().unwrap();
+    let Some(mut m) = state(data, wid) else {
+        return;
+    };
+    if let Some(round) = due(&m).filter(|_| all_in(&m)) {
+        ready(data, wid, &mut m, round, true);
+        if m["rounds"][round - 1]["asked"] == true {
+            let _ = workers::write_json(&file(data, wid), &m);
+        }
+    }
 }
 
 fn web(url: &str) -> bool {

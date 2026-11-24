@@ -135,9 +135,9 @@ function PrListTab({ owner, tab }: { owner: string; tab: Tab }) {
 }
 
 /** A checkout file, read by Rust [D1002]. */
-function FileTab({ tab, active }: { tab: Tab; active: boolean }) {
+function FileTab({ owner, tab, active }: { owner: string; tab: Tab; active: boolean }) {
   const path = tab.target ?? "";
-  return <FileViewer path={path} read={useFileRead(path)} line={tab.line ?? null} reveal={revealOf(tab.id)} active={active} />;
+  return <FileViewer owner={owner} path={path} read={useFileRead(path)} line={tab.line ?? null} reveal={revealOf(tab.id)} active={active} />;
 }
 
 /**
@@ -173,7 +173,7 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
               ) : owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (
                 <EmptyState variant="centered" icon={TAB_KINDS[tab.kind].icon} title={TAB_KINDS[tab.kind].name} detail="Pick a project to read its repository" className="m-auto" />
               ) : tab.kind === "file" ? (
-                <FileTab key={tab.target} tab={tab} active={tab.id === active} />
+                <FileTab key={tab.target} owner={owner} tab={tab} active={tab.id === active} />
               ) : tab.kind === "pr" ? (
                 <LivePrTab key={tab.target} owner={owner} target={tab.target ?? ""} />
               ) : tab.kind === "review" ? (

@@ -24,9 +24,9 @@ import { PrNavRow } from "./nav-row";
 import { openPrPage, pastedRef, pinned, type PrRow, recents } from "./route";
 
 /*
- * The Pull Requests page's sidebar, for Code Review [D159 D160 D194]: its title and display options, Back to app [D296],
- * "Search or paste a PR link", then Pinned, the sections GitHub's searches fill (Recently merged off by default) and Recents. Each section folds;
- * an empty one says "No pull requests".
+ * The Pull Requests page's sidebar [D159 D160 D194]: its title and display options, "Search or
+ * paste a PR link", then Pinned, the sections GitHub's searches fill (Recently merged off by default) and Recents, Back to
+ * app last [D296]. Each section folds; an empty one says "No pull requests".
  */
 
 const SECTIONS = [
@@ -153,7 +153,6 @@ export function PullRequestsNav({ current }: { current: string }) {
           }
         />
       </div>
-      <BackToApp />
       <div className="ps-2 pe-2.5 pb-2">
         <label className="flex h-nav-search min-w-0 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
           <MagnifyingGlassSearch aria-hidden className="size-icon-md shrink-0 text-quiet-foreground" />
@@ -206,6 +205,7 @@ export function PullRequestsNav({ current }: { current: string }) {
           </>
         )}
       </div>
+      <BackToApp />
     </>
   );
 }

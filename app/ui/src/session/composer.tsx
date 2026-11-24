@@ -28,7 +28,7 @@ import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 import { bangOf, runBang } from "./bang";
-import { queuedOf, type RustQueued, toArgs } from "./queued";
+import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
 import { useTurn } from "./turn";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
@@ -90,11 +90,10 @@ export const useSending = (id: string) => useSyncExternalStore(subscribeSent, ()
 export const useOnItsWay = (id: string) => useSyncExternalStore(subscribeSent, () => sent.get(id)?.some((each) => !each.error) ?? false);
 
 /** The messages on their way, under the thread's last row. */
-export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id: string; source?: Source; run?: Runner }) {
+export function SentBubbles({ id, source = threadSource, run = daemonRun, hover = false }: { id: string; source?: Source; run?: Runner; /** Actions only on hover: the worker panel's, whose rows draw none. */ hover?: boolean }) {
   const list = useSyncExternalStore(subscribeSent, () => sent.get(id));
   const session = useSyncExternalStore(source.subscribe, source.get);
-  const ids = new Set([...(session?.turns.map((turn) => turn.id) ?? []), ...(session?.items.map((item) => ("cid" in item ? item.cid : undefined)) ?? [])]);
-  const done = (each: Sent) => ids.has(each.cid);
+  const done = (each: Sent) => inThread(session).has(each.cid);
   useEffect(() => {
     if (list?.some(done)) setSent(id, (now) => now.filter((each) => !done(each)));
   });
@@ -103,8 +102,8 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
   // Dated as their rows will be (after the thread's last message, or the bubble before), so a row takes its place without a shift.
   let previous: { sentAt?: number } | undefined = session?.items.findLast((item) => item.kind === "message");
   return (
-    // Under the footer's pt-4, the gaps a turn's row has (pt-6), so Rust's row takes a bubble's place without a shift.
-    <div className="flex flex-col gap-6 pt-2">
+    // In the thread's footer (its pt-3 under rows, pt-8 as the first row), Rust's rows' gaps (rows.tsx) and Thinking 12 under, so a row takes a bubble's place without a shift.
+    <div className="flex flex-col gap-6 pt-2 in-data-footer:gap-8 in-data-first:pt-0 in-data-rows:pt-5">
       {shown.map((each) => {
         const dated = datedAfter(previous, each.at);
         previous = { sentAt: each.at };
@@ -113,7 +112,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
             key={each.cid}
             keep={each.cid}
             text={each.text}
-            time={each.at}
+            time={each.at} older={hover || each !== shown.at(-1)}
             dated={dated}
             owner={id}
             parts={each.parts ? (JSON.parse(each.parts) as Draft).parts : undefined}
@@ -127,7 +126,7 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun }: { id
           />
         );
       })}
-      {!shown.at(-1)!.error && <ThinkingLine />}
+      {!shown.at(-1)!.error && <div className="in-data-footer:-mt-5"><ThinkingLine /></div>}
     </div>
   );
 }
@@ -209,12 +208,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     ops.filter((op) => !live.includes(op)).forEach((op) => op.done?.());
     setOps(live);
   });
-  let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows);
+  const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
+  let items: QueuedMessage[] = queuedOf(row?.queue?.items ?? [], rows).filter((each) => !delivered.has(each.id));
   let paused = row?.queue?.paused === true;
   for (const op of live) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
     if (op.kind === "resume") paused = false;
-    if (op.kind === "add" && !items.some((each) => each.id === op.qid)) {
+    if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
       items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local" });
     }
   }

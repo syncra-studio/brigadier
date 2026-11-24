@@ -1,5 +1,6 @@
 import { memo, useContext } from "react";
 
+import { COLUMN } from "../components/composer/composer";
 import { AnswerMarks } from "../components/thread/message";
 import { Body, GroupLine } from "../components/thread/body";
 import { RewindContext } from "../components/thread/rewind";
@@ -22,9 +23,6 @@ import "./markdown.css";
 // The first row 32 under the pane's top, find's bar over it [D205]; then an even 12 between rows [D84], and 32 over
 // the user's message: 64 from the answer's words, its actions between.
 const GAPS: Record<Gap, string> = { first: "pt-8", input: "pt-8", turn: "pt-3", part: "pt-3", step: "pt-1" };
-
-/** The column: 736 of text inside 16 each side, centred (box-content, so the reading width is the text's) [D84]. */
-export const COLUMN = "mx-auto box-content max-w-reading px-4";
 
 export type LineProps = Line & { onToggle: (id: string) => void; dated?: boolean; older?: boolean };
 

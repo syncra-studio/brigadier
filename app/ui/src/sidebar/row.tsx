@@ -55,8 +55,8 @@ export function RowMark({ mark, label }: { mark: Mark; label: string }) {
   }
 }
 
-// Ten playful hues, one per project by its name's hash [D283].
-const TAGS = ["bg-tile-coral", "bg-tile-mint", "bg-tile-sunflower", "bg-tile-violet", "bg-tile-sky", "bg-tile-tangerine", "bg-tile-lime", "bg-tile-pink", "bg-tile-periwinkle", "bg-tile-rose"];
+// Ten playful hues, one per project by its name's hash [D283], or the one picked in its settings.
+export const TAGS = ["bg-tile-coral", "bg-tile-mint", "bg-tile-sunflower", "bg-tile-violet", "bg-tile-sky", "bg-tile-tangerine", "bg-tile-lime", "bg-tile-pink", "bg-tile-periwinkle", "bg-tile-rose"];
 
 // Every badge's one square and corners, initials or logo, so none is wider than another [D62].
 const BADGE = "shrink-0 overflow-hidden rounded-badge";
@@ -66,13 +66,39 @@ const logos = new Map<string, boolean>();
 
 /**
  * A row's badge: its project's logo when its folder has one (main's `/project-icon/`), else its initials in that
- * project's hue, picked from its name. Initials show while the logo is looked for. `size` is its square and its initials' size, larger in the strip [D811].
+ * project's hue, picked from its name; an icon picked in its settings comes first. Initials show while the logo is looked for. `size` is its square and its initials' size, larger in the strip [D811].
  */
-export function ProjectBadge({ id, name, size = "size-icon-md text-badge" }: { id?: string; name: string | null; size?: string }) {
+export function ProjectBadge({ id, name, icon, size = "size-icon-md text-badge" }: { id?: string; name: string | null; icon?: string | null; size?: string }) {
   const [, found] = useState(false);
+  // An image that won't load, its file gone: drawn as with no icon.
+  const [broken, setBroken] = useState<string>();
+  // Picked in its settings (Rust's projects/icon.rs): `tag:<n>`, `emoji:<it>` or `image:<file>`.
+  const [kind, value = ""] = icon && name !== null && icon !== broken ? [icon.slice(0, icon.indexOf(":")), icon.slice(icon.indexOf(":") + 1)] : [];
+  if (kind === "image")
+    return <img aria-hidden alt="" src={`/project-icon/${encodeURIComponent(id ?? "")}/${encodeURIComponent(value)}`} onError={() => setBroken(icon!)} className={cx(BADGE, size, "object-cover")} />;
+  if (kind === "emoji")
+    return (
+      <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center bg-fill")}>
+        {/* Its own size, as `size`'s is the initials': the glyph fills the badge. */}
+        <span className="text-base leading-none">{value}</span>
+      </span>
+    );
+  if (kind === "tag") return <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold text-tile-ink", TAGS[Number(value)])}>{projectInitials(name!)}</span>;
   const logo = id === undefined || name === null ? false : logos.get(id);
   const src = `/project-icon/${encodeURIComponent(id ?? "")}`;
-  if (logo) return <img aria-hidden alt="" src={src} className={cx(BADGE, size, "object-cover")} />;
+  if (logo)
+    return (
+      <img
+        aria-hidden
+        alt=""
+        src={src}
+        onError={() => {
+          logos.set(id!, false);
+          setBroken(src);
+        }}
+        className={cx(BADGE, size, "object-cover")}
+      />
+    );
   return (
     <span aria-hidden className={cx(BADGE, size, "flex items-center justify-center font-bold", name === null ? "bg-fill text-marker-foreground" : cx("text-tile-ink", TAGS[hueOf(name, TAGS.length)]))}>
       {name === null ? <Comment className="size-icon-xs" /> : projectInitials(name)}
@@ -101,7 +127,7 @@ const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip
 
 /**
  * A sidebar row's one trailing mark, and nothing else [D63]: a spinner while it runs, a small dot when it has
- * something new or needs you. `label` names it.
+ * something new or needs you, blue as the old app's [D173]. `label` names it.
  */
 export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
   if (mark === "working")
@@ -113,7 +139,7 @@ export function SidebarMark({ mark, label }: { mark: Mark; label: string }) {
   if (mark === "needs" || mark === "amber" || mark === "unread")
     return (
       <span className={ROW_SLOT}>
-        <span role="img" aria-label={label} className="size-1.5 rounded-capsule bg-primary" />
+        <span role="img" aria-label={label} className="size-1.5 rounded-capsule bg-link" />
       </span>
     );
   return null;
@@ -209,7 +235,7 @@ export function SessionRowItem({
               </span>
             )}
             {/* A chat with no project: the OpenAI SDK Chat icon, as its tab [D218 D214]. */}
-            {badged && (project ? <ProjectBadge id={project.id} name={project.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
+            {badged && (project ? <ProjectBadge id={project.id} name={project.name} icon={project.icon} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             {/* On Archive's square, so the actions take the mark's place [D302]. */}
             <span className={cx("flex shrink-0 empty:hidden", live && cx("me-0.5", HIDE_ON_HOVER), offline && "opacity-disabled")}>
@@ -236,7 +262,7 @@ export function SessionRowItem({
                   <>
                     <div className="border-t border-border" />
                     <div className={cx(CARD_LINE, "text-sm")}>
-                      <ProjectBadge id={project.id} name={project.name} />
+                      <ProjectBadge id={project.id} name={project.name} icon={project.icon} />
                       <span className="min-w-0 wrap-anywhere">{project.name}</span>
                     </div>
                   </>

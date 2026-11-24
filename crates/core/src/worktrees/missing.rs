@@ -68,7 +68,11 @@ pub fn restore_missing(data: &Path, id: &str, busy: &dyn Fn(&Spec) -> bool) -> i
 /// reuses a freed registration's name for the next worktree.
 pub(super) fn registration(owned: &Owned) -> io::Result<bool> {
     if let Some(admin) = owned.admin.as_deref().filter(|a| Path::new(a).exists()) {
-        let gitdir = fs::read_to_string(Path::new(admin).join("gitdir"))?;
+        // One missing its `gitdir` is no checkout's, as `git worktree prune` takes it.
+        let gitdir = match fs::read_to_string(Path::new(admin).join("gitdir")) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(true),
+            read => read?,
+        };
         let expected = owned.path.as_deref().map(|p| Path::new(p).join(".git"));
         if expected.as_deref() != Some(Path::new(gitdir.trim_end_matches('\n'))) {
             if owned.path.as_deref().is_some_and(|p| Path::new(p).exists()) {

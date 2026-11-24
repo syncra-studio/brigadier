@@ -196,6 +196,12 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
             if !field("reason").is_empty() {
                 t += &format!("Why: {}\n", field("reason"));
             }
+            if r["grant"]["scope"] == "site" {
+                t += &format!(
+                    "A yes covers {} for the rest of this job: its scripts, clicks, typing, keys, deletes and sends. Paying, cards, passwords, codes and sign-in still ask.\n",
+                    r["grant"]["pattern"].as_str().unwrap_or("")
+                );
+            }
             t + &format!(
                 "\nJudge it yourself against its brief and the user's words: `brigadier send {wid} --allow`, or `brigadier send {wid} --deny \"<reason>\"`, which its agent reads."
             )
@@ -286,6 +292,10 @@ pub fn answer(
             return refuse(&format!(
                 "{wid} asks a question: answer it with `brigadier send {wid} \"<your answer>\"`."
             ));
+        }
+        // A browser ask's yes holds for its site for the rest of the job (asks.rs in browser/hub).
+        (false, true, None) if r["grant"]["scope"] == "site" => {
+            control::answer_as(data, wid, &id, "allowSession", None, "parent")
         }
         (false, true, None) => control::answer_as(data, wid, &id, "allow", None, "parent"),
         (false, false, Some(why)) => {
