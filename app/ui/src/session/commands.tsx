@@ -4,12 +4,15 @@ import type { OpenKind } from "../components/composer/chip";
 import { openWorker } from "../workers/live";
 import type { ComposerFieldHandle } from "../components/composer/field";
 import { type Commands, type Mention, PlusMenu, type SlashCommand } from "../components/composer/menus";
+import { TOOL_COMMANDS } from "../components/composer/tools";
 import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { ask } from "../daemon";
 import { isPasteLabel, PASTE_LABEL } from "../shell/attachment-tab";
 import { openAttachment, openFile, openTab, selectTab } from "../shell/tab-store";
 import type { Runner } from "./composer";
+import { SETTINGS_PAGES, type SettingsPageId } from "../settings/pages";
+import { ROUTING_ROWS } from "../settings/routing";
 import { openSettings } from "../settings/shell";
 import { HOME_DRAFT } from "./draft";
 import { urlOf } from "./files";
@@ -19,13 +22,14 @@ type Listed = { name: string; description?: string; kind: SlashCommand["kind"]; 
 /**
  * A composer's `/` menu, its + menu and what a chip opens, for `owner` (a session's id, or Home's draft): the agent's
  * own commands from Rust, kept per agent and project, plus `extra` (Brigadier's /new); an instant one runs at once
- * through the agent's own call [D164, D315, D2009, D2011]. Asked again when `fresh` changes (a turn starts or ends).
+ * through the agent's own call [D164, D315, D2009, D2011]. Asked again when `fresh` changes (a turn starts or ends) or a menu opens (Settings › Plugins may have changed since).
  * Home's `backend`: undefined until its project and model are known, the menu loading meanwhile; null, no agent to ask [D178].
  */
 export function useComposerCommands({ owner, run, field, backend, project, extra = [], fresh, onFiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string | null; project?: string | null; extra?: SlashCommand[]; fresh?: unknown; onFiles: (files: File[]) => void }) {
   // Kept with what it was asked for: another agent's or project's list reads as loading, never as this one's [D178].
   const [kept, setKept] = useState<{ key: string; list: SlashCommand[] } | null>(null);
   const [chats, setChats] = useState<Mention[]>([]);
+  const [opened, setOpened] = useState(0);
   const home = owner === HOME_DRAFT;
   const key = `${owner} ${backend} ${project}`;
   const listed = kept?.key === key ? kept.list : null;
@@ -36,7 +40,11 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     void run(["commands", owner, ...(home ? ["--backend", backend!, ...(project ? ["--project", project] : [])] : [])]).then((reply) => {
       if (!live) return;
       const list: Listed[] = reply.ok ? (reply.commands ?? []) : [];
-      setKept({ key, list: list.map((each) => ({ id: `${each.kind}:${each.name}`, kind: each.kind, label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) });
+      // A prompt kept as Claude listed it before prompts had a kind of their own ("mcp", a server's); library names have no `_`.
+      const kindOf = (each: Listed) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
+      const next = { key, list: list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) };
+      // The same list stays the same array: the open menu keeps its place.
+      setKept((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
     });
     ask({ op: "mention", owner, q: "", ...(project ? { project } : {}) }, (reply) => {
       if (live && reply.ok) setChats(reply.groups.flatMap((group: { items: Mention[] }) => group.items.filter((item) => item.type === "chat")));
@@ -44,7 +52,7 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     return () => {
       live = false;
     };
-  }, [owner, backend, project, fresh]);
+  }, [owner, backend, project, fresh, opened]);
 
   useEffect(() => {
     if (!listed) return;
@@ -53,9 +61,11 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
   }, [owner, listed]);
 
   // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra` is [] or [/new].
-  const all = useMemo(() => listed && [...listed, ...extra], [listed, extra.length]);
+  // Brigadier's tools first, so an agent's own command of the same name is the one typing it makes.
+  const all = useMemo(() => listed && [...TOOL_COMMANDS, ...listed, ...extra], [listed, extra.length]);
   const commands: Commands = {
     commands: all,
+    onMenu: () => setOpened((times) => times + 1),
     onRun: (command) => {
       // Home has no session to run it in yet: the old app's hint (its instant ones are /compact) [D2098].
       if (home) return void showToast("Send a message before compacting.");
@@ -80,9 +90,22 @@ const hear = (heard: () => void) => {
 };
 export const useListedCommands = (owner: string | undefined) => useSyncExternalStore(hear, () => (owner ? listedOf.get(owner) : undefined));
 
+/** The settings page a Brigadier tool's chip opens, and the row it brings into view; the mockup tool has none. */
+// A function, so ROUTING_ROWS is read on a click, not while modules load (settings pages reach this one).
+const toolPage = (id: string): [SettingsPageId, string?] | undefined =>
+  (({ computer: ["computerUse"], browser: ["browser"], image: ["routing", ROUTING_ROWS.images.label], research: ["routing", ROUTING_ROWS.jobs.label], workers: ["routing", ROUTING_ROWS.jobs.label] }) as Record<string, [SettingsPageId, string?]>)[id];
+
+const pluginPage = (key: string) => void (location.hash = `#settings/plugins/${encodeURIComponent(key)}`);
+/** A name as the library keys it, as crates/core/src/library.rs `key_name`: `plugin:slack:slack` → `slack`, `my_db` → `my-db`. */
+const plainName = (name: string) =>
+  Array.from(name.slice(name.lastIndexOf(":") + 1), (c) => (/[a-zA-Z0-9]/.test(c) ? c : "-"))
+    .slice(0, 64)
+    .join("")
+    .replace(/^-+/, "");
+
 /**
  * One plain click on a chip, in the composer or a sent message: in a new tab, the chat as its session, a worker in
- * its panel, an image in the viewer, a paste in its tab [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list;
+ * its panel, an image in the viewer, a paste in its tab, a skill, server or tool its settings page [D146, D151, D2022 #19, D2107]. `command`: a command chip's entry in the `/` list;
  * `name`: a paste's chip's words, its tab's title when it's a PR's ("Pull request #n") [D696].
  */
 export function openChip(owner: string, kind: OpenKind, id: string, command?: SlashCommand, run?: Runner, name?: string) {
@@ -90,11 +113,20 @@ export function openChip(owner: string, kind: OpenKind, id: string, command?: Sl
   if (kind === "chat") return void (location.hash = `#thread/${id}`);
   if (kind === "tab") return selectTab(owner, id);
   if (kind === "note") return openTab(owner, "note", id);
-  if (kind === "plugin") return openSettings("plugins");
+  if (kind === "plugin") return pluginPage(id);
   if (kind === "worker") return openWorker(owner, id);
   if (kind === "image") return viewImage([{ name: "Image", url: urlOf(owner, id) }], 0);
   // Editable in its own tab, as the old app's composer paste [D2098].
   if (kind === "paste") return openAttachment(owner, id, name && isPasteLabel(name) ? name : PASTE_LABEL);
+  // Its page under Plugins by the library's key (one not in it lands on Plugins); a prompt, its server's: Claude's `mcp__<server>__<prompt>`,
+  // a library server there `b-<name>` (a prompt's chip from before prompts had their own kind is an "mcp" one).
+  const listed = id.slice(id.indexOf(":") + 1);
+  if (kind === "skill") return pluginPage(`skill:${plainName(listed)}`);
+  if (kind === "mcp" || kind === "prompt") return pluginPage(`server:${plainName(listed.startsWith("mcp__") ? (listed.split("__")[1] ?? "").replace(/^b-/, "") : listed)}`);
+  if (kind === "tool") {
+    const [page, row] = toolPage(id) ?? [];
+    return void (page && SETTINGS_PAGES.some((each) => each.id === page) && openSettings(page, row));
+  }
   if (home) return;
   if (kind === "file") return openFile(owner, id, { preview: false });
   if (kind === "folder") {

@@ -18,7 +18,7 @@ use std::time::Duration;
 mod child;
 mod image;
 mod limits;
-use child::{activity, child};
+use child::{activity, child, input};
 use limits::{limit_id, merge, out_of_credits, resets, tell_limits};
 
 /// How long the limit read may hold back a turn's end (proposed).
@@ -220,22 +220,19 @@ fn skills(state: &Shared) {
     });
 }
 
-/// A steer's input as the adapter built it, or a plain text's.
-fn input(text: &Value) -> Value {
-    if text.is_array() {
-        return text.clone();
-    }
-    json!([{"type": "text", "text": text}])
-}
-
 /// One line from the adapter.
 fn command(state: &Shared, c: &Value) -> Result<(), String> {
     if c["open"].is_object() {
         return open(state, c);
     }
+    // Waited for, so the next turn has the tools; never under a turn: it restarts every server.
+    if c["redial"] == true && state.lock().unwrap().turn.is_empty() {
+        let _ = call(state, "config/mcpServer/reload", Value::Null);
+    }
     let cid = c["id"].as_str().unwrap_or("").to_string();
     let st = &mut *state.lock().unwrap();
-    let (thread, turn) = (st.thread.clone(), st.turn.clone());
+    let of = |k: &str, own: &String| c[k].as_str().map_or(own.clone(), String::from);
+    let (thread, turn) = (of("thread", &st.thread), of("turn", &st.turn));
     // A line with a turn and a steer steers the turn that runs, else starts its own [D117].
     let starts = c["turn"].is_object() && (c["steer"].is_null() || turn.is_empty());
     st.stopped = c["interrupt"] == true || (st.stopped && !starts);

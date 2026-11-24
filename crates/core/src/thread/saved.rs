@@ -13,7 +13,6 @@ use crate::norm::{self, Norm};
 use crate::rewind::Active;
 use crate::write_atomic;
 use brigadier_frames::log::Reader;
-use brigadier_frames::wire;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cell::{Cell, OnceCell};
@@ -31,10 +30,12 @@ const FORMAT: u64 = 2;
 /// Where a row only in memory is.
 const MEMORY: u64 = u64::MAX;
 
-/// What a saved thread must match to be read back: its format, the normaliser's, and this build,
-/// so an update folds again (in the background) rather than show rows an older fold made.
+/// What a saved thread must match to be read back: its format, the normaliser's, and the code that
+/// folds it (`build.rs`), so an update that changed any folds again (in the background) rather than
+/// show rows an older fold made.
 fn version() -> u64 {
-    FORMAT << 48 | u64::from(norm::VERSION) << 32 | u64::from(wire::build())
+    let code: u32 = env!("BRIGADIER_FOLDS").parse().unwrap_or(0);
+    FORMAT << 48 | u64::from(norm::VERSION) << 32 | u64::from(code)
 }
 
 /// Where saved rows went: index, `at`, `len`, `crc`.

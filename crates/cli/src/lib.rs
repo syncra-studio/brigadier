@@ -51,7 +51,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs | --carry-chat-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -64,7 +64,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W] | move <qid> <to> | remove|edit|steer <qid> | restore | resume
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id> | git --project P [--watch]
-       brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path>]
+       brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
        brigadier source <id> files [<repo>...] | folder <path> | find <query> | since | repos
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
@@ -76,7 +76,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always|lid|lid-setup] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
-       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] (empty: automatic) | accounts I [--local] | reveal I | remove I]
+       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: automatic) | accounts I [--local] | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
@@ -117,7 +117,7 @@ fn child(data: &Path, id: &str) -> core::Running {
 fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     let dir = core::session_dir(data, id);
     let f = core::fold(&dir, true)?;
-    let live = fold::live(&f.fold, owner::state(data, id), data, all);
+    let live = fold::live(&f.fold, owner::state(data, id), &dir, all);
     let mut s = fold::status(&f.fold, &live);
     s["id"] = id.into();
     Ok(s)
@@ -223,9 +223,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let parts = parts(args)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             // The tabs are extras: a failure here never stops the session from starting.
-            // New chat's tabs are its own, whichever project it picked; a project's New session's are that project's [D863].
-            if fresh && (has(args, "--carry-tabs") || has(args, "--carry-chat-tabs")) {
-                let _ = tabs::carry(data, id, has(args, "--carry-chat-tabs"));
+            if fresh && has(args, "--carry-tabs") {
+                let _ = tabs::carry(data, id);
             }
             if let Some(dir) = &scratch {
                 fs::create_dir_all(dir)?;
@@ -235,14 +234,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
                 let on = host::pr_branch(data, args, &project, &spec)?;
-                core::folder::ensure(
-                    &spec,
-                    &project,
-                    fresh,
-                    base,
-                    &title::from(flag(args, "--text").unwrap_or("")),
-                    on.as_deref(),
-                )?;
+                let title = title::from(flag(args, "--text").unwrap_or(""));
+                let made = core::folder::ensure(&spec, &project, base, &title, on.as_deref());
+                // A fresh session it undid goes too, what it took back with its draft; on a retry it
+                // keeps its log and first message [D35].
+                if made.is_err() && fresh && !spec.dir.join(core::worktrees::RECORD).exists() {
+                    attach::back(data, &spec, &parts, has(args, "--carry-tabs"))?;
+                    fs::remove_dir_all(&spec.dir)?;
+                }
+                made?;
             }
             drop(projects_lock);
             owner::ensure(data, &spec)?;
@@ -261,8 +261,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
         "send" => {
-            let (id, text) = (arg(args, 1)?, arg(args, 2)?);
-            let parts = parts(args)?;
+            let (id, text, parts) = (arg(args, 1)?, arg(args, 2)?, parts(args)?);
             if has(args, "--steer") {
                 // A worker's message from its parent's composer brings the parent's files [D3013].
                 if let Some(from) = flag(args, "--from") {
@@ -278,12 +277,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     false,
                 );
             }
-            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"), None)? {
+            let spec = core::load(data, id)?;
+            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
+            if let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)?
+            {
                 return Ok(reply);
             }
-            let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
-            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
             // A block its subagents or workers hold open is still running: as mid-turn [D521].
             let reply = match workers::holding(data, id) {
@@ -399,7 +399,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let setup = core::worktrees::setup_state(&spec.dir, true);
             core::rewind::read_active(&spec.dir, |item| thread.push(item))?;
             let f = thread.status_fold();
-            let live = fold::live(f, owner::state(data, id), data, &procs::all());
+            let live = fold::live(f, owner::state(data, id), &spec.dir, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
                 thread.interrupt(log::now_ms());
             }

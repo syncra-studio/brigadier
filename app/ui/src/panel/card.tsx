@@ -229,7 +229,7 @@ export function ChangesCard({
 }
 
 /** A repo of a folder chat's folder, as `source <id> repos` gives it [D494, D341]: `claimed`, its own copy. */
-export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; branch: string | null; added: number; removed: number; kept: KeptPrs | null };
+export type TouchedRepo = { name: string; claimed: boolean; changed: boolean; branch: string | null; added: number; removed: number };
 
 /**
  * A folder chat's Changes [D494, D544, D151, D341]: a row per repo of its folder, those it claimed first, "repo ·
@@ -280,33 +280,6 @@ function RepoLine({ repo, project, agentWorking, offline, onReview, onMoved }: {
       </Line>
       {pickers}
     </div>
-  );
-}
-
-/** A plan step's mark by its status, as the CLIs write it: done, under way, given up, or still to do. */
-const STEP: Record<string, ReactNode> = {
-  completed: <CheckCircle />,
-  in_progress: <Spinner className="animate-spin motion-reduce:animate-none" />,
-  cancelled: <X />,
-};
-
-/**
- * The Plan, from the agent's own to-do list as its CLI last wrote it (Claude Code's TodoWrite, OpenCode's
- * todowrite, Codex's update_plan) [D144]: a row a step, done ones muted. Nothing when it wrote none.
- */
-export function PlanCard({ owner }: { owner: string }) {
-  const plan = useDaemon().rows?.find((row) => row.id === owner)?.plan;
-  if (!plan?.length) return null;
-  return (
-    <CardSection title="Plan" fold="plan" count={plan.length}>
-      <Rows items={plan}>
-        {(step, index) => (
-          <Line key={index} icon={STEP[step.status] ?? <Dot />} title={step.text} className={cx(step.status !== "in_progress" && step.status !== "pending" && "text-muted-foreground")}>
-            {step.text}
-          </Line>
-        )}
-      </Rows>
-    </CardSection>
   );
 }
 

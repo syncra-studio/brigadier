@@ -12,6 +12,7 @@ import { openTab } from "../shell/tab-store";
 import type { Item, Session, StepKind, Turn } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { SessionOfThread } from "../accounts/limit";
+import { ArrivingBubbles, useArriving } from "../peers/live";
 import { type ComposerRow, SentBubbles, SessionComposer, useSending } from "../session/composer";
 import { withAnswers } from "../session/decisions";
 import { finished, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
@@ -83,6 +84,17 @@ export function useWorkers(parent: string): Worker[] {
   const rows = useDaemon().rows ?? [];
   // A Brigade's sessions are rows of their own in the sidebar, not its workers [D189].
   return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent && !row.boss).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
+}
+
+/** The workers under a session, theirs too, oldest first, each with its row; a Brigade's sessions aren't among them [D189]. */
+export function useFamily(id: string): { worker: Worker; row: Row }[] {
+  const rows = useDaemon().rows ?? [];
+  const workers = rows.filter((row): row is Row & { worker: WorkerRow } => Boolean(row.worker) && !row.boss);
+  const under = new Set([id]);
+  // A Set's own loop reaches the ones added as it goes: each worker's own workers in turn.
+  for (const parent of under) for (const row of workers) if (row.worker.parent === parent) under.add(row.id);
+  under.delete(id);
+  return workers.filter((row) => under.has(row.id)).map((row) => ({ worker: asWorker(row), row })).toSorted((a, b) => a.worker.startedAt - b.worker.startedAt);
 }
 
 /** Workers named by id, a gone one as "a worker". */
@@ -256,6 +268,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   const rest = useMemo(() => items.filter((item) => item !== brief), [items, brief]);
   // A message on its way shows under its thread until Rust's has it, Try again if refused [D108].
   const sending = useSending(worker.id);
+  const arriving = useArriving(worker.id, answered);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
@@ -270,7 +283,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
         ) : (
           // Its own folder, where its images are kept [D289].
           <SessionOfThread value={{ id: worker.id, offline: daemon === null }}>
-            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={answered} />} />
+            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={(sending || arriving.length > 0) && <><SentBubbles id={worker.id} source={answered} hover /><ArrivingBubbles list={arriving} /></>} />
           </SessionOfThread>
         )}
       </ParentName>

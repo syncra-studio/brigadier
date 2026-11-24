@@ -11,14 +11,12 @@
   --color-background: #181818;
   /* The window around the sidebar and panels, as the card. */
   --color-chrome: var(--color-card);
-  /* Sidebar, strip, right panel and window fill: an opaque sidebar, in hex for main (Windows' caption buttons). */
+  /* The right panel's fill, as the chrome: opaque. */
   --color-card: #262626;
-  /* The strip and sidebar's fill: the card, or on a Mac 65% main over the window fill (80% #282828) over the
-     window's vibrancy [D76]. */
-  --color-sidebar: var(--color-card);
+  /* The strip and sidebar's fill: the page's, one surface with the main area, a 1px line between (main-surface). */
+  --color-sidebar: var(--color-background);
   /* The sidebar's fill as it shows on screen, opaque, for what lies over it (a ScrollFade) [D282]. */
-  --color-sidebar-solid: var(--color-card);
-  --color-window-fill: transparent;
+  --color-sidebar-solid: var(--color-background);
   /* Menus, popovers, tooltips and the summary card: opaque [D655]; the edge, the overlay ring. */
   --color-popover: #2d2d2d;
   --color-popover-edge: rgb(255 255 255 / 12%);
@@ -72,8 +70,6 @@
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
-  /* A warning callout's edge: the old app's border-warning/50 [D477]. */
-  --color-warning-edge: color-mix(in oklab, var(--color-warning) 50%, transparent);
   /* Find in a file's marks: the old bg-warning/30, and /70 for the current one [D1002]. */
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
@@ -354,8 +350,6 @@
   --spacing-tab-bar: 2.875rem;
   /* Where every page and the sidebar card start: 6px under the tab bar, one line across the window [D48 D799]. */
   --spacing-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 1.5);
-  /* A project's page, its rows 24 below the titlebar's row, which it scrolls under [D292]. */
-  --spacing-project-page-top: calc(var(--spacing-tab-bar) + var(--spacing) * 6);
   /* The titlebar's Back button's start, 88 in, past the traffic lights at 16 (titlebar-nav) [D34]; with none (Windows,
      macOS full screen) 8px in [D861]. */
   --spacing-toggle-start: 5.5rem;
@@ -741,22 +735,6 @@
 :root {
   color-scheme: dark;
 }
-/* A Mac's window is clear behind the shell (main.ts's vibrancy): only the strip and sidebar let it through [D76]. Electron's
-   material stays dark behind a key window, where the reference lights up: its sidebar reads #262626 key and #1e1e1e not, ours
-   #1d1d1d both ways, so while key the window fill stands in for it, #262626 on screen [D188]. */
-:root[data-platform="darwin"] {
-  --color-sidebar: color-mix(in oklab, var(--color-background) 65%, transparent);
-  --color-window-fill: color-mix(in oklab, #282828 80%, transparent);
-  /* What those show over the dark material, measured on screen [D282]. */
-  --color-sidebar-solid: rgb(30 29 29);
-  &[data-key] {
-    --color-window-fill: color-mix(in oklab, #484848 80%, transparent);
-    --color-sidebar-solid: rgb(39 39 39);
-  }
-  & body:has([data-slot="sidebar-wrapper"]) {
-    background: transparent;
-  }
-}
 
 @layer base {
   /* Every view scrolls itself; the window never does. A fast fling that runs off a list's end used to rubber-band
@@ -1079,6 +1057,12 @@
 /* A part placed in another: a key hint on a button or in a tooltip. */
 @custom-variant in-button (:where([data-slot="button"]) &);
 @custom-variant in-tooltip (:where([data-slot="tooltip"]) &);
+/* The sidebar's foot too narrow for the update pill's every mark: four icons and the pill at its widest. */
+@custom-variant foot-narrow {
+  @container sidebar-foot (width < 15.25rem) {
+    @slot;
+  }
+}
 /* The chat's reading column inside an element: its rows and the composer (the old app's thread-column). */
 @custom-variant reading-column (& .max-w-reading);
 /* The thread's pane as its own width lays the summary card out, set the moment it's measured (summary-card.tsx, the
@@ -1265,8 +1249,10 @@
   width: attr(data-width px, 0px);
   height: attr(data-height px, 0px);
 }
-@utility mockup-zoom {
-  zoom: attr(data-zoom type(<number>), 1);
+/* A mockup tab's canvas, panned and zoomed (mockup/mockup.tsx); its live pages follow it. */
+@utility mockup-canvas {
+  transform-origin: 0 0;
+  transform: translate(attr(data-pan-x px, 0px), attr(data-pan-y px, 0px)) scale(attr(data-scale type(<number>), 1));
 }
 /* A note's part of its tab beside its side chat (note/chat.tsx), as a share of the width. */
 @utility note-share {
@@ -1420,6 +1406,11 @@
   }
 }
 
+/* The sidebar's foot as a row, whose width `foot-narrow` reads. */
+@utility sidebar-foot-row {
+  container: sidebar-foot / inline-size;
+}
+
 /* Space held for the scrollbar whether or not it's needed, so nothing moves when a view starts to scroll. */
 @utility scroll-gutter {
   scrollbar-gutter: stable;
@@ -1438,11 +1429,19 @@
 
 /* A scroll view's edge (ScrollFade): what scrolls under it fades into the surface it sits on, the main area's unless
    data-surface says the sidebar's; raised, it reaches over a floating button. data-while-more shows it only while there
-   is more to scroll that way, by the nearest scroll-fade-source's timeline (scroll-fade-scope) [D282 D284]. */
+   is more to scroll that way, by the nearest scroll-fade-source's timeline (scroll-fade-scope) [D282 D284]. Chromium
+   holds a finished animation's fill once nothing overflows, so the top one doesn't fill past its end: there can-scroll,
+   over twice the scroll so it never finishes, keeps it shown. */
 @keyframes scroll-fade-in {
   from {
     opacity: 0;
   }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes can-scroll {
+  from,
   to {
     opacity: 1;
   }
@@ -1470,9 +1469,15 @@
   }
   &[data-while-more] {
     opacity: 0;
-    animation: scroll-fade-in linear both;
+    animation:
+      can-scroll linear both,
+      scroll-fade-in linear backwards;
+    /* Else the build writes the shorthand out with 0s, which pins a ranged scroll-driven fade at one end. */
+    animation-duration: auto;
     animation-timeline: --scroll-fade;
-    animation-range: 0px var(--spacing-fade-bottom);
+    animation-range:
+      0% 200%,
+      0px var(--spacing-fade-bottom);
   }
 }
 @utility fade-bottom {
@@ -1553,14 +1558,16 @@
   transition-timing-function: var(--ease-sidebar);
   /* How wide the sidebar or strip shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
-  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them (titlebar-clear) [D265 D297 D934]. */
-  --toggle-room: calc(var(--spacing) * 35);
+  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them; hidden,
+     the rule's 1px (session-tab-bar) and 8px past that [D265 D297 D934]. */
+  --toggle-room: calc(var(--spacing) * 37.5);
   &[data-state="expanded"] {
     --sidebar-shown: var(--sidebar-open-width);
     --toggle-room: calc(var(--spacing) * 27);
-    background-color: var(--color-window-fill);
     --sidebar-layer: var(--color-sidebar);
   }
+  /* Where the titlebar row's tabs start (titlebar-clear); its separator 8px before, the open sidebar's edge. */
+  --tabs-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room)), calc(var(--spacing) * 2 + var(--sidebar-shown)));
   @media (prefers-reduced-motion: reduce) {
     transition: none;
   }
@@ -1581,17 +1588,13 @@
   background: var(--color-border);
 }
 /* The strip's squares scroll between its actions and its foot; the foot's rule shows only while they can: their
-   scroll timeline (scroll-fade-source, the strip its scope) is active only then [D191 D284]. */
+   scroll timeline (scroll-fade-source, the strip its scope) is active only then [D191 D284]. Its range is
+   twice the scroll, so it never finishes, or Chromium would hold it. */
 @utility strip-foot-rule {
   opacity: 0;
-  animation: strip-touching linear both;
+  animation: can-scroll linear both;
   animation-timeline: --scroll-fade;
-}
-@keyframes strip-touching {
-  from,
-  to {
-    opacity: 1;
-  }
+  animation-range: 0% 200%;
 }
 /* Files' width: where it was dragged (data-width on it) or the default, kept in its range and leaving the chat its least
    room beside the left sidebar, as the old workspace-pane-width. */
@@ -1646,21 +1649,31 @@
 @utility main-surface {
   position: relative;
   background-color: var(--color-background);
-  border-inline-start: 0.5px solid var(--color-border);
+  border-inline-start: 1px solid var(--color-border);
   transition: border-color var(--duration-fold) var(--ease-sidebar);
   [data-state="collapsed"] > & {
     border-color: transparent;
   }
-  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]. */
-  &:has([data-slot="right-panel"][data-state="expanded"])::after {
+  /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41]; folded, the
+     row's own line is there instead (session-tab-bar), and it fades with the sidebar. */
+  &::after {
     content: "";
     position: absolute;
     inset-inline: 0;
     top: var(--spacing-tab-bar);
     height: 0.5px;
-    background: var(--color-divider);
+    background-color: var(--color-divider);
+    opacity: 0;
     pointer-events: none;
     z-index: 11;
+    /* A fade, so Reduce Motion keeps it, as the row's line fades in for it. */
+    transition: background-color var(--duration-fold) var(--ease-sidebar);
+  }
+  &:has([data-slot="right-panel"][data-state="expanded"])::after {
+    opacity: 1;
+  }
+  [data-state="collapsed"] > &::after {
+    background-color: transparent;
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -1742,7 +1755,6 @@
    room, sidebar-width-source), or past the traffic lights and the toggle with 8px [D934], where
    that's further, easing with the sidebar [D48 D838 D862]. */
 @utility titlebar-clear {
-  --tabs-start: max(calc(var(--spacing-toggle-start) + var(--toggle-room, 0px)), calc(var(--spacing) * 2 + var(--sidebar-shown, 0px)));
   padding-inline-start: var(--tabs-start);
   transition: padding-inline-start var(--duration-fold) var(--ease-sidebar);
   @media (prefers-reduced-motion: reduce) {
@@ -1760,20 +1772,67 @@
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
   /* A 1px rule under the row across the main area, with tabs and with the chat alone, steady as one turns into
-     the other; none over New chat with no tabs [D201 D219]. */
+     the other; none over New chat with no tabs [D201 D219]. Folded, it runs from the window's edge, under a separator as
+     tall as the row (::before) between New chat and the first tab, 8 from each; both ease with the sidebar, at once while
+     it's dragged. */
+  &::before,
   &::after {
     content: "";
     position: absolute;
-    inset-inline: var(--sidebar-shown, 0px) calc(var(--spacing) * -2);
-    bottom: 0;
-    height: 1px;
-    background: var(--color-border);
+    inset-inline-start: calc(var(--tabs-start) - var(--spacing) * 2);
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--duration-session-tab) var(--ease-session-tab);
+    transition:
+      opacity var(--duration-session-tab) var(--ease-session-tab),
+      inset-inline-start var(--duration-fold) var(--ease-sidebar),
+      background-color var(--duration-fold) var(--ease-sidebar),
+      border-color var(--duration-fold) var(--ease-sidebar);
   }
+  &::before {
+    /* Down to the line, not over it: crossed, their corner would draw twice. */
+    inset-block: 0 1px;
+    width: 1px;
+    background-color: var(--color-border);
+  }
+  /* Its part over the strip is a border, fading in as the sidebar's own edge fades out: the rest starts at that edge all
+     through the fold. */
+  &::after {
+    inset-inline: calc(var(--sidebar-shown) - var(--spacing-rail)) calc(var(--spacing) * -2);
+    bottom: 0;
+    height: 1px;
+    border-inline-start: var(--spacing-rail) solid var(--color-border);
+    background: var(--color-border) padding-box;
+  }
+  &[data-ruled]::before,
   &[data-ruled]::after {
     opacity: 1;
+  }
+  /* Over New chat with no tabs, only with the right panel open, in place of its hairline (main-surface). */
+  [data-slot="sidebar-wrapper"][data-state="collapsed"]:has([data-slot="right-panel"][data-state="expanded"]) & {
+    &::before,
+    &::after {
+      opacity: 1;
+    }
+  }
+  [data-slot="sidebar-wrapper"][data-state="expanded"] & {
+    &::before {
+      background-color: transparent;
+    }
+    &::after {
+      border-color: transparent;
+    }
+  }
+  [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) & {
+    &::before,
+    &::after {
+      transition: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before,
+    &::after {
+      transition: opacity var(--duration-session-tab) var(--ease-session-tab);
+    }
   }
   /* Until the tabs read on opening have drawn, they don't grow in [D423]. */
   &:not([data-settled]) :is(.session-tab, .session-tab-spacer) {
@@ -1794,26 +1853,6 @@
   --session-tab-width: clamp(var(--spacing-session-tab-min), var(--session-tab-room) / var(--session-tab-count), var(--spacing-session-tab-max));
   /* Chat's rule sits beside the strip's first tab, which isn't its sibling [D437]. */
   &:has(> * > .session-tab:first-child:hover) > .session-tab::before {
-    opacity: 0;
-  }
-  /* The same rule between the sidebar toggle and the first tab, with the sidebar folded (shown, the tabs start past
-     its edge); none beside the front tab or a hovered one. Centred between the toggle's icon and the tab's, 13 to each,
-     as "+"'s rule is 10 from both its neighbours' [D291]. */
-  &::before {
-    content: "";
-    position: absolute;
-    inset-block: 0;
-    margin-block: auto;
-    inset-inline-start: -3px;
-    height: var(--spacing-session-tab-rule-height);
-    width: var(--spacing-session-tab-rule);
-    background: var(--color-border);
-    pointer-events: none;
-  }
-  [data-slot="sidebar-wrapper"][data-state="expanded"] &::before {
-    opacity: 0;
-  }
-  &:has(> .session-tab:first-child:is([data-active], [data-closing], :hover))::before {
     opacity: 0;
   }
 }
@@ -2055,9 +2094,13 @@
   max-width: min(var(--container-reading), 100% - var(--summary-room) * 2);
 }
 
-/* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. */
+/* Settings' Full width thread: the reading column, and the composer with it, fills the pane [D914, D915]. Its width
+   then counts its padding, so the card's room (summary-column) keeps the text 16 inside the space it leaves, as with no card. */
 @utility reading-full {
   --container-reading: 100%;
+  & .max-w-reading {
+    box-sizing: border-box;
+  }
 }
 
 /* The card's room easing in and out: with the card, and with a fold when a panel's width is what makes it [D45, D49]. */
@@ -2099,8 +2142,11 @@
   }
 }
 
-/* A scroll box whose edges fade only while there is more to scroll that way (its scroll position drives
-   the fade lengths). A shell's output fades at the top over 2rem; a diff's body at the bottom. */
+/* A scroll box whose edges fade only while there is more to scroll that way: each edge's fade is as long as the
+   distance scrolled on that side, up to its size, so a box scrolled 3px shows a 3px fade, not a share of its size.
+   In a box shorter than both fades each takes half. A shell's output fades at the top over 2rem; a diff's body at the bottom.
+   Chromium holds a finished animation's fill once the box no longer overflows, so the top fade doesn't fill past its end:
+   there edge-full-top, over twice the scroll so it never finishes, keeps its size. */
 @property --edge-top {
   syntax: "<length>";
   inherits: false;
@@ -2111,22 +2157,44 @@
   inherits: false;
   initial-value: 0px;
 }
-@keyframes edge-fade {
+@keyframes edge-fade-top {
   from {
     --edge-top: 0px;
-    --edge-bottom: var(--edge-size-bottom);
   }
   to {
     --edge-top: var(--edge-size-top);
+  }
+}
+@keyframes edge-full-top {
+  from,
+  to {
+    --edge-top: var(--edge-size-top);
+  }
+}
+@keyframes edge-fade-bottom {
+  from {
+    --edge-bottom: var(--edge-size-bottom);
+  }
+  to {
     --edge-bottom: 0px;
   }
 }
 @utility scroll-edge-fade {
-  mask-image: linear-gradient(to bottom, transparent, black var(--edge-top), black calc(100% - var(--edge-bottom)), transparent);
-  animation: edge-fade linear both;
+  mask-image: linear-gradient(to bottom, transparent, black min(var(--edge-top), 50%), black calc(100% - min(var(--edge-bottom), 50%)), transparent);
+  animation:
+    edge-full-top linear both,
+    edge-fade-top linear backwards,
+    edge-fade-bottom linear both;
+  /* Else the build writes the shorthand out with 0s, which pins a ranged scroll-driven fade at one end. */
+  animation-duration: auto;
   animation-timeline: scroll(self y);
+  /* The top fade grows over the first edge's length of scroll, the bottom one shrinks over the last. */
+  animation-range:
+    0% 200%,
+    0px var(--edge-size-top),
+    calc(100% - var(--edge-size-bottom)) 100%;
 }
-/* The same fade along a row that scrolls sideways (the model picker's marks past ten). */
+/* The same fade along a row that scrolls sideways (the model picker's marks past ten, the session tabs). */
 @property --edge-start {
   syntax: "<length>";
   inherits: false;
@@ -2137,26 +2205,51 @@
   inherits: false;
   initial-value: 0px;
 }
-@keyframes edge-fade-x {
+@keyframes edge-fade-start {
   from {
     --edge-start: 0px;
-    --edge-end: var(--edge-size-x, var(--spacing-group-fade));
   }
   to {
     --edge-start: var(--edge-size-x, var(--spacing-group-fade));
+  }
+}
+@keyframes edge-full-start {
+  from,
+  to {
+    --edge-start: var(--edge-size-x, var(--spacing-group-fade));
+  }
+}
+@keyframes edge-fade-end {
+  from {
+    --edge-end: var(--edge-size-x, var(--spacing-group-fade));
+  }
+  to {
     --edge-end: 0px;
   }
 }
 @utility scroll-edge-fade-x {
-  mask-image: linear-gradient(to right, transparent, black var(--edge-start), black calc(100% - var(--edge-end)), transparent);
-  animation: edge-fade-x linear both;
+  mask-image: linear-gradient(to right, transparent, black min(var(--edge-start), 50%), black calc(100% - min(var(--edge-end), 50%)), transparent);
+  animation:
+    edge-full-start linear both,
+    edge-fade-start linear backwards,
+    edge-fade-end linear both;
+  animation-duration: auto;
   animation-timeline: scroll(self x);
+  animation-range:
+    0% 200%,
+    0px var(--edge-size-x, var(--spacing-group-fade)),
+    calc(100% - var(--edge-size-x, var(--spacing-group-fade))) 100%;
 }
 @utility edge-fade-shell {
   --edge-size-top: 2rem;
   --edge-size-bottom: 0px;
-  /* Its newest line is at the bottom (column-reverse), where its scroll starts. */
-  animation-direction: reverse;
+  /* Its newest line is at the bottom (column-reverse), where its scroll starts, so its top is the far end. */
+  animation-range:
+    0% 200%,
+    calc(100% - var(--edge-size-top)) 100%,
+    normal;
+  animation-direction: normal, reverse, normal;
+  animation-fill-mode: both;
 }
 /* An unfolded project's sessions: five rows tall at most, the rest scrolling inside it under its ScrollFades; a row
    focused or opened past an end scrolls in clear of them [D282]. */

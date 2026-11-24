@@ -6,7 +6,7 @@
 //! Its PRs are every one the session touched [D175]: each of its branches' open PR (kept once seen
 //! open, `live`, whichever branch it's on now and once closed or merged; never a branch's old closed
 //! one) [D256, D426], and those its own commands looked at in detail, in any repository on its
-//! server [D213]; open ones first, then by recency.
+//! server [D213]; open ones first, then by recency. A folder chat's own are only those it looked at (`chat`).
 
 use super::touched::touched;
 use super::{Gh, Kind, Pr, Repo, gh};
@@ -38,7 +38,7 @@ impl Pr {
     pub(super) fn prs(&self, gh: &Gh) -> Option<Value> {
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
-        let read = self.read(gh);
+        let read = self.read(gh, self.touched());
         let listed = read.is_ok();
         let kept = self.keep(read);
         listed.then(|| kept["prs"].clone())
@@ -51,17 +51,39 @@ impl Pr {
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         // Only GitHub's PRs are read (through gh) until GitLab's (2.32) [D1030].
         let repo = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub)?;
-        let key = format!("branch.{}.remote", self.branch);
-        git::read(
-            &self.checkout.root,
-            &["config", "--get", &key],
-            &AtomicBool::new(false),
-        )
-        .ok()?;
+        let git =
+            |args: &[&str]| git::read(&self.checkout.root, args, &AtomicBool::new(false)).is_ok();
+        let upstream = format!("branch.{}.remote", self.branch);
+        // Pushed without one: git's own note of it on the remote, which a merge's prune may take.
+        let pushed = format!("refs/remotes/{}/{}", self.remote, self.branch);
+        if !git(&["config", "--get", &upstream])
+            && !git(&["rev-parse", "--verify", "--quiet", &pushed])
+            && !self.shows_open()
+        {
+            return None;
+        }
         Some(match gh(repo, self.account.as_deref()) {
-            Some(gh) => self.keep(self.read(&gh)),
+            Some(gh) => self.keep(self.read(&gh, self.touched())),
             None => self.keep(Err(super::NO_GH.into())),
         })
+    }
+
+    /// Whether the branch's own PR is kept as open.
+    fn shows_open(&self) -> bool {
+        (kept(&self.dir)["prs"].as_array().into_iter().flatten())
+            .any(|p| p["branch"] == *self.branch && p["repo"].is_null() && p["state"] == "open")
+    }
+
+    /// Those its own commands looked at: a bare number is its own repository's.
+    fn touched(&self) -> Vec<Key> {
+        (self.repo.iter())
+            .flat_map(|repo| touched(&self.dir, repo, &|_| Some(None)))
+            .collect()
+    }
+
+    /// A folder chat's: no branch or repository of its own, each PR's named.
+    fn chat(&self) -> bool {
+        self.branch.is_empty()
     }
 
     pub(super) fn one(&self) -> Arc<Mutex<()>> {
@@ -71,22 +93,24 @@ impl Pr {
 
     /// The branch's live PR and every other one the session touched [D175, D256], in any repository on its
     /// server [D213], in one GraphQL read [D207].
-    fn read(&self, gh: &Gh) -> Read {
+    pub(super) fn read(&self, gh: &Gh, found: Vec<Key>) -> Read {
         let Some(repo) = self.repo.as_ref() else {
             return Err("This remote's host isn't one Brigadier knows.".into());
         };
         // The session's other PRs [D175]: those kept from its other branches and repositories, read
         // again until merged (then final), and those its own commands looked at.
         let old = kept(&self.dir);
-        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
+        // A folder chat's server can change: one kept from another isn't this one's `owner/name`.
+        let web = format!("https://{}/", repo.host);
+        let here =
+            |p: &&Value| !self.chat() || p["url"].as_str().is_some_and(|u| u.starts_with(&web));
+        let old: Vec<&Value> = (old["prs"].as_array().into_iter().flatten())
+            .filter(here)
+            .collect();
         let numbers: BTreeSet<Key> = (old.iter())
             .filter(|p| p["live"] == true || p["state"] == "open" || !p["repo"].is_null())
             .map(|p| key(p))
-            .chain(
-                touched(&self.dir, repo)
-                    .into_iter()
-                    .map(|(r, n)| (r.map(|r| r.to_ascii_lowercase()), n)),
-            )
+            .chain((found.into_iter()).map(|(r, n)| (r.map(|r| r.to_ascii_lowercase()), n)))
             .chain(super::create::attached(&self.dir))
             .collect();
         let merged = |k: &Key| (old.iter()).find(|p| key(p) == *k && p["state"] == "merged");
@@ -111,16 +135,34 @@ impl Pr {
             })
             .collect();
         // A branch's 10 latest: each brings its checks, and GitHub refuses a read that big.
-        let query = format!(
-            "query($owner: String!, $name: String!, $branch: String!) {{ repository(owner: $owner, name: $name) {{ branch: pullRequests(headRefName: $branch, first: 10, states: [OPEN, MERGED, CLOSED], orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{ nodes {{ ...F }} }}{own} }}{elsewhere} }} fragment F on PullRequest {{ {FIELDS} }}"
-        );
-        let (data, partial) = super::graphql(gh, repo, &query, &[("branch", &self.branch)])?;
+        let query = match self.chat() {
+            // Nothing left to ask.
+            true if elsewhere.is_empty() => None,
+            true => Some(format!(
+                "query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ id }}{elsewhere} }} fragment F on PullRequest {{ {FIELDS} }}"
+            )),
+            false => Some(format!(
+                "query($owner: String!, $name: String!, $branch: String!) {{ repository(owner: $owner, name: $name) {{ branch: pullRequests(headRefName: $branch, first: 10, states: [OPEN, MERGED, CLOSED], orderBy: {{ field: UPDATED_AT, direction: DESC }}) {{ nodes {{ ...F }} }}{own} }}{elsewhere} }} fragment F on PullRequest {{ {FIELDS} }}"
+            )),
+        };
+        let vars: &[(&str, &str)] = match self.chat() {
+            true => &[],
+            false => &[("branch", &self.branch)],
+        };
+        let (data, partial) = match query {
+            Some(query) => super::graphql(gh, repo, &query, vars)?,
+            None => Default::default(),
+        };
         let found = &data["repository"];
-        let list = found["branch"]["nodes"].as_array().ok_or_else(|| {
-            partial
-                .clone()
-                .unwrap_or_else(|| "The host didn't list this branch's PRs.".into())
-        })?;
+        let none = Vec::new();
+        let list = match self.chat() {
+            true => &none,
+            false => found["branch"]["nodes"].as_array().ok_or_else(|| {
+                partial
+                    .clone()
+                    .unwrap_or_else(|| "The host didn't list this branch's PRs.".into())
+            })?,
+        };
         let mine: Vec<&Value> = (list.iter())
             .filter(|p| belongs(p, repo, &self.branch))
             .collect();
@@ -128,11 +170,13 @@ impl Pr {
         let open = |p: &&&Value| p["state"] == "OPEN";
         let into = (mine.iter().filter(open)).find(|p| p["baseRefName"] == self.base);
         let open = into.or_else(|| mine.iter().find(open));
-        super::note_open(
-            &self.id,
-            &self.branch,
-            open.and_then(|p| p["number"].as_u64()),
-        );
+        if !self.chat() {
+            super::note_open(
+                &self.id,
+                &self.branch,
+                open.and_then(|p| p["number"].as_u64()),
+            );
+        }
         for p in (mine.iter()).filter(|p| p["state"] == "MERGED") {
             self.record_merge(p);
         }
@@ -140,6 +184,11 @@ impl Pr {
         let shown: Vec<&&Value> = open.into_iter().collect();
         let mut rows: Vec<Value> = shown.iter().map(|p| row(p)).collect();
         let mut missed = None;
+        // A folder chat has no repository of its own: each of its rows names its own.
+        let home = match self.chat() {
+            true => repo.at(""),
+            false => repo.clone(),
+        };
         for k in numbers.iter().rev() {
             let (r, n) = k;
             if r.is_none() && shown.iter().any(|p| p["number"] == *n) {
@@ -158,13 +207,17 @@ impl Pr {
                 }
             };
             match (got, was) {
-                (p, _) if p.is_object() => rows.push(mark(row(p), repo)),
+                (p, _) if p.is_object() => rows.push(mark(row(p), &home)),
                 // One read before keeps its last row with why; one never read (no PR there) waits.
                 (_, Some(was)) => {
                     rows.push((*was).clone());
                     missed.get_or_insert(partial.clone().unwrap_or_else(|| {
                         format!("{}#{n} couldn't be read.", r.as_deref().unwrap_or(""))
                     }));
+                }
+                // A folder chat has no other read to say why, but one that's no PR still waits.
+                (_, None) if self.chat() => {
+                    missed = missed.or_else(|| super::chat::refused(partial.as_deref()?))
                 }
                 (_, None) => {}
             }
@@ -178,8 +231,7 @@ impl Pr {
                 p["live"] = true.into();
             }
         }
-        // Open first, then the latest [D256]: the card shows the first few, the PR tab them all.
-        rows.sort_by_key(|p| (p["state"] != "open", Reverse(p["updatedAtMs"].as_i64())));
+        sort(&mut rows);
         Ok((rows, missed))
     }
 
@@ -206,27 +258,22 @@ impl Pr {
             None if mine && fresh["state"] == "open" => rows.push(fresh),
             None => return,
         }
-        let path = self.dir.join("prs.json");
-        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-        if let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path)) {
-            eprintln!("brigadier: keeping {}: {e}", path.display());
-        }
+        self.save(&next);
     }
 
     /// Keeps a read in `prs.json` [D1009]: a PR whose checks couldn't be read keeps its last facts
     /// at the same head, a failed read keeps every PR with why, and `okAt` moves only on a whole
     /// read. Written only when something in it changed.
-    fn keep(&self, read: Read) -> Value {
-        let path = self.dir.join("prs.json");
+    pub(super) fn keep(&self, read: Read) -> Value {
         let old = kept(&self.dir);
         // The branch's local head, read even when the host can't be: new commits clear Merged.
-        let head = git::read(
-            &self.checkout.root,
-            &["rev-parse", "HEAD"],
-            &AtomicBool::new(false),
-        )
-        .map(|out| String::from_utf8_lossy(&out).trim().to_string())
-        .ok();
+        let head = (!self.chat())
+            .then(|| {
+                let root = &self.checkout.root;
+                git::read(root, &["rev-parse", "HEAD"], &AtomicBool::new(false)).ok()
+            })
+            .flatten()
+            .map(|out| String::from_utf8_lossy(&out).trim().to_string());
         let next = match read {
             Ok((rows, error)) => {
                 let last = |row: &Value| {
@@ -260,12 +307,8 @@ impl Pr {
                 next
             }
         };
-        // Its own temp file: a `brigadier host` run from a shell may keep it at the same time.
-        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-        if next != old
-            && let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path))
-        {
-            eprintln!("brigadier: keeping {}: {e}", path.display());
+        if next != old {
+            self.save(&next);
         }
         next
     }
@@ -307,6 +350,13 @@ impl Pr {
 /// A kept row's PR: its repository's `owner/name` (lower case) when it isn't the session's own,
 /// and its number.
 pub(super) type Key = (Option<String>, u64);
+
+/// Open first, then the latest, each once [D256]: the card shows the first few, the PR tab them all.
+pub(super) fn sort(rows: &mut Vec<Value>) {
+    let mut seen = BTreeSet::new();
+    rows.retain(|p| seen.insert(p["url"].to_string()));
+    rows.sort_by_key(|p| (p["state"] != "open", Reverse(p["updatedAtMs"].as_i64())));
+}
 
 fn key(row: &Value) -> Key {
     (

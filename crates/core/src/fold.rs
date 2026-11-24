@@ -11,10 +11,11 @@ pub mod plan;
 mod rewind;
 pub mod runs;
 mod status;
+pub mod todo;
 mod turns;
 pub use input::Picked;
 pub use live::{
-    Job, Live, background_row, end, history, live, live_groups, note_stop, stop_job, task_of,
+    Child, HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop,
 };
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
@@ -24,15 +25,7 @@ pub use status::{
     works,
 };
 use std::collections::{BTreeMap, BTreeSet};
-pub use turns::Turn;
-
-#[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Child {
-    pub pid: i32,
-    pub start_us: u64,
-    pub backend: String,
-    pub exited: bool,
-}
+pub use turns::{End, Turn};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Fold {
@@ -45,8 +38,8 @@ pub struct Fold {
     pub child: Option<Child>,
     /// Each spawned group, with the session folder its record names ("" before D220).
     pub groups: Vec<(i32, u64, String)>,
-    /// The live child's ended turns, from first tool to end (ms): what was born in one and still
-    /// runs under it was left running [D105].
+    /// The ended turns, from first tool to end (ms): what was born in one and still runs was left
+    /// running [D105].
     #[serde(default)]
     pub windows: Vec<(u64, u64)>,
     /// The live child's commands sent to the background, by when that was said (ms), with the id
@@ -64,7 +57,12 @@ pub struct Fold {
     /// The live child's subagents still running, by step id: an answered turn waits on them [D118].
     #[serde(default)]
     pub agents: BTreeSet<String>,
-    /// Workers its turns started, not yet ended, by id: they hold its block open as subagents do [D151].
+    #[serde(default)]
+    pub pending: live::Pending,
+    /// Each end of each turn, its own then its wakes', by the turn it reports in.
+    #[serde(default)]
+    pub ends: BTreeMap<String, Vec<End>>,
+    /// Workers its turns started or messaged, not yet ended, by id: they hold its block open as subagents do [D151].
     #[serde(default)]
     pub workers: BTreeSet<String>,
     /// The images its agent made, each as its last `image` item said: a worker's go to its parent [D289].
@@ -91,9 +89,14 @@ pub struct Fold {
     /// asked, then while it waits for the reset (`until`) [D2028, D342].
     #[serde(default)]
     pub hold: Option<Value>,
+    /// The mockup cards waiting on the user's pick, and the mockups opened in it [D2067].
+    #[serde(default)]
+    pub mockups: asks::Mockups,
     /// The account each backend runs on now, by account id; none is the computer's login [D51].
     #[serde(default)]
     pub accounts: BTreeMap<String, String>,
+    /// The agent and account its `session.json` started it on, as last read.
+    pub started: Option<(String, String)>,
     /// Each conversation it had, as (backend, account, id): delete cleans each where it lives [D35].
     #[serde(default)]
     pub convs: BTreeSet<(String, String, String)>,
@@ -170,9 +173,9 @@ pub struct Fold {
     /// a new conversation began [D88].
     #[serde(default)]
     pub context: Option<Value>,
-    /// The agent's to-do list as it last wrote it [D104].
+    /// The agent's to-do list, and what it finished [D104].
     #[serde(default)]
-    pub plan: Option<Value>,
+    pub plan: todo::Todo,
     /// The turn Brigadier stopped for a rebirth: it goes on in a fresh conversation [D108].
     #[serde(default)]
     pub cut: Option<String>,
@@ -188,6 +191,9 @@ pub struct Fold {
     /// Its plans' adversarial reviews [§6].
     #[serde(default)]
     pub plans: plan::Reviews,
+    /// A worker's outcome notes, in order: its start, its reviews and its ends [D2038].
+    #[serde(default)]
+    pub outcomes: Vec<Value>,
 }
 
 impl Fold {
@@ -266,11 +272,8 @@ impl Fold {
                     exited: false,
                 });
                 self.groups.push((pid, start_us, str_of("dir")));
-                self.windows.clear();
-                self.tasks.clear();
-                self.typed.clear();
-                self.calls.clear();
-                self.agents.clear();
+                (self.tasks, self.typed, self.calls) = Default::default();
+                (self.agents, self.pending) = Default::default();
                 if let Some(v) = item["cli_version"].as_str() {
                     self.versions.insert(str_of("backend"), v.into());
                 }
@@ -282,7 +285,7 @@ impl Fold {
                     return;
                 };
                 child.exited = true;
-                self.agents.clear();
+                (self.agents, self.pending) = Default::default();
                 let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
                 let clean = item["code"].as_i64() == Some(0);
                 let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
@@ -297,6 +300,7 @@ impl Fold {
                 }
             }
             "turn_start" => {
+                let of = self.woke_of();
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
                     self.close("withdrawn", Value::Null, ts);
@@ -305,6 +309,7 @@ impl Fold {
                     self.turns.push(Turn {
                         id: format!("a{}", self.items),
                         origin: "agent".into(),
+                        of,
                         backend: self.backend.clone(),
                         ts,
                         delivered: Some(ts),
@@ -334,6 +339,7 @@ impl Fold {
                     None => self.images.push(image),
                 }
             }
+            "pending" => self.pending.listed(item, &self.turns),
             // A command or watch sent to the background, by what the agent said it does [D187].
             "background" => {
                 self.tasks.push((ts, str_of("task")));
@@ -348,6 +354,7 @@ impl Fold {
                 }
                 if item["step"] == "agent" && item["parent"].is_null() {
                     self.agents.insert(str_of("id"));
+                    self.started(str_of("id"));
                 }
                 if item["parent"].is_null() && item["step"].as_str().is_some_and(|s| !s.is_empty())
                 {
@@ -370,8 +377,8 @@ impl Fold {
                         self.typed.entry(task.into()).or_insert(typed);
                     }
                 }
-                if item["parent"].is_null() {
-                    self.agents.remove(&str_of("id"));
+                if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
+                    self.pending.ended(&str_of("id"), self.turns.is_empty());
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
@@ -430,7 +437,7 @@ impl Fold {
                 self.resume.insert(backend, id);
             }
             "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
-            "plan" => self.plan = Some(item["steps"].clone()),
+            "plan" => self.plan.wrote(&item["steps"]),
             "limits" => {
                 let account = self
                     .accounts
@@ -480,17 +487,10 @@ impl Fold {
                 Some("peer") => self.passed_to_user(item),
                 Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
-                Some("owner_started") => {
-                    self.interrupt(json!({"owner_restarted": true}), ts);
-                    self.turns
-                        .iter_mut()
-                        .filter(|t| t.delivered.is_none())
-                        .for_each(|t| t.orphaned = true);
-                    // Session grants live as long as the host that holds them [D193, D238].
-                    self.grants.clear();
-                    self.granting.clear();
-                }
+                Some("mockup") => self.offered(item),
+                Some("owner_started") => self.owner_started(ts),
                 Some("worker") => self.worker(item),
+                Some("outcome") => self.outcomes.push(item.clone()),
                 _ => {}
             },
             _ => {}

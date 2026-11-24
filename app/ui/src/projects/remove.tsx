@@ -1,12 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "../components/button";
-import { CheckboxRow } from "../components/checkbox-row";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { ConfirmForm } from "../components/confirm-dialog";
+import { CopyButton } from "../components/copy-button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
-import { Radio, RadioGroup } from "../components/radio";
 import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
@@ -17,9 +16,9 @@ import { shortPath } from "./add-project";
 import { type Project, useProjects } from "./projects";
 
 /*
- * Remove project… [D172, D179, D181], the old app's dialog: Rust's preview of what goes, one question per
- * branch with work that never landed, refused while a session works. Each session goes through 1v's
- * delete; the repository itself stays. Mounted beside the sidebar in main.tsx, opened from Settings on the project page.
+ * Remove project… [D172, D179, D181]: Rust's preview of what goes, refused while a session works. Each
+ * session goes through 1v's delete; branches with work that never landed are kept, then the summary offers
+ * to delete them at once, with Undo. The repository itself stays. Mounted beside the sidebar in main.tsx, opened from Settings on the project page.
  */
 
 /** `projects remove <id> --check`'s answer (PROPOSED shape). */
@@ -38,7 +37,7 @@ export type Preview = {
 };
 type Look = { state: "looking" } | { state: "failed"; error: string } | { state: "ready"; preview: Preview };
 /** form; removing (its reply due); watching (no reply coming: the connection dropped, or another run holds it); removed with kept branches. */
-type Phase = { at: "form" } | { at: "removing" } | { at: "watching" } | { at: "removed"; repo: string; kept: string[] };
+type Phase = { at: "form" } | { at: "removing" } | { at: "watching" } | { at: "removed"; repo: string; kept: string[]; preview: Preview | null };
 
 const opened = store<{ id: string; look: Look } | null>(null);
 const read = (id: string): Promise<Look> =>
@@ -83,7 +82,6 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
   const [look, setLook] = useState<Look>(first);
   const [phase, setPhase] = useState<Phase>({ at: first.state === "ready" && first.preview.removing ? "watching" : "form" });
   const [error, setError] = useState<string | null>(null);
-  const [drops, setDrops] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
   const { daemon, rows, projects } = useDaemon();
   const sessionStates = JSON.stringify(rows?.filter((row) => row.project === project.id).map((row) => [row.id, row.state, row.mark, row.archived, row.lifecycle]));
@@ -123,11 +121,11 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
   const confirm = () => {
     setPhase({ at: "removing" });
     setError(null);
-    const drop = [...drops];
-    ask({ op: "run", args: ["projects", "remove", project.id, ...(drop.length ? ["--drop", drop.join(",")] : [])] }, (reply) => {
+    const facts = look.state === "ready" ? look.preview : null;
+    ask({ op: "run", args: ["projects", "remove", project.id] }, (reply) => {
       if (reply.ok) {
         const kept: string[] = reply.kept_branches ?? [];
-        return kept.length ? setPhase({ at: "removed", repo: reply.repo, kept }) : done();
+        return kept.length ? setPhase({ at: "removed", repo: reply.repo, kept, preview: facts }) : done();
       }
       if (reply.error === "disconnected") return setPhase({ at: "watching" });
       setPhase({ at: "form" });
@@ -136,7 +134,7 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
     });
   };
 
-  if (phase.at === "removed") return <Removed name={project.name} repo={phase.repo} kept={phase.kept} onClose={onClose} />;
+  if (phase.at === "removed") return <Removed name={project.name} repo={phase.repo} kept={phase.kept} preview={phase.preview} onClose={onClose} />;
   if (phase.at === "watching") {
     return (
       <Waiting title={`Remove “${project.name}”?`} onClose={onClose}>
@@ -183,7 +181,7 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
               <SummaryRow
                 icon={<Branch />}
                 label={plural(preview.merged, "merged branch", "merged branches")}
-                detail={preview.branches.length ? "Already landed" : "Unmerged ones stay"}
+                detail="Already landed"
               />
             )}
           </ul>
@@ -198,28 +196,11 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
             <ErrorLine key={each.ids.join()} error={`${each.ids.map((id) => `“${titleOf(id)}”`).join(", ")}: its ignored files couldn't be listed: ${each.error}`} />
           ),
         )}
-        {preview && preview.branches.length > 1 && <ManyBranches branches={preview.branches} titleOf={titleOf} drops={drops} onDrops={setDrops} />}
-        {preview?.branches.length === 1 && preview.branches.map(({ id, branch }) => (
-          <div key={id} className="flex flex-col gap-2.5">
-            <p className="text-xs text-muted-foreground">
-              “{titleOf(id)}”: its branch <code className="font-mono text-foreground">{branch}</code> has work that never landed.
-            </p>
-            <RadioGroup
-              value={drops.has(id) ? "delete" : "keep"}
-              onValueChange={(value) => setDrops((last) => (value === "delete" ? new Set(last).add(id) : new Set([...last].filter((each) => each !== id))))}
-              className="flex gap-4"
-            >
-              <label className="flex items-center gap-2 text-sm">
-                <Radio value="keep" />
-                Keep branch
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Radio value="delete" />
-                Delete it too
-              </label>
-            </RadioGroup>
-          </div>
-        ))}
+        {preview && preview.branches.length > 0 && (
+          <p className="text-xs leading-4.25 text-muted-foreground">
+            {plural(preview.branches.length, "branch has", "branches have")} work that never landed: kept, with it. You can delete them after.
+          </p>
+        )}
         <ErrorLine error={blocked} />
         <div role="alert">
           <ErrorLine error={error} />
@@ -227,44 +208,6 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
         </CollapsibleContent>
       </Collapsible>
     </ConfirmForm>
-  );
-}
-
-/** Several branches with work that never landed: all kept unless reviewed, instead of one question each [D181]. */
-function ManyBranches({ branches, titleOf, drops, onDrops }: { branches: Preview["branches"]; titleOf: (id: string) => string; drops: ReadonlySet<string>; onDrops: (next: ReadonlySet<string>) => void }) {
-  const dropped = branches.filter(({ id }) => drops.has(id)).length;
-  const toggle = (id: string, on: boolean) => {
-    const next = new Set(drops);
-    if (on) next.add(id);
-    else next.delete(id);
-    onDrops(next);
-  };
-  const all = dropped === branches.length;
-  const fate = all ? "All of them will be deleted." : dropped > 0 ? `${dropped} will be deleted, the rest kept.` : "All of them are kept.";
-  return (
-    <Collapsible className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 text-xs text-muted-foreground">
-          {/* Each on its own line, so a longer outcome can't wrap and move the rows below. */}
-          <span className="block">{branches.length} branches have work that never landed.</span>
-          <span className="block">{fate}</span>
-        </p>
-        <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group shrink-0" />}>
-          Review {branches.length} branches
-          <ChevronRightAlt className="size-icon-xs! chevron-motion group-aria-expanded:rotate-90" />
-        </CollapsibleTrigger>
-      </div>
-      <CollapsibleContent>
-        <div className="flex flex-col gap-2">
-          <div className="border-b border-divider pb-2">
-            <CheckboxRow label={`Delete all ${branches.length} branches too`} checked={all} indeterminate={dropped > 0 && !all} onCheckedChange={() => onDrops(new Set(all ? [] : branches.map(({ id }) => id)))} />
-          </div>
-          {branches.map(({ id, branch }) => (
-            <CheckboxRow key={id} label={`Delete ${branch} too`} note={`“${titleOf(id)}”`} checked={drops.has(id)} onCheckedChange={(on) => toggle(id, on)} />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 
@@ -297,29 +240,124 @@ function Waiting({ title, children, onClose }: { title: string; children: ReactN
   );
 }
 
-/** Removed, with the branches it kept and the command that deletes each, as the old app said it. */
-export function Removed({ name, repo, kept, onClose }: { name: string; repo: string; kept: string[]; onClose: () => void }) {
+/** A path or name as one word for the shell. */
+const shellWord = (word: string) => (/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`);
+
+/**
+ * Kept branches by repository: a folder chat's come as `<repo> <branch>`, its repo under the project's folder
+ * (branch names have no spaces, so the last one splits them); a session's are the project's own repo's.
+ */
+function byRepo(folder: string, kept: string[]): Map<string, string[]> {
+  const repos = new Map<string, string[]>();
+  for (const each of new Set(kept)) {
+    const cut = each.lastIndexOf(" ");
+    const repo = cut < 0 ? folder : `${folder}/${each.slice(0, cut)}`;
+    repos.set(repo, [...(repos.get(repo) ?? []), each.slice(cut + 1)]);
+  }
+  return repos;
+}
+
+/** Removed with branches kept: what went, the kept ones by name, one command, and one action that deletes them all. */
+export function Removed({ name, repo, kept, preview, onClose }: { name: string; repo: string; kept: string[]; preview: Preview | null; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const repos = byRepo(repo, kept);
+  const count = [...repos.values()].flat().length;
+  const command = [...repos].map(([at, branches]) => `git -C ${shellWord(at)} branch -D ${branches.join(" ")}`).join(" && ");
+  const sessions = preview?.sessions.length ?? 0;
+  const notes = preview?.notes ?? 0;
+  // A session's branch the preview counted as merged but that got work before Remove was kept instead.
+  const expected = new Set(preview?.branches.map(({ branch }) => branch));
+  const merged = Math.max(0, (preview?.merged ?? 0) - kept.filter((each) => !each.includes(" ") && !expected.has(each)).length);
+  const drop = () => {
+    setBusy(true);
+    setError(null);
+    Promise.all([...repos].map(([at, branches]) => run(["projects", "drop-branches", at, ...branches]).then((reply) => ({ at, gone: (reply.branches ?? {}) as Record<string, string>, failed: (reply.failed ?? []) as string[] })))).then(
+      (each) => {
+        // Closed first, so the toasts and their Undo sit above everything.
+        onClose();
+        const failed = each.flatMap(({ failed }) => failed);
+        const count = each.reduce((sum, { gone }) => sum + Object.keys(gone).length, 0);
+        if (count) {
+          const undo = () =>
+            Promise.all(each.map(({ at, gone }) => (Object.keys(gone).length ? run(["projects", "put-branches", at, ...Object.entries(gone).map(([branch, commit]) => `${branch}=${commit}`)]) : { failed: [] }))).then(
+              (replies) => {
+                const missed: string[] = replies.flatMap((reply) => reply.failed ?? []);
+                if (missed.length) showToast(`Couldn't put back every branch: ${missed.join(" · ")}`, { tone: "error", stays: true });
+                else showToast(`Put back ${plural(count, "branch", "branches")}`);
+              },
+              (cause) => showToast(`Couldn't put the branches back: ${errorText(cause)}`, { tone: "error", stays: true }),
+            );
+          showToast(`Deleted ${plural(count, "branch", "branches")}`, { actions: [{ label: "Undo", run: () => void undo() }] });
+        }
+        if (failed.length) showToast(`Kept ${plural(failed.length, "branch", "branches")}: ${failed.join(" · ")}`, { tone: "error", stays: true });
+      },
+      (cause) => {
+        setError(errorText(cause));
+        setBusy(false);
+      },
+    );
+  };
   return (
     <>
       <DialogHeader>
         <DialogTitle>“{name}” was removed</DialogTitle>
         <DialogDescription>Its repository was not touched.</DialogDescription>
       </DialogHeader>
-      <section aria-labelledby="removed-kept" className="flex min-h-0 min-w-0 flex-col gap-1.5 overflow-y-auto">
-        <h3 id="removed-kept" className="text-label font-medium text-foreground">
-          Branches kept with unmerged work
-        </h3>
-        <ul className="flex flex-col gap-2 text-sm">
-          {kept.map((branch) => (
-            <li key={branch} className="flex min-w-0 flex-col gap-0.5">
-              <span className="leading-4.25">{branch}</span>
-              <code className="text-xs leading-4.25 wrap-anywhere text-muted-foreground select-text">{`git -C ${repo} branch -D ${branch}`}</code>
-            </li>
-          ))}
+      {/* The card never scrolls, its body does: many branches never push the buttons out [D389]. */}
+      <div className="scroll-gutter -mx-6 flex min-h-0 flex-col gap-5 overflow-y-auto ps-6 pe-3.5">
+        <ul aria-label="What was removed" className="flex flex-col divide-y divide-divider rounded-surface bg-fill-subtle">
+          {(sessions > 0 || notes > 0) && (
+            <SummaryRow
+              icon={<Chats />}
+              label={[sessions > 0 && plural(sessions, "session", "sessions"), notes > 0 && plural(notes, "note", "notes")].filter(Boolean).join(", ")}
+              detail="Deleted"
+            />
+          )}
+          {(preview?.worktrees ?? 0) > 0 && <SummaryRow icon={<Folder />} label={plural(preview!.worktrees, "worktree", "worktrees")} detail={`${formatBytes(preview!.bytes)} freed`} />}
+          {merged > 0 && <SummaryRow icon={<Branch />} label={plural(merged, "merged branch", "merged branches")} detail="Deleted" />}
+          <li>
+            <Collapsible>
+              <CollapsibleTrigger className="group flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-start focus-visible:focus-ring">
+                <span className="flex shrink-0 text-muted-foreground svg:size-icon-md">
+                  <Branch />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{plural(count, "branch kept", "branches kept")}</span>
+                <span className="shrink-0 text-label text-muted-foreground">Unmerged work</span>
+                <ChevronRightAlt className="size-icon-xs! shrink-0 text-muted-foreground chevron-motion group-aria-expanded:rotate-90" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {/* About four rows, then it scrolls. */}
+                <ul aria-label="Kept branches" className="scroll-gutter flex max-h-25 flex-col gap-1 overflow-y-auto ps-10.5 pe-3.5 pb-3">
+                  {[...repos].flatMap(([at, branches]) => branches.map((branch) => (at === repo ? branch : `${at.slice(repo.length + 1)}: ${branch}`))).map((branch) => (
+                    <li key={branch} className="shrink-0 truncate font-mono text-xs leading-5 text-muted-foreground select-text">
+                      {branch}
+                    </li>
+                  ))}
+                </ul>
+              </CollapsibleContent>
+            </Collapsible>
+          </li>
         </ul>
-      </section>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs text-muted-foreground">Or delete them yourself later:</p>
+          <div className="flex min-w-0 items-center gap-1 rounded-control bg-fill-subtle ps-3 pe-1">
+            <code className="min-w-0 flex-1 overflow-x-auto py-2 font-mono text-xs whitespace-nowrap text-muted-foreground select-text">{command}</code>
+            <CopyButton text={command} tooltip="Copy command" size="icon-sm" variant="ghost" />
+          </div>
+        </div>
+        <div role="alert">
+          <ErrorLine error={error} />
+        </div>
+      </div>
       <DialogFooter>
-        <Button onClick={onClose}>Done</Button>
+        <Button variant="soft-destructive" disabled={busy} onClick={drop}>
+          {busy && <Spinner className="size-icon-xs animate-spin motion-reduce:animate-none" />}
+          Delete {plural(count, "kept branch", "kept branches")}
+        </Button>
+        <Button disabled={busy} onClick={onClose}>
+          Done
+        </Button>
       </DialogFooter>
     </>
   );

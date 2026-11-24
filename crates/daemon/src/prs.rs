@@ -2,7 +2,7 @@
 //! the host's own CLI on a schedule, as VS Code's PR extension polls: every 30 s while
 //! checks run, 2 min with a PR open or none yet, 5 min otherwise or with no window open (proposed, D1047).
 //! Each read keeps `prs.json` in the session's folder, whose change the index publishes on the
-//! session's row. It never wakes the agent [D1027]. A session made due (a turn, its card opened,
+//! session's row; a folder chat's, with each claimed repo's. It never wakes the agent [D1027]. A session made due (a turn, its card opened,
 //! its branch pushed) is read at once, before the rest [D200].
 
 use super::Shared;
@@ -53,6 +53,12 @@ pub(super) fn shown(ids: &[&str]) {
         .unwrap()
         .extend(ids.iter().map(|id| id.to_string()));
     turned(ids);
+    // A folder chat's card lists its own beside the claimed repo's picked on it [D494].
+    let chats: Vec<&str> = (ids.iter())
+        .filter_map(|id| Some(id.split_once('@')?.0))
+        .filter(|id| !id.is_empty())
+        .collect();
+    turned(&chats);
 }
 
 pub(super) fn watch(data: PathBuf, state: Shared) {
@@ -110,16 +116,20 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                     let dir = session_dir(&data, &id);
                     let kept = match dir.join("archived").exists() {
                         true => None,
-                        false => host::pr(&data, &id).ok().and_then(|pr| {
-                            let kept = pr.watch();
-                            // An open PR's tab is read at the same pace, so it opens on a fresh read [D207].
-                            if kept.is_some() && window {
-                                for (other, n) in host::tabbed(&dir) {
-                                    let _ = pr.view(other.as_deref(), n);
+                        false => match host::pr(&data, &id) {
+                            Ok(pr) => {
+                                let kept = pr.watch();
+                                // An open PR's tab is read at the same pace, so it opens on a fresh read [D207].
+                                if kept.is_some() && window {
+                                    for (other, n) in host::tabbed(&dir) {
+                                        let _ = pr.view(other.as_deref(), n);
+                                    }
                                 }
+                                kept
                             }
-                            kept
-                        }),
+                            // A folder chat has no checkout of its own.
+                            Err(_) => host::chat(&data, &id),
+                        },
                     };
                     let at = Instant::now() + every(kept.as_ref(), window);
                     // Under DUE's lock, as the scheduler reads it: a turn noted meanwhile is never lost.

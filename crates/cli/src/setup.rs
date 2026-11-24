@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
 
+mod branches;
 mod forges;
 mod kept;
 mod profile;
@@ -146,6 +147,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                             None => None,
                         },
                         pinned: None,
+                        // `""|tag:N|emoji:E|image:PATH`: an image is copied in.
+                        icon: flag(args, "--icon").map(String::from),
                     };
                     let project = projects::set(data, arg(2), change)?;
                     // The answer stays saved when a CLI's own entry can't be written [D166].
@@ -161,6 +164,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let repo = core::worktrees::branches(data, Path::new(&folder))?;
                     return Ok(json!({"ok": true, "repo": repo}));
                 }
+                "drop-branches" => return branches::drop_branches(arg(2), args),
+                "put-branches" => return branches::put_branches(arg(2), args),
                 "reveal" => {
                     let folder = projects::get(data, arg(2))?.folder;
                     let status = std::process::Command::new("open").arg(&folder).status()?;

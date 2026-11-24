@@ -181,7 +181,7 @@ export type Item = Base &
       }
     | { kind: "fileChange"; changes: FileChange[]; progress: Progress; approval?: PendingApproval }
     | { kind: "approval"; request: PendingApproval; decision: "approved" | "denied" | "withdrawn" | null; to?: "parent" | "brigadier" | "review"; by?: "parent" | "review" }
-    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; withdrawn?: boolean; to?: "parent"; /** A worker's routing hold: it waits with no turn running [D2028]. */ held?: true }
+    | { kind: "question"; question: string; options: string[]; answer: string | null; request?: PendingQuestion; answers?: (string | null)[]; /** Each answer's files, as a sent message's. */ files?: (SentFile[] | null)[] | null; withdrawn?: boolean; to?: "parent"; /** A worker's routing hold: it waits with no turn running [D2028]. */ held?: true }
     | {
         kind: "childAgent";
         sessionId: string;
@@ -285,7 +285,7 @@ export type Item = Base &
     | { kind: "team_step"; type: "messaged"; byUser: boolean; workers: string[]; text?: string }
     | { kind: "team_still"; workers: string[] }
     /** The lead's one row for its mockup worker's mockup, its moment read live (`mockup <wid>`) [D2055, D560]. */
-    | { kind: "mockup"; worker: string; count: number; on?: string[] | null; round?: number | null }
+    | { kind: "mockup"; worker: string; count: number; on?: string[] | null; round?: number | null; ready?: number | null }
     /** A message this session's agent sent another, from Rust's notes [D2034, D3014]; `waited` once a `--wait` ended. */
     | {
         kind: "peer";

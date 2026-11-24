@@ -73,6 +73,8 @@ export type HomeProps = {
   /** The permission level pill, 1t's LevelPicker, mounted by the caller. */
   level?: ReactNode;
   offline: boolean;
+  /** Whose words and files these are. */
+  draft?: string;
   /** The draft's text as last left. */
   initial?: Draft;
   onDraft?: (draft: Draft) => void;
@@ -104,7 +106,7 @@ export function HomeView(props: HomeProps) {
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
   const typed = useRef(props.initial?.parts ?? []);
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
-  const files = useComposerFiles({ owner: HOME_DRAFT, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
+  const files = useComposerFiles({ owner: HOME_DRAFT, draft: props.draft, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   // Asked once the project and model are known, and again once the project is trusted, whose folder it then reads [D178].
   const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: !projects ? undefined : noModel ? null : props.model?.provider, project: project?.id, fresh: project?.trusted, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   // Put in from elsewhere (a note's selection), above what's typed, as a session's composer takes it.
@@ -128,6 +130,7 @@ export function HomeView(props: HomeProps) {
   useEffect(() => field.current?.focus(), [props.focus]);
   // After a restart the draft is Rust's alone: it comes back unless something was typed first.
   useEffect(() => {
+    if (props.initial?.attachmentIds.length) files.restore(props.initial.attachmentIds);
     void props.loadDraft?.().then((saved) => {
       const now = field.current;
       if (!saved || !now || !isEmpty({ parts: now.parts(), attachmentIds: [] })) return;

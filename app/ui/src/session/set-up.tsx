@@ -33,7 +33,7 @@ export function SetUpAgentDialog({ name, onClose }: { name: string | null; onClo
           <AgentCard
             agent={agent}
             online={online}
-            starting={starting === name}
+            starting={Boolean(name && starting[name])}
             retrying={Boolean(name && checking.has(name))}
             failed={name ? failed[name] : undefined}
             onAction={(action) => agent && void begin(agent, action)}

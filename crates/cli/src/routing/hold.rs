@@ -4,6 +4,8 @@
 use super::pick::{account_for, label, place};
 use super::*;
 use brigadier_frames::procs;
+use std::collections::BTreeSet;
+use std::sync::Mutex;
 
 /// "Claude · Sonnet 5.5 · High": an entry as its card names it.
 fn words(e: &Value) -> String {
@@ -189,7 +191,22 @@ pub(crate) fn stopped(data: &Path, wid: &str, by: &str) {
     }
 }
 
-/// The daemon's: a hold whose reset has passed goes on as picked.
+/// The daemon's: worker `wid`'s wait is over, so it goes on, off the loop and once at a time.
+pub(crate) fn due(data: &Path, wid: &str) {
+    static GOING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+    if !GOING.lock().unwrap().insert(wid.into()) {
+        return;
+    }
+    let (data, wid) = (data.to_path_buf(), wid.to_string());
+    std::thread::spawn(move || {
+        if let Err(e) = resume(&data, &wid) {
+            eprintln!("brigadierd: hold {wid}: {e}");
+        }
+        GOING.lock().unwrap().remove(&wid);
+    });
+}
+
+/// A hold whose reset has passed goes on as picked.
 pub(super) fn resume(data: &Path, wid: &str) -> io::Result<Value> {
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
     let Some(hold) = f.hold.clone().filter(|h| h["phase"] == "waiting") else {

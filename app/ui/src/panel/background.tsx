@@ -3,66 +3,120 @@ import { useState } from "react";
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
 import { type Job, useDaemon } from "../daemon";
-import { StopCircle, Terminal } from "../icons";
+import { StopCircle, Terminal, Warning } from "../icons";
+import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Clock } from "../landing/icons";
 import { errorText, run } from "../onboarding/api";
 import { duration, useSecond } from "../thread/words";
+import { onHand, type Worker } from "../workers/chip";
+import { useFamily } from "../workers/live";
 import { CardSection } from "./card";
 import { openBackgroundHistory } from "./open";
 import { Line, Rows } from "./source/rows";
 
-const NONE: readonly Job[] = [];
+/** A process on the card: the session it's left by, and its worker, null for the card's own session. */
+type Process = Job & { session: string; owner: Worker | null };
+
 const keyOf = (job: Job) => `${job.pid}.${job.start_us}`;
+/** Outlived the worker that started it. */
+const left = (job: Process) => job.owner !== null && !onHand(job.owner);
+const ranFor = (job: Job, now: number) => duration(now - job.start_us / 1000);
 
 /**
- * The card's Background processes, plain rows with our extras [D145, D73, D105]: what the session's ended turns
- * left running (a dev server, a watcher), each with how long it has run and Stop on hover. Stopped, a row goes at once;
- * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run, then its
- * title keeps the clock that opens Background history [D200].
+ * The card's Background processes, plain rows with our extras [D145, D73, D105]: what the ended turns of the session
+ * and its workers left running (a dev server, a watcher), each with its owner, and on hover how long it has run and
+ * Stop; those that outlived their worker come apart, with Stop always there and Stop all. Stopped, a row goes at once;
+ * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run; once
+ * one has, the session's or a worker's, its title keeps the clock that opens their Background history [D200].
  */
 export function BackgroundCard({ owner }: { owner: string }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
-  const jobs = row?.background ?? NONE;
+  const family = useFamily(owner);
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
-  const shown = jobs.filter((job) => !stopping.has(keyOf(job)));
-  const now = useSecond(shown.length > 0);
-  if (shown.length === 0 && !row?.background_ran) return null;
-  const stop = (job: Job) => {
+  const jobs: Process[] = [
+    ...(row?.background ?? []).map((job) => ({ ...job, session: owner, owner: null })),
+    ...family.flatMap(({ worker, row }) => (row.background ?? []).map((job) => ({ ...job, session: row.id, owner: worker }))),
+  ].filter((job) => !stopping.has(keyOf(job)));
+  const now = useSecond(jobs.length > 0);
+  const ran = row?.background_ran || family.some((each) => each.row.background_ran);
+  if (jobs.length === 0 && !ran) return null;
+  const leftover = jobs.filter(left);
+  const stop = (job: Process) => {
     const key = keyOf(job);
     setStopping((was) => new Set(was).add(key));
-    run(["jobs", owner, "stop", String(job.pid), String(job.start_us)]).catch((cause: unknown) => {
+    run(["jobs", job.session, "stop", String(job.pid), String(job.start_us)]).catch((cause: unknown) => {
       setStopping((was) => new Set([...was].filter((each) => each !== key)));
       showToast(`Couldn't stop ${job.label}: ${errorText(cause)}`, { tone: "error" });
     });
   };
+  const stopButton = (job: Process) => (
+    <TooltipIconButton tooltip="Stop" aria-label={`Stop ${job.label}`} size="icon-xs" className="text-muted-foreground hover:text-foreground" onClick={() => stop(job)}>
+      <StopCircle />
+    </TooltipIconButton>
+  );
   return (
     <CardSection
       title="Background processes"
       fold="background"
-      count={shown.length}
+      count={jobs.length}
       end={
-        <TooltipIconButton tooltip="Background history" size="icon-xs" onClick={() => openBackgroundHistory(owner)}>
-          <Clock />
-        </TooltipIconButton>
+        ran && (
+          <TooltipIconButton tooltip="Background history" size="icon-xs" onClick={() => openBackgroundHistory(owner)}>
+            <Clock />
+          </TooltipIconButton>
+        )
       }
     >
-      <Rows items={shown}>
+      <Rows items={jobs.filter((job) => !left(job))}>
         {(job) => (
           <Line
             key={keyOf(job)}
-            icon={<Terminal />}
-            title={job.label}
-            end={duration(now - job.start_us / 1000)}
+            icon={job.owner ? <WorkerGlyph id={job.owner.id} /> : <Terminal />}
+            title={`${job.label}\n${job.owner?.name ?? "This session"}`}
+            end={<span className="max-w-20 truncate">{job.owner?.name ?? "This session"}</span>}
             action={
-              <TooltipIconButton tooltip="Stop" aria-label={`Stop ${job.label}`} size="icon-xs" className="text-muted-foreground hover:text-foreground" onClick={() => stop(job)}>
-                <StopCircle />
-              </TooltipIconButton>
+              <span className="flex items-center gap-1.5 text-label text-muted-foreground tabular-nums">
+                {ranFor(job, now)}
+                {stopButton(job)}
+              </span>
             }
           >
             {job.label}
           </Line>
         )}
       </Rows>
+      {leftover.length > 0 && (
+        <div role="group" aria-label="Left by finished workers" className="mt-1 flex min-w-0 flex-col">
+          <Line
+            icon={<Warning />}
+            className="text-warning"
+            end={
+              <button type="button" className="shrink-0 cursor-pointer rounded-sm text-link hover:underline focus-visible:focus-ring" onClick={() => leftover.forEach(stop)}>
+                Stop all
+              </button>
+            }
+          >
+            {leftover.length} left by finished workers
+          </Line>
+          <Rows items={leftover}>
+            {(job) => (
+              <Line
+                key={keyOf(job)}
+                icon={<WorkerGlyph id={job.owner!.id} />}
+                title={`${job.label}\n${job.owner!.name}, ${ranFor(job, now)}`}
+                end={
+                  <>
+                    <span className="max-w-20 truncate">{job.owner!.name}</span>
+                    {stopButton(job)}
+                  </>
+                }
+              >
+                {job.label}
+              </Line>
+            )}
+          </Rows>
+        </div>
+      )}
     </CardSection>
   );
 }

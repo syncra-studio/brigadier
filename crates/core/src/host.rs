@@ -10,6 +10,7 @@ use crate::repos::{failed, tool};
 pub mod accounts;
 mod actions;
 mod avatars;
+mod chat;
 mod chip;
 mod create;
 mod github;
@@ -21,8 +22,10 @@ mod touched;
 mod view;
 mod write;
 pub use actions::{kept_run, kept_runs};
+pub use chat::{chat, listed};
 pub use chip::{chip, moved_on, opened};
 pub use create::Create;
+use github::hosted;
 pub use github::{clone_github, github_repos, project_repos};
 pub use prs::kept;
 pub use search::{kept_key, kept_search};
@@ -86,6 +89,11 @@ impl Repo {
     /// The repository's page on its own server.
     fn url(&self) -> String {
         format!("https://{}/{}", self.host, self.path)
+    }
+
+    /// Its key in `READER`.
+    fn key(&self) -> String {
+        format!("{}/{}", self.host, self.path)
     }
 
     /// The host's own name, for the UI to show.
@@ -178,6 +186,8 @@ pub fn repo(url: &str) -> Option<Repo> {
         "bitbucket.org" => Some(Kind::Bitbucket),
         "gitea.com" => Some(Kind::Gitea),
         "codeberg.org" => Some(Kind::Forgejo),
+        // GitHub's own domain, signed in or not.
+        _ if host.ends_with(".ghe.com") => Some(Kind::GitHub),
         _ if !accounts::logins(&accounts::GH, host).is_empty() => Some(Kind::GitHub),
         _ => None,
     };
@@ -241,7 +251,7 @@ fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
         return None;
     }
     let path = setup::find("gh", &[])?.to_str()?.to_string();
-    let key = format!("{}/{}", repo.host, repo.path);
+    let key = repo.key();
     let last = READER.lock().unwrap().get(&key).cloned();
     let pick = pick.map(|login| Some(login.to_string()));
     let others = std::iter::once_with(|| others(&repo.host)).flatten();
@@ -327,12 +337,17 @@ fn reads(gh: &Gh, repo: &Repo) -> bool {
     setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success())
 }
 
+/// Whether `gh` can read every one of `repos`, asked at once.
+fn reads_all(gh: &Gh, repos: &[&Repo]) -> bool {
+    std::thread::scope(|s| {
+        let all: Vec<_> = (repos.iter()).map(|r| s.spawn(|| reads(gh, r))).collect();
+        (all.into_iter()).all(|read| read.join().unwrap_or(false))
+    })
+}
+
 /// `repo`'s reader failed a read: the next one probes again.
 fn forget(repo: &Repo) {
-    READER
-        .lock()
-        .unwrap()
-        .remove(&format!("{}/{}", repo.host, repo.path));
+    READER.lock().unwrap().remove(&repo.key());
 }
 
 /// The accounts gh has signed in for `host` other than its active one, which it lists first.
@@ -376,9 +391,8 @@ pub struct Pr {
     pub account: Option<String>,
 }
 
-/// A checkout and the repository its branch pushes to, git picking the remote; None with no
-/// known host.
-fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
+/// `hosted`, the repository None on a server it can't name; None with no remote.
+fn pushed(checkout: Checkout) -> Option<(Checkout, Option<Repo>)> {
     let never = AtomicBool::new(false);
     let head = git::read(
         &checkout.root,
@@ -387,7 +401,7 @@ fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
     );
     let branch = head.map(|out| String::from_utf8_lossy(&out).trim().to_string());
     let remote = push::remote(&checkout, &branch.unwrap_or_default()).ok()?;
-    let repo = repo(&push::url(&checkout, &remote).ok()?)?;
+    let repo = repo(&push::url(&checkout, &remote).ok()?);
     Some((checkout, repo))
 }
 
@@ -419,15 +433,9 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // A folder project reads through its first repository and searches them all [D780].
     let folder = (crate::projects::get(data, id).ok()).filter(|p| p.kind == crate::folder::KIND);
     let homes: Vec<(Checkout, Repo)> = (folder.iter())
-        .flat_map(|p| {
-            let home = Path::new(&p.folder);
-            let found = crate::folder::repos(home).into_iter();
-            found.filter_map(move |r| hosted(git::at(data, &home.join(r)).ok()?))
-        })
+        .flat_map(|p| github::homes(data, p))
         .collect();
-    // One on GitHub first, as only GitHub's are searched; a repository with no host is passed over.
-    let first = (homes.iter().find(|(_, r)| r.kind == Kind::GitHub)).or(homes.first());
-    let checkout = match first {
+    let checkout = match homes.first() {
         Some((first, _)) => first.clone(),
         None => git::checkout(data, &target)?,
     };
@@ -459,6 +467,11 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
+    let account = match target {
+        Target::Project(id) => Some(id.to_string()),
+        Target::Session(id) | Target::Repo(id, _) => load(data, id).ok().and_then(|s| s.project),
+    }
+    .and_then(|p| github::picked(data, &p, repo.as_ref()));
     let scope = (homes.into_iter().map(|(_, r)| r))
         .filter(|r| r.kind == Kind::GitHub && slug(&r.path))
         .collect();
@@ -478,12 +491,6 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         },
         dir: dir(data, id),
         avatars: data.join("avatars"),
-        account: match target {
-            Target::Project(id) => Some(id.to_string()),
-            Target::Session(id) | Target::Repo(id, _) => {
-                load(data, id).ok().and_then(|s| s.project)
-            }
-        }
-        .and_then(|p| crate::projects::get(data, &p).ok()?.github_account),
+        account,
     })
 }

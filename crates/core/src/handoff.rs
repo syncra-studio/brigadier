@@ -19,6 +19,7 @@ const WORK: usize = 2_000;
 const PLAN: usize = 2_000;
 const CONTENTS: usize = 1_200;
 const EXCHANGE: usize = 6_000;
+const FILES: usize = 3_000;
 
 /// The first `max` characters, on a character boundary, marked where cut.
 fn head(s: &str, max: usize) -> String {
@@ -264,9 +265,10 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }
 
     // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
+    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
     let mut names: Vec<String> = (crate::adapters::all().iter())
         .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
-        .filter(|k| k["kind"] == "skill")
+        .filter(|k| k["kind"] == "skill" && !hidden.has(k))
         .filter_map(|k| k["name"].as_str().map(String::from))
         .collect();
     names.sort();
@@ -349,6 +351,18 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         out += &first;
     }
 
+    // What came with the messages, the newest first.
+    let sent = (p.entries.iter().rev())
+        .flat_map(|e| (e.sent.iter()).map(move |file| format!("- {id}#{}: {file}\n", e.at)));
+    let sent = fill(sent, FILES, "they're in that folder");
+    if !sent.is_empty() {
+        let folder = crate::message::sent(&spec.dir);
+        out += &format!(
+            "\n## Files sent with the messages, in {}\n{sent}",
+            folder.display()
+        );
+    }
+
     // Open items: workers started and not yet reported back.
     let workers = std::fs::read_dir(spec.dir.join("workers"))
         .into_iter()
@@ -414,6 +428,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     // The agent's own last to-do list, as it wrote it [D104].
     if let Some(steps) = f
         .plan
+        .written
         .as_ref()
         .and_then(Value::as_array)
         .filter(|s| !s.is_empty())

@@ -302,7 +302,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "press": {
       const before = idsNow(owner);
       const waited = waitFrom(tab);
-      const ask = (yes: { url: string; for?: string[] } | null) => agentRun(tab, {
+      const ask = (yes: { url: string; for?: string[]; covered?: boolean } | null) => agentRun(tab, {
         kind: op.op,
         label,
         target: op.target,
@@ -313,6 +313,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
         always: op.always,
         approved: yes?.url ?? null,
         approvedFor: yes?.for,
+        covered: yes?.covered === true,
       }, waited).catch(async (error: unknown) => {
         // A window may close on the very click, as Approve's does, before the click's own answer comes.
         await wait(SETTLE_MS);
@@ -395,8 +396,8 @@ function withDialogs(result: Result, answer: unknown): Result {
   return { ...result, note: [result.note, ...lines].filter(Boolean).join(" ") };
 }
 
-/** The user's yes, while the tab is still on the page it was given on: its address, and what it was for. */
-function approvedHere(tab: string, approved: { generation: number; url: string; for: string[] } | undefined): { url: string; for: string[] } | null {
+/** The user's yes, while the tab is still on the page it was given on: its address, and what it was for, or that it is one for the session. */
+function approvedHere(tab: string, approved: { generation: number; url: string; for?: string[]; covered?: boolean } | undefined): { url: string; for?: string[]; covered?: boolean } | null {
   return approved && approved.generation === agentPage(tab).generation ? approved : null;
 }
 

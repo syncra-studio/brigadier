@@ -3,6 +3,9 @@
 //! an image in the agent's own form, any other file as its path, a long paste whole, a mention as
 //! the old app's line [D2007, D2008, D2021].
 
+pub mod answers;
+pub mod notes;
+
 use crate::{Spec, check_id, data_of, session_dir};
 use serde_json::Value;
 use std::fs;
@@ -98,7 +101,8 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             "at most {MAX_FILES} attachments per message"
         )));
     }
-    for id in ids {
+    // What a message handed on keeps of its notes goes with it.
+    for id in ids.into_iter().chain(notes::kept(parts)) {
         if file_in(&sent(dir), &id).is_some() {
             continue;
         }
@@ -121,13 +125,32 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
 
 /// The message as its agent reads it, its files already taken into `spec`'s session: a long
 /// paste whole where it was pasted, an image as "[Image #n: <path>]" with the image beside, each other
-/// file and each mention as the old app's line after the text [D2007, D2008, D2021].
-pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
+/// file and each mention as the old app's line after the text [D2007, D2008, D2021]. `backend`: the
+/// agent it goes to, where the send names one.
+pub fn compose(
+    spec: &Spec,
+    text: &str,
+    parts: Value,
+    backend: Option<&str>,
+) -> io::Result<Message> {
+    compose_on(spec, text, parts, backend, vec![])
+}
+
+/// The same, its images numbered on from `images`, which it carries too.
+fn compose_on(
+    spec: &Spec,
+    text: &str,
+    mut parts: Value,
+    backend: Option<&str>,
+    mut images: Vec<PathBuf>,
+) -> io::Result<Message> {
     if parts.is_null() {
         return Ok(Message::plain(text));
     }
     let data = data_of(spec);
-    let (mut agent, mut notes, mut images) = (String::new(), vec![], vec![]);
+    notes::freeze(&data, &spec.dir, &mut parts)?;
+    let mut mentioned = vec![];
+    let (mut agent, mut notes) = (String::new(), vec![]);
     let file = |id: &str| file_in(&sent(&spec.dir), id);
     for part in parts["parts"].as_array().into_iter().flatten() {
         let label = part["label"].as_str().unwrap_or("");
@@ -141,10 +164,12 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                     label,
                 ));
             }
-            // Its text whole, so an agent kept to its own folders needs no read of the app's [D913 D922].
+            // Its text whole, so an agent kept to its own folders needs no read of the app's [D913 D922];
+            // told last, so its images number after those the user attached.
             (Some("mention"), Some("note")) => {
                 agent += label;
-                notes.push(note(&data, part["id"].as_str().unwrap_or(""), label));
+                mentioned.push((notes.len(), part));
+                notes.push(String::new());
             }
             // By its id, which its `brigadier` commands take, as the old app's `[mentions task-N: title]`.
             (Some("mention"), Some("worker")) => {
@@ -166,6 +191,12 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
                     true => notes.push(format!("[gives you browser tab {id} ({label}): it's yours to use now, with the user's sign-ins. `brigadier browser snapshot --tab {id}` reads it.]")),
                     false => notes.push(format!("[mentions the browser page {label}]")),
                 }
+            }
+            // A tool chip (the composer's Tools): its name in the text, never a `/` the agent runs, and
+            // what it asks after it.
+            (Some("command"), Some("tool")) => {
+                agent += label.trim_start_matches('/');
+                notes.push(tool(part["id"].as_str().unwrap_or("")).into());
             }
             (Some("mention"), Some(kind)) => {
                 agent += label;
@@ -200,6 +231,14 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
             None => {}
         }
     }
+    if !mentioned.is_empty() {
+        let to = notes::Takes::of(spec, backend)?;
+        // The message's own files count first, whatever their kind.
+        let most = images.len() + MAX_FILES.saturating_sub(ids(&parts).len());
+        for (at, part) in mentioned {
+            notes[at] = notes::told(spec, &to, part, &mut images, most);
+        }
+    }
     for note in notes {
         agent += "\n";
         agent += &note;
@@ -210,16 +249,19 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
         (parts["parts"].as_array().into_iter().flatten())
             .any(|p| p["kind"] == "paste" && p["attachmentId"] == id)
     };
-    let files: Vec<Value> = (ids(&parts).iter())
-        .filter_map(|id| file(id).map(|path| (id, path)))
+    let own = ids(&parts);
+    let files: Vec<Value> = (own.into_iter())
+        .chain(notes::kept(&parts))
+        .filter_map(|id| file(&id).map(|path| (id, path)))
+        // A note's text shows as its chip; its images that went as any sent one.
+        .filter(|(id, path)| !id.starts_with(notes::KEPT) || images.contains(path))
         .map(|(id, path)| {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             let bytes = fs::metadata(&path).map_or(0, |m| m.len());
-            serde_json::json!({"id": id, "name": name, "mime": mime(&path), "bytes": bytes, "pasted": pasted(id)})
+            serde_json::json!({"id": id, "name": name, "mime": mime(&path), "bytes": bytes, "pasted": pasted(&id)})
         })
         .collect();
     let commands = commands(spec, &parts)?;
-    let mut parts = parts;
     parts["files"] = files.into();
     Ok(Message {
         text: text.into(),
@@ -230,11 +272,28 @@ pub fn compose(spec: &Spec, text: &str, parts: Value) -> io::Result<Message> {
     })
 }
 
+/// What a tool chip asks of the agent, by its id in app/ui/src/components/composer/tools.tsx.
+fn tool(id: &str) -> &'static str {
+    match id {
+        "computer" => {
+            "Use computer use (`brigadier computer`) for this, and have your workers use it too."
+        }
+        "browser" => {
+            "Use Brigadier's browser (`brigadier browser`) for this, and have your workers use it too."
+        }
+        "mockup" => "Draw me a mockup first (`brigadier mockup`), before building it.",
+        "image" => "Make or edit the images this needs with your image tool.",
+        "research" => "Research this on the web, and give me your sources.",
+        "workers" => "Split this job across workers (`brigadier start`) that run in parallel.",
+        _ => "",
+    }
+}
+
 /// Each command chip as its agent last listed it, so its adapter can send it in the agent's own
 /// form; one not listed keeps its name and kind [D164, D2009].
 fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
     let chips: Vec<&Value> = (parts["parts"].as_array().into_iter().flatten())
-        .filter(|p| p["kind"] == "command")
+        .filter(|p| p["kind"] == "command" && p["type"] != "tool")
         .collect();
     if chips.is_empty() {
         return Ok(vec![]);
@@ -259,41 +318,6 @@ fn commands(spec: &Spec, parts: &Value) -> io::Result<Vec<Value>> {
                 .unwrap_or_else(|| serde_json::json!({"name": name, "kind": kind, "path": null}))
         })
         .collect())
-}
-
-/// A mentioned note's text, from its project's notes or the shared ones, cut to a chat's length.
-fn note(data: &Path, id: &str, title: &str) -> String {
-    let projects = (fs::read_dir(data.join("projects"))
-        .into_iter()
-        .flatten()
-        .flatten())
-    .map(|e| e.path().join("notes"));
-    let found = (check_id(id).is_ok())
-        .then(|| {
-            // Then where one still waits to move, as its list shows it [D922].
-            let waiting = (crate::ids(data).into_iter())
-                .map(|s| session_dir(data, &s).join("notes"))
-                .chain([data.join("home-notes")]);
-            (projects.chain([data.join("notes")]).chain(waiting))
-                .map(|dir| dir.join(format!("{id}.md")))
-                .find_map(|path| fs::read_to_string(&path).ok().map(|text| (path, text)))
-        })
-        .flatten();
-    let Some((path, mut text)) = found else {
-        return format!("[mentions the note \"{title}\", which is gone]");
-    };
-    if text.len() > CHAT_BYTES {
-        let mut at = CHAT_BYTES;
-        while !text.is_char_boundary(at) {
-            at -= 1;
-        }
-        text.truncate(at);
-        text += "\n[…cut; read the rest in the file]";
-    }
-    format!(
-        "[mentions the note \"{title}\" ({}; change it there only if asked); its text follows]\n{text}\n[/note]",
-        path.display()
-    )
 }
 
 /// A mentioned session's latest messages, as the old app's: newest first until 30 or 24 kB, then
@@ -352,6 +376,17 @@ pub fn mime(path: &Path) -> &'static str {
         "html" => "text/html",
         _ => "application/octet-stream",
     }
+}
+
+/// An image's kind by its first bytes; None for any other file.
+pub fn kind(b: &[u8]) -> Option<&'static str> {
+    Some(match b {
+        _ if b.starts_with(b"\x89PNG") => "image/png",
+        _ if b.starts_with(b"GIF8") => "image/gif",
+        _ if b.starts_with(&[0xff, 0xd8]) => "image/jpeg",
+        _ if b.starts_with(b"RIFF") && b.get(8..12) == Some(b"WEBP") => "image/webp",
+        _ => return None,
+    })
 }
 
 /// An image's width and height from its header (PNG, JPEG, GIF, WebP); None when it can't say.

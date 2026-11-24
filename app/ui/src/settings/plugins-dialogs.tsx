@@ -227,6 +227,21 @@ function ValueRows({ label, rows, onChange }: { label: "Headers" | "Environment"
   );
 }
 
+/** What Remove does: a skill's folders of the user's own stay, where the agent's own CLI may still find it, though the `/` menu and `brigadier skill` don't. */
+function removeLine(item: Item): string {
+  if (item.kind === "server") return "Removes it from Brigadier's library. Sessions already running keep it until they end.";
+  const folders = item.folders ?? [];
+  return [
+    item.from
+      ? "It leaves Brigadier's list, the / menu and brigadier skill, and Brigadier stops giving it to new sessions. Agents already running keep it until they end."
+      : "It leaves Brigadier's list, the / menu and brigadier skill, its copy is deleted, and Brigadier stops giving it to new sessions.",
+    folders.length > 0 && `Your own ${folders.length === 1 ? "folder stays" : "folders stay"}: ${folders.join(", ")}. An agent's own CLI may still find the skill there.`,
+    "Add it again to bring it back.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Removing one library item: one choice, the old app's (proposed). */
 export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () => void; onClose: () => void }) {
   return (
@@ -234,7 +249,7 @@ export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove
       open
       onOpenChange={(next) => !next && onClose()}
       title={`Remove ${item.name}?`}
-      description="Removes it from Brigadier's library. Sessions already running keep it until they end."
+      description={removeLine(item)}
       confirm="Remove"
       destructive
       onConfirm={onRemove}

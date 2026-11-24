@@ -10,6 +10,7 @@ import { Paperclip } from "../icons";
 import { daemonSource, openFolders } from "../projects/store";
 import { openAttachment } from "../shell/tab-store";
 import { giveChipTabs } from "../browser/give";
+import type { SentFile } from "../thread/item";
 import type { Runner } from "./composer";
 import { HOME_DRAFT } from "./draft";
 
@@ -36,6 +37,26 @@ const subscribe = (listener: () => void) => {
 /** Where an attachment of `owner` (a session, or Home's draft) is served. */
 export const urlOf = (owner: string, id: string) => `/attachment/${owner === HOME_DRAFT ? "home" : owner}/${id}`;
 const set = (owner: string, id: string, attachment: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(id, attachment) }));
+
+export const dropTiles = (draft: string) => change(draft, (now) => ({ ...now, tiles: [] }));
+
+/** Drops the tiles of a session's question cards that no longer wait, its other drafts' kept. */
+export function forgetTiles(session: string, keep: ReadonlySet<string>): void {
+  for (const draft of owners.keys()) if (draft.startsWith(`${session}\n`) && !keep.has(draft.split("\n")[1]!)) owners.delete(draft);
+}
+
+/** `draft`'s files as Rust keeps a sent message's, and its words as Rust's row shows them, `from` images before its first. */
+export function saidDraft(owner: string, draft: Draft, from: number): { text: string; files: SentFile[]; images: number } {
+  const all = filesOf(owner).all;
+  let n = from;
+  const image = () => `[Image #${++n}]`;
+  let text = draft.parts.map((part) => (typeof part === "string" ? part : part.kind === "image" ? image() : "label" in part ? part.label : (part.preview ?? ""))).join("");
+  const tiles = draft.attachmentIds.flatMap((id) => all.get(id) ?? []);
+  const isImage = (each: Attachment) => each.mime.startsWith("image/");
+  for (const each of [...tiles.filter(isImage), ...tiles.filter((one) => !isImage(one))]) text += `${text && !/\s$/.test(text) ? " " : ""}${isImage(each) ? image() : `[${each.name}]`}`;
+  const ids = [...draft.parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : [])), ...draft.attachmentIds];
+  return { text, images: n, files: [...new Set(ids)].flatMap((id) => all.get(id) ?? []).map(({ id, name, mime }) => ({ id, name, mime, bytes: 0, pasted: mime === "text/plain" && !draft.attachmentIds.includes(id) })) };
+}
 
 /** A file put in `owner`'s folder from elsewhere (a PR sent to the agent [D699]), known to its composer if that has listed them. */
 export const stored = (owner: string, id: string, name: string) => owners.has(owner) && set(owner, id, { id, name, mime: "text/plain", state: "ready", url: urlOf(owner, id) });
@@ -67,8 +88,10 @@ const folderChip = (path: string): Chip => ({ kind: "mention", id: path, type: "
  * the tiles over it, the `@` menu's search, and why Send waits (a file still being stored, or an image the model
  * can't take) [D127, D388, D2010, D2022 #14].
  */
-export function useComposerFiles({ owner, run, field, backend, project, images = true, onTiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string; project?: string | null; images?: boolean; /** The tiles changed: the draft keeps them. */ onTiles?: (tiles: string[]) => void }) {
-  const files = useSyncExternalStore(subscribe, () => filesOf(owner));
+export function useComposerFiles({ owner, draft = owner, run, field, backend, project, images = true, onTiles, main = true }: { owner: string; /** Whose tiles: each of Home's drafts has its own, their files all Home's. */ draft?: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string; project?: string | null; images?: boolean; /** The tiles changed: the draft keeps them. */ onTiles?: (tiles: string[]) => void; /** False for a question card's: drops on the thread stay the composer's. */ main?: boolean }) {
+  const { all } = useSyncExternalStore(subscribe, () => filesOf(owner));
+  const { tiles: shownTiles } = useSyncExternalStore(subscribe, () => filesOf(draft));
+  const files = { all, tiles: shownTiles };
   const shown = useRef(files.tiles);
   useEffect(() => {
     if (shown.current === files.tiles) return;
@@ -89,27 +112,27 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
   const attach = (id: string, file: File, inText: boolean) => {
     const mime = file.type || "application/octet-stream";
     set(owner, id, { id, name: file.name || "Pasted image.png", mime, state: "uploading" });
-    if (!inText) change(owner, (now) => ({ ...now, tiles: [...now.tiles, id] }));
+    if (!inText) change(draft, (now) => ({ ...now, tiles: [...now.tiles, id] }));
     void store(run, owner, id, file, backend).then((reply) => {
       const name = file.name || "Pasted image.png";
       if (reply.ok) return set(owner, id, { id, name, mime, state: "ready", url: urlOf(owner, id) });
       set(owner, id, { id, name, mime, state: "failed", error: String(reply.message ?? reply.error ?? "Couldn't attach this file") });
       // A failed image or paste in the text shows as a tile too, saying why.
-      if (inText) change(owner, (now) => ({ ...now, tiles: now.tiles.includes(id) ? now.tiles : [...now.tiles, id] }));
+      if (inText) change(draft, (now) => ({ ...now, tiles: now.tiles.includes(id) ? now.tiles : [...now.tiles, id] }));
     });
   };
   const remove = (id: string) => {
-    change(owner, (now) => ({ ...now, tiles: now.tiles.filter((each) => each !== id) }));
+    change(draft, (now) => ({ ...now, tiles: now.tiles.filter((each) => each !== id) }));
     void run(["attach", owner, "remove", id]);
   };
   /** After a send: the tiles leave with the message; its files are the session's now, and each tab its chips name is its agent's [D775]. */
   const sent = (parts: Draft["parts"] = []) => {
-    change(owner, (now) => ({ ...now, tiles: [] }));
+    dropTiles(draft);
     if (owner !== HOME_DRAFT) giveChipTabs(owner, parts);
   };
   /** Tiles back with what's there now, anything added meanwhile kept; files this view hasn't listed yet are read again. */
   const restore = (tiles: readonly string[]) => {
-    change(owner, (now) => ({ ...now, tiles: [...new Set([...tiles, ...now.tiles])] }));
+    change(draft, (now) => ({ ...now, tiles: [...new Set([...tiles, ...now.tiles])] }));
     if (tiles.some((id) => !filesOf(owner).all.has(id))) load();
   };
   const ready = (ids: readonly string[]) => ids.filter((id) => files.all.get(id)?.state !== "failed");
@@ -121,7 +144,7 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
     onQuery: (query) => {
       asked.current = query;
       if (query === null) return setResults(null);
-      ask({ op: "mention", owner, q: query, ...(project ? { project } : {}) }, (reply) => {
+      ask({ op: "mention", owner, tabs: draft, q: query, ...(project ? { project } : {}) }, (reply) => {
         // An older query's answer drops: only the one asked last shows [D127].
         if (reply.ok && reply.query === asked.current) setResults({ query: reply.query, groups: reply.groups });
       });
@@ -156,8 +179,10 @@ export function useComposerFiles({ owner, run, field, backend, project, images =
       <AttachmentTiles ids={files.tiles} onRemove={remove} onOpen={(file) => (file.mime.startsWith("image/") ? viewImage([{ name: file.name, url: file.url! }], 0) : openAttachment(owner, file.id, file.name))} />
     </AttachmentsContext>
   );
-  attachers.set(owner, attach);
-  fields.set(owner, field);
+  if (main) {
+    attachers.set(owner, attach);
+    fields.set(owner, field);
+  }
   return { attachments: files.all, tileIds: files.tiles, tiles, attach, sent, restore, mentions, hold, onDrop, onDragOver, tilesRow };
 }
 

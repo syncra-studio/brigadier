@@ -28,14 +28,13 @@ fn err<T>(message: impl Into<String>) -> io::Result<T> {
 pub fn ensure(
     spec: &Spec,
     project: &projects::Project,
-    fresh: bool,
     base: Option<&str>,
     title: &str,
     on: Option<&str>,
 ) -> io::Result<()> {
     match project.kind == KIND {
         true => fs::create_dir_all(&spec.cwd),
-        false => worktrees::ensure(spec, project, fresh, base, title, on),
+        false => worktrees::ensure(spec, project, base, title, on),
     }
 }
 
@@ -306,7 +305,7 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Vec<String>> {
 }
 
 /// Every repo of session `id`'s folder, for its card [D544, D341]: those it claimed first, each with
-/// its target (`<id>@<repo>`), branch, line counts since it started and kept PRs (`prs.json`); then
+/// its target (`<id>@<repo>`), branch and line counts since it started; then
 /// the folder's others on the branch checked out there. A claim whose copy can't be read is left out.
 pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
     crate::check_id(id)?;
@@ -321,13 +320,10 @@ pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
         let review = (worktrees::base(rec).and_then(|b| diff::since(&checkout, &b, &stop).ok()))
             .and_then(|since| diff::list(&checkout, diff::Scope::Branch(&since), &stop).ok())
             .unwrap_or_default();
-        let kept: Value = (fs::read(rec.join("prs.json")).ok())
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
         out.push(json!({"name": name, "target": format!("{id}@{name}"), "claimed": true,
             "changed": review["files"].as_array().is_some_and(|f| !f.is_empty()),
             "branch": worktrees::branch(rec).ok().flatten(), "added": review["insertions"].as_u64().unwrap_or(0),
-            "removed": review["deletions"].as_u64().unwrap_or(0), "kept": kept}));
+            "removed": review["deletions"].as_u64().unwrap_or(0)}));
     }
     let home = PathBuf::from(of(&spec).map(|p| p.folder).unwrap_or_default());
     for name in repos(&home)
@@ -344,7 +340,7 @@ pub fn touched(data: &Path, id: &str) -> io::Result<Vec<Value>> {
             .map(|b| String::from_utf8_lossy(&b).trim().to_string());
         out.push(
             json!({"name": name, "claimed": false, "changed": false, "branch": branch,
-            "added": 0, "removed": 0, "kept": null}),
+            "added": 0, "removed": 0}),
         );
     }
     Ok(out)

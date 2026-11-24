@@ -171,6 +171,8 @@ pub fn rules(spec: &Spec) -> Value {
     all.extend(free);
     if spec.level.as_deref() == Some("auto") {
         all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
+        let tmp = format!("{}/*", crate::background::tmp(&spec.dir).display());
+        all.push(rule("external_directory", &tmp, "allow"));
         // OpenCode checks only a command's folder (cd), not the paths it names: a command naming
         // one asks, and the helper answers it when each resolves inside the project (`inside`).
         all.extend(PATHS.map(|p| rule("shell", p, "ask")));
@@ -250,4 +252,14 @@ pub fn stopped(spec: &Spec, msg: &Value) -> Value {
 pub(super) fn before_2(version: &str) -> bool {
     let number = version.trim_start_matches(|c: char| !c.is_ascii_digit());
     matches!(number.split('.').next(), Some("0" | "1"))
+}
+
+/// The servers the session's proxy couldn't connect OpenCode to, to connect again ahead of the
+/// message: it never dials a failed one again itself.
+pub fn redial(spec: &Spec) -> String {
+    let names = crate::library::unreached(spec);
+    match names.is_empty() {
+        true => String::new(),
+        false => format!("{}\n", json!({"redial": names})),
+    }
 }

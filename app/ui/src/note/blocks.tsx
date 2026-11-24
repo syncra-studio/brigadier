@@ -11,6 +11,7 @@ import {
   $getSelection,
   $isRangeSelection,
   $isRootOrShadowRoot,
+  createCommand,
   type ElementNode,
   type LexicalEditor,
   type LexicalNode,
@@ -20,7 +21,10 @@ import type { ReactNode } from "react";
 import { BLOCK_ICONS } from "../icons/note";
 
 /** Every kind of block a note offers, as the old app's page, as the Insert menu, `/` and the Text picker list them. */
-export type BlockKind = "paragraph" | "h1" | "h2" | "h3" | "bullet" | "number" | "check" | "quote" | "code" | "table" | "divider";
+export type BlockKind = "paragraph" | "h1" | "h2" | "h3" | "bullet" | "number" | "check" | "quote" | "code" | "table" | "image" | "divider";
+
+/** Opens the file picker for images. */
+export const PICK_IMAGE_COMMAND = createCommand<void>("PICK_IMAGE");
 
 export type Block = {
   kind: BlockKind;
@@ -43,11 +47,12 @@ export const BLOCKS: Block[] = [
   { kind: "quote", label: "Quote", markdown: ">", words: "blockquote", icon: BLOCK_ICONS.quote },
   { kind: "code", label: "Code", markdown: "```", words: "snippet monospace", icon: BLOCK_ICONS.code },
   { kind: "table", label: "Table", markdown: null, words: "grid rows columns", icon: BLOCK_ICONS.table },
+  { kind: "image", label: "Image", markdown: null, words: "picture photo screenshot file", icon: BLOCK_ICONS.image },
   { kind: "divider", label: "Divider", markdown: "---", words: "rule separator line hr", icon: BLOCK_ICONS.divider },
 ];
 
-/** The kinds the Text picker turns a block into; tables and dividers are inserted, not converted. */
-export const TURN_INTO = BLOCKS.filter((block) => block.kind !== "table" && block.kind !== "divider");
+/** The kinds the Text picker turns a block into; tables, images and dividers are inserted, not converted. */
+export const TURN_INTO = BLOCKS.filter((block) => block.kind !== "table" && block.kind !== "image" && block.kind !== "divider");
 
 /** The block the caret is in. Call inside a read. */
 export function $currentBlock(): BlockKind | null {
@@ -69,7 +74,7 @@ export function $currentBlock(): BlockKind | null {
 }
 
 /** Gives the block a place to go when the caret isn't in the page: a new last line. */
-function $ensureCaret(): void {
+export function $ensureCaret(): void {
   if ($isRangeSelection($getSelection())) return;
   const root = $getRoot();
   const last = root.getLastChild();
@@ -79,6 +84,7 @@ function $ensureCaret(): void {
 
 /** Turns the caret's block into `kind`, or inserts it there (a table, a divider). */
 export function applyBlock(editor: LexicalEditor, kind: BlockKind): void {
+  if (kind === "image") return void editor.dispatchCommand(PICK_IMAGE_COMMAND, undefined);
   editor.update(() => {
     $ensureCaret();
     const selection = $getSelection();

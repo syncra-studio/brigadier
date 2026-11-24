@@ -278,15 +278,22 @@ impl Thread {
         match resumed.or(held.map(|(o, _)| o)) {
             // Carried on by another agent, the turn is that agent's now [D124].
             Some(mut o) => {
+                let block = o.id.clone();
                 o.backend.clone_from(&t.backend);
                 // A worker's ask its parent answers stays out of the block it carries on [D329].
                 o.quiet = t.quiet;
                 self.turns[o.at]["backend"] = t.backend.clone().into();
-                self.rejoin(o)
+                self.rejoin(o);
+                // Its reply may go on in the row its cut left mid-way [D124].
+                let joins = self.open.as_ref().and_then(|o| o.joins.as_ref());
+                let from = joins.map_or(self.items.len(), |j| j.0 as usize - 1);
+                self.starts.push((t.id.clone(), block, from, !steers));
             }
             None => {
                 self.settle_held(true);
-                self.new_turn(t, ts)
+                self.new_turn(t, ts);
+                let start = (t.id.clone(), t.id.clone(), self.items.len(), false);
+                self.starts.push(start);
             }
         }
         // A model picked for the same agent between turns; another agent's is the switch row's [D129].

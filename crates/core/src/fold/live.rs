@@ -2,17 +2,25 @@
 
 use super::{Fold, Owner};
 use brigadier_frames::{log, procs};
-use serde::Serialize;
-use std::collections::BTreeSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Child {
+    pub pid: i32,
+    pub start_us: u64,
+    pub backend: String,
+    pub exited: bool,
+}
 
 pub struct Live {
     pub owner: Owner,
     pub child: Option<procs::Proc>,
     pub running_below: usize,
     pub jobs: usize,
-    /// What its ended turns left running under the live agent: a dev server, a watcher [D105].
+    /// What its ended turns left running, its agent's end notwithstanding: a dev server, a watcher [D105].
     pub left: Vec<Job>,
     pub orphans: usize,
     pub disk_full: bool,
@@ -36,6 +44,57 @@ pub struct Job {
     pub start_us: u64,
     /// Its command, as the agent ran it.
     pub label: String,
+    /// Under the live agent, which its CLI tells of its end.
+    #[serde(skip)]
+    pub under: bool,
+    /// The id its CLI gave it, under the live agent.
+    #[serde(skip)]
+    pub task: Option<String>,
+}
+
+/// What the live child's CLI runs in the background, by id, as it last listed it: each one's end
+/// wakes its agent, so a worker's turn that ended meanwhile hasn't reported yet.
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct Pending {
+    pub ids: BTreeSet<String>,
+    /// One of those, or a subagent, ended with no turn open: the wake it starts is on its way.
+    pub due: bool,
+    /// Each one, and each subagent, by the turn that started it, the one it reports in.
+    #[serde(default)]
+    pub by: BTreeMap<String, String>,
+    /// The turn the wake on its way carries on: the one whose work ended, where it's known.
+    #[serde(default)]
+    pub woke: String,
+}
+
+impl Pending {
+    /// Its CLI's new list, with the turns open now: the first, if any, started what's new in it.
+    pub(super) fn listed(&mut self, item: &serde_json::Value, turns: &[super::Turn]) {
+        let open = turns.first().map(super::Turn::report);
+        let ids = item["ids"].as_array().into_iter().flatten();
+        let now: BTreeSet<String> = ids.filter_map(|i| i.as_str().map(String::from)).collect();
+        if let Some(gone) = self.ids.iter().find(|i| !now.contains(*i)).cloned() {
+            self.ended(&gone, open.is_none());
+        }
+        if let Some(t) = open {
+            let new = now.iter().filter(|i| !self.ids.contains(*i));
+            new.for_each(|i| drop(self.by.insert(i.clone(), t.into())));
+        }
+        self.ids = now;
+    }
+
+    /// One of them or a subagent ended; `idle`: no turn is open, so it wakes its agent.
+    pub(super) fn ended(&mut self, id: &str, idle: bool) {
+        if idle {
+            self.due = true;
+            self.woke = self.by.get(id).cloned().unwrap_or_default();
+        }
+    }
+
+    /// Whether its agent will be woken by it.
+    pub fn wakes(&self) -> bool {
+        !self.ids.is_empty() || self.due
+    }
 }
 
 /// A tool's process can start just before its step reaches the log, or after its turn's end does.
@@ -44,11 +103,21 @@ const SLACK_MS: u64 = 1000;
 const SETTLE_MS: u64 = 2000;
 const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
 
-/// Each topmost process under the agent born in one of its ended turns' tool windows, still alive.
-/// The agent's own helpers (MCP servers) start with it, before any tool, so none count; those its
-/// CLI starts later it names, and they're never a job, though what runs under one can be.
-fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
-    let below = procs::descendants(all, child);
+/// Each topmost process proven the session's and born in one of its ended turns' tool windows, still
+/// alive, whatever became of its agent. The agent's own helpers (MCP servers) start with it, before
+/// any tool, so none count; those its CLI starts later it names, and they're never a job, though
+/// what runs under one can be.
+fn left_running(
+    fold: &Fold,
+    all: &[procs::Proc],
+    child: Option<i32>,
+    mine: &[procs::Proc],
+) -> Vec<Job> {
+    let below: BTreeSet<i32> = (child.map(|c| procs::descendants(all, c)))
+        .into_iter()
+        .flatten()
+        .map(|p| p.pid)
+        .collect();
     let helpers = (fold.child.as_ref())
         .and_then(|c| crate::adapters::get(&c.backend))
         .map_or(&[][..], |a| a.helpers());
@@ -57,34 +126,63 @@ fn left_running(fold: &Fold, all: &[procs::Proc], child: i32) -> Vec<Job> {
         let name = argv.first().and_then(|a| a.rsplit('/').next());
         name.is_some_and(|n| helpers.contains(&n))
     };
-    // In the running turn, one its CLI said it sent to the background counts at once, not at its end.
+    // In the running turn, one its CLI said it sent to the background counts at once, not at its end;
+    // a turn whose agent is gone is over.
+    let since = child.map_or(0, |_| fold.child.as_ref().map_or(0, |c| c.start_us / 1000));
     let running = (fold.turns.first()).map_or(0, |t| t.first_tool);
     let now = log::now_ms();
+    // Out of the agent's tree, one is left whenever it was born: an orphan's own child, long after.
+    let opened = (fold.windows.first().map(|w| w.0)).or((running > 0).then_some(running));
+    let out = |p: &procs::Proc| {
+        !below.contains(&p.pid)
+            && opened.is_some_and(|o| p.start_us >= o.saturating_sub(SLACK_MS) * 1000)
+    };
+    let after =
+        |p: &procs::Proc| running > 0 && p.start_us >= running.saturating_sub(SLACK_MS) * 1000;
     let born = |p: &procs::Proc| {
         !p.zombie
+            && Some(p.pid) != child
             && now.saturating_sub(p.start_us / 1000) >= SETTLE_MS
-            && ((fold.windows.iter()).any(|&(a, b)| {
-                (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000).contains(&p.start_us)
-            }) || (running > 0
-                && p.start_us >= running.saturating_sub(SLACK_MS) * 1000
-                && task_of(fold, p.start_us).is_some()))
+            && (out(p)
+                || (below.contains(&p.pid)
+                    && ((fold.windows.iter()).any(|&(a, b)| {
+                        // Only the live agent's own turns': its helpers start just after the last one's end.
+                        a >= since
+                            && (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000)
+                                .contains(&p.start_us)
+                    }) || (after(p) && said_by(fold, p.start_us).next().is_some()))))
             && !own(p)
     };
-    let mut tops: Vec<&procs::Proc> = (below.iter())
-        .filter(|p| born(p) && !below.iter().any(|q| q.pid == p.ppid && born(q)))
+    let found: Vec<&procs::Proc> = mine.iter().filter(|p| born(p)).collect();
+    let pids: BTreeSet<i32> = found.iter().map(|p| p.pid).collect();
+    let mut tops: Vec<&procs::Proc> = (found.into_iter())
+        .filter(|p| !pids.contains(&p.ppid))
         .collect();
-    // One row a task: its own process, born before a hook that ran beside it.
+    // One row a task, two started at once each their own: its own process, born before a hook that
+    // ran beside it.
     tops.sort_by_key(|p| p.start_us);
-    let mut tasks = BTreeSet::new();
-    tops.retain(|p| task_of(fold, p.start_us).is_none_or(|t| tasks.insert(t)));
-    (tops.into_iter())
-        .map(|p| Job {
+    let mut taken = BTreeSet::new();
+    let mut left = vec![];
+    for p in tops {
+        let under = below.contains(&p.pid);
+        let near: Vec<_> = said_by(fold, p.start_us).filter(|_| under).collect();
+        let free = near.iter().filter(|(_, t)| !taken.contains(t));
+        let task = free.min_by_key(|(ts, _)| ts.abs_diff(p.start_us / 1000));
+        if task.is_none() && !near.is_empty() {
+            continue;
+        }
+        let task = task.map(|(_, t)| t.clone());
+        taken.extend(task.clone());
+        left.push(Job {
             pid: p.pid,
             start_us: p.start_us,
-            label: (task_of(fold, p.start_us).and_then(|t| fold.typed.get(&t).cloned()))
+            label: (task.as_ref().and_then(|t| fold.typed.get(t).cloned()))
                 .unwrap_or_else(|| label(all, p.pid)),
-        })
-        .collect()
+            under,
+            task,
+        });
+    }
+    left
 }
 
 /// A job's command: a shell's own child when it has one, else the shell's script.
@@ -124,34 +222,11 @@ fn label(all: &[procs::Proc], mut pid: i32) -> String {
     }
 }
 
-/// The id the agent's CLI gave the background command that started the job born at `start_us`:
-/// the first said to run in the background from just before it began to a few seconds after.
-pub fn task_of(fold: &Fold, start_us: u64) -> Option<String> {
+/// The ids the agent's CLI gave background commands that may have started a process born at
+/// `start_us`, each by when that was said: from just before it began to a few seconds after.
+fn said_by(fold: &Fold, start_us: u64) -> impl Iterator<Item = &(u64, String)> {
     let at = start_us / 1000;
-    (fold.tasks.iter())
-        .filter(|&&(ts, _)| ts + SLACK_MS >= at && ts <= at + 5000)
-        .min_by_key(|&&(ts, _)| ts)
-        .map(|(_, task)| task.clone())
-}
-
-/// Stops one job the session left running, its whole tree, only while it's still that job (one
-/// already gone is stopped): a TERM, then a KILL for whatever outlives the grace [D105].
-pub fn stop_job(fold: &Fold, data: &Path, pid: i32, start_us: u64) {
-    let all = procs::all();
-    let l = live(fold, Owner::Alive, data, &all);
-    if !l
-        .left
-        .iter()
-        .any(|j| j.pid == pid && j.start_us == start_us)
-    {
-        return;
-    }
-    let tree: Vec<_> = std::iter::once(procs::same(pid, start_us))
-        .flatten()
-        .chain(procs::descendants(&all, pid))
-        .map(|p| (p.pid, p.start_us))
-        .collect();
-    end(&tree, Duration::from_secs(2));
+    (fold.tasks.iter()).filter(move |(ts, _)| ts + SLACK_MS >= at && *ts <= at + 5000)
 }
 
 /// Ends these processes, each only while it's still that one: a TERM, then a KILL for whatever
@@ -174,7 +249,8 @@ pub fn end(tree: &[(i32, u64)], grace: Duration) {
     signal(libc::SIGKILL);
 }
 
-pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs::Proc]) -> Live {
+/// `dir`: the session's own folder.
+pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live {
     let child = fold
         .child
         .as_ref()
@@ -190,8 +266,10 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
         .iter()
         .map(|&&(g, s, _)| procs::group(all, g, s).len())
         .sum();
-    let left = child.map_or(vec![], |c| left_running(fold, all, c.pid));
-    let jobs = members.saturating_sub(child.is_some() as usize + running_below) + left.len();
+    let mine = crate::background::proven(dir, fold, all);
+    let left = left_running(fold, all, child.map(|c| c.pid), &mine);
+    let jobs = members.saturating_sub(child.is_some() as usize + running_below)
+        + left.iter().filter(|j| j.under).count();
     let orphans = if owner == Owner::Dead { members } else { 0 };
     Live {
         owner,
@@ -200,7 +278,7 @@ pub fn live(fold: &Fold, owner: Owner, data_dir: &std::path::Path, all: &[procs:
         jobs,
         left,
         orphans,
-        disk_full: free_bytes(data_dir) < (2 << 20),
+        disk_full: free_bytes(dir) < (2 << 20),
         now: log::now_ms(),
     }
 }
@@ -220,7 +298,7 @@ fn free_bytes(path: &std::path::Path) -> u64 {
 /// The session's background history (`background`, JSON lines) [D200]: each job's start as it's
 /// first seen, its end once it's gone, and the user's Stop. A start seen again (another reader, a
 /// restart) or a second end changes nothing when read.
-const HISTORY: &str = "background";
+pub const HISTORY: &str = "background";
 
 /// A session row's Background [D105, D200]: what's left running, and whether anything has run (its
 /// card keeps the history's button), noting the jobs that started or ended since the last look.

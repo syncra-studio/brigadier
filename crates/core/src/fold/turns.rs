@@ -111,6 +111,25 @@ pub struct Turn {
     /// lasts while that ask waits, and leaves no end of its own [D118, D131].
     #[serde(default)]
     pub held: bool,
+    /// One its CLI started on its own, as its background work ended: the turn it carries on, the
+    /// one that ended before it or the one that one carried on [D118].
+    #[serde(default)]
+    pub of: String,
+    /// The workers it messaged: the result that woke it doesn't end its wait on these.
+    #[serde(default)]
+    pub messaged: BTreeSet<String>,
+}
+
+/// One end of a turn: its own, or that of a wake its CLI carried it on in.
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct End {
+    /// When (ms).
+    pub at: u64,
+    pub how: String,
+    /// The turn's own id, or the wake's.
+    pub id: String,
+    /// When that one began (ms).
+    pub began: u64,
 }
 
 /// The paths a FileChange list names.
@@ -121,6 +140,15 @@ pub(super) fn paths_of(changes: &Value) -> Vec<String> {
 }
 
 impl Turn {
+    /// The turn it reports in: its own, or for a wake, the one it carries on.
+    pub fn report(&self) -> &str {
+        if self.origin == "agent" {
+            &self.of
+        } else {
+            &self.id
+        }
+    }
+
     /// Its agent's output of this kind. A message is under way from the reading that opens it
     /// (Claude's), or else its first words, until a step: it may be the reply that ends the turn.
     /// A reading that follows a step (Codex's, OpenCode's) leaves a safe point to cut at [D486].
@@ -197,13 +225,31 @@ impl Turn {
     }
 }
 
-/// The worker a result (`<how>:<worker>[:…]`) is from; none for its ask, which ends nothing [D121].
+/// The worker a result (`<how>:<worker>[:…]`) ends the wait on; none for its ask, which ends
+/// nothing [D121], one that came while a later task of its worker was `open`, or one whose worker's
+/// work left running `wakes` it: a wait till then is `over`'s to say.
 fn result_of(said: &str) -> Option<&str> {
     let (how, wid) = said.split_once(':').unwrap_or(("finished", said));
-    (how != "asks").then(|| wid.split(':').next().unwrap_or(wid))
+    let on = said.ends_with(":open") || said.ends_with(":wakes");
+    (how != "asks" && !on).then(|| wid.split(':').next().unwrap_or(wid))
 }
 
 impl Fold {
+    /// How `turn` last ended, itself or in a wake.
+    pub fn end(&self, turn: &str) -> Option<&End> {
+        self.ends.get(turn).and_then(|e| e.last())
+    }
+
+    /// A message a running turn sent its own worker holds that turn open as its start does: it
+    /// reports back too.
+    pub(super) fn messaged(&mut self, item: &Value) {
+        let to = item["to"].as_str().filter(|_| item["worker"] == true);
+        if let (Some(to), Some(t)) = (to, self.turns.first_mut()) {
+            t.messaged.insert(to.into());
+            self.workers.insert(to.into());
+        }
+    }
+
     /// A `worker` note: one a running turn started holds that turn open; its end, its stop (its
     /// result `held` for the parent's next turn), or the result its parent's own `wait` or next
     /// message took, lets go [D151, D3009, D314].
@@ -270,7 +316,9 @@ impl Fold {
             // [D3011, D108]; the turn a worker's result woke ends that worker's hold [D151].
             if outcome != "done" && reason != "rebirth" {
                 self.workers.clear();
-            } else if let Some(w) = turn.origin.strip_prefix("result:").and_then(result_of) {
+            } else if let Some(w) = (turn.origin.strip_prefix("result:").and_then(result_of))
+                .filter(|w| !turn.messaged.contains(*w))
+            {
                 self.workers.remove(w);
             }
             // A plan sent back, unbuilt when its turn ends, ends its review: the next is reviewed anew.
@@ -278,6 +326,14 @@ impl Fold {
             if !turn.quiet {
                 self.finished = ts;
             }
+            let end = End {
+                at: ts,
+                how: outcome.into(),
+                id: turn.id.clone(),
+                began: turn.ts,
+            };
+            let ends = self.ends.entry(turn.report().into()).or_default();
+            ends.push(end);
             // Only an agent whose process lives on keeps its subagents past its turn.
             if outcome == "interrupted" || adapters::get(&turn.backend).is_none_or(|a| a.per_turn())
             {
@@ -289,13 +345,34 @@ impl Fold {
                 self.windows.push((turn.first_tool, ts));
             }
             self.last = Some(
-                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "began_at": turn.delivered.unwrap_or(turn.ts), "quiet": turn.quiet,
+                json!({"id": turn.id, "cid": turn.cid, "origin": turn.origin, "of": turn.of, "backend": turn.backend, "retry_of": turn.retry_of, "text": turn.text, "parts": turn.parts, "outcome": outcome, "reason": reason, "why": turn.why, "ts": ts, "began_at": turn.delivered.unwrap_or(turn.ts), "quiet": turn.quiet,
                        "waited": turn.waited + if turn.asks.is_empty() { 0 } else { ts.saturating_sub(turn.asked_at) },
                        "delivered": turn.delivered.is_some(), "began": turn.began, "switch": turn.switch, "moved": turn.moved || (turn.replying && outcome == "done"), "said": turn.said, "reply": turn.reply, "unchecked": turn.unchecked,
                        // The log's proof by command id that no child read it: no `spawned` record, and its spawn failed or its owner died [D300].
                        "never_ran": turn.delivered.is_none() && turn.spawning && turn.orphaned}),
             );
         }
+    }
+
+    /// A subagent the open turn started, by its id: the wake its end starts is that turn's.
+    pub(super) fn started(&mut self, id: String) {
+        if let Some(t) = self.turns.first() {
+            self.pending.by.insert(id, t.report().into());
+        }
+    }
+
+    /// A turn starts, so the wake on its way came: what one its CLI starts now carries on, the
+    /// turn whose work's end woke it, else the turn that ended last, or what that one did.
+    pub(super) fn woke_of(&mut self) -> String {
+        self.pending.due = false;
+        let woke = std::mem::take(&mut self.pending.woke);
+        let of = |l: &Value| {
+            l[if l["origin"] == "agent" { "of" } else { "id" }]
+                .as_str()
+                .map(String::from)
+        };
+        let last = self.last.as_ref().and_then(of).unwrap_or_default();
+        Some(woke).filter(|w| !w.is_empty()).unwrap_or(last)
     }
 
     /// A Stop between turns ends the wait to resume the one the network cut [D339].

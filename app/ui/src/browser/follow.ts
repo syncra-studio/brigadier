@@ -20,7 +20,8 @@ const followers = new Set<Follower>();
 let frame = 0;
 let stopListening: (() => void) | null = null;
 
-const WATCHED_ATTRIBUTES = ["style", "class", "hidden", "inert", "data-state", "data-above-page", "dir"];
+// A mockup tab's canvas moves its pages by its pan and scale (mockup/mockup.tsx).
+const WATCHED_ATTRIBUTES = ["style", "class", "hidden", "inert", "data-state", "data-above-page", "dir", "data-pan-x", "data-pan-y", "data-scale"];
 const MOTION_EVENTS = ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"];
 
 /** Each target and its ancestors. */

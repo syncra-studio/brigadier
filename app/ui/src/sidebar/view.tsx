@@ -169,7 +169,7 @@ export function ViewMenu({
                 name={project.name}
                 checked={!show.hiddenProjects.has(project.id)}
                 onChange={(on) => tickProject(project.id, on)}
-                mark={<ProjectBadge id={project.id} name={project.name} />}
+                mark={<ProjectBadge id={project.id} name={project.name} icon={project.icon} />}
                 count={count(project.id)}
               />
             ))}

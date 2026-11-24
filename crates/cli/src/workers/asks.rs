@@ -4,6 +4,8 @@
 //! parent answers with `brigadier send <id> --allow`, `--deny "<reason>"` or its answer as the
 //! message; the user sees no card, and the worker's thread shows the ask and the answer.
 
+pub(crate) mod left;
+
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;
 use super::{family_lock, link, place, record, save};
@@ -45,6 +47,7 @@ pub(super) fn pass(data: &Path, id: &str, row: &Value) {
     super::review::plan_gone(data, id);
     if !row["worker"].is_null() {
         user_waits(data, id, row["worker"]["kind"] == "needsYou");
+        left::pass(data, id, row);
     }
 }
 
@@ -138,6 +141,7 @@ fn write(
         hop: crate::peers::hop_of(data, wid, turn),
         merge: String::new(),
         going: String::new(),
+        end: 0,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
     write_json(&path, &res)?;
@@ -192,6 +196,12 @@ fn said(title: &str, wid: &str, r: &Value) -> String {
             );
             if !field("reason").is_empty() {
                 t += &format!("Why: {}\n", field("reason"));
+            }
+            if r["grant"]["scope"] == "site" {
+                t += &format!(
+                    "A yes covers {} for the rest of this job: its scripts, clicks, typing, keys, deletes and sends. Paying, cards, passwords, codes and sign-in still ask.\n",
+                    r["grant"]["pattern"].as_str().unwrap_or("")
+                );
             }
             t + &format!(
                 "\nJudge it yourself against its brief and the user's words: `brigadier send {wid} --allow`, or `brigadier send {wid} --deny \"<reason>\"`, which its agent reads."
@@ -271,7 +281,7 @@ pub fn answer(
     let (question, plan) = (r["items"].is_array(), r["action"] == "plan");
     let reply = match (question || plan, allow, deny) {
         (true, false, None) if !text.trim().is_empty() => {
-            control::reply(data, wid, text, None, Some("parent"))
+            control::reply(data, wid, text, &Value::Null, None, Some("parent"))
         }
         (true, true, None) if plan => control::answer_as(data, wid, &id, "allow", None, "parent"),
         (true, ..) if plan => {
@@ -283,6 +293,10 @@ pub fn answer(
             return refuse(&format!(
                 "{wid} asks a question: answer it with `brigadier send {wid} \"<your answer>\"`."
             ));
+        }
+        // A browser ask's yes holds for its site for the rest of the job (asks.rs in browser/hub).
+        (false, true, None) if r["grant"]["scope"] == "site" => {
+            control::answer_as(data, wid, &id, "allowSession", None, "parent")
         }
         (false, true, None) => control::answer_as(data, wid, &id, "allow", None, "parent"),
         (false, false, Some(why)) => {

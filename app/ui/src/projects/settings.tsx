@@ -16,8 +16,8 @@ import { useDaemon } from "../daemon";
 import { Copy, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
-import { ProjectBadge } from "../sidebar/row";
 import { shortPath } from "./add-project";
+import { IconPicker } from "./icon-picker";
 import { type Project, setProject } from "./projects";
 import { openRemoveProject, plural } from "./remove";
 import { daemonSource, type FolderCheck } from "./store";
@@ -50,9 +50,11 @@ export const daemonSettings: SettingsSource = {
 
 /**
  * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
- * the repository, and the one Automatic uses (the first that can). Not on GitHub: no row.
+ * the repository, and the one Automatic uses (the first that can). A folder's is for all its `repos`, on `host` alone when
+ * it has GitHub repositories elsewhere too; `auto_host` is Automatic's server when the picked account's is another. Not on
+ * GitHub: no row.
  */
-export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; repos?: number; host?: string | null; auto_host?: string | null; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 /** One setting, as the page's rows: its name over one plain line, its control at the end, or under it when `wide`. */
 function Row({ label, line, error, wide = false, children }: { label: string; line: ReactNode; error?: string | null; wide?: boolean; children: ReactNode }) {
@@ -140,6 +142,16 @@ export function ProjectSettings({ project, source }: { project: Project; source:
     };
   }, [project.id, project.folder, folderKind, daemon]);
 
+  // A folder's pick can be another server's than Automatic's: its row changes servers with it.
+  useEffect(() => {
+    if (!github?.auto_host) return;
+    let live = true;
+    void source.accounts(project.id, false).then((reply) => live && setGithub(reply), () => {});
+    return () => {
+      live = false;
+    };
+  }, [project.github_account]);
+
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
     setErrors((now) => ({ ...now, [field]: null }));
@@ -166,15 +178,24 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   const profiles = useProfiles();
   const fallback = useDefaultProfile();
   const account = project.github_account ?? "";
-  const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : known ? "Can see this repository" : "Can't see this repository");
+  // A folder's several repositories are seen together; one is in a single repository's words.
+  const several = github && (github.repos ?? 1) > 1 ? `all ${github.repos} repositories` : null;
+  const on = github?.host ? ` on ${github.host}` : "";
+  const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : `${known ? "Can" : "Can't"} see ${several ? several + on : "this repository"}`);
+  const used = `${several ? `Pull requests and sessions in ${several}` : "Its pull requests and sessions"}${on} use it`;
 
   // Drawn once the account read lands, so the GitHub account row doesn't push the page down [D257].
   if (!github && checking) return null;
   return (
-    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-5 pt-project-page-top pb-6">
+    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-6 pt-tab-bar pb-6">
+      {/* The Pull Requests page's title, at its spacing. */}
+      <header className="flex items-center gap-4 pt-8 pb-5">
+        <h1 className="min-w-0 flex-1 text-page-title font-medium">Settings</h1>
+      </header>
       <ul aria-label="General">
-        <Row label="Name" line="What the sidebar and this page call it; its icon is the folder's logo, else these initials" error={errors.name}>
-          <ProjectBadge id={project.id} name={project.name} />
+        <Row label="Name" line={project.icon ? "What the sidebar and this page call it; click its icon to change it" : "What the sidebar and this page call it; its icon is the folder's logo, else these initials — click it to pick another"} error={errors.name ?? errors.icon}>
+          {/* An image shows once Rust has copied it in; a colour or emoji at once [D30]. */}
+          <IconPicker id={project.id} name={project.name} icon={project.icon} onChange={(icon) => save("icon", icon.startsWith("image:") ? {} : { icon: icon || null }, ["--icon", icon])} />
           <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : setErrors((now) => ({ ...now, name: "Name can't be empty." })))} />
         </Row>
         <Row label="Folder" line={sessions > 0 ? `Where it is on this Mac; it has ${plural(sessions, "session", "sessions")}, so it can't move` : "Where it is on this Mac; a new folder is asked about trust again"} error={errors.folder}>
@@ -197,7 +218,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
         </Row>
         )}
         {github?.github && (
-        <Row label="GitHub account" line={github.ssh && account ? `Its pull requests and sessions use it; pushes over SSH use your SSH key` : "Its pull requests and sessions use it"} error={errors.github_account}>
+        <Row label="GitHub account" line={github.ssh && account ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
           <Select
             label="GitHub account"
             value={account}
@@ -208,8 +229,8 @@ export function ProjectSettings({ project, source }: { project: Project; source:
               {
                 value: "",
                 label: "Automatic",
-                shown: github.auto ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
-                hint: github.auto ? `@${github.auto}, the account that can see ${github.repo}` : checking ? "Checking…" : `None of your accounts can see ${github.repo}`,
+                shown: github.auto && !github.auto_host ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
+                hint: github.auto_host ? `The account for your repositories on ${github.auto_host}` : github.auto ? `@${github.auto}, the ${several ? "first " : ""}account that can see ${several ? several + on : github.repo}` : checking ? "Checking…" : `None of your accounts can see ${several ? several + on : github.repo}`,
               },
               ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
               // A pick gh has since signed out of stays shown, so it can be seen and changed.

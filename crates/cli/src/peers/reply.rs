@@ -58,6 +58,17 @@ pub(super) fn ask(
     }
 }
 
+/// A send cut short, tried again. A worker's question its parent has no record of goes as a
+/// question still, with nobody left waiting on it; never as a message in its parent's thread.
+pub(super) fn again(data: &Path, from: &str, out: &mut Out, fresh: bool) -> std::io::Result<()> {
+    if fresh && workers::link(data, from).is_some_and(|l| l.parent == out.to) {
+        workers::question(data, from, &out.mid, &out.text)?;
+        out.state = "asked".into();
+        return workers::write_json(&path(data, from, "out", &out.mid), out);
+    }
+    super::held::hand(data, from, out).map(|_| ())
+}
+
 /// The id of the open question worker `wid` asks its parent.
 pub(crate) fn question(data: &Path, wid: &str) -> Option<String> {
     open_question(data, wid).map(|(mid, _)| mid)
@@ -86,26 +97,41 @@ pub(crate) fn asked(data: &Path, wid: &str) -> usize {
 /// The parent's answer to its worker's question `mid`: back to the send that waits, or, with none
 /// waiting any more, as a message from the parent. The worker's step shows it [D121, D122].
 pub(crate) fn answer(data: &Path, parent: &str, wid: &str, mid: &str, text: &str) -> Value {
+    let note = json!({"phase": "answered", "mid": mid, "reply": text});
+    match hand_back(data, wid, mid, text, note) {
+        Ok(true) => json!({"ok": true, "text": format!("Sent to {wid}.")}),
+        Ok(false) => send(data, parent, &json!({"id": wid}), text, None, &|| true),
+        Err(refusal) => refusal,
+    }
+}
+
+/// Whether a send waits for the answer to `wid`'s question `mid`.
+pub(crate) fn waits(data: &Path, wid: &str, mid: &str) -> bool {
+    let out = workers::read_json::<Out>(&path(data, wid, "out", mid));
+    out.is_some_and(|o| o.state == "asking")
+}
+
+/// Answers `wid`'s question `mid`, noted as `said`; whether a send still waits for it.
+pub(crate) fn hand_back(
+    data: &Path,
+    wid: &str,
+    mid: &str,
+    text: &str,
+    said: Value,
+) -> Result<bool, Value> {
     let one = COUNTING.lock().unwrap_or_else(|e| e.into_inner());
     let p = path(data, wid, "out", mid);
     let Some(mut out) = workers::read_json::<Out>(&p) else {
-        return refuse(&format!("{wid} isn't waiting on you."));
+        return Err(refuse(&format!("{wid} isn't waiting on you.")));
     };
     let waits = out.state == "asking";
     (out.state, out.reply) = ("answered".into(), Some(text.into()));
     if let Err(e) = workers::write_json(&p, &out) {
-        return refuse(&e.to_string());
+        return Err(refuse(&e.to_string()));
     }
     drop(one);
-    note(
-        data,
-        wid,
-        json!({"phase": "answered", "mid": mid, "reply": text}),
-    );
-    if !waits {
-        return send(data, parent, &json!({"id": wid}), text, None, &|| true);
-    }
-    json!({"ok": true, "text": format!("Sent to {wid}.")})
+    note(data, wid, said);
+    Ok(waits)
 }
 
 /// Waits running now, by their message's id: who waits, on whom, and the answer sent to it once
@@ -168,7 +194,7 @@ pub(super) fn waited(
         let late = started.elapsed() >= Duration::from_secs(secs) || !here();
         let sent = if ended || late { end() } else { None };
         if ended || sent.is_some() {
-            let mine = || workers::take(data, me, to, Some(&turn));
+            let mine = || workers::take(data, me, to, Some(&turn), false);
             let reply = sent.or_else(mine);
             let reply = reply.or_else(|| workers::last_of_turn(data, to, &turn));
             let reply = reply.unwrap_or_default();

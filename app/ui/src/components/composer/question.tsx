@@ -1,17 +1,22 @@
 // A question waiting for the user: numbered answers and a field for their own words, a round one at a time.
-import { type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { matches } from "../../shortcuts";
+import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
+import { viewImage } from "../image-viewer";
 import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
-import { plainText } from "./draft";
+import { openChip } from "../../session/commands";
+import type { Runner } from "../../session/composer";
+import { dropTiles, forgetTiles, useComposerFiles } from "../../session/files";
+import { type Draft, isEmpty, plainText } from "./draft";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
 /** One question of a round, as Rust sends it (msgs/w18-fields-4.md, boss D177). Its text passes as is. */
 export type QuestionItem = {
   text: string;
   /** None: the field alone. */
-  options: { label: string; description?: string | null }[];
+  options: { label: string; description?: string | null; letter?: string; name?: string; shot?: string | null }[];
   recommended: number | null;
   /** Several marked and sent together, their labels joined with ", ". */
   multiSelect: boolean;
@@ -24,18 +29,23 @@ export type PendingQuestion = {
   items: QuestionItem[];
   /** A worker's routing hold: only its own answers, no words of the user's and no Skip [D2028, D342]. */
   held?: boolean;
+  /** A mockup's round: each answer's `letter` is its variant, `shot` its picture then. */
+  mockup?: { worker: string; round: number; title: string };
 };
+
+/** One answer: an option's label or the user's words, those with images or files as their draft; null for a skipped one. */
+export type Given = string | Draft | null;
 
 /** How long a picked answer shows its dot before it goes: time for a double-click's second click to call it off. */
 const COMMIT_MS = 300;
 /** How far a press moves before it's a drag, not a click. */
 const DRAG_PX = 4;
 
-/** Where the user is on a card: an answer per question (undefined still open, null skipped), typed text, the lit and marked answers. */
+/** Where the user is on a card: an answer per question (undefined still open, null skipped), the draft typed (its tiles with the files), the lit and marked answers. */
 type Kept = {
   page: number;
-  answers: readonly (string | null | undefined)[];
-  drafts: readonly (string | undefined)[];
+  answers: readonly (Given | undefined)[];
+  drafts: readonly (Draft["parts"] | undefined)[];
   lit: readonly (number | null | undefined)[];
   marked: readonly (readonly number[] | undefined)[];
 };
@@ -45,7 +55,11 @@ const FRESH: Kept = { page: 0, answers: [], drafts: [], lit: [], marked: [] };
 // finds it as it was. Dropped once answered, or by `forgetQuestions`.
 const keptCards = new Map<string, Kept>();
 /** Drops the session's kept cards for questions no longer waiting. */
-export const forgetQuestions = (session: string, keep: ReadonlySet<string>) => forgetCards(keptCards, session, keep);
+export const forgetQuestions = (session: string, keep: ReadonlySet<string>) => {
+  forgetCards(keptCards, session, keep);
+  forgetTiles(session, keep);
+};
+const tilesKey = (card: string, at: number) => `${card}\n${at}`;
 
 function useKeptQuestion(id: string) {
   const [kept, setKept] = useState(() => keptCards.get(id) ?? FRESH);
@@ -74,21 +88,29 @@ export function QuestionCard({
   onAnswer,
   onDismiss,
   footer,
+  actions,
   stagger = false,
   error: refused = null,
-  session = "",
+  session,
   dismiss,
+  ...files
 }: {
   question: PendingQuestion;
-  onAnswer: (answers: (string | null)[]) => Promise<void>;
+  onAnswer: (answers: Given[]) => Promise<void>;
   onDismiss: () => void;
   footer?: ReactNode;
+  /** At the question's end: what opens what it asks about. */
+  actions?: ReactNode;
   /** A refusal that came after the card was hidden at once, so it shows when the card comes back. */
   error?: string | null;
   /** It follows another card: its rows fade in one after another. */
   stagger?: boolean;
-  /** Whose question it is: what keeps one session's answers and drafts from another's. */
-  session?: string;
+  /** Whose question it is: what keeps one session's answers and drafts from another's, and where its files go. */
+  session: string;
+  run: Runner;
+  /** Who takes the answer's images, whether its model can. */
+  backend?: string;
+  images?: boolean;
   /** Nothing waits on it any more: Dismiss beside its error puts it away. */
   dismiss?: () => void;
 }) {
@@ -101,19 +123,24 @@ export function QuestionCard({
   const item = items[at];
   if (!item) return null;
 
-  const send = (all: (string | null)[]) => {
+  const send = (all: Given[]) => {
     if (busy) return;
     setBusy(true);
     setError(null);
     onAnswer(all)
-      .then(() => keptCards.delete(key))
+      .then(() => {
+        keptCards.delete(key);
+        items.forEach((_, index) => dropTiles(tilesKey(key, index)));
+      })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setBusy(false));
   };
   const answered = answers.filter((given) => given !== undefined).length;
   // Back to any question answered so far, or on to the first one still open.
   const reachable = (to: number) => to >= 0 && to < items.length && to <= answered;
-  const answer = (given: string | null) => {
+  const answer = (given: Given) => {
+    // Its tiles stay with a draft, for paging back or a refusal, and go as its words do with any other answer.
+    if (given === null || typeof given === "string") dropTiles(tilesKey(key, at));
     const next = items.map((_, index) => (index === at ? given : answers[index]));
     const open = next.findIndex((each) => each === undefined);
     keep((now) => ({ answers: next, drafts: put(now.drafts, at, undefined), ...(open >= 0 && { page: open }) }));
@@ -122,6 +149,7 @@ export function QuestionCard({
   const given = answers[at];
   const picked = typeof given === "string" ? item.options.findIndex((option) => option.label === given) : -1;
   const marks = marked[at];
+  const own = given && typeof given !== "string" ? given.parts : null;
   const ownWords = typeof given === "string" && picked < 0 && !(item.multiSelect && marks?.map((index) => item.options[index]?.label).join(", ") === given);
   return (
     <QuestionPage
@@ -133,24 +161,28 @@ export function QuestionCard({
       held={question.held === true}
       kept={lit[at] ?? (picked >= 0 ? picked : null)}
       marked={item.multiSelect ? (marks ?? []) : undefined}
-      initialText={drafts[at] ?? (ownWords ? given : "")}
-      pager={
-        items.length > 1 && (
-          <StepCounter
-            noun="question"
-            at={at}
-            count={items.length}
-            canBack={reachable(at - 1)}
-            canForward={reachable(at + 1)}
-            onStep={(step) => keep(() => ({ page: at + step }))}
-            className="-mt-0.5 h-6"
-          />
-        )
+      initial={drafts[at] ?? own ?? (ownWords ? [given] : [])}
+      files={{ owner: session, draft: tilesKey(key, at), ...files }}
+      aside={
+        <>
+          {items.length > 1 && (
+            <StepCounter
+              noun="question"
+              at={at}
+              count={items.length}
+              canBack={reachable(at - 1)}
+              canForward={reachable(at + 1)}
+              onStep={(step) => keep(() => ({ page: at + step }))}
+              className="-mt-0.5 h-6"
+            />
+          )}
+          {actions}
+        </>
       }
       last={answers.filter((other, index) => index !== at && other !== undefined).length === items.length - 1}
       onPage={(step) => reachable(at + step) && keep(() => ({ page: at + step }))}
       onAnswer={answer}
-      onTyped={(text) => keep((now) => ({ drafts: put(now.drafts, at, text) }))}
+      onTyped={(parts) => keep((now) => ({ drafts: put(now.drafts, at, parts) }))}
       onLit={(index) => keep((now) => ({ lit: put(now.lit, at, index) }))}
       onMarked={(indexes) => keep((now) => ({ marked: put(now.marked, at, indexes) }))}
       onDismiss={onDismiss}
@@ -179,8 +211,9 @@ function QuestionPage({
   held,
   kept,
   marked: keptMarks,
-  initialText,
-  pager,
+  initial,
+  files: filed,
+  aside,
   last,
   onPage,
   onAnswer,
@@ -202,12 +235,13 @@ function QuestionPage({
   kept: number | null;
   /** Multi-select: the answers marked so far. */
   marked?: readonly number[];
-  initialText: string;
-  pager?: ReactNode;
+  initial: Draft["parts"];
+  files: { owner: string; draft: string; run: Runner; backend?: string; images?: boolean };
+  aside?: ReactNode;
   last: boolean;
   onPage: (step: -1 | 1) => void;
-  onAnswer: (given: string | null) => void;
-  onTyped: (text: string) => void;
+  onAnswer: (given: Given) => void;
+  onTyped: (parts: Draft["parts"]) => void;
   onLit: (index: number | null) => void;
   onMarked: (indexes: number[]) => void;
   onDismiss: () => void;
@@ -220,17 +254,20 @@ function QuestionPage({
 }) {
   const { options } = item;
   const multiple = keptMarks !== undefined;
+  const pictured = (option: QuestionItem["options"][number]) => [option.letter, option.name].filter(Boolean).join(" · ") || option.label;
+  const pictures = options.flatMap((option) => (option.shot ? [{ name: pictured(option), url: option.shot }] : []));
   // The lit answer; -1 is the field, null none yet.
   const [highlight, setHighlight] = useState<number | null>(options.length === 0 ? -1 : kept);
   const lit = useEffectEvent((index: number | null) => onLit(index));
   useEffect(() => lit(highlight), [highlight]);
   const [chosen, setChosen] = useState<number | null>(null);
   const [marked, setMarked] = useState<readonly number[]>(keptMarks ?? []);
-  const [typed, setTyped] = useState(initialText);
+  const [typed, setTyped] = useState(initial);
   // One that came while nobody could see the window shows its rows at once.
   const [opens] = useState(() => document.visibilityState === "visible");
   const card = useRef<HTMLElement>(null);
   const field = useRef<ComposerFieldHandle>(null);
+  const files = useComposerFiles({ ...filed, field, main: false });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // The answer lit before a pick, for a pick taken back.
   const litBefore = useRef(highlight);
@@ -279,12 +316,14 @@ function QuestionPage({
     if (event.detail === 1 && (dragged || selected)) return;
     commit(index);
   };
-  const text = typed.trim();
-  // Something to send: words typed, or answers marked.
-  const ready = !!text || marked.length > 0;
+  const draft = { parts: typed, attachmentIds: files.tiles() };
+  const filled = !isEmpty(draft);
+  // Something to send: words typed, files attached, or answers marked.
+  const ready = filled || marked.length > 0;
+  const waits = filled ? files.hold(typed) : undefined;
   const submit = () => {
-    if (!idle) return;
-    if (text) onAnswer(text);
+    if (!idle || waits) return;
+    if (filled) onAnswer(draft.attachmentIds.length > 0 || typed.some((part) => typeof part !== "string" && "attachmentId" in part) ? draft : plainText(typed).trim());
     else if (marked.length > 0) onAnswer(marked.map((index) => options[index]!.label).join(", "));
     else onAnswer(null);
   };
@@ -302,10 +341,12 @@ function QuestionPage({
     if (!idle || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     const digit = matches(event.nativeEvent, "answer") ? Number(event.key) : NaN;
     const lastOption = options.length - 1;
-    // With an answer focused, focus follows the light, so Enter (which clicks the focused answer) picks the lit one.
+    // With a button of the card focused, focus follows the light, so Enter (which clicks the focused one) picks the lit answer.
     const move = (index: number) => {
       setHighlight(index);
-      if (event.target instanceof Element && event.target.matches("[data-slot=action-option]")) card.current?.querySelectorAll<HTMLElement>("[data-slot=action-option]")[index]?.focus();
+      const answer = card.current?.querySelectorAll<HTMLElement>("[data-slot=action-option]")[index];
+      answer?.scrollIntoView({ block: "nearest" });
+      if (event.target !== event.currentTarget) answer?.focus();
     };
     if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, options.length)) move(digit - 1);
     else if (digit === options.length + 1 && digit <= 9) field.current?.focus();
@@ -321,36 +362,52 @@ function QuestionPage({
     event.preventDefault();
   };
 
+  const onDrop = (event: DragEvent) => {
+    files.onDrop(event);
+    setHighlight(-1);
+  };
   const row = (index: number) => staggered(stagger && opens, index);
   return (
-    <ActionCard ref={card} container="request" tabIndex={0} aria-label="Question" data-action="question" onKeyDown={onKeyDown}>
+    <ActionCard ref={card} container="request" tabIndex={0} aria-label="Question" data-action="question" onKeyDown={onKeyDown} {...(!held && { onDragOver: files.onDragOver, onDrop })}>
       <div {...row(0)}>
-        <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel="Skip" kind={kind} aside={pager}>
+        <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel="Skip" kind={kind} aside={aside}>
           {title}
         </ActionCardQuestion>
       </div>
       <div className="flex flex-col gap-1 px-2 pt-1 pb-2">
         {pickable && (
-          <div role={multiple ? "group" : "radiogroup"} aria-label="Answers" className="flex flex-col gap-1">
+          <div role={multiple ? "group" : "radiogroup"} aria-label="Answers" className={cx("flex flex-col gap-1", pictures.length > 0 && "max-h-queue-max overflow-y-auto")}>
             {options.map((option, index) => (
-              <ActionOption
-                key={option.label}
-                role={multiple ? "checkbox" : "radio"}
-                aria-checked={multiple ? marked.includes(index) : index === highlight}
-                number={index + 1}
-                name={option.label.replaceAll("`", "")}
-                label={<CodeSpans text={option.label} />}
-                description={option.description && <CodeSpans text={option.description} />}
-                recommended={item.recommended === index}
-                highlighted={index === highlight}
-                chosen={index === chosen || (multiple && marked.includes(index))}
-                disabled={busy}
-                onMouseDown={(event) => {
-                  pressedAt.current = { x: event.clientX, y: event.clientY };
-                }}
-                onClick={(event) => clicked(index, event)}
-                {...row(index + 1)}
-              />
+              <div key={option.label} {...row(index + 1)} className={cx("flex items-center gap-2", row(index + 1).className)}>
+                <ActionOption
+                  className="min-w-0"
+                  role={multiple ? "checkbox" : "radio"}
+                  aria-checked={multiple ? marked.includes(index) : index === highlight}
+                  number={index + 1}
+                  name={option.label.replaceAll("`", "")}
+                  label={<CodeSpans text={option.label} />}
+                  description={option.description && <CodeSpans text={option.description} />}
+                  recommended={item.recommended === index}
+                  highlighted={index === highlight}
+                  chosen={index === chosen || (multiple && marked.includes(index))}
+                  disabled={busy}
+                  onMouseDown={(event) => {
+                    pressedAt.current = { x: event.clientX, y: event.clientY };
+                  }}
+                  onClick={(event) => clicked(index, event)}
+                />
+                {/* Beside the row, not in it: a click opens it larger and picks nothing. */}
+                {option.shot && (
+                  <button
+                    type="button"
+                    aria-label={`View ${pictured(option)} larger`}
+                    className="h-16 w-24 shrink-0 cursor-pointer overflow-hidden rounded-control border border-border bg-muted focus-visible:focus-ring"
+                    onClick={() => viewImage(pictures, pictures.findIndex((each) => each.url === option.shot))}
+                  >
+                    <img src={option.shot} alt={pictured(option)} draggable={false} className="size-full object-cover object-top" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -361,20 +418,22 @@ function QuestionPage({
             {...row(options.length + 1)}
             field={
               <div className="min-w-0 flex-1" onFocus={() => setHighlight(-1)}>
-                {/* shortcut: plain words only (no @ or / menus, no pasted files); pass the composer's through and answer a Draft once Rust takes one. */}
+                {files.tilesRow}
                 <ComposerField
                   ref={field}
                   size="card"
                   label="Your answer"
                   placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
-                  initial={{ parts: initialText ? [initialText] : [], attachmentIds: [] }}
+                  initial={{ parts: initial, attachmentIds: [] }}
+                  attachments={files.attachments}
+                  onAttach={files.attach}
+                  onOpen={(kind, id) => openChip(filed.owner, kind, id)}
                   onChange={(parts) => {
-                    const value = plainText(parts);
-                    setTyped(value);
-                    onTyped(value);
-                    if (value) setHighlight(-1);
+                    setTyped(parts);
+                    onTyped(parts);
+                    if (!isEmpty({ parts, attachmentIds: [] })) setHighlight(-1);
                   }}
-                  onSubmit={() => text && submit()}
+                  onSubmit={() => filled && submit()}
                   onEscape={() => card.current?.focus()}
                   // ↑ in the empty field goes back up to the answers.
                   onPullQueued={() => {
@@ -387,7 +446,7 @@ function QuestionPage({
               </div>
             }
           >
-            <button type="button" className={actionButton(ready ? "primary" : "outline", "font-medium")} disabled={busy} onClick={submit}>
+            <button type="button" className={actionButton(ready ? "primary" : "outline", "font-medium")} disabled={busy || waits !== undefined} title={waits} onClick={submit}>
               {!ready ? "Skip" : last ? "Submit" : "Next"}
             </button>
           </ActionFreeText>

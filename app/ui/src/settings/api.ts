@@ -36,9 +36,9 @@ export const getSettings = () => settings.get().value;
 
 // Rust's last word, and the changes still on their way, oldest first: what's shown is the one with the others on top.
 let confirmed: Settings | undefined;
-const pending: { key: keyof Settings; value: unknown }[] = [];
+const pending: Partial<Settings>[] = [];
 let saving: Promise<unknown> = Promise.resolve();
-const show = () => confirmed && settings.set({ value: pending.reduce((all, { key, value }) => ({ ...all, [key]: value }), confirmed) });
+const show = () => confirmed && settings.set({ value: pending.reduce<Settings>((all, change) => ({ ...all, ...change }), confirmed) });
 
 /** Asked on each connect until known; a failure keeps what was shown. */
 export function loadSettings(): void {
@@ -55,17 +55,20 @@ export function loadSettings(): void {
  * Shown at once, saved one at a time so Rust's replies come in order; each reply keeps the changes still pending on
  * top, and a failure drops only its own change, and the caller says why [D30].
  */
-export const setSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => saveShown(key, value, ["settings", key, String(value)]);
+export const setSetting = <K extends keyof Settings>(key: K, value: Settings[K]) => saveShown({ [key]: value }, ["settings", key, String(value)]);
+
+/** Bubbles or Stacked: the thread's width and its messages in one save, so a failure never leaves them apart [D914, D915]. */
+export const setChatLayout = (mode: Settings["message_layout"]) =>
+  saveShown({ thread_width: mode === "bubbles" ? "centered" : "full", message_layout: mode }, ["settings", "chat-layout", mode]);
 
 /** Stars a model in the model picker, or takes its star off: shown at once, saved as `setSetting`. */
 export function setStar(provider: string, id: string, on: boolean): Promise<void> {
   const model = `${provider}/${id}`;
   const others = (getSettings()?.models_starred ?? []).filter((each) => each !== model);
-  return saveShown("models_starred", on ? [...others, model] : others, ["settings", "star", provider, id, on ? "on" : "off"]);
+  return saveShown({ models_starred: on ? [...others, model] : others }, ["settings", "star", provider, id, on ? "on" : "off"]);
 }
 
-async function saveShown<K extends keyof Settings>(key: K, value: Settings[K], args: string[]): Promise<void> {
-  const change = { key, value };
+async function saveShown(change: Partial<Settings>, args: string[]): Promise<void> {
   pending.push(change);
   show();
   const save = saving.then(() => run(args));
@@ -91,15 +94,23 @@ export function loadLid(): void {
   );
 }
 
+let inSetup = false;
+
 /** On or off; the first time on asks for the administrator password once, and without it stays off, as the old app. */
 export async function setLid(on: boolean): Promise<void> {
   // Not yet known counts as no rule: Rust's lid-setup asks only when there isn't one.
   const state = lid.get().state;
   if (on && state !== "ready" && state !== "low") {
-    lid.set({ ...lid.get(), settingUp: true });
+    // Before the switch shows waiting, a second click would set up twice, and its save could undo a later off.
+    if (inSetup) return;
+    inSetup = true;
+    // Only a setup that takes a moment shows waiting: a rule already there answers at once, with no flash.
+    const waiting = setTimeout(() => lid.set({ ...lid.get(), settingUp: true }), 300);
     try {
       lid.set({ state: (await run(["awake", "lid-setup"])).lid as LidState });
     } finally {
+      clearTimeout(waiting);
+      inSetup = false;
       lid.set({ ...lid.get(), settingUp: false });
     }
   }

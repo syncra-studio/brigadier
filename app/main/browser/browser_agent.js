@@ -378,9 +378,11 @@
   /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it. */
   const ask = (reasons, element) => {
     const needed = reasons.filter(Boolean);
-    // The yes was for this page, at this address, and for what the control was then: not for what it became.
+    // The yes was for this page, at this address, and for what the control was then: not for what it became. One for the
+    // session covers no paying, card, password, code or sign-in.
     const yes = op.approved && op.approved === location.href;
-    const sensitive = needed.find((each) => !yes || (each !== "action" && op.approvedFor && !op.approvedFor.includes(each)));
+    const covers = (each) => (op.covered ? ["action", "delete", "send", "script"].includes(each) : each === "action" || !op.approvedFor || op.approvedFor.includes(each));
+    const sensitive = needed.find((each) => !yes || !covers(each));
     if (!sensitive) return null;
     return { ask: { sensitive, reasons: needed, what: `${controlOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
   };

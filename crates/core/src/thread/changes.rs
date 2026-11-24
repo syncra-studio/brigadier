@@ -1,0 +1,44 @@
+//! What a thread sends: what changed since the last call, or nothing.
+
+use super::Thread;
+use serde_json::{Value, json};
+
+impl Thread {
+    /// What changed since the last call: rows and turns to replace by id, and new work.
+    pub fn take(&mut self) -> Option<Value> {
+        let items: Vec<Value> = std::mem::take(&mut self.changed_items)
+            .into_iter()
+            .map(|at| self.items[at].clone())
+            .collect();
+        let turns: Vec<Value> = std::mem::take(&mut self.changed_turns)
+            .into_iter()
+            .map(|at| self.turns[at].clone())
+            .collect();
+        let work = self.work[self.sent_work..].to_vec();
+        self.sent_work = self.work.len();
+        let quiet = items.is_empty() && turns.is_empty() && work.is_empty();
+        let mut out = json!({"items": items, "turns": turns, "work": work});
+        let setup_changed = std::mem::take(&mut self.setup_changed);
+        if setup_changed {
+            out["setup"] = self.setup.clone();
+        }
+        let points_changed = self.send_points(&mut out);
+        // What waits on the user goes whole whenever it changed, to replace what the view holds.
+        if std::mem::take(&mut self.pending_changed) {
+            for (k, v) in self.requests().as_object().unwrap() {
+                out[k] = v.clone();
+            }
+        } else if quiet && !setup_changed && !points_changed {
+            return None;
+        }
+        Some(out)
+    }
+
+    /// Forgets what changed: a thread kept to copy from sends nothing itself.
+    pub fn settle(&mut self) {
+        self.changed_items.clear();
+        self.changed_turns.clear();
+        self.sent_work = self.work.len();
+        self.pending_changed = false;
+    }
+}

@@ -72,6 +72,14 @@ fn request(body: Value) -> (String, String) {
     (format!("{line}\n"), id)
 }
 
+/// Asks Claude to connect again each server the session's proxy couldn't answer its connect for
+/// (the Agent SDK's `reconnectMcpServer`), before the message: it never dials a failed one itself.
+pub fn redial(spec: &Spec) -> String {
+    (crate::library::unreached(spec).iter())
+        .map(|name| request(json!({"subtype": "mcp_reconnect", "serverName": name})).0)
+        .collect()
+}
+
 /// A level or model change goes to the idle child as its own requests, confirmed before the
 /// message [D222]; an effort, or its subagents' allowlist, has no such request, so the child starts
 /// again with it [D376].
@@ -184,7 +192,9 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     if fresh {
         args.extend(["--system-prompt-snapshot".into(), "off".into()]);
     }
-    args.extend(home.into_iter().flat_map(|h| ["--add-dir".into(), h]));
+    let tmp = crate::background::tmp(&spec.dir).display().to_string();
+    let dirs = home.into_iter().chain([tmp]);
+    args.extend(dirs.flat_map(|d| ["--add-dir".into(), d]));
     args
 }
 

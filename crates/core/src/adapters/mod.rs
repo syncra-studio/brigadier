@@ -42,9 +42,9 @@ pub enum Event {
     Reasoning(String),
     ToolStart(Tool),
     ToolEnd(Done),
-    /// Background subagents, by their ids, whose own background work still runs: a run of theirs
-    /// that ends now isn't their end, as they run again when that work ends.
-    Awaiting(Vec<String>),
+    /// All its CLI runs in the background, by id (each one's end wakes the agent), then the
+    /// subagents among it whose own work still runs: a run of theirs that ends now isn't their end.
+    Awaiting(Vec<String>, Vec<String>),
     /// A command or watch its CLI runs in the background, by the id it gave it, and what the agent
     /// said it does, else its command: its Background row's words [D187].
     Background(String, String),
@@ -116,8 +116,8 @@ pub enum Event {
     /// The agent's to-do list as it last wrote it: `[{text, status}]` [D104].
     Plan(Vec<Value>),
     /// The agent's own commands, as its protocol lists them, replacing any listed before: each
-    /// `{name, description, kind: "command"|"skill"|"mcp", path, instant}`, `path` the file it's
-    /// defined in where the agent says or keeps one, `instant` when it runs at once [D164, D2009].
+    /// `{name, description, kind: "command"|"skill"|"prompt" (an MCP server's), path, instant}`,
+    /// `path` its file where the agent says or keeps one, `instant` if it runs at once [D164, D2009].
     Commands(Vec<Value>),
     /// Where this turn sits in the CLI's own record, for a later cut: its first entry and its
     /// latest, as far as this line says.

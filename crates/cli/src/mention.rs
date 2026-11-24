@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 const RESULT_ROWS: usize = 8;
 const SECTION_ROWS: usize = 5;
 
-/// `{owner: "@home" | id, project?, q}` → `{ok, query, groups}`.
+/// `{owner: "@home" | id, tabs?, project?, q}`, `tabs` the Home draft whose tabs these are → `{ok, query, groups}`.
 pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
     let (owner, q) = (
         req["owner"].as_str().unwrap_or(""),
@@ -66,7 +66,9 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         json!({"id": p, "type": if *folder { "folder" } else { "file" }, "label": p, "name": name, "detail": detail})
     };
     // The session's browser tabs, which a message can hand to its agent [D775]: by address, as Rust knows them.
-    let tabs: Vec<Value> = (crate::tabs::browser(data, owner).into_iter())
+    let bare = |t: &&str| brigadier_core::check_id(t.strip_prefix("@home:").unwrap_or(t)).is_ok();
+    let shown = (req["tabs"].as_str().filter(bare)).unwrap_or(owner);
+    let tabs: Vec<Value> = (crate::tabs::browser(data, shown).into_iter())
         .filter(|(_, _, driver)| driver.as_deref().is_none_or(|d| d == owner))
         .map(|(id, url, driver)| {
             let shown = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
@@ -76,14 +78,9 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         })
         .collect();
     // The project's notes, which a message can hand to its agent whole [D913].
-    let notes: Vec<Value> = crate::attach::note::listed(data, owner, req["project"].as_str())
-        .unwrap_or_default()
-        .iter()
-        .map(|n| {
-            let label = crate::attach::note::shown_name(n);
-            json!({"id": n["id"], "type": "note", "name": n["title"], "label": label})
-        })
-        .collect();
+    let notes =
+        crate::attach::note::listed(data, owner, req["project"].as_str()).unwrap_or_default();
+    let note = |n: &Value| json!({"id": n["id"], "type": "note", "name": n["title"], "label": crate::attach::note::shown_name(n)});
     let groups = if q.is_empty() {
         let top = found
             .iter()
@@ -91,7 +88,7 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             .take(SECTION_ROWS);
         json!([
             {"title": "Workers", "items": workers.iter().map(|r| worker(r)).collect::<Vec<_>>()},
-            {"title": "Notes", "items": notes.iter().take(SECTION_ROWS).collect::<Vec<_>>()},
+            {"title": "Notes", "items": notes.iter().take(SECTION_ROWS).map(note).collect::<Vec<_>>()},
             {"title": "Message directly", "items": workers.iter().filter(|r| !ended(r)).map(|r| direct(r, None)).collect::<Vec<_>>()},
             {"title": "Files", "items": [], "note": "Type to search for files"},
             {"title": "Folders", "items": top.map(path).collect::<Vec<_>>()},
@@ -124,9 +121,18 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
                 all.push((rank, 3, 0, title));
             }
         }
-        for n in notes {
-            if let Some(rank) = files::rank(n["label"].as_str().unwrap_or(""), &query) {
-                all.push((rank, 0, 1, n));
+        for n in &notes {
+            let row = note(n);
+            let of = |v: &Value| files::rank(v.as_str().unwrap_or(""), &query);
+            // Past what the row shows, a long name is found too: a given one as any name, a paragraph
+            // by its words only, as nearly any letters are in one in order.
+            let ranks = [
+                of(&row["label"]),
+                of(&n["name"]),
+                of(&n["whole"]).filter(|r| *r < 2),
+            ];
+            if let Some(rank) = ranks.into_iter().flatten().min() {
+                all.push((rank, 0, 1, row));
             }
         }
         for t in tabs {

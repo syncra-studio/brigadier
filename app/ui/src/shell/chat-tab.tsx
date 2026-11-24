@@ -61,8 +61,7 @@ export function CloseAllDialog() {
 
 /** Leaves the session for Home; it goes on working and stays in the sidebar. */
 export function leave(row: SessionRow | undefined): void {
-  // A chat in no project goes back to New chat's draft as it was left [D282].
-  if (row) setHomeDraft(row.project ? { project: row.project, chat: false, locked: true } : { locked: false });
+  if (row) setHomeDraft({ project: row.project ?? null });
   window.location.hash = "";
   if (row?.mark === "working" || row?.mark === "needs") showToast("Still running. Reopen it from the sidebar.");
 }
@@ -95,7 +94,7 @@ export function TabMenuItems({ owner, id, order, onClose }: { owner: string; id:
 function ProjectIcon({ project }: { project: string | null | undefined }) {
   const projects = useProjects() ?? [];
   const named = projects.find((each) => each.id === project);
-  return named ? <ProjectBadge id={named.id} name={named.name} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
+  return named ? <ProjectBadge id={named.id} name={named.name} icon={named.icon} /> : <Chat aria-hidden className="size-icon-md shrink-0" />;
 }
 
 /** A chat or session's first tab, never moved: its title and its state, and its "…" with the row's actions. It has no

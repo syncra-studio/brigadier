@@ -1,5 +1,5 @@
 import type { LexicalEditor } from "lexical";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
@@ -10,6 +10,7 @@ import { NoteWithChat } from "../note/chat";
 import { NotesColumn } from "../note/list";
 import { useNoteChanges, useNoteRun } from "../note/run";
 import { NoteEditor, focusNoteStart } from "../note/editor";
+import { NoteOfEditor, noteDrop } from "../note/image";
 import { EmojiButton, headOf, NoteTopBar, splitHead } from "../note/top-bar";
 import "../note/page.css";
 import { CHAT, closeTab, openTab, replaceTab, selectTab } from "./tab-store";
@@ -31,6 +32,8 @@ export function setNoteTitle(note: string, title: string): void {
 }
 const subscribe = (listener: () => void) => (listeners.add(listener), () => listeners.delete(listener));
 export const useNoteTitle = (note: string) => useSyncExternalStore(subscribe, () => titles.get(note)) || UNTITLED_NOTE;
+// The notes read in this run: at a note's first, no undo holds an image it left out.
+const opened = new Set<string>();
 // Whether the notes column shows, the same in every note tab.
 let listing = true;
 
@@ -54,6 +57,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
   useNoteChanges(useCallback((id: string) => id === note && setChanged((n) => n + 1), [note]), self);
   const [list, setList] = useState(listing);
   const title = useNoteTitle(note);
+  const own = useMemo(() => ({ note, run }), [note, run]);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [read, setRead] = useState<Read | { error: string } | null>(null);
   // Bumped to load content that changed outside the editor.
@@ -79,7 +83,9 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
   useEffect(() => {
     if (!active && read !== null) return;
     let live = true;
-    void run(["read", note]).then((reply) => {
+    const first = !opened.has(note);
+    opened.add(note);
+    void run(["read", note, ...(first ? ["--first"] : [])]).then((reply) => {
       if (!live) return;
       if (!reply.ok) return setRead((was) => was ?? { error: failure(reply) });
       setNoteTitle(note, reply.title);
@@ -154,7 +160,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
     if (!conflict) return;
     const copy = newId();
     const mine = { ...latest.current, title: latest.current.title ? `${latest.current.title} (copy)` : "" };
-    void run(["write", copy, headOf(mine), mine.body]).then((reply) => (reply.ok ? openTab(owner, "note", copy) : setError(failure(reply))));
+    void run(["write", copy, headOf(mine), mine.body, "--from", note]).then((reply) => (reply.ok ? openTab(owner, "note", copy) : setError(failure(reply))));
     useTheirs();
   };
   const remove = () =>
@@ -187,6 +193,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
         <div data-slot="note-tab" className="note-tab">
           <NoteTopBar
             content={content}
+            name={title}
             listing={list}
             editor={() => editor.current}
             onList={() => showList(!list)}
@@ -205,11 +212,12 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
               <Button size="sm" variant="ghost" onClick={() => ((pending.current ??= latest.current), keep())}>Try again</Button>
             </Banner>
           )}
-          <div className="note-scroll">
+          <div className="note-scroll" {...noteDrop(editor)}>
             <div className="note-column">
               <div className="note-heading">
                 <EmojiButton emoji={content.emoji} onChange={(emoji) => change({ emoji })} />
               </div>
+              <NoteOfEditor value={own}>
               <NoteEditor
                 key={version}
                 body={content.body}
@@ -224,6 +232,7 @@ export function NoteTab({ owner, note, tabId, active }: { owner: string; note: s
                   selectTab(owner, CHAT);
                 }}
               />
+              </NoteOfEditor>
             </div>
           </div>
         </div>

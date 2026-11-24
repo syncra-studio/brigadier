@@ -32,6 +32,10 @@ pub fn delete(data: &Path, id: &str, drop: bool) -> io::Result<Value> {
     let drop = read_json::<Value>(&record).map_or(drop, |r| r["drop"] == true);
     {
         let (root, _) = place(data, id);
+        // A worker whose family's root went first is a family of its own.
+        let root = Some(root)
+            .filter(|r| core::session_dir(data, r).exists())
+            .unwrap_or_else(|| id.to_string());
         let _family = family_lock(data, &root)?;
         // Under the lock, so a first start can't slip in between the look and the delete.
         if below(data, id).is_empty() && !record.exists() {

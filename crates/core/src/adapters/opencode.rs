@@ -284,7 +284,7 @@ impl Adapter for OpenCode {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!("{}\n", message(spec, text))
+        format!("{}{}\n", control::redial(spec), message(spec, text))
     }
 
     /// Auto as its own per-tool rules [D130].
@@ -328,7 +328,7 @@ impl Adapter for OpenCode {
             "steer" => {
                 let mut p = prompt(spec, s(msg, &["text"]));
                 p["delivery"] = "steer".into();
-                json!({"prompt": p})
+                json!({"prompt": p, "session": r["cli"]["session"]})
             }
             "interrupt" => json!({"interrupt": true}),
             "stop_task" => json!({"prompt": stopped(spec, msg)}),

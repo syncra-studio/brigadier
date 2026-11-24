@@ -1,4 +1,4 @@
-// The Mockup tab, drawn on fake data [D2055, D2066]: the offer card, the chat rows, and every state of the tab. Frames
+// A mockup tab, drawn on fake data [D2055, D2066]: the offer card, the chat rows, and every state of the tab. Frames
 // show a fake app screen where the app shows the variant's live page.
 import { useState } from "react";
 
@@ -17,6 +17,7 @@ import picture from "./sample.svg?no-inline";
 
 const act = () => Promise.resolve();
 const noop = () => {};
+const run = async () => ({});
 
 const offer = (reuse: boolean): PendingQuestion => ({
   id: reuse ? "offer-reuse" : "offer",
@@ -109,14 +110,14 @@ export function MockupGallery() {
           <State label="big UI change">
             <div className="w-140">
               <RailItem variant="decision" label="Waiting for you">
-                <QuestionCard question={offer(false)} onAnswer={act} onDismiss={noop} />
+                <QuestionCard question={offer(false)} onAnswer={act} onDismiss={noop} session="" run={run} />
               </RailItem>
             </div>
           </State>
           <State label="another session built it">
             <div className="w-140">
               <RailItem variant="decision" label="Waiting for you">
-                <QuestionCard question={offer(true)} onAnswer={act} onDismiss={noop} session="reuse" />
+                <QuestionCard question={offer(true)} onAnswer={act} onDismiss={noop} session="reuse" run={run} />
               </RailItem>
             </div>
           </State>
@@ -124,7 +125,7 @@ export function MockupGallery() {
         <Row name="its rows in the chat">
           <div className="flex flex-col gap-2">
             <MockupRow moment={{ kind: "drawing", count: 3 }} live onOpen={noop} />
-            <MockupRow moment={{ kind: "waiting" }} live={false} onOpen={noop} />
+            <MockupRow moment={{ kind: "ready", round: 1, open: true }} live={false} onOpen={noop} />
             <MockupRow moment={{ kind: "notes", count: 3, on: ["A", "B"], round: 2 }} live onOpen={noop} />
             <MockupRow moment={{ kind: "picked", letter: "B" }} live onOpen={noop} />
             <MockupRow moment={{ kind: "built", letter: "B" }} live={false} onOpen={noop} />

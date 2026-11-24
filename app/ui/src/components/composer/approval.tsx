@@ -35,7 +35,7 @@ export type PendingApproval = {
   /** A message's target session. */
   to?: string;
   /** What "Allow for this session" covers: a command prefix, a folder, a host. */
-  grant?: { scope: "command" | "edits" | "network" | "tool"; pattern: string } | null;
+  grant?: { scope: "command" | "edits" | "network" | "tool" | "site"; pattern: string } | null;
   /** The subagent that asks, by its title. */
   agent?: string;
   /** A plan its adversarial review holds: the reviewer, a worker, and its model's name (§6). */
@@ -160,6 +160,7 @@ function grantTip({ scope, pattern }: NonNullable<PendingApproval["grant"]>): st
   const kept = "Not saved across sessions.";
   if (scope === "edits") return `Allow file changes inside ${pattern} in this chat. Edits outside it still ask. ${kept}`;
   if (scope === "tool") return `Allow ${pattern} in this chat. ${kept}`;
+  if (scope === "site") return `Allow scripts, clicks, typing, deletes and sends on ${pattern} in this chat. Paying, cards, passwords, codes and sign-in still ask. ${kept}`;
   if (scope === "network") return `Allow connections to ${pattern} in this chat. ${kept}`;
   return `Allow commands that start with ${pattern} in this chat. ${kept}`;
 }

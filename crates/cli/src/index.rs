@@ -5,17 +5,19 @@
 use crate::owner;
 
 mod find;
+mod marks;
 mod search;
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Folded, adapters, norm, projects};
 use brigadier_frames::{log, procs, take_lock};
 pub use find::find;
+use marks::Marks;
 use rusqlite::{Connection, params};
 pub use search::search;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
@@ -49,52 +51,10 @@ struct Entry {
     spec: Option<core::Spec>,
     /// Small session files, read again only when the folder changes.
     marks: Marks,
-}
-
-/// Marks published by creating or renaming entries in the session folder.
-#[derive(Default)]
-struct Marks {
-    /// The folder's modification time (ms) these were read at.
-    at: u64,
-    title: Option<String>,
-    pinned: Option<u64>,
-    /// Its labels' names (`labels`), in the order given [D3101, D3103].
-    labels: Value,
-    seen: u64,
-    /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
-    archived: Option<u64>,
-    lifecycle: Value,
-    /// Archived with its Brigade, so the Brigade's restore brings it back [D3111].
-    with: bool,
-    /// The follow-up queue (`queue.json`), null when empty.
-    queue: Value,
-    /// Its PRs as the last read kept them (`prs.json`), and the sidebar chip they make [D1018].
-    prs: Value,
-    pr: Value,
-}
-
-impl Marks {
-    fn read(dir: &Path, at: u64) -> Marks {
-        let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
-        let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
-        let (archived, lifecycle) = core::session::lifecycle(dir);
-        let prs = core::host::kept(dir);
-        Marks {
-            at,
-            title: text("title").filter(|t| !t.is_empty()),
-            pinned: ms("pinned"),
-            labels: text("labels")
-                .and_then(|t| serde_json::from_str(&t).ok())
-                .unwrap_or_else(|| json!([])),
-            seen: ms("seen").unwrap_or(0),
-            archived,
-            lifecycle,
-            with: core::session::went_with(dir),
-            queue: crate::workers::held(dir, crate::queue::row(dir)),
-            pr: core::host::chip(dir, &prs),
-            prs,
-        }
-    }
+    /// Other sessions' messages its agent hasn't got yet, read again only when their folder changes.
+    held: (Option<SystemTime>, Vec<Value>),
+    /// At rest, what its row was worked out from: the log's length, its folder's time, its inbox's.
+    rest: Option<(u64, Option<SystemTime>, Option<SystemTime>)>,
 }
 
 type Row = (String, &'static str, u64, String, String);
@@ -123,7 +83,11 @@ pub struct Index {
     entries: BTreeMap<String, Entry>,
     /// Each session folder's repository, asked of git once [D165].
     roots: projects::Roots,
+    /// The projects the rows were last worked out with.
+    projects: Vec<projects::Project>,
     pub rows: BTreeMap<String, Value>,
+    /// The sessions the last pass looked at: all of them in a full one, else those not at rest.
+    pub looked: BTreeSet<String>,
 }
 
 impl Index {
@@ -160,17 +124,23 @@ impl Index {
             data: data.to_path_buf(),
             entries,
             roots: projects::Roots::default(),
+            projects: vec![],
             rows: BTreeMap::new(),
+            looked: BTreeSet::new(),
         })
     }
 
     /// One pass: folds what each log added, works out every session's status, sweeps what a dead
     /// host left running, and writes the changes in one short transaction. Returns the rows that
-    /// changed and the ids that are gone.
-    pub fn sync(&mut self) -> io::Result<(Vec<Value>, Vec<String>)> {
+    /// changed and the ids that are gone. Unless `full`, a session at rest is skipped until its log,
+    /// folder or inbox changes: nothing runs in it, waits on a clock or on another session. What
+    /// shows in none of those (its host's end, a setting) waits for the next full pass.
+    pub fn sync(&mut self, full: bool) -> io::Result<(Vec<Value>, Vec<String>)> {
         let all = procs::all();
         let ids = core::ids(&self.data);
         let projects = projects::list(&self.data).unwrap_or_default();
+        let full = full || projects != self.projects;
+        self.looked.clear();
         let gone: Vec<String> = self
             .entries
             .keys()
@@ -186,7 +156,14 @@ impl Index {
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map_or(0, |d| d.as_millis() as u64);
+            let time = |p: &Path| fs::metadata(p).and_then(|m| m.modified()).ok();
+            // Read before all else, so a change meanwhile shows in the next pass.
+            let key = (len, time(&dir), time(&dir.join("peers/in")));
             let e = self.entries.entry(id.clone()).or_default();
+            if !full && e.rest == Some(key) {
+                continue;
+            }
+            self.looked.insert(id.clone());
             if len < e.done.pos {
                 *e = Entry::default(); // the log was replaced: start over, old text included
                 resets.push(id.clone());
@@ -223,6 +200,7 @@ impl Index {
                                 .collect();
                             resets.push(id.clone());
                         }
+                        core::keep(&dir, &f);
                         e.title = title;
                         e.done = f;
                         e.ahead = None;
@@ -234,7 +212,7 @@ impl Index {
                 }
             }
             let f = e.ahead.as_ref().unwrap_or(&e.done);
-            let live = fold::live(&f.fold, owner::state(&self.data, id), &self.data, &all);
+            let live = fold::live(&f.fold, owner::state(&self.data, id), &dir, &all);
             let status = fold::status(&f.fold, &live);
             let (state, reason) = match &e.error {
                 Some(_) => ("error".into(), Value::Null),
@@ -248,15 +226,22 @@ impl Index {
                 e.marks = Marks::read(&dir, at);
                 e.spec = None;
             }
+            if key.2 != e.held.0 {
+                e.held = (key.2, crate::peers::held::row(&self.data, id));
+            }
             let auto = fold::switchable(&f.fold)
                 .is_some_and(|why| crate::wants(&self.data, &f.fold.backend, why));
             let holds = crate::workers::holds(&self.data, id, &f.fold, live.child.is_some());
-            let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, holds);
+            let worker = crate::workers::row(&dir, state.as_str().unwrap_or(""), &f.fold);
+            // A worker's mark says working as its row does.
+            let held = holds || worker["kind"] == "working";
+            let mark = fold::mark(&f.fold, &live, e.marks.seen, auto, held);
             // No mark for a PR's checks [D174].
-            let mark = if e.error.is_some() {
-                Some("amber")
-            } else {
-                mark
+            let mark = match mark {
+                _ if e.error.is_some() => Some("amber"),
+                // Its mockup's news unseen: the blue dot, as a reply's.
+                None | Some("background") if e.marks.news > e.marks.seen => Some("unread"),
+                m => m,
             };
             // A dead host's groups the watchdog didn't stop, checked by start time [D60].
             let now = log::now_ms();
@@ -273,6 +258,13 @@ impl Index {
                 e.orphaned_since = None;
             }
             let works = e.error.is_none() && fold::works(&f.fold, &live);
+            let rests = f.fold.turns.is_empty()
+                && f.fold.workers.is_empty()
+                && (live.jobs, live.orphans) == (0, 0)
+                && live.left.is_empty()
+                && mark != Some("working")
+                && worker["kind"] != "working";
+            e.rest = rests.then_some(key);
             e.spec = e.spec.take().or_else(|| core::load(&self.data, id).ok());
             let project = e
                 .spec
@@ -317,12 +309,16 @@ impl Index {
                              "resumable": fold::resumable(&f.fold, state.as_str().unwrap_or("")),
                              // Where it works: its worktree, else the project's folder; a chat's own scratch folder is none [D348, D2022].
                              "folder": e.spec.as_ref().map(|s| &s.cwd).filter(|cwd| Path::new(cwd) != core::session_dir(&self.data, id).join("scratch")),
-                             "worker": crate::workers::row(&self.data.join("sessions").join(id), state.as_str().unwrap_or(""), &f.fold),
+                             "worker": worker,
                              "stalled": f.fold.last.as_ref().filter(|_| core::rebirth::stalled(&f.fold)).map(|l| &l["id"])}); // the turn the loop guard stopped: its line offers Continue [D144]
             // A worker's images, which its parent's thread shows too [D289].
             row["images"] = json!(f.fold.images);
+            // Waiting till its record moves on, or its sender is deleted: the thread's waiting bubbles.
+            let waits = |m: &&Value| crate::peers::held::kept(&self.data, m);
+            row["arriving"] = json!(e.held.1.iter().filter(waits).collect::<Vec<_>>());
+            row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
-            row["plan"] = json!(f.fold.plan); // its agent's to-do list as it last wrote it, the summary card's Plan [D144]
+            row["plan"] = f.fold.plan.shown(); // its agent's to-do list and what it finished, the summary card's Plan [D144]
             row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]
             row["created"] = json!(e.spec.as_ref().map(|s| s.created)); // when it was made: a Brigade's fixed order [D33]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
@@ -367,6 +363,7 @@ impl Index {
                 changed.push(row);
             }
         }
+        self.projects = projects;
         for id in &gone {
             self.entries.remove(id);
             self.rows.remove(id);
@@ -464,6 +461,6 @@ pub fn rebuild(data: &Path, cold: bool) -> io::Result<Value> {
         ));
     };
     let mut ix = Index::open(data, cold)?;
-    ix.sync()?;
+    ix.sync(true)?;
     Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
 }

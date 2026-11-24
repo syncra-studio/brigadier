@@ -76,7 +76,7 @@ impl Pr {
             None => repo,
         };
         match repo
-            .and_then(|r| Some((gh(&r, self.account.as_deref())?, r)))
+            .and_then(|r| Some((gh(&r, self.pick(&r))?, r)))
             .map(|(gh, r)| (r, gh))
         {
             Some(found) => Ok(found),

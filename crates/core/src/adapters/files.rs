@@ -12,7 +12,7 @@ pub fn question(id: &str, text: &str, options: &[String]) -> super::Event {
 }
 
 /// The skills a CLI keeps as `<folder>/<name>/SKILL.md`, each named with its folder's prefix (a
-/// plugin's `plugin:`), by name once, the first folder's first [D100].
+/// plugin's `plugin:`), by name once, the first folder's first [D100], the others' files its `also`.
 pub fn skills_in(folders: impl IntoIterator<Item = (PathBuf, String)>) -> Vec<Value> {
     let mut list: Vec<Value> = vec![];
     for (folder, prefix) in folders {
@@ -29,8 +29,12 @@ pub fn skills_in(folders: impl IntoIterator<Item = (PathBuf, String)>) -> Vec<Va
         found.sort();
         for (name, path) in found {
             let name = format!("{prefix}{name}");
-            if !list.iter().any(|l| l["name"] == *name) {
-                list.push(json!({"name": name, "description": "", "kind": "skill", "path": path, "instant": false}));
+            match list.iter_mut().find(|l| l["name"] == *name) {
+                Some(first) => match first["also"].as_array_mut() {
+                    Some(also) => also.push(json!(path)),
+                    None => first["also"] = json!([path]),
+                },
+                None => list.push(json!({"name": name, "description": "", "kind": "skill", "path": path, "instant": false})),
             }
         }
     }

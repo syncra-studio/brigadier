@@ -6,7 +6,7 @@ import { daemonSource } from "../projects/store";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft } from "../session/draft";
 import { putBack } from "../session/side";
 import { base64, stored } from "../session/files";
-import { CHAT, openTab, selectTab } from "../shell/tab-store";
+import { CHAT, HOME, openTab, selectTab } from "../shell/tab-store";
 import { draftKey, newSession, setHomeDraft } from "../home/start";
 import type { PullRequest } from "./pull-requests";
 
@@ -99,10 +99,11 @@ export async function sendToAgent(pr: PullRequest, owner: string, target: string
   // A session already on the branch that the watch hasn't linked to the PR yet.
   const held = (await run(["host", project, "session", pr.fork ? `pr-${pr.number}` : pr.branch])).session as string | null;
   if (held) return open(held, pr, focus);
-  // Home's files, its project draft's words [D863].
-  await withChip(HOME_DRAFT, pr, draftKey({ locked: true, project }), focus);
-  setHomeDraft({ chat: false, workIn: "worktree", pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
+  // Home's files, its project draft's words.
+  await withChip(HOME_DRAFT, pr, draftKey({ project }), focus);
   newSession(project);
+  selectTab(HOME, CHAT);
+  setHomeDraft({ workIn: "worktree", pr: { project, number: pr.number, title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, fork: Boolean(pr.fork), tab: target } });
 }
 
 /**

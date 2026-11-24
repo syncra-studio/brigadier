@@ -15,7 +15,7 @@ use super::{Link, Record, closing, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core};
-use brigadier_frames::procs;
+use brigadier_frames::{log, procs};
 pub(super) use report::write;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,10 +27,15 @@ use std::sync::Mutex;
 use std::thread;
 use take::said;
 pub use take::{going, hop, reported, take, take_ask, told, unrun, went_with, with_next};
-pub use told::{shell as told_shell, take as told_take, take_shell};
+pub use told::{notice as told_notice, shell as told_shell, take as told_take, take_shell};
 
 /// The most of its last message a result carries [D3006].
 const LAST: usize = 16 << 10;
+
+/// How long a turn that ended with background work still running waits for that work to wake it
+/// before it reports as it ended; a wake later than this reports by itself (`unsaid`). shortcut:
+/// work left running for good (a dev server) holds the result this long; upgrade if it shows.
+const WAKE_MS: u64 = 10 * 60_000;
 
 /// The states a parent takes a result in: between turns, as the queue's.
 const TAKES: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
@@ -62,6 +67,10 @@ pub(super) struct Res {
     /// A `quiet` one's parent input it went with: taken once the parent's log has it (`told`).
     #[serde(default)]
     pub going: String,
+    /// When the turn, or the wake that carried it on, ended that it reports (ms); the most for one
+    /// its host's death ended, 0 for one no turn ended for or an older build's.
+    #[serde(default)]
+    pub end: u64,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -84,7 +93,7 @@ pub(super) fn all(data: &Path, pid: &str) -> Vec<(PathBuf, Res)> {
         .flatten()
         .filter_map(|e| read_json(&e.path()).map(|r| (e.path(), r)))
         .collect();
-    all.sort_by_key(|(_, r)| r.at);
+    all.sort_by_key(|(_, r)| (r.at, r.end));
     all
 }
 
@@ -118,18 +127,22 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
             return;
         }
     }
-    let _ = write_ended(data, wid, row["state"] == "interrupted");
+    // One waiting on its background work is looked at again each pass, so its wait can run out.
+    if write_ended(data, wid, row["state"] == "interrupted").unwrap_or(false) {
+        SEEN.lock().unwrap().as_mut().map(|s| s.remove(wid));
+    }
 }
 
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
-/// died, so a turn it left open ended too, failed.
-pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
+/// died, so a turn it left open ended too, failed. Says whether one waits on its background work.
+pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool> {
     let Some(mut l) =
         link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
     else {
-        return Ok(());
+        return Ok(false);
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
+    let mut waits = false;
     let reports = reported(&l, &f);
     // A turn the user started in it reports too, quietly, on the same rules [D303].
     let direct = told::turns(&f).into_iter().filter(|t| !reports.contains(t));
@@ -139,48 +152,156 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<()> {
     for (turn, direct) in &turns {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
-        if !ended || path_of(data, &l.parent, wid, turn).exists() {
+        if !ended {
             continue;
         }
-        let last = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
-        // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
-        // conversation, whose own end reports instead [D88, D108], unless it ended done first.
-        // So does one the network cut, which Brigadier resumes by itself [D339].
-        if (f.cut.as_deref() == Some(turn) && !last.is_some_and(|l| l["outcome"] == "done"))
-            || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
-            || last.is_some_and(|_| core::fold::reconnect(&f, false).is_some())
-        {
-            continue;
+        for (end, late) in unsaid(data, &l, wid, &f, turn, *direct, cut) {
+            let own = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
+            let last = f.last.as_ref().filter(|last| last["id"] == end.id.as_str());
+            let newest = end.at == u64::MAX || f.end(turn).is_none_or(|e| e.at == end.at);
+            // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
+            // conversation, whose own end reports instead [D88, D108], unless it ended done first.
+            // So does one the network cut, which Brigadier resumes by itself [D339].
+            let on =
+                f.cut.as_deref() == Some(turn) && !last.is_some_and(|l| l["outcome"] == "done");
+            if (newest && on)
+                || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
+                || last.is_some_and(|_| core::fold::reconnect(&f, false).is_some())
+            {
+                break;
+            }
+            let how = match end.how.as_str() {
+                "done" => "finished",
+                "stopped" => "stopped",
+                "limited" => "limit",
+                _ if last.is_some_and(|l| l["why"] == "context") => "context",
+                _ => "failed",
+            };
+            // A late wake's end reports at once, whatever else still runs.
+            if !cut && !late && newest && holds(&f, turn) {
+                waits = true;
+                break;
+            }
+            // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
+            // ended by itself before the Pause took reports as ever; one a later wake hid, as stopped.
+            // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
+            // A reviewer and a fix turn end at their limit [D3026].
+            let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
+            if (l.paused && (how == "stopped" || own.is_none())) || moves {
+                break;
+            }
+            let how = match late || *direct {
+                true => Some(how),
+                false => review::holds(data, &mut l, wid, turn, how, &f),
+            };
+            let Some(how) = how else { break };
+            // A sub-session's last word is its last turn's, after its workers' results woke it
+            // [D189]; a turn's is its own, or its wake's, never one that came after this end.
+            let last = f.last.as_ref().filter(|_| l.session && !late);
+            let said = match last {
+                Some(l) if end.at < u64::MAX => (
+                    l["id"].as_str().unwrap_or_default().into(),
+                    l["ts"].as_u64().unwrap_or(u64::MAX),
+                ),
+                Some(l) => (l["id"].as_str().unwrap_or_default().into(), u64::MAX),
+                None => (end.id.clone(), end.at),
+            };
+            let of = report::Of {
+                direct: *direct,
+                end: end.at,
+                late,
+                said: (end.at > 0).then_some(said),
+            };
+            report::write_as(data, &l, wid, turn, how, None, of)?;
         }
-        // shortcut: a later turn already ended after it, so its own end isn't the fold's last;
-        // it reads as finished. Upgrade when the fold keeps each turn's end.
-        let how = match last.map_or(if open { "cut" } else { "done" }, |l| {
-            l["outcome"].as_str().unwrap_or("done")
-        }) {
-            "done" => "finished",
-            "stopped" => "stopped",
-            "limited" => "limit",
-            _ if last.is_some_and(|l| l["why"] == "context") => "context",
-            _ => "failed",
-        };
-        // A paused one's stopped task reports nothing: Resume's continue does [D3041]. One that
-        // ended by itself before the Pause took reports as ever; one a later wake hid, as stopped.
-        // A routed worker's limit isn't its end: it moves within its row or holds [D2041, D2028].
-        // A reviewer and a fix turn end at their limit [D3026].
-        let moves = how == "limit" && !l.ran["label"].is_null() && review::moves(&l);
-        if (l.paused && (how == "stopped" || last.is_none())) || moves {
-            continue;
-        }
-        if *direct {
-            report::write_as(data, &l, wid, turn, how, None, true)?;
-            continue;
-        }
-        let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
-            continue;
-        };
-        write(data, &l, wid, turn, how, None)?;
     }
-    Ok(())
+    Ok(waits)
+}
+
+/// The ends of `turn` still to report, oldest first, each with whether it's `late`: a wake's that
+/// came after the turn's result was written, which reports too, once, in a result of its own named
+/// by when it ended. The most for one its host died in (`cut`).
+pub(super) fn unsaid(
+    data: &Path,
+    l: &Link,
+    wid: &str,
+    f: &fold::Fold,
+    turn: &str,
+    direct: bool,
+    cut: bool,
+) -> Vec<(fold::End, bool)> {
+    let mut ends = f.ends.get(turn).cloned().unwrap_or_default();
+    // Its host died in it, or in the wake that carried it on: that was cut, and so was it.
+    if cut && (woken(f, turn) || f.turns.iter().any(|t| t.id == turn)) {
+        ends.push(fold::End {
+            at: u64::MAX,
+            how: "cut".into(),
+            id: ends.last().map_or(turn.into(), |e| e.id.clone()),
+            began: f.turns.first().map_or(0, |t| t.ts),
+        });
+    }
+    // An input no turn of its own ended for, as one that joined another's.
+    if ends.is_empty() {
+        ends.push(fold::End {
+            how: "done".into(),
+            id: turn.into(),
+            ..Default::default()
+        });
+    }
+    let path = |key: &str| path_of(data, &l.parent, wid, key);
+    let told = |end: u64| path(&format!("{turn}.{end}")).exists();
+    // A reviewer says its findings once.
+    let once = !direct && (l.review["of"].is_string() || l.review["plan"].is_string());
+    let since = match path(turn).exists() {
+        false => {
+            // Its first result is of the end no wake carried on within the hold.
+            let over = |w: &[fold::End]| w[1].began.saturating_sub(w[0].at) >= WAKE_MS;
+            let first = ends.windows(2).position(over).unwrap_or(ends.len() - 1);
+            ends.drain(..first);
+            return (ends.into_iter().enumerate())
+                .map(|(i, e)| (e, i > 0))
+                .filter(|(_, late)| !late || !once)
+                .collect();
+        }
+        true if once || told(u64::MAX) => return vec![],
+        true => read_json::<Res>(&path(turn)),
+    };
+    let Some(r) = since else { return vec![] };
+    let late = |e: &fold::End| match r.end {
+        // shortcut: an older build's result doesn't name its end, and a wake long before the
+        // upgrade isn't news; one is told if the daemon sees it this soon.
+        0 => e.at > r.at && log::now_ms().saturating_sub(e.at) < WAKE_MS,
+        end => e.at > end,
+    };
+    (ends.into_iter())
+        .filter(|e| late(e) && !told(e.at))
+        .map(|e| (e, true))
+        .collect()
+}
+
+/// Whether its CLI carries `turn` on now, in a wake of its own.
+fn woken(f: &fold::Fold, turn: &str) -> bool {
+    f.turns
+        .first()
+        .is_some_and(|t| t.origin == "agent" && t.of == turn)
+}
+
+/// Whether `turn`, ended, waits on its live CLI's background work: it goes on in the wake that
+/// work started, whose end reports it, or, ended done, in the one its work still running will
+/// start, for up to WAKE_MS after it or its last wake ended, so work that never wakes it can't
+/// hold it [D118].
+pub(super) fn holds(f: &fold::Fold, turn: &str) -> bool {
+    if f.child.as_ref().is_none_or(|c| c.exited) {
+        return false;
+    }
+    let (since, done) = f.end(turn).map_or((0, true), |e| (e.at, e.how == "done"));
+    let soon = log::now_ms().saturating_sub(since) < WAKE_MS;
+    woken(f, turn) || (done && soon && wakes(f))
+}
+
+/// Whether background work its live CLI still runs will wake it.
+pub(super) fn wakes(f: &fold::Fold) -> bool {
+    f.child.as_ref().is_some_and(|c| !c.exited) && (f.pending.wakes() || !f.agents.is_empty())
 }
 
 /// A start that failed before its worker could run: its result says why.
@@ -334,7 +455,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         return Ok(());
     };
     let f = core::fold(&dir, true)?;
-    let live = fold::live(&f.fold, owner::state(data, pid), data, &procs::all());
+    let live = fold::live(&f.fold, owner::state(data, pid), &dir, &procs::all());
     let status = fold::status(&f.fold, &live);
     let state = status["state"].as_str().unwrap_or("");
     // A parent the user stopped (or paused) isn't woken: its results go after the next message
@@ -351,7 +472,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         }
         owner::call(data, pid, req)
     };
-    let origin = format!("result:{}", said(&r));
+    let origin = format!("result:{}", said(data, pid, &r));
     // What the user told its workers meanwhile goes first, as it came first [D303].
     let mut notes = String::new();
     told::with(data, pid, &r.id, &mut notes);

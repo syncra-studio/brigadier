@@ -5,6 +5,7 @@ mod account;
 pub mod adapters;
 pub mod agent;
 pub mod archive;
+pub mod background;
 pub mod feedback;
 pub mod fold;
 pub mod folder;
@@ -13,6 +14,7 @@ pub mod git;
 pub mod handoff;
 pub mod host;
 pub mod images;
+mod kept;
 pub mod library;
 pub mod lid;
 pub mod message;
@@ -46,6 +48,7 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of};
+pub use kept::{fold, keep};
 pub use send::{Call, CallIn, Running, applied, level, reconnect, recover, relevel, send};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -283,29 +286,20 @@ pub struct Folded {
     pub norm: Norm,
 }
 
-const CHECKPOINT_EVERY: u64 = 16 << 20;
-
-/// Folds the whole log, starting from the checkpoint when one is valid, and writes a new one when
-/// the log grew a lot. The checkpoint is only a cache: deleting it changes nothing but speed.
-pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
-    let ckpt = dir.join("fold.json");
-    let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
-    let f = use_checkpoint
-        .then(|| {
-            fs::read(&ckpt)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
-        })
-        .flatten()
-        .filter(|f| f.v == norm::VERSION && f.pos <= log_len)
-        .unwrap_or_default();
-    let start = f.pos;
-    let f = fold_from(dir, f, |_| {})?;
-    // Only a fold that ended clean has its state and offset at the same frame.
-    if use_checkpoint && f.norm.clean() && f.pos - start >= CHECKPOINT_EVERY {
-        let _ = write_atomic(&ckpt, &serde_json::to_vec(&f)?);
+/// The account a session starts on, read again till its first input: a hold's answer may move a
+/// worker's after its log has notes. Only a change is taken, so a fork's own stays.
+fn starts_on(dir: &Path, f: &mut Fold) {
+    let spec = fs::read(dir.join("session.json")).ok();
+    let spec = spec.and_then(|b| serde_json::from_slice::<Spec>(&b).ok());
+    let now = spec.and_then(|s| Some((s.backend, s.starts_on?)));
+    if now == f.started {
+        return;
     }
-    Ok(f)
+    if let Some((backend, _)) = &f.started {
+        f.accounts.remove(backend);
+    }
+    f.accounts.extend(now.clone());
+    f.started = now;
 }
 
 /// Carries a fold on from where `f` stopped, handing each new item to `each`. `pos` moves only at
@@ -318,21 +312,22 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
             v: norm::VERSION,
             ..Default::default()
         };
-        let spec = fs::read(dir.join("session.json")).ok();
-        let spec = spec.and_then(|b| serde_json::from_slice::<Spec>(&b).ok());
-        if let Some((backend, id)) = spec.and_then(|s| Some((s.backend, s.starts_on?))) {
-            f.fold.accounts.insert(backend, id);
-        }
+    }
+    if f.fold.cids.is_empty() {
+        starts_on(dir, &mut f.fold);
     }
     let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
     if log_len > f.pos {
         let mut reader = Reader::open(&dir.join("log"), f.pos, f.seq)?;
-        let mut items = vec![];
+        let (mut items, mut replan, mut seq) = (vec![], false, 0);
         while let Some(frame) = reader.frame()? {
+            seq = frame.seq;
             f.norm.push(&frame, &mut items);
             for item in items.drain(..) {
                 each(&item);
                 f.fold.push(&item);
+                replan |= item["kind"] == "note"
+                    && matches!(item["event"].as_str(), Some("rewound" | "forked"));
             }
             // Any output is a sign of life, even bytes that make no item (heartbeats).
             if matches!(frame.kind, log::OUT | log::ERR) {
@@ -342,6 +337,9 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
                 f.pos = reader.pos;
                 f.seq = reader.seq;
             }
+        }
+        if replan {
+            f.fold.plan = fold::todo::Todo::replay(dir, seq)?;
         }
     }
     Ok(f)
@@ -389,9 +387,9 @@ pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
     }
 }
 
-/// Kills what is left of process groups this session recorded, checked by start time. Only for
-/// when no owner holds them any more. Only groups recorded under `dir` itself: a copied log names
-/// another folder's, maybe live, and an old record names none [D220].
+/// Kills what is left of process groups this session recorded, checked by start time; what runs
+/// outside them goes on. Only for when no owner holds them any more. Only groups recorded under
+/// `dir` itself: a copied log names another folder's, maybe live, and an old record names none [D220].
 pub fn sweep(f: &Fold, dir: &Path) -> usize {
     let here = fs::canonicalize(dir).unwrap_or_else(|_| dir.into());
     fold::live_groups(f, &procs::all())

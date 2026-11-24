@@ -167,8 +167,8 @@ export function DetailsPage({
                   <Copy aria-hidden />
                   Copy {item.kind === "skill" ? "folder path" : first.toLowerCase()}
                 </DropdownMenuItem>
-                {/* One found on this machine follows the agent's settings: it's switched off, not removed [D721]. */}
-                {!item.from && (
+                {/* A server found on this machine follows the agent's settings: it's switched off, not removed [D721]. */}
+                {(item.kind === "skill" || !item.from) && (
                   <DropdownMenuItem variant="destructive" onClick={onRemove}>
                     <Trash aria-hidden />
                     Remove

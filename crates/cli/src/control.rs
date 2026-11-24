@@ -6,6 +6,7 @@
 use crate::{call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::{self, Fold};
+use brigadier_core::message::answers::{Answers, answers as answers_of};
 use brigadier_core::{self as core, Spec, as_run};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
@@ -15,6 +16,12 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use std::{io, process, thread};
+
+mod given;
+mod steer;
+pub use given::beside;
+use given::with;
+pub use steer::{steer_as, steer_turn};
 
 pub(crate) fn refused(error: &str, why: Value) -> Value {
     json!({"ok": false, "result": "refused", "error": error, "why": why})
@@ -92,34 +99,40 @@ pub(crate) fn deliver(
 }
 
 /// `answer <id> <request> allow|allowSession|deny [--reason R]` for an approval, or
-/// `answer <id> <request> --answers JSON` for a question: one answer per item, null skipped [D177].
+/// `answer <id> <request> --answers JSON` for a question: one answer per item, null skipped, one
+/// with images or files as its draft [D177].
 pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
     let usage = || io::Error::other(crate::USAGE);
     let id = args.get(1).ok_or_else(usage)?;
     let request = args.get(2).ok_or_else(usage)?;
     let decision = args.get(3).filter(|d| !d.starts_with("--")).cloned();
     let reason = flag(args, "--reason");
-    let answers: Option<Vec<Value>> = match flag(args, "--answers") {
-        Some(a) => {
-            Some(serde_json::from_str(a).map_err(|e| io::Error::other(format!("--answers: {e}")))?)
-        }
-        None => None,
+    let answers: Option<Vec<Value>> = (flag(args, "--answers").map(serde_json::from_str))
+        .transpose()
+        .map_err(|e| io::Error::other(format!("--answers: {e}")))?;
+    let given = match &answers {
+        Some(given) => answers_of(data, &core::load(data, id)?, given)?,
+        None => Answers::default(),
     };
     // A question a Brigade's session sent its boss, passed to the user: back to its wait [D189].
     if let Some(mid) = request.strip_prefix("peer-") {
-        return crate::workers::user_answer(data, id, mid, answers.as_deref().unwrap_or_default());
+        return crate::workers::user_answer(data, id, mid, &given);
     }
-    // A worker's routing hold or a mockup offer: Rust's own question, the user's call [D2028, D2058].
-    let choice = (answers.iter().flatten()).find_map(Value::as_str);
+    // A worker's routing hold, what it left running or a mockup offer: Rust's own question, the
+    // user's call [D2028, D2058].
+    let choice = given.said.iter().find_map(Value::as_str);
     if request.starts_with("mockup-") {
         return crate::relay::mockup::answered(data, id, request, choice.unwrap_or(""));
+    }
+    if request.starts_with("left-") {
+        return crate::workers::left::answered(data, id, request, choice.unwrap_or(""));
     }
     if request.starts_with("hold-") {
         let args = ["routing", "answer", id, request, choice.unwrap_or("")].map(String::from);
         return crate::routing::run(data, &args);
     }
-    let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers});
-    answered(data, id, request, control)
+    let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "answers": answers.map(|_| &given.said)});
+    answered(data, id, request, control, &given)
 }
 
 /// A worker's parent answers its approval, as the parent's (`by`), never the user's [D131].
@@ -132,7 +145,7 @@ pub fn answer_as(
     by: &str,
 ) -> io::Result<Option<Value>> {
     let control = json!({"kind": "answer", "request": request, "decision": decision, "reason": reason, "by": by});
-    answered(data, id, request, control).map(Some)
+    answered(data, id, request, control, &Answers::default()).map(Some)
 }
 
 /// Brigadier's own answer to an exact repeat of a command allowed for the session, which its
@@ -212,18 +225,34 @@ pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
-fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<Value> {
+/// What the running turn asks as `request`, or why nothing waits on it.
+fn pending<'a>(f: &'a Fold, request: &str) -> Result<&'a Value, Value> {
+    let asked = f.turns.first().and_then(|t| t.asks.get(request));
+    asked.ok_or_else(|| {
+        let why = f.closed.get(request).map_or("unknown", String::as_str);
+        refused("not_pending", why.into())
+    })
+}
+
+fn answered(
+    data: &Path,
+    id: &str,
+    request: &str,
+    mut control: Value,
+    given: &Answers,
+) -> io::Result<Value> {
     if request.starts_with("browser-") {
         return crate::browser::answered(data, id, request, &control);
     }
     let decision = control["decision"].as_str().map(String::from);
     let answers = control["answers"].as_array().cloned();
-    let req = json!({"cid": new_cid(), "control": control});
+    let images = beside(data, id, given, Some(request))?;
+    if images["result"] == "refused" {
+        return Ok(images);
+    }
+    let req = with(json!({"cid": new_cid()}), &mut control, given);
     deliver(data, id, req, true, |f| {
-        let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request)) else {
-            let why = f.closed.get(request).map_or("unknown", String::as_str);
-            return Err(refused("not_pending", why.into()));
-        };
+        let asked = pending(f, request)?;
         let wrong = |what: &str| Err(refused("invalid", what.into()));
         match asked["items"].as_array() {
             Some(items) => {
@@ -244,6 +273,9 @@ fn answered(data: &Path, id: &str, request: &str, control: Value) -> io::Result<
         }
         let mut msg = control.clone();
         msg["request"] = asked.clone();
+        if answers.is_some() {
+            msg["answers"] = given.told.clone().into();
+        }
         Ok(msg)
     })
 }
@@ -257,6 +289,7 @@ pub fn reply(
     data: &Path,
     id: &str,
     text: &str,
+    parts: &Value,
     cid: Option<&str>,
     by: Option<&str>,
 ) -> io::Result<Option<Value>> {
@@ -273,65 +306,26 @@ pub fn reply(
     let Some(request) = asked else {
         return Ok(None);
     };
-    let control = json!({"kind": "answer", "request": request, "reply": text, "by": by});
+    let given = Answers::of(&core::load(data, id)?, text, parts)?;
+    if beside(data, id, &given, Some(&request))?["result"] == "refused" {
+        return Ok(None);
+    }
+    let mut control =
+        json!({"kind": "answer", "request": request, "reply": given.said[0], "by": by});
     let cid = cid.map_or_else(new_cid, String::from);
-    let req = json!({"cid": cid, "control": control});
+    let req = with(json!({"cid": cid}), &mut control, &given);
     let reply = deliver(data, id, req, true, |f| {
         match f.turns.first().and_then(|t| t.asks.get(request.as_str())) {
             Some(asked) => {
                 let mut msg = control.clone();
                 msg["request"] = asked.clone();
+                msg["reply"] = given.told[0].clone();
                 Ok(msg)
             }
             None => Err(refused("not_pending", Value::Null)),
         }
     })?;
     Ok((reply["result"] != "refused").then_some(reply))
-}
-
-/// A message into the turn that runs, where the agent can take one [D109, D159], from `origin`:
-/// the user, or another session's `peer:<id>` [D2034]. `queued`: the caller holds the queue's lock.
-pub fn steer_as(
-    data: &Path,
-    id: &str,
-    text: &str,
-    parts: &Value,
-    cid: Option<&str>,
-    origin: &str,
-    queued: bool,
-) -> io::Result<Value> {
-    let spec = core::load(data, id)?;
-    let cid = cid.map_or_else(new_cid, String::from);
-    core::message::take(data, &spec.dir, parts, None)?;
-    // With no turn to take it the user's starts one, which carries on a block its subagents or
-    // workers hold open [D521]; a turn that began meanwhile takes it as any steer.
-    if origin == "user" && core::fold(&spec.dir, true)?.fold.turns.is_empty() {
-        let (p, c) = (parts.clone(), Some(cid.as_str()));
-        let reply = send(data, &spec, text, p, c, None, None, queued)?;
-        if reply["error"] != "busy: a turn is running" {
-            return Ok(reply);
-        }
-    }
-    let msg = core::message::compose(&spec, text, parts.clone())?;
-    let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
-    if core::message::direct(&spec.dir, &cid, origin) {
-        req["direct"] = true.into();
-    }
-    if !parts.is_null() {
-        req["parts"] = msg.parts;
-    }
-    let images = msg.images;
-    deliver(data, id, req, false, |f| {
-        let running = f.turns.first().is_some_and(|t| t.began);
-        let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
-        match (running, can) {
-            (false, _) => Err(refused("not_running", Value::Null)),
-            (_, false) => Err(refused("unsupported", Value::Null)),
-            _ => Ok(
-                json!({"kind": "steer", "text": msg.agent, "images": images, "commands": msg.commands}),
-            ),
-        }
-    })
 }
 
 /// How long a clean stop may take before the kill (proposed).
@@ -462,7 +456,7 @@ pub(crate) fn send(
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
-    let mut msg = core::message::compose(spec, text, parts)?;
+    let mut msg = core::message::compose(spec, text, parts, backend)?;
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg.agent);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;

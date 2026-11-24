@@ -8,7 +8,7 @@ use super::grants::{allow, grant, granted, inside, skipping};
 use super::http::Server;
 use brigadier_frames::base64;
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
 use std::process::{self, Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -39,6 +39,10 @@ pub(super) struct State {
     pub(super) rules: Value,
     /// Its folder, where its commands and skills are listed.
     dir: String,
+    /// Its commands running in the background, by shell id: each one's end wakes the session.
+    shells: BTreeSet<String>,
+    /// Shells that exited, as their exit can come before their call says it went to the background.
+    exited: HashSet<String>,
 }
 
 pub(super) type Shared = Arc<Mutex<State>>;
@@ -100,7 +104,16 @@ pub(super) fn start(
 /// One line from the adapter. A failed `must` line (the setup before a first message) ends the
 /// helper, so no message runs on a setup it didn't take [D222].
 pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), String> {
-    let session = state.lock().unwrap().session.clone();
+    if let Some(names) = c["redial"].as_array() {
+        for name in names.iter().filter_map(Value::as_str) {
+            let path = format!("/api/experimental/mcp/{name}/connect");
+            let _ = server.request("POST", &path, &Value::Null);
+        }
+        return Ok(());
+    }
+    // A steer that goes with an answer joins the session that asked, a subagent's its own.
+    let own = || state.lock().unwrap().session.clone();
+    let session = c["session"].as_str().map_or_else(own, String::from);
     let at = |rest: &str| format!("/api/session/{session}{rest}");
     let (p, f) = (&c["permission"], &c["form"]);
     let (method, path, body) = if c["open"].is_object() {
@@ -173,7 +186,11 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         say(json!({"type": "brigadier.reply", "data": {"id": id, "error": error}}));
     }
     // Its id for this message is where a later rewind cuts [D384].
-    if let (Ok((_, out)), None, true) = (&result, &error, c["prompt"].is_object()) {
+    if let (Ok((_, out)), None, true) = (
+        &result,
+        &error,
+        c["prompt"].is_object() && c["session"].is_null(),
+    ) {
         let v: Value = serde_json::from_str(out).unwrap_or_default();
         say(json!({"type": "brigadier.mark", "data": {"start": v["data"]["id"]}}));
     }
@@ -293,6 +310,15 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         }
         "form.replied" | "form.cancelled" if st.forms.remove(d["id"].as_str().unwrap_or("")) => {}
         "shell.created" => {}
+        // A background command's end, which its session wakes on: the list without it [D118].
+        "shell.exited" => {
+            let id = d["id"].as_str().unwrap_or("").to_string();
+            if st.shells.remove(&id) {
+                say(json!({"type": "brigadier.pending", "data": st.shells}));
+            }
+            st.exited.insert(id);
+            return;
+        }
         // A background subagent's report waking its parent: that is when its call ends.
         "session.inbox.enqueued"
             if d["sessionID"] == st.session.as_str()
@@ -345,6 +371,7 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                 }
                 // A subagent run in the background: its call ends when its report comes, above.
                 "session.tool.success" if d["metadata"]["status"] == "running" => {
+                    shell(&mut st, d["metadata"]["shellID"].as_str());
                     if let Some(child) = d["metadata"]["sessionID"].as_str() {
                         st.children.insert(child.into(), key);
                     }
@@ -355,6 +382,14 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
                     if let Some(child) = d["metadata"]["sessionID"].as_str() {
                         st.children.insert(child.into(), key.clone());
                     }
+                    let background = st
+                        .tools
+                        .get(&key)
+                        .is_some_and(|t| t["input"]["background"] == true);
+                    shell(
+                        &mut st,
+                        d["metadata"]["shellID"].as_str().filter(|_| background),
+                    );
                     String::new()
                 }
                 "session.text.ended" | "session.reasoning.ended" => {
@@ -387,6 +422,15 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
     }
     drop(st);
     say(v);
+}
+
+/// A command it sent to the background, by its shell id: the list with it, once.
+fn shell(st: &mut State, id: Option<&str>) {
+    if let Some(id) = id.filter(|id| !st.exited.contains(*id))
+        && st.shells.insert(id.into())
+    {
+        say(json!({"type": "brigadier.pending", "data": st.shells}));
+    }
 }
 
 fn busy(st: &mut State, busy: bool, v: Value) {

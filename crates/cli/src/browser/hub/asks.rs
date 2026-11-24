@@ -20,11 +20,15 @@ use std::time::{Duration, Instant};
 const ANSWER_WAIT: Duration = Duration::from_secs(300);
 /// The most of a script a card shows whole.
 const SCRIPT_MOST: usize = 16 * 1024;
+/// What a yes for the session lets through on its site.
+const COVERED: [&str; 4] = ["script", "action", "delete", "send"];
 
 /// A card waiting on the user: its session, the call it lets through, and who waits for it.
 struct Card {
     session: String,
     key: Option<(String, String, String)>,
+    /// The site a yes for the session covers, when the kind of ask is one it may.
+    site: Option<String>,
     approved: Value,
     question: String,
     tab: String,
@@ -246,6 +250,17 @@ fn site(url: &str) -> &str {
     if host.is_empty() { url } else { host }
 }
 
+/// The grant a yes for the session leaves: session `me` on `site`, kept in HUB.grants beside the
+/// one-call yeses as long as the hub runs, its value the session's birth so an id made again
+/// inherits nothing.
+fn site_key(me: &str, site: &str) -> (String, String, String) {
+    (me.into(), String::new(), format!("site\u{1f}{site}"))
+}
+
+fn born(data: &Path, me: &str) -> Value {
+    brigadier_core::load(data, me).map_or(Value::Null, |s| s.created.into())
+}
+
 /// A card's question for the action that asks, as the user would say it. One that asks because of
 /// a filled password says what it does, which may be no sign-in at all ("Show password").
 fn question(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
@@ -330,7 +345,8 @@ fn said(reason: &str) -> String {
 }
 
 /// Asks the user about an action on a card in session `me`'s thread and waits for the answer.
-/// Ok on a yes, the yes kept for the call; else what the agent hears.
+/// Ok on a yes, the yes kept for the call, or given back for the retry alone when a yes for the
+/// session covers it; else what the agent hears.
 pub(super) fn ask(
     data: &Path,
     me: &str,
@@ -339,22 +355,46 @@ pub(super) fn ask(
     key: Option<(String, String, String)>,
     before: Option<Value>,
     here: &dyn Fn() -> bool,
-) -> Result<(), Value> {
+) -> Result<Option<Value>, Value> {
     let (url, what) = (
         asked["url"].as_str().unwrap_or(""),
         asked["what"].as_str().unwrap_or(""),
     );
     let sensitive = asked["sensitive"].as_str().unwrap_or("script");
+    let of = |v: &Value, k: &str| v[k].as_array().cloned().unwrap_or_default();
+    let before = before.filter(|b| b["url"] == url && b["generation"] == asked["generation"]);
+    // A yes for the session covers scripts, clicks, typing, keys, delete and send on its site;
+    // never money or identity (pay, card, password, code, sign-in).
+    let site = COVERED.contains(&sensitive).then(|| site(url));
+    let granted = site.and_then(|s| lock(&HUB.grants).get(&site_key(me, s)).cloned());
+    if granted.is_some_and(|b| !b.is_null() && b == born(data, me)) {
+        // `covered`: the page lets it through for these kinds only, should it turn out to pay. This
+        // call's own yes before it on this page keeps what it was for, still this call's alone.
+        let mut yes = json!({"generation": asked["generation"], "url": url});
+        match before.filter(|b| b["for"].is_array()) {
+            Some(b) => {
+                yes["for"] = [of(&b, "for"), COVERED.map(Value::from).into()]
+                    .concat()
+                    .into()
+            }
+            None => yes["covered"] = true.into(),
+        }
+        return Ok(Some(yes));
+    }
     let question = question(op, sensitive, what, url);
     let id = format!("browser-{}", &core_uuid()[..8]);
-    let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url)});
+    let grant = site.map(|s| json!({"scope": "site", "pattern": s}));
+    let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url), "grant": grant});
     let (to, answer) = mpsc::channel();
     // What the yes is for: all the control asked for, and what this call's yes before it on this page was.
-    let of = |v: &Value, k: &str| v[k].as_array().cloned().unwrap_or_default();
     let mut approved = json!({"generation": asked["generation"], "url": url});
     let mut reasons = of(asked, "reasons");
-    if let Some(b) = before.filter(|b| b["url"] == url && b["generation"] == asked["generation"]) {
+    if let Some(b) = before {
         reasons.extend(of(&b, "for"));
+        // One for the session before it was for these, and lets nothing more through.
+        if b["covered"] == true {
+            reasons.extend(COVERED.map(Value::from));
+        }
     }
     approved["for"] = Value::Array(reasons);
     lock(&CARDS).insert(
@@ -362,6 +402,7 @@ pub(super) fn ask(
         Card {
             session: me.into(),
             key,
+            site: site.map(String::from),
             approved,
             question: question.clone(),
             tab: asked["tab"].as_str().unwrap_or("").into(),
@@ -377,7 +418,7 @@ pub(super) fn ask(
     let until = Instant::now() + ANSWER_WAIT;
     while here() && Instant::now() < until {
         match answer.recv_timeout(Duration::from_millis(500)) {
-            Ok((true, _)) => return Ok(()),
+            Ok((true, _)) => return Ok(None),
             Ok((false, why)) => {
                 return Err(
                     json!({"ok": true, "text": format!("The user said no: {question}{} Nothing was done. Don't do it, or anything else that does the same.", said(&why))}),
@@ -418,6 +459,10 @@ pub(crate) fn answered(
     if allow && let Some(key) = card.key.clone() {
         lock(&HUB.grants).insert(key, card.approved.clone());
     }
+    let site = (card.site.as_deref()).filter(|_| control["decision"] == "allowSession");
+    if let Some(s) = site {
+        lock(&HUB.grants).insert(site_key(id, s), born(data, id));
+    }
     if let Some(waiter) = &card.waiter
         && waiter.send((allow, reason.to_string())).is_ok()
     {
@@ -425,8 +470,12 @@ pub(crate) fn answered(
     }
     let text = match allow {
         true => format!(
-            "[decision] The user said yes: {} Make the same browser call on {} again now; the yes holds on that page, for that call only.",
-            card.question, card.tab
+            "[decision] The user said yes: {} Make the same browser call on {} again now; the yes holds on that page, for {}.",
+            card.question,
+            card.tab,
+            site.map_or("that call only".into(), |s| format!(
+                "that call and the rest of this job on {s}, but paying, cards, passwords, codes and sign-in"
+            ))
         ),
         false => format!(
             "[decision] The user said no: {}{} Don't do it, or anything else that does the same.",

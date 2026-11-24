@@ -5,6 +5,7 @@
 pub(crate) mod mockup;
 mod show;
 
+use brigadier_core::library::Hidden;
 use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -24,7 +25,7 @@ pub fn spec(cmd: &str) -> Option<Spec> {
             &[],
         ),
         "skill" => (
-            "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
+            "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders, less those removed or off for it in Settings › Plugins. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
             &[],
             &[],
         ),
@@ -74,17 +75,21 @@ into the folder since this chat started is on the map from its next start.",
             &[],
         ),
         "mockup" => (
-            "brigadier mockup \"<what>\" [--reuse <session>] [--json]
+            "brigadier mockup \"<what>\" [--title \"<two or three words>\"] [--reuse <session>] [--json]
 
 Before a big UI change (a new screen, a redesign, a layout across screens) and never for a small fix,
 offer the user a mockup on a card: Yes, 3 variants / Yes, just 1 / Skip. <what> is the change, in a
-line the user reads. It waits up to 5 minutes and prints what the pick did. On Yes, a mockup worker
-draws the variants from your repo's own components and the user compares them in the Mockup tab;
-the variant they pick there is wired in by that worker, so don't build the change yourself. On Skip,
-build it. --reuse <session>: another session already drew this change; the card offers its mockup.
+line the user reads; --title names its tab, card and worker. It waits up to 5 minutes and prints
+what the pick did. On Yes, a mockup worker draws the variants from your repo's own components and the
+user compares them in its own tab; the variant they pick there is wired in by that worker, so don't
+build the change yourself. On Skip, build it. --reuse <session>: another session already drew this
+change; the card offers its mockup. When the user names their pick in your chat, pass it on with
+--use A [--note \"<their changes>\"], never as a message, so its tab follows; --of <worker> says which
+mockup when several wait, and which of the session's with --reuse.
 A mockup worker reports each variant: --round N --variant A|B|C --name \"<name>\" --why \"<line>\"
---url <page> [--shot <png>], and --real <url> once the pick is wired in.",
-            &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real"],
+--url <page> [--shot <png>], each step it starts with --doing \"<a few words>\", and --real <url>
+once the pick is wired in.",
+            &["--title", "--reuse", "--of", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real", "--doing", "--use", "--note"],
             &[],
         ),
         "terminal" => (crate::tabs::terminal::agent::HELP, &[], &[]),
@@ -167,7 +172,18 @@ fn notes(data: &Path, me: &str, id: Option<&str>) -> Value {
     };
     match note::text_of(data, me, id) {
         Ok(Some((path, text))) => {
-            json!({"ok": true, "path": path, "text": format!("{}\n\n{text}", path.display())})
+            let images = note::images_of(&path, &text);
+            let mut said = format!("{}\n\n{text}", path.display());
+            if !images.is_empty() {
+                said += "\n\nIts images, in order; open them by path:\n";
+                for (alt, image) in &images {
+                    said += &format!("{alt}: {}\n", image.display());
+                }
+            }
+            let images: Vec<Value> = (images.iter())
+                .map(|(alt, path)| json!({"alt": alt, "path": path}))
+                .collect();
+            json!({"ok": true, "path": path, "images": images, "text": said})
         }
         Ok(None) => {
             json!({"ok": false, "error": format!("No note {id:?}. `brigadier notes` lists them.")})
@@ -177,11 +193,12 @@ fn notes(data: &Path, me: &str, id: Option<&str>) -> Value {
 }
 
 /// The library's skills on for the caller's project, then those each agent keeps for its folder,
-/// by name once: the library's, else the first agent's [D407].
-fn skills(data: &Path, me: &str) -> Vec<Value> {
+/// by name once: the library's, else the first agent's [D407]; and the user's left out there.
+fn skills(data: &Path, me: &str) -> (Vec<Value>, Hidden) {
     let spec = core::load(data, me).ok();
     let project = spec.as_ref().and_then(|s| s.project.clone());
     let cwd = spec.map(|s| s.cwd).unwrap_or_default();
+    let hidden = core::library::hidden(data, project.as_deref());
     let mut all: Vec<Value> = (core::library::on_for(data, project.as_deref()).into_iter())
         .filter(|i| i["kind"] == "skill")
         .map(|i| json!({"name": i["name"], "path": Path::new(i["path"].as_str().unwrap_or("")).join("SKILL.md")}))
@@ -190,13 +207,14 @@ fn skills(data: &Path, me: &str) -> Vec<Value> {
         for k in a.fixed_commands(Some(Path::new(&cwd)), None) {
             if k["kind"] == "skill"
                 && k["path"].is_string()
+                && !hidden.has(&k)
                 && !all.iter().any(|x| x["name"] == k["name"])
             {
                 all.push(k);
             }
         }
     }
-    all
+    (all, hidden)
 }
 
 /// The `description:` of a SKILL.md's front matter, on one line; a `>` or `|` block's lines joined.
@@ -222,7 +240,7 @@ pub(crate) fn described(text: &str) -> String {
 
 /// `skill`: the list, or one whole.
 fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
-    let all = skills(data, me);
+    let (all, hidden) = skills(data, me);
     let read =
         |k: &Value| std::fs::read_to_string(k["path"].as_str().unwrap_or("")).unwrap_or_default();
     let Some(name) = name else {
@@ -244,7 +262,11 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         return json!({"ok": true, "skills": list, "text": text + "`brigadier skill <name>` prints one."});
     };
     let Some(k) = all.iter().find(|k| k["name"] == name) else {
-        return json!({"ok": false, "error": format!("No skill {name:?}. `brigadier skill` lists them.")});
+        let error = match hidden.why(name) {
+            Some(why) => format!("The skill {name:?} is {why} in Settings › Plugins."),
+            None => format!("No skill {name:?}. `brigadier skill` lists them."),
+        };
+        return json!({"ok": false, "error": error});
     };
     let path = k["path"].as_str().unwrap_or("");
     let folder = Path::new(path)

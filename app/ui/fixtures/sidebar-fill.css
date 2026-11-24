@@ -1,0 +1,4 @@
+/* Mockup only, this page: the Mockup tab's panes are narrower than the app's fold, so the sidebar stays open there. */
+:root {
+  --spacing-narrow-window: 0;
+}

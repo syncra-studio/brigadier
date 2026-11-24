@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { showToast } from "../components/toast";
 import { Terminal } from "../icons";
 import { putBack } from "../session/side";
-import { CHAT, selectTab, tabAnywhere } from "../shell/tab-store";
+import { CHAT, HOME, selectTab, tabAnywhere } from "../shell/tab-store";
 import { changeDev, closeDevTools, devOf, elementText, fitScale, openDevTools, placeDevTools, startPicking, stopPicking, useBrowserDev } from "./dev";
 import { toggleDevice, useDeviceSize } from "./device-sizes";
 import { followLayout } from "./follow";
@@ -76,7 +76,9 @@ export function BrowserPickerBar({ id }: { id: string }) {
   }
   if (!picked) return null;
   const toChat = () => {
-    const session = tabAnywhere(id)?.owner;
+    const found = tabAnywhere(id)?.owner;
+    // A page in front on a draft is the open draft's.
+    const session = found?.startsWith(HOME) ? HOME : found;
     if (!session) return showToast("There is no chat open to add it to.", { tone: "error" });
     // Above what is being typed: the composer takes it when its session shows.
     putBack(session, `${elementText(picked)}\n`, true);

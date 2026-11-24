@@ -14,7 +14,7 @@ import { ComposerField, type ComposerFieldHandle } from "../src/components/compo
 import { fuzzyMatch, type Mention, type MentionGroup, type Mentions, PlusMenu, type SlashCommand } from "../src/components/composer/menus";
 import { ModelPill, ModelStrip, useModelStrip } from "../src/components/composer/model-strip";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
-import { type PendingQuestion, QuestionCard } from "../src/components/composer/question";
+import { type Given, type PendingQuestion, QuestionCard } from "../src/components/composer/question";
 import { QueueCard, type QueuedMessage } from "../src/components/composer/queue";
 import { Notices, PausedSendDialog, RailItem, WaitingRow } from "../src/components/composer/rail";
 import { SendButton } from "../src/components/composer/send-button";
@@ -188,7 +188,7 @@ function Live() {
     if (!inText) setTiles((list) => [...list, id]);
     setTimeout(() => put({ ...base, state: "ready", url: file.type.startsWith("image/") ? picture : undefined }), 900);
   };
-  const commands = { commands: COMMANDS, onRun: (command: SlashCommand) => say(`ran ${command.label}`) };
+  const commands = { commands: COMMANDS, onMenu: () => {}, onRun: (command: SlashCommand) => say(`ran ${command.label}`) };
 
   const take = (): Draft => {
     const d = { parts: field.current!.parts(), attachmentIds: tiles };
@@ -235,11 +235,11 @@ function Live() {
     setApprovals((list) => list.filter((each) => each.id !== id));
     say(`${decision}${reason ? ` “${reason}”` : ""} · ${id}`);
   };
-  const answerQuestion = async (answers: (string | null)[]) => {
+  const answerQuestion = async (answers: Given[]) => {
     await later(500);
     setQuestions((list) => list.slice(1));
     setAnswered(true);
-    say(answers.map((each) => each ?? "(skipped)").join(" · "));
+    say(answers.map((each) => (typeof each === "string" ? each : each ? plainText(each.parts) || "(files)" : "(skipped)")).join(" · "));
   };
   const question = questions[0];
 
@@ -319,6 +319,8 @@ function Live() {
                 <RailItem variant="decision" label="Waiting for you">
                   <QuestionCard
                     key={question.id}
+                    session=""
+                    run={async () => ({ ok: true })}
                     question={question}
                     onAnswer={answerQuestion}
                     onDismiss={() => setAside(true)}

@@ -1,8 +1,7 @@
-import { createContext, type FC, type ReactNode, useContext, useRef, useState } from "react";
+import { createContext, type FC, type ReactNode, useContext } from "react";
 
 import { cx } from "../components/cx";
 import { ROW } from "../components/thread/activity-row";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Chat, Clock } from "../icons";
 import { Markdown } from "../thread/markdown";
 import { OpeningLine } from "../workers/sentence";
@@ -55,16 +54,29 @@ const PeerWords: FC<{ parts: readonly WordPart[]; running: boolean }> = ({ parts
   </span>
 );
 
+/** A sent message's row, opening to the whole of it; with none (or no `keep`), only its line. */
+const SentLine: FC<{ keep?: string; text?: string; state?: string; title?: string; children: ReactNode }> = ({ keep, text, state, title, children }) => (
+  <div data-slot="orchestrator-step" data-kind="message" data-state={state} title={title}>
+    {keep && text ? (
+      <OpeningLine keep={keep} detail={<div data-slot="sent-message" className="select-text"><Markdown text={text} keep={`${keep}:text`} /></div>}>
+        {children}
+      </OpeningLine>
+    ) : (
+      <div className={ROW}>{children}</div>
+    )}
+  </div>
+);
+
 /** One row of messages and waits: a clock while it waits, why a message didn't go in its tooltip. */
-export const PeerSentRow: FC<{ exchange: Exchange }> = ({ exchange }) => {
+export const PeerSentRow: FC<{ keep?: string; text?: string; exchange: Exchange }> = ({ keep, text, exchange }) => {
   const { parts, status, waiting } = exchangeWords(exchange);
   const Icon = waiting ? Clock : Chat;
   const reasons = exchange.sends.flatMap((send) => (send.state.type === "refused" || send.state.type === "dropped" ? [send.state.reason] : []));
   return (
-    <div data-slot="orchestrator-step" data-kind="message" className={ROW} title={reasons.length > 0 ? reasons.join("\n") : undefined}>
+    <SentLine keep={keep} text={text} title={reasons.length > 0 ? reasons.join("\n") : undefined}>
       <Icon aria-hidden className="size-4 shrink-0" />
       <PeerWords parts={parts} running={status === "inProgress"} />
-    </div>
+    </SentLine>
   );
 };
 
@@ -110,29 +122,12 @@ export const PeerRefusedRow: FC<{ to: PeerRef | null; reason: string }> = ({ to,
   </div>
 );
 
-/** The message, a step fainter after the session it went to, cut to the row's one line: the whole of it in a tooltip, when cut. */
-const SentText: FC<{ text: string }> = ({ text }) => {
-  const shown = useRef<HTMLSpanElement>(null);
-  const [open, setOpen] = useState(false);
-  const firstLine = text.split("\n", 1)[0] ?? "";
-  return (
-    <Tooltip
-      open={open}
-      onOpenChange={(next) => setOpen(next && !!shown.current && (shown.current.scrollWidth > shown.current.clientWidth || firstLine !== text))}
-    >
-      <TooltipTrigger render={<span ref={shown} tabIndex={0} data-slot="peer-sent-text" className="min-w-0 flex-1 truncate rounded-control text-row-object focus-visible:focus-ring" />}>
-        {firstLine}
-      </TooltipTrigger>
-      <TooltipContent>
-        <span className="text-start whitespace-pre-wrap wrap-break-word">{text}</span>
-      </TooltipContent>
-    </Tooltip>
-  );
-};
-
-/** The thread's own `brigadier send` to another session: "Messaging Docs" while it runs, then "Messaged Docs: Can you check the schema?". */
-export const SessionSentRow: FC<{ to: PeerRef | null; state: SessionSendState; text?: string; refused?: string }> = ({ to, state, text, refused }) => (
-  <div data-slot="orchestrator-step" data-kind="message" data-state={state} className={ROW} title={refused}>
+/**
+ * The thread's own `brigadier send` to another session: "Messaging Docs" while it runs, then "Messaged Docs: Can you
+ * check the schema?", the message a step fainter and cut to the line, opening to the whole of it.
+ */
+export const SessionSentRow: FC<{ keep?: string; to: PeerRef | null; state: SessionSendState; text?: string; refused?: string }> = ({ keep, to, state, text, refused }) => (
+  <SentLine keep={keep} text={text} state={state} title={refused}>
     <Chat aria-hidden className="size-4 shrink-0" />
     <span data-slot="peer-words" className="flex min-w-0 items-baseline overflow-hidden whitespace-pre">
       <span className={cx("shrink-0", state === "sending" && "shimmer")}>{sessionSendWords(state)}</span>
@@ -140,9 +135,9 @@ export const SessionSentRow: FC<{ to: PeerRef | null; state: SessionSendState; t
         {to && !to.gone ? <PeerLink peer={to} /> : <span className="text-row-object">{to?.title ?? UNKNOWN_SESSION}</span>}
         {state === "sent" && text ? ": " : null}
       </span>
-      {state === "sent" && text ? <SentText text={text} /> : null}
+      {state === "sent" && text ? <span data-slot="peer-sent-text" className="min-w-0 flex-1 truncate text-row-object">{text.split("\n", 1)[0]}</span> : null}
     </span>
-  </div>
+  </SentLine>
 );
 
 /** A message the 9th hop of a chain between sessions would have sent: held, and only the user lets it through [D2034]. */

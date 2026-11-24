@@ -5,9 +5,10 @@ use crate::Spec;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-/// Its own commands, from its init line: skills and MCP prompts by name, the rest as commands, less
-/// those bound to its terminal; none runs at once, each is sent as text [D164, D2009]. The line
-/// names no files: `locate` finds them, knowing the account [D2098].
+/// Its own commands, from its init line: skills and MCP prompts (`mcp__<server>__<prompt>`) by
+/// name, the rest as commands, less those bound to its terminal; none runs at once, each is sent
+/// as text [D164, D2009]. The line names no files: `locate` finds them, knowing the account
+/// [D2098].
 pub fn commands(v: &Value) -> Option<Event> {
     let names = |key: &str| -> Vec<&str> {
         (v[key].as_array().into_iter().flatten())
@@ -28,7 +29,7 @@ pub fn commands(v: &Value) -> Option<Event> {
         let kind = if skills.contains(&name) {
             "skill"
         } else if name.starts_with("mcp__") {
-            "mcp"
+            "prompt"
         } else {
             "command"
         };
@@ -65,11 +66,21 @@ fn file_of(roots: &[PathBuf], kind: &str, name: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// Each listed skill's or command's file, the project's before the account's.
+/// Each listed skill's or command's file, the project's before the account's; it looks in every
+/// folder from the session's up to its repo's root.
 pub fn locate(run: &Spec, list: &mut [Value]) {
-    let roots = roots(Some(Path::new(&run.cwd)), Some(run));
+    let cwd = Path::new(&run.cwd);
+    let up = (cwd.ancestors().position(|d| d.join(".git").exists())).map_or(1, |above| above + 1);
+    let roots: Vec<PathBuf> = (cwd.ancestors().take(up))
+        .map(|d| d.join(".claude"))
+        .chain(roots(None, Some(run)))
+        .collect();
     for each in list {
-        if let Some(path) = file_of(&roots, s(each, &["kind"]), s(each, &["name"])) {
+        let (kind, name) = (s(each, &["kind"]), s(each, &["name"]));
+        // A library skill's link from its launch, kept though the skill it points at was removed since.
+        let link = run.dir.join("plugins/.claude/skills").join(name);
+        let link = (kind == "skill" && link.is_symlink()).then(|| link.join("SKILL.md"));
+        if let Some(path) = file_of(&roots, kind, name).or(link) {
             each["path"] = json!(path);
         }
     }

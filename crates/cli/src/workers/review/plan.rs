@@ -125,11 +125,13 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
 /// waits on it (its turn stopped, the session closed, or it was answered without the review) is
 /// stopped as `brigadier stop` does; its one result is written as any stopped reviewer's [D385].
 pub(crate) fn plan_gone(data: &Path, id: &str) {
+    let mut open = records(data, id);
+    open.retain(|x| x.review["plan"].is_string() && x.state == "started");
+    if open.is_empty() {
+        return;
+    }
     let ended = super::result::all(data, id);
-    let open: Vec<_> = (records(data, id).into_iter())
-        .filter(|x| x.review["plan"].is_string() && x.state == "started")
-        .filter(|x| ended.iter().all(|(_, r)| r.wid != x.wid))
-        .collect();
+    open.retain(|x| ended.iter().all(|(_, r)| r.wid != x.wid));
     if open.is_empty() {
         return;
     }
@@ -187,7 +189,7 @@ pub(super) fn reviewed(
         "{}\n\nAbove are the findings {name}, another agent, made reviewing your plan adversarially. Revise the plan: change it for each valid one, and for each one you reject, give the reason in the plan. Then ask again to build it, ending the revised plan with one line: `Fixed: N, rejected: M`.",
         cut(said, 15 << 10)
     );
-    match crate::control::reply(data, of, &text, None, Some("review")) {
+    match crate::control::reply(data, of, &text, &Value::Null, None, Some("review")) {
         Ok(Some(_)) => {}
         _ => off("its findings couldn't be sent"),
     }

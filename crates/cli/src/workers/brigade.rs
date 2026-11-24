@@ -5,8 +5,9 @@
 //! back to the user [D144]. A session is a Brigade from its first message, `start --brigade`, or
 //! never: nothing turns a started one on or off [D209].
 
-use super::{Link, busy, link, records, refuse, result};
-use crate::{owner, peers};
+use super::{Link, busy, busy::owes, link, records, refuse, result};
+use crate::{control, owner, peers};
+use brigadier_core::message::answers::Answers;
 use brigadier_core::{self as core};
 use serde_json::{Value, json};
 use std::io;
@@ -72,7 +73,7 @@ pub(super) fn line(boss: &str, bid: &str, land: &str) -> String {
 pub(super) fn leading(data: &Path, sid: &str) -> bool {
     records(data, sid)
         .iter()
-        .any(|r| r.state == "starting" || busy(data, &r.wid))
+        .any(|r| r.state == "starting" || owes(data, &r.wid))
         || (result::all(data, sid).iter())
             .any(|(_, r)| r.how != "asks" && matches!(r.state.as_str(), "written" | "sent"))
 }
@@ -121,9 +122,40 @@ pub(super) fn third(data: &Path, sid: &str, l: &Link) -> bool {
 }
 
 /// The user's answer on a sub-session's card to the question it sent its boss: back to its wait.
-pub fn user_answer(data: &Path, sid: &str, mid: &str, answers: &[Value]) -> io::Result<Value> {
+pub fn user_answer(data: &Path, sid: &str, mid: &str, given: &Answers) -> io::Result<Value> {
     let l = link(data, sid).ok_or_else(|| io::Error::other("not a Brigade's session"))?;
-    let text: Vec<&str> = answers.iter().filter_map(Value::as_str).collect();
-    let reply = peers::answer(data, &l.parent, sid, mid, &text.join("\n"));
-    Ok(reply)
+    let [said, told] = [&given.said, &given.told].map(|of| {
+        let of: Vec<&str> = of.iter().filter_map(Value::as_str).collect();
+        of.join("\n")
+    });
+    if !given.filed() {
+        return Ok(peers::answer(data, &l.parent, sid, mid, &told));
+    }
+    if peers::waits(data, sid, mid) {
+        let images = control::beside(data, sid, given, None)?;
+        if images["result"] == "refused" {
+            return Ok(images);
+        }
+    }
+    let note = json!({"phase": "answered", "mid": mid, "reply": said, "files": given.files});
+    match peers::hand_back(data, sid, mid, &told, note) {
+        Ok(true) => {}
+        // Nobody waits any more: the user's own message, as its images need. One that can't go now
+        // still names each one's file.
+        Ok(false) => {
+            let sent = control::steer_as(data, sid, &said, &given.parts, None, "user", false)?;
+            if sent["ok"] != true {
+                return Ok(peers::send(
+                    data,
+                    &l.parent,
+                    &json!({"id": sid}),
+                    &told,
+                    None,
+                    &|| true,
+                ));
+            }
+        }
+        Err(refusal) => return Ok(refusal),
+    }
+    Ok(json!({"ok": true, "text": format!("Sent to {sid}.")}))
 }

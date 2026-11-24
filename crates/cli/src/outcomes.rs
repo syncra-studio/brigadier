@@ -119,14 +119,14 @@ pub(crate) fn results(data: &Path) -> Value {
         }
     };
     for wid in core::ids(data) {
+        let f = core::fold(&core::session_dir(data, &wid), true).map(|f| f.fold);
+        let f = f.unwrap_or_default();
         // Plan reviews, in any session's own fold [§6, §8].
-        if let Ok(f) = core::fold(&core::session_dir(data, &wid), true) {
-            f.fold.plans.done.iter().for_each(&mut add);
-        }
+        f.plans.done.iter().for_each(&mut add);
         let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
             continue;
         };
-        let notes = workers::outcomes(data, &wid);
+        let notes = f.outcomes;
         // A retry still going has already said its parent failed a check.
         for n in &notes {
             // A rerun after a temporary end isn't a failed check [D340, D353].

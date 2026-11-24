@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 mod asks;
+mod changes;
 mod drafts;
 mod find;
 mod page;
@@ -80,6 +81,11 @@ pub struct Thread {
     open: Option<Open>,
     /// Status-fold turns already shown, by id.
     shown: HashSet<String>,
+    /// Each turn's start: its id, the block its rows went into (their `turnId`: its own, or the
+    /// one it carried on), its first row's index, and whether it carries on its block's answer
+    /// (a wake, a rebirth's carry-on) rather than being another's words in it (a steer).
+    #[serde(default)]
+    starts: Vec<(String, String, usize, bool)>,
     /// (turn, tool or question id) → its row's index.
     #[serde(with = "pairs")]
     keys: HashMap<(String, String), usize>,
@@ -233,6 +239,7 @@ impl Thread {
         if answering {
             if let Some(at) = self.open.as_mut().and_then(|o| o.asked.take()) {
                 self.items[at]["answer"] = item["text"].clone();
+                self.items[at]["files"] = json!([item["parts"]["files"]]);
                 self.changed_items.insert(at);
                 self.unwait_row(at);
             }
@@ -400,6 +407,30 @@ impl Thread {
         }
     }
 
+    /// A turn's own last reply: in its block, from its first row till a turn that isn't its
+    /// carry-on starts, so neither a reply from before it nor one to a later steer.
+    pub fn last_said(&self, turn: &str) -> Option<String> {
+        let at = self.starts.iter().rposition(|s| s.0 == turn);
+        let (block, from, to) = match at {
+            Some(at) => {
+                let (_, block, from, _) = &self.starts[at];
+                let next = self.starts[at + 1..].iter().find(|s| !s.3);
+                (
+                    block.as_str(),
+                    *from,
+                    next.map_or(self.items.len(), |s| s.2),
+                )
+            }
+            // A thread folded before starts were kept: any row of its id.
+            None => (turn, 0, self.items.len()),
+        };
+        (from..to)
+            .rev()
+            .map(|at| &self.items[at])
+            .find(|i| i["kind"] == "message" && i["role"] == "assistant" && i["turnId"] == block)
+            .and_then(|i| i["text"].as_str().map(String::from))
+    }
+
     fn turn_id(&self) -> Option<String> {
         self.open.as_ref().map(|o| o.id.clone()).or_else(|| {
             self.turns
@@ -440,44 +471,6 @@ impl Thread {
     /// Only unfinished script or CLI startup needs the host's live state.
     pub fn setup_running(&self, setup: &Value) -> bool {
         self.startup.running(setup)
-    }
-
-    /// What changed since the last call: rows and turns to replace by id, and new work.
-    pub fn take(&mut self) -> Option<Value> {
-        let items: Vec<Value> = std::mem::take(&mut self.changed_items)
-            .into_iter()
-            .map(|at| self.items[at].clone())
-            .collect();
-        let turns: Vec<Value> = std::mem::take(&mut self.changed_turns)
-            .into_iter()
-            .map(|at| self.turns[at].clone())
-            .collect();
-        let work = self.work[self.sent_work..].to_vec();
-        self.sent_work = self.work.len();
-        let quiet = items.is_empty() && turns.is_empty() && work.is_empty();
-        let mut out = json!({"items": items, "turns": turns, "work": work});
-        let setup_changed = std::mem::take(&mut self.setup_changed);
-        if setup_changed {
-            out["setup"] = self.setup.clone();
-        }
-        let points_changed = self.send_points(&mut out);
-        // What waits on the user goes whole whenever it changed, to replace what the view holds.
-        if std::mem::take(&mut self.pending_changed) {
-            for (k, v) in self.requests().as_object().unwrap() {
-                out[k] = v.clone();
-            }
-        } else if quiet && !setup_changed && !points_changed {
-            return None;
-        }
-        Some(out)
-    }
-
-    /// Forgets what changed: a thread kept to copy from sends nothing itself.
-    pub fn settle(&mut self) {
-        self.changed_items.clear();
-        self.changed_turns.clear();
-        self.sent_work = self.work.len();
-        self.pending_changed = false;
     }
 }
 

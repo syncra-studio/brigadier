@@ -25,6 +25,8 @@ export type SessionRow = {
   updated?: number;
   /** When a turn last ended (ms); later than the user last saw it, the row is unread. */
   finished: number;
+  /** When its mockup last had news, a round drawn or its pick built (ms): unread as a turn's end is [D560]. */
+  news?: number;
   /** Its project's id; null for a session from before projects. */
   project: string | null;
   /** Its labels' names, in the order given [D3101, D3103]. */
@@ -33,7 +35,7 @@ export type SessionRow = {
   archivedWith?: boolean;
 } & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss">;
 
-export type Project = { id: string; name: string; folder: string };
+export type Project = { id: string; name: string; folder: string; icon?: string | null };
 
 // Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
 const STATE_WORDS: Record<string, string | null> = {
@@ -79,8 +81,8 @@ export function statusWords(row: SessionRow): string | null {
   }
   // A pending approval waits as a question does; only its reason says which [D173].
   if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
-  // Answered, but its block stays open on its subagents [D118].
-  if (row.mark === "working" && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS.working;
+  // Answered, but its block stays open on its subagents [D118], or its mockup card waits on you.
+  if ((row.mark === "working" || row.mark === "needs") && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS[row.mark];
   if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
   return row.mark && MARK_WORDS[row.mark];
 }

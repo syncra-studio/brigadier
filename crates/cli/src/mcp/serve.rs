@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
-const DESCRIPTION: &str = "Show the user a message to a person in chat, a DM or an email that you drafted or posted, however short, even when they didn't ask to see it. Brigadier draws it as a card with Copy, in its place in your reply. Whether to send a draft is a question for your question tool, after this.";
+const DESCRIPTION: &str = "Show the user a message to a person in chat, a DM or an email that you drafted or posted, however short, even when they didn't ask to see it. Never for a message to another session or worker by `brigadier send`: its own row shows it. Brigadier draws it as a card with Copy, in its place in your reply. Whether to send a draft is a question for your question tool, after this.";
 
 /// The tool as `tools/list` gives it.
 fn tool() -> Value {

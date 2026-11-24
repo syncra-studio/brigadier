@@ -2,13 +2,49 @@
 //! besides a message: answers, steers and stops [D159, D177].
 
 use super::Fold;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// A session's mockups [D2067].
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Mockups {
+    /// The cards waiting on the user's pick, each turn over or not, with its turn's id.
+    pub cards: Vec<(String, String)>,
+    /// The workers whose mockup it opened: its own, and the ones it reuses.
+    pub opened: Vec<String>,
+}
 
 impl Fold {
     /// A lost host ends delivered turns; unproven inputs stay available for explicit recovery.
     pub(crate) fn interrupt(&mut self, reason: Value, ts: u64) {
         while self.turns.first().is_some_and(|t| t.delivered.is_some()) {
             self.close("interrupted", reason.clone(), ts);
+        }
+    }
+
+    /// A new host: what it was delivering is lost, and session grants live as long as the host
+    /// that holds them [D193, D238].
+    pub(super) fn owner_started(&mut self, ts: u64) {
+        self.interrupt(serde_json::json!({"owner_restarted": true}), ts);
+        self.turns
+            .iter_mut()
+            .filter(|t| t.delivered.is_none())
+            .for_each(|t| t.orphaned = true);
+        self.grants.clear();
+        self.granting.clear();
+    }
+
+    /// A mockup card shown, or picked [D2067]; a mockup opened.
+    pub(super) fn offered(&mut self, item: &Value) {
+        let id = item["id"].as_str().unwrap_or("").to_string();
+        match item["phase"].as_str() {
+            Some("asked") => {
+                let turn = self.turns.first().map(|t| t.id.clone());
+                self.mockups.cards.push((id, turn.unwrap_or_default()));
+            }
+            Some("answered") => self.mockups.cards.retain(|c| c.0 != id),
+            Some("started") if !self.mockups.opened.contains(&id) => self.mockups.opened.push(id),
+            _ => {}
         }
     }
 
@@ -66,8 +102,9 @@ impl Fold {
         }
     }
 
-    /// A sub-session's ask its boss passed to the user [D189]: its own request now waits on the
-    /// user, or the question it sent its boss (`peer-<mid>`) is the user's to answer, till answered.
+    /// A `peer` note: a message to its own worker (`messaged`), or a sub-session's ask its boss
+    /// passed to the user [D189]: its own request now waits on the user, or the question it sent
+    /// its boss (`peer-<mid>`) is the user's to answer, till answered.
     pub(super) fn passed_to_user(&mut self, item: &Value) {
         let mid = item["mid"].as_str().map(|m| format!("peer-{m}"));
         match (item["phase"].as_str(), mid) {
@@ -83,6 +120,7 @@ impl Fold {
                 r.and_then(Value::as_object_mut).map(|r| r.remove("to"));
             }
             (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
+            (Some("sent"), Some(_)) => self.messaged(item),
             _ => {}
         }
     }
@@ -183,6 +221,8 @@ impl Fold {
             // A setup the agent confirms before a turn's message: no turn of its own [D222].
             Some("retune") => true,
             Some("stop_task") => true,
+            // An answer's images, before it.
+            Some("beside") => true,
             // A steer joins the turn that runs; with none running it is a message like any other.
             _ => {
                 let t = self.turns.first_mut().filter(|t| t.began);

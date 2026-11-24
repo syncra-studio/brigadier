@@ -267,7 +267,11 @@ pub fn input(spec: &Spec, text: &str) -> Value {
 pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
     let line = match msg["kind"].as_str() {
         Some("answer") => answer(spec, msg)?,
-        Some("steer") => json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"]))}),
+        Some("steer") => {
+            // One that goes with an answer joins the thread that asked, a subagent's its own.
+            let asked = &msg["request"]["cli"];
+            json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"])), "thread": asked["thread"], "turn": asked["turn"]})
+        }
         Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
         // Codex has no channel for it: the note steers the turn that runs, else starts the wake
         // that joins the block [D117].
@@ -299,8 +303,9 @@ pub fn turn(spec: &Spec, text: &str) -> Value {
     let mut turn = json!({"input": input(spec, text), "approvalPolicy": policy,
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     // A folder chat's copies commit into their repos' own git folders [D494].
-    let roots = crate::folder::git_dirs(spec);
-    if sandbox == "workspaceWrite" && !roots.is_empty() {
+    let mut roots = crate::folder::git_dirs(spec);
+    roots.push(crate::background::tmp(&spec.dir).display().to_string());
+    if sandbox == "workspaceWrite" {
         turn["sandboxPolicy"]["writableRoots"] = roots.into();
     }
     if let Some(model) = &spec.model {
@@ -374,4 +379,13 @@ fn answers(cli: &Value, msg: &Value) -> Value {
         }
     }
     json!({"answers": out})
+}
+
+/// A reload ahead of the message when the session's proxy couldn't connect Codex to a server: it
+/// never dials a failed one again itself, and a reload dials them all.
+pub fn redial(spec: &Spec) -> &'static str {
+    match crate::library::unreached(spec).is_empty() {
+        true => "",
+        false => "{\"redial\":true}\n",
+    }
 }

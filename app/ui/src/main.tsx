@@ -12,7 +12,7 @@ import { Toaster } from "./components/toast";
 import { TooltipProvider } from "./components/tooltip";
 import { openThread, peekThread, type Row, useDaemon, useThread } from "./daemon";
 import { HomeDraft, StartingBubble, StartingLine, StartingSetup } from "./home/home";
-import { newChat, newSession, setHomeDraft, useHomeDraft, useHomeProject, useStart, useStartingRows } from "./home/start";
+import { newChat, newSession, setHomeDraft, splitNewChat, useHomeDraft, useStart, useStartingRows } from "./home/start";
 import { PrInbox } from "./pull-requests/inbox";
 import { PullRequestsNav } from "./pull-requests/nav";
 import { PrPage, ReviewDraft } from "./pull-requests/page";
@@ -33,6 +33,7 @@ import { RemoveProjectHost } from "./projects/remove";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
 import { Demo } from "./session/Demo";
+import { ArrivingBubbles, useArriving } from "./peers/live";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { ImageViewerHost } from "./components/image-viewer";
 import { ThreadDrop } from "./session/files";
@@ -41,7 +42,7 @@ import { answeringSource } from "./session/decisions";
 import { PendingModelLine, useModelPick } from "./session/model";
 import { PendingSideLines, useSidePending } from "./session/side";
 import { TabBar } from "./shell/tab-bar";
-import { HOME, setHomeTabs } from "./shell/tab-store";
+import { HOME } from "./shell/tab-store";
 import { TabbedMain } from "./shell/tab-views";
 import { FakeCaption, TitlebarNav } from "./shell/titlebar";
 import { loadSettings } from "./settings/api";
@@ -72,14 +73,18 @@ if (window.location.hash === "#accounts" || window.location.hash === "#settings/
 window.addEventListener("hashchange", () => window.location.hash.startsWith("#settings") || localStorage.setItem("route", window.location.hash));
 
 function App() {
-  const { daemon, refused } = useDaemon();
+  const { daemon, refused, projects, rows: saved } = useDaemon();
   const hash = useHash();
   const open = hash.startsWith("#thread/") ? decodeURIComponent(hash.slice("#thread/".length)) : null;
   // Rust's rows, with the sessions Home is still starting [D30].
   const rows = useStartingRows(open);
   const chats = reviewChats.use();
-  // ⌘N and File › New Chat: New chat's one draft, from anywhere [D184 D282].
+  // ⌘N and File › New Chat: the draft last open, from anywhere [D184].
   useEffect(() => window.brigadier?.onMenu((command) => command === "new-session" && newChat()), []);
+  const listed = Boolean(daemon && projects && saved);
+  useEffect(() => {
+    if (listed) void splitNewChat(projects!, saved!);
+  }, [listed]);
   const profile = useProfile();
   // The profile says whether this is the first launch: asked again on each reconnect until known.
   useEffect(() => {
@@ -199,8 +204,12 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
           page={page}
           offline={daemon === null}
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
-          // ⌘N's too: Home in the open session's project [D184].
-          onNewSession={() => newSession(rows?.find((row) => row.id === active)?.project)}
+          // Archived, its project's draft, or Chats'; deleted, its project no longer known, the draft last open [D184].
+          onNewSession={() => {
+            const gone = rows?.find((row) => row.id === active);
+            if (gone) newSession(gone.project);
+            else newChat();
+          }}
           onNewChat={newChat}
           rail={rail}
           nav={settings !== undefined ? <SettingsNav current={settings} /> : prs !== undefined ? <PullRequestsNav current={prs} /> : undefined}
@@ -222,15 +231,13 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
   );
 }
 
-// Home is a new session's draft [D161]: a project's has that project's tabs [D706].
+// Home is a new session's draft [D161], a project's or Chats', with its own tabs [D706].
 function Home({ children }: { children: ReactNode }) {
-  const project = useHomeProject()?.id ?? null;
-  // A project's New session has that project's tabs; New chat its own, whatever project it picked [D863].
-  const locked = useHomeDraft().locked === true;
-  useLayoutEffect(() => {
-    setHomeDraft({ review: undefined });
-    setHomeTabs(locked ? project : null);
-  }, [project, locked]);
+  const { project } = useHomeDraft();
+  const projects = useProjects();
+  // A removed project's draft goes with it.
+  const gone = project !== null && projects !== undefined && !projects.some((each) => each.id === project);
+  useLayoutEffect(() => setHomeDraft({ review: undefined, ...(gone && { project: null }) }), [gone]);
   return (
     <>
       <TabbedMain owner={HOME} archived={false}>
@@ -277,6 +284,7 @@ function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] 
   const state = useThread();
   const sending = useSending(id);
   const sides = useSidePending(id);
+  const arriving = useArriving(id, answeringSource);
   const picking = useModelPick(id);
   const line =
     row?.state === "stalled" ? <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine> :
@@ -308,13 +316,14 @@ function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] 
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || sides || picking) && (
+                      (line || sending || starting || sides || picking || arriving.length > 0) && (
                         <>
                           <StartingBubble id={id} />
                           <StartingSetup id={id} />
                           <StartingLine id={id} />
                           {line}
                           <SentBubbles id={id} />
+                          <ArrivingBubbles list={arriving} />
                           <PendingSideLines source={id} />
                           <PendingModelLine id={id} />
                         </>

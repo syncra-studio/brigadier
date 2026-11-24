@@ -8,7 +8,7 @@ import type { Source } from "./thread/thread";
 
 export type Daemon = { pid: number; version: string; build: number };
 /** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
-export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null; github_account?: string | null; browser_profile?: string | null; kind?: "folder"; pinned?: number | null };
+export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null; github_account?: string | null; browser_profile?: string | null; kind?: "folder"; pinned?: number | null; icon?: string | null };
 /** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
 export type Row = {
   id: string;
@@ -37,7 +37,8 @@ export type Row = {
   /** What its ended turns left running (a dev server, a watcher), each with Stop in the card's Background [D105]. */
   background?: Job[];
   /** Something has run in its background: the card keeps its Background history button [D200]. */ background_ran?: boolean;
-  /** Its agent's to-do list as its CLI's todo or plan tool last wrote it [D144]. */ plan?: { text: string; status: string }[] | null;
+  /** Its agent's to-do list as its CLI's todo or plan tool last wrote it, after the finished steps it left out [D144]. */ plan?: { text: string; status: string }[] | null;
+  /** Other sessions' messages its agent hasn't got yet, oldest first; one in its queue isn't here. */ arriving?: { id: string; from: string; text: string; at: number }[];
   /** A Brigade: its sub-sessions sit under it [D189]. */
   brigade?: boolean;
   /** It holds its project's own folder, unarchived: Local checkout can't start there again [D306]. */

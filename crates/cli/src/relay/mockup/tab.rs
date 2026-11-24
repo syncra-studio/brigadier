@@ -1,4 +1,4 @@
-//! The Mockup tab's ops [D2055, D2070]: the mockup as the tab draws it, the unsent notes Rust keeps
+//! A mockup tab's ops [D2055, D2070]: the mockup as the tab draws it, the unsent notes Rust keeps
 //! so they survive closing the tab, and Send, which steers the notes into the worker's turn as one
 //! message and starts the next round [D300]; a worker the user stopped takes none [D96]. And Use,
 //! which has the worker wire the pick in and merge it [D2059, D2068, D97].
@@ -39,6 +39,61 @@ pub(crate) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
+/// The lead's card on round `on` (`<wid>-<round>`): its Use is the tab's.
+pub(super) fn from_card(data: &Path, lead: &str, on: &str, choice: &str) -> io::Result<Value> {
+    let (wid, round) = on.rsplit_once('-').ok_or_else(none)?;
+    let Some(link) = workers::link(data, wid) else {
+        super::settle(data, lead, &format!("{}{on}", super::PICK), "Deleted")?;
+        return Ok(json!({"ok": false, "error": "gone", "message": "This mockup was deleted."}));
+    };
+    if link.parent != lead {
+        return Err(none());
+    }
+    let Some(letter) = choice.strip_prefix("Use ") else {
+        return Ok(
+            json!({"ok": false, "error": "invalid", "message": "Pick one of the card's answers."}),
+        );
+    };
+    let r = pick(
+        data,
+        wid,
+        letter,
+        &json!({"round": round.parse::<u64>().unwrap_or(0)}),
+    )?;
+    // Picked in the tab already: the card only stops asking.
+    if r["error"] == "picked" {
+        super::settle(data, lead, &format!("{}{on}", super::PICK), choice)?;
+    }
+    Ok(r)
+}
+
+/// Mockup worker `wid` was deleted: the cards it left up in its lead's chat stop asking, unless the
+/// lead goes too.
+pub(crate) fn deleted(data: &Path, lead: &str, wid: &str) {
+    let dir = core::session_dir(data, lead);
+    let mine = format!("{}{wid}-", super::PICK);
+    let Ok(f) = core::fold(&dir, true) else {
+        return;
+    };
+    let mut cards = (f.fold.mockups.cards.iter().map(|c| &c.0)).filter(|c| c.starts_with(&mine));
+    if cards.clone().next().is_none()
+        || dir.join(workers::CLOSING).exists()
+        || !core::load(data, lead).is_ok_and(|s| owner::ensure(data, &s).is_ok())
+    {
+        return;
+    }
+    let _ = cards.try_for_each(|c| super::settle(data, lead, c, "Deleted"));
+}
+
+/// The lead's cards on this mockup's rounds, up to `rounds`, stop asking, answered by `how`.
+fn settle_cards(data: &Path, wid: &str, rounds: usize, how: &str) {
+    let lead = workers::link(data, wid).map(|l| l.parent);
+    for (round, lead) in (1..=rounds).filter_map(|n| Some((n, lead.as_ref()?))) {
+        let card = format!("{}{wid}-{round}", super::PICK);
+        let _ = super::settle(data, lead, &card, how);
+    }
+}
+
 fn none() -> io::Error {
     io::Error::other("No mockup here.")
 }
@@ -59,8 +114,10 @@ fn shown(data: &Path, wid: &str) -> io::Result<Value> {
     let mut m = state(data, wid).ok_or_else(none)?;
     let working = working(data, wid)?;
     let picked = m["picked"].is_string();
+    // A round with every variant in is drawn, though its worker's turn goes on.
+    let drawing = working && !picked && !super::all_in(&m);
     if let Some(last) = m["rounds"].as_array_mut().and_then(|r| r.last_mut()) {
-        last["drawing"] = (working && !picked).into();
+        last["drawing"] = drawing.into();
     }
     m["building"] = (working && picked && m["real"].is_null()).into();
     m["stopped"] = stopped(data, wid).into();
@@ -165,7 +222,8 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
         return no("empty", "There are no notes to send.");
     };
     let last = was["rounds"].as_array().map_or(0, Vec::len).max(1);
-    let drawing = working(data, wid)?
+    // As the tab shows it: a round all in is drawn, though its worker's turn goes on.
+    let drawing = (working(data, wid)? && !super::all_in(&was))
         || was["rounds"][last - 1]["variants"]
             .as_array()
             .is_none_or(Vec::is_empty);
@@ -197,7 +255,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
     {
         rounds.push(json!({"variants": [], "sent": []}));
     }
-    m["draft"] = Value::Null;
+    (m["draft"], m["doing"]) = (Value::Null, Value::Null);
     workers::write_json(&file(data, wid), &m)?;
     let mut call: Vec<String> = ["send", wid, &text, "--steer"].map(String::from).into();
     call.extend(
@@ -221,6 +279,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
         };
         return no(error, &format!("Couldn't send the notes: {why}"));
     }
+    settle_cards(data, wid, last, "Left notes");
     // The lead's chat records it: "You → mockup · 3 notes on A and B · round 2 drawing".
     if let Some(l) = workers::link(data, wid) {
         let mut on: Vec<&str> = LETTERS
@@ -242,7 +301,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
 /// and merge [D2059, D2068, D97]; that turn's end reports to the parent as any task's [D560]. Unsent
 /// notes go with it, cleared once it's taken. A worker the user stopped can't: the pick goes to
 /// the lead, with the branch its code is on [D560].
-fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value> {
+pub(super) fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value> {
     let no =
         |error: &str, message: &str| Ok(json!({"ok": false, "error": error, "message": message}));
     let _one = WRITING.lock().unwrap();
@@ -271,8 +330,17 @@ fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value
     let mut link = workers::link(data, wid).ok_or_else(none)?;
     let dir = core::session_dir(data, wid);
     let branch = core::worktrees::branch(&dir)?;
-    let (pins, all) = parts(notes);
-    let with = message(&m, round, &pins, all).map_or(String::new(), |t| format!("\n\n{t}"));
+    let (mut pins, all) = parts(notes);
+    let (mut all, mut on) = (all.to_string(), round);
+    // Not from the tab, which sends its own: the notes saved in it go too, on the round they're on.
+    if notes["pins"].is_null() {
+        let (saved, for_all) = parts(&m["draft"]);
+        if !saved.is_empty() || !for_all.is_empty() {
+            (pins, on) = (saved, on_round(&m, &m["draft"]));
+            all = format!("{for_all}\n\n{all}").trim().to_string();
+        }
+    }
+    let with = message(&m, on, &pins, &all).map_or(String::new(), |t| format!("\n\n{t}"));
     let picked = format!("The user picked {letter} ({name}) from round {round} of the mockup");
     let keep = format!(
         "{letter}'s fixture code into the app's real screen as it is, without redrawing it"
@@ -323,7 +391,9 @@ fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::Result<Value
         return no("failed", &format!("Couldn't send the pick: {why}"));
     }
     (m["picked"], m["pickedRound"], m["draft"]) = (letter.into(), round.into(), Value::Null);
+    m["doing"] = Value::Null;
     workers::write_json(&file(data, wid), &m)?;
+    settle_cards(data, wid, rounds.len(), &format!("Use {letter}"));
     let message = (to != wid)
         .then(|| format!("{letter} went to the lead to build, as its worker was stopped."));
     Ok(json!({"ok": true, "message": message}))

@@ -1,4 +1,4 @@
-import { Fragment, memo, type ReactNode, useLayoutEffect, useMemo, useRef } from "react";
+import { createContext, Fragment, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,7 @@ import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { linkPath, RefWord, remarkRefs } from "./refs";
+import { fenceWalk } from "./tidy";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 
@@ -37,8 +38,18 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
     const used = definitions.filter(([label]) => named.includes(label)).map(([, line]) => line);
     return used.length ? `${raw}\n\n${used.join("\n")}` : raw;
   };
+  // Each heading gets GitHub's id, counted over the whole text, not one block; a nested text (a draft) counts its own.
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const seen = new Map<string, number>();
+    for (const heading of box.current!.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) {
+      // One drawn with an id keeps it: GFM's footnotes heading, which its references name.
+      if (heading.closest(".markdown") !== box.current || (heading.id && heading.dataset.slug === undefined)) continue;
+      heading.id = heading.dataset.slug = slug(heading.textContent ?? "", seen);
+    }
+  });
   return (
-    <div className="markdown">
+    <div ref={box} className="markdown">
       {tokens.map((token, n) => {
         const from = start;
         start += token.raw.length;
@@ -51,6 +62,86 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
       })}
     </div>
   );
+}
+
+/** GitHub's heading slug (github-slugger's): lower case, punctuation and `²`-like numbers dropped, spaces as `-`; a repeat gets `-1`, `-2`. */
+function slug(text: string, seen: Map<string, number>): string {
+  const base = text.toLowerCase().replace(/[^\p{L}\p{M}\p{Nd}\p{Nl}\p{Pc} -]/gu, "").replace(/ /g, "-");
+  let id = base;
+  while (seen.has(id)) {
+    seen.set(base, seen.get(base)! + 1);
+    id = `${base}-${seen.get(base)}`;
+  }
+  seen.set(id, 0);
+  return id;
+}
+
+/** A `#section` link's heading, looked for only in the text the link is in, as each message has its own ids. */
+function toHeading(link: HTMLElement, hash: string): void {
+  let id = hash;
+  try {
+    id = decodeURIComponent(hash);
+  } catch {
+    // Kept as written.
+  }
+  const box = link.closest(".markdown");
+  // Not one in a text nested in it, a draft's, which counts its own.
+  const found = [...(box?.querySelectorAll(`#${CSS.escape(id)}`) ?? [])].find((at) => at.closest(".markdown") === box);
+  found?.scrollIntoView({ block: "start" });
+}
+
+/**
+ * A file's own relative links and images, given by the file viewer for the file it shows: a link opens its file there,
+ * an image loads by the URL `image` finds. A thread gives none, so its links stay refs.
+ */
+export const FileLinks = createContext<{ open: (href: string) => void; image: (src: string) => Promise<string | null> } | null>(null);
+/** A link or image with no scheme, not `//host` nor `#section`: a path, relative to the file (or its root, from `/`). */
+const RELATIVE = /^(?![a-z][a-z\d+.-]*:|\/\/|#)./i;
+
+function Anchor({ href, chip, ...link }: { href?: string; chip?: (n: number) => ReactNode; children?: ReactNode }) {
+  const files = useContext(FileLinks);
+  if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
+  if (href?.startsWith("#") && href.length > 1)
+    return (
+      <a
+        href={href}
+        {...link}
+        onClick={(event) => {
+          event.preventDefault();
+          toHeading(event.currentTarget, href.slice(1));
+        }}
+      />
+    );
+  if (files && href && RELATIVE.test(href))
+    return (
+      <a
+        href={href}
+        {...link}
+        onClick={(event) => {
+          event.preventDefault();
+          files.open(href);
+        }}
+      />
+    );
+  const pr = href && pastedRef(href);
+  if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
+  if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
+  return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
+}
+
+/** An image; one of a file's own, by a relative path, loads by the URL its viewer finds, nothing until then. */
+function Img({ src, ...image }: { src?: string; alt?: string; title?: string }) {
+  const files = useContext(FileLinks);
+  const local = files && src && RELATIVE.test(src) ? src : null;
+  const [url, setUrl] = useState<{ src: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!files || !local) return;
+    let live = true;
+    void files.image(local).then((found) => live && setUrl({ src: local, url: found }));
+    return () => void (live = false);
+  }, [files, local]);
+  if (!local) return <img src={src} {...image} />;
+  return url?.src === local && url.url ? <img src={url.url} {...image} /> : <span>{image.alt}</span>;
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
@@ -121,14 +212,8 @@ function settle(raw: string) {
 
 /** Whether a block ends inside a fence it opened: its code is still arriving. */
 function openFence(raw: string): boolean {
-  let mark = "";
-  for (const line of raw.split("\n")) {
-    const fence = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
-    if (!fence) continue;
-    if (!mark) mark = fence[1]!;
-    else if (fence[1]![0] === mark[0] && fence[1]!.length >= mark.length && !fence[2]!.trim()) mark = "";
-  }
-  return mark !== "";
+  const codeAt = fenceWalk();
+  return raw.trimEnd().split("\n").map(codeAt).at(-1) !== null;
 }
 
 const keepChips = (url: string) => (url.startsWith("chip:") ? url : defaultUrlTransform(url));
@@ -181,17 +266,20 @@ const fadeChunks = (chunks: Chunk[]) => (tree: Node) => {
 };
 
 /** GitHub's alert, a quote opening with `[!WARNING]` or its kin: the quote is marked as that callout and loses the marker [D477]. */
-const callouts = () => (tree: Node) => {
+const callouts = () => (tree: Node, file: { value: unknown }) => {
   const walk = (node: Node) => {
     for (const child of node.children ?? []) walk(child);
     if (node.tagName !== "blockquote") return;
-    const p = node.children?.find((c) => c.tagName === "p");
-    const first = p?.children?.[0];
-    const hit = first?.type === "text" ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(first.value ?? "") : null;
+    // Its first block, opening with the bracket itself: an escaped `\[` is the text it says.
+    const p = node.children?.find((c) => c.type === "element");
+    const first = p?.tagName === "p" ? p.children?.[0] : undefined;
+    const hit = first?.type === "text" && String(file.value)[p?.position?.start.offset ?? -1] === "[" ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/.exec(first.value ?? "") : null;
     if (!p || !first || !hit) return;
     node.properties = { ...node.properties, dataCallout: hit[1] };
     first.value = first.value!.slice(hit[0].length);
     if (!first.value && p.children![1]?.tagName === "br") p.children!.splice(0, 2);
+    // The marker alone in its paragraph: the next block is the first line, beside the icon.
+    else if (!first.value && p.children!.length === 1) node.children = node.children!.filter((c) => c !== p);
   };
   walk(tree);
 };
@@ -211,8 +299,8 @@ function Fade({ at, children }: { at: number; children: ReactNode }) {
 }
 
 const Block = memo(function Block({ text, keep, chip, open, chunks }: { text: string; keep: string; chip?: (n: number) => ReactNode; open: boolean; chunks: Chunk[] }) {
-  // Where a fence still being written ends: the block's end, as it never closed.
-  const end = open ? text.trimEnd().length : -1;
+  // Where a fence still being written ends: the block's end, as it never closed, less a quote's next `>`.
+  const end = open ? text.replace(/[\s>]+$/, "").length : -1;
   const components = useMemo(() => fences(keep, chip, end), [keep, chip, end]);
   return (
     <ReactMarkdown
@@ -249,13 +337,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     return at === undefined ? <span {...span} /> : <Fade at={at}>{span.children}</Fade>;
   },
   // A new window's open goes to the browser (main.ts); a plain click's navigation is refused there.
-  a: ({ node: _, href, ...link }) => {
-    if (chip && href?.startsWith("chip:")) return chip(Number(href.slice(5)));
-    const pr = href && pastedRef(href);
-    if (pr) return <PrHoverCard refName={pr}><a href={href} target="_blank" rel="noreferrer" {...link} /></PrHoverCard>;
-    if (!href || /^(https?:|mailto:|#)/i.test(href)) return <a href={href} target="_blank" rel="noreferrer" {...link} />;
-    return <RefWord word={linkPath(href)} label={link.children} plain={<a href={href} {...link} />} />;
-  },
+  a: ({ node: _, ...link }) => <Anchor chip={chip} {...link} />,
+  img: ({ node: _, ...image }) => <Img {...image} />,
   // Its words from the tree, as a chunk still fading splits them.
   code: ({ node, children, ...rest }) => <RefWord word={textOf(node as Node | undefined)} plain={<code {...rest}>{children}</code>} />,
   ...(chip && {
@@ -315,11 +398,8 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     const Mark = warn ? Warning : Info;
     return (
       <div data-callout={kind.toLowerCase()} className={warn ? "callout callout-warn" : "callout"}>
-        <div className="callout-head">
-          <Mark className="size-icon-sm" />
-          {warn ? "Watch out" : "Note"}
-        </div>
-        {children}
+        <Mark role="img" aria-hidden={undefined} aria-label={warn ? "Warning" : "Note"} />
+        <div>{children}</div>
       </div>
     );
   },

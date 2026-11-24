@@ -1,7 +1,7 @@
 //! The text one result writes [D3006]: how it ended, its branch and commits, the diff stat,
 //! uncommitted files, the receipt and the `read` pointer [D3029].
 
-use super::review::{self, last_of_turn};
+use super::review::{self, last_by};
 use super::{Res, dir_of, open, path_of, take};
 use crate::owner;
 use crate::workers::{Link, git, read_json, write_json};
@@ -48,7 +48,18 @@ pub(in crate::workers) fn write(
     how: &str,
     error: Option<&str>,
 ) -> io::Result<()> {
-    write_as(data, l, wid, turn, how, error, false)
+    write_as(data, l, wid, turn, how, error, Of::default())
+}
+
+/// What one result reports: a turn the user started in it (`direct`), when it ended (`Res::end`),
+/// a wake that ended after that turn's own result was written (`late`).
+#[derive(Default)]
+pub(in crate::workers) struct Of {
+    pub direct: bool,
+    pub end: u64,
+    pub late: bool,
+    /// The turn or wake whose last message it carries, and up to when (ms): none finds it.
+    pub said: Option<(String, u64)>,
 }
 
 /// The turn's time and computer calls as Brigadier measured them, not as the worker tells them.
@@ -108,8 +119,9 @@ pub(in crate::workers) fn write_as(
     turn: &str,
     how: &str,
     error: Option<&str>,
-    direct: bool,
+    of: Of,
 ) -> io::Result<()> {
+    let direct = of.direct;
     let dir = core::session_dir(data, wid);
     let spec = core::load(data, wid).ok();
     let cwd = spec.as_ref().map_or(String::new(), |s| s.cwd.clone());
@@ -239,9 +251,13 @@ pub(in crate::workers) fn write_as(
     text += &format!("Ran on {}.\n", ran.join(" · "));
     text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
-    // A sub-session's last word is its last turn's, after its workers' results woke it [D189].
-    let ended = (core::fold(&dir, true).ok()).and_then(|f| f.fold.last);
-    let said = (ended.as_ref().filter(|_| l.session)).and_then(|l| l["id"].as_str());
+    let f = core::fold(&dir, true).map(|f| f.fold).unwrap_or_default();
+    let (said, until) = of.said.unwrap_or_else(|| {
+        let end = f.end(turn);
+        (end.map_or(turn, |e| &e.id).into(), u64::MAX)
+    });
+    let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
+    let ended = f.last;
     text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
@@ -256,9 +272,9 @@ pub(in crate::workers) fn write_as(
             ),
             &merge,
             commits,
-            last_of_turn(data, wid, turn),
+            last,
         );
-    } else if let Some(mut last) = last_of_turn(data, wid, said.unwrap_or(turn)) {
+    } else if let Some(mut last) = last {
         if last.len() > super::LAST {
             let mut at = super::LAST;
             while !last.is_char_boundary(at) {
@@ -296,13 +312,28 @@ pub(in crate::workers) fn write_as(
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
         going: String::new(),
+        end: of.end,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;
-    write_json(&path_of(data, &l.parent, wid, turn), &res)?;
+    let key = match of.late {
+        true => format!("{turn}.{}", of.end),
+        false => turn.into(),
+    };
+    let path = path_of(data, &l.parent, wid, &key);
+    {
+        // The daemon and the parent's own `wait` may both write it: the first one's stands.
+        let _one = review::lock_at(&core::session_dir(data, &l.parent).join("results.lock"))?;
+        if path.exists() {
+            return Ok(());
+        }
+        write_json(&path, &res)?;
+    }
     // A review's result goes to the work it reviewed, never its parent: its end row all the same [D115, D456].
     // A stopped one's waits for the parent's next turn, so its log says it holds no block open [D314].
     let note = match res.state.as_str() {
-        "review" => json!({"event": "worker", "phase": "result", "result": take::said(&res)}),
+        "review" => {
+            json!({"event": "worker", "phase": "result", "result": take::said(data, &l.parent, &res)})
+        }
         "held" => json!({"event": "worker", "phase": "held", "ids": [wid]}),
         _ => Value::Null,
     };

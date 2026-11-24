@@ -214,6 +214,8 @@ fn plain_words(c: &str) -> Option<Vec<String>> {
 pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
     spec.dir.parent()?.ends_with("sessions").then_some(())?;
     let token = grant(spec)?;
+    // The standing line's folder; without it an agent makes its own.
+    let _ = std::fs::create_dir_all(crate::background::tmp(&spec.dir));
     let me = std::env::current_exe().ok()?;
     let data = crate::data_of(spec).display().to_string();
     let mut vars = vec![

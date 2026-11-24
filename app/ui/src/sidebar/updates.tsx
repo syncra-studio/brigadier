@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { ProviderMark } from "../components/composer/model-picker";
@@ -9,20 +9,20 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { ArrowRotateCw, Check, DownloadSimple, Spinner, X } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { type Agent, checkAll, useAgents } from "../onboarding/api";
+import { type Agent, checkAll, store, useAgents } from "../onboarding/api";
 import { runFailure, useAgentSetup } from "../onboarding/agents";
 import { versionText } from "../accounts/parts";
 import { useDaemon } from "../daemon";
 import { useFootPlacement } from "./foot";
 
 /*
- * The updates icon at the strip's foot, with a dot, above Usage [D57]: one, whatever kinds of update there are, and what to update is chosen
- * in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
+ * The update pill at the foot, after Usage in the row and above it in the strip [D57]: one, whatever kinds of update
+ * there are, and what to update is chosen in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
  * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does.
  * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
  */
 
-export type UpdateItem = {
+type UpdateItem = {
   /** "app" for Brigadier, or the agent's id. */
   target: string;
   name: string;
@@ -37,16 +37,30 @@ export type UpdateItem = {
 /** The old app's: the agents are checked a minute after launch, then this often. */
 const FIRST_CHECK_MS = 60_000;
 const CHECK_EVERY_MS = 6 * 60 * 60_000;
-/** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them. */
+/** Skipped versions (`name@version`), this window's own choice, kept across launches as the old app kept them; one list for the row's pill and the strip's. */
 const SKIPPED = "skipped-updates";
-const readSkipped = (): string[] => JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
+function readSkipped(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(SKIPPED) ?? "[]") as string[];
+  } catch {
+    // Read as the module loads: one that can't be read must not keep the window from starting.
+    return [];
+  }
+}
+const skippedVersions = store(readSkipped());
 
-/** An agent's update as a row: one newer than it, its run while it goes, or why it failed until tried again or closed. */
-function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined): UpdateItem | null {
+/** How long an update that went through shows its check before it leaves. */
+const UPDATED_MS = 2000;
+
+/** An agent's update as a row: one newer than it, its run while it goes, its check a moment once it went through, or why it failed until tried again or closed. */
+function itemOf(agent: Agent, skipped: readonly string[], failed: string | undefined, starting: boolean, done: boolean): UpdateItem | null {
   const run = agent.setup?.action === "update" ? agent.setup : null;
+  // Updating from the click, not only once Rust's run shows: that comes after the run starts and the agent is checked again.
+  const updating = starting || Boolean(run?.running);
   const error = runFailure(run, agent.label) ?? (agent.outdated ? failed : undefined);
-  if (!run?.running && !error && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
-  const progress = run?.running ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: "available" } as const);
+  const updated = done && !agent.outdated;
+  if (!updating && !error && !updated && (!agent.outdated || skipped.includes(`${agent.name}@${agent.latest}`))) return null;
+  const progress = updating ? ({ type: "updating" } as const) : error ? ({ type: "failed", error } as const) : ({ type: updated ? "updated" : "available" } as const);
   return { target: agent.name, name: agent.label, mark: agent.mark, current: versionText(agent) ?? "", latest: agent.latest ? `v${agent.latest}` : "", action: { type: "run" }, progress };
 }
 
@@ -92,12 +106,30 @@ const Glyph = ({ item, className }: { item: UpdateItem; className: string }) => 
 
 /** "Codex update available", "Brigadier and Codex updates available", "Updating Codex". */
 function rowLabel(items: readonly UpdateItem[]) {
-  const all = items.map((item) => item.name);
-  const names = all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
-  if (items.some((item) => item.progress.type === "updating")) return `Updating ${names}`;
+  const join = (some: readonly UpdateItem[]) => {
+    const all = some.map((item) => item.name);
+    return all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
+  };
+  const names = join(items);
+  const updating = items.filter((item) => item.progress.type === "updating");
+  if (updating.length) return `Updating ${join(updating)}`;
   if (items.every((item) => item.progress.type === "updated")) return `${names} updated`;
   if (items.every((item) => item.action.type === "restart")) return "Restart to update";
   return `${names} ${items.length > 1 ? "updates" : "update"} available`;
+}
+
+/** What has an update, by its mark: three at most, or two in a narrow foot, the last place then saying how many more. */
+function Marks({ items, column }: { items: readonly UpdateItem[]; column: boolean }) {
+  const count = items.length;
+  return (
+    <span className={cx("flex shrink-0 items-center gap-1 text-foreground foot-narrow:gap-0.5", column && "flex-col")}>
+      {items.slice(0, count > 3 ? 2 : 3).map((item, at) => (
+        <Glyph key={item.target} item={item} className={cx("size-icon-sm shrink-0", count > 2 && at > 0 && "foot-narrow:hidden")} />
+      ))}
+      {count > 3 && <span className="text-2xs font-medium tabular-nums foot-narrow:hidden">+{count - 2}</span>}
+      {count > 2 && <span className="hidden text-2xs font-medium tabular-nums foot-narrow:inline">+{count - 1}</span>}
+    </span>
+  );
 }
 
 /** One update in the list: its mark, name and versions, then Update or Download, its progress or its check, and Skip. */
@@ -149,13 +181,13 @@ function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () 
   );
 }
 
-/** The foot's one update pill, there only while something has a newer version: a chip of marks, lying along the row or standing up in the strip. A click always opens the list. */
+/** The foot's one update pill, there only while something has a newer version: an outlined chip of what it does and the marks, lying along the row or standing up in the strip. */
 export function UpdatesRow() {
   const online = Boolean(useDaemon().daemon);
   const { list } = useAgents();
   const setup = useAgentSetup(list, online);
   const { row, ...placement } = useFootPlacement();
-  const [skipped, setSkipped] = useState(readSkipped);
+  const skipped = skippedVersions.use();
   useEffect(() => {
     if (!online) return;
     let every: number | undefined;
@@ -168,7 +200,19 @@ export function UpdatesRow() {
       clearInterval(every);
     };
   }, [online]);
-  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name]) ?? []);
+  const [updated, setUpdated] = useState<readonly string[]>([]);
+  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update", updated.includes(agent.name)) ?? []);
+  // One that was updating and is now neither there nor outdated went through. Before paint, so the pill never starts to leave first.
+  const updating = items.filter((item) => item.progress.type === "updating").map((item) => item.target).join(" ");
+  const before = useRef(updating);
+  useLayoutEffect(() => {
+    const done = before.current.split(" ").filter((name) => !items.some((item) => item.target === name) && list?.some((agent) => agent.name === name && agent.outdated === false));
+    before.current = updating;
+    if (!done.length) return;
+    setUpdated((all) => [...all, ...done]);
+    setTimeout(() => setUpdated((all) => all.filter((name) => !done.includes(name))), UPDATED_MS);
+    // updating changes when a run starts or ends.
+  }, [updating]);
   const update = (item: UpdateItem): Promise<boolean> => {
     const agent = list?.find((each) => each.name === item.target);
     return agent ? setup.begin(agent, "update") : Promise.resolve(false);
@@ -181,9 +225,9 @@ export function UpdatesRow() {
     // A failed run is closed; an available version is hidden until a newer one comes out.
     if (item.progress.type === "failed") void setup.close(item.target);
     else if (agent) {
-      const next = [...skipped, `${agent.name}@${agent.latest}`];
+      const next = [...skippedVersions.get(), `${agent.name}@${agent.latest}`];
       localStorage.setItem(SKIPPED, JSON.stringify(next));
-      setSkipped(next);
+      skippedVersions.set(next);
     }
   };
   const [open, setOpen] = useState(false);
@@ -205,14 +249,23 @@ export function UpdatesRow() {
   const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
     <BarItem show={!empty || open} axis={row ? "x" : "y"}>
-      <Popover open={open} onOpenChange={(next) => !direct && setOpen(next)}>
+      {/* A direct click never opens the list, but one left open on its last update still closes. */}
+      <Popover open={open} onOpenChange={(next) => setOpen(next && !direct)}>
         <PopoverTrigger
-          render={<TooltipIconButton look="rail" side={placement.side} dot="bg-link" tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)} />}
+          render={
+            <TooltipIconButton
+              look="chip"
+              side={placement.side}
+              tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)}
+              className={row ? "h-7.5 px-2 foot-narrow:gap-1" : "mb-1 w-8 flex-col py-2"}
+            />
+          }
           onClick={direct ? () => void update(direct).then((started) => !started && setOpen(true)) : undefined}
         >
           {busy ? <Spinner aria-hidden className="animate-spin motion-reduce:animate-none" /> : finished ? <Check aria-hidden /> : restart ? <ArrowRotateCw aria-hidden /> : <DownloadSimple aria-hidden />}
+          <Marks items={shown} column={!row} />
         </PopoverTrigger>
-        <PopoverContent {...placement} padded={false} className="flex w-96 flex-col p-1.5">
+        <PopoverContent {...placement} padded={false} className="flex w-96 max-w-available flex-col p-1.5">
           <BarItem axis="y" show={shown.length > 1}>
             <div className="flex justify-end px-1.5 pt-1 pb-1.5">
               <Button size="sm" variant="secondary" disabled={runnable.length < 2} onClick={() => runnable.forEach((item) => void update(item))}>

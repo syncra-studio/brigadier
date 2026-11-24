@@ -15,6 +15,8 @@ mod branch;
 mod copy;
 use branch::has_branch;
 pub use branch::{fetch_pr, rename_held};
+mod branches;
+pub use branches::{drop_branches, put_branches};
 mod hand;
 mod kept;
 use kept::keeps;
@@ -29,7 +31,7 @@ pub use hand::{RETAINED, folder, handover};
 pub use landing::{Landing, Lands, external_landing, landed, lands, merged, unlanded};
 pub use missing::restore_missing;
 
-const RECORD: &str = "worktree.json";
+pub const RECORD: &str = "worktree.json";
 /// Proposed: making or removing a worktree of a big repository can take a while.
 const GIT_SECS: u64 = 300;
 
@@ -140,13 +142,11 @@ pub fn path(data: &Path, id: &str) -> PathBuf {
 }
 
 /// Makes the session's worktree unless it's whole: a start cut short before it was finishes it
-/// here, its unfinished create undone first. A failed create on a `fresh` session (made by this
-/// start) that undid itself takes the session away too; on a retry the session keeps its log and
-/// first message, and the error says why. One it couldn't undo stays recorded [D35].
+/// here, its unfinished create undone first. A failed create that undid itself leaves no `RECORD`;
+/// one it couldn't undo stays recorded [D35].
 pub fn ensure(
     spec: &Spec,
     project: &projects::Project,
-    fresh: bool,
     base: Option<&str>,
     title: &str,
     on: Option<&str>,
@@ -162,13 +162,7 @@ pub fn ensure(
             None => {}
         }
     }
-    if let Err(e) = create(spec, project, base, None, title, None, on) {
-        if fresh && !spec.dir.join(RECORD).exists() {
-            fs::remove_dir_all(&spec.dir)?;
-        }
-        return Err(e);
-    }
-    Ok(())
+    create(spec, project, base, None, title, None, on)
 }
 
 /// Home's branch pill [D388, D392]: the checked-out branch, the local branches, and the other worktrees a session
@@ -421,8 +415,12 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
         return Ok(None);
     };
     let unlanded = unlanded(dir)?.is_some();
-    if keeps(dir, &owned, &branch).is_some() || (unlanded && !drop) {
-        return Ok(unlanded.then_some(branch));
+    // A PR's or another session's branch stays and isn't this session's to offer deleting [D703].
+    if keeps(dir, &owned, &branch).is_some() {
+        return Ok(None);
+    }
+    if unlanded && !drop {
+        return Ok(Some(branch));
     }
     // Only the branch this session made or was handed, as its record names it, renamed or not
     // [D181, D1080].

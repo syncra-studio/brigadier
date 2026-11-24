@@ -87,7 +87,7 @@ function KeepAwakeMenu() {
               <span id={`${lidId}-label`} className="text-sm">
                 With the lid closed too
               </span>
-              <span id={`${lidId}-hint`} className="text-xs text-muted-foreground">
+              <span id={`${lidId}-hint`} className="min-h-8 text-xs text-muted-foreground">
                 {lidHint(settings, lid)}
               </span>
             </span>
@@ -239,7 +239,7 @@ export function StripFoot({ settings = false, row = false }: { settings?: boolea
   ];
   return (
     <FootRow.Provider value={row}>
-      <div data-slot="sidebar-foot" className={row ? "flex shrink-0 items-center gap-0.5 px-2 pt-1 pb-2" : "flex flex-col items-center gap-0.5"}>
+      <div data-slot="sidebar-foot" className={row ? "sidebar-foot-row flex shrink-0 items-center gap-0.5 px-2 pt-1 pb-2" : "flex flex-col items-center gap-0.5"}>
         {!row && <span aria-hidden className="strip-rule strip-foot-rule mt-2 mb-1.5" />}
         {row ? items.toReversed() : items}
       </div>

@@ -22,6 +22,15 @@ export function useDriverName(driver: string | undefined): string | null {
   return useDriverNames(driver ? [driver] : [])[0] ?? null;
 }
 
+/** A session's states between turns, as Rust's result TAKES: its agent holds no tab there. */
+const BETWEEN = new Set(["idle", "idle_jobs", "stopped", "failed", "interrupted"]);
+
+/** Whether `driver`'s turn is over: its tabs' bar and pill go, though their group stays [D894 D901]. */
+export function useDriverDone(driver: string | undefined): boolean {
+  const state = useDaemon().rows?.find((each) => each.id === driver)?.state;
+  return state !== undefined && BETWEEN.has(state);
+}
+
 /** A group's tab as its hover card lists it: the page's title, else its address. */
 function GroupTabName({ id, target }: { id: string; target?: string }) {
   const page = useBrowserPage(id);

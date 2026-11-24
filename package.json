@@ -6,6 +6,7 @@
   "main": "app/main/dist/main.js",
   "packageManager": "pnpm@12.18.0",
   "scripts": {
+    "pnpm:devPreinstall": "node -e \"try { if (require('fs').lstatSync('node_modules').isSymbolicLink()) { console.error('node_modules is a link into another checkout, which this install would break. Remove the link, then: pnpm install --frozen-lockfile'); process.exit(1) } } catch {}\"",
     "start": "PATH=\"$HOME/.cargo/bin:$PATH\" BRIGADIER_BUILD=$(git rev-list --count HEAD) cargo build && pnpm build && scripts/electron .",
     "thread": "VITE_SCREEN=thread pnpm start",
     "build": "tsc -p app/main && vite build app/ui",

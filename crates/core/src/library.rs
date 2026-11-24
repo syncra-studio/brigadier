@@ -6,6 +6,7 @@ pub mod secrets;
 
 use crate::Spec;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,19 @@ pub fn save(data: &Path, items: &[Value]) -> io::Result<()> {
     crate::write_atomic(&dir(data).join("items.json"), &bytes)
 }
 
+/// The keys of the skills the user removed, left out though an agent has them [D721]: their own
+/// file, as `items` reads only what's in the library.
+pub fn removed(data: &Path) -> Vec<String> {
+    let bytes = fs::read(dir(data).join("removed.json")).unwrap_or_default();
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+pub fn save_removed(data: &Path, keys: &[String]) -> io::Result<()> {
+    fs::create_dir_all(dir(data))?;
+    let bytes = serde_json::to_vec_pretty(keys)?;
+    crate::write_atomic(&dir(data).join("removed.json"), &bytes)
+}
+
 /// Whether an item is on for a session in `project`: switched on, for all projects or chosen ones
 /// [D2046 D727].
 pub fn on(item: &Value, project: Option<&str>) -> bool {
@@ -52,6 +66,67 @@ pub fn key(server: &str) -> String {
 /// A server as the thread names it: a library one by its plain name ("Used Linear") [D176].
 pub fn plain(server: &str) -> &str {
     server.strip_prefix(PREFIX).unwrap_or(server)
+}
+
+/// A skill's or server's name as the library takes it [D176]: `plugin:slack:slack` → `slack`,
+/// `my_db` → `my-db`.
+pub fn key_name(name: &str) -> String {
+    let own = name.rsplit(':').next().unwrap_or(name);
+    let dashed = own.chars().map(|c| match c.is_ascii_alphanumeric() {
+        true => c,
+        false => '-',
+    });
+    dashed
+        .take(64)
+        .collect::<String>()
+        .trim_start_matches('-')
+        .to_string()
+}
+
+/// The user's skills left out for a project, by library name, each with why: removed, or not on there.
+pub struct Hidden(BTreeMap<String, &'static str>);
+
+pub fn hidden(data: &Path, project: Option<&str>) -> Hidden {
+    let mut all: BTreeMap<String, &'static str> = (removed(data).iter())
+        .filter_map(|k| k.strip_prefix("skill:"))
+        .map(|n| (n.to_string(), "removed"))
+        .collect();
+    // One in the library again goes by its switch and scope, as Settings shows it.
+    for i in items(data).iter().filter(|i| i["kind"] == "skill") {
+        let name = key_name(plain_str(&i["name"]));
+        match on(i, project) {
+            true => all.remove(&name),
+            false if i["on"] == true => all.insert(name, "off here"),
+            false => all.insert(name, "off"),
+        };
+    }
+    Hidden(all)
+}
+
+impl Hidden {
+    /// Why the user's skill of this name is left out; None for a plugin's `plugin:skill`.
+    pub fn why(&self, name: &str) -> Option<&'static str> {
+        match name.contains(':') {
+            true => None,
+            false => self.0.get(&key_name(name)).copied(),
+        }
+    }
+
+    /// Whether a listed command is one of these: a skill of the user's, in a folder, by its name
+    /// or the folder's, which the library names it by. An agent's own, with no file, isn't, nor
+    /// Codex's, in `skills/.system` or its admin's `/etc/codex`.
+    pub fn has(&self, k: &Value) -> bool {
+        let (name, Some(path)) = (plain_str(&k["name"]), k["path"].as_str()) else {
+            return false;
+        };
+        let folder = (Path::new(path).parent().and_then(Path::file_name))
+            .map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        k["kind"] == "skill"
+            && !name.contains(':')
+            && !path.contains("/skills/.system/")
+            && !path.starts_with("/etc/codex/")
+            && self.why(name).or(self.why(&folder)).is_some()
+    }
 }
 
 /// A server's URL, else its command line.
@@ -195,4 +270,12 @@ pub fn kit(spec: &Spec, skip: &[String]) -> Option<Kit> {
         names,
         servers: servers.collect(),
     })
+}
+
+/// The servers this session's proxy couldn't connect its CLI to, last it tried (the host's
+/// `plugins/unreached.json`): a CLI that failed one never dials it again unless asked.
+pub fn unreached(spec: &Spec) -> Vec<String> {
+    (fs::read(spec.dir.join("plugins").join("unreached.json")).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }

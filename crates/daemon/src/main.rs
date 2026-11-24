@@ -72,6 +72,9 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // shortcut: polls every log's size each tick (about 10k stats a second at 10k sessions); move to
 // kqueue if that shows up in a profile.
 const TICK: Duration = Duration::from_millis(500);
+/// How often the sessions at rest are looked at too: what no file of theirs says, and the retry of
+/// what was cut short or failed.
+const FULL: Duration = Duration::from_secs(5);
 
 struct Sub {
     out: Sender<String>,
@@ -91,6 +94,11 @@ struct State {
 type Shared = Arc<Mutex<State>>;
 
 fn main() -> io::Result<()> {
+    // Started from an agent's shell, it and all it starts are still nobody's: no session's mark or
+    // grant goes on. No thread runs yet.
+    for key in [brigadier_core::agent::SESSION, brigadier_core::agent::GRANT] {
+        unsafe { std::env::remove_var(key) };
+    }
     // Before the data folder: an ignored argument started a daemon replacing the live one [D950].
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usage = "usage: brigadierd [--install | --version | --help]";
@@ -178,9 +186,15 @@ fn main() -> io::Result<()> {
     // once per limit, and again when a setting or the accounts change [D51].
     let mut seen: HashMap<String, Value> = HashMap::new();
     let mut finished: HashMap<String, u64> = HashMap::new();
+    let mut changed = 0;
+    let mut full: Option<Instant> = None;
     loop {
-        match index.sync() {
+        let all = full.is_none_or(|at| at.elapsed() >= FULL);
+        match index.sync(all) {
             Ok((rows, gone)) => {
+                if all {
+                    full = Some(Instant::now());
+                }
                 for row in &rows {
                     let id = row["id"].as_str().unwrap_or("");
                     if ends.insert(id.into(), row["finished"].clone()).as_ref()
@@ -207,7 +221,7 @@ fn main() -> io::Result<()> {
         brigadier::control::repeats(&data, &index.rows);
         brigadier::control::hush(&data, &index.rows);
         brigadier::control::unchecked(&data, &index.rows);
-        brigadier::workers::pass(&data, &index.rows);
+        brigadier::workers::pass(&data, &index.rows, &index.looked);
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);
         brigadier::signin::pass(&data);
@@ -219,7 +233,7 @@ fn main() -> io::Result<()> {
         };
         awake.set(on);
         lid.set(&data, on && brigadier_core::lid::wanted(&data));
-        thread::sleep(TICK);
+        changed = brigadier::queue::wake::changed(changed, TICK);
     }
 }
 
