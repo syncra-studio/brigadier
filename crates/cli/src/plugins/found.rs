@@ -18,6 +18,7 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
     let mine: Vec<Value> = (items.iter().filter(|i| i["found"].is_null()))
         .cloned()
         .collect();
+    let removed = library::removed(data);
     let mut want: Vec<Value> = vec![];
     let mut authors: Vec<String> = vec![];
     for o in own(&mine, &all)
@@ -29,6 +30,10 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
             continue;
         }
         let key = format!("{}:{name}", str(&o["kind"]));
+        // One the user removed stays out, wherever it's found, until it's added again.
+        if removed.contains(&key) {
+            continue;
+        }
         // One of its name in several projects is one item, on in each.
         if let Some(w) = want.iter_mut().find(|w| w["key"] == key) {
             let places = w["found"].as_array_mut().expect("found is a list");
@@ -159,7 +164,7 @@ fn author(text: &str) -> String {
 }
 
 /// Its name as the library takes it [D176]: `plugin:slack:slack` → `slack`, `my_db` → `my-db`.
-fn plain(name: &str) -> String {
+pub(super) fn plain(name: &str) -> String {
     let dashed = shown(name)
         .chars()
         .map(|c| match c.is_ascii_alphanumeric() {
@@ -173,6 +178,16 @@ fn plain(name: &str) -> String {
         .to_string()
 }
 
+/// Whether a listed skill is the user's own, in a folder: not one of an agent's plugin.
+fn ours(k: &Value) -> bool {
+    k["path"].is_string() && !str(&k["name"]).contains(':')
+}
+
+/// Whether a listed skill is the user's own of this name in the library.
+pub(super) fn is(k: &Value, name: &str) -> bool {
+    ours(k) && plain(str(&k["name"])) == name
+}
+
 /// Each skill (its folder) and server (its URL or command) in the agents' own settings, once
 /// however many agents have it [D424]: those at home first, then each trusted project's own that
 /// aren't at home too, `project` its name, once under each project [D430]. `in_library` where the
@@ -182,9 +197,7 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
     let agents: Vec<_> = crate::setup::available().into_iter().collect();
     let skills = |a: &dyn adapters::Adapter, folder: Option<&Path>| -> Vec<Value> {
         (a.fixed_commands(folder, None).into_iter())
-            .filter(|k| {
-                k["kind"] == "skill" && k["path"].is_string() && !str(&k["name"]).contains(':')
-            })
+            .filter(|k| k["kind"] == "skill" && ours(k))
             // A project's own are those in its folder.
             .filter(|k| folder.is_none_or(|f| Path::new(str(&k["path"])).starts_with(f)))
             .map(|k| {
