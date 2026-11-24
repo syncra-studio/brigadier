@@ -1,11 +1,11 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, holds, path_of, write, write_ended};
+use super::{Res, all, fresh, holds, late, path_of, woken, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core, fold::Fold};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 /// The parent's own `wait` on its worker takes the result it returns, so it isn't sent again; any
@@ -45,7 +45,7 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
         r.state = "taken".into();
         let _ = write_json(&path, &r);
     }
-    let note = json!({"event": "worker", "phase": "result", "result": said(&res)});
+    let note = json!({"event": "worker", "phase": "result", "result": said(data, me, &res)});
     let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     Some(res.text)
 }
@@ -79,25 +79,40 @@ pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, agent: &mut String) 
 /// The message they went with is in: taken, each with its sentence but one the user ended,
 /// whose "You ended" line already says it [D97, D330].
 pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
+    let mut results = vec![];
     for (path, mut r) in taken
         .into_iter()
         .filter_map(|p| Some((p.clone(), read_json::<Res>(&p)?)))
     {
         r.state = "taken".into();
         let _ = write_json(&path, &r);
-        if !r.ended {
-            let note = json!({"event": "worker", "phase": "result", "result": said(&r)});
-            let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
-        }
+        results.push(r);
+    }
+    for r in results.iter().filter(|r| !r.ended) {
+        let note = json!({"event": "worker", "phase": "result", "result": said(data, pid, r)});
+        let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
     }
 }
 
-/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`.
-pub(super) fn said(r: &Res) -> String {
-    match r.merge.as_str() {
-        "" => format!("{}:{}", r.how, r.wid),
-        m => format!("{}:{}:{m}", r.how, r.wid),
-    }
+/// How a result ended, as its parent's thread reads it: `<how>:<worker>[:merged=<base>|:unmerged=<base>]`,
+/// then `:open` while a later task of that worker is open, so this one doesn't end the wait on it,
+/// or `:wakes` while work it left running can wake it, which its parent waits on again.
+pub(super) fn said(data: &Path, pid: &str, r: &Res) -> String {
+    let wakes =
+        || core::fold(&core::session_dir(data, &r.wid), true).is_ok_and(|f| super::wakes(&f.fold));
+    // One its host's death ended has nothing left to wait on.
+    let more =
+        r.how != "asks" && r.end != u64::MAX && link(data, &r.wid).is_some_and(|l| !l.paused);
+    let tail = match more {
+        true if !crate::workers::over_but(data, pid, &r.wid, &r.id) => ":open",
+        true if wakes() => ":wakes",
+        _ => "",
+    };
+    let merge = match r.merge.as_str() {
+        "" => String::new(),
+        m => format!(":{m}"),
+    };
+    format!("{}:{}{merge}{tail}", r.how, r.wid)
 }
 
 /// The hop a result carries, by its command id in the parent.
@@ -122,17 +137,33 @@ pub fn reported<'a>(l: &'a Link, f: &'a Fold) -> Vec<String> {
 }
 
 /// Whether a turn `wid` reports is still on its way or running, or ended with its result held
-/// for its background work.
+/// for its background work, or a wake carries it on.
 pub fn going(data: &Path, wid: &str, l: &Link, f: &Fold) -> bool {
-    let held = |t: &String| !path_of(data, &l.parent, wid, t).exists() && holds(f, t);
-    (reported(l, f).iter())
-        .any(|t| !f.cids.contains_key(t) || f.turns.iter().any(|x| &x.id == t) || held(t))
+    let held =
+        |t: &String| holds(f, t) && (woken(f, t) || !path_of(data, &l.parent, wid, t).exists());
+    (reported(l, f).iter()).any(|t| match f.cids.contains_key(t) {
+        true => f.turns.iter().any(|x| &x.id == t) || held(t),
+        false => !off(data, wid, t),
+    })
 }
 
-/// Whether each turn it reports has its result written.
+/// Whether each turn it reports has its result written, and each wake that carried one on.
 pub fn told(data: &Path, pid: &str, wid: &str, l: &Link) -> bool {
     let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
-    f.is_ok_and(|f| (reported(l, &f).iter()).all(|t| path_of(data, pid, wid, t).exists()))
+    let told = |f: &Fold, t: &String| match f.cids.contains_key(t) {
+        true => path_of(data, pid, wid, t).exists() && !late(data, pid, wid, f, t, false),
+        false => off(data, wid, t),
+    };
+    f.is_ok_and(|f| reported(l, &f).iter().all(|t| told(&f, t)))
+}
+
+/// Whether the message a turn would start with isn't on its way: removed from the worker's queue,
+/// or waiting in one the user's Stop holds. Nothing waits on it till it goes.
+fn off(data: &Path, wid: &str, turn: &str) -> bool {
+    let dir = core::session_dir(data, wid);
+    let held = || queue::pending(&dir, turn) && queue::row(&dir)["paused"] == true;
+    let rec = dir.join("peers/in").join(format!("{turn}.json"));
+    held() || read_json::<Value>(&rec).is_some_and(|r| r["state"] == "dropped")
 }
 
 /// A held worker the user ended before it ever ran: its one result, quiet as any the user ended,

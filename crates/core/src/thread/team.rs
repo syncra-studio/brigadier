@@ -109,16 +109,21 @@ impl Thread {
         }
     }
 
-    /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>]`): how it ended
-    /// and whether it merged back [D97], in its place.
+    /// A result's input (`result:<how>:<worker>[:merged=<base>|:unmerged=<base>][:open|:wakes]`): how it
+    /// ended and whether it merged back [D97], in its place.
     pub(super) fn team_result(&mut self, rest: &str, ts: u64) {
+        // One whose worker has a later task open leaves it at work.
+        let open = rest.strip_suffix(":open");
+        let rest = open.unwrap_or(rest.strip_suffix(":wakes").unwrap_or(rest));
         let (how, wid) = rest.split_once(':').unwrap_or(("finished", rest));
         // A worker's ask to its parent is no row in the parent's thread [D121].
         if how == "asks" {
             return;
         }
         let (wid, merge) = wid.split_once(':').unwrap_or((wid, ""));
-        self.over.insert(wid.into());
+        if open.is_none() {
+            self.over.insert(wid.into());
+        }
         self.worker_ended(ts);
         let merge =
             (merge.split_once('=')).map(|(m, into)| json!({"into": into, "ok": m == "merged"}));

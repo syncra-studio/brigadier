@@ -33,8 +33,8 @@ pub use told::{notice as told_notice, shell as told_shell, take as told_take, ta
 const LAST: usize = 16 << 10;
 
 /// How long a turn that ended with background work still running waits for that work to wake it
-/// before it reports as it ended. shortcut: work left running for good (a dev server) holds the
-/// result this long, and a wake later than this comes too late; upgrade if either shows.
+/// before it reports as it ended; a wake later than this reports by itself (`late`). shortcut:
+/// work left running for good (a dev server) holds the result this long; upgrade if it shows.
 const WAKE_MS: u64 = 10 * 60_000;
 
 /// The states a parent takes a result in: between turns, as the queue's.
@@ -67,6 +67,10 @@ pub(super) struct Res {
     /// A `quiet` one's parent input it went with: taken once the parent's log has it (`told`).
     #[serde(default)]
     pub going: String,
+    /// When the turn, or the wake that carried it on, ended that it reports (ms); the most for one
+    /// its host's death ended, 0 for one no turn ended for or an older build's: no wake is `late`.
+    #[serde(default)]
+    pub end: u64,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.
@@ -148,7 +152,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
     for (turn, direct) in &turns {
         let open = f.turns.iter().any(|t| &t.id == turn);
         let ended = f.cids.contains_key(turn) && (!open || cut);
-        if !ended || path_of(data, &l.parent, wid, turn).exists() {
+        let late = late(data, &l.parent, wid, &f, turn, cut);
+        if !ended || (!late && path_of(data, &l.parent, wid, turn).exists()) {
             continue;
         }
         let own = f.last.as_ref().filter(|last| last["id"] == turn.as_str());
@@ -174,7 +179,8 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             _ if last.is_some_and(|l| l["why"] == "context") => "context",
             _ => "failed",
         };
-        if !cut && holds(&f, turn) {
+        // A late wake's end reports at once, whatever else still runs.
+        if !cut && holds(&f, turn) && (!late || woken(&f, turn)) {
             waits = true;
             continue;
         }
@@ -186,16 +192,48 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
         if (l.paused && (how == "stopped" || own.is_none())) || moves {
             continue;
         }
-        if *direct {
-            report::write_as(data, &l, wid, turn, how, None, true)?;
+        // A reviewer says its findings once.
+        if late && !*direct && (l.review["of"].is_string() || l.review["plan"].is_string()) {
             continue;
         }
-        let Some(how) = review::holds(data, &mut l, wid, turn, how, &f) else {
-            continue;
+        let how = match late || *direct {
+            true => Some(how),
+            false => review::holds(data, &mut l, wid, turn, how, &f),
         };
-        write(data, &l, wid, turn, how, None)?;
+        let Some(how) = how else { continue };
+        let of = report::Of {
+            direct: *direct,
+            end: end_at(&f, turn, cut),
+            late,
+        };
+        report::write_as(data, &l, wid, turn, how, None, of)?;
     }
     Ok(waits)
+}
+
+/// When `turn`, or the wake that carried it on, last ended; the most when its host died in it.
+fn end_at(f: &fold::Fold, turn: &str, cut: bool) -> u64 {
+    match cut && (woken(f, turn) || f.turns.iter().any(|t| t.id == turn)) {
+        true => u64::MAX,
+        false => f.ends.get(turn).map_or(0, |e| e.0),
+    }
+}
+
+/// Whether a wake that carried `turn` on ended after its result was written: that end reports too,
+/// once, in a result of its own, named by when it ended.
+pub(super) fn late(
+    data: &Path,
+    pid: &str,
+    wid: &str,
+    f: &fold::Fold,
+    turn: &str,
+    cut: bool,
+) -> bool {
+    let end = end_at(f, turn, cut);
+    let told = |end: u64| path_of(data, pid, wid, &format!("{turn}.{end}")).exists();
+    read_json::<Res>(&path_of(data, pid, wid, turn)).is_some_and(|r| r.end > 0 && r.end < end)
+        && !told(end)
+        && !told(u64::MAX)
 }
 
 /// The end that says how `turn` went: its own, else that of the wake its CLI carried it on in.
@@ -219,13 +257,15 @@ pub(super) fn holds(f: &fold::Fold, turn: &str) -> bool {
     if f.child.as_ref().is_none_or(|c| c.exited) {
         return false;
     }
-    let (since, how) = f
-        .ends
-        .get(turn)
-        .map_or((0, "done"), |e| (e.0, e.1.as_str()));
+    let (since, how) = (f.ends.get(turn)).map_or((0, "done"), |e| (e.0, e.1.as_str()));
     let done = how == "done";
     let soon = log::now_ms().saturating_sub(since) < WAKE_MS;
-    woken(f, turn) || (done && soon && (f.pending.wakes() || !f.agents.is_empty()))
+    woken(f, turn) || (done && soon && wakes(f))
+}
+
+/// Whether background work its live CLI still runs will wake it.
+pub(super) fn wakes(f: &fold::Fold) -> bool {
+    f.child.as_ref().is_some_and(|c| !c.exited) && (f.pending.wakes() || !f.agents.is_empty())
 }
 
 /// A start that failed before its worker could run: its result says why.
@@ -396,7 +436,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         }
         owner::call(data, pid, req)
     };
-    let origin = format!("result:{}", said(&r));
+    let origin = format!("result:{}", said(data, pid, &r));
     // What the user told its workers meanwhile goes first, as it came first [D303].
     let mut notes = String::new();
     told::with(data, pid, &r.id, &mut notes);

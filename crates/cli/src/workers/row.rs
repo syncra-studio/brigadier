@@ -30,10 +30,12 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
             },
         ),
         _ if l.paused => ("paused", "Paused".into()),
-        // A turn that ended with background jobs left has ended: its result says how [D324].
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "uncertain"
         | "stalled" | "asking" => ("working", "Working".into()),
         "reconnecting" => ("working", "Reconnecting…".into()),
+        // A turn that ended with background jobs left has ended: its result says how [D324], once
+        // it's written. Till then, or with a message on its way to it, it works on.
+        "idle" | "idle_jobs" if reports(dir, &l, f) => ("working", "Working".into()),
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),
@@ -81,6 +83,12 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         // A folder chat's worker: the repos it claimed, for its row [D494].
         "repos": core::folder::claims(dir).into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "now": if kind == "working" { f.calls.last() } else { None }})
+}
+
+/// `busy`, for the row in `dir`.
+fn reports(dir: &Path, l: &Link, f: &Fold) -> bool {
+    let wid = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    (dir.parent().and_then(Path::parent)).is_some_and(|data| super::busy_in(data, wid, l, || Ok(f)))
 }
 
 /// "15:10", or a day or more away "Mon 09:00", as the model picker says when a limit resets.

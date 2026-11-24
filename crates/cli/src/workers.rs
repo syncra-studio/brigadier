@@ -26,10 +26,11 @@ pub(crate) use review::{last_of_turn, moves};
 pub use row::{holding, holds, row};
 
 use crate::{arg, owner, queue, settings};
-use brigadier_core::{self as core};
+use brigadier_core::{self as core, fold::Fold};
 use brigadier_frames::procs;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
@@ -209,9 +210,17 @@ pub(crate) fn setting(data: &Path, key: &str, default: u64) -> u64 {
 /// Whether worker `id` is still being made or a task it reports back on hasn't ended, so a
 /// `wait` keeps waiting though its row may not show the turn yet.
 pub fn busy(data: &Path, id: &str) -> bool {
-    let Some(l) = link(data, id) else {
-        return false;
-    };
+    let f = || core::fold(&core::session_dir(data, id), true).map(|r| r.fold);
+    link(data, id).is_some_and(|l| busy_in(data, id, &l, f))
+}
+
+/// The same, for its row, which has its fold at hand.
+fn busy_in<F: Borrow<Fold>>(
+    data: &Path,
+    id: &str,
+    l: &Link,
+    f: impl FnOnce() -> io::Result<F>,
+) -> bool {
     // A paused one isn't waited on, and (proposed) doesn't count toward Workers at once [D3042].
     if l.paused {
         return false;
@@ -224,23 +233,30 @@ pub fn busy(data: &Path, id: &str) -> bool {
         return false;
     }
     let made = r.is_some_and(|r| r.state != "starting");
-    let Ok(f) = core::fold(&core::session_dir(data, id), true).map(|r| r.fold) else {
+    let Ok(f) = f() else {
         return !made;
     };
     !made
         || (l.session && brigade::leading(data, id))
         || l.review["state"] == "running"
-        || result::going(data, id, &l, &f)
+        || result::going(data, id, l, f.borrow())
 }
 
 /// Whether parent `pid`'s worker `wid` ended with nothing left to wake it for: not being made, not
 /// paused, each task it reports ended with its result written, and none still on its way. A
 /// stopped one's result, held for the parent's next turn, wakes no one [D314].
 pub fn over(data: &Path, pid: &str, wid: &str) -> bool {
+    over_but(data, pid, wid, "")
+}
+
+/// The same, but for its result `but`, which is on its way now.
+fn over_but(data: &Path, pid: &str, wid: &str, but: &str) -> bool {
     let Some(l) = link(data, wid) else {
         return record(data, pid, wid).is_none_or(|r| r.state != "starting");
     };
-    let due = |r: &result::Res| r.wid == wid && matches!(r.state.as_str(), "written" | "sent");
+    let due = |r: &result::Res| {
+        r.wid == wid && r.id != but && matches!(r.state.as_str(), "written" | "sent")
+    };
     !l.paused
         && !busy(data, wid)
         && result::told(data, pid, wid, &l)
