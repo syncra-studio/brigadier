@@ -6,10 +6,11 @@
 import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
-import { activityOf, forgetActivity, shownTitle, shownUrl, watchActivity, watchNetwork } from "./browserAgentActivity";
+import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
+import { shownTitle, shownUrl } from "./browserShownUrl";
 import { stopOf } from "./browserSignIn";
 import { stopForAddress } from "./browserSignInRules";
 import { openerTab } from "./guestPopups";

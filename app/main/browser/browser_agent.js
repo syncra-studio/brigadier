@@ -19,7 +19,8 @@
 // error or `ask` as the click or typing would, and for typing refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
-(op) => {
+// `shownUrl`: an address as an agent sees it, from the shell.
+(op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
   const NEXT = "data-brigadier-next-ref";
   const clean = (text) => (text || "").replace(/\s+/g, " ").trim();
@@ -236,7 +237,7 @@
       }
       if (role === "link") {
         const href = element.getAttribute("href") || "";
-        if (href && !href.startsWith("javascript:")) text += ` -> ${cut(element.href || href, 100)}`;
+        if (href && !href.startsWith("javascript:")) text += ` -> ${cut(shownUrl(URL.parse(href, document.baseURI)?.href ?? href), 100)}`;
       }
       if (element.disabled || element.getAttribute("aria-disabled") === "true") text += " (disabled)";
       const kind = fieldKind(element);

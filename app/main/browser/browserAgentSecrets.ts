@@ -7,6 +7,8 @@ import path from "node:path";
 
 import { nativeImage, type NativeImage, type WebContents, type WebFrameMain } from "electron";
 
+import { shownUrl } from "./browserShownUrl";
+
 /** The script beside this file's source (main is built with tsc, which has no `?raw`); scripts/package ships it. */
 const agentScript = readFileSync(path.join(__dirname, "../../browser/browser_agent.js"), "utf8");
 
@@ -15,7 +17,7 @@ const AGENT_WORLD = 1010;
 const scriptBody = agentScript.trim().replace(/;$/, "");
 /** The agent's script, for what runs it elsewhere: the eval verb's answer and the picker's description. */
 export const agentScriptBody = scriptBody;
-const call = (op: object) => `(${scriptBody})(${JSON.stringify(op)})`;
+const call = (op: object) => `(${scriptBody})(${JSON.stringify(op)}, ${shownUrl.toString()})`;
 
 /** The most handlers a look takes, past any page's own controls, so a control late in a long page is seen at its click too. */
 const HANDLED_MOST = 10_000;

@@ -4,6 +4,7 @@
 import type { Session, WebContents } from "electron";
 
 import { sweepNow, sweepSoon } from "./browserAgentSecrets";
+import { shownUrl } from "./browserShownUrl";
 
 type Kind = "navigation" | "network" | "console" | "error";
 type Line = { at: number; kind: Kind; text: string };
@@ -14,7 +15,6 @@ type Tab = { lines: Line[]; next: number };
 const KEPT = 500;
 const ANSWER_MOST = 200;
 const TEXT_MOST = 1000;
-const URL_MOST = 300;
 
 const tabs = new Map<number, Tab>();
 /** Requests on their way, by Chromium's id. A page's own load ends with no webContentsId, so the guest is kept here. */
@@ -33,51 +33,6 @@ function add(guest: number, kind: Kind, text: string): void {
   const tab = tabOf(guest);
   tab.lines.push({ at: tab.next++, kind, text: `${new Date().toTimeString().slice(0, 8)} ${text.slice(0, TEXT_MOST)}` });
   if (tab.lines.length > KEPT) tab.lines.shift();
-}
-
-const SECRET_NAME = /pass|pwd|token|secret|auth|session|sid|code|key|otp/i;
-
-/**
- * An address as an agent sees it: what a query's or a fragment's sensitive names hold stays out. `query` false keeps
- * the query, and the address whole, for a page the agent may have to open again.
- */
-export function shownUrl(url: string, query = true): string {
-  let shown = url;
-  try {
-    const parsed = new URL(url);
-    if (parsed.username || parsed.password) {
-      parsed.username = "";
-      parsed.password = "";
-    }
-    for (const name of query ? Array.from(parsed.searchParams.keys()) : []) {
-      if (SECRET_NAME.test(name)) parsed.searchParams.set(name, "(hidden)");
-    }
-    // A sign-in's answer (#access_token=…), or a route with a query of its own (#/callback?code=…).
-    if (parsed.hash) parsed.hash = parsed.hash.replace(/([^#?&=]+)=[^&]*/g, (pair, name: string) => (SECRET_NAME.test(decoded(name)) ? `${name}=(hidden)` : pair));
-    shown = parsed.toString();
-  } catch {
-    // Not an address to take apart: shown as it came, cut.
-  }
-  return query && shown.length > URL_MOST ? `${shown.slice(0, URL_MOST)}…` : shown;
-}
-
-function decoded(name: string): string {
-  try {
-    return decodeURIComponent(name);
-  } catch {
-    return name;
-  }
-}
-
-/** A title as an agent sees it: Chromium titles a page with none by its address, which is told apart. */
-export function shownTitle(title: string, url: string): string {
-  try {
-    const { host } = new URL(url);
-    const rest = title.replace(/^[a-z]+:\/\//i, "");
-    return host && rest.startsWith(host) && /^[/?#]/.test(rest.slice(host.length)) ? "" : title;
-  } catch {
-    return title;
-  }
 }
 
 /** The session's requests, by the guest each came from. Observers only: they can't hold up or change a request. */
