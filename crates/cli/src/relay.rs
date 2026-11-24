@@ -5,6 +5,7 @@
 pub(crate) mod mockup;
 mod show;
 
+use brigadier_core::library::Hidden;
 use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -24,7 +25,7 @@ pub fn spec(cmd: &str) -> Option<Spec> {
             &[],
         ),
         "skill" => (
-            "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
+            "brigadier skill [<name>] [--json]\n\nThe user's skills: Brigadier's library for this project first, then every agent's own folders, less those removed or off for it in Settings › Plugins. With a name, prints that skill's SKILL.md whole and its folder; read its other files there yourself.",
             &[],
             &[],
         ),
@@ -181,11 +182,12 @@ fn notes(data: &Path, me: &str, id: Option<&str>) -> Value {
 }
 
 /// The library's skills on for the caller's project, then those each agent keeps for its folder,
-/// by name once: the library's, else the first agent's [D407].
-fn skills(data: &Path, me: &str) -> Vec<Value> {
+/// by name once: the library's, else the first agent's [D407]; and the user's left out there.
+fn skills(data: &Path, me: &str) -> (Vec<Value>, Hidden) {
     let spec = core::load(data, me).ok();
     let project = spec.as_ref().and_then(|s| s.project.clone());
     let cwd = spec.map(|s| s.cwd).unwrap_or_default();
+    let hidden = core::library::hidden(data, project.as_deref());
     let mut all: Vec<Value> = (core::library::on_for(data, project.as_deref()).into_iter())
         .filter(|i| i["kind"] == "skill")
         .map(|i| json!({"name": i["name"], "path": Path::new(i["path"].as_str().unwrap_or("")).join("SKILL.md")}))
@@ -194,13 +196,14 @@ fn skills(data: &Path, me: &str) -> Vec<Value> {
         for k in a.fixed_commands(Some(Path::new(&cwd)), None) {
             if k["kind"] == "skill"
                 && k["path"].is_string()
+                && !hidden.has(&k)
                 && !all.iter().any(|x| x["name"] == k["name"])
             {
                 all.push(k);
             }
         }
     }
-    all
+    (all, hidden)
 }
 
 /// The `description:` of a SKILL.md's front matter, on one line; a `>` or `|` block's lines joined.
@@ -226,7 +229,7 @@ pub(crate) fn described(text: &str) -> String {
 
 /// `skill`: the list, or one whole.
 fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
-    let all = skills(data, me);
+    let (all, hidden) = skills(data, me);
     let read =
         |k: &Value| std::fs::read_to_string(k["path"].as_str().unwrap_or("")).unwrap_or_default();
     let Some(name) = name else {
@@ -248,7 +251,11 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         return json!({"ok": true, "skills": list, "text": text + "`brigadier skill <name>` prints one."});
     };
     let Some(k) = all.iter().find(|k| k["name"] == name) else {
-        return json!({"ok": false, "error": format!("No skill {name:?}. `brigadier skill` lists them.")});
+        let error = match hidden.why(name) {
+            Some(why) => format!("The skill {name:?} is {why} in Settings › Plugins."),
+            None => format!("No skill {name:?}. `brigadier skill` lists them."),
+        };
+        return json!({"ok": false, "error": error});
     };
     let path = k["path"].as_str().unwrap_or("");
     let folder = Path::new(path)

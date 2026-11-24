@@ -264,9 +264,10 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }
 
     // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
+    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
     let mut names: Vec<String> = (crate::adapters::all().iter())
         .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
-        .filter(|k| k["kind"] == "skill")
+        .filter(|k| k["kind"] == "skill" && !hidden.has(k))
         .filter_map(|k| k["name"].as_str().map(String::from))
         .collect();
     names.sort();

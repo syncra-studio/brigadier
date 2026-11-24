@@ -61,8 +61,8 @@ export type SlashCommand = {
   instant: boolean;
 };
 
-/** `commands` null: not listed yet (the menu says it's loading, never "No commands"). */
-export type Commands = { commands: SlashCommand[] | null; onRun: (command: SlashCommand) => void };
+/** `commands` null: not listed yet (the menu says it's loading, never "No commands"). `onMenu`: a menu of them opened. */
+export type Commands = { commands: SlashCommand[] | null; onRun: (command: SlashCommand) => void; onMenu: () => void };
 
 /**
  * Where `query` matches `text`, as the menus match: at its start, anywhere in it, or letter by letter in order.
@@ -350,7 +350,7 @@ export function MentionPlugin({ results, onQuery, onDirect }: Mentions) {
  * The `/` menu: the agent's commands under their group headings, filtered as typed. One not `instant` goes in as its
  * own chip (a tool's, not a skill's of its name) for the `/` and its query; any other runs (`onRun`), leaving no trace.
  */
-export function SlashPlugin({ commands, onRun }: Commands) {
+export function SlashPlugin({ commands, onRun, onMenu }: Commands) {
   const [query, setQuery] = useState("");
   const options = useMemo(() => commandMatches(commands ?? [], query).map((command) => new Row(command, command.id)), [commands, query]);
   const [open, setOpen] = useState(false);
@@ -365,7 +365,10 @@ export function SlashPlugin({ commands, onRun }: Commands) {
       commandPriority={COMMAND_PRIORITY_HIGH}
       options={options}
       onQueryChange={(next) => setQuery(next ?? "")}
-      onOpen={() => setOpen(true)}
+      onOpen={() => {
+        setOpen(true);
+        onMenu();
+      }}
       onClose={() => setOpen(false)}
       onSelectOption={(option, replacing, close) => {
         const command = option.value;
@@ -448,7 +451,12 @@ export function PlusMenu({
   };
   return (
     <>
-      <DropdownMenu onOpenChange={(open) => setCard(open ? (trigger.current?.closest<HTMLElement>("[data-slot=composer-card]") ?? null) : card)}>
+      <DropdownMenu
+        onOpenChange={(open) => {
+          setCard(open ? (trigger.current?.closest<HTMLElement>("[data-slot=composer-card]") ?? null) : card);
+          if (open) commands.onMenu();
+        }}
+      >
         <DropdownMenuTrigger render={<PlusButton ref={trigger} data-slot="plus-trigger" />} />
         <DropdownMenuContent side="top" align="start" anchor={card} className="max-h-command-list w-anchor" finalFocus={() => field() ?? true}>
           <DropdownMenuLabel variant="heading">Add</DropdownMenuLabel>
