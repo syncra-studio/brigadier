@@ -64,8 +64,8 @@ export function EmojiButton({ emoji, onChange }: { emoji: string | null; onChang
   );
 }
 
-/** The note's bar, the old app's page bar: the File menu and Insert. */
-export function NoteTopBar({ content, listing, editor, onList, onRename, onDelete }: { content: Content; listing: boolean; editor: () => LexicalEditor | null; onList: () => void; onRename: () => void; onDelete: () => Promise<string | null> }) {
+/** The note's bar, the old app's page bar: the File menu and Insert. `name` is the note's as shown. */
+export function NoteTopBar({ content, name, listing, editor, onList, onRename, onDelete }: { content: Content; name: string; listing: boolean; editor: () => LexicalEditor | null; onList: () => void; onRename: () => void; onDelete: () => Promise<string | null> }) {
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const renaming = useRef(false);
@@ -79,7 +79,7 @@ export function NoteTopBar({ content, listing, editor, onList, onRename, onDelet
   const download = () => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([asMarkdown(content)], { type: "text/markdown" }));
-    link.download = `${content.title.replace(/[\\/:*?"<>|\n]+/g, " ").trim().slice(0, 120) || "Untitled note"}.md`;
+    link.download = `${[...content.title.replace(/[\\/:*?"<>|\n]+/g, " ").trim()].slice(0, 120).join("") || "Untitled note"}.md`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 0);
   };
@@ -141,7 +141,7 @@ export function NoteTopBar({ content, listing, editor, onList, onRename, onDelet
         open={deleting}
         onOpenChange={setDeleting}
         title="Delete this note?"
-        description={`“${content.title || "Untitled note"}” is removed with its chat. This can't be undone.`}
+        description={`“${name}” is removed with its chat. This can't be undone.`}
         confirm="Delete"
         destructive
         onConfirm={() => {

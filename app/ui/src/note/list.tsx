@@ -14,8 +14,8 @@ import { splitHead } from "./top-bar";
 import { useNoteChanges } from "./run";
 import type { daemonRun } from "../session/composer";
 
-/** A note as `note list` gives it: its name and `# ` line, the line under the name, and the line a search matched. */
-export type Listed = { id: string; title: string; head: string; preview: string; at: number; pinned: boolean; match: string | null };
+/** A note as `note list` gives it: its name as shown and whole (what a rename starts from), its `# ` line, the line under the name, and the line a search matched. */
+export type Listed = { id: string; title: string; name: string; head: string; preview: string; at: number; pinned: boolean; match: string | null };
 
 /** Waits this long after typing before the search is asked, so each letter doesn't cost a read of every note. */
 const SEARCH_AFTER_MS = 120;
@@ -61,7 +61,7 @@ export function NotesColumn({
   const shown = notes ?? [];
   const rename = (row: Listed, name: string) => {
     onRenaming(null);
-    if (name.trim() === row.title) return;
+    if (name.trim() === row.name) return;
     if (row.id === note) return onRenameOpen(name.trim());
     void run(["rename", row.id, name.trim()]).then((reply) => reply.ok && setNoteTitle(row.id, reply.title));
   };
@@ -94,7 +94,7 @@ export function NotesColumn({
                 <Input
                   aria-label="Note name"
                   autoFocus
-                  defaultValue={row.title}
+                  defaultValue={row.name}
                   onFocus={(event) => event.currentTarget.select()}
                   onBlur={(event) => rename(row, event.currentTarget.value)}
                   onKeyDown={(event) => {

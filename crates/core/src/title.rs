@@ -147,14 +147,34 @@ fn short(text: &str) -> String {
     title
 }
 
-/// `text` with its whitespace collapsed, cut to `chars` characters (with an ellipsis).
-fn one_line(text: &str, chars: usize) -> String {
+/// `text` with its whitespace collapsed, cut to `max` characters (with an ellipsis): after a word,
+/// or inside one with no space in the cut's second half (a URL, CJK), but never inside an emoji.
+pub fn one_line(text: &str, max: usize) -> String {
     let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if line.chars().count() <= chars {
-        line
-    } else {
-        let mut cut: String = line.chars().take(chars - 1).collect();
-        cut.push('…');
-        cut
+    let chars: Vec<char> = line.chars().collect();
+    if chars.len() <= max {
+        return line;
     }
+    let mut at = max - 1;
+    if let Some(space) = (max / 2..=at).rev().find(|&i| chars[i] == ' ') {
+        at = space;
+    }
+    while at > 0 && joined(&chars, at) {
+        at -= 1;
+    }
+    let cut: String = chars[..at].iter().collect();
+    cut.trim_end_matches([' ', '.', ',', ';', ':', '…'])
+        .to_owned()
+        + "…"
+}
+
+/// Whether the character at `at` is drawn with the one before it: an accent, a skin tone, a joined
+/// emoji or a flag's second letter.
+/// shortcut: not every script's clusters (Indic, Hangul jamo), until a name cut in one looks wrong.
+fn joined(chars: &[char], at: usize) -> bool {
+    let letter = |c: &&char| matches!(c, '\u{1F1E6}'..='\u{1F1FF}');
+    chars[at - 1] == '\u{200D}'
+        || matches!(chars[at], '\u{200D}' | '\u{300}'..='\u{36F}' | '\u{20E3}' | '\u{FE00}'..='\u{FE0F}')
+        || matches!(chars[at], '\u{1F3FB}'..='\u{1F3FF}' | '\u{E0020}'..='\u{E007F}')
+        || (letter(&&chars[at]) && chars[..at].iter().rev().take_while(letter).count() % 2 == 1)
 }

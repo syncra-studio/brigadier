@@ -81,7 +81,7 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
         .iter()
         .map(|n| {
             let label = crate::attach::note::shown_name(n);
-            json!({"id": n["id"], "type": "note", "name": n["title"], "label": label})
+            json!({"id": n["id"], "type": "note", "name": n["title"], "label": label, "whole": n["name"]})
         })
         .collect();
     let groups = if q.is_empty() {
@@ -125,7 +125,11 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
             }
         }
         for n in notes {
-            if let Some(rank) = files::rank(n["label"].as_str().unwrap_or(""), &query) {
+            // A long name's words past what the row shows still find it.
+            let whole = n["whole"].as_str().unwrap_or("").to_lowercase();
+            if let Some(rank) = files::rank(n["label"].as_str().unwrap_or(""), &query)
+                .or_else(|| whole.contains(&query).then_some(1))
+            {
                 all.push((rank, 0, 1, n));
             }
         }
