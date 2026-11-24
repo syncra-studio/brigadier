@@ -21,7 +21,7 @@ mod peer;
 mod to;
 pub mod wake;
 pub use cut::{goes_on, off as cut_off, recover};
-pub use peer::{add_peer, pending, send_back, waits_for};
+pub use peer::{UNSURE, add_peer, pending, send_back, waits_for};
 pub use to::held as give_held;
 
 #[derive(Serialize, Deserialize, Default, PartialEq)]
@@ -265,11 +265,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         // A stopped turn carries on first, under the queue's lock and before it unpauses, so nothing
         // queued can go ahead of it; refused, the queue stays paused and says why [D237, D373].
         "resume" => {
-            let refused = change(&dir, |q| {
-                let f = core::fold(&dir, true)?.fold;
-                let live = fold::live(&f, owner::state(data, id), &dir, &procs::all());
-                let status = fold::status(&f, &live);
-                if fold::resumable(&f, status["state"].as_str().unwrap_or("")) {
+            let _lock = cut::hold_all(data, id)?;
+            let refused = locked(&dir, |q| {
+                let (f, state) = cut::now(data, id)?;
+                if fold::resumable(&f, &state) || cut::resumes(&dir, &f, &state, q) {
                     let reply = recover(data, id, true)?;
                     let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
                     if reply["ok"] != true && !went {
@@ -422,11 +421,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     crate::rewind::settle_held(data, &spec)?;
     let holding = crate::workers::holding(data, id);
     locked(&dir, |q| {
-        let cut = cut::off(data, id)?;
+        let (f, state) = cut::now(data, id)?;
+        let cut = state == "interrupted";
         let goes = |i: &Item| {
             i.to.is_none()
                 && (!holding || i.origin.is_some())
-                && (!cut || cut::carries(&dir, i.origin.as_deref()))
+                && (!cut || cut::carries(&dir, &f, i.origin.as_deref()))
         };
         let at = q.items.iter().position(goes).unwrap_or(0);
         let Some(item) = (q.items.get(at))
@@ -435,7 +435,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         else {
             return Ok(());
         };
-        if core::fold(&dir, true)?.fold.cids.contains_key(&item.id) {
+        if f.cids.contains_key(&item.id) {
             q.items.remove(at);
             return Ok(());
         }

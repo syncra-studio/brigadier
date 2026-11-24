@@ -53,6 +53,10 @@ pub fn pending(dir: &Path, mid: &str) -> bool {
     })
 }
 
+/// What a sender's agent reads of a message its receiver's agent didn't confirm (proposed words).
+pub const UNSURE: &str =
+    "Its agent didn't confirm it, so it may not have it: it isn't sent again by itself.";
+
 /// What `from`'s message `mid` to `id`, handed over and not steered, waits for, as its sender's
 /// agent reads it (proposed words). `held`: for the running turn.
 pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> String {
@@ -61,18 +65,37 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     let (f, state) = cut::now(data, id).unwrap_or_default();
     let at = q.items.iter().position(|i| i.id == mid);
     if !held && at.is_none() && f.cids.contains_key(mid) {
-        return "It started its next turn.".into();
+        return match state.as_str() {
+            "uncertain" | "undelivered" => UNSURE.into(),
+            _ => "It started its next turn.".into(),
+        };
     }
     let link = cut::link(&dir);
     let origin = format!("peer:{from}");
-    let carries = state == "interrupted" && cut::carries(&dir, Some(&origin));
+    let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
+    let holding = workers::holding(data, id);
+    // What goes before it: past a cut-off run only its parent's do.
+    let goes = |i: &&Item| {
+        i.to.is_none()
+            && (!holding || i.origin.is_some())
+            && (!carries || cut::parents(&dir, i.origin.as_deref()))
+    };
+    let ahead = q.items.iter().take(at.unwrap_or(0)).find(goes);
+    let after = |i: &Item| match i.error {
+        Some(_) => "a message before it couldn't be sent, so it waits for its user to settle that",
+        None => "it goes after the messages sent to it before",
+    };
     let steers = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
     let why = match state.as_str() {
         _ if !held && (q.paused || link.as_ref().is_some_and(|l| l.paused)) => {
             "it was stopped or paused, so it waits for its user to press Resume"
         }
-        "interrupted" if carries => {
-            return "It was cut off mid-turn: your message carries it on.".into();
+        "interrupted" if carries => match ahead {
+            None => return "It was cut off mid-turn: your message carries it on.".into(),
+            Some(i) => after(i),
+        },
+        "interrupted" if link.as_ref().is_some_and(|l| !l.session) && !cut::begun(&f) => {
+            "it was cut off before its conversation began, so it waits for its user to message it"
         }
         "interrupted" if link.is_some_and(|l| !l.session) => {
             "it was cut off mid-turn, so it waits for its user, or a message from the session that started it, to carry it on"
@@ -100,18 +123,10 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
                 .into();
         }
         _ if held || !f.turns.is_empty() => "it gets it when its turn ends",
-        _ => {
-            let holding = workers::holding(data, id);
-            let goes = |i: &&Item| i.to.is_none() && (!holding || i.origin.is_some());
-            let ahead: Vec<_> = (q.items.iter().take(at.unwrap_or(0)).filter(goes)).collect();
-            match ahead.first() {
-                None => return "It's queued and starts its next turn.".into(),
-                Some(i) if i.error.is_some() => {
-                    "a message before it couldn't be sent, so it waits for its user to settle that"
-                }
-                Some(_) => "it goes after the messages sent to it before",
-            }
-        }
+        _ => match ahead {
+            None => return "It's queued and starts its next turn.".into(),
+            Some(i) => after(i),
+        },
     };
     format!("It's queued: {why}.")
 }

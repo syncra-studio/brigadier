@@ -44,6 +44,25 @@ pub(super) fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'stati
     super::hand(data, from, out)
 }
 
+/// What `from` has sent `to` that isn't on its way yet: their ids, in order.
+pub(crate) fn written(data: &Path, from: &str, to: &str) -> Vec<String> {
+    let mut outs = all::<Out>(data, from, "out");
+    outs.retain(|o| o.to == to && o.state == "written");
+    outs.sort_by_key(|o| o.at);
+    outs.into_iter().map(|o| o.mid).collect()
+}
+
+/// Hands those on now. One that fails goes in a later pass, as any other.
+pub(crate) fn hand_all(data: &Path, from: &str, sent: &[String]) {
+    for mid in sent {
+        if let Some(mut out) = workers::read_json::<Out>(&path(data, from, "out", mid))
+            && let Err(e) = hand(data, from, &mut out)
+        {
+            eprintln!("brigadierd: message {mid} to {}: {e}", out.to);
+        }
+    }
+}
+
 /// Whether another hand settled `from`'s message meanwhile: what it settled on stays.
 pub(super) fn done(data: &Path, from: &str, mid: &str) -> bool {
     let out: Option<Out> = workers::read_json(&path(data, from, "out", mid));

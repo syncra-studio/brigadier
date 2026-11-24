@@ -18,6 +18,7 @@ use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::log;
 pub(crate) use first::begin;
+pub(crate) use held::{hand_all, written};
 pub(crate) use reply::{answer, asked, hand_back, open_question, question, waits};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -217,6 +218,8 @@ pub fn send(
         Err(e) => return refuse(&format!("Couldn't send it: {e}")),
     };
     let said = match how {
+        // As its receiver has it: a pass may have settled the sender's meanwhile.
+        "steered" if unsure(data, to, &out.mid) => queue::UNSURE.into(),
         "steered" => "It went into the turn it's working on.".into(),
         "dropped" => return refuse(&format!("{to} was deleted.")),
         _ => queue::waits_for(data, me, to, &out.mid, how == "held"),
@@ -324,6 +327,11 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
     );
     settle_out(data, from, out, &state, None);
     Ok(how)
+}
+
+fn unsure(data: &Path, to: &str, mid: &str) -> bool {
+    let rec: Option<In> = workers::read_json(&path(data, to, "in", mid));
+    rec.is_some_and(|r| r.state == "uncertain")
 }
 
 /// Moves the sender's record on, and its row with it.

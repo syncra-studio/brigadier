@@ -3,11 +3,12 @@
 //! the user's Resume comes at the same moment.
 
 use super::{Queue, go_on, hold, locked, read};
-use crate::{owner, workers};
+use crate::{owner, peers, workers};
 use brigadier_core::fold::{self, Fold, Owner};
 use brigadier_core::{self as core};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
+use std::fs::File;
 use std::io;
 use std::path::Path;
 
@@ -35,18 +36,25 @@ pub(super) fn parents(dir: &Path, origin: Option<&str>) -> bool {
     from.is_some_and(|from| link(dir).is_some_and(|l| !l.session && l.parent == from))
 }
 
+/// Whether its agent had announced a conversation to go on in: cut off before, a message alone
+/// would start one without its brief.
+pub(super) fn begun(f: &Fold) -> bool {
+    f.resume.contains_key(&f.backend)
+}
+
 /// Whether a message by `origin` carries worker `dir`'s cut-off run on now.
-pub(super) fn carries(dir: &Path, origin: Option<&str>) -> bool {
-    parents(dir, origin) && link(dir).is_some_and(|l| !l.paused)
+pub(super) fn carries(dir: &Path, f: &Fold, origin: Option<&str>) -> bool {
+    begun(f) && parents(dir, origin) && link(dir).is_some_and(|l| !l.paused)
 }
 
 /// Whether a cut-off run is about to go on with a message that waits in its queue.
 pub fn goes_on(data: &Path, id: &str) -> bool {
     let dir = core::session_dir(data, id);
-    read(&dir).is_ok_and(|q| {
-        let first = first(&dir, &q).map(|at| &q.items[at]);
-        !q.paused && first.is_some_and(|i| i.error.is_none() && carries(&dir, i.origin.as_deref()))
-    })
+    let Ok((q, (f, _))) = read(&dir).and_then(|q| Ok((q, now(data, id)?))) else {
+        return false;
+    };
+    let first = first(&dir, &q).map(|at| &q.items[at]);
+    !q.paused && first.is_some_and(|i| i.error.is_none() && carries(&dir, &f, i.origin.as_deref()))
 }
 
 /// The first message waiting from the session that started it.
@@ -67,21 +75,55 @@ pub(super) fn stopped(f: &Fold) -> bool {
     last.is_some_and(|l| l["outcome"] == "interrupted" && l["halted"] == true)
 }
 
+/// Whether a Resume carries a cut-off worker's stopped run on by itself: no message waits to.
+pub(super) fn resumes(dir: &Path, f: &Fold, state: &str, q: &Queue) -> bool {
+    let waiting = first(dir, q).is_some() && begun(f);
+    state == "interrupted"
+        && stopped(f)
+        && !waiting
+        && link(dir).is_some_and(|l| !l.session && !l.paused)
+}
+
+/// Holds its queue for a Resume, once what a cut-off worker's parent has sent is in it, though it
+/// waited for the same lock: the ids of those.
+pub(super) fn hold_all(data: &Path, id: &str) -> io::Result<(File, Vec<String>)> {
+    let dir = core::session_dir(data, id);
+    let lock = hold(&dir)?.0;
+    let Some(l) = link(&dir).filter(|l| !l.session) else {
+        return Ok((lock, vec![]));
+    };
+    let sent = match off(data, id)? {
+        true => peers::written(data, &l.parent, id),
+        false => vec![],
+    };
+    if sent.is_empty() {
+        return Ok((lock, sent));
+    }
+    drop(lock);
+    peers::hand_all(data, &l.parent, &sent);
+    Ok((hold(&dir)?.0, sent))
+}
+
 /// Rust's one recovery for a session; `queued`: the caller holds its queue's lock. A cut-off
 /// worker with its parent's message waiting goes on with that message alone.
 pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     owner::ensure(data, &spec)?;
-    let _lock = (!queued).then(|| hold(&spec.dir)).transpose()?;
+    let lock = (!queued).then(|| hold_all(data, id)).transpose()?;
     crate::rewind::settle_held(data, &spec)?;
-    if !queued && off(data, id)? {
-        let cid = locked(&spec.dir, |q| {
-            Ok(first(&spec.dir, q).map(|at| {
-                go_on(q);
-                q.items[at].error = None;
-                q.items[at].id.clone()
-            }))
-        })?;
+    if let Some((_, handed)) = &lock {
+        let (f, state) = now(data, id)?;
+        // One may have carried it on since it was handed over.
+        let mut cid = (handed.iter().find(|mid| f.cids.contains_key(*mid))).cloned();
+        if state == "interrupted" && begun(&f) {
+            cid = locked(&spec.dir, |q| {
+                Ok(first(&spec.dir, q).map(|at| {
+                    go_on(q);
+                    q.items[at].error = None;
+                    q.items[at].id.clone()
+                }))
+            })?;
+        }
         if let Some(cid) = cid {
             return Ok(json!({"ok": true, "result": "queued", "recovered": "queued", "cid": cid}));
         }

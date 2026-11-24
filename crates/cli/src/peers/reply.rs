@@ -3,7 +3,7 @@
 //! wake, never its user's queue.
 
 use super::{COUNTING, In, Out, all, note, path, refuse, send};
-use crate::workers;
+use crate::{queue, workers};
 use brigadier_core::{self as core};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -209,7 +209,14 @@ pub(super) fn waited(
                 true => "Its reply comes to you by itself, so end your turn.".to_string(),
                 false => format!("`brigadier wait {to}` to wait more, or end your turn."),
             };
-            let text = format!("No reply from {to} after {secs}s. Your message is with it. {then}");
+            let said = match rec.state.as_str() {
+                "uncertain" => queue::UNSURE.into(),
+                _ if core::fold(&dir, true).is_ok_and(|f| f.fold.cids.contains_key(&out.mid)) => {
+                    "Your message is with it.".into()
+                }
+                state => queue::waits_for(data, me, to, &out.mid, state == "held"),
+            };
+            let text = format!("No reply from {to} after {secs}s. {said} {then}");
             return json!({"ok": true, "mid": out.mid, "done": false, "text": text});
         }
         thread::sleep(Duration::from_millis(500));
