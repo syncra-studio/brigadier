@@ -2,7 +2,7 @@
 //! Return, which in an address bar says whether the page changed [D2032].
 
 use super::act::{act, no_keys, token, wait_for_user};
-use super::{Sess, Words, call, refuse, window};
+use super::{Sess, Words, call, cap, refuse, window};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -38,13 +38,10 @@ pub(super) fn type_into(
     // `type` replaces: the field is emptied first, else the text goes in at its caret. Not while
     // the user is in the app, and put back if the typing doesn't go through.
     let old = s.values.get(&n).cloned().unwrap_or_default();
-    let set = |s: &Sess, value: &str| {
-        let args = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": value, "session": me});
-        call(data, "set_value", args, here)
-    };
+    let field = Field::of(s, n);
     if !old.is_empty() {
         wait_for_user(data, s, here)?;
-        set(s, "")?;
+        set(data, me, s, &token(s, n), "", here)?;
     }
     let args = json!({"text": text, "element_token": token(s, n), "pid": s.pid, "window_id": s.window, "session": me});
     let line = format!("Typed {} characters into [{n}]", text.chars().count());
@@ -53,10 +50,12 @@ pub(super) fn type_into(
         o.lines().next().is_some_and(|l| l.contains(": refused"))
     });
     if refused && !old.is_empty() {
-        let back = set(s, &old).map_or(
-            " Its old text couldn't be put back: read it.",
-            |_| " Its old text is put back.",
-        );
+        let back = match put_back(data, me, s, &field, &old, here) {
+            Ok(()) => " Its old text is put back.".to_string(),
+            Err(why) => cap(&format!(
+                " Its old text isn't put back: {why}. Read it; it was \"{old}\"."
+            )),
+        };
         return match done {
             Ok(out) => Ok(out.replacen('\n', &format!("{back}\n"), 1)),
             Err(e) => Err(refuse(&format!(
@@ -112,4 +111,71 @@ pub(super) fn type_into(
         out = format!("{typed}\n{out}");
     }
     Ok(out)
+}
+
+fn set(
+    data: &Path,
+    me: &str,
+    s: &Sess,
+    token: &str,
+    value: &str,
+    here: &dyn Fn() -> bool,
+) -> Result<Value, Value> {
+    let args = json!({"element_token": token, "pid": s.pid, "window_id": s.window, "value": value, "session": me});
+    call(data, "set_value", args, here)
+}
+
+/// Which field was cleared: its number may be another control's by the time the typing failed.
+struct Field {
+    window: u64,
+    role: Option<String>,
+    frame: Option<[f64; 4]>,
+}
+
+impl Field {
+    fn of(s: &Sess, n: u64) -> Field {
+        Field {
+            window: s.window,
+            role: (s.controls.iter().find(|(_, c)| c.0 == n)).map(|(key, _)| key.0.clone()),
+            frame: s.frames.get(&n).copied(),
+        }
+    }
+
+    /// Its row in a read: the one control of its role at its place. A field's height follows its text.
+    fn row<'a>(&self, found: &'a Value) -> Option<&'a Value> {
+        let (role, f) = (self.role.as_deref()?, self.frame?);
+        let here = |e: &&Value| {
+            let at =
+                |k: &str, v: f64| (e["frame"][k].as_f64()).is_some_and(|x| (x - v).abs() <= 1.0);
+            e["role"] == role && at("x", f[0]) && at("y", f[1]) && at("w", f[2])
+        };
+        let mut rows = (found["elements"].as_array()?.iter()).filter(here);
+        rows.next().filter(|_| rows.next().is_none())
+    }
+}
+
+/// Writes the old text into a field this cleared, unless the user, or a part of the typing, has
+/// put something there since.
+fn put_back(
+    data: &Path,
+    me: &str,
+    s: &mut Sess,
+    field: &Field,
+    old: &str,
+    here: &dyn Fn() -> bool,
+) -> Result<(), &'static str> {
+    if s.window != field.window {
+        return Err("its window is gone");
+    }
+    let found = call(data, "get_window_state", window::state_args(s, me), here)
+        .map_err(|_| "the window couldn't be read")?;
+    // This read voids the numbers the agent has.
+    s.moved = true;
+    let row = (field.row(&found)).ok_or("I can't tell which field it is now")?;
+    // The driver leaves an empty value out.
+    if row["value"].as_str().is_some_and(|v| !v.is_empty()) {
+        return Err("the field has other text now");
+    }
+    let token = row["element_token"].as_str().unwrap_or("");
+    set(data, me, s, token, old, here).map_or(Err("writing it failed"), |_| Ok(()))
 }
