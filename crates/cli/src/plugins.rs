@@ -123,6 +123,14 @@ fn list(data: &Path) -> Value {
         .filter(|p| p.trusted == Some(true))
         .flat_map(folders_of)
         .collect();
+    // Each agent's own copies at home, or in a project's folder [D2098].
+    let mut own: Vec<(&dyn adapters::Adapter, Value)> = vec![];
+    for a in &agents {
+        for f in folders.iter().map(|f| Some(f.as_path())).chain([None]) {
+            let skills = a.fixed_commands(f, None).into_iter();
+            own.extend(skills.filter(|k| k["kind"] == "skill").map(|k| (*a, k)));
+        }
+    }
     let shown: Vec<Value> = (items.iter())
         .map(|i| {
             let detail = match i["kind"] == "skill" {
@@ -130,17 +138,18 @@ fn list(data: &Path) -> Value {
                 false => library::detail(i).into(),
             };
             // Where an agent's own skill of its name stays on, that agent uses its own [D415].
-            // Its own copies at home, or in a project's folder [D2098].
-            let has = |a: &&&dyn adapters::Adapter| {
-                let here = folders.iter().map(|f| Some(f.as_path())).chain([None]);
-                here.flat_map(|f| a.fixed_commands(f, None))
-                    .any(|k| k["kind"] == "skill" && k["name"] == i["name"])
-            };
-            let kept: Vec<&str> = (agents.iter())
-                .filter(|a| i["kind"] == "skill" && a.own_skill_wins())
-                .filter(has)
-                .map(|a| a.label())
+            let mut kept: Vec<&str> = (own.iter())
+                .filter(|(a, k)| i["kind"] == "skill" && a.own_skill_wins() && k["name"] == i["name"])
+                .map(|(a, _)| a.label())
                 .collect();
+            kept.dedup();
+            // The user's own folders of it, which Remove leaves as they are.
+            let mut own_folders: Vec<&Path> = (own.iter())
+                .filter(|(_, k)| i["kind"] == "skill" && found::is(k, str(&i["name"])))
+                .filter_map(|(_, k)| Path::new(str(&k["path"])).parent())
+                .collect();
+            own_folders.sort();
+            own_folders.dedup();
             let note = match i["sign_in"] == "cli" {
                 true => Some("Signed in by each agent.".to_string()),
                 false => (!kept.is_empty()).then(|| {
@@ -158,7 +167,7 @@ fn list(data: &Path) -> Value {
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
                 "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
                 "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
-                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found")})
+                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found"), "folders": own_folders})
         })
         .collect();
     json!({"ok": true, "items": shown, "projects": projects, "catalog": catalog::page(&items)})
@@ -194,7 +203,7 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
     let name = match skill {
         true => Path::new(str(&v["folder"]))
             .file_name()
-            .map(|n| n.to_string_lossy().to_string()),
+            .map(|n| found::plain(&n.to_string_lossy())),
         false => v["name"].as_str().map(String::from),
     };
     let name = name.unwrap_or_default();
@@ -268,11 +277,17 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
         }
     }
     items.push(item);
-    let saved = library::save(data, &items);
-    if saved.is_err() {
+    if let Err(e) = library::save(data, &items) {
         let _ = forget(data, &key, &name);
+        return Err(e);
     }
-    saved.map(|()| key)
+    // Added again, it's no longer removed.
+    let mut gone = library::removed(data);
+    if gone.contains(&key) {
+        gone.retain(|k| *k != key);
+        library::save_removed(data, &gone)?;
+    }
+    Ok(key)
 }
 
 /// Whether `key` names this item: its own, or `skillset:<id>` for each skill that came with `id`,
@@ -327,6 +342,9 @@ fn remove(data: &Path, key: &str) -> io::Result<()> {
     let Some(at) = items.iter().position(|i| i["key"] == key) else {
         return Ok(());
     };
+    if items[at]["kind"] == "skill" {
+        return remove_skill(data, items, at);
+    }
     // It follows the agent's settings [D721].
     if let Some(from) = items[at]["from"].as_str() {
         return Err(refuse(&format!(
@@ -347,6 +365,24 @@ fn remove(data: &Path, key: &str) -> io::Result<()> {
     }
     items.retain(|i| !gone(i));
     library::save(data, &items)
+}
+
+/// A skill's Remove: Brigadier's own copy is deleted, the user's folders never are. Its key is kept
+/// as removed first, so `found::sync` leaves out any found by its name until it's added again.
+fn remove_skill(data: &Path, mut items: Vec<Value>, at: usize) -> io::Result<()> {
+    let item = items.remove(at);
+    let key = str(&item["key"]);
+    let mut gone = library::removed(data);
+    if !gone.iter().any(|k| k == key) {
+        gone.push(key.into());
+        library::save_removed(data, &gone)?;
+    }
+    if item["found"].is_null() {
+        forget(data, key, str(&item["name"]))?;
+    }
+    library::save(data, &items)?;
+    // Those left of its set are grouped again [D720].
+    found::sync(data)
 }
 
 /// Its skill folder and its secrets; the Keychain item goes with the last [D2043].

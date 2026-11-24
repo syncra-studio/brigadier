@@ -50,6 +50,8 @@ export type Item = {
   from?: string | null;
   /** Project ids where it was found; "" means at home, independent of where it is switched on. */
   found?: string[] | null;
+  /** A skill's folders of the user's own, which Remove leaves. */
+  folders?: string[];
   set?: string | null;
 };
 /** One of Browse's catalog, shipped with Brigadier [D566, D569]: a service (its server, and the skills that come with it) or a skill from a GitHub repo; `installed` the library's key for it. */

@@ -227,6 +227,19 @@ function ValueRows({ label, rows, onChange }: { label: "Headers" | "Environment"
   );
 }
 
+/** What Remove does: a skill's folders of the user's own stay, and an agent that reads them itself still does. */
+function removeLine(item: Item): string {
+  if (item.kind === "server") return "Removes it from Brigadier's library. Sessions already running keep it until they end.";
+  const folders = item.folders ?? [];
+  return [
+    item.from ? "It leaves Brigadier's list and new sessions. Sessions already running keep it until they end." : "It leaves Brigadier's list and new sessions, and Brigadier's copy is deleted.",
+    folders.length > 0 && `Your own ${folders.length === 1 ? "folder stays" : "folders stay"}: ${folders.join(", ")}. An agent that reads ${folders.length === 1 ? "it" : "them"} itself still finds the skill.`,
+    "Add it again to bring it back.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Removing one library item: one choice, the old app's (proposed). */
 export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove: () => void; onClose: () => void }) {
   return (
@@ -234,7 +247,7 @@ export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove
       open
       onOpenChange={(next) => !next && onClose()}
       title={`Remove ${item.name}?`}
-      description="Removes it from Brigadier's library. Sessions already running keep it until they end."
+      description={removeLine(item)}
       confirm="Remove"
       destructive
       onConfirm={onRemove}
