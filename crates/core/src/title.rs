@@ -148,7 +148,7 @@ fn short(text: &str) -> String {
 }
 
 /// `text` with its whitespace collapsed, cut to `max` characters (with an ellipsis): after a word,
-/// or inside one with no space in the cut's second half (a URL, CJK), but never inside an emoji.
+/// or inside one that's longer than that itself (a URL) or CJK, but never inside a drawn character.
 pub fn one_line(text: &str, max: usize) -> String {
     let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let chars: Vec<char> = line.chars().collect();
@@ -156,11 +156,16 @@ pub fn one_line(text: &str, max: usize) -> String {
         return line;
     }
     let mut at = max - 1;
-    if let Some(space) = (max / 2..=at).rev().find(|&i| chars[i] == ' ') {
-        at = space;
-    }
     while at > 0 && joined(&chars, at) {
         at -= 1;
+    }
+    // CJK has no space after a word, so a run of it is no word.
+    let cjk = matches!(chars[at], '\u{2E80}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{FF00}'..='\u{FFEF}' | '\u{20000}'..='\u{3FFFF}');
+    if let Some(space) = (0..=at).rev().find(|&i| chars[i] == ' ')
+        && !cjk
+        && chars[space + 1..].iter().take_while(|c| **c != ' ').count() <= max
+    {
+        at = space;
     }
     let cut: String = chars[..at].iter().collect();
     cut.trim_end_matches([' ', '.', ',', ';', ':', '…'])
@@ -168,13 +173,20 @@ pub fn one_line(text: &str, max: usize) -> String {
         + "…"
 }
 
+/// Whether `text` is drawn as one character, as an emoji of several is.
+pub fn one_drawn(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    !chars.is_empty() && (1..chars.len()).all(|at| joined(&chars, at))
+}
+
 /// Whether the character at `at` is drawn with the one before it: an accent, a skin tone, a joined
-/// emoji or a flag's second letter.
-/// shortcut: not every script's clusters (Indic, Hangul jamo), until a name cut in one looks wrong.
+/// emoji, a flag's second letter, a CJK variant's selector, a kana's voicing or a Hangul jamo.
+/// shortcut: not every script's clusters (Indic, Thai), until a name cut in one looks wrong.
 fn joined(chars: &[char], at: usize) -> bool {
     let letter = |c: &&char| matches!(c, '\u{1F1E6}'..='\u{1F1FF}');
     chars[at - 1] == '\u{200D}'
         || matches!(chars[at], '\u{200D}' | '\u{300}'..='\u{36F}' | '\u{20E3}' | '\u{FE00}'..='\u{FE0F}')
-        || matches!(chars[at], '\u{1F3FB}'..='\u{1F3FF}' | '\u{E0020}'..='\u{E007F}')
+        || matches!(chars[at], '\u{1F3FB}'..='\u{1F3FF}' | '\u{E0020}'..='\u{E007F}' | '\u{E0100}'..='\u{E01EF}')
+        || matches!(chars[at], '\u{1160}'..='\u{11FF}' | '\u{302A}'..='\u{302F}' | '\u{3099}' | '\u{309A}')
         || (letter(&&chars[at]) && chars[..at].iter().rev().take_while(letter).count() % 2 == 1)
 }

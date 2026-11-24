@@ -120,7 +120,7 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
             true => name.trim_end_matches('…'),
             false => whole,
         };
-        notes.push((pin, at, json!({"id": note, "title": name, "name": from, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
+        notes.push((pin, at, json!({"id": note, "title": name, "name": from, "whole": whole, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
     }
     notes.sort_by_key(|n| (!n.0, std::cmp::Reverse(n.1)));
     json!({"ok": true, "notes": notes.into_iter().map(|(.., n)| n).collect::<Vec<_>>()})
