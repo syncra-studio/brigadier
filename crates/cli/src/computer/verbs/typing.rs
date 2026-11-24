@@ -173,7 +173,7 @@ fn put_back(
     s.moved = true;
     let row = (field.row(&found)).ok_or("I can't tell which field it is now")?;
     // The driver leaves an empty value out.
-    if row["value"].as_str().is_some_and(|v| !v.is_empty()) {
+    if window::value(row).is_some_and(|v| !v.is_empty()) {
         return Err("the field has other text now");
     }
     let token = row["element_token"].as_str().unwrap_or("");

@@ -100,7 +100,7 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             true => drop(s.secure.insert(n)),
             false => drop(s.secure.remove(&n)),
         }
-        match e["value"].as_str() {
+        match value(e) {
             Some(v) => drop(s.values.insert(n, v.to_string())),
             None => drop(s.values.remove(&n)),
         }
@@ -126,6 +126,11 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
     if let Some(id) = found["snapshot_id"].as_str() {
         s.snapshot = id.to_string();
     }
+}
+
+/// A control's value: the driver gives an empty field's placeholder as one.
+pub(super) fn value(e: &Value) -> Option<&str> {
+    e["value"].as_str().filter(|v| e["placeholder"] != *v)
 }
 
 /// Always the whole window: a --query is ours to filter, so the driver's last snapshot, which an
