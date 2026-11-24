@@ -17,6 +17,30 @@ const scriptBody = agentScript.trim().replace(/;$/, "");
 export const agentScriptBody = scriptBody;
 const call = (op: object) => `(${scriptBody})(${JSON.stringify(op)})`;
 
+/**
+ * Where the page's own click handlers are, in document order: set as `onclick`, or by React, which keeps a node's props on
+ * it. Only the page's world sees those, so the page can lie here: it only names more of its elements clickable.
+ */
+const HANDLED = `(() => {
+  const found = [];
+  const all = document.getElementsByTagName("*");
+  for (let at = 0; at < all.length && found.length < 500; at++) {
+    const element = all[at];
+    const props = Object.keys(element).find((key) => key.startsWith("__reactProps$"));
+    if (typeof element.onclick === "function" || (props && typeof element[props]?.onClick === "function")) found.push(at);
+  }
+  return found;
+})()`;
+
+/** The read's own look at the page's click handlers; none if the page wouldn't say. */
+async function handledIn(guest: WebContents): Promise<number[]> {
+  const answer: unknown = await guest.executeJavaScript(HANDLED).catch(() => null);
+  return Array.isArray(answer) ? answer.filter((at) => Number.isInteger(at)).slice(0, 500) : [];
+}
+
+/** Reads the page for an agent, its controls with no role included. */
+export const readPage = async (guest: WebContents, op: object): Promise<unknown> => runScript(guest, { ...op, handled: await handledIn(guest) });
+
 /** Runs the agent's script on the tab's page, in its own world. The op is data, and the script is the bundle's own. */
 export function runScript(guest: WebContents, op: object): Promise<unknown> {
   return guest.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: call({ ...op, isolated: true }) }]);

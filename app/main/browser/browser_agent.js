@@ -4,6 +4,7 @@
 // calls. The test page (fixtures/agent-browser.html) runs this same file.
 //
 // Ops: { kind: "read", max } -> { url, title, text }
+//        (a control with no role reads as "clickable"; `handled`: where the page's own click handlers are, from the shell)
 //      { kind: "click", target, declared, approved } -> { done } | { ask, url } | { error }
 //      { kind: "type", target, text, submit, declared, approved } -> the same
 // A password field, seen by its type, its autocomplete, its computed text security or its names, shows only as a line
@@ -61,6 +62,23 @@
         return element.isContentEditable && !element.parentElement?.isContentEditable ? "textbox" : null;
     }
   };
+
+  const pointer = (element) => element && getComputedStyle(element).cursor === "pointer";
+  const around = (element) => element.parentElement || element.getRootNode().host || null;
+  /**
+   * A control with no role of its own, as a card that opens a page: it takes the hand cursor, not from what holds it, or
+   * has a click handler the page set on it. The page's handlers are out of this world's sight, so the shell looks for
+   * them in the page's and hands over where they are (`op.handled`, places in document order), kept until the next read.
+   */
+  const handled = () => (window.__brigadierHandled ??= new WeakSet());
+  const isClickable = (element) => {
+    if (roleOf(element) || element === document.body || element === document.documentElement) return false;
+    // A label's click is its control's, which has a ref.
+    if (element.localName === "label" && element.control) return false;
+    return element.hasAttribute("onclick") || handled().has(element) || (pointer(element) && !pointer(around(element)));
+  };
+  /** The role a control answers to: its own, or that it can only be clicked. */
+  const controlOf = (element) => roleOf(element) || (isClickable(element) ? "clickable" : null);
 
   const labelled = (element) => {
     const ids = (element.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
@@ -188,6 +206,10 @@
   const BLOCK = /^(address|article|aside|blockquote|br|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)$/;
 
   const read = (most) => {
+    if (op.handled) {
+      const all = document.getElementsByTagName("*");
+      window.__brigadierHandled = new WeakSet(op.handled.map((at) => all[at]).filter(Boolean));
+    }
     const lines = [];
     let line = "";
     const flush = () => {
@@ -244,6 +266,11 @@
         }
         const block = BLOCK.test(tag);
         if (block) flush();
+        // What it holds is read too: a card's own buttons are controls of theirs.
+        if (!labelling && isClickable(child)) {
+          flush();
+          lines.push(describe(child, "clickable"));
+        }
         const heading = /^h[1-6]$/.test(tag) && !child.querySelector("a, button, input");
         if (heading) {
           lines.push(`${"#".repeat(Number(tag[1]))} ${clean(child.innerText)}`);
@@ -284,10 +311,10 @@
   const ask = (sensitive, element) => {
     // The yes was for this page, at this address.
     if (op.approved && op.approved === location.href) return null;
-    return { ask: { sensitive, what: `${roleOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
+    return { ask: { sensitive, what: `${controlOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
   };
 
-  const pointer = (element, type) => {
+  const point = (element, type) => {
     const rect = element.getBoundingClientRect();
     const init = {
       bubbles: true, cancelable: true, composed: true, view: window, button: 0,
@@ -323,8 +350,14 @@
     const hit = deepest(x, y);
     const label = hit?.closest?.("label");
     if (hit && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element) {
-      const role = roleOf(hit);
+      const role = controlOf(hit);
       return { error: `${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.` };
+    }
+    // A card's middle may be a control it holds, whose click is another.
+    if (!roleOf(element)) {
+      for (let at = hit; at && at !== element; at = around(at)) {
+        if (roleOf(at)) return { error: `${op.target}'s middle is its ${roleOf(at)} ${quoted(nameOf(at))}, so clicking it would click that: use that one's own ref.` };
+      }
     }
     return { point: { x, y } };
   };
@@ -335,9 +368,10 @@
     const { element } = found;
     if (isPassword(element)) return { error: HANDS_OFF };
     if (element.disabled) return { error: `${op.target} is disabled.` };
-    const role = roleOf(element);
-    const kind = role === "button" ? filledKind(scopeOf(element)) : null;
-    const named = (role === "button" || role === "link") && namedKind(nameOf(element));
+    // A control with no role acts as a button does, whatever it's made of, so it asks as one.
+    const role = controlOf(element) || "clickable";
+    const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
+    const named = (role === "button" || role === "link" || role === "clickable") && namedKind(nameOf(element));
     const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (named && ask(named, element)) || (op.always && ask("action", element));
     if (asked) return asked;
     if (op.trusted) {
@@ -347,11 +381,11 @@
       if (place) return place;
     }
     element.scrollIntoView({ block: "center", inline: "center" });
-    pointer(element, "pointerdown");
-    pointer(element, "mousedown");
+    point(element, "pointerdown");
+    point(element, "mousedown");
     element.focus?.({ preventScroll: true });
-    pointer(element, "pointerup");
-    pointer(element, "mouseup");
+    point(element, "pointerup");
+    point(element, "mouseup");
     element.click();
     return { done: true };
   };
@@ -369,12 +403,12 @@
     } else element = deepFocused() || document.body;
     if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
     if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
-    const role = roleOf(element);
+    const role = element === document.body ? null : controlOf(element);
     const activates = op.key === "Enter" || op.key === "Space";
     let kind = null;
     let named = null;
-    if (activates && (role === "button" || role === "link")) {
-      kind = role === "button" ? filledKind(scopeOf(element)) : null;
+    if (activates && (role === "button" || role === "link" || role === "clickable")) {
+      kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
       named = namedKind(nameOf(element));
     } else if (op.key === "Enter" && element !== document.body) {
       kind = fieldKind(element) || filledKind(scopeOf(element), element);
