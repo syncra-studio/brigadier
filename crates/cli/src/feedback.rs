@@ -140,7 +140,7 @@ fn write(data: &Path, note: &str) -> io::Result<Value> {
     Ok(json!({"ok": true, "reports": reports}))
 }
 
-/// One reply to `prompt` from a throwaway writer run, as the old app's Automatic writer: the first
+/// One reply to `prompt` from a throwaway writer run, whatever Write with says: the first
 /// ready agent that's on, at its cheapest model, on the account new sessions start on; the next
 /// agent when it can't. Its runs keep their records in `<data>/feedback/runs/`, and what a run
 /// that died left there goes before the next.

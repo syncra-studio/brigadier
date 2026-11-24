@@ -152,6 +152,10 @@ function check(args: string[], name = "*"): Promise<void> {
   };
   return run(args).then(
     (reply) => {
+      const before = profile.get().value;
+      if (before && !before.git_writer && reply.git_writer) {
+        profile.set({ value: { ...before, git_writer: reply.git_writer } });
+      }
       const fresh = (reply.agents as Agent[]).filter((agent) => mine > (shown.get(agent.name) ?? 0));
       for (const agent of fresh) shown.set(agent.name, mine);
       const list = agents.get().list;
@@ -240,7 +244,7 @@ export async function changeAgentPath(agent: Agent): Promise<void> {
 }
 
 /** What onboarding keeps [D45]: undefined until loaded. */
-export type Profile = { name: string; intro_seen: boolean; onboarded: boolean; /** The tour offered or taken [D3109]. */ tour_seen?: boolean; /** Settings › Git's "Write with"; null is Automatic [D1224]. */ git_writer?: { backend: string; model: string } | null };
+export type Profile = { name: string; intro_seen: boolean; onboarded: boolean; /** The tour offered or taken [D3109]. */ tour_seen?: boolean; /** Settings › Git's "Write with"; null before any model is known [D1224]. */ git_writer?: { backend: string; model: string } | null };
 const profile = store<{ value?: Profile; error?: string }>({});
 export const useProfile = profile.use;
 

@@ -1,5 +1,6 @@
-//! The message writer [D1029, D1107], as feedback reports use it: the session's own agent at its
-//! cheapest model, and a local model only when the computer is offline.
+//! The message writer [D1029, D1107]: a PR's empty title and message on Settings' Write with model
+//! [D1224], anything else on the session's own agent at its cheapest model; a local model only when
+//! the computer is offline.
 
 use brigadier_core::adapters::{self, ModelInfo};
 use brigadier_core::fold::Fold;
@@ -29,6 +30,50 @@ pub(crate) fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
         })
         .filter(|m| !m.id.is_empty())
         .collect()
+}
+
+/// The agents ready now with their models, in the pickers' order: none off, hidden or barred.
+fn ready(data: &Path) -> Vec<Value> {
+    let groups = crate::models::run(data, &["models".into()]).unwrap_or_default();
+    let all = groups["groups"].as_array().cloned().unwrap_or_default();
+    (all.into_iter())
+        .filter(|g| {
+            g["unavailable"].is_null() && g["models"].as_array().is_some_and(|m| !m.is_empty())
+        })
+        .collect()
+}
+
+/// The saved Write with model, while it's available.
+pub(crate) fn chosen(data: &Path) -> Option<writer::Choice> {
+    let saved = writer::choice(data).ok()??;
+    let mut ready = ready(data).into_iter();
+    let group = ready.find(|g| g["provider"] == *saved.backend)?;
+    let listed = group["models"]
+        .as_array()?
+        .iter()
+        .any(|m| m["id"] == *saved.model);
+    listed.then_some(saved)
+}
+
+/// What Write with starts on: the first ready agent's light model, else its default, else its first.
+pub(crate) fn first(data: &Path) -> Option<writer::Choice> {
+    let group = ready(data).into_iter().next()?;
+    let backend = group["provider"].as_str()?.to_string();
+    let listed = group["models"].as_array()?;
+    let id = |m: &Value| m["id"].as_str().map(String::from);
+    let default = (listed.iter().find(|m| m["default"] == true)).or(listed.first());
+    let default = default.and_then(id)?;
+    let infos: Vec<ModelInfo> = (listed.iter().filter_map(id))
+        .map(|id| ModelInfo {
+            id,
+            ..ModelInfo::default()
+        })
+        .collect();
+    let light = adapters::get(&backend)?.cheap(Some(&default), &infos);
+    Some(writer::Choice {
+        model: light.unwrap_or(default),
+        backend,
+    })
 }
 
 /// One write of `prompt` (built from the session's own asks) on `chosen`, else its agent at its

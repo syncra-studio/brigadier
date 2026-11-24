@@ -394,15 +394,33 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
 /// A PR's title and description, by the message writer from what the branch changes [D1029].
 fn written(data: &Path, id: &str, changes: &str) -> io::Result<(String, String)> {
     let spec = core::load(data, id)?;
-    let f = core::fold(&spec.dir, true)?.fold;
+    let mut f = core::fold(&spec.dir, true)?.fold;
+    // One gone, off, hidden or barred leaves it to the session's own agent [D1224].
+    let chosen = super::commit::chosen(data);
+    if let Some(c) = &chosen
+        && !f.accounts.contains_key(&c.backend)
+    {
+        let backend = c.backend.clone();
+        let on = super::accounts::starting(
+            data,
+            core::Spec {
+                backend,
+                ..spec.clone()
+            },
+        );
+        f.accounts
+            .extend(on.starts_on.map(|id| (c.backend.clone(), id)));
+    }
     let active = core::writer::writing(&spec.dir)?;
     active.lock_shared()?;
     let prompt = format!(
         "Write a pull request title on the first line (under 72 characters), then a blank line, \
          then a short description of what changed and why. Reply with only that.\n\n{changes}"
     );
-    let reply = super::commit::written_for(data, &spec, &f, &active, None, |_| prompt.clone())
-        .map_err(|why| io::Error::other(format!("Couldn't write the title: {why}")))?;
+    let reply = super::commit::written_for(data, &spec, &f, &active, chosen.as_ref(), |_| {
+        prompt.clone()
+    })
+    .map_err(|why| io::Error::other(format!("Couldn't write the title: {why}")))?;
     let reply = core::writer::without_attribution(&reply);
     let (title, body) = reply.trim().split_once('\n').unwrap_or((reply.trim(), ""));
     Ok((title.trim().to_string(), body.trim().to_string()))

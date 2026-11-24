@@ -41,8 +41,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Some(name) => vec![agent(name)?],
                 None => available(),
             };
-            let agents = agents(data, &cwd, names, args.iter().any(|a| a == "--cached"))?;
-            Ok(json!({"ok": true, "agents": agents}))
+            let cached = args.iter().any(|a| a == "--cached");
+            let agents = agents(data, &cwd, names, cached)?;
+            let writer = (!cached && flag(args, "--cwd").is_none())
+                .then(|| profile::checked(data).ok())
+                .flatten();
+            Ok(json!({"ok": true, "agents": agents, "git_writer": writer}))
         }
         "setup" => {
             let a = agent(args.get(1).map_or("", String::as_str))?;
@@ -127,6 +131,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     // `--include` is one path a line; empty copies none [D178].
                     let include =
                         flag(args, "--include").map(|v| v.lines().map(String::from).collect());
+                    let browser = flag(args, "--browser-profile");
+                    let held = browser
+                        .filter(|id| !id.is_empty())
+                        .map(|id| crate::browser::hold_profile(data, id))
+                        .transpose()?;
                     let change = projects::Change {
                         branch_prefix: flag(args, "--branch-prefix").map(String::from),
                         name: flag(args, "--name").map(String::from),
@@ -134,30 +143,25 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                         trusted,
                         setup: flag(args, "--setup").map(String::from),
                         include,
-                        // Empty: Automatic [D631].
+                        // Empty: the first account that can see it, found again [D631].
                         github_account: flag(args, "--github-account")
                             .map(|v| Some(v.to_string()).filter(|v| !v.is_empty())),
-                        // Empty: Automatic, the browser's default [D769].
-                        browser_profile: match flag(args, "--browser-profile") {
-                            Some("") => Some(None),
-                            Some(id) => {
-                                crate::browser::profiles::check_id(id)?;
-                                Some(Some(id.into()))
-                            }
-                            None => None,
-                        },
+                        // Empty: the default one, saved [D769].
+                        browser_profile: browser
+                            .map(|id| Some(id.to_string()).filter(|id| !id.is_empty())),
                         pinned: None,
                         // `""|tag:N|emoji:E|image:PATH`: an image is copied in.
                         icon: flag(args, "--icon").map(String::from),
                     };
                     let project = projects::set(data, arg(2), change)?;
+                    drop(held);
                     // The answer stays saved when a CLI's own entry can't be written [D166].
                     let failed = core::trust::sync(data, &project.id, None);
                     return Ok(json!({"ok": true, "project": project, "trust_errors": failed}));
                 }
                 "accounts" => {
-                    let probe = !args.iter().any(|a| a == "--local");
-                    return core::host::accounts::seen(data, arg(2), probe);
+                    core::host::accounts::find(data, arg(2))?;
+                    return Ok(json!({"ok": true}));
                 }
                 "branches" => {
                     let folder = projects::get(data, arg(2))?.folder;

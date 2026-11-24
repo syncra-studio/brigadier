@@ -39,9 +39,11 @@ pub struct Project {
     pub removing: bool,
     /// Prefix for new session branches; absent uses brigadier/ [D1214].
     pub branch_prefix: Option<String>,
-    /// The GitHub login its PRs and sessions use; None: the one that can see it [D631].
+    /// The GitHub login its PRs and sessions use, the first found that can see it, else the user's
+    /// pick; None: not found yet [D631].
     pub github_account: Option<String>,
-    /// The browser profile its sessions' tabs open on; None: the default one [D769].
+    /// The browser profile its sessions' tabs open on, the default one when it was added; None, or
+    /// one that's gone: the default one now [D769].
     pub browser_profile: Option<String>,
     /// "folder": a folder of repositories, added as is [D494]; empty: one repository.
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -50,9 +52,12 @@ pub struct Project {
     pub pinned: Option<u64>,
     /// Its own icon, picked in its settings (icon.rs); None: the folder's logo, else its initials.
     pub icon: Option<String>,
+    /// What a newer build keeps here, written back as it was.
+    #[serde(flatten)]
+    pub rest: serde_json::Map<String, Value>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Deserialize, Default)]
 #[serde(default)]
 struct Records {
     projects: Vec<Project>,
@@ -94,10 +99,34 @@ pub fn locked(data: &Path) -> io::Result<(fs::File, Vec<Project>)> {
 }
 
 fn write(data: &Path, list: &[Project]) -> io::Result<()> {
-    let records = serde_json::to_vec_pretty(&Records {
-        projects: list.to_vec(),
-    })?;
-    write_atomic(&data.join("projects.json"), &records)
+    let path = data.join("projects.json");
+    let mut records = saved_records(&path)?;
+    records["projects"] = serde_json::to_value(list)?;
+    write_atomic(&path, &serde_json::to_vec_pretty(&records)?)
+}
+
+fn saved_records(path: &Path) -> io::Result<Value> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Value::Object(serde_json::from_slice(&bytes)?)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Value::Object(Default::default())),
+        Err(e) => Err(e),
+    }
+}
+
+/// Change just the selected field, with the caller holding `projects.lock`.
+fn save_picks(data: &Path, ids: &[&str], field: &str, to: &str) -> io::Result<()> {
+    let path = data.join("projects.json");
+    let mut records = saved_records(&path)?;
+    let Some(projects) = records["projects"].as_array_mut() else {
+        return err("Missing project records".into());
+    };
+    for project in projects
+        .iter_mut()
+        .filter(|p| p["id"].as_str().is_some_and(|id| ids.contains(&id)))
+    {
+        project[field] = to.into();
+    }
+    write_atomic(&path, &serde_json::to_vec_pretty(&records)?)
 }
 
 /// Changes the records under `projects.lock`, so the CLI and the daemon never lose each other's
@@ -273,11 +302,56 @@ pub fn add(data: &Path, path: &str, id: Option<&str>, name: Option<&str>) -> io:
         let folder = folder.display().to_string();
         list.push(Project {
             kind,
+            browser_profile: default_profile(data),
             ..record(id, &folder, name.as_deref(), added)
         });
         Ok(list.last().unwrap().clone())
     })?;
     Ok(project)
+}
+
+/// Saves the account found for project `id`, unless one was picked or its folder moved meanwhile.
+pub fn found_account(data: &Path, id: &str, folder: &str, login: &str) -> io::Result<()> {
+    let (_lock, list) = locked(data)?;
+    if list
+        .iter()
+        .any(|p| p.id == id && p.folder == folder && p.github_account.is_none() && !p.removing)
+    {
+        save_picks(data, &[id], "github_account", login)?;
+    }
+    Ok(())
+}
+
+/// The browser's default profile, from the registry the CLI keeps; None when it can't be read.
+fn default_profile(data: &Path) -> Option<String> {
+    match fs::read(data.join("browser/browser-profiles.json")) {
+        Ok(bytes) => {
+            let places: Value = serde_json::from_slice(&bytes).ok()?;
+            places["defaultId"].as_str().map(String::from)
+        }
+        Err(e) => (e.kind() == io::ErrorKind::NotFound).then(|| "default".into()),
+    }
+}
+
+/// Saves the browser's default profile in each project on `from`: none of its own yet (None), or
+/// one being deleted.
+pub fn to_default_profile(data: &Path, from: Option<&str>) -> io::Result<()> {
+    let on = |p: &Project| p.browser_profile.as_deref() == from;
+    if !list(data)?.iter().any(on) {
+        return Ok(());
+    }
+    let (_lock, list) = locked(data)?;
+    let ids: Vec<&str> = list
+        .iter()
+        .filter(|p| on(p))
+        .map(|p| p.id.as_str())
+        .collect();
+    if !ids.is_empty()
+        && let Some(to) = default_profile(data)
+    {
+        save_picks(data, &ids, "browser_profile", &to)?;
+    }
+    Ok(())
 }
 
 fn find<'a>(list: &'a mut [Project], id: &str) -> io::Result<&'a mut Project> {

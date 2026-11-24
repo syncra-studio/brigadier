@@ -47,9 +47,6 @@ export type ModelGroup = {
 /** What the session runs on; `fast` on its model's fast tier. */
 export type ModelChoice = { provider: string; model: string; effort: string | null; fast?: boolean };
 
-/** A setting Brigadier may pick for: a chip at the head of the models, and picking a model turns it off [D91]. */
-export type Automatic = { chosen: boolean; label: string; hint: string; onChoose: () => void };
-
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
   const known: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
@@ -65,8 +62,7 @@ export function ProviderMark({ mark, className }: { mark: string | null; classNa
 }
 
 /** What the pill and a select show: mark, model, ⚡ while on Fast, effort (muted) [D84, D89]. */
-export function ModelLabel({ groups, value, automatic, efforts = true, mark = "size-icon-md" }: { groups: ModelGroup[]; value: ModelChoice; automatic?: Automatic; efforts?: boolean; mark?: string }) {
-  if (automatic?.chosen) return <span className="truncate text-foreground">{automatic.label}</span>;
+export function ModelLabel({ groups, value, efforts = true, mark = "size-icon-md" }: { groups: ModelGroup[]; value: ModelChoice; efforts?: boolean; mark?: string }) {
   const group = groups.find((entry) => entry.provider === value.provider);
   const model = group?.models.find((entry) => entry.id === value.model);
   const word = !efforts ? null : value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
@@ -81,8 +77,7 @@ export function ModelLabel({ groups, value, automatic, efforts = true, mark = "s
 }
 
 /** Its words for a screen reader: "Model: GPT-5.5, Fast, High". */
-export function modelWords(groups: ModelGroup[], value: ModelChoice, automatic?: Automatic): string {
-  if (automatic?.chosen) return `Model: ${automatic.label}`;
+export function modelWords(groups: ModelGroup[], value: ModelChoice): string {
   const model = groups.find((entry) => entry.provider === value.provider)?.models.find((entry) => entry.id === value.model);
   const word = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
   return `Model: ${named(groups, value.provider, value.model)}${value.fast === true && model?.fast ? ", Fast" : ""}${word ? `, ${word}` : ""}`;
@@ -118,7 +113,6 @@ export type ShelfProps = {
   onSetUp?: (provider: string) => void;
   /** False before a session exists: another agent is then just a pick, with nothing to hand off. */
   asksSwitch?: boolean;
-  automatic?: Automatic;
   /** False for a setting that takes no effort level or speed: no effort scale and no Fast key. */
   efforts?: boolean;
 };
@@ -133,9 +127,8 @@ export type ShelfProps = {
  * only, best match first, Enter picks the first; a letter typed anywhere starts it, Esc clears it before it closes.
  * `onEnter` and `onEscape`: the strip's keys that fold it; `onLeave`: Set up.
  */
-export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true, automatic, efforts = true, onEnter, onEscape, onLeave }: ShelfProps & { onEnter?: () => void; onEscape?: () => void; onLeave?: () => void }) {
-  const auto = automatic?.chosen === true;
-  const [browsing, setBrowsing] = useState(() => (auto ? (groups.find((entry) => !entry.unavailable) ?? groups[0])?.provider : value.provider));
+export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true, efforts = true, onEnter, onEscape, onLeave }: ShelfProps & { onEnter?: () => void; onEscape?: () => void; onLeave?: () => void }) {
+  const [browsing, setBrowsing] = useState(value.provider);
   const group = groups.find((entry) => entry.provider === browsing) ?? groups[0];
   const [underKeys, setUnderKeys] = useState<{ provider: string; model: Model } | null>(null);
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
@@ -162,7 +155,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
     setBrowsing(provider);
   };
 
-  const isChecked = (provider: string, entry: Model) => !auto && provider === value.provider && entry.id === value.model;
+  const isChecked = (provider: string, entry: Model) => provider === value.provider && entry.id === value.model;
   const pick = (provider: string, next: Model, also?: { effort?: string; fast?: boolean }) => {
     const same = provider === value.provider;
     // A new model keeps the effort within the agent when it has that level, else takes its own default; fast carries
@@ -248,7 +241,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
       setTimeout(() => waits.current || onEnter());
     }
   };
-  const anyChip = (auto && !needle) || listed.some((each) => isChecked(group!.provider, each));
+  const anyChip = listed.some((each) => isChecked(group!.provider, each));
   const chip = (key: string, label: ReactNode, pressed: boolean, first: boolean, onClick: () => void, entry?: Model) => (
     <button
       key={key}
@@ -352,12 +345,9 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
             </div>
           )}
           <div role="group" aria-label={group ? `${group.label} models` : "Models"} data-picker-part="models" className="-m-1 flex min-h-0 flex-wrap content-start gap-x-1.5 gap-y-2 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
-            {automatic && !needle && (
-              <Tip tip={automatic.hint}>{chip("automatic", automatic.label, auto, true, automatic.onChoose)}</Tip>
-            )}
             {group &&
               listed.map((entry, index) =>
-                chip(entry.id, needle ? <span><MatchedText text={entry.name} query={needle} hit="font-semibold text-foreground" /></span> : entry.name, isChecked(group.provider, entry), (!automatic || Boolean(needle)) && index === 0, () => pick(group.provider, entry), entry),
+                chip(entry.id, needle ? <span><MatchedText text={entry.name} query={needle} hit="font-semibold text-foreground" /></span> : entry.name, isChecked(group.provider, entry), index === 0, () => pick(group.provider, entry), entry),
               )}
             {group && !group.unavailable && models.length === 0 && <p className="text-xs text-muted-foreground">No models listed yet</p>}
             {needle && listed.length === 0 && <p className="text-xs text-placeholder">No models match “{needle}”</p>}
@@ -382,7 +372,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
                       role="radio"
                       data-picker-item=""
                       aria-checked={on}
-                      disabled={!takes || auto}
+                      disabled={!takes}
                       tabIndex={on || (!anyOn && index === levels.findIndex((each) => inHand?.efforts.includes(each))) ? 0 : -1}
                       title={level === inHand?.defaultEffort ? "Default" : undefined}
                       onClick={() => act({ effort: level })}
@@ -398,7 +388,7 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
               </div>
             </div>
             {(() => {
-              const can = Boolean(inHand?.fast) && !auto;
+              const can = Boolean(inHand?.fast);
               const key = (
                 <button
                   type="button"
@@ -472,7 +462,7 @@ export function ModelPicker({
     >
       {trigger && (
         <BasePopover.Trigger disabled={disabled} render={trigger}>
-          <ModelLabel groups={shelf.groups} value={shelf.value} automatic={shelf.automatic} efforts={shelf.efforts} mark="size-icon-sm" />
+          <ModelLabel groups={shelf.groups} value={shelf.value} efforts={shelf.efforts} mark="size-icon-sm" />
         </BasePopover.Trigger>
       )}
       <BasePopover.Portal>

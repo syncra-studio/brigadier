@@ -38,6 +38,7 @@
 //! always (`awake`) [D30, D36], and with the lid closed too when set (`lid`) [D333].
 
 use brigadier::index::Index;
+use brigadier_core::projects::{self, Project};
 use brigadier_core::{awake_mode, data_dir};
 use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
@@ -150,6 +151,11 @@ fn main() -> io::Result<()> {
     // Terminals nothing holds any more, from a cleanup cut short [repo D35].
     let _ = brigadier::run(&data, &["terminal".into(), "sweep".into()]);
     let _ = brigadier::run(&data, &["shell".into(), "settle".into()]);
+    // Each project keeps its own browser profile and GitHub account: one with none gets them [D631, D769].
+    if let Err(e) = projects::to_default_profile(&data, None) {
+        eprintln!("brigadierd: projects: {e}");
+    }
+    brigadier_core::host::accounts::read_ahead(data.clone());
     git::auto_fetch(data.clone());
     let mut index = Index::open(&data, false)?;
     let listener = wire::bind(&data.join("daemon.sock"))?;
@@ -314,10 +320,28 @@ fn stop(data: &Path, pid: libc::pid_t) {
 fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
     let mut s = state.lock().unwrap();
     let (mut projects, mut projects_gone) = (vec![], vec![]);
-    match brigadier_core::projects::list(data) {
+    match projects::list(data) {
         Ok(list) => {
-            let list: BTreeMap<String, Value> =
-                list.into_iter().map(|p| (p.id.clone(), json!(p))).collect();
+            let shown = |p: Project| {
+                let mut shown = json!(p);
+                shown["github"] = brigadier_core::host::accounts::snapshot(data, &p);
+                (p.id, shown)
+            };
+            let list: BTreeMap<String, Value> = list.into_iter().map(shown).collect();
+            // One just added, by the app or a CLI, or whose account was cleared, finds its account [D631].
+            for p in list
+                .values()
+                .filter(|p| s.ready && p["github_account"].is_null())
+            {
+                let old = s.projects.get(p["id"].as_str().unwrap_or(""));
+                if old.is_none_or(|o| o["folder"] != p["folder"] || !o["github_account"].is_null())
+                {
+                    brigadier_core::host::accounts::find_behind(
+                        data,
+                        p["id"].as_str().unwrap_or(""),
+                    );
+                }
+            }
             projects_gone = s
                 .projects
                 .keys()

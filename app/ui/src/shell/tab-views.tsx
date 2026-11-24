@@ -18,7 +18,6 @@ import { PrInbox } from "../pull-requests/inbox";
 import { useDaemon } from "../daemon";
 import { ReviewView } from "../review/view";
 import { useNoteRun } from "../note/run";
-import { run } from "../onboarding/api";
 import { newId } from "../session/store";
 import { keysOf } from "../shortcuts";
 import { LocalServers } from "../browser/new-tab";
@@ -31,6 +30,9 @@ import { NoteTab, UNTITLED_NOTE } from "./note-tab";
 import { RightPanelSlot } from "./right-panel";
 import { SummarySlot } from "./summary-card";
 import { CHAT, HOME, isRef, openTab, replaceTab, revealOf, type Tab, TAB_KINDS, useTabs } from "./tab-store";
+
+// Where an older build kept each project's account.
+for (const key of Object.keys(localStorage)) if (key.startsWith("pullRequests.account.")) localStorage.removeItem(key);
 
 const CARD = "flex min-w-0 items-center rounded-session-tab bg-fill-faint not-has-disabled:hover:bg-fill has-data-popup-open:bg-fill";
 /** A tile [D438]: its icon and key along the top, its name under them. */
@@ -123,44 +125,17 @@ function NoteList({ owner, active, onOpen }: { owner: string; active: boolean; o
   );
 }
 
-/** The account Automatic uses for project `id`, its last one read at once; undefined while read with none kept, null for none or unreadable. */
-function useAutoAccount(id: string | undefined): string | null | undefined {
-  const { daemon } = useDaemon();
-  const key = `pullRequests.account.${id}`;
-  const [read, setRead] = useState<{ key: string; account: string | null } | null>(null);
-  const kept = localStorage.getItem(key) ?? undefined;
-  useEffect(() => {
-    if (!id || !daemon) return;
-    let live = true;
-    void run(["projects", "accounts", id]).then(
-      ({ auto = null }) => {
-        // None is never kept: it can be a read that failed, and the next tab would open as All accounts first.
-        if (auto) localStorage.setItem(key, auto);
-        else localStorage.removeItem(key);
-        if (live) setRead({ key, account: auto });
-      },
-      () => live && setRead({ key, account: kept ?? null }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [id, daemon]);
-  if (!id) return null;
-  return read?.key === key ? read.account : kept;
-}
-
-/** The Pull Requests page's inbox as a tab, preset to the session's project and its GitHub account, picked or Automatic's; a
- *  PR opens in its own tab [D314]. */
+/** The Pull Requests page's inbox as a tab, preset to the session's project and its GitHub account; a PR
+ *  opens in its own tab [D314]. */
 function PrListTab({ owner, tab }: { owner: string; tab: Tab }) {
   const { rows, projects } = useDaemon();
   const home = useHomeProject();
   const id = owner === HOME ? home?.id : rows?.find((row) => row.id === owner)?.project;
-  const picked = id ? projects?.find((each) => each.id === id)?.github_account : null;
-  const auto = useAutoAccount(picked ? undefined : (id ?? undefined));
+  const account = projects?.find((each) => each.id === id)?.github_account ?? null;
   // Preset once the project's known; the menus then keep what's picked here.
   // shortcut: a closed tab's filters stay in localStorage (a few bytes each); keep them in Rust's tab record if that grows.
   if (!rows || !projects) return null;
-  return <PrInbox tab={{ key: `pullRequests.tab.${tab.id}`, preset: id ? { project: id } : {}, account: picked ?? auto, open: (ref) => openTab(owner, "pr", ref) }} />;
+  return <PrInbox tab={{ key: `pullRequests.tab.${tab.id}`, preset: id ? { project: id } : {}, account, open: (ref) => openTab(owner, "pr", ref) }} />;
 }
 
 /** A checkout file, read by Rust [D1002]. */

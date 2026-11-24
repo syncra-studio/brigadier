@@ -210,8 +210,6 @@ pub(super) struct Covered {
     pub repos: Vec<(Checkout, Repo)>,
     /// It has GitHub repositories on other servers, which keep gh's own sign-in there.
     pub more: bool,
-    /// Automatic's server, when the picked account's is another.
-    pub auto: Option<String>,
 }
 
 pub(super) fn covered(data: &Path, p: &Project) -> Covered {
@@ -223,9 +221,7 @@ pub(super) fn covered(data: &Path, p: &Project) -> Covered {
     let all: Vec<(Checkout, Repo)> = (all.into_iter())
         .filter_map(|(c, r)| Some((c, r?)))
         .collect();
-    let on = |pick| server(all.iter().map(|(_, r)| r), pick);
-    let here = on(p.github_account.as_deref());
-    let auto = on(None).filter(|auto| here.as_ref() != Some(auto));
+    let here = server(all.iter().map(|(_, r)| r), p.github_account.as_deref());
     let (mut repos, elsewhere): (Vec<_>, Vec<_>) =
         (all.into_iter()).partition(|(_, r)| here.as_ref() == Some(&r.host));
     let key = here.as_deref().map(accounts::token_key);
@@ -238,7 +234,6 @@ pub(super) fn covered(data: &Path, p: &Project) -> Covered {
     Covered {
         repos,
         more: !elsewhere.is_empty(),
-        auto,
     }
 }
 

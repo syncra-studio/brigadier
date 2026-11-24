@@ -281,7 +281,7 @@ fn gh(repo: &Repo, pick: Option<&str>) -> Option<Gh> {
         if last.as_ref() == Some(&user) || pick.as_ref() == Some(&user) {
             return Some(gh);
         }
-        if reads(&gh, repo) {
+        if reads(&gh, repo) == Some(true) {
             READER.lock().unwrap().insert(key, user);
             return Some(gh);
         }
@@ -329,20 +329,16 @@ fn graphql(
     })
 }
 
-/// Whether `gh` can read `repo`.
-fn reads(gh: &Gh, repo: &Repo) -> bool {
+/// Whether `gh` can read `repo`; None when GitHub couldn't be asked.
+fn reads(gh: &Gh, repo: &Repo) -> Option<bool> {
     let mut probe = gh.command();
     let path = format!("repos/{}", repo.path);
     probe.args(["api", "--hostname", &repo.host, "--silent", &path]);
-    setup::run(&mut probe, GH_SECS).is_ok_and(|out| out.status.success())
-}
-
-/// Whether `gh` can read every one of `repos`, asked at once.
-fn reads_all(gh: &Gh, repos: &[&Repo]) -> bool {
-    std::thread::scope(|s| {
-        let all: Vec<_> = (repos.iter()).map(|r| s.spawn(|| reads(gh, r))).collect();
-        (all.into_iter()).all(|read| read.join().unwrap_or(false))
-    })
+    let out = setup::run(&mut probe, GH_SECS).ok()?;
+    let said = String::from_utf8_lossy(&out.stderr);
+    let refused = ["(HTTP 401)", "(HTTP 403)", "(HTTP 404)"];
+    let no = refused.iter().any(|c| said.contains(c)) && !said.contains("rate limit");
+    (out.status.success() || no).then_some(out.status.success())
 }
 
 /// `repo`'s reader failed a read: the next one probes again.

@@ -124,7 +124,7 @@ impl Places {
             }
             at = parent(data, &id)?;
         }
-        // A deleted profile is Automatic again.
+        // One whose project's move was cut short by a crash is the default one too.
         Ok(of_project.unwrap_or_else(|| self.default_id.clone()))
     }
 
@@ -227,6 +227,9 @@ impl Places {
         }
         if op != "list" {
             self.write(data)?;
+        }
+        if matches!(op, "delete-mark" | "forget") {
+            core::projects::to_default_profile(data, Some(get(1)?))?;
         }
         let mut out = serde_json::to_value(self)?;
         out["ok"] = true.into();

@@ -34,8 +34,8 @@ export type SettingsSource = {
   check(path: string): Promise<FolderCheck>;
   /** `projects set <id> …args`, with `change` shown meanwhile; throws Rust's reason. */
   save(project: Project, change: Partial<Project>, args: string[]): Promise<void>;
-  /** `projects accounts <id>`: `local` reads no network, so its `sees` and `auto` are null [D631]. */
-  accounts(id: string, local: boolean): Promise<GithubAccounts>;
+  /** `projects accounts <id>`: asks GitHub again; what it finds lands in the project's record [D631]. */
+  accounts(id: string): Promise<unknown>;
   /** A folder of repositories' repositories, by path from its top [D494]. */
   repos(folder: string): Promise<string[]>;
 };
@@ -44,17 +44,9 @@ export const daemonSettings: SettingsSource = {
   pick: daemonSource.pick,
   check: daemonSource.check,
   save: setProject,
-  accounts: (id, local) => run(["projects", "accounts", id, ...(local ? ["--local"] : [])]) as Promise<GithubAccounts>,
+  accounts: (id) => run(["projects", "accounts", id]),
   repos: async (folder) => ((await run(["projects", "inspect", folder])).check?.repos ?? []) as string[],
 };
-
-/**
- * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
- * the repository, and the one Automatic uses (the first that can). A folder's is for all its `repos`, on `host` alone when
- * it has GitHub repositories elsewhere too; `auto_host` is Automatic's server when the picked account's is another. Not on
- * GitHub: no row.
- */
-export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; repos?: number; host?: string | null; auto_host?: string | null; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 /** One setting, as the page's rows: its name over one plain line, its control at the end, or under it when `wide`. */
 function Row({ label, line, error, wide = false, children }: { label: string; line: ReactNode; error?: string | null; wide?: boolean; children: ReactNode }) {
@@ -91,28 +83,22 @@ function SavedInput({ value, onSave, ...props }: { value: string; onSave: (value
   );
 }
 
-const Login = ({ login, before = "" }: { login: string; before?: string }) => (
+const Login = ({ login }: { login: string }) => (
   <span className="flex min-w-0 items-center gap-2">
     <Avatar login={login} size="size-4" />
-    <span className="truncate">
-      {before}@{login}
-    </span>
+    <span className="truncate">@{login}</span>
   </span>
 );
 
-const Profile = ({ name, hue, before = "" }: { name: string; hue: number; before?: string }) => (
+const Profile = ({ name, hue }: { name: string; hue: number }) => (
   <span className="flex min-w-0 items-center gap-2">
     <ProfileDisc profile={{ name, hue }} size="sm" />
-    <span className="truncate">
-      {before}
-      {name}
-    </span>
+    <span className="truncate">{name}</span>
   </span>
 );
 
 export function ProjectSettings({ project, source }: { project: Project; source: SettingsSource }) {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
-  const [github, setGithub] = useState<GithubAccounts | null>(null);
   const [checking, setChecking] = useState(true);
   const [repos, setRepos] = useState<string[] | null>(null);
   const [files, setFiles] = useState(project.include);
@@ -123,34 +109,22 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   const { daemon, rows: all } = useDaemon();
   const sessions = all?.filter((row) => row.project === project.id).length ?? 0;
   const folderKind = project.kind === "folder";
-  // The account row draws from the local read at once; the probed one fills in which accounts can see the repository.
-  // Read again for a new folder, and on reconnecting after a failed read.
+  // The record draws at once; GitHub is asked again behind it, for a new folder and on reconnecting too.
   useEffect(() => {
     let live = true;
-    setGithub(null);
+    setChecking(true);
     setRepos(null);
     setErrors((now) => ({ ...now, repos: null }));
     const failed = (field: string) => (cause: unknown) => live && setErrors((now) => ({ ...now, [field]: errorText(cause) }));
-    void source.accounts(project.id, true).then((reply) => live && setGithub((now) => now ?? reply), () => {});
-    void source
-      .accounts(project.id, false)
-      .then((reply) => live && setGithub(reply), () => {})
-      .finally(() => live && setChecking(false));
+    void source.accounts(project.id).then(
+      () => live && setChecking(false),
+      () => live && setChecking(false),
+    );
     if (folderKind) void source.repos(project.folder).then((list) => live && setRepos(list), failed("repos"));
     return () => {
       live = false;
     };
   }, [project.id, project.folder, folderKind, daemon]);
-
-  // A folder's pick can be another server's than Automatic's: its row changes servers with it.
-  useEffect(() => {
-    if (!github?.auto_host) return;
-    let live = true;
-    void source.accounts(project.id, false).then((reply) => live && setGithub(reply), () => {});
-    return () => {
-      live = false;
-    };
-  }, [project.github_account]);
 
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
@@ -168,8 +142,8 @@ export function ProjectSettings({ project, source }: { project: Project; source:
       const picked = await source.pick(project.folder);
       if (!picked) return;
       const check = await source.check(picked);
-      // A new folder is asked about trust again [D166].
-      if (check.kind === "repo" || check.kind === "folder") save("folder", { folder: check.kind === "repo" ? check.repo : picked, trusted: null }, ["--folder", check.kind === "repo" ? check.repo : picked]);
+      // A new folder is asked about trust again [D166], its account found again.
+      if (check.kind === "repo" || check.kind === "folder") save("folder", { folder: check.kind === "repo" ? check.repo : picked, trusted: null, github_account: null, github: null }, ["--folder", check.kind === "repo" ? check.repo : picked]);
       else setErrors((now) => ({ ...now, folder: check.kind === "invalid" ? check.reason : `${picked} is not in a git repository` }));
     } catch (cause) {
       setErrors((now) => ({ ...now, folder: errorText(cause) }));
@@ -177,15 +151,15 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   };
   const profiles = useProfiles();
   const fallback = useDefaultProfile();
+  const github = project.github;
   const account = project.github_account ?? "";
+  const logins = github?.logins ?? [];
   // A folder's several repositories are seen together; one is in a single repository's words.
-  const several = github && (github.repos ?? 1) > 1 ? `all ${github.repos} repositories` : null;
+  const several = github?.of && github.of.length > 1 ? `all ${github.of.length} repositories` : null;
   const on = github?.host ? ` on ${github.host}` : "";
   const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : `${known ? "Can" : "Can't"} see ${several ? several + on : "this repository"}`);
   const used = `${several ? `Pull requests and sessions in ${several}` : "Its pull requests and sessions"}${on} use it`;
 
-  // Drawn once the account read lands, so the GitHub account row doesn't push the page down [D257].
-  if (!github && checking) return null;
   return (
     <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-6 pt-tab-bar pb-6">
       {/* The Pull Requests page's title, at its spacing. */}
@@ -217,24 +191,20 @@ export function ProjectSettings({ project, source }: { project: Project; source:
           </span>
         </Row>
         )}
-        {github?.github && (
-        <Row label="GitHub account" line={github.ssh && account ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
+        {(github ? github.github : Boolean(account) || checking) && (
+        <Row label="GitHub account" line={github?.ssh ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
           <Select
             label="GitHub account"
             value={account}
+            disabled={!account && logins.length === 0}
             align="end"
             className="w-full"
-            onChange={(login) => save("github_account", { github_account: login || null }, ["--github-account", login])}
+            placeholder={checking && logins.some((each) => each.sees === null) ? "Checking…" : "Choose an account"}
+            onChange={(login) => save("github_account", { github_account: login }, ["--github-account", login])}
             options={[
-              {
-                value: "",
-                label: "Automatic",
-                shown: github.auto && !github.auto_host ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
-                hint: github.auto_host ? `The account for your repositories on ${github.auto_host}` : github.auto ? `@${github.auto}, the ${several ? "first " : ""}account that can see ${several ? several + on : github.repo}` : checking ? "Checking…" : `None of your accounts can see ${several ? several + on : github.repo}`,
-              },
-              ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
+              ...logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
               // A pick gh has since signed out of stays shown, so it can be seen and changed.
-              ...(account && !github.logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: "Not signed in to gh" }] : []),
+              ...(account && !logins.some((each) => each.login === account) ? [{ value: account, label: <Login login={account} />, hint: github ? "Not signed in to gh" : undefined }] : []),
             ]}
           />
         </Row>
@@ -242,15 +212,12 @@ export function ProjectSettings({ project, source }: { project: Project; source:
         <Row label="Browser profile" line="Its sessions' browser tabs open signed in as this profile; a tab can still switch" error={errors.browser_profile}>
           <Select
             label="Browser profile"
-            // A deleted profile is Automatic, as Rust resolves it [D769].
-            value={profiles.some((each) => each.id === project.browser_profile) ? project.browser_profile! : ""}
+            // One that's gone is the default, as Rust resolves it [D769].
+            value={profiles.some((each) => each.id === project.browser_profile) ? project.browser_profile! : fallback.id}
             align="end"
             className="w-full"
-            onChange={(id) => save("browser_profile", { browser_profile: id || null }, ["--browser-profile", id])}
-            options={[
-              { value: "", label: "Automatic", shown: <Profile {...fallback} before="Automatic · " />, hint: `${fallback.name}, the default profile` },
-              ...profiles.map((each) => ({ value: each.id, label: <Profile {...each} /> })),
-            ]}
+            onChange={(id) => save("browser_profile", { browser_profile: id }, ["--browser-profile", id])}
+            options={profiles.map((each) => ({ value: each.id, label: <Profile {...each} /> }))}
           />
         </Row>
         <Row label="Trust this folder" line="Agents work here, asking only as your permission level says; off, every session here asks first" error={errors.trusted}>

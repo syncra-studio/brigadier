@@ -76,7 +76,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
        brigadier awake [off|work|always|lid|lid-setup] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
-       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: automatic) | accounts I [--local] | reveal I | remove I]
+       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] (null: choose the first available writer again) | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: find a GitHub account again, save the default browser profile, or restore the default icon) | accounts I | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
        brigadier switch <id> [--account A] [--auto]";
