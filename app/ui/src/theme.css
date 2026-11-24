@@ -1636,20 +1636,34 @@
     border-color: transparent;
   }
   /* With the right panel open, a hairline under the titlebar row, across the whole main area [D41], folded from
-     the row's separator on (session-tab-bar); both ends ease with the sidebar. Its start is past the 1px border. */
-  &:has([data-slot="right-panel"][data-state="expanded"])::after {
+     the row's separator on and only where the row has no line of its own (session-tab-bar), which it would thicken; it
+     eases with the sidebar, at once while that's dragged. Always there, so its start keeps up however the panel opens;
+     it's past the 1px border. */
+  &::after {
     content: "";
     position: absolute;
     inset-inline: calc(var(--tabs-start) - var(--spacing) * 2 - var(--sidebar-shown) - 1px) 0;
     top: var(--spacing-tab-bar);
     height: 0.5px;
-    background: var(--color-divider);
+    background-color: var(--color-divider);
+    opacity: 0;
     pointer-events: none;
     z-index: 11;
-    transition: inset-inline-start var(--duration-fold) var(--ease-sidebar);
+    transition:
+      inset-inline-start var(--duration-fold) var(--ease-sidebar),
+      background-color var(--duration-fold) var(--ease-sidebar);
     @media (prefers-reduced-motion: reduce) {
       transition: none;
     }
+  }
+  &:has([data-slot="right-panel"][data-state="expanded"])::after {
+    opacity: 1;
+  }
+  [data-slot="sidebar-wrapper"][data-state="collapsed"]:has([data-slot="session-tabs"][data-ruled]) > &::after {
+    background-color: transparent;
+  }
+  [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) > &::after {
+    transition: none;
   }
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -1788,8 +1802,11 @@
   [data-slot="sidebar-wrapper"][data-state="expanded"] &::before {
     background-color: transparent;
   }
-  [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) &::after {
-    transition: none;
+  [data-slot="sidebar-wrapper"]:has([data-slot="sidebar-panel"][data-state="expanded"] [data-resizing]) & {
+    &::before,
+    &::after {
+      transition: none;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     &::before,
