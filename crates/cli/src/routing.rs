@@ -21,7 +21,7 @@ mod receipt;
 mod retry;
 mod rules;
 
-pub(crate) use hold::{ask, real, set_ran, stopped, stops};
+pub(crate) use hold::{ask, real, resume, set_ran, stopped, stops};
 pub(crate) use jobs::said;
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::receipt;
@@ -374,20 +374,4 @@ pub(crate) fn after(
             Some((a.to_string(), id.to_string(), effort))
         })
         .collect()
-}
-
-/// The daemon's: worker `wid`'s wait for its reset is over, so it goes on as picked [D2028].
-pub(crate) fn due(data: &Path, wid: &str) {
-    let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
-    let Some(h) = f
-        .ok()
-        .and_then(|f| f.hold)
-        .filter(|h| h["phase"] == "waiting")
-    else {
-        return;
-    };
-    if h["resets"].as_u64().is_none_or(|at| at <= log::now_ms()) {
-        let (data, wid) = (data.to_path_buf(), wid.to_string());
-        std::thread::spawn(move || hold::resume(&data, &wid));
-    }
 }

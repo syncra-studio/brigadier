@@ -207,6 +207,9 @@ fn here(dir: &Path) -> String {
 pub fn read(dir: &Path) -> Vec<(i32, u64)> {
     let text = fs::read_to_string(dir.join(SEEN)).unwrap_or_default();
     let whole = text.rsplit_once('\n').map_or("", |t| t.0);
+    if whole.is_empty() {
+        return vec![];
+    }
     let mut lines = whole.lines();
     if lines.next() != Some(here(dir).as_str()) {
         return vec![];

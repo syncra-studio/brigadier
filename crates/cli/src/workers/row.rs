@@ -15,7 +15,8 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         return Value::Null;
     };
     // Held, waiting for its row's reset: its limit, though no turn hit one yet [D2028, D3029].
-    let (state, resets) = match f.hold.as_ref().filter(|h| h["phase"] == "waiting") {
+    let waits = f.hold.as_ref().filter(|h| h["phase"] == "waiting");
+    let (state, resets) = match waits {
         Some(h) => ("limited", h["resets"].as_u64()),
         None => (state, f.resets),
     };
@@ -82,7 +83,9 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         "asked": crate::routing::asked(&l.asked, ran), "why": crate::routing::why(&l.asked, ran, &retry), "added": last["added"], "removed": last["removed"],
         // A folder chat's worker: the repos it claimed, for its row [D494].
         "repos": core::folder::claims(dir).into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
-        "now": if kind == "working" { f.calls.last() } else { None }})
+        "now": if kind == "working" { f.calls.last() } else { None },
+        // When its wait is over, for the daemon's pass.
+        "due": waits.map(|h| h["resets"].as_u64().unwrap_or(0))})
 }
 
 /// `busy`, for the row in `dir`.

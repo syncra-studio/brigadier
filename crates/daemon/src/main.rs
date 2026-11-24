@@ -72,6 +72,9 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 // shortcut: polls every log's size each tick (about 10k stats a second at 10k sessions); move to
 // kqueue if that shows up in a profile.
 const TICK: Duration = Duration::from_millis(500);
+/// How often the sessions at rest are looked at too: what no file of theirs says, and the retry of
+/// what was cut short or failed.
+const FULL: Duration = Duration::from_secs(5);
 
 struct Sub {
     out: Sender<String>,
@@ -184,9 +187,14 @@ fn main() -> io::Result<()> {
     let mut seen: HashMap<String, Value> = HashMap::new();
     let mut finished: HashMap<String, u64> = HashMap::new();
     let mut changed = 0;
+    let mut full: Option<Instant> = None;
     loop {
-        match index.sync() {
+        let all = full.is_none_or(|at| at.elapsed() >= FULL);
+        match index.sync(all) {
             Ok((rows, gone)) => {
+                if all {
+                    full = Some(Instant::now());
+                }
                 for row in &rows {
                     let id = row["id"].as_str().unwrap_or("");
                     if ends.insert(id.into(), row["finished"].clone()).as_ref()
@@ -213,7 +221,7 @@ fn main() -> io::Result<()> {
         brigadier::control::repeats(&data, &index.rows);
         brigadier::control::hush(&data, &index.rows);
         brigadier::control::unchecked(&data, &index.rows);
-        brigadier::workers::pass(&data, &index.rows);
+        brigadier::workers::pass(&data, &index.rows, &index.looked);
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);
         brigadier::signin::pass(&data);
