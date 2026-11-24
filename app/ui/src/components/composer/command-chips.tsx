@@ -62,16 +62,16 @@ function $scanTo(target: TextNode): Scan | null {
 /**
  * Turns each of the menu's commands in the text into its chip, picked or typed by hand ("use the /docs skill"),
  * once a space ends it: a `/word` starting a word and naming a listed command that isn't `instant`. One in `code` or a ``` block, or
- * a path like /usr/bin, or any in a `!` shell line where the field runs those, stays text.
+ * a path like /usr/bin stays text.
  */
-export function CommandChips({ commands, shell }: { commands: SlashCommand[] | null; shell?: boolean }) {
+export function CommandChips({ commands }: { commands: SlashCommand[] | null }) {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     // One that runs at once when picked stays plain when typed.
     const byLabel = new Map((commands ?? []).filter((command) => !command.instant).map((command) => [command.label, command]));
     if (byLabel.size === 0) return;
     return editor.registerNodeTransform(TextNode, (node) => {
-      if (!node.isSimpleText() || (shell && $getRoot().getTextContent().trimStart().startsWith("!"))) return;
+      if (!node.isSimpleText()) return;
       const scan = $scanTo(node);
       if (!scan || scan.fenced || scan.skip) return;
       let { inCode, afterSpace } = scan;
@@ -96,6 +96,6 @@ export function CommandChips({ commands, shell }: { commands: SlashCommand[] | n
         afterSpace = /\s/.test(letter);
       }
     });
-  }, [editor, commands, shell]);
+  }, [editor, commands]);
   return null;
 }

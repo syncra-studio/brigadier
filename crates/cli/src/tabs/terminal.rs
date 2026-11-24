@@ -11,7 +11,7 @@
 
 pub(crate) mod agent;
 pub(crate) mod notes;
-mod shell;
+pub(crate) mod shell;
 
 use super::{TERMINAL, Tab, Tabs, file, lock, read};
 use crate::{HOME_DRAFT, arg, owner};
@@ -238,6 +238,10 @@ pub(crate) fn stop_all(data: &Path, owner: &str) {
     for id in ids.iter().map(|t| format!("{TERM}{t}")) {
         let _ = owner::call(data, &id, json!({"op": "stop", "by": "user"}));
         let _ = owner::release(data, &id);
+    }
+    // How each command ended outlives its log, for its agent once the session is back.
+    for cmd in agent::commands(data, owner) {
+        let _ = shell::over(data, owner, &cmd, None);
     }
 }
 

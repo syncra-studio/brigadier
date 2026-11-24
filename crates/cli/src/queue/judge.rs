@@ -13,7 +13,7 @@
 //! queue (after the user's Stop) judges nothing, and another session's message is never judged:
 //! it goes in at once [D300].
 
-use super::{DRAINS, Queue, change, read, went};
+use super::{Queue, change, drain::DRAINS, read, went};
 use crate::{commit, control, owner, workers};
 use brigadier_core::{self as core, fold, writer};
 use brigadier_frames::procs;
@@ -38,9 +38,14 @@ const TRIES: u32 = 30;
 static JUDGED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 /// Whether the user's own message `qid`, added to `q` now, is judged: the queue isn't paused, it
-/// isn't there already (a retry), and it isn't put back in a slot `at` after an edit.
+/// isn't there already (a retry), it isn't put back in a slot `at` after an edit, and it doesn't
+/// go after a `!` command.
 pub(super) fn judges(q: &Queue, qid: &str, at: Option<usize>) -> bool {
-    at.is_none() && !q.paused && !q.stopping && !q.items.iter().any(|i| i.id == qid)
+    at.is_none()
+        && !q.paused
+        && !q.stopping
+        && q.running.is_empty()
+        && !q.items.iter().any(|i| i.id == qid || i.shell.is_some())
 }
 
 /// The daemon's pass over one session's row: each message newly Deciding is judged off the

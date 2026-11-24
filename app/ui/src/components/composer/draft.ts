@@ -18,7 +18,7 @@ export type Chip =
   | { kind: "paste"; attachmentId: string; preview?: string };
 
 /** The text with its chips in place, and the files attached beside it (shown as tiles, not in the text). */
-export type Draft = { parts: (string | Chip)[]; attachmentIds: string[] };
+export type Draft = { parts: (string | Chip)[]; attachmentIds: string[]; /** The `!` command whose report this is, as the agent got it. */ shell?: string };
 
 export const EMPTY_DRAFT: Draft = { parts: [], attachmentIds: [] };
 

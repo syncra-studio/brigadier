@@ -14,7 +14,7 @@ pub struct Entry {
     pub at: String,
     /// user, agent, worker, peer, tool or error.
     pub from: &'static str,
-    /// The worker, the session or the tool it names.
+    /// The worker, the session or the tool it names; `!` for a command the user ran.
     pub who: String,
     pub text: String,
     pub files: Vec<String>,
@@ -46,7 +46,12 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
         // A control (a Stop, a model change) is no message; Brigadier's own (a hand-off) isn't the user's.
         "input" if item["control"].is_object() => return None,
         "input" => match s("origin").split(':').collect::<Vec<_>>()[..] {
-            ["user"] => ("user", String::new(), s("text").into(), vec![]),
+            // A `!` command they ran reads as theirs too: `who` says so.
+            ["user"] => {
+                let shell = item["parts"]["shell"].is_string();
+                let who = if shell { "!" } else { "" };
+                ("user", who.into(), s("text").into(), vec![])
+            }
             // A merge suffix may follow: result:finished:<id>:merged=main.
             ["result", _, worker, ..] => ("worker", worker.into(), s("text").into(), vec![]),
             ["peer", from] => ("peer", from.into(), s("text").into(), vec![]),

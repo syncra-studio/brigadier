@@ -4,7 +4,7 @@ import { threadSource } from "../daemon";
 import type { Mark, SessionRow } from "../sidebar/words";
 import type { Source } from "../thread/thread";
 import type { ComposerRow } from "./composer";
-import { useOnItsWay } from "./composer";
+import { useOnItsWay } from "./sent";
 
 /** The thread's newest turn when the thread is session `id`'s and holds its newest turns. */
 const newest = (id: string, source: Source) => {

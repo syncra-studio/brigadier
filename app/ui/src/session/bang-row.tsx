@@ -3,19 +3,23 @@ import { useContext, useEffect, useState } from "react";
 import { SessionOfThread } from "../accounts/limit";
 import { Button } from "../components/button";
 import { ToolRow } from "../components/thread/tool";
-import { ask } from "../daemon";
+import { ask, useDaemon } from "../daemon";
 import { openTab } from "../shell/tab-store";
 import { typeIn } from "../terminal/terminal";
 import { isStopKey, running as inView } from "./bang";
+import type { ComposerRow } from "./composer";
 import type { Item } from "../thread/item";
 
 /**
  * A `!` command's row [D316]: "Running ‹command›", then "Ran", opening to its Shell box, its output read again every 2 s
- * while it runs; Stop, or Ctrl+C in an empty composer, while it runs [D320], and Open in terminal, which runs it again in a new terminal tab.
+ * while it runs; Stop, or Ctrl+C in an empty composer, while it runs [D320], Run in background while what's queued waits
+ * for it, and Open in terminal, which runs it again in a new terminal tab.
  */
 export function BangRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
   const session = useContext(SessionOfThread)?.id;
   const running = item.progress === "running";
+  const row = useDaemon().rows?.find((each) => each.id === session) as ComposerRow | undefined;
+  const holds = running && row?.queue?.running?.includes(item.cmd);
   const [live, setLive] = useState("");
   useEffect(() => {
     if (!running || !session) return;
@@ -46,6 +50,11 @@ export function BangRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
           {running && (
             <Button size="xs" variant="ghost" onClick={() => ask({ op: "run", args: ["shell", session, "stop", item.cmd] })}>
               Stop
+            </Button>
+          )}
+          {holds && (
+            <Button size="xs" variant="ghost" onClick={() => ask({ op: "run", args: ["queue", session, "background", item.cmd] })}>
+              Run in background
             </Button>
           )}
           <Button size="xs" variant="ghost" onClick={again}>

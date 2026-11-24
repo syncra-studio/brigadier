@@ -10,6 +10,8 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
+mod open;
+
 /// Each section's most, in characters (about four to a token), in reading order [w31].
 const GOAL: usize = 2_400;
 const WORDS: usize = 8_000;
@@ -20,6 +22,8 @@ const PLAN: usize = 2_000;
 const CONTENTS: usize = 1_200;
 const EXCHANGE: usize = 6_000;
 const FILES: usize = 3_000;
+/// The most of a `!` command's report among the user's words.
+const SHELL: usize = 600;
 
 /// The first `max` characters, on a character boundary, marked where cut.
 fn head(s: &str, max: usize) -> String {
@@ -250,7 +254,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
 
     // The goal: the first message, the user's or a worker's brief. With newer words, they come
     // first and it follows them as history: it may be done already, so it isn't redone [D108].
-    let goal = p.entries.iter().find(|e| e.from == "user");
+    let goal = (p.entries.iter()).find(|e| e.from == "user" && e.who.is_empty());
     let newest = p.entries.iter().rev().find(|e| said(e));
     let later = newest.filter(|n| goal.is_some_and(|g| n.at != g.at));
     let first = goal.map_or(String::new(), |g| match later {
@@ -274,7 +278,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     names.sort();
     names.dedup();
     let skills: String = (names.iter()).filter_map(|name| {
-        let mut user = p.entries.iter().filter(|e| e.from == "user");
+        let mut user = p.entries.iter().filter(|e| e.from == "user" && e.who.is_empty());
         let e = user.find(|e| e.text.split_whitespace().any(|w| w.strip_prefix('/') == Some(name)))?;
         Some(format!("- /{name}, from {id}#{}: load it before you go on, with your own skill tool or `brigadier skill {name}`\n", e.at))
     }).collect();
@@ -293,6 +297,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         let who = match e.from {
             "worker" => format!("worker {}'s result", e.who),
             "peer" => format!("session {}", e.who),
+            _ if !e.who.is_empty() => "the user, with `!`".into(),
             _ => "the user".into(),
         };
         // A short answer reads with what it answered: your message just before it, its numbered
@@ -325,6 +330,14 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         (&e.at, who, asked, &e.text)
     });
     for (at, who, asked, text) in answers.chain(rest) {
+        let cut;
+        let text = match who.ends_with("`!`") {
+            true => {
+                cut = head(text, SHELL);
+                &cut
+            }
+            false => text,
+        };
         let whole = format!("- {id}#{at} ({who}{asked}): {}\n", text.trim_end());
         if !full && used + whole.len() <= WORDS {
             used += whole.len();
@@ -363,23 +376,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         );
     }
 
-    // Open items: workers started and not yet reported back.
-    let workers = std::fs::read_dir(spec.dir.join("workers"))
-        .into_iter()
-        .flatten()
-        .flatten();
-    let open = workers.filter_map(|w| {
-        let r: Value = serde_json::from_slice(&std::fs::read(w.path()).ok()?).ok()?;
-        let wid = r["wid"].as_str()?;
-        let back = p.entries.iter().any(|e| e.from == "worker" && e.who == wid);
-        (r["state"] == "started" && !back).then(|| {
-            format!(
-                "- worker {wid} ({}) is still working; its result comes to you by itself\n",
-                r["title"].as_str().unwrap_or("")
-            )
-        })
-    });
-    let open = fill(open, OPEN, "`brigadier sessions` lists them");
+    let open = open::items(spec, &p.entries);
     if !open.is_empty() {
         out += &format!("\n## Open\n{open}");
     }

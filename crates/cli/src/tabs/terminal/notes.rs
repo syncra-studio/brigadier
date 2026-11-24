@@ -1,118 +1,70 @@
-//! What the lead is told of its user's terminals [D316, D317, D320], with its next input or its
-//! own `wait`, never waking it: each `!` command as it is then (its line, how it ended or that it
-//! still runs, its newest output), and one line per terminal tab that printed more. Never the
-//! whole stream: `brigadier terminal read` has the rest.
+//! What the agent is told of its user's terminals [D316, D317, D320]: each `!` command that ended,
+//! as the user's own message (its line, how it ended, its newest output); with its next input or
+//! its own `wait`, never waking it, each that still runs and one line per terminal tab that printed
+//! more. Never the whole stream: `brigadier terminal read` has the rest.
 
 use super::agent::text_of;
-use super::shell::ended;
 use super::terminals;
 use brigadier_core::{self as core, TERM};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-/// The newest commands told in full; older ones get a line of synopsis.
-const FULL: usize = 3;
-/// A full one's newest output: lines, then bytes.
+/// A report's newest output: lines, then bytes.
 const LINES: usize = 40;
 const BYTES: usize = 2 << 10;
 /// A command's line as told, in characters.
 const COMMAND: usize = 300;
-/// All of one input's commands; past it the oldest lose their output.
-const TOTAL: usize = 7 << 10;
+/// The most running commands told at a time, the newest.
+const MOST: usize = 5;
 
-/// The words for `cmds` (oldest first) in session `sid`, and whether each had ended, so its end
-/// isn't told again.
-pub fn shell(data: &Path, sid: &str, cmds: &[String]) -> (String, Vec<bool>) {
-    let mut done = vec![];
-    let mut parts: Vec<(String, String)> = vec![];
-    for (i, cmd) in cmds.iter().enumerate() {
-        let dir = core::session_dir(data, &format!("{TERM}{cmd}"));
-        let mark = core::session_dir(data, sid).join("commands").join(cmd);
-        let over = fs::read_to_string(&mark).is_ok_and(|m| m == "ended");
-        let end = ended(&dir);
-        let how = match &end {
-            Some((code, signal, from, to)) if signal.is_null() => {
-                format!("exited {code} after {}", took(to.saturating_sub(*from)))
-            }
-            Some((_, _, from, to)) => {
-                format!("was stopped after {}", took(to.saturating_sub(*from)))
-            }
-            None if over => "didn't run to an end (it failed to start, or its host ended)".into(),
-            None => {
-                let born = fs::metadata(&mark).and_then(|m| m.created()).ok();
-                let ran = born
-                    .and_then(|b| b.elapsed().ok())
-                    .map_or(0, |d| d.as_millis() as u64);
-                format!(
-                    "is still running ({} so far; you'll hear when it ends)",
-                    took(ran)
-                )
-            }
-        };
-        done.push(end.is_some() || over);
-        let line: String = super::agent::line_of(&dir).chars().take(COMMAND).collect();
-        let text = text_of(data, cmd);
-        let lines: Vec<&str> = text.lines().collect();
-        let read = format!("all of it: `brigadier terminal read {cmd}`");
-        let head = format!("- `{line}` {how}; {} of output", count(lines.len(), "line"));
-        let last = lines.iter().rev().find(|l| !l.trim().is_empty());
-        let short = match last {
-            Some(l) => format!(
-                "{head}, ending \"{}\"; {read}",
-                l.trim().chars().take(160).collect::<String>()
-            ),
-            None => format!("{head}; {read}"),
-        };
-        let full = match i + FULL >= cmds.len() && !lines.is_empty() {
-            true => {
-                let newest = lines[lines.len().saturating_sub(LINES)..].join("\n");
-                let cut = newest.len().saturating_sub(BYTES);
-                let newest = &newest[newest.ceil_char_boundary(cut)..];
-                format!("{head}, the newest:\n```\n{newest}\n```\n  {read}")
-            }
-            false => short.clone(),
-        };
-        parts.push((full, short));
-    }
-    if parts.is_empty() {
-        return (String::new(), done);
-    }
-    let sizes: Vec<(usize, usize)> = parts.iter().map(|(a, b)| (a.len(), b.len())).collect();
-    let mut out = "\n\nThe user ran these in your session's folder with `!`, for your context, not as a request: act on one only if it bears on your work.".to_string();
-    let kept = fit(&sizes, TOTAL);
-    let left = kept.iter().filter(|k| **k == 0).count();
-    if left > 0 {
-        out += &format!("\n- …and {left} older: `brigadier terminal list`");
-    }
-    for ((full, short), k) in parts.iter().zip(&kept) {
-        match k {
-            2 => out += &format!("\n{full}"),
-            1 => out += &format!("\n{short}"),
-            _ => {}
-        }
-    }
-    (out, done)
+/// A command that ended, as its user's message to the agent: `note` is its end's.
+pub fn report(data: &Path, cmd: &str, line: &str, note: &Value) -> String {
+    let ms = || took(note["ms"].as_u64().unwrap_or(0));
+    let how = match note["progress"].as_str() {
+        Some("done") => format!("It exited {} after {}", note["exitCode"], ms()),
+        Some("cancelled") => format!("It was stopped after {}", ms()),
+        _ => format!(
+            "It failed: {}",
+            note["error"].as_str().unwrap_or("it didn't run to an end")
+        ),
+    };
+    let text = text_of(data, cmd);
+    let lines: Vec<&str> = text.lines().collect();
+    let newest = lines[lines.len().saturating_sub(LINES)..].join("\n");
+    let cut = newest.ceil_char_boundary(newest.len().saturating_sub(BYTES));
+    let shown = &newest[cut..];
+    let out = match (text.trim().is_empty(), shown.len() < text.trim_end().len()) {
+        (true, _) => ", with no output.".to_string(),
+        (_, false) => format!(", with this output:\n```\n{shown}\n```"),
+        _ => format!(
+            ", with {} of output, the newest:\n```\n{shown}\n```\nAll of it: `brigadier terminal read {cmd}`",
+            count(lines.len(), "line")
+        ),
+    };
+    let line: String = line.chars().take(COMMAND).collect();
+    format!("I ran `{line}` in the session's folder with `!`. {how}{out}")
 }
 
-/// How each part goes in `total` bytes, given its (full, short) sizes: 2 full, 1 short, 0 left
-/// out. The oldest give up their output first, then their line.
-fn fit(sizes: &[(usize, usize)], total: usize) -> Vec<u8> {
-    let mut kept = vec![2u8; sizes.len()];
-    let size = |k: &[u8]| {
-        (sizes.iter().zip(k))
-            .map(|((a, b), k)| [0, *b, *a][*k as usize])
-            .sum::<usize>()
-    };
-    for step in [1, 0] {
-        for i in 0..sizes.len() {
-            if size(&kept) <= total {
-                return kept;
-            }
-            kept[i] = step;
-        }
+/// The words for those of `cmds` (oldest first) that still run.
+pub fn running(data: &Path, sid: &str, cmds: &[String]) -> String {
+    let mark = |cmd: &str| core::session_dir(data, sid).join("commands").join(cmd);
+    let mut out = String::new();
+    for cmd in cmds.iter().skip(cmds.len().saturating_sub(MOST)) {
+        let Some(line) = (fs::read_to_string(mark(cmd)).ok())
+            .and_then(|m| m.strip_prefix('!').map(String::from))
+        else {
+            continue;
+        };
+        let line: String = line.chars().take(COMMAND).collect();
+        out += &format!("\n- `{line}`; its output so far: `brigadier terminal read {cmd}`");
     }
-    kept
+    match out.is_empty() {
+        true => out,
+        false => format!(
+            "\n\nThe user runs these in the session's folder with `!`; you'll hear when each ends:{out}"
+        ),
+    }
 }
 
 /// `n` and its noun, plural when it isn't 1.

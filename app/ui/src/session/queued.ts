@@ -4,7 +4,7 @@ import type { Row } from "../daemon";
 import type { Session } from "../thread/item";
 
 /** A message in Rust's queue: `origin` names another session's; `to` the user's for one of this session's workers. */
-export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string; deciding?: boolean };
+export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string; deciding?: boolean; /** The user's `!` command: waiting to run, or ended and its report waiting to go. */ shell?: "wait" | "ended" };
 
 /**
  * Rust's queue as the card's rows: another session's message without the envelope's first line, with who sent it
@@ -18,6 +18,10 @@ export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): Qu
   return items.map((each) => {
     // Rust's error on one for a worker: that worker has ended [D96].
     const to = each.to ? { to: { name: title(each.to), ended: each.error !== undefined } } : {};
+    if (each.shell) {
+      const line = each.shell === "ended" ? (each.parts?.shell ?? each.text) : each.text;
+      return { id: each.id, draft: { parts: [line], attachmentIds: [] }, state: each.shell === "ended" ? "delivered" : "queued", shell: true };
+    }
     const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
     if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: each.deciding ? "deciding" : "queued", ...to };
     const at = each.text.indexOf("]\n\n");

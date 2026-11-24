@@ -4,7 +4,7 @@
 //! A paused worker holds it until Resume; an ended one takes it, and works again [D3006, D3041,
 //! D3050, D295].
 
-use super::{DRAINS, Item, Queue, change, locked, read, went};
+use super::{Item, Queue, change, drain::DRAINS, locked, read, went};
 use crate::{control, owner};
 use brigadier_core::{self as core, fold};
 use brigadier_frames::{procs, take_lock};

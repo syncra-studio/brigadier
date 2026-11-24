@@ -16,11 +16,13 @@ use std::path::Path;
 use std::thread;
 
 mod cut;
+mod drain;
 mod judge;
 mod peer;
 mod to;
 pub mod wake;
 pub use cut::{goes_on, off as cut_off, recover};
+pub use drain::drain;
 pub use peer::{UNSURE, add_peer, pending, send_back, waits_for};
 pub use to::held as give_held;
 
@@ -31,6 +33,10 @@ struct Queue {
     #[serde(default)]
     stopping: bool,
     items: Vec<Item>,
+    /// The user's `!` commands running now that their messages wait for, till one ends or is sent to
+    /// the background.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    running: Vec<String>,
     /// A message pulled back to edit, kept here until it is put back or sent: the drain skips it.
     #[serde(default)]
     editing: Option<Editing>,
@@ -56,6 +62,16 @@ struct Item {
     /// Being judged whether it joins the work in progress (`judge`): its row reads Deciding [D521].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     deciding: bool,
+    /// The user's `!` command: `wait` till its turn to run, `ended` as its report to the agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shell: Option<String>,
+}
+
+impl Item {
+    /// Whether it goes to this session as the user's own: not another session's, not a worker's.
+    fn own(&self) -> bool {
+        self.to.is_none() && self.origin.is_none()
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -69,6 +85,26 @@ struct Editing {
     origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shell: Option<String>,
+}
+
+impl Queue {
+    /// Whether its item `at` may go to this session now. While a block is `holding` the user's
+    /// messages wait, and while a command runs so do those and the commands behind it; a command's
+    /// report and another session's message wait for neither.
+    fn goes(&self, at: usize, holding: bool) -> bool {
+        let i = &self.items[at];
+        let first = || self.items.iter().position(Item::own) == Some(at);
+        match i.shell.as_deref() {
+            _ if i.to.is_some() => false,
+            _ if i.origin.is_some() => true,
+            Some("ended") => true,
+            _ if !self.running.is_empty() => false,
+            Some(_) => !holding || first(),
+            None => !holding,
+        }
+    }
 }
 
 fn read(dir: &Path) -> io::Result<Queue> {
@@ -115,10 +151,12 @@ fn locked<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Res
     Ok(out)
 }
 
-/// What a row shows: the queue, or null when nothing waits or is being edited.
+/// What a row shows: the queue, or null when nothing waits, runs or is being edited.
 pub fn row(dir: &Path) -> Value {
     match read(dir) {
-        Ok(q) if !q.items.is_empty() || q.editing.is_some() => json!(q),
+        Ok(q) if !q.items.is_empty() || !q.running.is_empty() || q.editing.is_some() => {
+            json!(q)
+        }
         _ => Value::Null,
     }
 }
@@ -127,9 +165,9 @@ fn missing(what: &str) -> io::Error {
     io::Error::other(format!("no queued message {what}"))
 }
 
-/// `queue <id> add <text> --qid Q [--at N] | move <qid> <to> | remove <qid> | edit <qid> |
-/// restore | steer <qid> | resume`. Each answers the folder's time after its write, which the
-/// row reaches once it shows the change [D30].
+/// `queue <id> add <text> --qid Q [--at N] [--to W | --shell] | move <qid> <to> | remove <qid> | edit <qid> |
+/// restore | steer <qid> | resume | background <command id>`. Each answers the folder's time after
+/// its write, which the row reaches once it shows the change [D30].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     core::load(data, id)?;
@@ -152,10 +190,20 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if let Some(wid) = &to {
                 to::check(data, id, wid)?;
             }
+            let shell = crate::has(args, "--shell").then(|| "wait".to_string());
             change(&dir, |q| {
                 // Sending an edited message puts it back: the edit is over.
                 if q.editing.as_ref().is_some_and(|e| e.id == qid) {
                     q.editing = None;
+                }
+                if shell.is_some() && crate::tabs::terminal::shell::begun(data, id, qid) {
+                    return Ok(());
+                }
+                // A command it's put back as never ran.
+                if shell.is_some() && at.is_none() && at_once(data, id, q)? {
+                    crate::tabs::terminal::shell::start(data, id, qid, &text)?;
+                    q.running.push(qid.into());
+                    return Ok(());
                 }
                 let item = Item {
                     id: qid.into(),
@@ -163,7 +211,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     parts,
                     at: brigadier_frames::log::now_ms(),
                     error: None,
-                    deciding: origin.is_none() && to.is_none() && judge::judges(q, qid, at),
+                    deciding: origin.is_none()
+                        && to.is_none()
+                        && shell.is_none()
+                        && judge::judges(q, qid, at),
+                    shell,
                     origin,
                     to: to.clone(),
                 };
@@ -190,7 +242,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let from = q.items.iter().position(|i| i.id == qid);
                 let mut item = q.items.remove(from.ok_or_else(|| missing(&qid))?);
                 item.deciding = false; // the user placed it: the judge's answer is dropped
-                q.items.insert(to.min(q.items.len()), item);
+                let to = to.min(q.items.len());
+                // What goes after a command is steered nowhere by itself.
+                if item.shell.is_some() {
+                    q.items[to..].iter_mut().for_each(|i| i.deciding = false);
+                }
+                q.items.insert(to, item);
                 Ok(())
             })?;
         }
@@ -208,7 +265,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let qid = qid()?;
             change(&dir, |q| {
                 restore(q);
-                let slot = q.items.iter().position(|i| i.id == qid);
+                let ended = |i: &Item| i.shell.as_deref() == Some("ended");
+                let slot = q.items.iter().position(|i| i.id == qid && !ended(i));
                 let item = q.items.remove(slot.ok_or_else(|| missing(&qid))?);
                 let slot = slot.unwrap_or(0);
                 q.editing = Some(Editing {
@@ -218,6 +276,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     slot,
                     origin: item.origin,
                     to: item.to,
+                    shell: item.shell,
                 });
                 Ok(())
             })?;
@@ -233,7 +292,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let item = q
                     .items
                     .iter()
-                    .find(|i| i.id == qid)
+                    .find(|i| i.id == qid && i.shell.is_none())
                     .ok_or_else(|| missing(&qid))?;
                 if item.to.is_some() {
                     let n = q.items.len();
@@ -261,6 +320,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if !went {
                 return Ok(reply);
             }
+        }
+        // What waits goes on though the command runs.
+        "background" => {
+            let cmd = qid()?;
+            change(&dir, |q| {
+                q.running.retain(|c| *c != cmd);
+                Ok(())
+            })?;
         }
         // A stopped turn carries on first, under the queue's lock and before it unpauses, so nothing
         // queued can go ahead of it; refused, the queue stays paused and says why [D237, D373].
@@ -290,6 +357,48 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         _ => return Err(io::Error::other(crate::USAGE)),
     }
     Ok(json!({"ok": true, "at": index::touched(&dir)}))
+}
+
+/// Whether a `!` command runs at once: no turn runs, no command the queue waits for, and nothing of
+/// the user's goes first.
+fn at_once(data: &Path, id: &str, q: &Queue) -> io::Result<bool> {
+    let (f, state) = cut::now(data, id)?;
+    let first = q.items.iter().find(|i| i.own());
+    let goes = !q.paused
+        && drain::DRAINS.contains(&state.as_str())
+        && first.is_some_and(|i| i.error.is_none());
+    Ok(f.turns.is_empty() && q.running.is_empty() && !goes)
+}
+
+/// A `!` command ended: its report waits for the agent ahead of what waits already but other
+/// reports, under its own id, so it goes once [D54].
+pub fn ended(data: &Path, id: &str, cmd: &str, kept: &Value) -> io::Result<()> {
+    let dir = core::session_dir(data, id);
+    change(&dir, |q| {
+        q.running.retain(|c| c != cmd);
+        q.items
+            .retain(|i| i.id != cmd || i.shell.as_deref() == Some("ended"));
+        if q.items.iter().any(|i| i.id == cmd) || went(&dir, &Value::Null, cmd) {
+            return Ok(());
+        }
+        let text = kept["report"].as_str().unwrap_or_default().to_string();
+        let shell = Some("ended".to_string());
+        let item = Item {
+            id: cmd.into(),
+            parts: json!({"parts": [text], "attachmentIds": [], "shell": kept["line"]}),
+            text,
+            at: brigadier_frames::log::now_ms(),
+            error: None,
+            origin: None,
+            to: None,
+            deciding: false,
+            shell: shell.clone(),
+        };
+        let slot = q.items.iter().take_while(|i| i.shell == shell).count();
+        q.items.insert(slot, item);
+        q.paused |= q.stopping;
+        Ok(())
+    })
 }
 
 /// Lets a paused queue go without carrying its stopped turn on: a worker's Resume, whose
@@ -322,6 +431,7 @@ fn restore(q: &mut Queue) {
             origin: e.origin,
             to: e.to,
             deciding: false,
+            shell: e.shell,
         };
         q.items.insert(slot, item);
     }
@@ -366,133 +476,4 @@ pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
         Ok(())
     })?;
     stopped
-}
-
-/// The states a session takes its next queued message in: between turns, however the last ended
-/// but at a limit, a sign-in or a cut-off run, which need the user (D237); but for a cut-off
-/// worker, which its parent's message carries on (`cut`).
-const DRAINS: [&str; 4] = ["idle", "idle_jobs", "stopped", "failed"];
-
-/// The daemon's pass: each session between turns whose queue waits and isn't paused sends its
-/// first message, off the daemon's loop; a worker's go to it once it's free.
-pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
-    to::pass(data, rows);
-    for (id, row) in rows {
-        judge::pass(data, id, row);
-        let q = &row["queue"];
-        let mine = q["items"].as_array().into_iter().flatten();
-        // While its block is held open the user's own wait, as mid-turn; another session's goes [D521, D300].
-        let state = row["state"].as_str().unwrap_or("");
-        let cut = state == "interrupted";
-        let goes = |i: &&Value| {
-            i["to"].is_null()
-                && (row["holding"] != true || !i["origin"].is_null())
-                && (!cut || cut::parents(&core::session_dir(data, id), i["origin"].as_str()))
-        };
-        let first = mine.into_iter().find(goes).unwrap_or(&Value::Null);
-        if !first.is_object()
-            || q["paused"] == true
-            || !first["error"].is_null()
-            || !(cut || DRAINS.contains(&state))
-            // A rebirth due goes first: what's queued lands in its fresh conversation [D88].
-            || !row["rebirth"].is_null()
-        {
-            continue;
-        }
-        let (data, id) = (data.to_path_buf(), id.clone());
-        thread::spawn(move || {
-            if let Err(e) = send_first(&data, &id) {
-                eprintln!("brigadierd: queue {id}: {e}");
-            }
-        });
-    }
-}
-
-/// Sends the first queued message, judged and sent under the queue's lock (another pass that finds
-/// it held leaves it). The host takes it only if nothing reached the log since the session was
-/// judged between turns; a changed session keeps it queued. It leaves the queue only once the log
-/// has it; a refusal stays on it, and the queue waits there.
-fn send_first(data: &Path, id: &str) -> io::Result<()> {
-    let dir = core::session_dir(data, id);
-    let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
-        return Ok(());
-    };
-    let spec = core::load(data, id)?;
-    crate::rewind::settle_held(data, &spec)?;
-    let holding = crate::workers::holding(data, id);
-    locked(&dir, |q| {
-        let (f, state) = cut::now(data, id)?;
-        let cut = state == "interrupted";
-        let goes = |i: &Item| {
-            i.to.is_none()
-                && (!holding || i.origin.is_some())
-                && (!cut || cut::carries(&dir, &f, i.origin.as_deref()))
-        };
-        let at = q.items.iter().position(goes).unwrap_or(0);
-        let Some(item) = (q.items.get(at))
-            .filter(|i| !q.paused && goes(i) && i.error.is_none())
-            .cloned()
-        else {
-            return Ok(());
-        };
-        if f.cids.contains_key(&item.id) {
-            q.items.remove(at);
-            return Ok(());
-        }
-        owner::ensure(data, &spec)?;
-        let ping = owner::call(data, id, json!({"op": "ping"}))?;
-        let Some(len) = ping["len"].as_u64() else {
-            return Ok(());
-        };
-        let f = core::fold(&dir, true)?;
-        let live = fold::live(&f.fold, owner::state(data, id), &dir, &procs::all());
-        let status = fold::status(&f.fold, &live);
-        let state = status["state"].as_str().unwrap_or("");
-        let free = match cut {
-            // A turn still open in the log is ended by its child's exit, on its way.
-            true => state == "interrupted" && f.fold.turns.is_empty(),
-            false => DRAINS.contains(&state),
-        };
-        if live.owner != Owner::Alive || !free {
-            return Ok(());
-        }
-        if cut {
-            core::sweep(&f.fold, &dir);
-        }
-        let child = ping["child"]
-            .as_i64()
-            .map(|_| ping["spawn"].as_u64().unwrap_or(0));
-        let call = |mut req: Value| {
-            // A replace judges idleness itself, later: its own guard stands.
-            if req["if_len"].is_null() && matches!(req["op"].as_str(), Some("input" | "spawn")) {
-                req["if_len"] = len.into();
-            }
-            owner::call(data, id, req)
-        };
-        let mut msg = core::message::compose(&spec, &item.text, item.parts.clone(), None)?;
-        // What's held for the parent's next message goes with it [D329].
-        let held = crate::workers::with_next(data, id, Some(&item.id), &mut msg.agent);
-        let reply = core::send(
-            &crate::routing::told(data, &spec),
-            &f.fold,
-            child,
-            &call,
-            &item.id,
-            item.origin.as_deref().unwrap_or("user"),
-            &msg,
-            None,
-            None,
-        );
-        if went(&dir, &reply, &item.id) {
-            crate::workers::went_with(data, id, held);
-            q.items.remove(at);
-        } else if reply["error"] != "changed" {
-            let why = reply["message"]
-                .as_str()
-                .or(reply["error"].as_str())
-                .unwrap_or("refused");
-            q.items[at].error = Some(why.into());
-        }
-        Ok(())
-    })
 }

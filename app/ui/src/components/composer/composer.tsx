@@ -5,6 +5,7 @@ import { Plus } from "../../icons";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
+import { Kbd } from "../kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { type Draft, isEmpty } from "./draft";
 import { ComposerField, type ComposerFieldHandle } from "./field";
@@ -111,24 +112,36 @@ export function SharedComposer({
   model,
   send,
   after,
+  shell,
   children,
   ...card
-}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean }) {
+}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean; /** A shell command is typed: nothing attached, no permission or model pick. */ shell?: boolean }) {
   return (
     <Composer>
       <ComposerRail>{rail}</ComposerRail>
       {above}
-      <ComposerCard className={hidden ? "hidden" : undefined} {...card}>
+      <ComposerCard className={cx(hidden && "hidden", shell && "ring-1 ring-link")} {...card} {...(shell && { onDragOver: undefined, onDrop: undefined })}>
         {tiles}
         {children}
         <ComposerFooter>
           <ComposerTools>
-            {plus}
-            {level}
+            {shell ? (
+              <span className="flex h-control-sm min-w-0 items-center gap-2 px-2 text-sm">
+                <span className="truncate text-link">Shell command</span>
+                <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Kbd>Esc</Kbd> to exit
+                </span>
+              </span>
+            ) : (
+              <>
+                {plus}
+                {level}
+              </>
+            )}
           </ComposerTools>
           {status}
           {ring}
-          {model}
+          {!shell && model}
           {send}
         </ComposerFooter>
       </ComposerCard>

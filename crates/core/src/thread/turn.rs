@@ -402,6 +402,13 @@ impl Thread {
                     "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts, "brigade": t.brigade})
                 }
             };
+            // A `!` command's report: its Shell row says it, unless other rows came between [D316].
+            if t.parts["shell"].is_string() {
+                let last = self.items.iter().rfind(|i| i["hidden"] != true);
+                if last.is_some_and(|i| i["cmd"] == t.id.as_str()) {
+                    row["origin"] = "system".into();
+                }
+            }
             if steers {
                 row["steer"] = true.into();
                 self.steered(row);

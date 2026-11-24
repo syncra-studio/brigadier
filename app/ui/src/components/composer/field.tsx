@@ -6,7 +6,6 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
-import { $getLexicalContent, $insertDataTransferForRichText } from "@lexical/clipboard";
 import { mergeRegister } from "@lexical/utils";
 import {
   $createLineBreakNode,
@@ -25,6 +24,7 @@ import {
   INSERT_PARAGRAPH_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
@@ -32,15 +32,19 @@ import {
   LineBreakNode,
   PASTE_COMMAND,
   type RangeSelection,
+  TextNode,
 } from "lexical";
-import { type Ref, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { type Ref, type RefObject, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from "react";
 
+import { Terminal } from "../../icons/thread";
 import { matches } from "../../shortcuts";
 import { cx } from "../cx";
+import { type AttachFn, copyChips, NAMESPACE, pasteAttachments, pasteChips } from "./clipboard";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
 import { $insertChip, $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Chip, type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
 import { CommandChips } from "./command-chips";
+import { asShell, bare, isShell } from "./shell";
 import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
@@ -162,71 +166,8 @@ function $write(parts: Parts, select = true): void {
   if (select) root.selectEnd();
 }
 
-const NAMESPACE = "composer";
 // The note's list look (note/page.css).
 const THEME = { list: { ul: "m-0 ps-6 list-disc", ol: "m-0 ps-6 list-decimal", nested: { listitem: "list-none" } } };
-const LEXICAL = "application/x-lexical-editor";
-
-/**
- * Copy and cut also put the selection's nodes on the clipboard when it holds a chip (the plain-text field
- * copies text only); a paste of them in a composer brings the chips back, ids and all.
- */
-function copyChips(editor: LexicalEditor, event: ClipboardEvent | KeyboardEvent | null): false {
-  const selection = $getSelection();
-  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
-  if (data && $isRangeSelection(selection) && selection.getNodes().some($isChipNode)) {
-    const json = $getLexicalContent(editor);
-    if (json) data.setData(LEXICAL, json);
-  }
-  // The plain-text field still writes the text itself.
-  return false;
-}
-function pasteChips(editor: LexicalEditor, event: ClipboardEvent | InputEvent | KeyboardEvent): boolean {
-  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
-  const selection = $getSelection();
-  const json = data?.getData(LEXICAL);
-  if (!data || !json || !$isRangeSelection(selection)) return false;
-  try {
-    // Only another composer's nodes: a rich editor's (headings, lists) don't belong in this field.
-    if ((JSON.parse(json) as { namespace?: string }).namespace !== NAMESPACE) return false;
-  } catch {
-    return false;
-  }
-  event.preventDefault();
-  $insertDataTransferForRichText(data, selection, editor);
-  return true;
-}
-
-/** Plain text this long, pasted, goes in as a "Pasted text" chip instead of as text. */
-const PASTE_CHIP_CHARS = 800;
-
-/**
- * A paste of files or of long text: an image goes in at the caret as a chip, any other file beside the text
- * (`onAttach` with `inText` false), long text as a "Pasted text" chip. Each gets its id here, at once.
- */
-function pasteAttachments(event: ClipboardEvent | InputEvent | KeyboardEvent, onAttach: AttachFn | undefined): boolean {
-  const data = event instanceof ClipboardEvent ? event.clipboardData : null;
-  const selection = $getSelection();
-  if (!onAttach || !data || !$isRangeSelection(selection)) return false;
-  const files = [...data.files];
-  const text = data.getData("text/plain");
-  if (files.length === 0 && text.length < PASTE_CHIP_CHARS) return false;
-  event.preventDefault();
-  const added: [string, File, boolean][] = [];
-  const chips: ChipNode[] = [];
-  const add = (file: File, kind: "image" | "paste" | null) => {
-    const id = crypto.randomUUID();
-    added.push([id, file, kind !== null]);
-    if (kind === "paste") chips.push(new ChipNode({ kind, attachmentId: id, preview: text.trim().replace(/\s+/g, " ").slice(0, 80) }));
-    else if (kind) chips.push(new ChipNode({ kind, attachmentId: id }));
-  };
-  if (files.length > 0) for (const file of files) add(file, file.type.startsWith("image/") ? "image" : null);
-  else add(new File([text], "Pasted text.txt", { type: "text/plain" }), "paste");
-  if (chips.length > 0) selection.insertNodes(chips);
-  // Out of the editor's update: the caller's state changes there.
-  queueMicrotask(() => added.forEach((each) => onAttach(...each)));
-  return true;
-}
 
 /** Each image's and pasted text's number in the text ("Image #2"), in order. */
 export function numbersOf(parts: Parts): Map<string, number> {
@@ -243,9 +184,6 @@ const sameNumbers = (a: Map<string, number>, b: Map<string, number>) => a.size =
 const NO_ATTACHMENTS: ReadonlyMap<string, Attachment> = new Map();
 
 const blank = (parts: Parts) => isEmpty({ parts, attachmentIds: [] });
-
-/** A file added to the message: `inText`, its chip is in the text (an image, a long paste); otherwise a tile. */
-type AttachFn = (id: string, file: File, inText: boolean) => void;
 
 type FieldProps = {
   ref?: Ref<ComposerFieldHandle>;
@@ -277,7 +215,8 @@ type FieldProps = {
   attachments?: ReadonlyMap<string, Attachment>;
   /** A click on a chip: opens what it names (a mention's id, a command's id, an attachment's id). */
   onOpen?: (kind: OpenKind, id: string) => void;
-  /** A `!` line is a shell command here: it shows in the code font [D316]. */
+  /** `!` first makes it a shell command here [D316]: the `!` becomes the mode, in what's read, set and kept alone. Esc,
+   * Backspace or Ctrl+U in an empty one leaves it. */
   shell?: boolean;
 };
 
@@ -298,8 +237,12 @@ export function ComposerField({
 }: FieldProps) {
   const [scrolled, setScrolled] = useState(false);
   const [numbers, setNumbers] = useState(() => numbersOf(initial.parts));
-  const isBang = (parts: Parts) => Boolean(props.shell) && typeof parts[0] === "string" && parts[0].trimStart().startsWith("!");
-  const [bang, setBang] = useState(() => isBang(initial.parts));
+  // The ref is the mode as the editor's own updates read it; the state draws it.
+  const mode = useRef(props.shell === true && isShell(initial.parts));
+  const [drawn, setDrawn] = useState(mode.current);
+  const setMode = (on: boolean) => ((mode.current = on), setDrawn(on));
+  const bang = drawn && props.shell === true;
+  const words = bang ? "Run a command" : placeholder;
   const { box, pad } = SIZES[size];
   // A one-line field stays plain text; the others draw lists.
   const TextPlugin = size === "line" ? PlainTextPlugin : RichTextPlugin;
@@ -308,7 +251,6 @@ export function ComposerField({
   const onChange = (parts: Parts) => {
     const next = numbersOf(parts);
     setNumbers((now) => (sameNumbers(now, next) ? now : next));
-    setBang(isBang(parts));
     props.onChange?.(parts);
   };
   return (
@@ -320,7 +262,7 @@ export function ComposerField({
         namespace: NAMESPACE,
         nodes: [ChipNode, UrlNode, ListNode, ListItemNode],
         theme: THEME,
-        editorState: () => $write(initial.parts, false),
+        editorState: () => $write(mode.current ? bare(initial.parts) : initial.parts, false),
         onError: (error) => console.error("[composer]", error),
       }}
     >
@@ -329,15 +271,16 @@ export function ComposerField({
         data-scrolled={scrolled || undefined}
         data-shell={bang || undefined}
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
-        className={cx("relative w-full cursor-text data-shell:font-mono", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
+        className={cx("relative w-full cursor-text data-shell:ps-7 data-shell:font-mono", size === "line" ? "overflow-hidden" : "scroll-gutter overflow-y-auto data-scrolled:mask-fade-top", box)}
       >
+        {bang && <Terminal className="absolute start-2 top-3 size-icon-md text-link" />}
         <TextPlugin
           contentEditable={
             // Lexical sets white-space inline, so a line's no-wrap has to be important.
             <ContentEditable
-              aria-label={label}
-              aria-placeholder={placeholder}
-              placeholder={<div className={cx("pointer-events-none absolute inset-0 truncate text-placeholder select-none", pad)}>{placeholder}</div>}
+              aria-label={bang ? "Shell command input" : label}
+              aria-placeholder={words}
+              placeholder={<div className={cx("pointer-events-none absolute inset-0 truncate text-placeholder select-none", bang && "ps-9", pad)}>{words}</div>}
               className={cx("caret-primary outline-none", size === "line" ? "whitespace-pre!" : "break-words whitespace-pre-wrap", pad)}
             />
           }
@@ -345,11 +288,11 @@ export function ComposerField({
         />
       </div>
       <HistoryPlugin />
-      {size === "line" ? <OneLine /> : <MarkdownKeys />}
-      <Keys {...props} size={size} onChange={onChange} />
-      {mentions && <MentionPlugin {...mentions} />}
-      {commands && <SlashPlugin {...commands} />}
-      {commands && <CommandChips commands={commands.commands} shell={props.shell} />}
+      {size === "line" ? <OneLine /> : !bang && <MarkdownKeys />}
+      <Keys {...props} size={size} onChange={onChange} mode={mode} setMode={setMode} />
+      {mentions && !bang && <MentionPlugin {...mentions} />}
+      {commands && !bang && <SlashPlugin {...commands} />}
+      {commands && !bang && <CommandChips commands={commands.commands} />}
     </LexicalComposer>
     </ChipContext>
     </ChipNumbers>
@@ -395,13 +338,39 @@ function Keys({
   onEscape,
   onPullQueued,
   onAttach,
-}: Omit<FieldProps, "initial" | "placeholder" | "label" | "mentions" | "commands" | "attachments" | "onOpen">) {
+  shell = false,
+  mode,
+  setMode,
+}: Omit<FieldProps, "initial" | "placeholder" | "label" | "mentions" | "commands" | "attachments" | "onOpen"> & { mode: RefObject<boolean>; setMode: (on: boolean) => void }) {
   const [editor] = useLexicalComposerContext();
   // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
   const walk = useRef<{ back: number; shown: string } | null>(null);
   const caret = useRef<RangeSelection | null>(null); // the field's last caret, for a pick from the +, which takes the focus
-  const changed = useEffectEvent((parts: Parts) => onChange?.(parts));
-  const paste = useEffectEvent((event: ClipboardEvent | InputEvent | KeyboardEvent) => pasteChips(editor, event) || pasteAttachments(event, onAttach));
+  // What's typed, a command's with its `!`.
+  const read = () => (shell && mode.current ? asShell($read()) : $read());
+  const changed = useEffectEvent(() => onChange?.(editor.getEditorState().read(read)));
+  const write = (parts: Parts, select = true) => {
+    setMode(shell && isShell(parts));
+    $write(mode.current ? bare(parts) : parts, select);
+  };
+  // A command takes pasted words alone, and one pasted whole is it however long.
+  const paste = useEffectEvent((event: ClipboardEvent | InputEvent | KeyboardEvent) => {
+    const whole = shell && blank($read()) && event instanceof ClipboardEvent && event.clipboardData?.getData("text/plain").startsWith("!");
+    return !mode.current && !whole && (pasteChips(editor, event) || pasteAttachments(event, onAttach));
+  });
+  /** `!` first is taken as the mode. */
+  const enter = useEffectEvent((node: TextNode) => {
+    if (!shell || mode.current || !node.isSimpleText() || $getRoot().getFirstDescendant() !== node || !isShell($read())) return;
+    node.splitText(1)[0]!.remove();
+    setMode(true);
+  });
+  const leave = useEffectEvent((event: KeyboardEvent) => {
+    if (!mode.current || $getRoot().getTextContent()) return false;
+    event.preventDefault();
+    setMode(false);
+    queueMicrotask(changed);
+    return true;
+  });
   const submit = useEffectEvent((event: KeyboardEvent | null) => {
     if (!event || event.isComposing || !onSubmit) return false;
     const action = enterAction(event);
@@ -415,6 +384,8 @@ function Keys({
     return true;
   });
   const escape = useEffectEvent((event: KeyboardEvent) => {
+    // In a command Esc never reaches the agent's Stop.
+    if (mode.current) return event.preventDefault(), leave(event), true;
     if (!onEscape) return false;
     event.preventDefault();
     onEscape();
@@ -433,7 +404,7 @@ function Keys({
     }
     const back = (walk.current?.back ?? -1) + (up ? 1 : -1);
     if (back >= prompts.length) return prompts.length > 0;
-    $write(back < 0 ? [] : prompts[prompts.length - 1 - back]!.parts);
+    write(back < 0 ? [] : prompts[prompts.length - 1 - back]!.parts);
     walk.current = back < 0 ? null : { back, shown: JSON.stringify($read()) };
     event.preventDefault();
     return true;
@@ -442,13 +413,18 @@ function Keys({
   useImperativeHandle(
     ref,
     () => ({
-      parts: () => editor.read($read),
-      set: (parts) => editor.update(() => $write(parts)),
+      parts: () => editor.read(read),
+      set: (parts) => editor.update(() => write(parts)),
       insert: (chip) => editor.update(() => $insertChip(chip, caret.current)),
       focus: () => editor.focus(),
     }),
-    [editor],
+    [editor, shell],
   );
+
+  // Where commands stop being offered (a To: picked), its words are a message again.
+  useEffect(() => {
+    if (!shell && mode.current) editor.update(() => $write(asShell($read())), { onUpdate: () => setMode(false) });
+  }, [editor, shell]);
 
   useEffect(() => {
     // Not over the user's place elsewhere: another field, or anything in a dialog.
@@ -482,13 +458,16 @@ function Keys({
         registerArrowKeys(editor),
         editor.registerUpdateListener(({ editorState, dirtyElements, dirtyLeaves }) => {
           editorState.read(() => { const selection = $getSelection(); if ($isRangeSelection(selection)) caret.current = selection.clone(); });
-          if (dirtyElements.size > 0 || dirtyLeaves.size > 0) changed(editorState.read($read));
+          if (dirtyElements.size > 0 || dirtyLeaves.size > 0) changed();
         }),
         editor.registerCommand(COPY_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(CUT_COMMAND, (event) => copyChips(editor, event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(PASTE_COMMAND, paste, COMMAND_PRIORITY_NORMAL),
         // Enter and Space on a chip's own button (its ✕, reached by Tab) press it rather than send.
         editor.registerCommand(KEY_DOWN_COMMAND, (event) => (event.key === "Enter" || event.key === " ") && event.target instanceof HTMLButtonElement, COMMAND_PRIORITY_NORMAL),
+        editor.registerNodeTransform(TextNode, (node) => enter(node)),
+        editor.registerCommand(KEY_BACKSPACE_COMMAND, leave, COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(KEY_DOWN_COMMAND, (event) => event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "u" && leave(event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ENTER_COMMAND, submit, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ESCAPE_COMMAND, escape, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ARROW_UP_COMMAND, (event) => recall(event, true), COMMAND_PRIORITY_NORMAL),

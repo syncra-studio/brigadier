@@ -39,6 +39,7 @@ pub fn add_peer(
             origin: Some(origin.into()),
             to: None,
             deciding: false,
+            shell: None,
         });
         // A cut-off worker stopped since waits for Resume.
         q.paused |= q.stopping || (cut::stopped(&f) && cut::parents(dir, Some(origin)));

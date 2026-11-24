@@ -103,7 +103,9 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
         return;
       }
       setRunning((now) => now && { ...now, replied: true });
-      putBack(id, text, true, item?.kind === "message" ? item.draft : null);
+      // A `!` command's report goes back as the command.
+      const draft = item?.kind === "message" ? item.draft : null;
+      putBack(id, text, true, draft?.shell ? { parts: [`!${draft.shell}`], attachmentIds: [] } : draft);
       // Rewind removes the message itself, so Redo file changes lives on its toast [D1192, D1196, D1246].
       const actions = restore && reply.restored > 0 ? [{ label: "Redo file changes", run: () => undoRestore(run, id, cid, op) }] : [];
       showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });

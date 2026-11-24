@@ -4,6 +4,7 @@ import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
 import { ArrowCurvedRight, ArrowUp, ChevronUpDown, DotsHorizontal, EditPencil, Info, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { Terminal } from "../../icons/thread";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
@@ -29,6 +30,8 @@ export type QueuedMessage = {
   /** The user's message for one of the session's workers, held until its turn is over: that worker's name; `ended`:
    * it can't go to that worker any more [D96]. */
   to?: { name: string | null; ended?: boolean };
+  /** A `!` command, run in its turn; never steered. */
+  shell?: boolean;
 };
 
 type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
@@ -164,11 +167,11 @@ export function QueueCard({
 const ROW = "group/queue-item flex min-h-control-md items-center gap-2 rounded-control ps-1.5 pe-1 text-sm";
 
 /** The row's words, then what rides with them; with no words, only that. The message comes first: short of room, what follows gives way. */
-function Words({ draft }: { draft: Draft }) {
+function Words({ draft, shell }: { draft: Draft; shell?: boolean }) {
   const text = preview(draft);
   const files = attached(draft);
   return (
-    <span className="min-w-0 flex-auto truncate" title={text || undefined}>
+    <span className={cx("min-w-0 flex-auto truncate", shell && "font-mono text-code")} title={text || undefined}>
       {text ? (
         <>
           {text}
@@ -263,7 +266,7 @@ function QueueRow({
       )}
     >
       <span className="relative flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
-        {deciding ? <Spinner className={cx(glyph, "animate-spin motion-reduce:animate-none")} /> : <QueueGlyph className={glyph} />}
+        {deciding ? <Spinner className={cx(glyph, "animate-spin motion-reduce:animate-none")} /> : item.shell ? <Terminal role="img" aria-hidden={undefined} aria-label="Shell command" className={glyph} /> : <QueueGlyph className={glyph} />}
         {draggable && (
           <span
             className={cx(
@@ -295,7 +298,7 @@ function QueueRow({
           </span>
         )}
       </span>
-      <Words draft={item.draft} />
+      <Words draft={item.draft} shell={item.shell} />
       {item.peer && <FromPeer title={item.peer.title} />}
       {deciding ? (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
@@ -305,7 +308,7 @@ function QueueRow({
         item.to && <ToWorker name={item.to.name} />
       )}
       {/* One for a worker steers into that worker's turn, while it has one. */}
-      {(steer || item.to) && !item.to?.ended && (
+      {(steer || item.to) && !item.to?.ended && !item.shell && (
         <TooltipIconButton
           tooltip="Submit without interrupting the model"
           side="top"
@@ -318,7 +321,7 @@ function QueueRow({
           Steer
         </TooltipIconButton>
       )}
-      <TooltipIconButton tooltip="Delete queued message" side="top" className="text-muted-foreground" disabled={local} onClick={() => onRemove(item.id)}>
+      <TooltipIconButton tooltip={item.shell ? "Delete queued command" : "Delete queued message"} side="top" className="text-muted-foreground" disabled={local} onClick={() => onRemove(item.id)}>
         <Trash />
       </TooltipIconButton>
       <DropdownMenu modal={false}>

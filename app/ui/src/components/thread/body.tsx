@@ -124,7 +124,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           <>
             {/* Each side of a turn heads itself for a screen reader. */}
             <h2 className="sr-only">You said:</h2>
-            <UserRow id={item.id} cid={item.cid} text={item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft} brigade={item.brigade} older={older} />
+            <UserRow id={item.id} cid={item.cid} text={item.draft?.shell ? "```sh\n" + item.draft.shell + "\n```" : item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft?.shell ? null : item.draft} brigade={item.brigade} older={older} />
           </>
         );
       }

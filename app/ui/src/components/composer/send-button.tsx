@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 import { ArrowUp, ArrowUpRight, PlayTriangle, Stop } from "../../icons";
 import { keysOf, matches } from "../../shortcuts";
 import { Button } from "../button";
+import { cx } from "../cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { FollowUp } from "./draft";
 
@@ -84,6 +85,7 @@ export function SendButton({
   canResume = false,
   followUp = "queue",
   blocked,
+  shell = false,
   to,
   onSend,
   onSendNew,
@@ -97,6 +99,8 @@ export function SendButton({
   followUp?: FollowUp;
   /** Why it can't send now ("Reconnecting…"): disabled, with this as its tip. */
   blocked?: string;
+  /** What's typed is a shell command: Run. */
+  shell?: boolean;
   /** The worker the message goes to alone (the composer's To:). */
   to?: string;
   onSend: () => void;
@@ -109,7 +113,8 @@ export function SendButton({
   const armed = useEscToStop(canStop, onStop, button);
   const state = armed || (canStop && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
   const modHeld = useModHeld(onSendNew !== undefined);
-  const asNew = state === "send" && onSendNew !== undefined && modHeld && !empty;
+  const run = state === "send" && shell;
+  const asNew = state === "send" && !shell && onSendNew !== undefined && modHeld && !empty;
   const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";
   const tip =
     state === "stop"
@@ -118,7 +123,7 @@ export function SendButton({
         : "Stop"
       : state === "resume"
         ? "Resume"
-        : (blocked ?? (to !== undefined ? `Send to ${to}` : asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
+        : (blocked ?? (run ? (running ? "Run when the turn ends" : "Run command") : to !== undefined ? `Send to ${to}` : asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
   // A circle, as the old app's: not the icon-button corner (D27-D29 are about ghost icons).
   return (
     <Tooltip>
@@ -132,10 +137,10 @@ export function SendButton({
             data-state={state}
             // Resume waits while one is on its way (no `onResume`) or offline, as Send does.
             disabled={state === "send" ? empty || blocked !== undefined : state === "resume" && (blocked !== undefined || !onResume)}
-            onClick={(event) => (state === "stop" ? onStop() : state === "resume" ? onResume?.() : onSendNew && (asNew || (MAC ? event.metaKey : event.ctrlKey)) ? onSendNew() : onSend())}
-            className="inline-flex size-control-sm rounded-capsule transition-all motion-safe:active:scale-press"
+            onClick={(event) => (state === "stop" ? onStop() : state === "resume" ? onResume?.() : onSendNew && !shell && (asNew || (MAC ? event.metaKey : event.ctrlKey)) ? onSendNew() : onSend())}
+            className={cx("inline-flex rounded-capsule transition-all motion-safe:active:scale-press", run ? "h-control-sm gap-1 px-3 text-sm" : "size-control-sm")}
           >
-            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : asNew ? <ArrowUpRight data-slot="send-new-session" /> : <ArrowUp />}
+            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : run ? "Run" : asNew ? <ArrowUpRight data-slot="send-new-session" /> : <ArrowUp />}
           </Button>
         }
       />
