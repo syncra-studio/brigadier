@@ -22,13 +22,16 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-/// Proposed: how much of a note's name is shown. A session's title is five words of what it asks;
-/// a first line is often a name already ("Questions for the design review on Thursday"), so it has more.
+/// Proposed: how much of a name the user gave a note is shown.
 const SHOWN_CHARS: usize = 60;
 
-/// A note's name as its tab, lists and chip show it.
-fn short(name: &str) -> String {
-    core::title::one_line(name, SHOWN_CHARS)
+/// A note's name as its tab, lists and chip show it: the one it was renamed to, cut, else the first
+/// words of its first line, by the rule a session's title has.
+fn short(text: &str) -> String {
+    match named(split(text).0) {
+        "" => core::title::from(title(text)),
+        name => core::title::one_line(name, SHOWN_CHARS),
+    }
 }
 
 /// A note's whole name: the one it was renamed to, else its first line of text, without a
@@ -43,9 +46,13 @@ fn title(text: &str) -> &str {
     }
 }
 
-/// A line as words, its Markdown marks off: a heading's #s, a list's or checklist's, a quote's.
+/// A line as words, its Markdown marks off: a heading's #s, a list's or checklist's, a quote's, a
+/// whole code fence's.
 fn plain(line: &str) -> &str {
     let line = line.trim().trim_start_matches('#').trim_start();
+    if (line.strip_prefix("```")).is_some_and(|language| !language.contains('`')) {
+        return "";
+    }
     let line = ["- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> "]
         .iter()
         .find_map(|mark| line.strip_prefix(mark))
@@ -202,7 +209,7 @@ fn read_text(path: &Path) -> io::Result<String> {
 
 fn shown(text: &str) -> Value {
     let (head, body) = split(text);
-    json!({"head": head, "body": body, "revision": revision(text), "title": short(title(text))})
+    json!({"head": head, "body": body, "revision": revision(text), "title": short(text)})
 }
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -248,7 +255,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 fs::create_dir_all(&home)?;
                 core::write_atomic(&path, text.as_bytes())?;
             }
-            Ok(json!({"ok": true, "title": short(title(&text)), "revision": revision(&text)}))
+            Ok(json!({"ok": true, "title": short(&text), "revision": revision(&text)}))
         }
         "delete" => {
             let note = arg(args, 3)?;
@@ -328,7 +335,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 return Ok(json!({"ok": false, "error": "There's nothing in this note to name."}));
             }
             core::write_atomic(&path, text.as_bytes())?;
-            Ok(json!({"ok": true, "title": short(title(&text)), "revision": revision(&text)}))
+            Ok(json!({"ok": true, "title": short(&text), "revision": revision(&text)}))
         }
         _ => Err(io::Error::other(crate::USAGE)),
     }

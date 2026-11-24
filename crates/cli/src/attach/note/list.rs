@@ -106,16 +106,17 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
             },
         };
         let (whole, pin) = (title(&text), pinned.contains(&note));
-        let (name, shown) = (short(whole), preview(&text, whole));
+        let (name, shown) = (short(&text), preview(&text, whole));
         // A match already in sight, in the name or the line under it, isn't shown again.
         let hit = hit.filter(|h| {
-            !name
-                .to_lowercase()
-                .contains(&h.trim_matches('…').to_lowercase())
+            !words
+                .iter()
+                .take(1)
+                .any(|w| name.to_lowercase().contains(w))
                 && !shown.contains(h.trim_matches('…'))
         });
         let head = split(&text).0;
-        // What a rename starts from: the user's whole name, or what its text is called, without the cut's "…".
+        // What a rename starts from: the user's whole name, or the title its text gives it, without the cut's "…".
         let from = match named(head).is_empty() && name != whole {
             true => name.trim_end_matches('…'),
             false => whole,
