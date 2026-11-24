@@ -56,7 +56,7 @@ function itemOf(agent: Agent, skipped: readonly string[], failed: string | undef
 const ITEM_MS = 200;
 
 /** Something only sometimes there: it grows and fades in, and shrinks and fades out, so its neighbours glide. */
-function BarItem({ show, axis = "x", children }: { show: boolean; axis?: "x" | "y"; children: ReactNode }) {
+export function BarItem({ show, axis = "x", children }: { show: boolean; axis?: "x" | "y"; children: ReactNode }) {
   const [kept, setKept] = useState(show);
   const [opened, setOpened] = useState(show);
   useEffect(() => {
@@ -90,10 +90,10 @@ function BarItem({ show, axis = "x", children }: { show: boolean; axis?: "x" | "
   );
 }
 
-const Glyph = ({ item, className }: { item: UpdateItem; className: string }) => (item.target === "app" ? <BrigadierMark aria-hidden className={className} /> : <ProviderMark mark={item.mark} className={className} />);
+export const Glyph = ({ item, className }: { item: UpdateItem; className: string }) => (item.target === "app" ? <BrigadierMark aria-hidden className={className} /> : <ProviderMark mark={item.mark} className={className} />);
 
 /** "Codex update available", "Brigadier and Codex updates available", "Updating Codex". */
-function rowLabel(items: readonly UpdateItem[]) {
+export function rowLabel(items: readonly UpdateItem[]) {
   const join = (some: readonly UpdateItem[]) => {
     const all = some.map((item) => item.name);
     return all.length > 1 ? `${all.slice(0, -1).join(", ")} and ${all.at(-1)}` : (all[0] ?? "");
@@ -107,7 +107,7 @@ function rowLabel(items: readonly UpdateItem[]) {
 }
 
 /** One update in the list: its mark, name and versions, then Update or Download, its progress or its check, and Skip. */
-function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () => void; onSkip: () => void }) {
+export function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () => void; onSkip: () => void }) {
   const { progress, action } = item;
   return (
     <div className="flex flex-col gap-1.5 px-1.5 py-1.5">
