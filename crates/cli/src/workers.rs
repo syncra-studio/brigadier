@@ -454,7 +454,10 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<Strin
         }
         // A hold the user said to wait out goes on as picked once its reset has passed [D2028].
         if (row["worker"]["due"].as_u64()).is_some_and(|at| at <= log::now_ms())
-            && matches!(row["state"].as_str(), Some("new" | "idle" | "limited"))
+            && matches!(
+                row["state"].as_str(),
+                Some("new" | "idle" | "limited" | "out_of_credits")
+            )
         {
             let (data, id) = (data.to_path_buf(), id.clone());
             std::thread::spawn(move || crate::routing::resume(&data, &id));
