@@ -20,8 +20,8 @@
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
 // `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals } instead where
-// waiting may change it, with nothing done: `waits` is what for, `modals` how many dialogs are over the page. A first look then also
-// takes two frames to see that the control isn't moving, and is a promise.
+// waiting may change it, with nothing done: `waits` is what for, `modals` how many dialogs are over the page. With `still: true` it
+// does nothing at all: a promise, two frames long, of such a refusal, any other, or { still: true } where the control isn't moving.
 // `shownUrl`: an address as an agent sees it, from the shell.
 (op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
@@ -338,17 +338,17 @@
     return Math.abs(to.left + to.width / 2 - from.left - from.width / 2) > 0.5 || Math.abs(to.top + to.height / 2 - from.top - from.height / 2) > 0.5;
   };
   const refused = (error) => ({ error: `The page refused it: ${error && error.message ? error.message : String(error)}` });
-  /** What `verb` does, once what `stop` has nothing against is still: `verb` looks at all of it again itself. */
+  /** What `verb` does, or, for the look before it, whether what `stop` has nothing against is still. */
   const still = (verb, stop) => {
-    if (!op.waits) return verb();
-    const first = async () => {
+    if (!op.still) return verb();
+    const look = async () => {
       const found = target();
       const stopped = found.error ? found : stop(found.element);
       if (stopped) return stopped;
       if (await moves(found.element)) return later(`${op.target} keeps moving, so nothing was done.`, "it to stop moving");
-      return verb();
+      return { still: true };
     };
-    return first().catch(refused);
+    return look().catch(refused);
   };
 
   /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it. */

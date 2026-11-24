@@ -43,10 +43,13 @@ function stopOf(id: string, { generation }: Wait): Answer | null {
   return agentPage(id).generation === generation ? null : { error: "The page went to another before its control was ready, so nothing was done. Read it again." };
 }
 
-/** A look at an action's control, which waiting may change until the limit; a stop ends it without its answer. */
+/** Whether a refusal of `op` is still waited on. */
+const waits = (op: Answer, wait: Wait) => Boolean(op.target) && Date.now() < wait.until;
+
+/** A look at an action's control, which does nothing to it: a stop ends it without its answer. */
 async function look(id: string, op: Answer, wait: Wait): Promise<Answer | null> {
   const { guest } = agentPage(id);
-  const looked = script(guest, { ...op, trusted: true, waits: Boolean(op.target) && Date.now() < wait.until }).catch((error: unknown) => {
+  const looked = script(guest, { ...op, trusted: true, waits: waits(op, wait) }).catch((error: unknown) => {
     const stop = stopOf(id, wait);
     if (stop) return stop;
     throw error;
@@ -59,12 +62,23 @@ async function look(id: string, op: Answer, wait: Wait): Promise<Answer | null> 
   }
 }
 
+/** The first look of `op`, once its control is still. It may act (a select, a 0x0 toggle), so it's always heard out. */
+async function tried(id: string, op: Answer, wait: Wait): Promise<Answer | null> {
+  if (waits(op, wait)) {
+    const answer = await look(id, { ...op, still: true }, wait);
+    if (!answer?.still) return answer;
+    const stop = stopOf(id, wait);
+    if (stop) return stop;
+  }
+  return script(agentPage(id).guest, { ...op, trusted: true, waits: waits(op, wait) });
+}
+
 /**
  * The first look at an action's control, once the control is ready for it: a refusal that may change is waited on, from
  * `refused` where there is one, and given at the limit. Only looks are repeated: one that did something is the answer.
  */
 async function ready(id: string, op: Answer, wait: Wait, refused?: Waiting): Promise<Answer | null> {
-  const first = refused ?? (await look(id, op, wait));
+  const first = refused ?? (await tried(id, op, wait));
   if (!isWaiting(first)) return first;
   const { guest } = agentPage(id);
   // The page's own boxes are answered from now on, where they'd hold it up.
@@ -85,7 +99,7 @@ async function ready(id: string, op: Answer, wait: Wait, refused?: Waiting): Pro
       if ((await said(true)).length > saidBefore) return { ...opened, dialogs: await said(false) };
       const stop = stopOf(id, wait);
       if (stop) return stop;
-      answer = await look(id, op, wait);
+      answer = await tried(id, op, wait);
     }
   });
 }
