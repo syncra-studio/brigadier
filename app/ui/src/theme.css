@@ -1781,8 +1781,9 @@
 /* The tab bar [D360], the row across the window's top [D43 D44]. */
 @utility session-tab-bar {
   /* A 1px rule under the row across the main area, with tabs and with the chat alone, steady as one turns into
-     the other; none over New chat with no tabs [D201 D219]. Folded, it starts at a separator as tall as the row (::before)
-     between New chat and the first tab, 8 from each; both ease with the sidebar, at once while it's dragged. */
+     the other; none over New chat with no tabs [D201 D219]. Folded, it starts under the rule between New chat and the
+     first tab (::before), 8 from each, the tabs' own 1×12 on the row's middle line (session-tab); both ease
+     with the sidebar, at once while it's dragged. */
   &::before,
   &::after {
     content: "";
@@ -1796,9 +1797,10 @@
       background-color var(--duration-fold) var(--ease-sidebar);
   }
   &::before {
-    /* Down to the rule, not over it: crossed, their corner would draw twice. */
-    inset-block: 0 1px;
-    width: 1px;
+    inset-block: 0;
+    margin-block: auto;
+    height: var(--spacing-session-tab-rule-height);
+    width: var(--spacing-session-tab-rule);
     background-color: var(--color-border);
   }
   &::after {
@@ -1811,10 +1813,7 @@
   &[data-ruled]::after {
     opacity: 1;
   }
-  /* Over New chat with no tabs, only with the right panel's line to meet (main-surface). */
-  &:not([data-ruled])::before {
-    bottom: 0;
-  }
+  /* Over New chat with no tabs, only with the right panel's line (main-surface). */
   [data-slot="sidebar-wrapper"]:has([data-slot="right-panel"][data-state="expanded"]) &::before {
     opacity: 1;
   }

@@ -1,16 +1,14 @@
-// Mockup only: the folded sidebar's separator between New chat and the first tab. ?v=a, b, c or d (round 2's B) is a variant's page: four
-// windows, tabs open and the chat alone, the right panel closed and open. ?v=…&window is one of them: the whole app on a
-// stub daemon with fake sessions, files and tabs, the variant's rules over its own (strip-separator.css). Not the app.
+// Mockup only: the folded sidebar's separator between New chat and the first tab, the short rule (variant A, ?v=a), now
+// the app's own: four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the
+// whole app on a stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
-import "./strip-separator.css";
 // Listening for the daemon's port before it is posted.
 import "../src/daemon";
 
 import { createRoot } from "react-dom/client";
 
 const query = new URLSearchParams(location.search);
-const variant = query.get("v") ?? "a";
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -102,8 +100,7 @@ const STATES = [
   ["Chat alone, right panel open", "panel"],
 ] as const;
 
-if (query.has("window")) {
-  document.documentElement.dataset.mockup = variant;
+if (query.get("v") === "real") {
   // The sidebar folded, as each window starts.
   localStorage.setItem("sidebar.open", "false");
   location.hash = "#thread/s1";
@@ -117,7 +114,7 @@ if (query.has("window")) {
       {STATES.map(([name, state]) => (
         <figure key={name} className="flex min-h-56 min-w-184 flex-1 flex-col gap-1.5">
           <figcaption className="text-label">{name}</figcaption>
-          <iframe className="w-full flex-1 rounded-lg" title={name} aria-label={name} src={`?v=${variant}&window&${state}`} />
+          <iframe className="w-full flex-1 rounded-lg" title={name} aria-label={name} src={`?v=real&${state}`} />
         </figure>
       ))}
     </main>,
