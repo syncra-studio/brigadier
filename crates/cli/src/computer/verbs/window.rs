@@ -355,22 +355,16 @@ pub(super) fn unresolved(found: &Value) -> bool {
     (found["degraded_reason"].as_str()).is_some_and(|r| r.starts_with("ax_window_unresolved"))
 }
 
-/// Whether the read holds a page: its web area.
-pub(super) fn paged(found: &Value) -> bool {
-    (found["elements"].as_array().into_iter().flatten()).any(|e| e["role"] == "AXWebArea")
-        || (found["tree_markdown"].as_str()).is_some_and(|t| t.lines().any(web_area))
+/// The read's rows as the driver gives them, numbered or not: a tree's text may hold what reads as
+/// a row. The one it leaves out is a window's or a sheet's with no name.
+fn rows_of(found: &Value) -> impl Iterator<Item = &Value> {
+    let all = |k: &str| found[k].as_array().into_iter().flatten();
+    all("elements").chain(all("observations"))
 }
 
-/// A row whose role is the web area's, numbered or not: its words may hold any role's name.
-fn web_area(line: &str) -> bool {
-    let Some(rest) = line.trim_start().strip_prefix("- ") else {
-        return false;
-    };
-    let role = match rest.strip_prefix('[') {
-        Some(r) => r.split_once("] ").map_or("", |(_, r)| r),
-        None => rest,
-    };
-    role.split(' ').next() == Some("AXWebArea")
+/// Whether the read holds a page: its web area, or something in one.
+pub(super) fn paged(found: &Value) -> bool {
+    rows_of(found).any(|e| e["role"] == "AXWebArea" || e["in_web_content"] == true)
 }
 
 /// Whether a Chromium window lacks the page it should hold.
@@ -378,10 +372,11 @@ pub(super) fn page_missing(found: &Value) -> bool {
     !paged(found) && !dialog(found)
 }
 
-/// A window drawn by the app itself, with no page by design: a dialog, with a button of its own
+/// A window drawn by the app itself, with no page by design: a dialog or a sheet, with a button
 /// beside its title bar's.
 /// shortcut: an app's own window that isn't a dialog reads as a page that can't be read; a dialog
-/// with its own buttons round an unread page reads as whole. Nothing in a read tells them apart.
+/// with its own buttons round an unread page, or a sheet over one, reads as whole. Nothing in a read
+/// tells them apart; a sheet is answered before the page under it can be used.
 fn dialog(found: &Value) -> bool {
     const BAR: [&str; 4] = [
         "AXCloseButton",
@@ -390,10 +385,13 @@ fn dialog(found: &Value) -> bool {
         "AXFullScreenButton",
     ];
     let has = |role: &str, like: &dyn Fn(&str) -> bool| {
-        (found["elements"].as_array().into_iter().flatten())
-            .any(|e| e["role"] == role && like(e["subrole"].as_str().unwrap_or("")))
+        rows_of(found).any(|e| e["role"] == role && like(e["subrole"].as_str().unwrap_or("")))
     };
-    has("AXWindow", &|s| s == "AXDialog" || s == "AXSystemDialog")
+    let sheet = || {
+        let tree = found["tree_markdown"].as_str().unwrap_or("");
+        has("AXSheet", &|_| true) || tree.lines().any(|l| l.trim_start() == "- AXSheet")
+    };
+    (has("AXWindow", &|s| s == "AXDialog" || s == "AXSystemDialog") || sheet())
         && has("AXButton", &|s| !BAR.contains(&s))
 }
 
