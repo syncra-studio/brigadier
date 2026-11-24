@@ -13,6 +13,7 @@ export {
 
 /** A menu opened by a right-click (or the context-menu key) on its trigger, styled like the others. */
 export const ContextMenu = BaseContextMenu.Root;
+export type ContextMenuActions = BaseContextMenu.Root.Actions;
 export const ContextMenuTrigger = BaseContextMenu.Trigger;
 
 export function ContextMenuContent({

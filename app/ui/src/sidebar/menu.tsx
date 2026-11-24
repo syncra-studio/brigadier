@@ -27,7 +27,7 @@ import { useBranchPreview } from "./rename-branch";
 import type { Project, SessionRow } from "./words";
 
 /** A row's actions, in its ⋯ menu and its right-click menu alike, as the old app worded and grouped them [D185]; with `project`, its settings too, where no row of the project's own has them. */
-export function RowMenuItems({ row, project, canPin = true, onRename }: { row: SessionRow; project?: Project; canPin?: boolean; onRename: () => void }) {
+export function RowMenuItems({ row, project, canPin = true, onRename, onFork }: { row: SessionRow; project?: Project; canPin?: boolean; onRename: () => void; onFork?: () => void }) {
   const pinned = Boolean(row.pinned);
   const folder = useFolderChat(row.id);
   const copies: [string, string | null | undefined][] = [
@@ -49,7 +49,7 @@ export function RowMenuItems({ row, project, canPin = true, onRename }: { row: S
         Rename
         <DropdownMenuShortcut>{keysOf("rename")[0]}</DropdownMenuShortcut>
       </DropdownMenuItem>
-      <ForkMenuItem row={row} />
+      <ForkMenuItem row={row} onFork={onFork} />
       <DropdownMenuSeparator />
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>

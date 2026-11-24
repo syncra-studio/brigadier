@@ -30,7 +30,7 @@ export function ForkAction({ at }: { at: string }) {
 type Latest = ForkOffer & { at: string };
 
 /** Fork in a session's ⋯ menu, from its latest answer [D3105, D3106]: Rust's check read as the pointer reaches it and as it opens, then the places an answer's menu offers. */
-export function ForkMenuItem({ row }: { row: SessionRow }) {
+export function ForkMenuItem({ row, onFork }: { row: SessionRow; onFork?: () => void }) {
   const [offer, setOffer] = useState<Latest>();
   const [error, setError] = useState<string>();
   const read = () =>
@@ -46,7 +46,14 @@ export function ForkMenuItem({ row }: { row: SessionRow }) {
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-select">
         {offer ? (
-          <ForkPlaces offer={offer} onPick={(pick) => "where" in pick && startFork(row.id, row.project ?? null, offer.at, pick.where, offer.fingerprint, `Fork of ${row.title}`)} />
+          <ForkPlaces
+            offer={offer}
+            onPick={(pick) => {
+              if (!("where" in pick)) return;
+              onFork?.();
+              startFork(row.id, row.project ?? null, offer.at, pick.where, offer.fingerprint, `Fork of ${row.title}`);
+            }}
+          />
         ) : error ? (
           <div className="px-2 py-1.5">
             <ErrorLine size="sm" error={error} />

@@ -1,12 +1,13 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
+import { ContextMenu, type ContextMenuActions, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
 import { TooltipIconButton } from "../components/icon-button";
 import { DropdownMenuLabel } from "../components/menu";
 import { NavList, NavRow } from "../components/nav";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
+import { useSidebar } from "../components/sidebar";
 import { spacingPx } from "../components/tooltip";
 import { newSession } from "../home/start";
 import { Archive, ArrowUpRight, Chats, ComposeEditSquare, Settings } from "../icons";
@@ -30,14 +31,28 @@ import { type SessionRow, useStatusWords } from "./words";
 type Choose = (choice: () => void) => void;
 type Rows = { active: string | null; offline: boolean; onOpen: (id: string) => void; onRename: (row: SessionRow) => void };
 
+/** A right-click menu in the strip; it closes as the strip unfolds, or it would stay over the sidebar and take its clicks. */
+function StripMenu({ items, onOpen, children }: { items: ReactNode; onOpen?: () => void; children: ReactNode }) {
+  const { open: unfolded } = useSidebar();
+  const actions = useRef<ContextMenuActions>(null);
+  useEffect(() => {
+    if (unfolded) actions.current?.close();
+  }, [unfolded]);
+  return (
+    <ContextMenu actionsRef={actions} onOpenChange={(open) => open && onOpen?.()}>
+      {children}
+      <ContextMenuContent>{items}</ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
 const LIT = "group-data-popup-open/square:bg-fill group-data-popup-open/square:text-foreground";
 /** A square with its row's right-click menu, lit (`LIT`) while that's open; around the button alone, so a right-click in its flyout isn't the square's. */
 function SquareMenu({ items, onOpen, children }: { items: ReactNode; onOpen?: () => void; children: ReactNode }) {
   return (
-    <ContextMenu onOpenChange={(open) => open && onOpen?.()}>
+    <StripMenu items={items} onOpen={onOpen}>
       <ContextMenuTrigger className="group/square">{children}</ContextMenuTrigger>
-      <ContextMenuContent>{items}</ContextMenuContent>
-    </ContextMenu>
+    </StripMenu>
   );
 }
 
@@ -67,12 +82,6 @@ function Section({ heading, actions, children }: { heading: ReactNode; actions?:
 function Flyout({ label, icon, lit = false, pressed, align = "start", menu, onMenu, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; align?: "start" | "end"; menu?: ReactNode; onMenu?: () => void; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
-  // A line's menu went to another page (Fork).
-  useEffect(() => {
-    const close = () => setOpen(false);
-    addEventListener("hashchange", close);
-    return () => removeEventListener("hashchange", close);
-  }, []);
   const pick: Choose = (choice) => {
     setOpen(false);
     choice();
@@ -116,7 +125,7 @@ function Line({ row, pick, active, offline, onOpen, onRename }: Rows & { row: Se
   const words = useStatusWords(row);
   const mark = useMark(row, here);
   return (
-    <ContextMenu>
+    <StripMenu items={closed(row) ? <ClosedMenuItems row={row} /> : <RowMenuItems row={row} canPin={false} onRename={() => onRename(row)} onFork={() => pick(() => {})} />}>
       <ContextMenuTrigger render={<li className="group/row" />}>
         <NavRow aria-current={here ? "page" : undefined} title={words ?? undefined} className="pe-1.5 group-data-popup-open/row:bg-fill" onClick={() => pick(() => onOpen(row.id))}>
           <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{row.title || "New session"}</span>
@@ -125,8 +134,7 @@ function Line({ row, pick, active, offline, onOpen, onRename }: Rows & { row: Se
           </span>
         </NavRow>
       </ContextMenuTrigger>
-      <ContextMenuContent>{closed(row) ? <ClosedMenuItems row={row} /> : <RowMenuItems row={row} canPin={false} onRename={() => onRename(row)} />}</ContextMenuContent>
-    </ContextMenu>
+    </StripMenu>
   );
 }
 
