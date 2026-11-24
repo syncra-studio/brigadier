@@ -340,9 +340,15 @@ fn agent(args: &[String]) {
         grants: HashSet::new(),
     };
     emit(json!({"t": "hello", "session": agent.sid, "version": "fake 1"}));
+    let mut before = vec![];
     while let Some(v) = agent.backlog.pop_front().or_else(|| agent.rx.recv().ok()) {
         if v["setup"].is_object() {
             agent.set_up(&v["setup"]);
+            continue;
+        }
+        // An answer's images come just before it.
+        if let Some(images) = v["before"].as_array() {
+            before = images.clone();
             continue;
         }
         // A stop while it waits on a question ends that turn; with none open, it means nothing.
@@ -362,7 +368,9 @@ fn agent(args: &[String]) {
             None => v["text"].as_str().unwrap_or("").to_string(),
         };
         // The images a message carried, named back, so a demo sees them arrive [D2008].
+        let before = std::mem::take(&mut before);
         let images: Vec<&str> = (v["images"].as_array().into_iter().flatten())
+            .chain(&before)
             .filter_map(|p| p.as_str()?.rsplit('/').next())
             .collect();
         let text = if images.is_empty() {

@@ -133,6 +133,8 @@ const WHY: Record<string, string> = {
 };
 function refusal(reply: Record<string, any>): string {
   if (reply.error === "not_pending") return WHY[reply.why] ?? (reply.why === "unknown" ? "Nothing is waiting for this answer" : "The agent stopped waiting for this");
+  // The agent's own words.
+  if (reply.error === "agent" && reply.why) return String(reply.why);
   return WHY[reply.error] ?? String(reply.message ?? reply.error ?? "Refused");
 }
 

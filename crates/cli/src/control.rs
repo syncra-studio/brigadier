@@ -20,7 +20,7 @@ use std::{io, process, thread};
 mod given;
 mod steer;
 pub use given::beside;
-use given::{told, with};
+use given::with;
 pub use steer::{steer_as, steer_turn};
 
 pub(crate) fn refused(error: &str, why: Value) -> Value {
@@ -225,6 +225,15 @@ pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
+/// What the running turn asks as `request`, or why nothing waits on it.
+fn pending<'a>(f: &'a Fold, request: &str) -> Result<&'a Value, Value> {
+    let asked = f.turns.first().and_then(|t| t.asks.get(request));
+    asked.ok_or_else(|| {
+        let why = f.closed.get(request).map_or("unknown", String::as_str);
+        refused("not_pending", why.into())
+    })
+}
+
 fn answered(
     data: &Path,
     id: &str,
@@ -237,12 +246,13 @@ fn answered(
     }
     let decision = control["decision"].as_str().map(String::from);
     let answers = control["answers"].as_array().cloned();
+    let images = beside(data, id, given, Some(request))?;
+    if images["result"] == "refused" {
+        return Ok(images);
+    }
     let req = with(json!({"cid": new_cid()}), &mut control, given);
     deliver(data, id, req, true, |f| {
-        let Some(asked) = f.turns.first().and_then(|t| t.asks.get(request)) else {
-            let why = f.closed.get(request).map_or("unknown", String::as_str);
-            return Err(refused("not_pending", why.into()));
-        };
+        let asked = pending(f, request)?;
         let wrong = |what: &str| Err(refused("invalid", what.into()));
         match asked["items"].as_array() {
             Some(items) => {
@@ -261,7 +271,8 @@ fn answered(
                 _ => return wrong("decision"),
             },
         }
-        let mut msg = told(&control, asked, given);
+        let mut msg = control.clone();
+        msg["request"] = asked.clone();
         if answers.is_some() {
             msg["answers"] = given.told.clone().into();
         }
@@ -296,6 +307,9 @@ pub fn reply(
         return Ok(None);
     };
     let given = Answers::of(&core::load(data, id)?, text, parts)?;
+    if beside(data, id, &given, Some(&request))?["result"] == "refused" {
+        return Ok(None);
+    }
     let mut control =
         json!({"kind": "answer", "request": request, "reply": given.said[0], "by": by});
     let cid = cid.map_or_else(new_cid, String::from);
@@ -303,7 +317,8 @@ pub fn reply(
     let reply = deliver(data, id, req, true, |f| {
         match f.turns.first().and_then(|t| t.asks.get(request.as_str())) {
             Some(asked) => {
-                let mut msg = told(&control, asked, &given);
+                let mut msg = control.clone();
+                msg["request"] = asked.clone();
                 msg["reply"] = given.told[0].clone();
                 Ok(msg)
             }

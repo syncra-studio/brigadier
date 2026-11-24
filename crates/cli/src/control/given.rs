@@ -1,6 +1,6 @@
 //! An answer's images and files, on their way with it.
 
-use super::{deliver, new_cid, refused};
+use super::{deliver, new_cid, pending, refused};
 use brigadier_core::message::answers::Answers;
 use serde_json::{Value, json};
 use std::io;
@@ -16,32 +16,24 @@ pub(super) fn with(mut req: Value, control: &mut Value, given: &Answers) -> Valu
     req
 }
 
-/// An answer to `asked` as its adapter takes it: no CLI's own answer carries an image, so they go
-/// as the steer `beside` it.
-pub(super) fn told(control: &Value, asked: &Value, given: &Answers) -> Value {
-    let mut msg = control.clone();
-    msg["request"] = asked.clone();
-    if let Some(beside) = given.beside(&asked["items"]) {
-        msg["beside"] = beside.into();
-        msg["images"] = json!(given.images);
+/// The answer's images, into the running turn just before it: no CLI's own answer carries one, and
+/// an agent reads them straight after the answer that lets its turn go on. `request`: what it
+/// answers, None where an agent's send waits. Refused, the answer isn't given; none, Null.
+pub fn beside(data: &Path, id: &str, given: &Answers, request: Option<&str>) -> io::Result<Value> {
+    if given.images.is_empty() {
+        return Ok(Value::Null);
     }
-    msg
-}
-
-/// The images of an answer an agent's wait got, into its running turn after it. Not taken, the
-/// answer still names each one's file.
-pub fn beside(data: &Path, id: &str, given: &Answers) -> io::Result<()> {
-    let mut control = json!({"kind": "beside"});
-    let req = with(json!({"cid": new_cid()}), &mut control, given);
-    let Some(text) = given.beside(&Value::Null) else {
-        return Ok(());
-    };
-    let reply = deliver(data, id, req, false, |f| match f.turns.first() {
-        Some(t) if t.began => Ok(json!({"kind": "steer", "text": text, "images": given.images})),
-        _ => Err(refused("not_running", Value::Null)),
-    })?;
-    if reply["ok"] != true {
-        eprintln!("{id} took no images with the answer: {reply}");
-    }
-    Ok(())
+    let req = with(
+        json!({"cid": new_cid()}),
+        &mut json!({"kind": "beside"}),
+        given,
+    );
+    deliver(data, id, req, true, |f| {
+        if !f.turns.first().is_some_and(|t| t.began) {
+            return Err(refused("not_running", Value::Null));
+        }
+        let asked = request.map_or(Ok(&Value::Null), |r| pending(f, r))?;
+        let text = given.beside(&asked["items"]);
+        Ok(json!({"kind": "steer", "text": text, "images": given.images, "request": asked}))
+    })
 }

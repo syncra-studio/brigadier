@@ -131,9 +131,15 @@ pub fn user_answer(data: &Path, sid: &str, mid: &str, given: &Answers) -> io::Re
     if !given.filed() {
         return Ok(peers::answer(data, &l.parent, sid, mid, &told));
     }
+    if peers::waits(data, sid, mid) {
+        let images = control::beside(data, sid, given, None)?;
+        if images["result"] == "refused" {
+            return Ok(images);
+        }
+    }
     let note = json!({"phase": "answered", "mid": mid, "reply": said, "files": given.files});
     match peers::hand_back(data, sid, mid, &told, note) {
-        Ok(true) => control::beside(data, sid, given)?,
+        Ok(true) => {}
         // Nobody waits any more: the user's own message, as its images need. One that can't go now
         // still names each one's file.
         Ok(false) => {

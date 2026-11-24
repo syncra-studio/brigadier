@@ -221,7 +221,7 @@ impl Fold {
             // A setup the agent confirms before a turn's message: no turn of its own [D222].
             Some("retune") => true,
             Some("stop_task") => true,
-            // An answer's images, after the answer its agent waited for.
+            // An answer's images, before it.
             Some("beside") => true,
             // A steer joins the turn that runs; with none running it is a message like any other.
             _ => {

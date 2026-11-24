@@ -267,7 +267,11 @@ pub fn input(spec: &Spec, text: &str) -> Value {
 pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
     let line = match msg["kind"].as_str() {
         Some("answer") => answer(spec, msg)?,
-        Some("steer") => json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"]))}),
+        Some("steer") => {
+            // One that goes with an answer joins the thread that asked, a subagent's its own.
+            let asked = &msg["request"]["cli"];
+            json!({"id": spec.cid, "steer": input(spec, s(msg, &["text"])), "thread": asked["thread"], "turn": asked["turn"]})
+        }
         Some("interrupt") => json!({"id": spec.cid, "interrupt": true}),
         // Codex has no channel for it: the note steers the turn that runs, else starts the wake
         // that joins the block [D117].
@@ -352,14 +356,8 @@ pub fn answer(spec: &Spec, msg: &Value) -> Result<Value, String> {
         line["grant"] = r.clone();
     }
     let why = msg["reason"].as_str().map_or("", str::trim);
-    // Its answer takes words alone, so its images go in the same way: read straight after it. Not
-    // taken, the answer still names each one's file.
-    let before = match msg["beside"].as_str() {
-        Some(beside) => Some(input(spec, beside)),
-        None => (!allowed && !why.is_empty()).then(|| crate::adapters::denied(msg).into()),
-    };
-    if let Some(before) = before {
-        line["before"] = before;
+    if !allowed && !why.is_empty() {
+        line["before"] = crate::adapters::denied(msg).into();
         line["thread"] = cli["thread"].clone();
         line["turn"] = cli["turn"].clone();
     }
