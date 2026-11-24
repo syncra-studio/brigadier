@@ -451,8 +451,9 @@ pub fn pass(data: &Path, rows: &std::collections::BTreeMap<String, Value>) {
         if row["worker"]["kind"] == "doneNotMerged" {
             row::merged(data, id);
         }
-        // A hold the user said to wait out goes on once its reset has passed [D2028].
-        if !row["worker"].is_null()
+        // A hold the user said to wait out goes on once its reset has passed [D2028]. Its row says
+        // limit: `due` folds the whole log, too slow to do for every idle worker each pass.
+        if row["worker"]["kind"] == "limit"
             && matches!(row["state"].as_str(), Some("new" | "idle" | "limited"))
         {
             crate::routing::due(data, id);
