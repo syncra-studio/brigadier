@@ -11,7 +11,7 @@ pub mod plan;
 mod rewind;
 pub mod runs;
 mod status;
-mod todo;
+pub mod todo;
 mod turns;
 pub use input::Picked;
 pub use live::{HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop};

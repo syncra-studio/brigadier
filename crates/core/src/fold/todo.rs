@@ -3,6 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
+use std::io;
+use std::path::Path;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Todo {
@@ -25,17 +28,46 @@ fn completed(step: &Value) -> bool {
 }
 
 impl Todo {
+    /// The plan up to the log's frame `seq`, without what rewinds dropped: a fork's goes on from its
+    /// source's [D1063].
+    pub fn replay(dir: &Path, seq: u64) -> io::Result<Todo> {
+        let mut plan = Todo::default();
+        let mut push = |item: &Value| {
+            if item["kind"] == "plan" {
+                plan.wrote(&item["steps"]);
+            }
+        };
+        crate::fork::inherited(dir).iter().for_each(&mut push);
+        crate::rewind::read_active(dir, |item| {
+            if item["f"].as_u64().is_some_and(|f| f <= seq) {
+                push(item);
+            }
+        })?;
+        Ok(plan)
+    }
+
     /// A list wholly finished, or one that shares no step with the new one, is another plan's.
     pub fn wrote(&mut self, list: &Value) {
         let (was, new) = (steps(self.written.as_ref()), steps(Some(list)));
-        let shared = was.iter().any(|w| new.iter().any(|s| text(s) == text(w)));
-        if !shared || was.iter().all(completed) {
+        let has: HashSet<&str> = new.iter().map(text).collect();
+        if was.iter().all(completed) || !was.iter().any(|s| has.contains(text(s))) {
             self.done.clear();
         }
-        // The new list's own status goes for each step it has.
-        (self.done).retain(|d| new.iter().all(|s| text(s) != d || completed(s)));
+        // The new list's own status goes for each step it has, as many as it has.
+        let mut more = HashMap::<&str, usize>::new();
         for step in new.iter().filter(|s| completed(s)) {
-            if !self.done.iter().any(|d| d == text(step)) {
+            *more.entry(text(step)).or_default() += 1;
+        }
+        let mut take = |t: &str| match more.get_mut(t) {
+            Some(n) if *n > 0 => {
+                *n -= 1;
+                true
+            }
+            _ => false,
+        };
+        self.done.retain(|d| !has.contains(d.as_str()) || take(d));
+        for step in new {
+            if take(text(step)) {
                 self.done.push(text(step).into());
             }
         }
@@ -47,12 +79,17 @@ impl Todo {
         let Some(list) = &self.written else {
             return Value::Null;
         };
-        let written = steps(Some(list));
-        let kept = (self.done.iter()).filter(|d| written.iter().all(|s| text(s) != *d));
+        let has: HashSet<&str> = steps(Some(list)).iter().map(text).collect();
+        let kept = self.done.iter().filter(|d| !has.contains(d.as_str()));
         let kept = kept.map(|d| json!({"text": d, "status": "completed"}));
-        let mut all: Vec<Value> = kept.chain(written.iter().cloned()).collect();
-        let at = |s: &Value| self.done.iter().position(|d| completed(s) && d == text(s));
-        all.sort_by_key(|s| at(s).unwrap_or(usize::MAX));
+        let at: HashMap<&str, usize> = (self.done.iter().enumerate())
+            .map(|(n, d)| (d.as_str(), n))
+            .collect();
+        let mut all: Vec<Value> = kept.chain(steps(Some(list)).iter().cloned()).collect();
+        all.sort_by_key(|s| match completed(s) {
+            true => at.get(text(s)).copied().unwrap_or(usize::MAX),
+            false => usize::MAX,
+        });
         all.into()
     }
 }

@@ -361,18 +361,15 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
     let log_len = fs::metadata(dir.join("log")).map(|m| m.len()).unwrap_or(0);
     if log_len > f.pos {
         let mut reader = Reader::open(&dir.join("log"), f.pos, f.seq)?;
-        let mut items = vec![];
+        let (mut items, mut replan, mut seq) = (vec![], false, 0);
         while let Some(frame) = reader.frame()? {
+            seq = frame.seq;
             f.norm.push(&frame, &mut items);
             for item in items.drain(..) {
                 each(&item);
                 f.fold.push(&item);
-                // A fork's plan goes on from its source's [D1063].
-                if item["kind"] == "note" && item["event"] == "forked" {
-                    let copy = fork::inherited(dir);
-                    let plans = copy.iter().filter(|i| i["kind"] == "plan");
-                    plans.for_each(|i| f.fold.plan.wrote(&i["steps"]));
-                }
+                replan |= item["kind"] == "note"
+                    && matches!(item["event"].as_str(), Some("rewound" | "forked"));
             }
             // Any output is a sign of life, even bytes that make no item (heartbeats).
             if matches!(frame.kind, log::OUT | log::ERR) {
@@ -382,6 +379,9 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
                 f.pos = reader.pos;
                 f.seq = reader.seq;
             }
+        }
+        if replan {
+            f.fold.plan = fold::todo::Todo::replay(dir, seq)?;
         }
     }
     Ok(f)

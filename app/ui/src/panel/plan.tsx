@@ -38,7 +38,7 @@ function StepRow({ step }: { step: Step }) {
 }
 
 /** Plans opened by hand, by session: hiding the card unmounts it, and it comes back as it was left. */
-const planFolds = new Map<string, { open: boolean; earlier: boolean; shown: number }>();
+const planFolds = new Map<string, { open: boolean; earlier: boolean; shown: number; of?: string }>();
 
 /**
  * The agent's own to-do list as its CLI last wrote it (Claude Code's TodoWrite, OpenCode's todowrite, Codex's
@@ -47,16 +47,21 @@ const planFolds = new Map<string, { open: boolean; earlier: boolean; shown: numb
  */
 export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) {
   const [fold, setFold] = useState(() => planFolds.get(owner) ?? { open: false, earlier: false, shown: FINISHED });
-  const { open, earlier, shown } = fold;
+  const { open, earlier } = fold;
   const change = (next: Partial<typeof fold>) => {
     const now = { ...fold, ...next };
     planFolds.set(owner, now);
     setFold(now);
   };
   const past = useId();
-  const ended = plan.filter((step) => ENDED.has(step.status));
+  const finished = plan.filter((step) => step.status === "completed");
+  // The cancelled first, so the newest ten are the finished ones.
+  const ended = [...plan.filter((step) => step.status === "cancelled"), ...finished];
+  // What Show more showed is that plan's, known by its oldest finished step: another starts over.
+  const of = finished[0]?.text;
+  const shown = fold.of === of ? fold.shown : FINISHED;
   const left = plan.filter((step) => !ENDED.has(step.status));
-  const done = plan.filter((step) => step.status === "completed").length;
+  const done = finished.length;
   const total = plan.filter((step) => step.status !== "cancelled").length;
   const over = left.length === 0;
   const current = left.find((step) => step.status === "in_progress") ?? left[0];
@@ -82,7 +87,7 @@ export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) 
           <div id={past} hidden={!over && !earlier}>
             <ul>{ended.slice(-shown).map((step, at) => <StepRow key={at} step={step} />)}</ul>
             {ended.length > shown && (
-              <Line onClick={() => change({ shown: shown + FINISHED })} className="text-muted-foreground">Show {ended.length - shown} more</Line>
+              <Line onClick={() => change({ shown: shown + FINISHED, of })} className="text-muted-foreground">Show {ended.length - shown} more</Line>
             )}
           </div>
           <ul>{left.map((step, at) => <StepRow key={at} step={step} />)}</ul>
