@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
 import { SessionOfThread } from "../accounts/limit";
-import { drawable, ImageWords, InLink, ReplyImage } from "../components/thread/image";
+import { drawable, ImageWords, InLink, ReplyImage, Streaming } from "../components/thread/image";
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
@@ -24,6 +24,8 @@ const plugins = [remarkGfm, remarkBreaks, remarkRefs];
  * put it [D2107]. The chunks a streaming reply grows by fade in [D53].
  */
 export function Markdown({ text: written, keep, chip, streaming }: { text: string; keep: string; chip?: (n: number) => ReactNode; streaming?: boolean }) {
+  // A text nested in a reply (a draft) is written as it is.
+  const within = useContext(Streaming);
   const text = nestUnderItems(written);
   const chunks = useChunks(text);
   const tokens = marked.lexer(text);
@@ -54,18 +56,20 @@ export function Markdown({ text: written, keep, chip, streaming }: { text: strin
     }
   });
   return (
-    <div ref={box} className="markdown">
-      {tokens.map((token, n) => {
-        const from = start;
-        start += token.raw.length;
-        if (token.type === "space" || token.type === "def") return null;
-        const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
-        // A fence still being written is left as it is: closing marks inside it would show as its text.
-        const open = n === tail && openFence(token.raw);
-        const raw = n === tail && !open ? settle(token.raw) : token.raw;
-        return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(raw)} keep={`${keep}:${n}`} chip={chip} open={open} chunks={mine.length ? mine : NONE} />;
-      })}
-    </div>
+    <Streaming value={streaming ?? within}>
+      <div ref={box} className="markdown">
+        {tokens.map((token, n) => {
+          const from = start;
+          start += token.raw.length;
+          if (token.type === "space" || token.type === "def") return null;
+          const mine = chunks.filter((c) => c.to > from && c.from < start).map((c) => ({ ...c, from: c.from - from, to: c.to - from }));
+          // A fence still being written is left as it is: closing marks inside it would show as its text.
+          const open = n === tail && openFence(token.raw);
+          const raw = n === tail && !open ? settle(token.raw) : token.raw;
+          return <Block key={n} text={token.type === "code" ? token.raw : withDefinitions(raw)} keep={`${keep}:${n}`} chip={chip} open={open} chunks={mine.length ? mine : NONE} />;
+        })}
+      </div>
+    </Streaming>
   );
 }
 
@@ -156,7 +160,7 @@ function Img({ src, keep, ...image }: { src?: string; alt?: string; title?: stri
   if (local && url?.src !== local) return null;
   if (local && url?.url) return <img src={url.url} {...image} />;
   if (!files && owner && src && (RELATIVE.test(src) || /^file:/i.test(src))) return <ReplyImage key={src} src={src} owner={owner} keep={keep} {...image} />;
-  return <ImageWords src={src} alt={image.alt} />;
+  return <ImageWords src={src} alt={image.alt} onOpen={local && files ? () => files.open(local) : undefined} />;
 }
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;

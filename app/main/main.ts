@@ -172,12 +172,22 @@ function projectIcon(pathname: string): Promise<string | null> {
   return projectIcons.get(id!)!;
 }
 
+/** An SVG can carry script: none runs, nothing loads, and no file is read as another kind. A fetch's headers are fixed, so they're copied. */
+function locked(fetched: Response): Response {
+  const headers = new Headers(fetched.headers);
+  headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(fetched.body, { status: fetched.status, headers });
+}
+
 function serveUi(): void {
   protocol.handle("app", async (request) => {
     const url = new URL(request.url);
     if (url.host === APP_ID && url.pathname.startsWith("/attachment/")) {
       const file = attachmentFile(url.pathname);
-      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+      if (!file) return new Response(null, { status: 404 });
+      const fetched = await net.fetch(pathToFileURL(file).toString());
+      return /\.svg$/i.test(file) ? locked(fetched) : fetched;
     }
     if (url.host === APP_ID && url.pathname.startsWith("/note-image/")) {
       const file = noteImage(url.pathname);
@@ -197,11 +207,7 @@ function serveUi(): void {
       // A logo found once may since have gone: a 404 too, with the same headers.
       const missing = () => new Response(null, { status: 404 });
       const fetched = file ? await net.fetch(pathToFileURL(file).toString()).catch(missing) : missing();
-      // An SVG can carry script: none runs, nothing loads, and no file is read as another kind. A fetch's headers are fixed, so they're copied.
-      const headers = new Headers(fetched.headers);
-      headers.set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-      headers.set("X-Content-Type-Options", "nosniff");
-      return new Response(fetched.body, { status: fetched.status, headers });
+      return locked(fetched);
     }
     const file = path.join(uiDist, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
     if (url.host !== APP_ID || !file.startsWith(uiDist + path.sep)) return new Response(null, { status: 403 });

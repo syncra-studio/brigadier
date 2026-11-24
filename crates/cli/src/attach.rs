@@ -12,6 +12,7 @@ use brigadier_core::{self as core, adapters, check_id};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -115,7 +116,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true}))
         }
         // An image a thread's link or reply names, anywhere on disk, copied under the session's own `viewed/` for
-        // the page to show from there, so it goes with the session [D35, D290]. `at` is its file, while there.
+        // the page to show from there, so it goes with the session [D35, D290]. `at` is its file, or the copy once that's gone.
         "view" => {
             let asked = arg(args, 3)?;
             if owner == HOME_DRAFT {
@@ -125,7 +126,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let at = path.as_ref().filter(|p| p.is_file());
             let Some(name) = Path::new(asked)
                 .file_name()
-                .filter(|n| is_image(n.as_ref()))
+                .filter(|n| is_image(n.as_ref()) || svg(n.as_ref()))
             else {
                 return Ok(json!({"ok": false, "error": "This isn't an image to show.", "at": at}));
             };
@@ -138,26 +139,33 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             });
             let viewed = core::session_dir(data, owner).join("viewed");
             let file = viewed.join(&id).join(name);
-            match path.as_ref().map(fs::metadata) {
-                Some(Ok(meta)) if meta.len() > MAX_BYTES => {
+            // Opened without waiting: a pipe named as an image would hold the read.
+            let open = |p| {
+                let mut options = fs::OpenOptions::new();
+                let from = options.read(true).custom_flags(libc::O_NONBLOCK).open(p)?;
+                Ok((from.metadata()?, from))
+            };
+            match path.as_ref().map(open) {
+                Some(Ok((meta, _))) if meta.is_file() && meta.len() > MAX_BYTES => {
                     let mut reply = too_large();
                     reply["at"] = json!(at);
                     return Ok(reply);
                 }
                 // Copied again on each open, the agent may have changed it since; whole before it takes the old one's place.
-                Some(Ok(_)) => {
+                Some(Ok((meta, mut from))) if meta.is_file() => {
                     fs::create_dir_all(viewed.join(&id))?;
                     let tmp = viewed.join(adapters::uuid());
-                    fs::copy(path.as_ref().unwrap(), &tmp)
+                    fs::File::create(&tmp)
+                        .and_then(|mut to| io::copy(&mut from, &mut to))
                         .and_then(|_| fs::rename(&tmp, &file))
                         .inspect_err(|_| drop(fs::remove_file(&tmp)))?;
                 }
                 // Its file gone (a worker's folder goes with it), its copy shows.
                 _ if file.exists() => {}
                 Some(Err(e)) => return Err(e),
-                None => return Err(io::ErrorKind::NotFound.into()),
+                _ => return Err(io::ErrorKind::NotFound.into()),
             }
-            Ok(json!({"ok": true, "id": id, "at": at}))
+            Ok(json!({"ok": true, "id": id, "at": at.unwrap_or(&file)}))
         }
         // A file or folder a thread's link names outside the checkout shows in Finder, as the old app's [D2098, D290].
         // An attachment by its id (an image the agent made) shows its file [D300].
@@ -254,8 +262,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
 }
 
-/// Where an image's path, as a message writes it, is on disk: whole, under `~/`, or in the session's checkout, where
-/// a bare name is found as its refs find it [D251].
+/// Not one every agent takes (`is_image`), but the page draws it.
+fn svg(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+}
+
+/// Where an image's path, as a message writes it, is on disk: whole or under `~/`, anywhere; else inside the session's
+/// checkout, never out of it, where a bare name is found as its refs find it [D251].
 fn named(data: &Path, owner: &str, asked: &str) -> Option<PathBuf> {
     if asked.starts_with('/') {
         return Some(asked.into());
@@ -263,9 +277,9 @@ fn named(data: &Path, owner: &str, asked: &str) -> Option<PathBuf> {
     if let Some(rest) = asked.strip_prefix("~/") {
         return Some(Path::new(&std::env::var_os("HOME")?).join(rest));
     }
+    let asked = asked.trim_start_matches("./");
     let checkout = git::checkout(data, &Target::Session(owner)).ok()?;
-    let at = checkout.root.join(asked);
-    if at.is_file() {
+    if let Some(at) = git::inside(&checkout, asked).ok().filter(|at| at.is_file()) {
         return Some(at);
     }
     let reply = crate::mention::paths(data, &json!({"owner": owner, "paths": [asked]}));
