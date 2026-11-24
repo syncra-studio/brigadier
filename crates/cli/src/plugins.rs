@@ -146,8 +146,11 @@ fn list(data: &Path) -> Value {
             // The user's own folders of it, which Remove leaves as they are.
             let mut own_folders: Vec<&Path> = (own.iter())
                 .filter(|(_, k)| i["kind"] == "skill" && found::is(k, str(&i["name"])))
-                .filter_map(|(_, k)| Path::new(str(&k["path"])).parent())
+                .flat_map(|(_, k)| [&k["path"]].into_iter().chain(k["also"].as_array().into_iter().flatten()))
+                .filter_map(|p| Path::new(str(p)).parent())
                 .collect();
+            let added = i["added_from"].as_str().map(Path::new);
+            own_folders.extend(added.filter(|f| f.join("SKILL.md").is_file()));
             own_folders.sort();
             own_folders.dedup();
             let note = match i["sign_in"] == "cli" {
@@ -228,6 +231,10 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
         let text = std::fs::read_to_string(from.join("SKILL.md"))
             .map_err(|_| refuse("That folder has no SKILL.md."))?;
         item["description"] = crate::relay::described(&text).into();
+        // The user's folder it's copied from; one fetched from Browse isn't theirs.
+        if !Path::new(str(&v["folder"])).starts_with(browse::incoming(data)) {
+            item["added_from"] = v["folder"].clone();
+        }
         let to = library::dir(data).join("skills");
         std::fs::create_dir_all(&to)?;
         // An earlier add's leftover, never listed.
@@ -277,15 +284,20 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
         }
     }
     items.push(item);
-    if let Err(e) = library::save(data, &items) {
+    // Added again, it's no longer removed; a failure leaves nothing added and it still removed.
+    let gone = library::removed(data);
+    let left: Vec<String> = gone.iter().filter(|k| **k != key).cloned().collect();
+    let back = left.len() < gone.len();
+    let cleared = match back {
+        true => library::save_removed(data, &left),
+        false => Ok(()),
+    };
+    if let Err(e) = cleared.and_then(|()| library::save(data, &items)) {
         let _ = forget(data, &key, &name);
+        if back {
+            let _ = library::save_removed(data, &gone);
+        }
         return Err(e);
-    }
-    // Added again, it's no longer removed.
-    let mut gone = library::removed(data);
-    if gone.contains(&key) {
-        gone.retain(|k| *k != key);
-        library::save_removed(data, &gone)?;
     }
     Ok(key)
 }
