@@ -139,8 +139,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let qid = flag(args, "--qid").ok_or_else(|| io::Error::other(crate::USAGE))?;
             check_id(qid)?;
             let at = flag(args, "--at").and_then(|n| n.parse().ok());
-            let parts = crate::parts(args)?;
-            core::message::take(data, &dir, &parts, flag(args, "--from"))?;
+            let (parts, from) = (crate::parts(args)?, flag(args, "--from"));
+            let parts = core::message::notes::taken(data, &dir, parts, from)?;
             // Only another session's message names its sender; anything else is the user's [D2034].
             let origin = flag(args, "--origin").map(String::from);
             if origin.as_ref().is_some_and(|o| !o.starts_with("peer:")) {
@@ -443,7 +443,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             }
             owner::call(data, id, req)
         };
-        let mut msg = core::message::compose(&spec, &item.text, item.parts.clone())?;
+        let mut msg = core::message::compose(&spec, &item.text, item.parts.clone(), None)?;
         // What's held for the parent's next message goes with it [D329].
         let held = crate::workers::with_next(data, id, Some(&item.id), &mut msg.agent);
         let reply = core::send(

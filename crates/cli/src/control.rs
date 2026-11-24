@@ -421,7 +421,7 @@ pub(crate) fn send(
     let _fence = core::session::fence(data, spec)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
-    let mut msg = core::message::compose(spec, text, parts)?;
+    let mut msg = core::message::compose(spec, text, parts, backend)?;
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg.agent);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;

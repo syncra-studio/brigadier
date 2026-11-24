@@ -203,5 +203,6 @@ pub fn recover(
 
 /// A message sent again as it was first sent, its files already in the session's folder.
 fn again(spec: &Spec, text: &str, parts: &Value) -> Message {
-    crate::message::compose(spec, text, parts.clone()).unwrap_or_else(|_| Message::plain(text))
+    crate::message::compose(spec, text, parts.clone(), None)
+        .unwrap_or_else(|_| Message::plain(text))
 }

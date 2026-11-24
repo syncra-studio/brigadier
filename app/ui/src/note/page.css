@@ -264,6 +264,25 @@
     @apply focus-ring;
   }
 }
+/* An image on a line of its own, at most the column's width. */
+.note-image {
+  @apply block max-w-full;
+}
+.note-image-button {
+  @apply relative block max-w-full cursor-zoom-in overflow-hidden rounded-surface focus-visible:focus-ring;
+}
+.note-image-picture {
+  @apply block h-auto max-w-full;
+}
+.note-image-button[aria-busy="true"] .note-image-picture {
+  @apply opacity-disabled;
+}
+.note-image-saving {
+  @apply absolute end-2 top-2 size-icon-md motion-safe:animate-spin;
+}
+.note-image-line {
+  @apply text-label text-quiet-foreground;
+}
 .note-table {
   @apply w-full table-fixed border-collapse;
 }

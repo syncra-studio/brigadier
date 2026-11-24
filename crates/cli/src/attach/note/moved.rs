@@ -4,7 +4,7 @@
 //! moves, so a move cut short is finished by the next run and nothing is lost. A note whose side
 //! chat is working stays where it is, still read there, and moves once its chat has stopped.
 
-use super::{all_chats, chats_of, folder, resave};
+use super::{all_chats, chats_of, folder, images, resave};
 use crate::{owner, sessions};
 use brigadier_core::{self as core, check_id, fold::Owner, projects};
 use brigadier_frames::procs;
@@ -187,11 +187,15 @@ fn carry(data: &Path, m: &Move) -> io::Result<()> {
     fs::create_dir_all(&m.to)?;
     let md = m.to.join(format!("{}.md", m.new));
     let chats = chats_of(&m.from, &m.id);
-    for ext in ["md", "chat"] {
+    for ext in ["md", "chat", "images"] {
         let from = m.from.join(format!("{}.{ext}", m.id));
         if from.exists() {
             fs::rename(&from, m.to.join(format!("{}.{ext}", m.new)))?;
         }
+    }
+    if m.new != m.id && md.exists() {
+        let text = images::renamed(&fs::read_to_string(&md)?, &m.id, &m.new);
+        core::write_atomic(&md, text.as_bytes())?;
     }
     let reads = (m.project.as_deref())
         .and_then(|p| projects::get(data, p).ok())

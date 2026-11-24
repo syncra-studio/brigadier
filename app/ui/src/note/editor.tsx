@@ -16,6 +16,7 @@ import { $getRoot, type EditorThemeClasses, type LexicalEditor } from "lexical";
 import { type RefObject, useState } from "react";
 
 import { openLink } from "../browser/links";
+import { ImagePlugin } from "./image";
 import { $exportPage, $importPage, PAGE_NODES, PAGE_TRANSFORMERS } from "./markdown";
 import { DragHandles, SelectionToolbar, type SendTo, SlashMenu } from "./tools";
 
@@ -93,6 +94,7 @@ export function NoteEditor({ body, label, editorRef, onChange, onSend }: { body:
       <MarkdownShortcutPlugin transformers={PAGE_TRANSFORMERS} />
       <OnChangePlugin ignoreSelectionChange onChange={(state) => onChange(state.read(() => $exportPage()))} />
       <EditorRefPlugin editorRef={editorRef} />
+      <ImagePlugin />
       <SlashMenu />
       <SelectionToolbar onSend={onSend} />
       <DragHandles anchor={anchor} />

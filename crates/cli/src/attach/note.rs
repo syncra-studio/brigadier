@@ -1,4 +1,4 @@
-//! `note <id> read <note> | write <note> <head> <body> --base <rev> | list | delete <note> |
+//! `note <id> read <note> [--first] | write <note> <head> <body> --base <rev> [--from <note>] | image (images.rs) | list | delete <note> |
 //! chat <note> <chat-id> [--new | --open] | chats`, `--project <p>` on Home's: the project's notes,
 //! one Markdown file each in its notes folder, so they outlive its sessions; chats in no project
 //! share one [D244, D913, D921]. As the old app's pages: `# <head>`,
@@ -12,8 +12,10 @@
 //! go with the note or the project [D281, D282, D288]. Home's note has one too, on the new chat's
 //! picked agent [D287].
 
+mod images;
 mod list;
 mod moved;
+mod names;
 
 use crate::{HOME_DRAFT, arg, flag, has, models, remove};
 use brigadier_core::{self as core, check_id, message::MAX_BYTES, projects};
@@ -22,65 +24,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-/// Proposed: how much of a name the user gave a note is shown.
-const SHOWN_CHARS: usize = 60;
-
-/// A note's name as its tab, lists and chip show it: the one it was renamed to, cut, else the first
-/// words of its first line, after the emoji that may lead them, by the rule a session's title has.
-fn short(text: &str) -> String {
-    match named(split(text).0) {
-        "" => {
-            let line = title(text);
-            core::title::from(Some(named(line)).filter(|w| !w.is_empty()).unwrap_or(line))
-        }
-        name => core::title::one_line(name, SHOWN_CHARS),
-    }
-}
-
-/// A note's whole name: the one it was renamed to, else its first line of text, without a
-/// heading's #s [D913].
-fn title(text: &str) -> &str {
-    let (head, body) = split(text);
-    match named(head) {
-        "" => (body.lines().map(plain))
-            .find(|line| !line.is_empty())
-            .unwrap_or(""),
-        name => name,
-    }
-}
-
-/// A line as words, its Markdown marks off: a heading's #s, a list's or checklist's, a quote's, a
-/// whole code fence's.
-fn plain(line: &str) -> &str {
-    let line = line.trim().trim_start_matches('#').trim_start();
-    let line = ["- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> "]
-        .iter()
-        .find_map(|mark| line.strip_prefix(mark))
-        .unwrap_or(line);
-    let digits = line.trim_start_matches(|c: char| c.is_ascii_digit());
-    let line = (digits.len() < line.len())
-        .then(|| digits.strip_prefix(". "))
-        .flatten()
-        .unwrap_or(line)
-        .trim();
-    let fence = line.starts_with("~~~")
-        || (line.strip_prefix("```")).is_some_and(|language| !language.contains('`'));
-    if fence { "" } else { line }
-}
-
-/// The name in a note's `# ` line, without the emoji that may lead it, one before a space as the
-/// page reads it; empty: it was never renamed.
-fn named(head: &str) -> &str {
-    let head = head.trim();
-    let first = head.split_whitespace().next().unwrap_or("");
-    let emoji = first.starts_with(|c: char| !c.is_ascii() && !c.is_alphanumeric())
-        && core::title::one_drawn(first);
-    if emoji {
-        head[first.len()..].trim()
-    } else {
-        head
-    }
-}
+pub(crate) use names::shown_name;
+use names::{named, plain, short, title};
 
 /// A project's notes folder, removed with it [D920], or the one chats in no project share [D921].
 pub(crate) fn folder(data: &Path, project: Option<&str>) -> PathBuf {
@@ -152,20 +97,8 @@ pub(crate) fn text_of(
     Ok(fs::read_to_string(&path).ok().map(|text| (path, text)))
 }
 
-/// A note's emoji and name, as its chip and menu row show it.
-pub(crate) fn shown_name(note: &Value) -> String {
-    let (head, title) = (
-        note["head"].as_str().unwrap_or(""),
-        note["title"].as_str().unwrap_or(""),
-    );
-    let emoji = head[..head.len() - named(head).len()].trim();
-    let title = if title.is_empty() {
-        "Untitled note"
-    } else {
-        title
-    };
-    format!("{emoji} {title}").trim().to_string()
-}
+/// The images a note shows, whole paths in order, each with its alt text.
+pub(crate) use images::shown as images_of;
 
 /// Moves notes still in their sessions to their projects, as far as they can go now [D916].
 pub(crate) fn settle(data: &Path) {
@@ -233,14 +166,19 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "read" => {
             let note = arg(args, 3)?;
             let (home, path) = at(note)?;
-            let mut reply = shown(&read_text(&path)?);
+            let text = read_text(&path)?;
+            // Its first read in a run of the app: no undo holds an image yet.
+            if has(args, "--first") {
+                images::sweep(&path, &text);
+            }
+            let mut reply = shown(&text);
             reply["ok"] = true.into();
             reply["chat"] = chat_of(&home, note).into();
             Ok(reply)
         }
         "write" => {
             let ((home, path), head, body) = (at(arg(args, 3)?)?, arg(args, 4)?, arg(args, 5)?);
-            let text = join(head, body);
+            let mut text = join(head, body);
             if text.len() as u64 > MAX_BYTES {
                 return Ok(json!({"ok": false, "error": "This note is too long to keep."}));
             }
@@ -252,6 +190,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 reply["conflict"] = true.into();
                 return Ok(reply);
             }
+            // Kept as a note of its own, with its own copies of its images.
+            if let Some(from) = flag(args, "--from") {
+                text = images::copied(&path, &at(from)?.1, &text)?;
+            }
+            images::dropped(&path, &now, &text);
             if text.trim().is_empty() {
                 remove(&path)?;
             } else {
@@ -264,8 +207,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let note = arg(args, 3)?;
             let (home, path) = at(note)?;
             drop_chat(data, &home, note)?;
+            images::remove(&path)?;
             remove(&path)?;
             Ok(json!({"ok": true}))
+        }
+        "image" => {
+            let (_, path) = at(arg(args, 3)?)?;
+            images::add(data, &dir, &path, arg(args, 4)?, args)
         }
         // The note's side chat, made on first use under the app's id, anew with --new, or one of
         // the project's earlier ones reopened here with --open [D288].

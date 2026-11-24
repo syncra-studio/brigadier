@@ -99,6 +99,35 @@ function attachmentFile(pathname: string): string | null {
   return null;
 }
 
+/**
+ * A note's image, by `/note-image/<note>/<name>`: only from that note's own `<note>.images/`, in whichever notes folder
+ * holds it, as Rust finds a note; never through a link.
+ */
+function noteImage(pathname: string): string | null {
+  const [, kind, note = "", escaped = ""] = pathname.split("/");
+  if (kind !== "note-image" || !PLAIN.test(note)) return null;
+  let name: string;
+  try {
+    name = decodeURIComponent(escaped);
+  } catch {
+    return null;
+  }
+  if (name.startsWith(".") || /[/\\\0]/.test(name) || !/\.(png|jpe?g|gif|webp)$/i.test(name)) return null;
+  const under = (parent: string) => {
+    try {
+      return readdirSync(path.join(dataDir, parent)).map((id) => path.join(dataDir, parent, id, "notes"));
+    } catch {
+      return [];
+    }
+  };
+  for (const notes of [...under("projects"), path.join(dataDir, "notes"), path.join(dataDir, "home-notes"), ...under("sessions")]) {
+    const folder = path.join(notes, `${note}.images`);
+    const file = path.join(folder, name);
+    if (existsSync(file)) return realpathSync(file) === path.join(realpathSync(notes), `${note}.images`, name) ? file : null;
+  }
+  return null;
+}
+
 // A project's logo: the first of these names, then the shallowest, up to four folders down, so public/favicon/,
 // Next's src/app/ and a monorepo's apps/web/public/ count; dependencies, build output and hidden folders are skipped [new-design, D505].
 const ICON_NAMES = ["favicon.svg", "favicon.png", "favicon.ico", "logo.svg", "logo.png", "icon.svg", "icon.png"];
@@ -148,6 +177,10 @@ function serveUi(): void {
     const url = new URL(request.url);
     if (url.host === APP_ID && url.pathname.startsWith("/attachment/")) {
       const file = attachmentFile(url.pathname);
+      return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
+    }
+    if (url.host === APP_ID && url.pathname.startsWith("/note-image/")) {
+      const file = noteImage(url.pathname);
       return file ? net.fetch(pathToFileURL(file).toString()) : new Response(null, { status: 404 });
     }
     // A person's picture as Rust keeps it from a PR read, `/avatar/<login>` [D615].
@@ -324,7 +357,7 @@ function openLink(url: string): void {
 ipcMain.on("open-link", (_event, url: string) => openLink(url));
 // Saves a copy of a sent file where the user picks, starting in Downloads, as the old image viewer's Download [D2098].
 ipcMain.handle("save-attachment", async (event, at: string, name: string) => {
-  const file = attachmentFile(at);
+  const file = attachmentFile(at) ?? noteImage(at);
   if (!file) throw new Error("This file is no longer here");
   const window = BrowserWindow.fromWebContents(event.sender);
   // A shown name ("Image #1", "photo.png (2)") keeps the file's own extension.

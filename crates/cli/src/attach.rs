@@ -53,7 +53,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if is_image(&file)
                 && let Some(why) = flag(args, "--backend")
                     .and_then(adapters::get)
-                    .and_then(|a| refused(a, &bytes))
+                    .and_then(|a| message::notes::refused(a, &bytes))
             {
                 return Ok(json!({"ok": false, "error": why}));
             }
@@ -212,6 +212,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     let Some(file) = file_in(&at, &id) else {
                         continue;
                     };
+                    // A sent note's text as it was then, kept for the message alone.
+                    if id.starts_with(message::notes::KEPT) && !is_image(&file) {
+                        continue;
+                    }
                     let when = entry
                         .metadata()
                         .and_then(|m| m.modified())
@@ -252,28 +256,6 @@ pub fn back(data: &Path, spec: &core::Spec, parts: &Value, carried: bool) -> io:
 /// The old app's words for a file over the app's ceiling [D2022 #14].
 fn too_large() -> Value {
     json!({"ok": false, "error": format!("File is too large to upload (maximum {} MB)", MAX_BYTES >> 20)})
-}
-
-/// Why `a`'s agent can't take this image, by its own known limits; None when it can [D487, D492].
-fn refused(a: &dyn adapters::Adapter, bytes: &[u8]) -> Option<String> {
-    let (most, side) = a.image_limits();
-    if most.is_some_and(|m| bytes.len() as u64 > m) {
-        return Some(format!(
-            "{} takes images up to {} MB",
-            a.label(),
-            most? >> 20
-        ));
-    }
-    let (w, h) = message::size(bytes)?;
-    side.filter(|s| w.max(h) > *s).map(|s| {
-        format!(
-            "{} takes images up to {} pixels a side; this one is {} × {}",
-            a.label(),
-            grouped(s),
-            grouped(w),
-            grouped(h)
-        )
-    })
 }
 
 /// What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
@@ -318,13 +300,5 @@ pub fn sweep_home(data: &Path) {
         if old && !named.iter().any(|n| entry.file_name() == n.as_str()) {
             let _ = fs::remove_dir_all(entry.path());
         }
-    }
-}
-
-/// 8000 as "8,000".
-fn grouped(n: u32) -> String {
-    match n {
-        0..1000 => n.to_string(),
-        _ => format!("{},{:03}", grouped(n / 1000), n % 1000),
     }
 }

@@ -41,6 +41,8 @@ import {
 } from "@lexical/table";
 import { $isTextNode, type Klass, type LexicalNode } from "lexical";
 
+import { IMAGE, ImageNode } from "./image";
+
 /**
  * A note's body is plain Markdown on disk. Every block and style the editor offers has a
  * transformer here, so what is typed comes back the same after a save and a reload.
@@ -49,7 +51,7 @@ import { $isTextNode, type Klass, type LexicalNode } from "lexical";
 /** Every node a note can hold. */
 export const PAGE_NODES: Klass<LexicalNode>[] = [
   HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, LinkNode,
-  TableNode, TableRowNode, TableCellNode, HorizontalRuleNode,
+  TableNode, TableRowNode, TableCellNode, HorizontalRuleNode, ImageNode,
 ];
 
 export const DIVIDER: ElementTransformer = {
@@ -137,7 +139,7 @@ export const PAGE_TRANSFORMERS: Transformer[] = [
   CODE, TABLE,
   INLINE_CODE, BOLD_ITALIC_STAR, BOLD_ITALIC_UNDERSCORE, BOLD_STAR, BOLD_UNDERSCORE,
   ITALIC_STAR, ITALIC_UNDERSCORE, STRIKETHROUGH,
-  UNDERLINE, LINK,
+  UNDERLINE, IMAGE, LINK,
 ];
 
 /** Replaces the editor's content with `markdown`. Call inside an update. */
