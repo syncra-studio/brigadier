@@ -14,9 +14,14 @@ static CHANGED: (Mutex<u64>, Condvar) = (Mutex::new(0), Condvar::new());
 /// Writes the queue as a new file renamed into place, and wakes whoever waits on a change.
 pub(super) fn write(dir: &Path, q: &Queue) -> io::Result<()> {
     core::write_atomic(&dir.join("queue.json"), &serde_json::to_vec(q)?)?;
+    now();
+    Ok(())
+}
+
+/// Wakes whoever waits on a change: a queue's, or a message held beside it.
+pub fn now() {
     *CHANGED.0.lock().unwrap() += 1;
     CHANGED.1.notify_all();
-    Ok(())
 }
 
 /// Waits until a queue changed after count `seen`, at most `most`; answers the count now.

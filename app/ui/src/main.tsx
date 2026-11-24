@@ -33,6 +33,7 @@ import { RemoveProjectHost } from "./projects/remove";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
 import { Demo } from "./session/Demo";
+import { ArrivingBubbles, useArriving } from "./peers/live";
 import { SentBubbles, SessionComposer, useSending } from "./session/composer";
 import { ImageViewerHost } from "./components/image-viewer";
 import { ThreadDrop } from "./session/files";
@@ -277,6 +278,7 @@ function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] 
   const state = useThread();
   const sending = useSending(id);
   const sides = useSidePending(id);
+  const arriving = useArriving(id, answeringSource);
   const picking = useModelPick(id);
   const line =
     row?.state === "stalled" ? <WorkingLine state="stalled">Stalled · no output from the agent for a while</WorkingLine> :
@@ -308,13 +310,14 @@ function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] 
                     ref={thread}
                     source={answeringSource}
                     footer={
-                      (line || sending || starting || sides || picking) && (
+                      (line || sending || starting || sides || picking || arriving.length > 0) && (
                         <>
                           <StartingBubble id={id} />
                           <StartingSetup id={id} />
                           <StartingLine id={id} />
                           {line}
                           <SentBubbles id={id} />
+                          <ArrivingBubbles list={arriving} />
                           <PendingSideLines source={id} />
                           <PendingModelLine id={id} />
                         </>

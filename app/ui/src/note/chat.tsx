@@ -14,6 +14,7 @@ import { useNoteRun } from "./run";
 import { Chat } from "../icons/thread";
 import { ChatCompose } from "../icons/tab";
 import { X } from "../icons";
+import { ArrivingBubbles, useArriving } from "../peers/live";
 import { daemonRun, failure, SentBubbles, SessionComposer, useSending } from "../session/composer";
 import { newId } from "../session/store";
 import { putBack } from "../session/side";
@@ -248,12 +249,13 @@ function ChatThread({ id, offline }: { id: string; offline: boolean }) {
   const shown = useSyncExternalStore(source.subscribe, source.get);
   // A message on its way shows under the thread until Rust's has it, as the session's does.
   const sending = useSending(id);
+  const arriving = useArriving(id, source);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 px-4 pt-4">
         {shown && (
           <SessionOfThread value={{ id, offline }}>
-            <Thread id={id} source={source} footer={sending && <SentBubbles id={id} source={source} />} />
+            <Thread id={id} source={source} footer={(sending || arriving.length > 0) && <><SentBubbles id={id} source={source} /><ArrivingBubbles list={arriving} /></>} />
           </SessionOfThread>
         )}
       </div>

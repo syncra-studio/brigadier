@@ -12,6 +12,7 @@ import { openTab } from "../shell/tab-store";
 import type { Item, Session, StepKind, Turn } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { SessionOfThread } from "../accounts/limit";
+import { ArrivingBubbles, useArriving } from "../peers/live";
 import { type ComposerRow, SentBubbles, SessionComposer, useSending } from "../session/composer";
 import { withAnswers } from "../session/decisions";
 import { finished, onHand, type Worker, WorkerChip, type WorkerStateKind, WorkersPanel } from "./chip";
@@ -256,6 +257,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   const rest = useMemo(() => items.filter((item) => item !== brief), [items, brief]);
   // A message on its way shows under its thread until Rust's has it, Try again if refused [D108].
   const sending = useSending(worker.id);
+  const arriving = useArriving(worker.id, answered);
   return (
     <section aria-label={`Worker: ${worker.name}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkerHeader
@@ -270,7 +272,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
         ) : (
           // Its own folder, where its images are kept [D289].
           <SessionOfThread value={{ id: worker.id, offline: daemon === null }}>
-            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={sending && <SentBubbles id={worker.id} source={answered} hover />} />
+            <WorkerThread worker={worker} items={rest} turns={shown?.turns ?? NO_TURNS} setup={shown?.setup} footer={(sending || arriving.length > 0) && <><SentBubbles id={worker.id} source={answered} hover /><ArrivingBubbles list={arriving} /></>} />
           </SessionOfThread>
         )}
       </ParentName>

@@ -11,7 +11,10 @@ export type RustQueued = { id: string; text: string; parts?: Draft; error?: stri
  * [D3014]; one for a worker with its name, "To ‹name›" [D3050], and whether it ended [D96].
  */
 export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): QueuedMessage[] {
-  const title = (id: string) => rows.find((r) => r.id === id)?.title ?? null;
+  const title = (id: string) => {
+    const row = rows.find((r) => r.id === id);
+    return row ? row.title || "New session" : null;
+  };
   return items.map((each) => {
     // Rust's error on one for a worker: that worker has ended [D96].
     const to = each.to ? { to: { name: title(each.to), ended: each.error !== undefined } } : {};
