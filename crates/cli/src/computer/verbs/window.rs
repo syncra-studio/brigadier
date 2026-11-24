@@ -12,25 +12,57 @@ use std::sync::{LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Below this many elements a window reads as thin: Chromium and Electron keep their tree off
-/// until a client asks, and Cua asks only apps on its list (#7751), so Dia read empty.
+/// Below this many elements a window reads as thin.
 const THIN: u64 = 12;
-/// How long the first thin read waits for the tree to fill (Chromium builds it ~2 s after asked).
+/// How long the first thin read waits for the tree to fill.
 const THIN_WAIT: Duration = Duration::from_secs(3);
-/// The apps asked to turn their tree on already, by pid: each is asked, and waited on, once.
+/// The native apps waited on already, by pid: each once.
 static ASKED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
 
-/// Chromium and Electron take AXManualAccessibility, native apps refuse it (-25205): asked once
-/// per pid, which also turns their tree on.
+/// Whether an app is built on Chromium or Electron, by pid.
 static CHROMIUM: LazyLock<Mutex<HashMap<i64, bool>>> = LazyLock::new(Mutex::default);
+/// Chrome turns its page tree on 2 s after the last ask, and Cua asks again on each read until the
+/// tree is there (Chrome answers -25208, which Cua doesn't count): reads closer together than this
+/// put it off for good, so a read that lacks the page waits this long for its second one [D2032].
+const PAGE_WAIT: Duration = Duration::from_millis(2600);
+/// The Chromium apps whose page has been read once, by pid: their tree stays on.
+static PAGED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
 
+/// By the app's own files: AXManualAccessibility is Electron's alone, Chrome and Dia refuse it as
+/// a native app does (-25205) [D2032]. Their tree is asked on once.
 pub(super) fn chromium(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> bool {
     if let Some(&c) = lock(&CHROMIUM).get(&pid) {
         return c;
     }
-    let c = own(data, "enable", json!({"pid": pid}), here).is_ok_and(|r| r["manual"] == 0);
-    lock(&CHROMIUM).insert(pid, c);
-    c
+    let exe = std::process::Command::new("ps")
+        .args(["-ww", "-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let files = built_on_chromium(Path::new(&exe));
+    let asked = match files {
+        true => own(data, "enable", json!({"pid": pid}), here).is_ok(),
+        false => true,
+    };
+    if asked && !exe.is_empty() {
+        lock(&CHROMIUM).insert(pid, files);
+    }
+    files
+}
+
+/// Chromium's ICU data sits in the app's one framework; a web app Chrome installed is its loader.
+fn built_on_chromium(exe: &Path) -> bool {
+    if exe.file_name().is_some_and(|n| n == "app_mode_loader") {
+        return true;
+    }
+    let Some(contents) = exe.parent().and_then(Path::parent) else {
+        return false;
+    };
+    std::fs::read_dir(contents.join("Frameworks")).is_ok_and(|frameworks| {
+        frameworks
+            .flatten()
+            .any(|f| f.path().join("Resources/icudtl.dat").exists())
+    })
 }
 
 /// The tree's row number: `[N]` at the start of its row.
@@ -234,8 +266,16 @@ pub(super) fn read(
         return menu_bar(data, s, here);
     }
     let window = &all[nth - 1];
-    if thin(&found) && lock(&ASKED).insert(s.pid) {
-        chromium(data, s.pid, here);
+    // Chromium's page, waited for in one sleep: a poll would put it off.
+    if chromium(data, s.pid, here) {
+        if !paged(&found) && !lock(&PAGED).contains(&s.pid) {
+            thread::sleep(PAGE_WAIT);
+            found = call(data, "get_window_state", state_args(s, me), here)?;
+        }
+        if paged(&found) {
+            lock(&PAGED).insert(s.pid);
+        }
+    } else if thin(&found) && lock(&ASKED).insert(s.pid) {
         let start = Instant::now();
         let mut last = 0;
         while start.elapsed() < THIN_WAIT {
@@ -248,6 +288,7 @@ pub(super) fn read(
             last = n;
         }
     }
+    let pageless = !paged(&found) && chromium(data, s.pid, here);
     (s.secure, s.frames, s.values, s.moved, s.address) = Default::default();
     learn(s, &found);
     s.controls = controls(&found);
@@ -297,7 +338,9 @@ pub(super) fn read(
             state_args(s, me)["max_elements"]
         ));
     }
-    if thin(&found) {
+    if pageless {
+        text.push_str(&format!("\n(No page in this read: a Chromium window that's covered or on another Space may have none until it has been on screen, and reads under 3 seconds apart put {}'s page off. Wait 3 seconds, then read again.)", s.app));
+    } else if thin(&found) {
         text.push_str(&format!("\n{}'s window shows little to accessibility yet: read again in a few seconds, or `brigadier computer screenshot` to look at it.", s.app));
     }
     Ok(text)
@@ -305,6 +348,12 @@ pub(super) fn read(
 
 pub(super) fn unresolved(found: &Value) -> bool {
     (found["degraded_reason"].as_str()).is_some_and(|r| r.starts_with("ax_window_unresolved"))
+}
+
+/// Whether the read holds a page: its web area.
+fn paged(found: &Value) -> bool {
+    (found["elements"].as_array().into_iter().flatten()).any(|e| e["role"] == "AXWebArea")
+        || (found["tree_markdown"].as_str()).is_some_and(|t| t.contains("AXWebArea"))
 }
 
 fn thin(found: &Value) -> bool {
