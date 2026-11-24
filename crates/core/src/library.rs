@@ -31,6 +31,19 @@ pub fn save(data: &Path, items: &[Value]) -> io::Result<()> {
     crate::write_atomic(&dir(data).join("items.json"), &bytes)
 }
 
+/// The keys of the skills the user removed, left out though an agent has them [D721]: their own
+/// file, as `items` reads only what's in the library.
+pub fn removed(data: &Path) -> Vec<String> {
+    let bytes = fs::read(dir(data).join("removed.json")).unwrap_or_default();
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+pub fn save_removed(data: &Path, keys: &[String]) -> io::Result<()> {
+    fs::create_dir_all(dir(data))?;
+    let bytes = serde_json::to_vec_pretty(keys)?;
+    crate::write_atomic(&dir(data).join("removed.json"), &bytes)
+}
+
 /// Whether an item is on for a session in `project`: switched on, for all projects or chosen ones
 /// [D2046 D727].
 pub fn on(item: &Value, project: Option<&str>) -> bool {
