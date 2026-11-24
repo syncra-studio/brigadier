@@ -334,7 +334,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         return Ok(());
     };
     let f = core::fold(&dir, true)?;
-    let live = fold::live(&f.fold, owner::state(data, pid), data, &procs::all());
+    let live = fold::live(&f.fold, owner::state(data, pid), &dir, &procs::all());
     let status = fold::status(&f.fold, &live);
     let state = status["state"].as_str().unwrap_or("");
     // A parent the user stopped (or paused) isn't woken: its results go after the next message

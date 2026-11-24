@@ -13,9 +13,7 @@ pub mod runs;
 mod status;
 mod turns;
 pub use input::Picked;
-pub use live::{
-    Job, Live, background_row, end, history, live, live_groups, note_stop, stop_job, task_of,
-};
+pub use live::{HISTORY, Job, Live, background_row, end, history, live, live_groups, note_stop};
 pub use rewind::Boundary;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -45,8 +43,8 @@ pub struct Fold {
     pub child: Option<Child>,
     /// Each spawned group, with the session folder its record names ("" before D220).
     pub groups: Vec<(i32, u64, String)>,
-    /// The live child's ended turns, from first tool to end (ms): what was born in one and still
-    /// runs under it was left running [D105].
+    /// The ended turns, from first tool to end (ms): what was born in one and still runs was left
+    /// running [D105].
     #[serde(default)]
     pub windows: Vec<(u64, u64)>,
     /// The live child's commands sent to the background, by when that was said (ms), with the id
@@ -266,7 +264,6 @@ impl Fold {
                     exited: false,
                 });
                 self.groups.push((pid, start_us, str_of("dir")));
-                self.windows.clear();
                 self.tasks.clear();
                 self.typed.clear();
                 self.calls.clear();

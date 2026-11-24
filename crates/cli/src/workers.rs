@@ -14,7 +14,7 @@ mod result;
 mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
-pub(crate) use asks::{question, told_held};
+pub(crate) use asks::{left::answered as left_answered, question, told_held};
 pub use brigade::{brigade_row, to_user, user_answer};
 pub use family::{delete, unlanded};
 pub use make::start;

@@ -43,7 +43,8 @@ impl Thread {
             if question {
                 o.kept.push(at as u64 + 1);
             }
-            if o.wait.is_none() {
+            // The turn doesn't wait on what its worker left running.
+            if o.wait.is_none() && self.items[at]["aside"] != true {
                 o.wait = Some(ts);
                 self.turns[o.at]["waitingSince"] = ts.into();
                 self.changed_turns.insert(o.at);
@@ -105,7 +106,7 @@ impl Thread {
             let q = &r["items"][0];
             let at = self.add(json!({"kind": "question", "question": q["text"],
                 "options": q["options"].as_array().cloned().unwrap_or_default(), "answer": null, "request": r, "held": true,
-                "offer": item["event"] == "mockup"}));
+                "offer": item["event"] != "hold", "aside": item["event"] == "left"}));
             self.pending.push(at);
             self.pending_changed = true;
             return self.user_waits(at, ts);
@@ -122,7 +123,8 @@ impl Thread {
     pub(super) fn end_wait(&mut self, ts: u64) {
         // Only a worker that still holds the block: a Stop or a failure lets go of them all [D3011].
         if self.asking.iter().any(|w| self.fold.workers.contains(w))
-            || (self.pending.iter()).any(|&at| self.items[at]["to"].is_null())
+            || (self.pending.iter())
+                .any(|&at| self.items[at]["to"].is_null() && self.items[at]["aside"] != true)
         {
             return;
         }
@@ -409,7 +411,8 @@ impl Thread {
 
     pub(super) fn withdraw_all(&mut self) {
         let ids: Vec<String> = (self.pending.iter())
-            // A mockup offer outlives its turn: a later pick comes as a message [D2055].
+            // A mockup offer outlives its turn: a later pick comes as a message [D2055]. So does what
+            // a worker left running.
             .filter(|&&at| self.items[at]["offer"] != true)
             .filter_map(|&at| self.items[at]["request"]["id"].as_str().map(String::from))
             .collect();

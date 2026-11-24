@@ -91,6 +91,11 @@ struct State {
 type Shared = Arc<Mutex<State>>;
 
 fn main() -> io::Result<()> {
+    // Started from an agent's shell, it and all it starts are still nobody's: no session's mark or
+    // grant goes on. No thread runs yet.
+    for key in [brigadier_core::agent::SESSION, brigadier_core::agent::GRANT] {
+        unsafe { std::env::remove_var(key) };
+    }
     // Before the data folder: an ignored argument started a daemon replacing the live one [D950].
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usage = "usage: brigadierd [--install | --version | --help]";

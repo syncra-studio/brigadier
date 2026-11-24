@@ -142,9 +142,8 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
     // restore couldn't bring it back [D1080].
     let data = data_of(spec);
     let mut went = false;
-    let freed = holder
-        .as_deref()
-        .map_or(Ok(()), worktrees::free)
+    let freed = crate::background::end_left(dir)
+        .and_then(|()| holder.as_deref().map_or(Ok(()), worktrees::free))
         .and_then(|()| {
             crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
                 let _one = worktrees::lock(rec)?;
@@ -322,6 +321,11 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
     let swept = kill_left(f, dir);
+    // A mockup's server too.
+    let alive = crate::background::end(dir, f, None, || ()).unwrap_or_default();
+    if let Some(p) = alive.first() {
+        return fail(vec![format!("process {} didn't stop", p.pid)], swept);
+    }
     // Preserve transcripts too when a checkpoint fails: delete must remain retryable [D35].
     let deleted = worktrees::delete(dir, drop_branch).and_then(|branch| {
         let claims = crate::folder::delete(dir, drop_branch)?;

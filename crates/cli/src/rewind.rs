@@ -17,7 +17,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     check_id(cid)?;
     settled(data, &spec)?;
     let live =
-        |s: &Spec, f: &fold::Fold| fold::live(f, owner::state(data, &s.id), data, &procs::all());
+        |s: &Spec, f: &fold::Fold| fold::live(f, owner::state(data, &s.id), &s.dir, &procs::all());
     if has(args, "--preview") {
         let f = core::fold(&spec.dir, true)?.fold;
         return Ok(core::rewind::preview(data, &spec, &f, cid, &live));

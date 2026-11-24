@@ -4,7 +4,7 @@
 use std::ffi::CString;
 use std::io;
 use std::mem::{MaybeUninit, size_of};
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug)]
@@ -12,6 +12,7 @@ pub struct Proc {
     pub pid: i32,
     pub ppid: i32,
     pub pgid: i32,
+    pub sid: i32,
     pub start_us: u64,
     pub stopped: bool,
     pub zombie: bool,
@@ -37,6 +38,7 @@ pub fn info(pid: i32) -> Option<Proc> {
         pid,
         ppid: b.pbi_ppid as i32,
         pgid: b.pbi_pgid as i32,
+        sid: unsafe { libc::getsid(pid) },
         start_us: b.pbi_start_tvsec * 1_000_000 + b.pbi_start_tvusec,
         stopped: b.pbi_status == libc::SSTOP,
         zombie: b.pbi_status == libc::SZOMB,
@@ -110,6 +112,14 @@ pub fn hosts_above(pid: i32) -> Option<Vec<(i32, u64, String)>> {
     None
 }
 
+/// The file a process runs.
+pub fn exe(pid: i32) -> Option<std::path::PathBuf> {
+    let mut buf = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
+    buf.truncate(usize::try_from(n).ok().filter(|n| *n > 0)?);
+    Some(std::ffi::OsString::from_vec(buf).into())
+}
+
 /// The process, if `pid` is still the one that started at `start_us`.
 pub fn same(pid: i32, start_us: u64) -> Option<Proc> {
     info(pid).filter(|p| p.start_us == start_us && !p.zombie)
@@ -145,6 +155,15 @@ pub fn group(procs: &[Proc], pgid: i32, not_before_us: u64) -> Vec<Proc> {
         .filter(|p| p.pgid == pgid && p.start_us >= not_before_us)
         .copied()
         .collect()
+}
+
+/// A process's children now, without reading every process's record.
+pub fn children(pid: i32) -> Vec<i32> {
+    let mut pids = vec![0i32; 1024];
+    let bytes = (pids.len() * size_of::<i32>()) as i32;
+    let n = unsafe { libc::proc_listchildpids(pid, pids.as_mut_ptr().cast(), bytes) };
+    pids.truncate(n.max(0) as usize);
+    pids
 }
 
 pub fn descendants(procs: &[Proc], pid: i32) -> Vec<Proc> {

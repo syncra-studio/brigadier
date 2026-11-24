@@ -8,6 +8,7 @@ mod input;
 mod spawn;
 mod stop;
 mod term;
+use crate::forks::Forks;
 use crate::{procs, wire};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -45,6 +46,7 @@ pub struct Runner {
     cids: Mutex<HashMap<String, bool>>,
     child: Mutex<Option<Child>>,
     groups: Mutex<Groups>,
+    forks: Forks,
     op: Mutex<()>,
     sizing: Mutex<()>,
     /// Counts stops, so a spawn that was under way during one can tell and honour it.
@@ -96,6 +98,7 @@ impl Runner {
             cids: Mutex::new(cids),
             child: Mutex::new(None),
             groups: Mutex::new(groups),
+            forks: Forks::open(dir)?,
             op: Mutex::new(()),
             sizing: Mutex::new(()),
             stops: AtomicU64::new(0),
@@ -155,7 +158,10 @@ impl Runner {
         let all = procs::all();
         let mut groups = self.groups.lock().unwrap();
         groups.retain(|&(g, s)| !procs::group(&all, g, s).is_empty());
-        groups.is_empty().then_some(op)
+        groups.is_empty().then(|| {
+            self.forks.keep();
+            op
+        })
     }
 
     pub fn handle(self: &Arc<Self>, req: &Value) -> Value {

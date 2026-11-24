@@ -1,1 +1,1 @@
-You can run `brigadier` in your shell: `brigadier help` lists your tools for other sessions, the user's apps and your models.
+`brigadier help` in your shell lists your tools for other sessions, the user's apps and your models. Temp files, test instances: `$BRIGADIER_SESSION/tmp`, not /tmp.

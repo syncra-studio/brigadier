@@ -5,13 +5,14 @@
 //! A job a turn left running is stopped here too, alone [D105].
 
 use crate::{arg, control, flag, has, index, owner, workers};
-use brigadier_core::{self as core, fold, projects, session};
+use brigadier_core::{self as core, fold, fold::Fold, projects, session};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 mod audit;
 mod servers;
@@ -65,17 +66,33 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 )));
             }
         }
-        // `jobs <id> history`: everything that ran in the background, newest first [D200].
+        // `jobs <id> history`: everything that ran in the background, its workers' too, each with
+        // its worker's name, newest first [D200].
         "jobs" if arg(args, 2)? == "history" => {
-            let f = core::fold(&spec.dir, true)?;
-            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
-            return Ok(json!({"ok": true, "history": fold::history(&spec.dir, &left)}));
+            let all = procs::all();
+            let runs = |dir: &Path| {
+                let f = core::fold(dir, true)?;
+                let left = fold::live(&f.fold, fold::Owner::Alive, dir, &all).left;
+                Ok::<_, io::Error>(fold::history(dir, &left))
+            };
+            let mut history = runs(&spec.dir)?;
+            for r in family(data, id) {
+                let dir = core::session_dir(data, &r.wid);
+                if dir.join(fold::HISTORY).exists() {
+                    history.extend(runs(&dir)?.into_iter().map(|mut run| {
+                        run["owner"] = r.title.clone().into();
+                        run
+                    }));
+                }
+            }
+            history.sort_by_key(|run| std::cmp::Reverse(run["startedAt"].as_u64()));
+            return Ok(json!({"ok": true, "history": history}));
         }
         // `jobs <id> servers`: the local servers its steps printed, while a job its turns left runs, and
         // its terminals, while their shell runs [D508, D315].
         "jobs" if arg(args, 2)? == "servers" => {
             let f = core::fold(&spec.dir, true)?;
-            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
+            let left = fold::live(&f.fold, fold::Owner::Alive, &spec.dir, &procs::all()).left;
             let shells = crate::tabs::terminal::printed(data, id);
             let servers = servers::of(&spec.dir, !left.is_empty(), shells);
             return Ok(json!({"ok": true, "servers": servers}));
@@ -85,34 +102,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let f = core::fold(&spec.dir, true)?;
             let num = |i| arg(args, i)?.parse().map_err(io::Error::other);
             let (pid, start_us) = (num(3)? as i32, num(4)?);
-            // Its agent hears first, through its CLI's own channel or its adapter's note: else it
-            // reads an unexplained kill and may wake to start it again [D117]. One with neither refuses.
-            let left = fold::live(&f.fold, fold::Owner::Alive, data, &procs::all()).left;
-            // One already gone is stopped; one alive but no longer under its agent is refused, never called stopped.
-            let Some(job) = left.iter().find(|j| j.pid == pid && j.start_us == start_us) else {
-                if procs::same(pid, start_us).is_some() {
-                    return Err(io::Error::other(
-                        "it's still running, but no longer under its agent.",
-                    ));
-                }
-                return Ok(json!({"ok": true}));
-            };
-            let task = fold::task_of(&f.fold, start_us);
-            let msg = json!({"kind": "stop_task", "task": task, "command": job.label});
-            let req = json!({"cid": control::new_cid(), "control": msg});
-            let sent = control::deliver(data, id, req, false, |_| Ok(msg.clone()))?;
-            if task.is_some() {
-                let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
-                while sent["ok"] == true && procs::same(pid, start_us).is_some_and(|p| !p.zombie) {
-                    if std::time::Instant::now() > until {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-            }
-            fold::note_stop(&spec.dir, pid, start_us);
-            fold::stop_job(&f.fold, data, pid, start_us);
-            return Ok(json!({"ok": true}));
+            return stop_job(data, &spec, &f.fold, pid, start_us);
         }
         // Off for a folder chat that claimed a repo: its confirm doesn't name the repos' branches
         // yet [D3102]. A start that never took still goes.
@@ -147,6 +137,41 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     crate::tabs::terminal::sweep(data);
     Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
+}
+
+/// Stops one process tree proven the session's; its agent hears first, through its CLI's own channel
+/// or its adapter's note: else it reads an unexplained kill and may wake to start it again [D117].
+/// One out of its agent's tree it doesn't follow.
+fn stop_job(data: &Path, spec: &core::Spec, f: &Fold, pid: i32, start: u64) -> io::Result<Value> {
+    // One already gone is stopped.
+    if procs::same(pid, start).is_none() {
+        return Ok(json!({"ok": true}));
+    }
+    let left = fold::live(f, fold::Owner::Alive, &spec.dir, &procs::all()).left;
+    let job = (left.into_iter()).find(|j| j.under && (j.pid, j.start_us) == (pid, start));
+    let tell = || {
+        let Some(job) = job else { return };
+        let msg = json!({"kind": "stop_task", "task": job.task, "command": job.label});
+        let req = json!({"cid": control::new_cid(), "control": msg});
+        let sent = control::deliver(data, &spec.id, req, false, |_| Ok(msg.clone()));
+        let until = Instant::now() + Duration::from_secs(2);
+        while job.task.is_some()
+            && sent.as_ref().is_ok_and(|s| s["ok"] == true)
+            && procs::same(pid, start).is_some()
+            && Instant::now() < until
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    let why = match core::background::end(&spec.dir, f, Some(&[(pid, start)]), tell) {
+        Some(alive) if alive.is_empty() => {
+            fold::note_stop(&spec.dir, pid, start);
+            return Ok(json!({"ok": true}));
+        }
+        Some(alive) => format!("process {} is still running.", alive[0].pid),
+        None => "it's running, but isn't known to be this session's.".into(),
+    };
+    Err(io::Error::other(why))
 }
 
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
@@ -197,6 +222,10 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<(
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
         .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
+    // What its finished workers left running goes; one at work keeps its own.
+    for w in family(data, id) {
+        end_jobs(data, &w.wid)?;
+    }
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].
     let parent = crate::workers::link(data, id).map(|l| l.parent);
     for owner in [Some(id.to_string()), parent].into_iter().flatten() {
@@ -204,6 +233,39 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<(
         crate::tabs::run(data, &args)?;
     }
     Ok(())
+}
+
+/// The workers under a session, theirs too; a Brigade's sessions aren't among them [D189].
+fn family(data: &Path, id: &str) -> Vec<workers::Record> {
+    (workers::records(data, id).into_iter())
+        .filter(|r| !r.session)
+        .flat_map(|r| {
+            let below = family(data, &r.wid);
+            std::iter::once(r).chain(below)
+        })
+        .collect()
+}
+
+/// Ends what a worker whose turns are over left running, but a mockup's server.
+pub(crate) fn end_jobs(data: &Path, id: &str) -> io::Result<()> {
+    let dir = core::session_dir(data, id);
+    if !dir.join("session.json").exists() || crate::relay::mockup::state(data, id).is_some() {
+        return Ok(());
+    }
+    let f = core::fold(&dir, true)?.fold;
+    let paused = workers::link(data, id).is_some_and(|l| l.paused);
+    if paused || !f.turns.is_empty() && owner::state(data, id) != fold::Owner::Dead {
+        return Ok(());
+    }
+    let left = fold::live(&f, owner::state(data, id), &dir, &procs::all()).left;
+    let left: Vec<_> = left.iter().map(|j| (j.pid, j.start_us)).collect();
+    match core::background::end(&dir, &f, Some(&left), || ()) {
+        Some(alive) if !alive.is_empty() => Err(io::Error::other(format!(
+            "process {} didn't stop",
+            alive[0].pid
+        ))),
+        _ => Ok(()),
+    }
 }
 
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
@@ -247,8 +309,9 @@ pub(crate) fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
 /// Whether a session is busy, taking no lock of its own: for a check under the checkout lock,
 /// which a turn start holds until its turn is logged (`session::fence`).
 pub(crate) fn working(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
-    core::fold(&core::session_dir(data, id), false).is_ok_and(|f| {
-        let live = fold::live(&f.fold, owner::state(data, id), data, all);
+    let dir = core::session_dir(data, id);
+    core::fold(&dir, false).is_ok_and(|f| {
+        let live = fold::live(&f.fold, owner::state(data, id), &dir, all);
         session::busy(&f.fold, &live)
     })
 }

@@ -117,7 +117,7 @@ fn child(data: &Path, id: &str) -> core::Running {
 fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     let dir = core::session_dir(data, id);
     let f = core::fold(&dir, true)?;
-    let live = fold::live(&f.fold, owner::state(data, id), data, all);
+    let live = fold::live(&f.fold, owner::state(data, id), &dir, all);
     let mut s = fold::status(&f.fold, &live);
     s["id"] = id.into();
     Ok(s)
@@ -399,7 +399,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let setup = core::worktrees::setup_state(&spec.dir, true);
             core::rewind::read_active(&spec.dir, |item| thread.push(item))?;
             let f = thread.status_fold();
-            let live = fold::live(f, owner::state(data, id), data, &procs::all());
+            let live = fold::live(f, owner::state(data, id), &spec.dir, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
                 thread.interrupt(log::now_ms());
             }

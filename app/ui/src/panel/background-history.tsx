@@ -5,19 +5,23 @@ import { Timeline } from "../components/timeline";
 import { useDaemon } from "../daemon";
 import { errorText, run } from "../onboarding/api";
 import { duration, useSecond } from "../thread/words";
+import { useFamily } from "../workers/live";
 
-/** One background run as `jobs <id> history` gives it [D200]. */
-type Run = { label: string; startedAt: number; endedAt: number | null; status: "running" | "stopped" | "ended" | "unknown" };
+/** One background run as `jobs <id> history` gives it [D200]; `owner`: the worker that left it, none the session's own. */
+type Run = { owner?: string; label: string; startedAt: number; endedAt: number | null; status: "running" | "stopped" | "ended" | "unknown" };
 
 const OUTCOME: Record<Run["status"], string> = { running: "Running", stopped: "Stopped by you", ended: "Ended", unknown: "End not observed" };
 
 /**
- * The card's Background history, the old app's HistoryTab [D200]: everything that ran in the session's background on its
- * timeline, newest first, each with how it ended and how long it ran. Read again as the session's jobs start and end.
+ * The card's Background history, the old app's HistoryTab [D200]: everything that ran in the background of the session
+ * and its workers on its timeline, newest first, each with its worker, how it ended and how long it ran. Read again as
+ * their jobs start and end.
  */
 export function BackgroundHistory({ owner }: { owner: string }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
-  const jobs = (row?.background ?? []).map((job) => `${job.pid}.${job.start_us}`).join(" ");
+  const rows = [row, ...useFamily(owner).map((each) => each.row)];
+  const jobs = rows.flatMap((each) => each?.background ?? []).map((job) => `${job.pid}.${job.start_us}`).join(" ");
+  const ran = rows.filter((each) => each?.background_ran).length;
   const [history, setHistory] = useState<{ runs: Run[] | null; error: string | null; busy: boolean }>({ runs: null, error: null, busy: true });
   const [tries, setTries] = useState(0);
   useEffect(() => {
@@ -30,7 +34,7 @@ export function BackgroundHistory({ owner }: { owner: string }) {
     return () => {
       live = false;
     };
-  }, [owner, jobs, row?.background_ran, tries]);
+  }, [owner, jobs, ran, tries]);
   const runs = history.runs ?? [];
   const now = useSecond(runs.some((each) => each.status === "running"));
   return (
@@ -59,7 +63,7 @@ export function BackgroundHistory({ owner }: { owner: string }) {
             when: each.status === "running" ? "now" : "past",
             time: new Date(each.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             title: <span title={each.label}>{each.label}</span>,
-            detail: [OUTCOME[each.status], took(each, now), new Date(each.startedAt).toLocaleDateString()].join(" · "),
+            detail: [each.owner, OUTCOME[each.status], took(each, now), new Date(each.startedAt).toLocaleDateString()].filter(Boolean).join(" · "),
           }))}
         />
       </div>

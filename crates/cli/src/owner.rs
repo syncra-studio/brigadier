@@ -32,7 +32,10 @@ pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
     }
     if !lock_held(&dir.join("owner.lock")) {
         let mut host = Command::new(host_exe()?);
+        // Another session's agent can be who starts it: its mark and grant stay its own.
         host.arg(&dir)
+            .env_remove(brigadier_core::agent::SESSION)
+            .env_remove(brigadier_core::agent::GRANT)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());

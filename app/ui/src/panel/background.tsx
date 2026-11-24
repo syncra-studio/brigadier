@@ -27,7 +27,7 @@ const ranFor = (job: Job, now: number) => duration(now - job.start_us / 1000);
  * and its workers left running (a dev server, a watcher), each with its owner, and on hover how long it has run and
  * Stop; those that outlived their worker come apart, with Stop always there and Stop all. Stopped, a row goes at once;
  * Rust's row confirms it, and a failed stop brings it back with a toast. No section until something has run; once
- * the session itself has run one, its title keeps the clock that opens its Background history [D200].
+ * one has, the session's or a worker's, its title keeps the clock that opens their Background history [D200].
  */
 export function BackgroundCard({ owner }: { owner: string }) {
   const row = useDaemon().rows?.find((each) => each.id === owner);
@@ -38,7 +38,8 @@ export function BackgroundCard({ owner }: { owner: string }) {
     ...family.flatMap(({ worker, row }) => (row.background ?? []).map((job) => ({ ...job, session: row.id, owner: worker }))),
   ].filter((job) => !stopping.has(keyOf(job)));
   const now = useSecond(jobs.length > 0);
-  if (jobs.length === 0 && !row?.background_ran) return null;
+  const ran = row?.background_ran || family.some((each) => each.row.background_ran);
+  if (jobs.length === 0 && !ran) return null;
   const leftover = jobs.filter(left);
   const stop = (job: Process) => {
     const key = keyOf(job);
@@ -59,7 +60,7 @@ export function BackgroundCard({ owner }: { owner: string }) {
       fold="background"
       count={jobs.length}
       end={
-        row?.background_ran && (
+        ran && (
           <TooltipIconButton tooltip="Background history" size="icon-xs" onClick={() => openBackgroundHistory(owner)}>
             <Clock />
           </TooltipIconButton>
