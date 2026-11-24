@@ -194,29 +194,50 @@ function paint(image: NativeImage, rects: readonly Rect[], pageWidth: number): B
 /** How long a page gets to draw its first frame, and how often it's asked. */
 const DRAW_MS = 4000;
 const DRAW_STEP_MS = 150;
+/**
+ * Frames the page starts before it is taken. What it was before the first is drawn by the fourth: the one after next
+ * starts only once it is up, and one more is for its way to the screen.
+ */
+const FRAMES = `new Promise((drawn) => {
+  let left = 4;
+  const next = () => (left-- > 0 ? requestAnimationFrame(next) : drawn(true));
+  next();
+})`;
 /** The pictures under way in each of the app's windows. */
 const drawing = new Map<WebContents, number>();
 
 /**
  * The page as drawn. A window that is hidden, covered or on another Space draws nothing, and neither do the pages in it:
- * no surface to take (UnknownVizError). It draws while its throttling is off, and the page's first frame takes a moment.
+ * no surface to take (UnknownVizError), or the last one they drew. It draws while its throttling is off, and the page's
+ * first frame takes a moment, and for some a take that fails: one taken before the page drew again is thrown away.
  */
 async function pictureOf(guest: WebContents): Promise<NativeImage> {
   const host = guest.hostWebContents ?? guest;
   drawing.set(host, (drawing.get(host) ?? 0) + 1);
   host.setBackgroundThrottling(false);
+  let asked = Promise.resolve();
+  let drew = false;
+  const ask = () => {
+    drew = false;
+    const mine = (asked = guest.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: FRAMES }]).then(() => { drew ||= asked === mine; }, () => {}));
+  };
+  guest.on("did-navigate", ask);
   try {
     const until = Date.now() + DRAW_MS;
+    ask();
     for (;;) {
+      await Promise.race([asked, new Promise((resolve) => setTimeout(resolve, DRAW_STEP_MS))]);
+      const fresh = drew;
       const taken = await Promise.race([guest.capturePage(), new Promise<null>((resolve) => setTimeout(() => resolve(null), DRAW_MS))]).catch((error: unknown) => {
         if (Date.now() >= until || guest.isDestroyed()) throw error;
         return null;
       });
-      if (taken && !taken.isEmpty()) return taken;
+      if (fresh && taken && !taken.isEmpty()) return taken;
       if (Date.now() >= until) throw new Error("The page drew nothing to take a picture of, as when the Mac's screen is off. Read it instead, or try again later.");
       await new Promise((resolve) => setTimeout(resolve, DRAW_STEP_MS));
     }
   } finally {
+    guest.off("did-navigate", ask);
     const left = (drawing.get(host) ?? 1) - 1;
     if (left > 0) drawing.set(host, left);
     else {
