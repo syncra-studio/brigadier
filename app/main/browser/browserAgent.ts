@@ -7,7 +7,7 @@ import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
-import { forgetSecrets, pictureForAgent, readPage, runScript, sweptAndScrubbed } from "./browserAgentSecrets";
+import { forgetSecrets, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
 import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
 import { stopOf } from "./browserSignIn";
@@ -187,6 +187,9 @@ type Call =
   | { call: "capture"; guest: number }
   | { call: "signInStop"; guest: number };
 
+/** The script's kinds that tell what can be clicked. */
+const SEES_HANDLERS = new Set<unknown>(["read", "click", "place", "hover"]);
+
 export function installBrowserAgent(): void {
   handleFromApp("brigadier:agent", async (event, call: Call) => {
     const guest = guestFor(event.sender, call.guest);
@@ -196,7 +199,7 @@ export function installBrowserAgent(): void {
         if (call.op.kind === "sweep") throw new Error("Unknown agent call");
         // The one way code from outside reaches a page: the user read it on a card and said yes (agentBrowser.ts).
         if (call.op.kind === "eval") return evalOnPage(guest, String(call.op.script));
-        return sweptAndScrubbed(guest, () => (call.op.kind === "read" ? readPage : runScript)(guest, call.op));
+        return sweptAndScrubbed(guest, () => (SEES_HANDLERS.has(call.op.kind) ? runSeeingHandlers : runScript)(guest, call.op));
       case "attach":
         return attach(guest);
       case "release":

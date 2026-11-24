@@ -55,8 +55,8 @@ export async function agentRun(id: string, op: Answer): Promise<unknown> {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   // The page may have moved while the cursor went; a field must still be the one with the focus.
-  const place = await script(guest, { kind: "place", target: op.target, typing: op.kind === "type" });
-  if (place && "error" in place) return place;
+  const place = await script(guest, { kind: "place", target: op.target, typing: op.kind === "type", approved: op.approved });
+  if (place && ("error" in place || "ask" in place)) return place;
   const there = (place as { point?: { x: number; y: number } } | null)?.point ?? point;
 
   if (overtaken(id)) return { paused: "user" };

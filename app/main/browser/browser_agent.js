@@ -15,8 +15,8 @@
 //
 // With `trusted: true` (the Electron shell, in an isolated world) a click or typing isn't done here:
 // it answers { point: { x, y } } for the shell to do with real input, or an error if something covers
-// the control. { kind: "place", target, typing } answers where the control is now, without scrolling, and for typing
-// refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
+// the control. { kind: "place", target, typing, approved } answers where the control is now, without scrolling, or an
+// error or `ask` as the click would, and for typing refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
 (op) => {
@@ -68,8 +68,12 @@
   /**
    * A control with no role of its own, as a card that opens a page: it takes the hand cursor, not from what holds it, or
    * has a click handler the page set on it. The page's handlers are out of this world's sight, so the shell looks for
-   * them in the page's and hands over where they are (`op.handled`, places in document order), kept until the next read.
+   * them in the page's and hands over where they are (`op.handled`, places in document order), kept until it does again.
    */
+  if (op.handled) {
+    const all = document.getElementsByTagName("*");
+    window.__brigadierHandled = new WeakSet(op.handled.map((at) => all[at]).filter(Boolean));
+  }
   const handled = () => (window.__brigadierHandled ??= new WeakSet());
   const isClickable = (element) => {
     if (roleOf(element) || element === document.body || element === document.documentElement) return false;
@@ -206,10 +210,6 @@
   const BLOCK = /^(address|article|aside|blockquote|br|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)$/;
 
   const read = (most) => {
-    if (op.handled) {
-      const all = document.getElementsByTagName("*");
-      window.__brigadierHandled = new WeakSet(op.handled.map((at) => all[at]).filter(Boolean));
-    }
     const lines = [];
     let line = "";
     const flush = () => {
@@ -356,7 +356,12 @@
     // A card's middle may be a control it holds, whose click is another.
     if (!roleOf(element)) {
       for (let at = hit; at && at !== element; at = around(at)) {
-        if (roleOf(at)) return { error: `${op.target}'s middle is its ${roleOf(at)} ${quoted(nameOf(at))}, so clicking it would click that: use that one's own ref.` };
+        const role = controlOf(at);
+        if (role) return { error: `${op.target}'s middle is its ${role} ${quoted(nameOf(at))}, so clicking it would click that: use that one's own ref.` };
+        // A handler set with addEventListener can't be seen: what is named as a sensitive control may be one, so it asks.
+        const kind = op.kind !== "hover" && within(element, at) && namedKind(nameOf(at));
+        const asked = kind && ask(kind, at);
+        if (asked) return asked;
       }
     }
     return { point: { x, y } };

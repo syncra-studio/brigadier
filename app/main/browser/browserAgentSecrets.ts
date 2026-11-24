@@ -17,6 +17,8 @@ const scriptBody = agentScript.trim().replace(/;$/, "");
 export const agentScriptBody = scriptBody;
 const call = (op: object) => `(${scriptBody})(${JSON.stringify(op)})`;
 
+/** The most handlers a look takes, past any page's own controls, so a control late in a long page is seen at its click too. */
+const HANDLED_MOST = 10_000;
 /**
  * Where the page's own click handlers are, in document order: set as `onclick`, or by React, which keeps a node's props on
  * it. Only the page's world sees those, so the page can lie here: it only names more of its elements clickable.
@@ -24,7 +26,7 @@ const call = (op: object) => `(${scriptBody})(${JSON.stringify(op)})`;
 const HANDLED = `(() => {
   const found = [];
   const all = document.getElementsByTagName("*");
-  for (let at = 0; at < all.length && found.length < 500; at++) {
+  for (let at = 0; at < all.length && found.length < ${HANDLED_MOST}; at++) {
     const element = all[at];
     const props = Object.keys(element).find((key) => key.startsWith("__reactProps$"));
     if (typeof element.onclick === "function" || (props && typeof element[props]?.onClick === "function")) found.push(at);
@@ -32,14 +34,14 @@ const HANDLED = `(() => {
   return found;
 })()`;
 
-/** The read's own look at the page's click handlers; none if the page wouldn't say. */
+/** A look at the page's click handlers; none if the page wouldn't say. */
 async function handledIn(guest: WebContents): Promise<number[]> {
   const answer: unknown = await guest.executeJavaScript(HANDLED).catch(() => null);
-  return Array.isArray(answer) ? answer.filter((at) => Number.isInteger(at)).slice(0, 500) : [];
+  return Array.isArray(answer) ? answer.filter((at) => Number.isInteger(at)).slice(0, HANDLED_MOST) : [];
 }
 
-/** Reads the page for an agent, its controls with no role included. */
-export const readPage = async (guest: WebContents, op: object): Promise<unknown> => runScript(guest, { ...op, handled: await handledIn(guest) });
+/** Runs the agent's script where it tells controls with no role: a read, and a click's looks. */
+export const runSeeingHandlers = async (guest: WebContents, op: object): Promise<unknown> => runScript(guest, { ...op, handled: await handledIn(guest) });
 
 /** Runs the agent's script on the tab's page, in its own world. The op is data, and the script is the bundle's own. */
 export function runScript(guest: WebContents, op: object): Promise<unknown> {
