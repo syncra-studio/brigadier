@@ -1,6 +1,6 @@
-// Mockup only: the folded sidebar's separator between New chat and the first tab, the short rule (variant A, ?v=a), now
-// the app's own: four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the
-// whole app on a stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
+// Mockup only: the folded sidebar's separator and the row's line edge to edge (round 3's A, ?v=e), now the app's own:
+// four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the whole app on a
+// stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 // Listening for the daemon's port before it is posted.
@@ -11,7 +11,7 @@ import { createRoot } from "react-dom/client";
 import type { Tab } from "../src/shell/tab-store";
 
 const query = new URLSearchParams(location.search);
-const variant = query.get("v") ?? "a";
+const variant = query.get("v") ?? "e";
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -134,7 +134,7 @@ if (variant === "real") {
   document.body.insertAdjacentHTML("beforeend", '<div aria-hidden="true" class="pointer-events-none fixed start-4 top-4.25 z-30 flex gap-2"><i class="size-3 rounded-full bg-destructive"></i><i class="size-3 rounded-full bg-warning"></i><i class="size-3 rounded-full bg-success"></i></div>');
   fakeDaemon();
   void import("../src/main");
-} else if (variant !== "a")
+} else if (variant !== "e")
   createRoot(document.getElementById("root")!).render(<p className="p-4 text-label">This variant was dropped. Its round keeps its screenshot.</p>);
 else
   createRoot(document.getElementById("root")!).render(
