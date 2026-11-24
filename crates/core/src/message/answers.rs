@@ -31,12 +31,7 @@ pub fn answers(data: &Path, spec: &Spec, given: &[Value]) -> io::Result<Answers>
     if !drafts.is_empty() {
         let all = joined(drafts.into_iter());
         take(data, &spec.dir, &all, None)?;
-        let gone = |id: &String| file_in(&sent(&spec.dir), id).is_none();
-        if ids(&all).iter().any(gone) {
-            return Err(io::Error::other(
-                "A file in this answer wasn't saved. Remove it and attach it again.",
-            ));
-        }
+        saved(&spec.dir, &all)?;
     }
     let placed: Vec<Value> = (given.iter())
         .map(|g| match g.is_object() {
@@ -68,6 +63,19 @@ pub fn answers(data: &Path, spec: &Spec, given: &[Value]) -> io::Result<Answers>
     Ok(out)
 }
 
+/// Refuses an answer with a file that isn't there: an answer drops none silently.
+fn saved(dir: &Path, draft: &Value) -> io::Result<()> {
+    match ids(draft)
+        .iter()
+        .all(|id| file_in(&sent(dir), id).is_some())
+    {
+        true => Ok(()),
+        false => Err(io::Error::other(
+            "A file in this answer wasn't saved. Remove it and attach it again.",
+        )),
+    }
+}
+
 /// Drafts as one message's.
 fn joined<'a>(drafts: impl Iterator<Item = &'a Value> + Clone) -> Value {
     let all = |k: &str| -> Value {
@@ -81,6 +89,7 @@ fn joined<'a>(drafts: impl Iterator<Item = &'a Value> + Clone) -> Value {
 impl Answers {
     /// A plain message that answers a question, as its one answer.
     pub fn of(spec: &Spec, text: &str, parts: &Value) -> io::Result<Self> {
+        saved(&spec.dir, parts)?;
         let m = match parts.is_null() {
             true => Message::plain(text),
             false => compose_on(spec, text, parts.clone(), None, vec![])?,

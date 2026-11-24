@@ -105,6 +105,12 @@ pub(crate) fn answer(data: &Path, parent: &str, wid: &str, mid: &str, text: &str
     }
 }
 
+/// Whether a send waits for the answer to `wid`'s question `mid`.
+pub(crate) fn waits(data: &Path, wid: &str, mid: &str) -> bool {
+    let out = workers::read_json::<Out>(&path(data, wid, "out", mid));
+    out.is_some_and(|o| o.state == "asking")
+}
+
 /// Answers `wid`'s question `mid`, noted as `said`; whether a send still waits for it.
 pub(crate) fn hand_back(
     data: &Path,

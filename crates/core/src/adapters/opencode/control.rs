@@ -183,22 +183,9 @@ pub fn rules(spec: &Spec) -> Value {
     all.into()
 }
 
-/// A question's answer as the helper's line. Its form takes words alone, so its images go first as
-/// a steer, which OpenCode reads once the answer lets its turn go on.
-pub fn form(spec: &Spec, msg: &Value) -> Value {
-    let r = &msg["request"];
-    let mut line =
-        json!({"form": {"session": r["cli"]["session"], "id": r["id"], "answer": answers(r, msg)}});
-    if let Some(beside) = msg["beside"].as_str() {
-        line["before"] = prompt(spec, beside);
-        line["before"]["delivery"] = "steer".into();
-    }
-    line
-}
-
 /// A question's answers by field key, or the user's own message as the first one. A skipped
 /// question stays out; a multiselect takes the labels it names, else the text as one answer.
-fn answers(r: &Value, msg: &Value) -> Value {
+pub fn answers(r: &Value, msg: &Value) -> Value {
     if let Some(reply) = msg["reply"].as_str() {
         return json!({"q0": reply});
     }

@@ -111,7 +111,9 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         }
         return Ok(());
     }
-    let session = state.lock().unwrap().session.clone();
+    // A steer that goes with an answer joins the session that asked, a subagent's its own.
+    let own = || state.lock().unwrap().session.clone();
+    let session = c["session"].as_str().map_or_else(own, String::from);
     let at = |rest: &str| format!("/api/session/{session}{rest}");
     let (p, f) = (&c["permission"], &c["form"]);
     let (method, path, body) = if c["open"].is_object() {
@@ -149,17 +151,9 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         );
         ("POST", path, body)
     } else if f.is_object() {
-        let asked = f["session"].as_str().unwrap_or("");
-        // Not taken, the answer still goes: it names each image's file.
-        if c["before"].is_object() {
-            let path = format!("/api/session/{asked}/prompt");
-            match server.request("POST", &path, &c["before"]) {
-                Ok((code, _)) if code < 300 => {}
-                other => eprintln!("OpenCode took no images with the answer: {other:?}"),
-            }
-        }
         let path = format!(
-            "/api/session/{asked}/form/{}/reply",
+            "/api/session/{}/form/{}/reply",
+            f["session"].as_str().unwrap_or(""),
             f["id"].as_str().unwrap_or("")
         );
         ("POST", path, json!({"answer": f["answer"]}))
@@ -192,7 +186,11 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         say(json!({"type": "brigadier.reply", "data": {"id": id, "error": error}}));
     }
     // Its id for this message is where a later rewind cuts [D384].
-    if let (Ok((_, out)), None, true) = (&result, &error, c["prompt"].is_object()) {
+    if let (Ok((_, out)), None, true) = (
+        &result,
+        &error,
+        c["prompt"].is_object() && c["session"].is_null(),
+    ) {
         let v: Value = serde_json::from_str(out).unwrap_or_default();
         say(json!({"type": "brigadier.mark", "data": {"start": v["data"]["id"]}}));
     }

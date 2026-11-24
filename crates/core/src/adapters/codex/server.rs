@@ -28,8 +28,8 @@ const LIMIT_WAIT: Duration = Duration::from_secs(5);
 enum Pending {
     Wait(Sender<Result<Value, String>>),
     Reply(String),
-    /// A deny's reason or an answer's images went in; now the deny or the answer itself.
-    After(String, Value, Value),
+    /// The reason went in; now the deny itself.
+    Deny(String, Value, Value),
     Limits,
 }
 
@@ -231,7 +231,8 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
     }
     let cid = c["id"].as_str().unwrap_or("").to_string();
     let st = &mut *state.lock().unwrap();
-    let (thread, turn) = (st.thread.clone(), st.turn.clone());
+    let of = |k: &str, own: &String| c[k].as_str().map_or(own.clone(), String::from);
+    let (thread, turn) = (of("thread", &st.thread), of("turn", &st.turn));
     // A line with a turn and a steer steers the turn that runs, else starts its own [D117].
     let starts = c["turn"].is_object() && (c["steer"].is_null() || turn.is_empty());
     st.stopped = c["interrupt"] == true || (st.stopped && !starts);
@@ -262,9 +263,9 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
         if c["grant"].is_object() {
             st.grants.push(c["grant"].clone());
         }
-        if !c["before"].is_null() {
+        if c["before"].is_string() {
             let params = json!({"threadId": c["thread"], "expectedTurnId": c["turn"], "input": input(&c["before"])});
-            ask(st, "turn/steer", params, Pending::After(cid, rid, result));
+            ask(st, "turn/steer", params, Pending::Deny(cid, rid, result));
         } else {
             write(st, json!({"id": rid, "result": result}));
             reply(&cid, None);
@@ -294,11 +295,11 @@ fn from_server(state: &Shared, mut v: Value) {
     match then {
         Pending::Wait(tx) => drop(tx.send(result)),
         Pending::Reply(cid) => reply(&cid, result.err()),
-        Pending::After(cid, rid, then) => {
+        Pending::Deny(cid, rid, deny) => {
             if let Err(e) = result {
-                eprintln!("Codex took no deny reason or images: {e}");
+                eprintln!("Codex took no deny reason: {e}");
             }
-            write(st, json!({"id": rid, "result": then}));
+            write(st, json!({"id": rid, "result": deny}));
             reply(&cid, None);
         }
         Pending::Limits => {
