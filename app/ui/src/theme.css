@@ -1245,7 +1245,7 @@
   width: attr(data-width px, 0px);
   height: attr(data-height px, 0px);
 }
-/* The Mockup tab's canvas, panned and zoomed (mockup/mockup.tsx); its live pages follow it. */
+/* A mockup tab's canvas, panned and zoomed (mockup/mockup.tsx); its live pages follow it. */
 @utility mockup-canvas {
   transform-origin: 0 0;
   transform: translate(attr(data-pan-x px, 0px), attr(data-pan-y px, 0px)) scale(attr(data-scale type(<number>), 1));

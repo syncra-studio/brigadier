@@ -30,9 +30,9 @@ impl Fold {
         match item["phase"].as_str() {
             Some("asked") => {
                 let turn = self.turns.first().map(|t| t.id.clone());
-                self.offer = Some((id, turn.unwrap_or_default()));
+                self.offers.push((id, turn.unwrap_or_default()));
             }
-            Some("answered") if self.offer.as_ref().is_some_and(|o| o.0 == id) => self.offer = None,
+            Some("answered") => self.offers.retain(|o| o.0 != id),
             _ => {}
         }
     }

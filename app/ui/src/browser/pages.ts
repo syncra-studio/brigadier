@@ -20,7 +20,7 @@ export type BrowserPage = {
   favicon?: string | null;
   /** The last navigation the tab refused, offered to the system browser. */
   blocked: string | null;
-  /** A web page that didn't load, till the next load starts: the Mockup tab's frames show their own failed state. */
+  /** A web page that didn't load, till the next load starts: a mockup tab's frames show their own failed state. */
   failed?: string | null;
   /** What the page's history allows, once the page has said. */
   canGoBack?: boolean;

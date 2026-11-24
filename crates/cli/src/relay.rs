@@ -74,20 +74,21 @@ into the folder since this chat started is on the map from its next start.",
             &[],
         ),
         "mockup" => (
-            "brigadier mockup \"<what>\" [--reuse <session>] [--json]
+            "brigadier mockup \"<what>\" [--title \"<two or three words>\"] [--reuse <session>] [--json]
 
 Before a big UI change (a new screen, a redesign, a layout across screens) and never for a small fix,
 offer the user a mockup on a card: Yes, 3 variants / Yes, just 1 / Skip. <what> is the change, in a
-line the user reads. It waits up to 5 minutes and prints what the pick did. On Yes, a mockup worker
-draws the variants from your repo's own components and the user compares them in the Mockup tab;
-the variant they pick there is wired in by that worker, so don't build the change yourself. On Skip,
-build it. --reuse <session>: another session already drew this change; the card offers its mockup.
-When the user names their pick in your chat, pass it on with --use A [--note \"<their changes>\"],
-never as a message, so the Mockup tab follows.
+line the user reads; --title names its tab, card and worker. It waits up to 5 minutes and prints
+what the pick did. On Yes, a mockup worker draws the variants from your repo's own components and the
+user compares them in its own tab; the variant they pick there is wired in by that worker, so don't
+build the change yourself. On Skip, build it. --reuse <session>: another session already drew this
+change; the card offers its mockup. When the user names their pick in your chat, pass it on with
+--use A [--note \"<their changes>\"], never as a message, so its tab follows; --of <worker> says which
+mockup when several wait, and which of the session's with --reuse.
 A mockup worker reports each variant: --round N --variant A|B|C --name \"<name>\" --why \"<line>\"
 --url <page> [--shot <png>], each step it starts with --doing \"<a few words>\", and --real <url>
 once the pick is wired in.",
-            &["--reuse", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real", "--doing", "--use", "--note"],
+            &["--title", "--reuse", "--of", "--round", "--variant", "--name", "--why", "--url", "--shot", "--real", "--doing", "--use", "--note"],
             &[],
         ),
         "terminal" => (crate::tabs::terminal::agent::HELP, &[], &[]),

@@ -1,4 +1,4 @@
-// The Mockup tab, drawn on fake data [D2055, D2066]: the offer card, the chat rows, and every state of the tab. Frames
+// A mockup tab, drawn on fake data [D2055, D2066]: the offer card, the chat rows, and every state of the tab. Frames
 // show a fake app screen where the app shows the variant's live page.
 import { useState } from "react";
 

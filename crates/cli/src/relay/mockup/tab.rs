@@ -1,4 +1,4 @@
-//! The Mockup tab's ops [D2055, D2070]: the mockup as the tab draws it, the unsent notes Rust keeps
+//! A mockup tab's ops [D2055, D2070]: the mockup as the tab draws it, the unsent notes Rust keeps
 //! so they survive closing the tab, and Send, which steers the notes into the worker's turn as one
 //! message and starts the next round [D300]; a worker the user stopped takes none [D96]. And Use,
 //! which has the worker wire the pick in and merge it [D2059, D2068, D97].
@@ -42,7 +42,11 @@ pub(crate) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// The lead's card on round `on` (`<wid>-<round>`): its Use is the tab's.
 pub(super) fn from_card(data: &Path, lead: &str, on: &str, choice: &str) -> io::Result<Value> {
     let (wid, round) = on.rsplit_once('-').ok_or_else(none)?;
-    if workers::link(data, wid).is_none_or(|l| l.parent != lead) {
+    let Some(link) = workers::link(data, wid) else {
+        super::settle(data, lead, &format!("{}{on}", super::PICK), "Deleted")?;
+        return Ok(json!({"ok": false, "error": "gone", "message": "This mockup was deleted."}));
+    };
+    if link.parent != lead {
         return Err(none());
     }
     let Some(letter) = choice.strip_prefix("Use ") else {
@@ -63,15 +67,12 @@ pub(super) fn from_card(data: &Path, lead: &str, on: &str, choice: &str) -> io::
     Ok(r)
 }
 
-/// The lead's card on that round stops asking, answered by `how`.
-fn settle_card(data: &Path, wid: &str, round: usize, how: &str) {
-    if let Some(l) = workers::link(data, wid) {
-        let _ = super::settle(
-            data,
-            &l.parent,
-            &format!("{}{wid}-{round}", super::PICK),
-            how,
-        );
+/// The lead's cards on this mockup's rounds, up to `rounds`, stop asking, answered by `how`.
+fn settle_cards(data: &Path, wid: &str, rounds: usize, how: &str) {
+    let lead = workers::link(data, wid).map(|l| l.parent);
+    for (round, lead) in (1..=rounds).filter_map(|n| Some((n, lead.as_ref()?))) {
+        let card = format!("{}{wid}-{round}", super::PICK);
+        let _ = super::settle(data, lead, &card, how);
     }
 }
 
@@ -260,7 +261,7 @@ fn send(data: &Path, wid: &str, notes: &Value) -> io::Result<Value> {
         };
         return no(error, &format!("Couldn't send the notes: {why}"));
     }
-    settle_card(data, wid, round, "Left notes");
+    settle_cards(data, wid, last, "Left notes");
     // The lead's chat records it: "You → mockup · 3 notes on A and B · round 2 drawing".
     if let Some(l) = workers::link(data, wid) {
         let mut on: Vec<&str> = LETTERS
@@ -365,7 +366,7 @@ pub(super) fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::R
     (m["picked"], m["pickedRound"], m["draft"]) = (letter.into(), round.into(), Value::Null);
     m["doing"] = Value::Null;
     workers::write_json(&file(data, wid), &m)?;
-    settle_card(data, wid, round, &format!("Use {letter}"));
+    settle_cards(data, wid, rounds.len(), &format!("Use {letter}"));
     let message = (to != wid)
         .then(|| format!("{letter} went to the lead to build, as its worker was stopped."));
     Ok(json!({"ok": true, "message": message}))

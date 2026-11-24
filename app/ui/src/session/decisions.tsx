@@ -1,9 +1,13 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { Button } from "../components/button";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
+import { StepCounter } from "../components/composer/decision-parts";
 import { forgetQuestions, type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
 import { ask, threadSource, useDaemon } from "../daemon";
+import { useMockup } from "../mockup/live";
+import { openTab } from "../shell/tab-store";
 import type { Item, Session } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { useWorkers } from "../workers/live";
@@ -231,24 +235,59 @@ export function SessionApprovals({ id, run, source }: { id: string; run: Runner;
 /** Whether an approval waits, so the composer gives it its place. */
 export const useApprovalWaiting = (id: string, source: Source) => useWaiting(id, source).approvals.length > 0;
 
-/** The questions waiting, on the rail above the composer, one at a time; Esc puts them aside [D199, D207]. */
+/**
+ * The questions waiting, on the rail above the composer, one at a time, ‹ 1 of 2 › between them; Esc puts them aside
+ * [D199, D207]. A mockup's card shows its variants' pictures as they are now, and Open brings its own tab to the front.
+ */
 export function SessionQuestions({ id, run, source }: { id: string; run: Runner; source: Source }) {
   const { questions, error, dismiss } = useWaiting(id, source);
   const [aside, setAside] = useState(false);
-  const question = questions[0];
+  // The card shown, by id, so another coming or going doesn't change it; where it was, for the one after it when it goes.
+  const [shown, setShown] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
+  const found = questions.findIndex((each) => each.id === shown.id);
+  const at = found >= 0 ? found : Math.min(shown.index, questions.length - 1);
+  const question = questions[at];
+  if (shown.id !== (question?.id ?? null)) setShown({ id: question?.id ?? null, index: Math.max(at, 0) });
+  const mockup = question?.mockup;
+  const drawn = useMockup(mockup?.worker ?? "")?.rounds[(mockup?.round ?? 0) - 1]?.variants;
   if (!question) return null;
   if (aside) return <WaitingRow count={questions.length} onShow={() => setAside(false)} />;
+  const pictured = !drawn
+    ? question
+    : { ...question, items: question.items.map((item) => ({ ...item, options: item.options.map((option) => ({ ...option, shot: drawn.find((each) => each.letter === option.letter)?.shot ?? option.shot })) })) };
   return (
     <RailItem variant="decision" label="Waiting for you">
       <QuestionCard
         key={question.id}
         session={id}
-        question={question}
+        question={pictured}
         error={error(question.id)}
         dismiss={dismiss(question.id)}
         onAnswer={(answers) => send(run, id, { request: question, answers, state: "sending" })}
         onDismiss={() => setAside(true)}
-        footer={<MoreWaiting more={questions.length - 1} />}
+        actions={
+          mockup && (
+            <Button size="xs" variant="outline" aria-label={`Open ${mockup.title}`} onClick={() => openTab(id, "mockup", mockup.worker)}>
+              Open
+            </Button>
+          )
+        }
+        footer={
+          questions.length > 1 && (
+            <div className="flex items-start">
+              <MoreWaiting more={questions.length - 1 - at} />
+              <StepCounter
+                noun="decision"
+                at={at}
+                count={questions.length}
+                canBack={at > 0}
+                canForward={at < questions.length - 1}
+                onStep={(by) => setShown({ id: questions[at + by]?.id ?? null, index: at + by })}
+                className="ms-auto pe-4 pb-3"
+              />
+            </div>
+          )
+        }
       />
     </RailItem>
   );
