@@ -163,13 +163,48 @@ function paint(image: NativeImage, rects: readonly Rect[], pageWidth: number): B
   return nativeImage.createFromBitmap(bitmap, { width, height, scaleFactor }).toPNG({ scaleFactor });
 }
 
+/** How long a page gets to draw its first frame, and how often it's asked. */
+const DRAW_MS = 4000;
+const DRAW_STEP_MS = 150;
+/** The pictures under way in each of the app's windows. */
+const drawing = new Map<WebContents, number>();
+
+/**
+ * The page as drawn. A window that is hidden, covered or on another Space draws nothing, and neither do the pages in it:
+ * no surface to take (UnknownVizError). It draws while its throttling is off, and the page's first frame takes a moment.
+ */
+async function pictureOf(guest: WebContents): Promise<NativeImage> {
+  const host = guest.hostWebContents ?? guest;
+  drawing.set(host, (drawing.get(host) ?? 0) + 1);
+  host.setBackgroundThrottling(false);
+  try {
+    const until = Date.now() + DRAW_MS;
+    for (;;) {
+      const taken = await Promise.race([guest.capturePage(), new Promise<null>((resolve) => setTimeout(() => resolve(null), DRAW_MS))]).catch((error: unknown) => {
+        if (Date.now() >= until || guest.isDestroyed()) throw error;
+        return null;
+      });
+      if (taken && !taken.isEmpty()) return taken;
+      if (Date.now() >= until) throw new Error("The page drew nothing to take a picture of, as when the Mac's screen is off. Read it instead, or try again later.");
+      await new Promise((resolve) => setTimeout(resolve, DRAW_STEP_MS));
+    }
+  } finally {
+    const left = (drawing.get(host) ?? 1) - 1;
+    if (left > 0) drawing.set(host, left);
+    else {
+      drawing.delete(host);
+      if (!host.isDestroyed()) host.setBackgroundThrottling(true);
+    }
+  }
+}
+
 /**
  * The page's picture for an agent, its password fields painted out, by looks before and after it, so a field that moves
  * while it is taken stays covered. A page that can't be looked at gives no picture.
  */
 export async function pictureForAgent(guest: WebContents): Promise<Buffer> {
   const before = await sweep(guest).catch(() => null);
-  const image = await guest.capturePage();
+  const image = await pictureOf(guest);
   const after = await sweep(guest).catch(() => null);
   if (!before || !after) throw new Error("The page's password fields couldn't be found, so no picture was taken. Try again in a moment.");
   return paint(image, [...before.rects, ...after.rects], after.width);
