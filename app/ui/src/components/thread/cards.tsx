@@ -2,7 +2,10 @@ import { type ComponentType, createContext, type ReactNode, useContext } from "r
 
 import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
-import type { ApprovalAction, Item, Progress } from "../../thread/item";
+import type { ApprovalAction, Item, Progress, SentFile } from "../../thread/item";
+import { SessionOfThread } from "../../accounts/limit";
+import { openAttachment } from "../../shell/tab-store";
+import { SentAttachments } from "../composer/attachments";
 import type { PendingQuestion, QuestionItem } from "../composer/question";
 import { hhmm } from "../../thread/words";
 import { Button } from "../button";
@@ -120,6 +123,7 @@ export function QuestionRow({
   waiting,
   round,
   answers,
+  files,
   toParent,
 }: {
   keep: string;
@@ -130,11 +134,14 @@ export function QuestionRow({
   round?: PendingQuestion;
   /** One answer per question of the round, null for a skipped one. */
   answers?: (string | null)[];
+  /** Each answer's files. */
+  files?: (SentFile[] | null)[] | null;
   /** A worker's, which only its parent answers: "Asking ‹parent›", then "‹parent› answered" [D121, D131]. */
   toParent?: boolean;
 }) {
   const icon = <StepIcon icon={QuestionMarkCircle} />;
   const parent = useContext(ParentName);
+  const session = useContext(SessionOfThread)?.id;
   const items = round?.items ?? [];
   const count = Math.max(items.length, 1);
   const title = round?.title ? ` · ${round.title}` : "";
@@ -158,6 +165,7 @@ export function QuestionRow({
             <div key={at} className="flex flex-col gap-1">
               <dt className="whitespace-pre-wrap wrap-anywhere text-row-foreground">{pair.text}</dt>
               <dd className="whitespace-pre-wrap wrap-anywhere text-live-text-quiet">{pair.given}</dd>
+              {session && files?.[at] && <dd><SentAttachments start files={files[at].filter((file) => !file.pasted).map((file) => ({ ...file, url: `/attachment/${session}/${file.id}` }))} onOpen={(file) => openAttachment(session, file.id, file.name)} /></dd>}
             </div>
           ))}
 

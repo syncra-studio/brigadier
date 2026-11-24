@@ -17,7 +17,7 @@ use super::{
     Timing, base_env, home_path, mark_superseded, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, before_2, message, model, model_info, model_ref, prompt, rules, stopped};
+use control::{before_2, form, message, model, model_info, model_ref, prompt, rules, stopped};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
@@ -332,9 +332,7 @@ impl Adapter for OpenCode {
             }
             "interrupt" => json!({"interrupt": true}),
             "stop_task" => json!({"prompt": stopped(spec, msg)}),
-            "answer" if r["items"].is_array() => {
-                json!({"form": {"session": r["cli"]["session"], "id": r["id"], "answer": answers(r, msg)}})
-            }
+            "answer" if r["items"].is_array() => form(spec, msg),
             "answer" => {
                 let mut p =
                     json!({"session": r["cli"]["session"], "id": r["id"], "decision": "once"});

@@ -172,7 +172,18 @@ fn notes(data: &Path, me: &str, id: Option<&str>) -> Value {
     };
     match note::text_of(data, me, id) {
         Ok(Some((path, text))) => {
-            json!({"ok": true, "path": path, "text": format!("{}\n\n{text}", path.display())})
+            let images = note::images_of(&path, &text);
+            let mut said = format!("{}\n\n{text}", path.display());
+            if !images.is_empty() {
+                said += "\n\nIts images, in order; open them by path:\n";
+                for (alt, image) in &images {
+                    said += &format!("{alt}: {}\n", image.display());
+                }
+            }
+            let images: Vec<Value> = (images.iter())
+                .map(|(alt, path)| json!({"alt": alt, "path": path}))
+                .collect();
+            json!({"ok": true, "path": path, "images": images, "text": said})
         }
         Ok(None) => {
             json!({"ok": false, "error": format!("No note {id:?}. `brigadier notes` lists them.")})

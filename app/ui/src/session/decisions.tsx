@@ -3,7 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/button";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
 import { StepCounter } from "../components/composer/decision-parts";
-import { forgetQuestions, type PendingQuestion, QuestionCard } from "../components/composer/question";
+import { forgetQuestions, type Given, type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
 import { ask, threadSource, useDaemon } from "../daemon";
 import { useMockup } from "../mockup/live";
@@ -12,6 +12,7 @@ import type { Item, Session } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { useWorkers } from "../workers/live";
 import type { Runner } from "./composer";
+import { saidDraft } from "./files";
 
 /*
  * Answers to the agent's requests, shown at once [D30, D203]: the card goes and the thread row shows the answer, by
@@ -24,7 +25,7 @@ type Answer = {
   decision?: ApprovalDecision;
   /** What to do instead, typed with a deny [D192]. */
   reason?: string;
-  answers?: (string | null)[];
+  answers?: Given[];
   /** How far it got: on its way, delivered, or logged without proof it was delivered. */
   state: "sending" | "delivered" | "logged";
   /** Rust refused it; kept, with the card, until answered again or (once Rust no longer lists it) dismissed. */
@@ -60,7 +61,17 @@ function overlay(session: Session, mine: ReadonlyMap<string, Answer> | undefined
       const answer = id === undefined ? undefined : mine.get(id);
       if (!answer || answer.error !== undefined || answer.state === "logged" || decided(item)) return item;
       if (item.kind === "approval") return { ...item, decision: answer.decision === "deny" ? "denied" : "approved" };
-      if (item.kind === "question") return { ...item, answer: (answer.answers ?? []).filter((each) => each !== null).join("\n"), answers: answer.answers, withdrawn: false };
+      if (item.kind === "question") {
+        let images = 0;
+        const said = (answer.answers ?? []).map((each) => {
+          if (each === null || typeof each === "string") return { text: each, files: null };
+          const one = saidDraft(session.id, each, images);
+          images = one.images;
+          return one;
+        });
+        const answers = said.map((each) => each.text);
+        return { ...item, answer: answers.filter((each) => each !== null).join("\n"), answers, files: said.map((each) => each.files), withdrawn: false };
+      }
       return item;
     }),
     approvals: session.approvals?.filter((each) => !hidden(each.id)),
@@ -239,7 +250,7 @@ export const useApprovalWaiting = (id: string, source: Source) => useWaiting(id,
  * The questions waiting, on the rail above the composer, one at a time, ‹ 1 of 2 › between them; Esc puts them aside
  * [D199, D207]. A mockup's card shows its variants' pictures as they are now, and Open brings its own tab to the front.
  */
-export function SessionQuestions({ id, run, source }: { id: string; run: Runner; source: Source }) {
+export function SessionQuestions({ id, run, source, ...takes }: { id: string; run: Runner; source: Source; /** The agent that takes an answer's images, and whether its model can. */ backend?: string; images: boolean }) {
   const { questions, error, dismiss } = useWaiting(id, source);
   const [aside, setAside] = useState(false);
   // The card shown, by id, so another coming or going doesn't change it; where it was, for the one after it when it goes.
@@ -260,6 +271,8 @@ export function SessionQuestions({ id, run, source }: { id: string; run: Runner;
       <QuestionCard
         key={question.id}
         session={id}
+        run={run}
+        {...takes}
         question={pictured}
         error={error(question.id)}
         dismiss={dismiss(question.id)}

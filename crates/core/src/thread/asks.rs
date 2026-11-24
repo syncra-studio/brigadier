@@ -252,6 +252,7 @@ impl Thread {
                 .map_or(given.join("\n"), String::from)
                 .into();
             row["answers"] = answers.into();
+            row["files"] = c["files"].clone();
             row["withdrawn"] = false.into();
             if let Some(o) = self.open.as_mut().filter(|o| o.asked == Some(at)) {
                 o.asked = None;
@@ -291,7 +292,7 @@ impl Thread {
                 ),
                 false => {
                     json!({"kind": "message", "role": "user", "text": text, "streaming": false,
-                    "origin": "user", "sentAt": ts, "cid": cid})
+                    "origin": "user", "sentAt": ts, "cid": cid, "files": c["files"][0]})
                 }
             };
             self.break_group();

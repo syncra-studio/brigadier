@@ -20,16 +20,6 @@ pub type CallIn<'a> = &'a dyn Fn(&str, Value) -> io::Result<Value>;
 /// What a Brigade's every message from its user starts with, for its agent only [D185].
 const BRIGADE: &str = "[Brigade: you are this job's boss. Run `brigadier help brigade` and follow it before anything else.]";
 
-/// What a note's side chat reads first: the note it's beside, and the checkout it may read.
-fn note_lead(note: &str, reads: Option<&str>) -> String {
-    let checkout = reads.map_or(String::new(), |r| {
-        format!(" To build it from the project, read the session's checkout at {r}; change nothing there.")
-    });
-    format!(
-        "[This chat is beside the user's note {note}, in the same window. When the user asks, write or change that note by editing the file in place: a first line `# ` names it if the user renamed it (an emoji may lead it; keep that line as it is), then a blank line, then its body; without that line its first line of text names it. The body is Markdown (headings, lists, `- [ ]` checklists, tables, quotes, code). Change no other file.{checkout}]"
-    )
-}
-
 /// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
 pub type Running = Option<u64>;
 
@@ -54,7 +44,11 @@ pub fn send(
     let led = led.or_else(|| {
         let note = spec.opts.get("note").filter(|_| origin == "user")?;
         let reads = spec.opts.get("reads").map(String::as_str);
-        Some(format!("{}\n\n{}", note_lead(note, reads), msg.agent))
+        Some(format!(
+            "{}\n\n{}",
+            crate::message::notes::lead(note, reads),
+            msg.agent
+        ))
     });
     let text = led.as_deref().unwrap_or(msg.agent.as_str());
     // The user's next turn, or their Resume, goes to the agent they picked; a message into a

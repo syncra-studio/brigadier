@@ -196,7 +196,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       );
     }
     case "question":
-      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} waiting={!item.withdrawn && (turn?.status === "running" || turn?.held === true || (item.held === true && item.answer === null))} toParent={item.to === "parent"} />;
+      return <QuestionRow keep={item.id} question={item.question} answer={item.answer} round={item.request} answers={item.answers} files={item.files} waiting={!item.withdrawn && (turn?.status === "running" || turn?.held === true || (item.held === true && item.answer === null))} toParent={item.to === "parent"} />;
     case "childAgent":
       return <SubagentRow items={[item]} />;
     case "compaction":

@@ -261,8 +261,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
         "send" => {
-            let (id, text) = (arg(args, 1)?, arg(args, 2)?);
-            let parts = parts(args)?;
+            let (id, text, parts) = (arg(args, 1)?, arg(args, 2)?, parts(args)?);
             if has(args, "--steer") {
                 // A worker's message from its parent's composer brings the parent's files [D3013].
                 if let Some(from) = flag(args, "--from") {
@@ -278,12 +277,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     false,
                 );
             }
-            if let Some(reply) = control::reply(data, id, text, flag(args, "--cid"), None)? {
+            let spec = core::load(data, id)?;
+            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
+            if let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)?
+            {
                 return Ok(reply);
             }
-            let spec = core::load(data, id)?;
             owner::ensure(data, &spec)?;
-            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
             // A block its subagents or workers hold open is still running: as mid-turn [D521].
             let reply = match workers::holding(data, id) {

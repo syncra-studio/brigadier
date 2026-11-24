@@ -69,5 +69,6 @@ export const BLOCK_ICONS = {
   quote: svg(<><path d="M3 3.5v9" /><path d="M6.5 5h7M6.5 8h7M6.5 11h4.5" /></>),
   code: svg(<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />),
   table: svg(<><path d="M4 2.5h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z" /><path d="M2 6.5h12M6.5 6.5v7" /></>),
+  image: svg(<><path d="M4 2.5h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z" /><circle cx="5.5" cy="6" r="1.2" /><path d="M2.5 12l3.5-3 2.5 2 2.5-2.5 3 3" /></>),
   divider: svg(<path d="M2 8h12" />),
 } as const;

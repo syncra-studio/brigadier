@@ -1,6 +1,6 @@
-// Mockup only: the folded sidebar's separator between New chat and the first tab, the short rule (variant A, ?v=a), now
-// the app's own: four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the
-// whole app on a stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
+// Mockup only: the folded sidebar's separator and the row's line edge to edge (round 3's A, ?v=e), now the app's own:
+// four windows, tabs open and the chat alone, the right panel closed and open. ?v=real is one window: the whole app on a
+// stub daemon with fake sessions, files and tabs (?tabs, ?panel, ?front its state). Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 // Listening for the daemon's port before it is posted.
@@ -8,7 +8,10 @@ import "../src/daemon";
 
 import { createRoot } from "react-dom/client";
 
+import type { Tab } from "../src/shell/tab-store";
+
 const query = new URLSearchParams(location.search);
+const variant = query.get("v") ?? "e";
 
 const NOW = Date.now();
 const MIN = 60_000;
@@ -38,7 +41,7 @@ const SESSION = {
   work: [],
 };
 const FILES = { files: ["README.md", "package.json", "src/app.ts", "src/tabs.ts", "src/theme.css"], truncated: false, ignored: [] };
-const TABS = [
+const TABS: Tab[] = [
   { id: "t-1", kind: "file", opener: "chat", target: "src/tabs.ts" },
   { id: "t-2", kind: "new", opener: "chat" },
   { id: "t-3", kind: "file", opener: "chat", target: "README.md" },
@@ -69,13 +72,37 @@ function fakeDaemon() {
     if (op === "source" && args.includes("file")) return { file: { size: 40, text: "// A fake file in this mockup.\n", truncated: false } };
     return null;
   };
-  const state = new Map([["s1", query.has("tabs") ? { tabs: TABS, active: front } : { tabs: [] as typeof TABS, active: "chat" }]]);
-  const tabs = (owner: string, [op, id, kind]: string[]) => {
+  const state = new Map([["s1", query.has("tabs") ? { tabs: TABS, active: front } : { tabs: [] as Tab[], active: "chat" }]]);
+  /** The tab changes as Rust makes them, for what the tab bar, Files and a New tab ask (tab-store.ts). */
+  const tabs = (owner: string, [op, id = "", ...rest]: string[]) => {
     const now = state.get(owner) ?? { tabs: [], active: "chat" };
-    if (op === "select") now.active = id!;
-    if (op === "open") [now.tabs, now.active] = [[...now.tabs, { id: id!, kind: kind!, opener: "chat" } as (typeof TABS)[number]], id!];
-    if (op === "close") [now.tabs, now.active] = [now.tabs.filter((tab) => tab.id !== id), now.active === id ? "chat" : now.active];
+    const at = now.tabs.findIndex((tab) => tab.id === id);
+    const add = (tab: Tab, same?: Tab) => {
+      if (!same) now.tabs = now.tabs.toSpliced(now.tabs.findIndex((each) => each.id === now.active) + 1, 0, tab);
+      now.active = (same ?? tab).id;
+    };
+    const isFile = (path?: string) => (tab: Tab) => tab.kind === "file" && tab.target === path;
+    if (op === "select") now.active = id;
+    if (op === "open") add({ id, kind: rest[0] as Tab["kind"], opener: now.active, target: rest[1] }, rest[0] === "file" ? now.tabs.find(isFile(rest[1])) : undefined);
+    if (op === "replace") now.tabs = now.tabs.map((tab) => (tab.id === id ? { ...tab, kind: rest[0] as Tab["kind"], target: rest[1] } : tab));
+    if (op === "file") {
+      const preview = rest[2] === "preview";
+      const open = now.tabs.find(isFile(rest[0]));
+      const old = preview && !open ? now.tabs.find((tab) => tab.preview) : undefined;
+      if (open && !preview) now.tabs = now.tabs.map((tab) => (tab === open ? { ...tab, preview: false } : tab));
+      if (old) now.tabs = now.tabs.map((tab) => (tab === old ? { ...tab, target: rest[0] } : tab));
+      add({ id, kind: "file", opener: now.active, target: rest[0], preview }, open ?? old);
+    }
+    if (op === "keep") now.tabs = now.tabs.map((tab) => (tab.id === id ? { ...tab, preview: false } : tab));
+    if (op === "move" && at >= 0) now.tabs = now.tabs.toSpliced(at, 1).toSpliced(Number(rest[0]), 0, now.tabs[at]!);
+    if (op === "close" && at >= 0) {
+      const { opener } = now.tabs[at]!;
+      now.tabs = now.tabs.toSpliced(at, 1);
+      if (now.active === id) now.active = now.tabs.some((tab) => tab.id === opener) ? opener : opener === "chat" ? "chat" : (now.tabs[at]?.id ?? now.tabs[at - 1]?.id ?? "chat");
+    }
     if (op === "close-others") now.tabs = now.tabs.filter((tab) => tab.id === id);
+    if (op === "close-right") now.tabs = now.tabs.slice(0, at + 1);
+    if (now.active !== "chat" && !now.tabs.some((tab) => tab.id === now.active)) now.active = "chat";
     state.set(owner, now);
     return { rev: rev++, ...now };
   };
@@ -100,14 +127,16 @@ const STATES = [
   ["Chat alone, right panel open", "panel"],
 ] as const;
 
-if (query.get("v") === "real") {
+if (variant === "real") {
   // The sidebar folded, as each window starts.
   localStorage.setItem("sidebar.open", "false");
   location.hash = "#thread/s1";
   document.body.insertAdjacentHTML("beforeend", '<div aria-hidden="true" class="pointer-events-none fixed start-4 top-4.25 z-30 flex gap-2"><i class="size-3 rounded-full bg-destructive"></i><i class="size-3 rounded-full bg-warning"></i><i class="size-3 rounded-full bg-success"></i></div>');
   fakeDaemon();
   void import("../src/main");
-} else
+} else if (variant !== "e")
+  createRoot(document.getElementById("root")!).render(<p className="p-4 text-label">This variant was dropped. Its round keeps its screenshot.</p>);
+else
   createRoot(document.getElementById("root")!).render(
     // Each never narrower than an app window: a narrow column scrolls sideways, the window's left edge first.
     <main className="flex min-h-screen w-full min-w-max flex-col gap-4 bg-muted p-4">

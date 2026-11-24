@@ -422,12 +422,14 @@ fn build(
     let ids =
         (copied.iter()).flat_map(|item| item["parts"]["files"].as_array().into_iter().flatten());
     let ids = (ids.filter_map(|file| file["id"].as_str()))
-        .chain(copied.iter().filter_map(|item| item["attachment"].as_str()));
-    for id in ids.filter(|id| crate::check_id(id).is_ok()) {
-        let Ok(found) = fs::read_dir(crate::message::sent(&src.dir).join(id)) else {
+        .chain(copied.iter().filter_map(|item| item["attachment"].as_str()))
+        .map(String::from);
+    let notes = (copied.iter()).flat_map(|item| crate::message::notes::kept(&item["parts"]));
+    for id in ids.chain(notes).filter(|id| crate::check_id(id).is_ok()) {
+        let Ok(found) = fs::read_dir(crate::message::sent(&src.dir).join(&id)) else {
             continue;
         };
-        let to = crate::message::sent(&new.dir).join(id);
+        let to = crate::message::sent(&new.dir).join(&id);
         fs::create_dir_all(&to)?;
         for file in found.flatten() {
             fs::copy(file.path(), to.join(file.file_name()))?;

@@ -157,7 +157,7 @@ impl Adapter for Fake {
                 let answers = msg["reply"]
                     .as_str()
                     .map_or(msg["answers"].clone(), |r| json!([r]));
-                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": answers}})
+                json!({"answer": {"id": msg["request"]["id"], "decision": msg["decision"], "reason": msg["reason"], "answers": answers}, "images": spec.images})
             }
             Some("steer") => json!({"text": msg["text"], "steer": true, "images": spec.images}),
             Some("interrupt") => json!({"interrupt": true}),

@@ -2,7 +2,7 @@
 //! with its first line under its name; with words typed, the notes holding every one of them
 //! anywhere in their text, with the line around the first [D921].
 
-use super::{check_id, moved, named, plain, short, split, title};
+use super::{check_id, images, moved, named, plain, short, split, title};
 use crate::remove;
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -39,8 +39,9 @@ pub(super) fn pin(dir: &Path, note: &str, on: bool) -> io::Result<Value> {
 }
 
 /// The line under a note's name: its first line of text after the one that names it.
-fn preview<'a>(text: &'a str, name: &str) -> &'a str {
+fn preview(text: &str, name: &str) -> String {
     let (head, body) = split(text);
+    let body = images::words(body, false);
     let mut lines = body.lines().map(plain).filter(|l| !l.is_empty());
     let first = lines.next().unwrap_or("");
     // An unnamed note is named by its first line: the line after it shows.
@@ -48,6 +49,7 @@ fn preview<'a>(text: &'a str, name: &str) -> &'a str {
         true => lines.next().unwrap_or(""),
         false => first,
     }
+    .into()
 }
 
 /// The line around the first word's match, cut to a few words each side; None: a word is missing.
@@ -100,13 +102,13 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
         let text = fs::read_to_string(&path).unwrap_or_default();
         let hit = match words.is_empty() {
             true => None,
-            false => match matched(&text, &words) {
+            false => match matched(&images::words(&text, true), &words) {
                 Some(hit) => Some(hit),
                 None => continue,
             },
         };
         let (whole, pin) = (title(&text), pinned.contains(&note));
-        let (name, shown) = (short(&text), preview(&text, whole));
+        let (name, shown) = (short(&text), preview(&text, &whole));
         // A match already in sight, in the name or the line under it, isn't shown again.
         let hit = hit.filter(|h| {
             let (name, h) = (name.to_lowercase(), h.trim_matches('…'));
@@ -118,7 +120,7 @@ pub(super) fn run(data: &Path, dir: &Path, q: Option<&str>) -> Value {
         // What a rename starts from: the user's whole name, or the title its text gives it, without the cut's "…".
         let from = match named(head).is_empty() && name != whole {
             true => name.trim_end_matches('…'),
-            false => whole,
+            false => &whole,
         };
         notes.push((pin, at, json!({"id": note, "title": name, "name": from, "whole": whole, "head": head, "preview": shown, "at": at, "pinned": pin, "match": hit})));
     }

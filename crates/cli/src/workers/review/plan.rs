@@ -189,7 +189,7 @@ pub(super) fn reviewed(
         "{}\n\nAbove are the findings {name}, another agent, made reviewing your plan adversarially. Revise the plan: change it for each valid one, and for each one you reject, give the reason in the plan. Then ask again to build it, ending the revised plan with one line: `Fixed: N, rejected: M`.",
         cut(said, 15 << 10)
     );
-    match crate::control::reply(data, of, &text, None, Some("review")) {
+    match crate::control::reply(data, of, &text, &Value::Null, None, Some("review")) {
         Ok(Some(_)) => {}
         _ => off("its findings couldn't be sent"),
     }

@@ -51,9 +51,10 @@ export const daemonSettings: SettingsSource = {
 /**
  * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
  * the repository, and the one Automatic uses (the first that can). A folder's is for all its `repos`, on `host` alone when
- * it has GitHub repositories elsewhere too. Not on GitHub: no row.
+ * it has GitHub repositories elsewhere too; `auto_host` is Automatic's server when the picked account's is another. Not on
+ * GitHub: no row.
  */
-export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; repos?: number; host?: string | null; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; repos?: number; host?: string | null; auto_host?: string | null; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 /** One setting, as the page's rows: its name over one plain line, its control at the end, or under it when `wide`. */
 function Row({ label, line, error, wide = false, children }: { label: string; line: ReactNode; error?: string | null; wide?: boolean; children: ReactNode }) {
@@ -141,6 +142,16 @@ export function ProjectSettings({ project, source }: { project: Project; source:
     };
   }, [project.id, project.folder, folderKind, daemon]);
 
+  // A folder's pick can be another server's than Automatic's: its row changes servers with it.
+  useEffect(() => {
+    if (!github?.auto_host) return;
+    let live = true;
+    void source.accounts(project.id, false).then((reply) => live && setGithub(reply), () => {});
+    return () => {
+      live = false;
+    };
+  }, [project.github_account]);
+
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
     setErrors((now) => ({ ...now, [field]: null }));
@@ -218,8 +229,8 @@ export function ProjectSettings({ project, source }: { project: Project; source:
               {
                 value: "",
                 label: "Automatic",
-                shown: github.auto ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
-                hint: github.auto ? `@${github.auto}, the ${several ? "first " : ""}account that can see ${several ? several + on : github.repo}` : checking ? "Checking…" : `None of your accounts can see ${several ? several + on : github.repo}`,
+                shown: github.auto && !github.auto_host ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
+                hint: github.auto_host ? `The account for your repositories on ${github.auto_host}` : github.auto ? `@${github.auto}, the ${several ? "first " : ""}account that can see ${several ? several + on : github.repo}` : checking ? "Checking…" : `None of your accounts can see ${several ? several + on : github.repo}`,
               },
               ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
               // A pick gh has since signed out of stays shown, so it can be seen and changed.

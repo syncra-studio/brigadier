@@ -41,7 +41,7 @@ pub fn steer_turn(
     cid: &str,
     origin: &str,
 ) -> io::Result<Value> {
-    let msg = core::message::compose(spec, text, parts.clone())?;
+    let msg = core::message::compose(spec, text, parts.clone(), None)?;
     let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
     if core::message::direct(&spec.dir, cid, origin) {
         req["direct"] = true.into();

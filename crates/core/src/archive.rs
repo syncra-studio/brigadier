@@ -19,6 +19,8 @@ pub struct Entry {
     pub text: String,
     pub files: Vec<String>,
     pub ts: u64,
+    /// The files sent with it, under the session's sent ones.
+    pub sent: Vec<String>,
     /// A hand-off's pointer to the step's output in the log; never set in the archive [D485].
     pub out: String,
 }
@@ -82,6 +84,7 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
         text,
         files,
         ts: item["ts"].as_u64().unwrap_or(0),
+        sent: crate::message::notes::files(&item["parts"]),
         out: String::new(),
     })
 }

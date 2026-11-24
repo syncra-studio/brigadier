@@ -410,7 +410,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} />{model.strip}
+          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} />{model.strip}
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}

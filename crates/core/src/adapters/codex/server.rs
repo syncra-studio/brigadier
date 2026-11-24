@@ -28,8 +28,8 @@ const LIMIT_WAIT: Duration = Duration::from_secs(5);
 enum Pending {
     Wait(Sender<Result<Value, String>>),
     Reply(String),
-    /// The reason went in; now the deny itself.
-    Deny(String, Value, Value),
+    /// A deny's reason or an answer's images went in; now the deny or the answer itself.
+    After(String, Value, Value),
     Limits,
 }
 
@@ -262,9 +262,9 @@ fn command(state: &Shared, c: &Value) -> Result<(), String> {
         if c["grant"].is_object() {
             st.grants.push(c["grant"].clone());
         }
-        if c["before"].is_string() {
+        if !c["before"].is_null() {
             let params = json!({"threadId": c["thread"], "expectedTurnId": c["turn"], "input": input(&c["before"])});
-            ask(st, "turn/steer", params, Pending::Deny(cid, rid, result));
+            ask(st, "turn/steer", params, Pending::After(cid, rid, result));
         } else {
             write(st, json!({"id": rid, "result": result}));
             reply(&cid, None);
@@ -294,11 +294,11 @@ fn from_server(state: &Shared, mut v: Value) {
     match then {
         Pending::Wait(tx) => drop(tx.send(result)),
         Pending::Reply(cid) => reply(&cid, result.err()),
-        Pending::Deny(cid, rid, deny) => {
+        Pending::After(cid, rid, then) => {
             if let Err(e) = result {
-                eprintln!("Codex took no deny reason: {e}");
+                eprintln!("Codex took no deny reason or images: {e}");
             }
-            write(st, json!({"id": rid, "result": deny}));
+            write(st, json!({"id": rid, "result": then}));
             reply(&cid, None);
         }
         Pending::Limits => {

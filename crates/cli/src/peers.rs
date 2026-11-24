@@ -16,7 +16,7 @@ mod reply;
 use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::log;
-pub(crate) use reply::{answer, asked, open_question, question};
+pub(crate) use reply::{answer, asked, hand_back, open_question, question};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};

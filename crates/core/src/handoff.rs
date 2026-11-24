@@ -19,6 +19,7 @@ const WORK: usize = 2_000;
 const PLAN: usize = 2_000;
 const CONTENTS: usize = 1_200;
 const EXCHANGE: usize = 6_000;
+const FILES: usize = 3_000;
 
 /// The first `max` characters, on a character boundary, marked where cut.
 fn head(s: &str, max: usize) -> String {
@@ -348,6 +349,18 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }
     if later.is_some() {
         out += &first;
+    }
+
+    // What came with the messages, the newest first.
+    let sent = (p.entries.iter().rev())
+        .flat_map(|e| (e.sent.iter()).map(move |file| format!("- {id}#{}: {file}\n", e.at)));
+    let sent = fill(sent, FILES, "they're in that folder");
+    if !sent.is_empty() {
+        let folder = crate::message::sent(&spec.dir);
+        out += &format!(
+            "\n## Files sent with the messages, in {}\n{sent}",
+            folder.display()
+        );
     }
 
     // Open items: workers started and not yet reported back.
