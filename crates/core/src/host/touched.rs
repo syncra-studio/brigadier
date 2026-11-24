@@ -37,7 +37,7 @@ pub(super) fn ran_in(input: &str) -> Option<PathBuf> {
     let rest = rest.trim_start_matches([' ', '\t']);
     let then = ["&&", ";", "\n"].iter().any(|s| rest.starts_with(s));
     let moves = (rest.split(|c: char| !c.is_alphanumeric() && !"_-./".contains(c)))
-        .any(|w| ["cd", "pushd", "popd", "GH_REPO"].contains(&w));
+        .any(|w| ["cd", "pushd", "popd", "GH_REPO", "GH_HOST"].contains(&w));
     let path = match path.strip_prefix("~/") {
         Some(rest) => std::env::home_dir()?.join(rest),
         None => PathBuf::from(path),
@@ -86,6 +86,16 @@ pub(super) fn touched(
     let api = |word: &str, input: &str| -> Option<Key> {
         let word = word.trim_matches(['"', '\'']);
         let at = word.find("repos/")?;
+        // A whole URL names its server: `api.` before it, or after it `/api/v3`.
+        if let Some((_, rest)) = word.split_once("://") {
+            let host = rest.split('/').next()?;
+            if ![repo.host.clone(), format!("api.{}", repo.host)]
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(host))
+            {
+                return None;
+            }
+        }
         let mut parts = word[at + "repos/".len()..].split('/');
         let (owner, name) = (parts.next()?, parts.next()?);
         if parts.next()? != "pulls" {
@@ -111,9 +121,22 @@ pub(super) fn touched(
         let Some(input) = row["input"].as_str() else {
             continue;
         };
+        // A folder chat's own only: a fork's copy of its source's thread isn't.
+        if repo.path.is_empty() && row["inherited"] == true {
+            continue;
+        }
+        // gh told to ask another server, for the whole command or just one call.
+        let other = |h: &str| !h.trim_matches(['"', '\'']).eq_ignore_ascii_case(&repo.host);
+        let mut words = input.split([' ', '\t', '\n', ';', '&', '|']);
+        if words.any(|w| w.strip_prefix("GH_HOST=").is_some_and(other)) {
+            continue;
+        }
         for part in input.split(['\n', ';', '&', '|']) {
             let words: Vec<&str> = part.split_whitespace().collect();
-            if words.contains(&"api") {
+            let hostname = (words.iter().zip(words.iter().skip(1)))
+                .find_map(|(w, next)| (*w == "--hostname").then_some(*next))
+                .or_else(|| words.iter().find_map(|w| w.strip_prefix("--hostname=")));
+            if words.contains(&"api") && !hostname.is_some_and(other) {
                 found.extend(words.iter().filter_map(|w| api(w, input)));
             }
             let Some(at) = (words.windows(2)).position(|w| w[0] == "pr" && DETAIL.contains(&w[1]))

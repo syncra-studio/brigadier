@@ -131,13 +131,6 @@ pub(super) fn watch(data: PathBuf, state: Shared) {
                             Err(_) => host::chat(&data, &id),
                         },
                     };
-                    // A claimed repo's are the chat's row's too, read again as its folder changes.
-                    if let Some((chat, _)) = id.split_once('@')
-                        && kept_at(&data, &id) != now_at
-                    {
-                        let dir = std::fs::File::open(session_dir(&data, chat));
-                        let _ = dir.and_then(|d| d.set_modified(SystemTime::now()));
-                    }
                     let at = Instant::now() + every(kept.as_ref(), window);
                     // Under DUE's lock, as the scheduler reads it: a turn noted meanwhile is never lost.
                     let _due = DUE.lock().unwrap();

@@ -25,6 +25,7 @@ pub use actions::{kept_run, kept_runs};
 pub use chat::{chat, listed};
 pub use chip::{chip, moved_on, opened};
 pub use create::Create;
+use github::hosted;
 pub use github::{clone_github, github_repos, project_repos};
 pub use prs::kept;
 pub use search::{kept_key, kept_search};
@@ -388,13 +389,6 @@ pub struct Pr {
     /// Its project's GitHub account, read as [D631]; None: whichever can see the repository. On the
     /// Pull Requests page, the one account its search reads as, else every one [D243].
     pub account: Option<String>,
-}
-
-/// A checkout and the repository its branch pushes to, git picking the remote; None with no
-/// known host.
-fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
-    let (checkout, repo) = pushed(checkout)?;
-    Some((checkout, repo?))
 }
 
 /// `hosted`, the repository None on a server it can't name; None with no remote.

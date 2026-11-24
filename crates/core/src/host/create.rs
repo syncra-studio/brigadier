@@ -116,7 +116,7 @@ impl Pr {
                     let repo = r["repo"].as_str().map(str::to_ascii_lowercase);
                     (repo, r["number"].as_u64().unwrap_or(0)) != key
                 });
-                keep(&self.dir.join("prs.json"), &prs);
+                self.save(&prs);
             }
         }
         keep(&self.dir.join("attached.json"), &json!(all));

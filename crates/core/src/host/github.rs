@@ -176,6 +176,13 @@ fn remotes(data: &Path, p: &Project) -> Vec<(Checkout, Option<Repo>)> {
     found
 }
 
+/// A checkout and the repository its branch pushes to, git picking the remote; None with no
+/// known host.
+pub(super) fn hosted(checkout: Checkout) -> Option<(Checkout, Repo)> {
+    let (checkout, repo) = super::pushed(checkout)?;
+    Some((checkout, repo?))
+}
+
 /// A folder project's checkouts with a known host: GitHub's first, as only its PRs are searched, and
 /// github.com's before any other server's.
 pub(super) fn homes(data: &Path, p: &Project) -> Vec<(Checkout, Repo)> {
@@ -262,7 +269,7 @@ pub fn project_repos(data: &Path, id: &str) -> Vec<String> {
     let found: Vec<(Checkout, Repo)> = match crate::projects::get(data, id) {
         Ok(p) if p.kind == crate::folder::KIND => homes(data, &p),
         _ => (git::checkout(data, &Target::Project(id)).ok())
-            .and_then(super::hosted)
+            .and_then(hosted)
             .into_iter()
             .collect(),
     };

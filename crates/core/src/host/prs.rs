@@ -100,7 +100,13 @@ impl Pr {
         // The session's other PRs [D175]: those kept from its other branches and repositories, read
         // again until merged (then final), and those its own commands looked at.
         let old = kept(&self.dir);
-        let old: Vec<&Value> = old["prs"].as_array().into_iter().flatten().collect();
+        // A folder chat's server can change: one kept from another isn't this one's `owner/name`.
+        let web = format!("https://{}/", repo.host);
+        let here =
+            |p: &&Value| !self.chat() || p["url"].as_str().is_some_and(|u| u.starts_with(&web));
+        let old: Vec<&Value> = (old["prs"].as_array().into_iter().flatten())
+            .filter(here)
+            .collect();
         let numbers: BTreeSet<Key> = (old.iter())
             .filter(|p| p["live"] == true || p["state"] == "open" || !p["repo"].is_null())
             .map(|p| key(p))
@@ -209,6 +215,10 @@ impl Pr {
                         format!("{}#{n} couldn't be read.", r.as_deref().unwrap_or(""))
                     }));
                 }
+                // A folder chat has no other read to say why, but one that's no PR still waits.
+                (_, None) if self.chat() => {
+                    missed = missed.or_else(|| super::chat::refused(partial.as_deref()?))
+                }
                 (_, None) => {}
             }
         }
@@ -248,18 +258,13 @@ impl Pr {
             None if mine && fresh["state"] == "open" => rows.push(fresh),
             None => return,
         }
-        let path = self.dir.join("prs.json");
-        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-        if let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path)) {
-            eprintln!("brigadier: keeping {}: {e}", path.display());
-        }
+        self.save(&next);
     }
 
     /// Keeps a read in `prs.json` [D1009]: a PR whose checks couldn't be read keeps its last facts
     /// at the same head, a failed read keeps every PR with why, and `okAt` moves only on a whole
     /// read. Written only when something in it changed.
     pub(super) fn keep(&self, read: Read) -> Value {
-        let path = self.dir.join("prs.json");
         let old = kept(&self.dir);
         // The branch's local head, read even when the host can't be: new commits clear Merged.
         let head = (!self.chat())
@@ -302,12 +307,8 @@ impl Pr {
                 next
             }
         };
-        // Its own temp file: a `brigadier host` run from a shell may keep it at the same time.
-        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-        if next != old
-            && let Err(e) = fs::write(&tmp, next.to_string()).and_then(|()| fs::rename(&tmp, &path))
-        {
-            eprintln!("brigadier: keeping {}: {e}", path.display());
+        if next != old {
+            self.save(&next);
         }
         next
     }

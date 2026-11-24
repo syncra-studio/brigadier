@@ -1,16 +1,17 @@
 //! A folder chat's PRs [D494, D544]: those its own commands looked at in detail, kept in its own
 //! `prs.json`, and each repository it claimed's, kept beside the claim; its workers' never.
 
-use super::github::{HOST, picked};
+use super::github::{HOST, hosted, picked};
 use super::prs::{kept, mark, sort};
 use super::touched::{ran_in, touched};
-use super::{Kind, Pr, Repo, gh, hosted, slug};
+use super::{Kind, Pr, Repo, gh, slug};
 use crate::{folder, git, load};
 use serde_json::{Value, json};
 use std::cmp::Reverse;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::time::SystemTime;
 
 /// The watch's read of the PRs a folder chat's own commands looked at, in any repository on its
 /// server, named by the command: what `prs.json` now holds, or None for any other session, with no
@@ -38,12 +39,20 @@ pub fn chat(data: &Path, id: &str) -> Option<Value> {
             .iter()
             .any(|h| fs::canonicalize(h).is_ok_and(|h| at.starts_with(h))))
         .then_some(())?;
-        let checkout = git::at(data, &at).ok()?;
-        let remotes = git::read(&at, &["remote"], &AtomicBool::new(false)).ok()?;
-        let (_, repo) = hosted(checkout)?;
+        git::at(data, &at).ok()?;
+        let ask = |args: &[&str]| {
+            let out = git::read(&at, args, &AtomicBool::new(false)).ok()?;
+            Some(String::from_utf8_lossy(&out).trim().to_string())
+        };
         // With several remotes gh asks which one it is: that's never in the row.
-        let one = String::from_utf8_lossy(&remotes).lines().count() == 1;
-        (one && repo.host == server.host).then_some(Some(repo.path))
+        let remotes = ask(&["remote"])?;
+        let remote = Some(remotes).filter(|r| !r.is_empty() && !r.contains('\n'))?;
+        let set = ask(&["config", "--get", &format!("remote.{remote}.gh-resolved")]);
+        // gh reads where the remote fetches, which may not be where it pushes.
+        let url = ask(&["config", "--get", &format!("remote.{remote}.url")])?;
+        let repo = super::repo(&url).filter(|r| r.host == server.host && slug(&r.path))?;
+        set.is_none_or(|set| set == "base")
+            .then_some(Some(repo.path))
     };
     let found = touched(&spec.dir, &server.at(""), &own);
     if found.is_empty() && kept(&spec.dir).is_null() {
@@ -108,5 +117,30 @@ fn unnamed(row: &Value) -> Repo {
         kind: Kind::GitHub,
         host: host.into(),
         path: String::new(),
+    }
+}
+
+/// Why the host didn't give what it has: none when all it said is that there's no such PR or repository.
+pub(super) fn refused(why: &str) -> Option<String> {
+    (why.lines()
+        .find(|l| !l.starts_with("Could not resolve to a ")))
+    .map(String::from)
+}
+
+impl Pr {
+    /// Writes `prs.json`. A claim's shows on its chat's row, read again as the chat's own folder changes.
+    pub(super) fn save(&self, prs: &Value) {
+        let path = self.dir.join("prs.json");
+        // Its own temp file: a `brigadier host` run from a shell may keep it at the same time.
+        let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+        if let Err(e) = fs::write(&tmp, prs.to_string()).and_then(|()| fs::rename(&tmp, &path)) {
+            eprintln!("brigadier: keeping {}: {e}", path.display());
+            return;
+        }
+        if let Some((_, name)) = self.id.split_once('@')
+            && let Some(chat) = (self.dir.ancestors()).nth(Path::new(name).components().count() + 1)
+        {
+            let _ = fs::File::open(chat).and_then(|d| d.set_modified(SystemTime::now()));
+        }
     }
 }
