@@ -155,10 +155,14 @@ fn said(was: &Controls, now: &Controls, seen: Seen) -> Vec<String> {
             continue;
         };
         let (role, name, _) = key;
-        // shortcut: of several with one name, which is which is sure only while no row changed;
-        // match them by place if one's selection goes unsaid among other changes.
-        let twin = (role.clone(), name.clone(), 1);
-        let sure = seen == Seen::No || !(was.contains_key(&twin) || now.contains_key(&twin));
+        // Of several with one name, as an option and the text in it, which is which is sure while no
+        // row changed, or while there are as many: the nameless, in place too.
+        let many = |c: &Controls| {
+            (0..)
+                .take_while(|i| c.contains_key(&(role.clone(), name.clone(), *i)))
+                .count()
+        };
+        let sure = seen == Seen::No || many(was) == many(now) && (!name.is_empty() || from == at);
         let line = match (old, on) {
             (Some(false) | None, Some(true)) if sure => "selected",
             (Some(true), Some(false)) if sure => "no longer selected",
