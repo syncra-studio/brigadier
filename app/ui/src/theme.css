@@ -2133,7 +2133,10 @@
 
 /* A scroll box whose edges fade only while there is more to scroll that way: each edge's fade is as long as the
    distance scrolled on that side, up to its size, so a box scrolled 3px shows a 3px fade, not a share of its size.
-   In a box shorter than both fades each takes half. A shell's output fades at the top over 2rem; a diff's body at the bottom. */
+   In a box shorter than both fades each takes half. A shell's output fades at the top over 2rem; a diff's body at the bottom.
+   --edge-top counts the px scrolled, which the mask caps: the animation must never finish, as Chromium holds a finished one
+   at its end when the box no longer overflows, a fade with nothing to scroll.
+   shortcut: scrolled past 100000px it finishes; raise it if a box gets that long. */
 @property --edge-top {
   syntax: "<length>";
   inherits: false;
@@ -2149,7 +2152,7 @@
     --edge-top: 0px;
   }
   to {
-    --edge-top: var(--edge-size-top);
+    --edge-top: 100000px;
   }
 }
 @keyframes edge-fade-bottom {
@@ -2161,16 +2164,16 @@
   }
 }
 @utility scroll-edge-fade {
-  mask-image: linear-gradient(to bottom, transparent, black min(var(--edge-top), 50%), black calc(100% - min(var(--edge-bottom), 50%)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, black min(var(--edge-top), var(--edge-size-top), 50%), black calc(100% - min(var(--edge-bottom), 50%)), transparent);
   animation:
     edge-fade-top linear both,
     edge-fade-bottom linear both;
   /* Else the build writes the shorthand out with 0s, which pins a ranged scroll-driven fade at one end. */
   animation-duration: auto;
   animation-timeline: scroll(self y);
-  /* The top fade grows over the first edge's length of scroll, the bottom one shrinks over the last. */
+  /* The top fade grows with the scroll, the bottom one shrinks over the last edge's length of it. */
   animation-range:
-    0px var(--edge-size-top),
+    0px 100000px,
     calc(100% - var(--edge-size-bottom)) 100%;
 }
 /* The same fade along a row that scrolls sideways (the model picker's marks past ten, the session tabs). */
@@ -2189,7 +2192,7 @@
     --edge-start: 0px;
   }
   to {
-    --edge-start: var(--edge-size-x, var(--spacing-group-fade));
+    --edge-start: 100000px;
   }
 }
 @keyframes edge-fade-end {
@@ -2201,14 +2204,14 @@
   }
 }
 @utility scroll-edge-fade-x {
-  mask-image: linear-gradient(to right, transparent, black min(var(--edge-start), 50%), black calc(100% - min(var(--edge-end), 50%)), transparent);
+  mask-image: linear-gradient(to right, transparent, black min(var(--edge-start), var(--edge-size-x, var(--spacing-group-fade)), 50%), black calc(100% - min(var(--edge-end), 50%)), transparent);
   animation:
     edge-fade-start linear both,
     edge-fade-end linear both;
   animation-duration: auto;
   animation-timeline: scroll(self x);
   animation-range:
-    0px var(--edge-size-x, var(--spacing-group-fade)),
+    0px 100000px,
     calc(100% - var(--edge-size-x, var(--spacing-group-fade))) 100%;
 }
 @utility edge-fade-shell {
@@ -2216,7 +2219,7 @@
   --edge-size-bottom: 0px;
   /* Its newest line is at the bottom (column-reverse), where its scroll starts, so its top is the far end. */
   animation-range:
-    calc(100% - var(--edge-size-top)) 100%,
+    calc(100% - 100000px) 100%,
     normal;
   animation-direction: reverse, normal;
 }
