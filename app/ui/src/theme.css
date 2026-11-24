@@ -70,8 +70,6 @@
   --color-destructive-wash: color-mix(in oklab, var(--color-destructive) 10%, transparent);
   --color-destructive-wash-hover: color-mix(in oklab, var(--color-destructive) 20%, transparent);
   --color-warning-wash: color-mix(in oklab, var(--color-warning) 15%, transparent);
-  /* A warning callout's edge: the old app's border-warning/50 [D477]. */
-  --color-warning-edge: color-mix(in oklab, var(--color-warning) 50%, transparent);
   /* Find in a file's marks: the old bg-warning/30, and /70 for the current one [D1002]. */
   --color-find-match: color-mix(in oklab, var(--color-warning) 30%, transparent);
   --color-find-current: color-mix(in oklab, var(--color-warning) 70%, transparent);
