@@ -68,7 +68,7 @@ export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) 
         <span className="shrink-0 text-muted-foreground tabular-nums">{done}/{total}</span>
         <ChevronDown aria-hidden className={cx("size-icon-xs shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex min-h-0 flex-col">
+      <CollapsibleContent className="flex min-h-0 flex-col data-starting-style:*:shrink-0">
         <div className="-me-2.5 flex max-h-60 min-h-0 flex-col overflow-y-auto pt-1 scroll-gutter">
           {ended.length > 0 && !over && (
             <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => change({ earlier: !earlier })} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground hover:bg-summary-row-hover focus-visible:focus-ring">
