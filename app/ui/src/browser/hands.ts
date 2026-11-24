@@ -141,6 +141,6 @@ export function agentEvents(id: string, since: number, kinds: readonly string[])
   return agent({ call: "events", guest: agentPage(id).guest, since, kinds });
 }
 
-export async function agentCapture(id: string): Promise<Uint8Array> {
-  return await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as Uint8Array;
+export async function agentCapture(id: string): Promise<{ png: Uint8Array; url: string }> {
+  return await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as { png: Uint8Array; url: string };
 }

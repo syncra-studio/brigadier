@@ -224,14 +224,31 @@ async function pictureOf(guest: WebContents): Promise<NativeImage> {
   }
 }
 
+/** How often a page that navigates under its picture is taken again. */
+const TAKES = 3;
+
 /**
- * The page's picture for an agent, its password fields painted out, by looks before and after it, so a field that moves
- * while it is taken stays covered. A page that can't be looked at gives no picture.
+ * The page's picture for an agent and the address it is of, its password fields painted out, by looks before and after
+ * it, so a field that moves while it is taken stays covered. All three are of one document: a page that navigates
+ * meanwhile is taken again, then refused. A page that can't be looked at gives no picture.
  */
-export async function pictureForAgent(guest: WebContents): Promise<Buffer> {
-  const before = await sweep(guest).catch(() => null);
-  const image = await pictureOf(guest);
-  const after = await sweep(guest).catch(() => null);
-  if (!before || !after) throw new Error("The page's password fields couldn't be found, so no picture was taken. Try again in a moment.");
-  return paint(image, [...before.rects, ...after.rects], after.width);
+export async function pictureForAgent(guest: WebContents): Promise<{ png: Buffer; url: string }> {
+  let moved = false;
+  const onMoved = () => { moved = true; };
+  guest.on("did-navigate", onMoved);
+  try {
+    for (let take = 0; take < TAKES; take++) {
+      moved = false;
+      const before = await sweep(guest).catch(() => null);
+      const image = await pictureOf(guest);
+      const url = guest.getURL();
+      const after = await sweep(guest).catch(() => null);
+      if (moved) continue;
+      if (!before || !after) throw new Error("The page's password fields couldn't be found, so no picture was taken. Try again in a moment.");
+      return { png: paint(image, [...before.rects, ...after.rects], after.width), url };
+    }
+    throw new Error("The page went to another while its picture was taken, so none was kept. Try again once it has loaded.");
+  } finally {
+    guest.off("did-navigate", onMoved);
+  }
 }

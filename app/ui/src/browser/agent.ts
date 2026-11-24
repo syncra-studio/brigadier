@@ -346,9 +346,9 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       return { result: "evaluated", tab, url, text: String((answer as { text?: unknown }).text ?? "") };
     }
     case "screenshot": {
-      const png = await agentCapture(tab);
-      const { url } = await agentShown(tab, shownPage(tab)?.url ?? "");
-      return { result: "shot", tab, url, png: base64(png) };
+      const shot = await agentCapture(tab);
+      const { url } = await agentShown(tab, shot.url);
+      return { result: "shot", tab, url, png: base64(shot.png) };
     }
     case "ask": {
       // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
