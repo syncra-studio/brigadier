@@ -1,7 +1,7 @@
 //! `type`: replacing a field's value, read back to say whether it landed, and `--submit`'s real
 //! Return, which in an address bar says whether the page changed [D2032].
 
-use super::act::{act, in_front, token, wait_for_user};
+use super::act::{act, no_keys, token, wait_for_user};
 use super::{Sess, Words, call, refuse, window};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -28,6 +28,12 @@ pub(super) fn type_into(
         return Err(refuse(&format!(
             "[{n}] is a password field: ask the user to type it."
         )));
+    }
+    if w.flags.contains("--submit") && window::chromium(data, s.pid, here) {
+        return Err(no_keys(
+            s,
+            "Nothing typed, as Return can't follow (type without --submit fills the field)",
+        ));
     }
     // `type` replaces: the field is emptied first, else the text goes in at its caret. Not while
     // the user is in the app, and put back if the typing doesn't go through.
@@ -86,14 +92,11 @@ pub(super) fn type_into(
     if w.flags.contains("--submit") && !landed {
         out.push_str("\nNot submitted: read the window, then `key return`.");
     } else if w.flags.contains("--submit") {
-        // A real Return to the field: Chromium's address bar takes only a hardware one.
+        // A real Return to the field.
         let enter = json!({"key": "return", "element_token": token(s, n), "pid": s.pid, "window_id": s.window, "session": me});
         let title = |s: &Sess| (s.wins.iter().find(|w| w.0 == s.window)).map(|w| w.1.clone());
         let (address, before) = (s.address == Some(n), title(s));
-        out = match window::chromium(data, s.pid, here) {
-            true => in_front(data, me, s, "Pressed Return", "press_key", enter, here)?,
-            false => act(data, me, s, "Pressed Return", "press_key", enter, here)?,
-        };
+        out = act(data, me, s, "Pressed Return", "press_key", enter, here)?;
         if address {
             let url = s
                 .address

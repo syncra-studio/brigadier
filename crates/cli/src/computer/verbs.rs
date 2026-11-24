@@ -48,7 +48,9 @@ menus; another profile's tabs show after `menu \"Window > <this window's profile
                                 --query searches the window, --menus adds the menu bar's items
   click <n> [--double|--right]  clicks control [n] of your last read; click --at X,Y clicks a point of your last screenshot
   type <n> [--submit]           types the text on stdin into control [n]: echo \"…\" | brigadier computer type 4; --submit presses Return
-  key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t
+  key <keys>                    presses keys in the app: return, escape, tab, cmd+s, cmd+shift+t; key and --submit are
+                                refused in Chromium and Electron apps, where they need the app in front: use `menu`, a
+                                button, or `open <browser> <url>`
   scroll <n> up|down [--pages N]
   drag <n> <m>                  drags control [n] onto control [m]
   menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window;
@@ -313,16 +315,15 @@ fn verb(
             };
             press(data, me, &mut s, what, cua, w, here)?
         }
-        // A key goes to the window as keys: Chromium runs a picked menu item in whichever of its
-        // windows was last in front, a popup over the one read [D2032]. A native app in the
-        // background gets a key equivalent as its menu item, in the window named, as only that works.
+        // A native app in the background gets a key equivalent as its menu item, in the window
+        // named, as only that works.
         "key" => match key(&s, me, w.rest.first().copied().unwrap_or(""))? {
             (name, args) if s.window != 0 && !s.snapshot.is_empty() => {
-                let line = format!("Pressed {}", w.rest[0]);
-                match window::chromium(data, s.pid, here) {
-                    true => act::in_front(data, me, &mut s, &line, name, args, here)?,
-                    false => act(data, me, &mut s, &line, name, args, here)?,
+                if window::chromium(data, s.pid, here) {
+                    return Err(act::no_keys(&s, &format!("{} not sent", w.rest[0])));
                 }
+                let line = format!("Pressed {}", w.rest[0]);
+                act(data, me, &mut s, &line, name, args, here)?
             }
             _ => {
                 return Err(refuse(&format!(

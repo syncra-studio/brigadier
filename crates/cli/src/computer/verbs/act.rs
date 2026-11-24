@@ -2,7 +2,7 @@
 //! what changed.
 
 use super::diff::{Seen, baseline, changes};
-use super::open::{front, own, windows};
+use super::open::{front, own};
 use super::window::ours;
 use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
@@ -93,44 +93,13 @@ pub(super) fn act(
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
-/// `act` with the app in front: Chromium takes a shortcut or a real Return only so, Cua's
-/// background keys never reach it [D2032]. The user's app and window are put back in front at
-/// once, and the answer says whether they were [D909].
-pub(super) fn in_front(
-    data: &Path,
-    me: &str,
-    s: &mut Sess,
-    line: &str,
-    name: &str,
-    mut args: Value,
-    here: &dyn Fn() -> bool,
-) -> Result<String, Value> {
-    let user = front(data, here).filter(|u| *u != s.pid);
-    let window =
-        user.and_then(|u| Some(windows(data, u, here).ok()?.first()?["window_id"].clone()));
-    args["delivery_mode"] = "foreground".into();
-    let out = act(data, me, s, line, name, args, here);
-    let Some((user, window)) = user.zip(window) else {
-        return out;
-    };
-    let back = own(
-        data,
-        "restore",
-        json!({"pid": user, "window": window}),
-        here,
-    )
-    .is_ok_and(|b| b["restored"] == true);
-    let note = match back {
-        true => format!(
-            " {} came to the front for it and was put back behind the user's app.",
-            s.app
-        ),
-        false => format!(
-            " {} came to the front for it and couldn't be put back: tell the user.",
-            s.app
-        ),
-    };
-    out.map(|o| o.replacen('\n', &format!("{note}\n"), 1))
+/// Chromium takes a shortcut or a real Return only in front of the user's windows, as Cua's
+/// background keys never reach it, and it isn't brought there [D909 D2032].
+pub(super) fn no_keys(s: &Sess, what: &str) -> Value {
+    refuse(&format!(
+        "{what}: {} is built on Chromium or Electron, where a key lands only with the app in front, and this never brings an app there. Pick its menu item instead (`brigadier computer menu \"File > …\"`, read --menus lists them), click a button, or, in a browser, `brigadier computer open {} <url>`.",
+        s.app, s.app
+    ))
 }
 
 /// What sits on control [n]'s centre when it isn't [n] itself: a dialog or a banner over it.
