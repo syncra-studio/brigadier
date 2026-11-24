@@ -20,7 +20,7 @@ export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): Qu
     const to = each.to ? { to: { name: title(each.to), ended: each.error !== undefined } } : {};
     if (each.shell) {
       const line = each.shell === "ended" ? (each.parts?.shell ?? each.text) : each.text;
-      return { id: each.id, draft: { parts: [line], attachmentIds: [] }, state: each.shell === "ended" ? "delivered" : "queued", shell: true };
+      return { id: each.id, draft: { parts: [line], attachmentIds: [] }, state: each.shell === "ended" ? "delivered" : "queued", shell: true, refused: each.error !== undefined };
     }
     const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
     if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: each.deciding ? "deciding" : "queued", ...to };

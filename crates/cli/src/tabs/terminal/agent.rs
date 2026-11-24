@@ -68,7 +68,7 @@ fn refuse(message: &str) -> Value {
 }
 
 /// The caller's `!` commands whose output is kept, by id, oldest first (by its mark's birth: its
-/// end rewrites it). An archive drops their output; their rows keep its tail.
+/// end rewrites it).
 pub(super) fn commands(data: &Path, me: &str) -> Vec<String> {
     let dir = core::session_dir(data, me).join("commands");
     let kept = |id: &str| {

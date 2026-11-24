@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 
 import { SharedComposer } from "../components/composer/composer";
 import { type Draft, isEmpty, plainText, sendMode } from "../components/composer/draft";
-import { asShell, commandOf, isShell } from "../components/composer/shell";
+import { asShell, asWords, commandOf, isShell } from "../components/composer/shell";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { PausedSendDialog } from "../components/composer/rail";
@@ -104,7 +104,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     editing.current = { qid: kept.id, slot: kept.slot, text: kept.text, to: kept.to, shell: kept.shell !== undefined };
     if (!isEmpty({ parts: now.parts(), attachmentIds: [] })) return;
     if (kept.to) setTo(kept.to);
-    now.set(kept.shell ? asShell([kept.text]) : (kept.parts?.parts ?? [kept.text]));
+    now.set(kept.shell ? asShell([kept.text]) : (kept.parts?.parts ?? asWords([kept.text])));
     files.restore(kept.parts?.attachmentIds ?? []);
     setEmpty(!kept.text.trim());
   }, [kept?.id]);
@@ -191,7 +191,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   };
   const steerQueued = (qid: string) => act({ kind: "remove", qid }, ["steer", qid]);
   // What waits behind a command that runs goes after it, as behind a turn.
-  const commands = (row?.queue?.running?.length ?? 0) > 0;
+  const commands = (row?.queue?.running?.length ?? 0) > 0 || live.some((op) => op.kind === "command");
   /** A `!` command, through Rust's queue: at once between turns, else in its turn. Refused, its words come back, under what's typed since. */
   const runCommand = (line: string, parts: Draft["parts"]) => {
     const pulled = take();
@@ -213,7 +213,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     editing.current = { qid, slot: Math.max(slot, 0), text: message, to: worker, shell: command !== undefined };
     // One for a worker comes back with its To, as the old app's [D3050].
     if (worker) setTo(worker);
-    field.current?.set(command ? asShell([message]) : (draft?.parts ?? [message]));
+    field.current?.set(command ? asShell([message]) : (draft?.parts ?? asWords([message])));
     files.restore(draft?.attachmentIds ?? []);
     setEmpty(!message.trim());
     act({ kind: "remove", qid }, ["edit", qid], () => {
@@ -249,7 +249,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   usePutBack(id, (message, above, draft) => {
     // A rewound message goes above what's already being typed, never over it [D363]; its files come back with it.
     const typed = above ? (field.current?.parts() ?? []) : [];
-    const back = draft?.parts ?? [message];
+    const back = draft?.parts ?? asWords([message]);
     field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? back : [...back, "\n\n", ...typed]);
     if (draft) files.restore(draft.attachmentIds);
     setEmpty(isEmpty({ parts: back, attachmentIds: draft?.attachmentIds ?? [] }));

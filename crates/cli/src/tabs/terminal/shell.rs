@@ -168,6 +168,7 @@ pub(super) fn over(data: &Path, sid: &str, cmd: &str, failed: Option<&str>) -> i
         let dir = core::session_dir(data, &format!("{TERM}{cmd}"));
         let output = plain(&tail(&dir, SHOWN));
         let mut note = json!({"event": "shell", "phase": "end", "id": cmd, "output": output});
+        let mut began = Value::Null;
         match (failed, ended(&dir)) {
             (Some(why), _) => (note["progress"], note["error"]) = ("failed".into(), why.into()),
             (None, Some((code, signal, from, to))) => {
@@ -178,13 +179,14 @@ pub(super) fn over(data: &Path, sid: &str, cmd: &str, failed: Option<&str>) -> i
                 })
                 .into();
                 (note["exitCode"], note["ms"]) = (code, to.saturating_sub(from).into());
+                began = from.into();
             }
             (None, None) => {
                 (note["progress"], note["error"]) = ("failed".into(), "its host ended".into())
             }
         }
         let report = super::notes::report(data, cmd, line, &note);
-        let kept = json!({"line": line, "note": note, "report": report});
+        let kept = json!({"line": line, "note": note, "report": report, "from": began});
         core::write_atomic(&mark, kept.to_string().as_bytes())?;
         return Ok(kept);
     }

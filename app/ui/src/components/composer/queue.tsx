@@ -32,6 +32,8 @@ export type QueuedMessage = {
   to?: { name: string | null; ended?: boolean };
   /** A `!` command, run in its turn; never steered. */
   shell?: boolean;
+  /** The agent couldn't be given it. */
+  refused?: boolean;
 };
 
 type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
@@ -321,7 +323,7 @@ function QueueRow({
           Steer
         </TooltipIconButton>
       )}
-      <TooltipIconButton tooltip={item.shell ? "Delete queued command" : "Delete queued message"} side="top" className="text-muted-foreground" disabled={local} onClick={() => onRemove(item.id)}>
+      <TooltipIconButton tooltip={item.shell ? "Delete queued command" : "Delete queued message"} side="top" className="text-muted-foreground" disabled={local || (item.state === "delivered" && !item.refused)} onClick={() => onRemove(item.id)}>
         <Trash />
       </TooltipIconButton>
       <DropdownMenu modal={false}>

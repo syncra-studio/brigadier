@@ -7,7 +7,7 @@
 //! ended one again; both answer whether it runs. `terminal sweep` stops and removes every terminal
 //! no open tab of a live owner holds: run after a terminal tab closes, a session is archived or
 //! deleted, a project is removed, and at the daemon's start, so a cleanup cut short is finished
-//! [repo D35]. `<owner>` is a session, `@home` or `@home:<project>`, as `tabs` takes.
+//! [repo D35]. An archived session's `!` commands stop and keep their output. `<owner>` is a session, `@home` or `@home:<project>`, as `tabs` takes.
 
 pub(crate) mod agent;
 pub(crate) mod notes;
@@ -133,9 +133,11 @@ fn live(data: &Path, id: &str) -> bool {
 }
 
 /// Every terminal an open tab of a live owner holds: a session not archived or going, Home's
-/// draft, a project's draft while the project is there.
-fn held(data: &Path) -> HashSet<String> {
+/// draft, a project's draft while the project is there. Then the `!` commands of a retired one,
+/// whose output its agent was pointed to.
+fn held(data: &Path) -> (HashSet<String>, HashSet<String>) {
     let (mut owners, mut held) = (vec![HOME_DRAFT.to_string()], HashSet::new());
+    let mut retired = HashSet::new();
     for entry in fs::read_dir(data).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if let Some(project) = name
@@ -148,18 +150,24 @@ fn held(data: &Path) -> HashSet<String> {
     }
     for id in core::ids(data) {
         let dir = core::session_dir(data, &id);
-        if dir.join("session.json").exists() && session::retired(&dir).is_none() {
+        if !dir.join("session.json").exists() {
+            continue;
+        }
+        // Its `!` commands too, ended ones' output kept for reading [D316].
+        let commands = fs::read_dir(dir.join("commands"))
+            .into_iter()
+            .flatten()
+            .flatten();
+        let commands = commands.map(|c| c.file_name().to_string_lossy().to_string());
+        if session::retired(&dir).is_none() {
             owners.push(id);
-            // Its `!` commands too, ended ones' output kept for reading [D316].
-            let commands = fs::read_dir(dir.join("commands"))
-                .into_iter()
-                .flatten()
-                .flatten();
-            held.extend(commands.map(|c| c.file_name().to_string_lossy().to_string()));
+            held.extend(commands);
+        } else {
+            retired.extend(commands);
         }
     }
     held.extend(owners.iter().flat_map(|o| terminals(data, o)));
-    held
+    (held, retired)
 }
 
 /// What each of `owner`'s terminals printed lately, while its shell runs: for Local servers [repo D508].
@@ -208,7 +216,7 @@ pub fn sweep(data: &Path) {
     let Ok(_sweep) = lock_sweep(data) else {
         return;
     };
-    let held = held(data);
+    let (held, retired) = held(data);
     for entry in fs::read_dir(data.join("terminals"))
         .into_iter()
         .flatten()
@@ -221,7 +229,7 @@ pub fn sweep(data: &Path) {
         let id = format!("{TERM}{name}");
         let _ = owner::call(data, &id, json!({"op": "stop", "by": "user"}));
         // A host that won't exit keeps its folder, for the next sweep.
-        if owner::release(data, &id).is_ok() {
+        if owner::release(data, &id).is_ok() && !retired.contains(&name) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }

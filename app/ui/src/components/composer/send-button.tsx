@@ -99,7 +99,7 @@ export function SendButton({
   followUp?: FollowUp;
   /** Why it can't send now ("Reconnecting…"): disabled, with this as its tip. */
   blocked?: string;
-  /** What's typed is a shell command: Run. */
+  /** What's typed is a shell command, or will be: Run. */
   shell?: boolean;
   /** The worker the message goes to alone (the composer's To:). */
   to?: string;
@@ -111,7 +111,7 @@ export function SendButton({
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const armed = useEscToStop(canStop, onStop, button);
-  const state = armed || (canStop && empty) ? "stop" : !running && empty && canResume ? "resume" : "send";
+  const state = armed || (canStop && empty && !shell) ? "stop" : !running && empty && canResume && !shell ? "resume" : "send";
   const modHeld = useModHeld(onSendNew !== undefined);
   const run = state === "send" && shell;
   const asNew = state === "send" && !shell && onSendNew !== undefined && modHeld && !empty;

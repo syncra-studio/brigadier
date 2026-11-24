@@ -10,9 +10,11 @@ import { mergeRegister } from "@lexical/utils";
 import {
   $createLineBreakNode,
   $createParagraphNode,
+  $addUpdateTag,
   $createTextNode,
   $getRoot,
   $getSelection,
+  $hasUpdateTag,
   $isElementNode,
   $isLineBreakNode,
   $isRangeSelection,
@@ -42,9 +44,9 @@ import { cx } from "../cx";
 import { type AttachFn, copyChips, NAMESPACE, pasteAttachments, pasteChips } from "./clipboard";
 import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments";
 import { $insertChip, $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
-import { type Chip, type Draft, EMPTY_DRAFT, isEmpty } from "./draft";
+import { type Chip, type Draft, EMPTY_DRAFT, isEmpty, plainText } from "./draft";
 import { CommandChips } from "./command-chips";
-import { asShell, bare, isShell } from "./shell";
+import { asShell, asWords, bare, isShell } from "./shell";
 import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
@@ -183,6 +185,8 @@ const sameNumbers = (a: Map<string, number>, b: Map<string, number>) => a.size =
 
 const NO_ATTACHMENTS: ReadonlyMap<string, Attachment> = new Map();
 
+/** An update that sets the field whole, its mode decided. */
+const SET = "composer-set";
 const blank = (parts: Parts) => isEmpty({ parts, attachmentIds: [] });
 
 type FieldProps = {
@@ -347,9 +351,10 @@ function Keys({
   const walk = useRef<{ back: number; shown: string } | null>(null);
   const caret = useRef<RangeSelection | null>(null); // the field's last caret, for a pick from the +, which takes the focus
   // What's typed, a command's with its `!`.
-  const read = () => (shell && mode.current ? asShell($read()) : $read());
+  const read = () => (!shell ? $read() : mode.current ? asShell($read()) : asWords($read()));
   const changed = useEffectEvent(() => onChange?.(editor.getEditorState().read(read)));
   const write = (parts: Parts, select = true) => {
+    $addUpdateTag(SET);
     setMode(shell && isShell(parts));
     $write(mode.current ? bare(parts) : parts, select);
   };
@@ -358,9 +363,10 @@ function Keys({
     const whole = shell && blank($read()) && event instanceof ClipboardEvent && event.clipboardData?.getData("text/plain").startsWith("!");
     return !mode.current && !whole && (pasteChips(editor, event) || pasteAttachments(event, onAttach));
   });
-  /** `!` first is taken as the mode. */
+  /** `!` first in an empty field is taken as the mode. */
   const enter = useEffectEvent((node: TextNode) => {
     if (!shell || mode.current || !node.isSimpleText() || $getRoot().getFirstDescendant() !== node || !isShell($read())) return;
+    if ($hasUpdateTag(SET) || !(plainText($read()) === "!" || editor.getEditorState().read(() => blank($read())))) return;
     node.splitText(1)[0]!.remove();
     setMode(true);
   });

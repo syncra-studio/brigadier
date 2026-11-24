@@ -254,6 +254,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => {
             let qid = qid()?;
             change(&dir, |q| {
+                let item = q.items.iter().find(|i| i.id == qid);
+                // Its report goes, unless it can't.
+                if item.is_some_and(|i| i.shell.as_deref() == Some("ended") && i.error.is_none()) {
+                    return Err(io::Error::other("That command already ran"));
+                }
                 q.items.retain(|i| i.id != qid);
                 if q.editing.as_ref().is_some_and(|e| e.id == qid) {
                     q.editing = None;
@@ -359,19 +364,21 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "at": index::touched(&dir)}))
 }
 
-/// Whether a `!` command runs at once: no turn runs, no command the queue waits for, and nothing of
-/// the user's goes first.
+/// Whether a `!` command runs at once: no turn runs, no command waits or holds the queue, and
+/// nothing of the user's goes first.
 fn at_once(data: &Path, id: &str, q: &Queue) -> io::Result<bool> {
     let (f, state) = cut::now(data, id)?;
     let first = q.items.iter().find(|i| i.own());
     let goes = !q.paused
         && drain::DRAINS.contains(&state.as_str())
         && first.is_some_and(|i| i.error.is_none());
-    Ok(f.turns.is_empty() && q.running.is_empty() && !goes)
+    let waits = q.items.iter().any(|i| i.shell.as_deref() == Some("wait"));
+    Ok(f.turns.is_empty() && q.running.is_empty() && !waits && !goes)
 }
 
 /// A `!` command ended: its report waits for the agent ahead of what waits already but other
-/// reports, under its own id, so it goes once [D54].
+/// reports, under its own id, so it goes once [D54]. One begun before the user's Stop waits for
+/// Resume, as a worker's result does [D95].
 pub fn ended(data: &Path, id: &str, cmd: &str, kept: &Value) -> io::Result<()> {
     let dir = core::session_dir(data, id);
     change(&dir, |q| {
@@ -396,7 +403,12 @@ pub fn ended(data: &Path, id: &str, cmd: &str, kept: &Value) -> io::Result<()> {
         };
         let slot = q.items.iter().take_while(|i| i.shell == shell).count();
         q.items.insert(slot, item);
-        q.paused |= q.stopping;
+        let (f, state) = cut::now(data, id)?;
+        let halted = (f.last.as_ref().filter(|_| fold::resumable(&f, &state))).is_some_and(|l| {
+            matches!(l["reason"].as_str(), Some("user" | "pause"))
+                && kept["from"].as_u64().unwrap_or(u64::MAX) < l["ts"].as_u64().unwrap_or(0)
+        });
+        q.paused |= q.stopping || halted;
         Ok(())
     })
 }
