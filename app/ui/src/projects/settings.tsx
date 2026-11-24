@@ -50,9 +50,10 @@ export const daemonSettings: SettingsSource = {
 
 /**
  * The project's repository on GitHub, as Rust reads it [D631]: each account gh keeps for its server, whether it can see
- * the repository, and the one Automatic uses (the first that can). Not on GitHub: no row.
+ * the repository, and the one Automatic uses (the first that can). A folder's is for all its `repos`, on `host` alone when
+ * it has GitHub repositories elsewhere too. Not on GitHub: no row.
  */
-export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; auto: string | null; logins: { login: string; sees: boolean | null }[] };
+export type GithubAccounts = { github: boolean; ssh?: boolean; repo?: string; repos?: number; host?: string | null; auto: string | null; logins: { login: string; sees: boolean | null }[] };
 
 /** One setting, as the page's rows: its name over one plain line, its control at the end, or under it when `wide`. */
 function Row({ label, line, error, wide = false, children }: { label: string; line: ReactNode; error?: string | null; wide?: boolean; children: ReactNode }) {
@@ -166,7 +167,11 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   const profiles = useProfiles();
   const fallback = useDefaultProfile();
   const account = project.github_account ?? "";
-  const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : known ? "Can see this repository" : "Can't see this repository");
+  // A folder's several repositories are seen together; one is in a single repository's words.
+  const several = github && (github.repos ?? 1) > 1 ? `all ${github.repos} repositories` : null;
+  const on = github?.host ? ` on ${github.host}` : "";
+  const sees = (known: boolean | null) => (known === null ? (checking ? "Checking…" : undefined) : `${known ? "Can" : "Can't"} see ${several ? several + on : "this repository"}`);
+  const used = `${several ? `Pull requests and sessions in ${several}` : "Its pull requests and sessions"}${on} use it`;
 
   // Drawn once the account read lands, so the GitHub account row doesn't push the page down [D257].
   if (!github && checking) return null;
@@ -202,7 +207,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
         </Row>
         )}
         {github?.github && (
-        <Row label="GitHub account" line={github.ssh && account ? `Its pull requests and sessions use it; pushes over SSH use your SSH key` : "Its pull requests and sessions use it"} error={errors.github_account}>
+        <Row label="GitHub account" line={github.ssh && account ? `${used}; pushes over SSH use your SSH key` : used} error={errors.github_account}>
           <Select
             label="GitHub account"
             value={account}
@@ -214,7 +219,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
                 value: "",
                 label: "Automatic",
                 shown: github.auto ? <Login login={github.auto} before="Automatic · " /> : "Automatic",
-                hint: github.auto ? `@${github.auto}, the account that can see ${github.repo}` : checking ? "Checking…" : `None of your accounts can see ${github.repo}`,
+                hint: github.auto ? `@${github.auto}, the ${several ? "first " : ""}account that can see ${several ? several + on : github.repo}` : checking ? "Checking…" : `None of your accounts can see ${several ? several + on : github.repo}`,
               },
               ...github.logins.map(({ login, sees: known }) => ({ value: login, label: <Login login={login} />, hint: sees(known) })),
               // A pick gh has since signed out of stays shown, so it can be seen and changed.

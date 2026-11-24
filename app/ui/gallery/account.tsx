@@ -16,6 +16,8 @@ const SEEN: GithubAccounts = { github: true, repo: "work/billing", auto: "sam-at
 const CASES: [string, GithubAccounts][] = [
   ["account: automatic", SEEN],
   ["account: none can see it", { ...SEEN, auto: null, logins: LOGINS.map((each) => ({ ...each, sees: false })) }],
+  ["account: several repositories", { ...SEEN, repos: 3 }],
+  ["account: several, on two servers", { ...SEEN, repos: 2, host: "github.com" }],
   ["not on GitHub: no row", { github: false, auto: null, logins: [] }],
 ];
 const fake = (reply: GithubAccounts): SettingsSource => ({
@@ -40,7 +42,7 @@ export function AccountGallery() {
       </Row>
       {open && (
         <div className="rounded-surface bg-background">
-          <ProjectSettings key={open.logins.length + String(open.auto)} project={PROJECT} source={fake(open)} />
+          <ProjectSettings key={CASES.findIndex(([, each]) => each === open)} project={PROJECT} source={fake(open)} />
         </div>
       )}
     </Section>

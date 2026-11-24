@@ -72,7 +72,7 @@ struct Marks {
     with: bool,
     /// The follow-up queue (`queue.json`), null when empty.
     queue: Value,
-    /// Its PRs as the last read kept them (`prs.json`), and the sidebar chip they make [D1018].
+    /// Its PRs as the last reads kept them (`prs.json`, its claims' too), and the sidebar chip they make [D1018].
     prs: Value,
     pr: Value,
 }
@@ -82,7 +82,7 @@ impl Marks {
         let text = |name: &str| fs::read_to_string(dir.join(name)).ok();
         let ms = |name: &str| text(name).and_then(|s| s.trim().parse().ok());
         let (archived, lifecycle) = core::session::lifecycle(dir);
-        let prs = core::host::kept(dir);
+        let prs = core::host::listed(dir);
         Marks {
             at,
             title: text("title").filter(|t| !t.is_empty()),

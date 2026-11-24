@@ -1,13 +1,17 @@
 //! The accounts gh and glab keep signed in, read from their own config files: no network, no
 //! keychain, no process [D624, D625, D629]; and a project's GitHub account [D631].
 
-use super::{Gh, Kind, reads, token};
+use super::github::covered;
+use super::{Gh, Kind, Repo, reads_all, token};
 use crate::Spec;
 use crate::adapters::{self, setup};
 use crate::git::{self, Target, push};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::time::{Duration, Instant};
 use std::{env, fs, io, thread};
 
 /// A CLI's config file: under this variable, else this under XDG_CONFIG_HOME, else these under
@@ -96,18 +100,12 @@ fn destination(checkout: &git::Checkout) -> io::Result<(String, String)> {
     Ok((remote, url))
 }
 
-/// Project settings' GitHub account: whether `id`'s repository is on GitHub, each account signed in
-/// for its server with whether it can see it, and the one Automatic uses (the first that can).
-/// Without `probe`, no network: `sees` and `auto` are null, so the row draws at once.
-pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
-    let checkout = git::checkout(data, &Target::Project(id))?;
-    let Ok((remote, url)) = destination(&checkout) else {
-        return Ok(json!({"ok": true, "github": false}));
+/// Whether `checkout` pushes over SSH, as git rewrites its URL: get-url includes
+/// insteadOf/pushInsteadOf, which can turn HTTPS into SSH.
+fn ssh(checkout: &git::Checkout) -> bool {
+    let Ok((remote, url)) = destination(checkout) else {
+        return false;
     };
-    let Some(repo) = super::repo(&url).filter(|r| r.kind == Kind::GitHub) else {
-        return Ok(json!({"ok": true, "github": false}));
-    };
-    // get-url includes insteadOf/pushInsteadOf rewrites, which can turn HTTPS into SSH.
     let effective = git::read(
         &checkout.root,
         &["remote", "get-url", "--push", &remote],
@@ -116,40 +114,81 @@ pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
     .ok();
     let effective = effective.as_deref().map(String::from_utf8_lossy);
     let url = effective.as_deref().unwrap_or(&url);
-    let ssh = url
-        .split_once("://")
-        .map_or_else(|| url.contains(':'), |(scheme, _)| scheme.contains("ssh"));
-    let gh = setup::find("gh", &[]).and_then(|p| Some(p.to_str()?.to_string()));
-    let logins = logins(&GH, &repo.host);
-    if !probe {
-        let all: Vec<Value> = (logins.iter())
-            .map(|login| json!({"login": login, "sees": null}))
-            .collect();
-        return Ok(
-            json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": null, "logins": all}),
-        );
-    }
-    let sees: Vec<bool> = thread::scope(|s| {
-        let probes = logins.iter().map(|login| {
-            let (gh, repo) = (gh.as_deref(), &repo);
-            s.spawn(move || {
-                let path = gh?.to_string();
-                let token = Some(token(&path, &repo.host, login)?);
-                Some(reads(&Gh { path, token }, repo))
+    url.split_once("://")
+        .map_or_else(|| url.contains(':'), |(scheme, _)| scheme.contains("ssh"))
+}
+
+/// Project settings' GitHub account: whether `id`'s repository is on GitHub, each account signed in
+/// for its server with whether it can see it, and the one Automatic uses (the first that can). A
+/// folder's is for all of its repositories `covered` gives, their server named when it has others.
+/// Without `probe`, no network: `sees` and `auto` are null, so the row draws at once.
+pub fn seen(data: &Path, id: &str, probe: bool) -> io::Result<Value> {
+    let project = crate::projects::get(data, id)?;
+    let (found, more) = match project.kind == crate::folder::KIND {
+        true => covered(data, &project),
+        false => {
+            let one = super::hosted(git::checkout(data, &Target::Project(id))?);
+            let one = one.filter(|(_, r)| r.kind == Kind::GitHub);
+            (one.into_iter().collect(), false)
+        }
+    };
+    let repos: Vec<&Repo> = found.iter().map(|(_, r)| r).collect();
+    let Some(first) = repos.first() else {
+        return Ok(json!({"ok": true, "github": false}));
+    };
+    let logins = logins(&GH, &first.host);
+    let sees: Vec<Option<bool>> = match probe {
+        false => vec![None; logins.len()],
+        true => {
+            let gh = setup::find("gh", &[]).and_then(|p| Some(p.to_str()?.to_string()));
+            thread::scope(|s| {
+                let probes = logins.iter().map(|login| {
+                    let (gh, repos) = (gh.as_deref(), &repos);
+                    s.spawn(move || {
+                        let path = gh?.to_string();
+                        let token = Some(token(&path, &repos[0].host, login)?);
+                        Some(reads_all(&Gh { path, token }, repos))
+                    })
+                });
+                let probes: Vec<_> = probes.collect();
+                (probes.into_iter())
+                    .map(|p| Some(p.join().ok().flatten().unwrap_or(false)))
+                    .collect()
             })
-        });
-        let probes: Vec<_> = probes.collect();
-        (probes.into_iter())
-            .map(|p| p.join().ok().flatten().unwrap_or(false))
-            .collect()
-    });
-    let auto = (logins.iter().zip(&sees)).find_map(|(login, sees)| sees.then_some(login));
+        }
+    };
+    let auto = (logins.iter().zip(&sees)).find_map(|(l, sees)| (*sees == Some(true)).then_some(l));
+    if auto.is_some() {
+        UNSEEN.lock().unwrap().remove(&unseen_key(&repos));
+    }
     let all: Vec<Value> = (logins.iter().zip(&sees))
         .map(|(login, sees)| json!({"login": login, "sees": sees}))
         .collect();
     Ok(
-        json!({"ok": true, "github": true, "repo": repo.path, "ssh": ssh, "auto": auto, "logins": all}),
+        json!({"ok": true, "github": true, "repo": first.path, "repos": repos.len(),
+            "host": more.then_some(&first.host), "ssh": found.iter().any(|(c, _)| ssh(c)),
+            "auto": auto, "logins": all}),
     )
+}
+
+/// Folders no account could see all of when last launched in, and when: not asked again at each
+/// launch, only once this old, for another sign-in, or after Project settings finds one.
+static UNSEEN: Mutex<BTreeMap<String, Instant>> = Mutex::new(BTreeMap::new());
+const UNSEEN_FOR: Duration = Duration::from_secs(600);
+
+fn unseen_key(repos: &[&Repo]) -> String {
+    let keys = repos.iter().map(|r| r.key());
+    keys.chain(logins(&GH, &repos[0].host))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The variable gh takes `host`'s token from: another server's gh call must never be sent it.
+pub(super) fn token_key(host: &str) -> &'static str {
+    match host == "github.com" || host.ends_with(".ghe.com") {
+        true => "GH_TOKEN",
+        false => "GH_ENTERPRISE_TOKEN",
+    }
 }
 
 /// Apply the project's account to each launch, including agent switches. Refuse a signed-out
@@ -174,40 +213,58 @@ pub fn launch(spec: &Spec, call: crate::send::Call<'_>, mut req: Value) -> io::R
 
 /// The token stays in the launch environment only; an unavailable explicit pick is an error.
 fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, String> {
-    let pick = spec
+    let project = spec
         .project
         .as_deref()
         .map(|id| crate::projects::get(data, id))
         .transpose()
-        .map_err(|error| error.to_string())?
-        .and_then(|project| project.github_account);
-    let url = git::checkout(data, &Target::session(&spec.id))
-        .and_then(|checkout| destination(&checkout).map(|(_, url)| url));
-    let url = match url {
-        Ok(url) => url,
-        Err(error) if pick.is_some() => return Err(error.to_string()),
-        Err(_) => return Ok(None),
+        .map_err(|error| error.to_string())?;
+    let pick = project.as_ref().and_then(|p| p.github_account.clone());
+    // A folder chat's is for all its project's repositories, whichever it claimed: its own folder
+    // is no checkout.
+    let repos: Vec<Repo> = match project.filter(|p| p.kind == crate::folder::KIND) {
+        Some(folder) => (covered(data, &folder).0.into_iter())
+            .map(|(_, r)| r)
+            .collect(),
+        None => {
+            let url = git::checkout(data, &Target::session(&spec.id))
+                .and_then(|checkout| destination(&checkout).map(|(_, url)| url));
+            match url {
+                Ok(url) => super::repo(&url).into_iter().collect(),
+                Err(error) if pick.is_some() => return Err(error.to_string()),
+                Err(_) => return Ok(None),
+            }
+        }
     };
-    let Some(repo) = super::repo(&url).filter(|repo| repo.kind == Kind::GitHub) else {
+    let repos: Vec<&Repo> = (repos.iter()).filter(|r| r.kind == Kind::GitHub).collect();
+    let Some(host) = repos.first().map(|r| &r.host) else {
         return Ok(None);
     };
-    let gh = super::gh(&repo, pick.as_deref());
+    let unseen = (pick.is_none() && repos.len() > 1).then(|| unseen_key(&repos));
+    if let Some(key) = &unseen
+        && (UNSEEN.lock().unwrap().get(key)).is_some_and(|at| at.elapsed() < UNSEEN_FOR)
+    {
+        return Ok(None);
+    }
+    let gh = super::gh_all(&repos, pick.as_deref());
     if gh.is_none()
         && let Some(login) = pick
     {
         return Err(format!(
-            "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {}, or choose another account in Project settings.",
-            repo.host
+            "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {host}, or choose another account in Project settings."
         ));
+    }
+    if let (None, Some(key)) = (&gh, unseen) {
+        UNSEEN.lock().unwrap().insert(key, Instant::now());
     }
     Ok(gh
         .and_then(|gh| gh.token)
-        .map(|token| ("GH_TOKEN".into(), token)))
+        .map(|token| (token_key(host).into(), token)))
 }
 
 #[test]
 fn repository_url_uses_its_host() {
-    let repo = super::Repo {
+    let repo = Repo {
         kind: Kind::GitHub,
         host: "github.example.com".into(),
         path: "team/project".into(),

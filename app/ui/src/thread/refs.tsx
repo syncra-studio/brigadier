@@ -3,7 +3,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo, useState
 import { SessionOfThread } from "../accounts/limit";
 import { ChipContext, ComposerChip, type OpenKind } from "../components/composer/chip";
 import type { Chip } from "../components/composer/draft";
-import { ask, useDaemon } from "../daemon";
+import { ask, useDaemon, useFolderChat } from "../daemon";
 import { STATE_WORDS } from "../landing/pr-words";
 import { openPr } from "../panel/open";
 import { PR_LOOK } from "../panel/source/rows";
@@ -112,7 +112,8 @@ export function AnswerRefs({ text, done, children }: { text: string; done: boole
       live = false;
     };
   }, [owner, text, done]);
-  const prs = rows?.find((row) => row.id === owner)?.prs?.prs;
+  // A folder chat's bare number names no repository.
+  const prs = useFolderChat(owner) ? undefined : rows?.find((row) => row.id === owner)?.prs?.prs;
   const value = useMemo(() => {
     if (!owner) return null;
     const commands = new Map((listed ?? []).map((command) => [command.id, command]));
