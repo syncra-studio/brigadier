@@ -140,6 +140,7 @@ function stopDaemon() {
   daemons = []
   return hit
 }
+process.on('exit', stopDaemon) // a drill that threw part way too
 // The running daemon's first frame (hello or refusal): its pid and build number.
 function daemonHello(ms = 2000) {
   return new Promise((resolve) => {
@@ -1298,7 +1299,7 @@ async function peersDrill() {
   if (process.env.KEEP === '1') fs.rmSync(`${DATA}-kept`, { recursive: true, force: true }), fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
   r.leftovers = cleanup()
   log(r)
-  verdict('peers', { sent_all: sent.size >= want && (kills > 0 || !states['no record']), none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
+  verdict('peers', { sent_all: want > 0 && sent.size >= want && (kills > 0 || !states['no record']), none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
     each_step_killed: PEER_STEPS.every((s) => (fired[s]?.fired ?? 0) >= kills), no_leftovers: r.leftovers.length === 0 })
 }
 
@@ -1570,7 +1571,7 @@ async function rewindDrill() {
   r.leftovers = cleanup()
   fs.rmSync(`${ROOT}/rw`, { recursive: true, force: true })
   log(r)
-  verdict('rewindfiles', { all_ran: !errors.length, byte_for_byte: !wrong.length, no_user_change_lost: r.user_changes_lost === 0, names_keep_their_letters: r.names_with_other_letters === 0, permissions_kept: r.permissions_not_put_back === 0, folders_kept: r.folders_removed === 0, no_leftovers: r.leftovers.length === 0 })
+  verdict('rewindfiles', { all_ran: ran > 0 && !errors.length, byte_for_byte: !wrong.length, no_user_change_lost: r.user_changes_lost === 0, names_keep_their_letters: r.names_with_other_letters === 0, permissions_kept: r.permissions_not_put_back === 0, folders_kept: r.folders_removed === 0, no_leftovers: r.leftovers.length === 0 })
 }
 
 // Speed of the app: its start, opening a long chat, ⌘K and `brigadier search`, over 1, 100 and 1,000 sessions, each
@@ -1649,6 +1650,7 @@ function speedHook() {
 
 async function speed() {
   const n = +(process.env.N || 20), arms = { new: process.env.APP, old: process.env.OLD_APP }
+  if (!arms.new && !arms.old) throw new Error('set APP or OLD_APP to a folder with a built app')
   const sizes = (process.env.SIZES || '1,100,1000').split(',').map(Number)
   const main = `${ROOT}/speed-hook.cjs`
   fs.writeFileSync(main, `(${speedHook})()\n`)
@@ -1739,7 +1741,7 @@ async function speed() {
   r.leftovers = [...new Set(left)]
   log(r)
   // No bar is set on the times; this says only that each was really measured.
-  verdict('speed', { every_launch_measured: bad.length === 0, no_window_shown: !bad.some((b) => b.visible), no_leftovers: r.leftovers.length === 0 })
+  verdict('speed', { every_launch_measured: n > 0 && bad.length === 0, no_window_shown: !bad.some((b) => b.visible), no_leftovers: r.leftovers.length === 0 })
 }
 
 // The standing rules' case bank [D527, D529]: bad cases from real misses, guards and controls,
@@ -1946,7 +1948,7 @@ async function standing() {
   sides.forEach((sd) => sd.down())
   // Hosts wait on after a stop: every process under this run's folder ends with it.
   for (const p of ps()) if (p.cmd.includes(`${ROOT}/`) && p.pid !== process.pid) kill(p.pid)
-  log({ summary: 'standing', pass: !blocked.length, results, blocked })
+  log({ summary: 'standing', pass: results.length > 0 && n > 0 && !blocked.length, results, blocked })
   if (process.env.KEEP !== '1') fs.rmSync(ROOT, { recursive: true, force: true })
 }
 
