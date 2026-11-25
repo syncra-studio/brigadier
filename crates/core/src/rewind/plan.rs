@@ -82,8 +82,9 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     // The same file, where the disk has it under another letter case.
     let cased: Vec<String> = hand.iter().filter_map(|p| store.spelled(p)).collect();
     hand.extend(cased);
-    // So it is where only its file tells, as with two ways to write an accent.
-    let own: BTreeSet<_> = (hand.difference(&put))
+    // The file of a path the user changed stays under any name: two ways to write an accent, or a
+    // turn an older build took with both.
+    let own: BTreeSet<_> = (gaps.difference(&put))
         .filter_map(|p| store.file(p))
         .collect();
     let held = |p: &String| !put.contains(p) && store.file(p).is_some_and(|f| own.contains(&f));
