@@ -1,5 +1,3 @@
-import { useId } from "react";
-
 import { cx } from "../components/cx";
 
 /**
@@ -86,31 +84,12 @@ function glyphFor(id: string): Glyph {
   return GLYPHS[hash % GLYPHS.length] ?? (GLYPHS[0] as Glyph);
 }
 
-/** The glyph's square less a ring around its status dot. */
-const DOT_CUTOUT = "M0 0H16V16H0ZM13 8.75a4.25 4.25 0 1 0 0 8.5a4.25 4.25 0 1 0 0-8.5Z";
-
 /**
- * A two-tone avatar for `id` (a worker), 1em square in its own colour unless sized or coloured
- * by the caller. With `dot`, a small status dot sits in its lower corner, cut out of the glyph
- * so it reads on any background.
+ * A worker's own two-tone avatar, the same wherever it appears: 1em square in its own colour unless sized or coloured
+ * by the caller.
  */
-export function IdGlyph({
-  id,
-  dot,
-  className,
-}: {
-  id: string;
-  dot?: boolean | undefined;
-  className?: string | undefined;
-}) {
+export function WorkerGlyph({ id, className }: { id: string; className?: string }) {
   const glyph = glyphFor(id);
-  const clip = useId();
-  const paths = (
-    <>
-      <path d={glyph.base} className="opacity-45" />
-      <path d={glyph.mark} />
-    </>
-  );
   return (
     <svg
       viewBox="0 0 16 16"
@@ -118,25 +97,11 @@ export function IdGlyph({
       fill="currentColor"
       className={cx("shrink-0", glyph.color, className ?? "size-icon-md")}
     >
-      {dot ? (
-        <>
-          <clipPath id={clip}>
-            <path clipRule="evenodd" d={DOT_CUTOUT} />
-          </clipPath>
-          <g clipPath={`url(#${clip})`}>{paths}</g>
-          <circle cx="13" cy="13" r="2.75" className="fill-success" />
-        </>
-      ) : (
-        paths
-      )}
+      <path d={glyph.base} className="opacity-45" />
+      <path d={glyph.mark} />
     </svg>
   );
 }
 
-/** A worker's own glyph and colour, the same wherever it appears; `working` adds its status dot. */
-export function WorkerGlyph({ id, working, className }: { id: string; working?: boolean; className?: string }) {
-  return <IdGlyph id={id} dot={working} className={className} />;
-}
-
-/** The Workers and Subagents tabs' icon: one worker glyph, with no status dot [D83]. */
-export const TeamGlyph = ({ className }: { className?: string }) => <IdGlyph id="workers" className={className} />;
+/** The Workers and Subagents tabs' icon: one worker glyph [D83]. */
+export const TeamGlyph = ({ className }: { className?: string }) => <WorkerGlyph id="workers" className={className} />;
