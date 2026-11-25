@@ -506,11 +506,6 @@
   /* A sent message's image, above its bubble (the old app's). */
   --spacing-attachment-sent: 5rem;
   --spacing-attachment-card: 14rem;
-  /* The model picker's shelf (EJkBJ, EMxDa): its width in the popover (the strip's 497 inside), its one height, and
-     its marks' two columns of 32 [D84, D89]. */
-  --spacing-model-picker: 31.0625rem;
-  --spacing-model-picker-height: 10.0625rem;
-  --spacing-model-marks: 4.125rem;
 
   --radius-sm: 0.375rem;
   --radius-session-tab: 0.5rem;
@@ -711,9 +706,8 @@
   --default-transition-timing-function: var(--ease-standard);
 
   --opacity-disabled: 50%;
-  /* The model picker's dimmed parts: an effort its model doesn't take, a CLI not set up; the Fast key of a model without one [D84]. */
+  /* The model picker's CLI not set up [D84]. */
   --opacity-picker-dim: 35%;
-  --opacity-picker-none: 30%;
   /* What git ignores, in the Files tree: the old opacity-50. */
   --opacity-ignored: 50%;
   /* Back and Forward with nowhere to go. */
@@ -1134,6 +1128,10 @@
 }
 
 /* Base UI's popup measures: room left on screen, the trigger's width. */
+/* The model picker's columns: `data-rows` rows and the search over them, to the limit it scrolls past. */
+@utility min-h-picker-rows {
+  min-height: min(24rem, calc(attr(data-rows type(<number>), 0) * (var(--spacing-menu-item) + 1px) + 3rem));
+}
 @utility max-h-available {
   max-height: var(--available-height);
 }

@@ -37,23 +37,21 @@ export function ComposerRail({ className, ...props }: ComponentProps<"div">) {
 
 /**
  * One item of the rail, each on the project strip's fill [D480] and framed, so the frame runs unbroken down a rail of
- * several [D684]. `card` holds notices, the queue and the project strip; `model` the model picker's strip [D85]; `decision` a card waiting for the user, which at
+ * several [D684]. `card` holds notices, the queue and the project strip; `decision` a card waiting for the user, which at
  * the rail's bottom shows its whole frame a small gap above the card instead of tucking under it. Items open to their
  * height as they come, except those the rail had as it appeared and those that came while the window was hidden.
- * One turned not `shown` folds back to nothing first, then is gone (`onGone`).
+ * One turned not `shown` folds back to nothing first.
  */
 export function RailItem({
   variant = "card",
   label,
   shown = true,
-  onGone,
   className,
   children,
 }: {
-  variant?: "card" | "decision" | "model";
+  variant?: "card" | "decision";
   label: string;
   shown?: boolean;
-  onGone?: () => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -70,7 +68,6 @@ export function RailItem({
   useEffect(() => {
     if (shown || !present || !matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     setPresent(false);
-    onGone?.();
   }, [shown]);
   if (!present) return null;
   return (
@@ -81,8 +78,7 @@ export function RailItem({
       onAnimationEnd={(event) => {
         if (shown || event.target !== event.currentTarget) return;
         setPresent(false);
-        onGone?.();
-      }}
+          }}
       className={cx(
         "grid grid-rows-1 first:rounded-t-overlay",
         !shown ? "motion-safe:animate-rail-close" : opens && "motion-safe:animate-rail-open",

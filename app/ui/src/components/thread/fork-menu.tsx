@@ -129,12 +129,19 @@ export function ForkMenu({
   const [vendor, setVendor] = useState<{ choice: ModelChoice; label: string } | null>(null);
   const [asked, setAsked] = useState(0);
   const [held, setHeld] = useState<ModelChoice | null>(null);
+  // What was picked, read as the picker closes in the same click, before a draw.
+  const picked = useRef<ModelChoice | null>(null);
+  const hold = (choice: ModelChoice | null) => {
+    picked.current = choice;
+    setHeld(choice);
+  };
   const anchor = useRef<HTMLSpanElement>(null);
   const tooltip = chat ? "Fork chat from here" : "Fork session from here";
   // Read and no agent set up: no row that opens empty.
   const another = !agents || agents.some((group) => !group.unavailable && group.models.length > 0);
   const close = (cancelled: boolean) => {
-    setHeld(null);
+    const held = picked.current;
+    hold(null);
     if (cancelled || !held) return;
     // The same agent forks natively; another vendor's agent asks first [D1081, D90].
     if (held.provider === current) onPick({ to: held });
@@ -183,7 +190,7 @@ export function ForkMenu({
       <ModelPicker
         groups={agents ?? []}
         value={held ?? value ?? { provider: current, model: "", effort: null }}
-        onChange={setHeld}
+        onChange={hold}
         {...(onSetUp && { onSetUp })}
         asksSwitch={false}
         asked={asked}

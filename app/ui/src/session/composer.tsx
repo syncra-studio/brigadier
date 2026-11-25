@@ -358,7 +358,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" && <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" />} />{model.strip}
+          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" && <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" />} />
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}
@@ -394,7 +394,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       }
       // With nothing queued the queue card isn't there to say why a Resume was refused.
       status={row?.optimizing ? <span className="min-w-0 truncate text-xs text-muted-foreground shimmer">Optimizing context…</span> : <ErrorLine error={stopError ?? (items.length === 0 ? error : null)} className="min-w-0 truncate" />}
-      model={model.pill}
+      model={model}
       send={<SendButton shell={shell && !toWorker} followUp={running ? followUp : "queue"} empty={empty && chips.length === 0 && files.tileIds.length === 0} running={busy || (commands && !empty)} canStop={busy && !offline && !worker} canResume={resumable && !worker} to={toWorker?.name} blocked={held ?? files.hold(typed.current) ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined)} onSend={() => submit(false)} onSendNew={inProject && !toWorker ? submitNew : undefined} onStop={stop} onResume={resuming || stopping ? undefined : resume} />}
       after={
         <PausedSendDialog
