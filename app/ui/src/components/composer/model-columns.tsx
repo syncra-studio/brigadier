@@ -156,9 +156,11 @@ const STAR_ON = "text-glyph-5";
 function Models({ picker, onSetUp }: ColumnsProps & { picker: Picker }) {
   const { group, shown, needle, tab } = picker;
   const mixed = Boolean(needle) || tab === FAVORITES;
+  // Whether the pointer chose the row: coming in sideways from the agents, it takes the row it lands on.
+  const pointed = useRef(false);
   const note = "px-2 py-1.5 text-label text-muted-foreground";
   return (
-    <div id={picker.id} data-part="models" role="listbox" aria-label="Models" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
+    <div id={picker.id} data-part="models" role="listbox" aria-label="Models" onMouseLeave={() => (pointed.current = false)} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
       {shown.map((row, index) => {
         const key = keyOf(row);
         const used = picker.inUse(row);
@@ -171,9 +173,13 @@ function Models({ picker, onSetUp }: ColumnsProps & { picker: Picker }) {
             role="option"
             aria-selected={used}
             data-highlighted={index === picker.at || undefined}
-            // Sideways moves keep the row: the pointer is on its way to the effort levels.
-            onMouseMove={(event) => Math.abs(event.movementX) <= Math.abs(event.movementY) && picker.setCursor(key)}
-            className={cx(itemBase, "group/row shrink-0 pe-2 hover:bg-fill")}
+            // A move to the right keeps the row: the pointer is on its way to the effort levels.
+            onMouseMove={(event) => {
+              if (pointed.current && event.movementX > Math.abs(event.movementY)) return;
+              pointed.current = true;
+              picker.setCursor(key);
+            }}
+            className={cx(itemBase, "group/row shrink-0 pe-2")}
             onClick={() => picker.pick(row)}
           >
             <ProviderMark mark={row.group.mark} className="size-icon-md" />
@@ -271,12 +277,12 @@ function Rail({ picker, groups }: ColumnsProps & { picker: Picker }) {
 
 /** The agents' rail, the search and models, and the effort levels of the row in hand. */
 function Columns({ picker, ...props }: ColumnsProps & { picker: Picker }) {
-  // As tall as its longest column, to a limit; open, it grows but never shrinks, so the search stays put while typing.
+  // As tall as its longest column, to a limit; until another agent is browsed it never shrinks, so the search stays put while typing.
   const rows = Math.max(picker.shown.length + Number(picker.hidden > 0), props.efforts === false ? 0 : (picker.inHand?.model.efforts.length ?? 0) + 1);
-  const [most, setMost] = useState(rows);
-  if (rows > most) setMost(rows);
+  const [most, setMost] = useState({ tab: picker.tab, rows });
+  if (picker.tab !== most.tab || rows > most.rows) setMost({ tab: picker.tab, rows });
   return (
-    <div data-rows={most} className="flex max-h-96 min-h-picker-rows">
+    <div data-rows={most.rows} className="flex max-h-96 min-h-picker-rows">
       <Rail picker={picker} {...props} />
       <div className="flex min-w-0 flex-1 flex-col border-s border-divider">
         <Search picker={picker} className="mx-3 h-10 border-b border-divider" />

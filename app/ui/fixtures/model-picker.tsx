@@ -76,7 +76,7 @@ function Page() {
                 Fork with another agent
               </Button>
             </span>
-            <ModelPicker {...picker} asksSwitch={false} asked={asks} anchor={anchor} />
+            <ModelPicker {...picker} asksSwitch={false} disabled={offline} asked={asks} anchor={anchor} />
           </div>
         )}
       </div>
@@ -98,10 +98,10 @@ function Page() {
         <div className="mx-auto w-full max-w-reading p-6">
           <SettingsCard>
             <SettingsRow label="Start with" description="Routing and rules: a model with its effort">
-              <ModelPicker {...picker} asksSwitch={false} trigger={select("Start with")} />
+              <ModelPicker {...picker} asksSwitch={false} disabled={offline} trigger={select("Start with")} />
             </SettingsRow>
             <SettingsRow label="Write with" description="Git: a model alone, so two columns">
-              <ModelPicker {...picker} value={writer} onChange={setWriter} efforts={false} asksSwitch={false} trigger={select("Write with")} />
+              <ModelPicker {...picker} value={writer} onChange={setWriter} efforts={false} asksSwitch={false} disabled={offline} trigger={select("Write with")} />
             </SettingsRow>
           </SettingsCard>
         </div>
