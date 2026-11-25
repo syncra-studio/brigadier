@@ -1,10 +1,10 @@
 // Mockup only: the model picker as a menu of three columns (agents · search and models · effort, with Fast and what's left), opened from the composer's
-// model pill, no strip. Fake agents, models and limits over the real composer parts; live: search, stars, effort, Fast,
-// Switch's confirm, the keys. ?v=a|b is the variant. Not the app.
+// model pill, no strip, and from a new chat, Settings, Fork and a side chat. Fake agents, models and limits over the real
+// composer parts; live: search, stars, effort, Fast, Switch's confirm, the keys. ?v=a|b is the variant. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
-import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { countdown, tightest } from "../src/accounts/usage";
@@ -13,21 +13,26 @@ import { COLUMN, ComposerPill, ContextRing, PlusButton, SharedComposer } from ".
 import { fuzzyMatch, MatchedText } from "../src/components/composer/menus";
 import { effortLabel, type Model, type ModelChoice, type ModelGroup, ModelLabel, modelWords, ProviderMark } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
+import { useClosesOnTyping } from "../src/components/composer/model-keys";
 import type { Quota } from "../src/components/composer/quota-lines";
 import { SendButton } from "../src/components/composer/send-button";
 import { SwitchAgentDialog } from "../src/components/composer/switch-agent";
 import { cx } from "../src/components/cx";
 import { itemBase } from "../src/components/menu";
+import { Kbd } from "../src/components/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../src/components/popover";
 import { RowAction } from "../src/components/row-action";
 import { Segmented } from "../src/components/segmented";
+import { SelectTrigger } from "../src/components/select";
+import { SettingsCard } from "../src/components/settings-card";
+import { SettingsRow } from "../src/components/settings-row";
 import { Switch } from "../src/components/switch";
 import { UserBubble } from "../src/components/thread/message";
 import { showToast, Toaster } from "../src/components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../src/components/tooltip";
 import { UsageBar } from "../src/components/usage-bar";
-import { Bolt, Check, ChevronDown, MagnifyingGlassSmSearch, Star, StarFilled } from "../src/icons";
-import { matches } from "../src/shortcuts";
+import { Bolt, BranchAlt, Check, ChevronDown, MagnifyingGlassSmSearch, Star, StarFilled } from "../src/icons";
+import { keysOf, matches } from "../src/shortcuts";
 import { groups, NOW, type Ready } from "./model-picker-fake";
 
 type Row = { group: ModelGroup; model: Model };
@@ -40,11 +45,11 @@ function left({ limits }: Quota) {
   return top && { name: top.name, percent: 100 - top.used, resets: top.resets };
 }
 
-type Props = { groups: ModelGroup[]; value: ModelChoice; onChange: (value: ModelChoice) => void; stars: ReadonlySet<string>; onStar: (key: string) => void; onSetUp: (group: ModelGroup) => void };
+type Props = { groups: ModelGroup[]; value: ModelChoice; onChange: (value: ModelChoice) => void; stars: ReadonlySet<string>; onStar: (key: string) => void; onSetUp: (group: ModelGroup) => void; close: () => void; efforts: boolean; asksSwitch: boolean };
 
-/** The picker's state, one for the three variants: the agent browsed, the search, the row under the keyboard, picks. */
-function usePicker({ groups, value, onChange, stars }: Props) {
-  const [tab, setTab] = useState(value.provider);
+/** The picker's state, one for both variants: the agent browsed, the search, the row under the keyboard, picks. */
+function usePicker({ groups, value, onChange, stars, close, asksSwitch }: Props) {
+  const [tab, setTab] = useState(stars.size > 0 ? FAVORITES : value.provider);
   const [query, setQuery] = useState("");
   const [older, setOlder] = useState(false);
   const [switching, setSwitching] = useState<ModelChoice | null>(null);
@@ -62,17 +67,36 @@ function usePicker({ groups, value, onChange, stars }: Props) {
   const isOld = (row: Row) => !needle && tab !== FAVORITES && row.model.legacy === true && keyOf(row) !== `${value.provider}/${value.model}` && !stars.has(keyOf(row));
   const hidden = rows.filter(isOld).length;
   const shown = older ? rows : rows.filter((row) => !isOld(row));
-  const at = Math.max(0, shown.findIndex((row) => keyOf(row) === cursor));
+  const found = shown.findIndex((row) => keyOf(row) === cursor);
+  const at = found < 0 && needle ? 0 : found;
   const used = all.find((row) => keyOf(row) === `${value.provider}/${value.model}`)!;
 
-  const pick = ({ group, model }: Row) => {
+  /** The row the third column is about: the highlighted one, else the model in use. */
+  const inHand = shown[at] ?? used;
+  const inUse = (row: Row) => keyOf(row) === keyOf(used);
+
+  /** Picks a model, with a level or Fast where one was clicked, and closes; Fast (`stay`) keeps it open. */
+  const pick = ({ group, model }: Row, also: { effort?: string; fast?: boolean } = {}, stay = false) => {
     const same = group.provider === value.provider;
-    const effort = same && value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null);
-    const choice = { provider: group.provider, model: model.id, effort, ...(model.fast && value.fast ? { fast: true } : {}) };
+    const effort = also.effort ?? (same && value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null));
+    const choice = { provider: group.provider, model: model.id, effort, ...(model.fast && (also.fast ?? value.fast) ? { fast: true } : {}) };
     setCursor(keyOf({ group, model }));
-    if (same) onChange(choice);
-    else setSwitching(choice);
+    if (!same && asksSwitch) return setSwitching(choice);
+    onChange(choice);
+    if (!stay) close();
   };
+  // ⌘1–9 pick the first nine while it's open, ahead of the tabs' own keys.
+  useEffect(() => {
+    const press = (event: globalThis.KeyboardEvent) => {
+      const row = matches(event, "show-tab") && !switching && shown[Number(/[1-9]$/.exec(event.code)?.[0]) - 1];
+      if (!row) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pick(row);
+    };
+    window.addEventListener("keydown", press, true);
+    return () => window.removeEventListener("keydown", press, true);
+  });
   const browse = (next: string) => {
     setTab(next);
     setQuery("");
@@ -88,7 +112,8 @@ function usePicker({ groups, value, onChange, stars }: Props) {
   /** In the search: ↑ ↓ the models, Enter picks, ← the agents, → the effort levels. */
   const searchKeys = (event: KeyboardEvent<HTMLInputElement>) => {
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    if (step) setCursor(shown[Math.min(shown.length - 1, Math.max(0, at + step))] ? keyOf(shown[Math.min(shown.length - 1, Math.max(0, at + step))]!) : null);
+    const next = shown[Math.min(shown.length - 1, Math.max(0, at + step))];
+    if (step) setCursor(next ? keyOf(next) : null);
     else if (event.key === "Enter" && shown[at]) pick(shown[at]);
     else if (event.key === "ArrowLeft" && !query) focusOn("agents");
     else if (event.key === "ArrowRight" && event.currentTarget.selectionStart === query.length) focusOn("effort");
@@ -98,7 +123,7 @@ function usePicker({ groups, value, onChange, stars }: Props) {
     } else return;
     event.preventDefault();
   };
-  /** In the agents and the effort levels: ↑ ↓ move and choose, sideways goes back to the search. */
+  /** In the agents ↑ ↓ move and choose; in the effort levels they only move, as a pick closes. Sideways goes back to the search. */
   const columnKeys = (out: "ArrowLeft" | "ArrowRight") => (event: KeyboardEvent<HTMLElement>) => {
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-item]:not(:disabled)")];
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
@@ -106,11 +131,11 @@ function usePicker({ groups, value, onChange, stars }: Props) {
     else if (step) {
       const next = items[Math.min(items.length - 1, Math.max(0, items.indexOf(event.target as HTMLElement) + step))];
       next?.focus();
-      next?.click();
+      if (out === "ArrowRight") next?.click();
     } else return;
     event.preventDefault();
   };
-  return { tab, browse, group, query, setQuery, needle, shown, hidden, older, setOlder, at, setCursor, used, pick, field, root, searchKeys, columnKeys, switching, setSwitching };
+  return { tab, browse, group, query, setQuery, needle, shown, hidden, older, setOlder, at, setCursor, used, inHand, inUse, pick, field, root, searchKeys, columnKeys, switching, setSwitching };
 }
 type Picker = ReturnType<typeof usePicker>;
 
@@ -131,8 +156,8 @@ function Search({ picker, className }: { picker: Picker; className?: string }) {
         value={picker.query}
         onChange={(event) => (picker.setQuery(event.target.value), picker.setCursor(null))}
         onKeyDown={picker.searchKeys}
-        placeholder="Search models"
-        aria-label="Search models"
+        placeholder="Search all models"
+        aria-label="Search all models"
         autoComplete="off"
         spellCheck={false}
         className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-placeholder"
@@ -141,10 +166,11 @@ function Search({ picker, className }: { picker: Picker; className?: string }) {
   );
 }
 
+const JUMP = keysOf("show-tab")[0]!;
 const STAR_ON = "text-glyph-5";
 
-/** The models of the agent browsed, the starred ones, or the search's matches. `marks`: each row under its agent's mark. */
-function Models({ picker, marks, ...props }: Props & { picker: Picker; marks: "always" | "mixed" }) {
+/** The models of the agent browsed, the starred ones, or the search's matches. */
+function Models({ picker, ...props }: Props & { picker: Picker }) {
   const { group, shown, needle, tab } = picker;
   const mixed = Boolean(needle) || tab === FAVORITES;
   const note = "px-2 py-1.5 text-label text-muted-foreground";
@@ -152,12 +178,13 @@ function Models({ picker, marks, ...props }: Props & { picker: Picker; marks: "a
     <div data-part="models" role="listbox" aria-label="Models" className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
       {shown.map((row, index) => {
         const key = keyOf(row);
-        const used = row === picker.used || key === `${props.value.provider}/${props.value.model}`;
+        const used = picker.inUse(row);
         const starred = props.stars.has(key);
         return (
-          <div key={key} role="option" aria-selected={used} data-highlighted={index === picker.at || undefined} onMouseMove={() => picker.setCursor(key)} className={cx(itemBase, "group/row pe-1 shrink-0")} onClick={() => picker.pick(row)}>
-            {(marks === "always" || mixed) && <ProviderMark mark={row.group.mark} className="size-icon-md" />}
-            <span className="min-w-0 truncate">{needle ? <MatchedText text={row.model.name} query={needle} hit="font-semibold text-foreground" /> : row.model.name}</span>
+          <div key={key} role="option" aria-selected={used} data-highlighted={index === picker.at || undefined} // Sideways moves keep the row: the pointer is on its way to the effort levels.
+            onMouseMove={(event) => Math.abs(event.movementX) <= Math.abs(event.movementY) && picker.setCursor(key)} className={cx(itemBase, "group/row shrink-0 pe-2 hover:bg-fill")} onClick={() => picker.pick(row)}>
+            <ProviderMark mark={row.group.mark} className="size-icon-md" />
+            <span className="min-w-0 py-1 wrap-break-word">{needle ? <MatchedText text={row.model.name} query={needle} hit="font-semibold text-foreground" /> : row.model.name}</span>
             {used && <Check aria-label="In use" className="size-icon-sm text-foreground" />}
             {row.model.legacy && mixed && <span className="text-xs text-placeholder">Older</span>}
             <RowAction
@@ -168,13 +195,14 @@ function Models({ picker, marks, ...props }: Props & { picker: Picker; marks: "a
             >
               {starred ? <StarFilled className={STAR_ON} /> : <Star />}
             </RowAction>
+            {index < 9 && <Kbd className="shrink-0">{JUMP.replace("1–9", `${index + 1}`)}</Kbd>}
           </div>
         );
       })}
       {picker.hidden > 0 && (
         <button type="button" onClick={() => picker.setOlder(!picker.older)} className={cx(itemBase, "shrink-0 pe-2 text-start text-muted-foreground hover:bg-fill focus-visible:focus-ring")}>
           <ChevronDown aria-hidden className={cx(picker.older && "rotate-180")} />
-          {picker.older ? "Fewer models" : `${picker.hidden} older`}
+          {picker.older ? "Show less" : `Show ${picker.hidden} more`}
         </button>
       )}
       {!needle && group?.unavailable && <NotSetUp group={group} onSetUp={props.onSetUp} />}
@@ -199,15 +227,16 @@ function NotSetUp({ group, onSetUp }: { group: ModelGroup; onSetUp: Props["onSet
 }
 
 /** The levels as rows, a check on the one in use and the model's own default named. */
-function EffortRows({ picker, value, onChange }: Props & { picker: Picker }) {
-  const { model } = picker.used;
+function EffortRows({ picker, value }: Props & { picker: Picker }) {
+  const { model } = picker.inHand;
+  const used = picker.inUse(picker.inHand);
   if (model.efforts.length === 0) return <p className="px-2 py-1.5 text-label text-muted-foreground">No effort levels</p>;
   return (
     <div data-part="effort" role="radiogroup" aria-label="Effort" onKeyDown={picker.columnKeys("ArrowLeft")} className="flex flex-col gap-px">
-      {model.efforts.map((level) => {
-        const on = value.effort === level;
+      {model.efforts.map((level, index) => {
+        const on = used && value.effort === level;
         return (
-          <button key={level} type="button" role="radio" data-item="" aria-checked={on} tabIndex={on ? 0 : -1} onClick={() => onChange({ ...value, effort: level })} className={cx(itemBase, "w-full pe-2 text-start hover:bg-fill focus-visible:bg-fill")}>
+          <button key={level} type="button" role="radio" data-item="" aria-checked={on} tabIndex={on || (!used && index === 0) ? 0 : -1} onClick={() => picker.pick(picker.inHand, { effort: level })} className={cx(itemBase, "w-full pe-2 text-start hover:bg-fill focus-visible:bg-fill")}>
             <span className="flex-1 truncate">{effortLabel(level)}</span>
             {on ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === model.defaultEffort && <span className="text-xs text-placeholder">Default</span>}
           </button>
@@ -245,74 +274,88 @@ function Rail({ picker, groups, bar }: Props & { picker: Picker; bar?: boolean }
 }
 
 /** The columns both variants share: the rail, search and models, and effort rows; `below` goes under the levels. */
-function Columns({ picker, height, below, ...props }: Props & { picker: Picker; height: string; below?: ReactNode }) {
+function Columns({ picker, below, ...props }: Props & { picker: Picker; below?: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  // As tall as its longest column, to a limit; open, it grows but never shrinks, so the search stays put while typing.
+  useLayoutEffect(() => {
+    const el = box.current!;
+    el.style.minHeight = `${Math.max(Number.parseFloat(el.style.minHeight) || 0, el.offsetHeight)}px`;
+  });
   return (
-    <div className={cx("flex min-h-0", height)}>
+    <div ref={box} className="flex max-h-96 min-h-0">
       <Rail picker={picker} {...props} bar />
       <div className="flex min-w-0 flex-1 flex-col border-s border-divider">
         <Search picker={picker} className="mx-3 h-10 border-b border-divider" />
-        <Models picker={picker} marks="always" {...props} />
+        <Models picker={picker} {...props} />
       </div>
-      <div className={cx("flex shrink-0 flex-col border-s border-divider", below ? "w-52" : "w-44")}>
-        <div className="mx-3 flex h-10 shrink-0 items-center gap-2 border-b border-divider text-label">
-          <span className="text-muted-foreground">Effort</span>
-          <span className="ms-auto truncate text-xs text-placeholder">{picker.used.model.name}</span>
+      {props.efforts && (
+        <div className={cx("flex shrink-0 flex-col border-s border-divider", below ? "w-52" : "w-36")}>
+          <div className="mx-3 flex h-10 shrink-0 items-center border-b border-divider text-label text-muted-foreground">Effort</div>
+          <div className="px-3 pt-2 text-xs text-placeholder">{picker.inHand.model.name}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
+            <EffortRows picker={picker} {...props} />
+          </div>
+          {below}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
-          <EffortRows picker={picker} {...props} />
-        </div>
-        {below}
-      </div>
+      )}
     </div>
   );
 }
 
-/** Fast as a switch, greyed for a model without a fast tier. */
-function FastSwitch({ picker, value, onChange, className }: Props & { picker: Picker; className?: string }) {
-  const { model } = picker.used;
+/** Fast as a switch, greyed for a model without a fast tier; on the row the third column is about. */
+function FastSwitch({ picker, value, row, className }: Props & { picker: Picker; row: Row; className?: string }) {
+  const { model } = row;
+  const on = Boolean(value.fast && model.fast && picker.inUse(row));
   return (
     <label title={model.fast ?? `${model.name} has no fast tier`} className={cx("flex items-center gap-1.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder", className)}>
-      <Bolt aria-hidden className={cx("size-icon-sm", value.fast && model.fast ? "text-glyph-5" : "text-placeholder")} />
+      <Bolt aria-hidden className={cx("size-icon-sm", on ? "text-glyph-5" : "text-placeholder")} />
       <span className="flex-1">Fast</span>
-      <Switch aria-label="Fast" checked={Boolean(value.fast && model.fast)} disabled={!model.fast} onCheckedChange={(fast) => onChange({ ...value, fast })} />
+      <Switch aria-label="Fast" checked={on} disabled={!model.fast} onCheckedChange={(fast) => picker.pick(row, picker.inUse(row) && value.effort ? { fast, effort: value.effort } : { fast }, true)} />
     </label>
   );
 }
 
-/** What each account of the model's agent has left. */
-function Usage({ group, className }: { group: ModelGroup; className: string }) {
-  return <div className={className}>{group.usage ? group.usage.map((account) => <Left key={account.account} account={account} />) : <p className="text-xs text-muted-foreground">{group.label} reports no limits</p>}</div>;
+/** What each account of the agent in hand has left. */
+function Usage({ picker, className }: { picker: Picker; className: string }) {
+  const group = picker.group?.unavailable ? picker.group : picker.inHand.group;
+  return (
+    <div className={className}>
+      {group.usage ? group.usage.map((account) => <Left key={account.account} account={account} />) : <p className="text-xs text-muted-foreground">{group.label} reports no limits</p>}
+    </div>
+  );
 }
 
-/** A: Fast and the usage under the effort levels; no footer. */
+const FOOT = "border-t border-divider bg-fill-faint px-3 py-2.5";
+
+/** A: Fast and the usage under the effort levels; no footer. With no effort column, the usage goes under the models. */
 function VariantA(props: Props) {
   const picker = usePicker(props);
   return (
-    <Frame picker={picker} {...props} className="w-140">
+    <Frame picker={picker} {...props} className={props.efforts ? "w-140" : "w-96"}>
       <Columns
         picker={picker}
         {...props}
-        height="h-92"
         below={
           <div className="mx-3 shrink-0 border-t border-divider">
-            <FastSwitch picker={picker} {...props} className="py-2.5" />
-            <Usage group={picker.used.group} className="flex flex-col gap-2 border-t border-divider pt-2.5 pb-3" />
+            <FastSwitch picker={picker} row={picker.inHand} {...props} className="py-2.5" />
+            <Usage picker={picker} className="flex flex-col gap-2 border-t border-divider pt-2.5 pb-3" />
           </div>
         }
       />
+      {!props.efforts && <Usage picker={picker} className={cx(FOOT, "flex flex-col gap-2")} />}
     </Frame>
   );
 }
 
-/** B: the same two in A's footer, the accounts side by side. */
+/** B: the same two in a footer, the accounts side by side. Its Fast is the model in use's: on the way down the pointer crosses other rows. */
 function VariantB(props: Props) {
   const picker = usePicker(props);
   return (
-    <Frame picker={picker} {...props} className="w-132">
-      <Columns picker={picker} {...props} height="h-66" />
-      <div className="flex items-center gap-4 border-t border-divider bg-fill-faint px-3 py-2.5">
-        <Usage group={picker.used.group} className="grid min-w-0 flex-1 auto-cols-fr grid-flow-col gap-4" />
-        <FastSwitch picker={picker} {...props} className="shrink-0 gap-2 border-s border-divider ps-4" />
+    <Frame picker={picker} {...props} className={props.efforts ? "w-132" : "w-96"}>
+      <Columns picker={picker} {...props} />
+      <div className={cx(FOOT, "flex items-center gap-4")}>
+        <Usage picker={picker} className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-2 *:flex-1 *:basis-38" />
+        {props.efforts && <FastSwitch picker={picker} row={picker.used} {...props} className="shrink-0 gap-2 border-s border-divider ps-4" />}
       </div>
     </Frame>
   );
@@ -334,7 +377,7 @@ function Left({ account }: { account: Quota }) {
   );
 }
 
-function Frame({ picker, groups, onChange, className, children }: Props & { picker: Picker; className: string; children: ReactNode }) {
+function Frame({ picker, groups, onChange, close, className, children }: Props & { picker: Picker; className: string; children: ReactNode }) {
   return (
     <div ref={picker.root} data-slot="model-picker" className={cx("flex max-w-available flex-col overflow-hidden rounded-surface", className)}>
       {children}
@@ -344,6 +387,7 @@ function Frame({ picker, groups, onChange, className, children }: Props & { pick
         onConfirm={() => {
           if (picker.switching) onChange(picker.switching);
           picker.setSwitching(null);
+          close();
         }}
       />
     </div>
@@ -354,59 +398,147 @@ const VARIANTS: Record<string, (props: Props) => ReactNode> = { a: VariantA, b: 
 const variant = new URLSearchParams(location.search).get("v") ?? "a";
 const Variant = VARIANTS[variant] ?? VariantA;
 
+/** The menu at a trigger: the pill, a Settings select, Fork's button. */
+function Menu({ open, setOpen, trigger, side, align, ...props }: Omit<Props, "close"> & { open: boolean; setOpen: (open: boolean) => void; trigger: ReactElement; side: "top" | "bottom"; align: "start" | "end" }) {
+  const close = () => setOpen(false);
+  useClosesOnTyping(open, close);
+  return (
+    <Popover open={open} onOpenChange={(next, details) => (details.reason === "focus-out" ? undefined : setOpen(next))}>
+      <PopoverTrigger render={trigger} />
+      <PopoverContent side={side} align={align} padded={false} aria-label="Model" initialFocus={() => document.querySelector<HTMLElement>("[data-slot=model-picker] input")}>
+        <Variant {...props} close={close} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type Place = "chat" | "new" | "side" | "settings" | "fork";
+const PLACES: { value: Place; label: string }[] = [
+  { value: "chat", label: "Chat" },
+  { value: "new", label: "New chat" },
+  { value: "side", label: "Side chat" },
+  { value: "settings", label: "Settings" },
+  { value: "fork", label: "Fork" },
+];
+const asked = new URLSearchParams(location.search).get("at");
+
 function Page() {
   const [ready, setReady] = useState<Ready>("ready");
+  const [offline, setOffline] = useState(false);
+  const [place, setPlace] = useState<Place>(PLACES.find((each) => each.value === asked)?.value ?? "chat");
   const list = groups(ready);
   const [value, setValue] = useState<ModelChoice>({ provider: "claude", model: "opus", effort: "high", fast: true });
+  const [writer, setWriter] = useState<ModelChoice>({ provider: "claude", model: "haiku", effort: null });
   const [stars, setStars] = useState<ReadonlySet<string>>(new Set(["claude/opus", "claude/sonnet", "codex/sol"]));
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState<"main" | "writer" | null>("main");
   const [level, setLevel] = useState<PermissionLevel>("auto");
   useEffect(() => {
     const press = (event: globalThis.KeyboardEvent) => {
-      if (!matches(event, "model")) return;
+      if (!matches(event, "model") || offline) return;
       event.preventDefault();
-      setOpen((now) => !now);
+      setOpen((now) => (now ? null : "main"));
     };
     window.addEventListener("keydown", press);
     return () => window.removeEventListener("keydown", press);
-  }, []);
+  }, [offline]);
+  const menu = (id: "main" | "writer", more: { trigger: ReactElement; side: "top" | "bottom"; align: "start" | "end"; asksSwitch: boolean; efforts?: boolean }) => (
+    <Menu
+      open={open === id}
+      setOpen={(next) => setOpen(next ? id : null)}
+      groups={list}
+      value={id === "main" ? value : writer}
+      onChange={id === "main" ? setValue : setWriter}
+      stars={stars}
+      onStar={(key) => setStars((now) => (now.has(key) ? new Set([...now].filter((each) => each !== key)) : new Set([...now, key])))}
+      onSetUp={(group) => (setOpen(null), showToast(`Set up ${group.label} opens here`))}
+      efforts
+      {...more}
+    />
+  );
+  const composer = (asksSwitch: boolean) => (
+    <SharedComposer
+      plus={<PlusButton />}
+      level={<PermissionPicker value={level} onChange={setLevel} />}
+      ring={<ContextRing usedTokens={45_000} windowTokens={258_000} />}
+      model={menu("main", {
+        side: "top",
+        align: "end",
+        asksSwitch,
+        trigger: (
+          <ComposerPill aria-label={modelWords(list, value)} disabled={offline}>
+            <ModelLabel groups={list} value={value} mark="size-icon-sm" />
+          </ComposerPill>
+        ),
+      })}
+      send={<SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />}
+    >
+      <div role="textbox" tabIndex={0} contentEditable="plaintext-only" suppressContentEditableWarning aria-label="Message" data-placeholder="Do anything" className="min-h-composer px-2 py-2.5 text-base outline-none empty:before:text-placeholder empty:before:content-[attr(data-placeholder)]" />
+    </SharedComposer>
+  );
+  const thread = (
+    <div className="min-h-0 w-full flex-1 overflow-hidden px-scrollbar">
+      <div className={cx(COLUMN, "flex flex-col gap-4 py-6 text-chat")}>
+        <UserBubble keep="u1" text="Why does the tab test fail now and then?" />
+        <p>It reads the strip before the closing tab has gone. It now waits for that.</p>
+        {place === "fork" && (
+          <div>
+            {menu("main", {
+              side: "bottom",
+              align: "start",
+              asksSwitch: false,
+              trigger: (
+                <button type="button" className={cx(SETUP_BUTTON, "gap-1.5")}>
+                  <BranchAlt aria-hidden className="size-icon-sm" />
+                  Fork with another agent
+                </button>
+              ),
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
   return (
     <main className="flex h-screen min-h-160 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-divider px-4 py-2 text-xs text-muted-foreground">
-        Mockup: OpenCode is
+        Mockup:
+        <Segmented label="Place" value={place} onChange={(next) => (setPlace(next), setOpen(null))} options={PLACES} />
+        OpenCode is
         <Segmented label="OpenCode" value={ready} onChange={setReady} options={[{ value: "ready", label: "Ready" }, { value: "sign-in", label: "Not signed in" }, { value: "install", label: "Not installed" }]} />
+        <label className="flex items-center gap-1.5">
+          Offline
+          <Switch aria-label="Offline" checked={offline} onCheckedChange={(next) => (setOffline(next), setOpen(null))} />
+        </label>
       </div>
-      <div className="min-h-0 w-full flex-1 overflow-hidden px-scrollbar">
-        <div className={cx(COLUMN, "flex flex-col gap-4 py-6 text-chat")}>
-          <UserBubble keep="u1" text="Why does the tab test fail now and then?" />
-          <p>It reads the strip before the closing tab has gone. It now waits for that.</p>
+      {place === "settings" ? (
+        <div className="mx-auto w-full max-w-reading p-6">
+          <SettingsCard>
+            <SettingsRow label="Start with" description="Routing and rules: a model with its effort">
+              {menu("main", { side: "bottom", align: "end", asksSwitch: false, trigger: <SelectTrigger label="Start with"><ModelLabel groups={list} value={value} mark="size-icon-sm" /></SelectTrigger> })}
+            </SettingsRow>
+            <SettingsRow label="Write with" description="Git: a model alone, so two columns">
+              {menu("writer", { side: "bottom", align: "end", asksSwitch: false, efforts: false, trigger: <SelectTrigger label="Write with"><ModelLabel groups={list} value={writer} efforts={false} mark="size-icon-sm" /></SelectTrigger> })}
+            </SettingsRow>
+          </SettingsCard>
         </div>
-      </div>
-      <SharedComposer
-        plus={<PlusButton />}
-        level={<PermissionPicker value={level} onChange={setLevel} />}
-        ring={<ContextRing usedTokens={45_000} windowTokens={258_000} />}
-        model={
-          <Popover open={open} onOpenChange={(next, details) => (details.reason === "focus-out" ? undefined : setOpen(next))}>
-            <PopoverTrigger render={<ComposerPill aria-label={modelWords(list, value)} />}>
-              <ModelLabel groups={list} value={value} mark="size-icon-sm" />
-            </PopoverTrigger>
-            <PopoverContent side="top" align="end" padded={false} aria-label="Model" initialFocus={() => document.querySelector<HTMLElement>("[data-slot=model-picker] input")} collisionAvoidance={{ side: "none" }}>
-              <Variant
-                groups={list}
-                value={value}
-                onChange={setValue}
-                stars={stars}
-                onStar={(key) => setStars((now) => (now.has(key) ? new Set([...now].filter((each) => each !== key)) : new Set([...now, key])))}
-                onSetUp={(group) => (setOpen(false), showToast(`Set up ${group.label} opens here`))}
-              />
-            </PopoverContent>
-          </Popover>
-        }
-        send={<SendButton empty running={false} canStop={false} onSend={() => {}} onStop={() => {}} />}
-      >
-        <div className="min-h-composer px-2 py-2.5 text-base text-placeholder">Do anything</div>
-      </SharedComposer>
+      ) : place === "new" ? (
+        <div className="flex min-h-0 flex-1 flex-col justify-end pb-24">
+          {composer(false)}
+        </div>
+      ) : place === "side" ? (
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1" />
+          <div className="flex w-96 shrink-0 flex-col border-s border-divider">
+            {thread}
+            {composer(true)}
+          </div>
+        </div>
+      ) : (
+        <>
+          {thread}
+          {place === "chat" && composer(true)}
+        </>
+      )}
       <Toaster />
     </main>
   );
