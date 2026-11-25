@@ -2,7 +2,7 @@
 //! one line each, from the same watch the daemon runs [D71]. `brigadier source`: what the panel and
 //! the Review tab ask of it, its diffs, its moves and its files [D1035, D1036, D1043, D1103].
 
-use super::{arg, flag, has};
+use super::{arg, flag, has, heard};
 use brigadier_core::folder;
 use brigadier_core::git::diff::{self, Scope};
 use brigadier_core::git::{self, Checkout, Status, Target, branch, files, watch::Watch};
@@ -39,9 +39,11 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(status) => status,
             Err(e) => {
                 let mut stdout = io::stdout().lock();
-                writeln!(stdout, "{}", json!({"error": e.to_string()}))?;
-                stdout.flush()?;
-                continue;
+                let line = json!({"error": e.to_string()});
+                match heard(writeln!(stdout, "{line}").and_then(|()| stdout.flush()))? {
+                    true => continue,
+                    false => break,
+                }
             }
         };
         let line = match last.as_ref().and_then(|old| status.delta(old)) {
@@ -53,8 +55,9 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             None => json!({"ok": true, "n": 0, "git": status.json()}),
         };
         let mut stdout = io::stdout().lock();
-        writeln!(stdout, "{line}")?;
-        stdout.flush()?;
+        if !heard(writeln!(stdout, "{line}").and_then(|()| stdout.flush()))? {
+            break;
+        }
         last = Some(status);
     }
     Ok(Value::Null)

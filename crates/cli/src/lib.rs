@@ -22,6 +22,7 @@ mod last;
 pub mod mcp;
 pub mod mention;
 mod models;
+mod out;
 mod outcomes;
 pub mod overnight;
 pub mod owner;
@@ -29,7 +30,6 @@ mod panel;
 pub mod peers;
 mod plugins;
 pub mod queue;
-mod read;
 mod relay;
 mod rename;
 pub mod rewind;
@@ -124,6 +124,7 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     Ok(s)
 }
 
+pub use out::heard;
 pub use switching::{switch_settings, wants};
 
 /// Home's unsent words have no session to live in; this can't be a session id.
@@ -362,7 +363,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             for id in &ids {
                 let s = status_of(data, id, &all)
                     .unwrap_or_else(|e| json!({"id": id, "ok": false, "error": e.to_string()}));
-                writeln!(stdout, "{s}")?;
+                if !heard(writeln!(stdout, "{s}"))? {
+                    break;
+                }
             }
             Ok(Value::Null)
         }
@@ -394,7 +397,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "owner" => Ok(
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),
-        "read" => read::run(data, arg(args, 1)?, args),
+        "read" => out::read(data, arg(args, 1)?, args),
         // (proposed) A diagnostic: the thread the app draws, from the same fold [D64, D65].
         "thread" => {
             let id = arg(args, 1)?;

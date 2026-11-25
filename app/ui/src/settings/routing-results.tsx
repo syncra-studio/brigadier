@@ -7,14 +7,14 @@ import { Note, ROUTING_ROWS } from "./routing";
 /** Runs from which a share is drawn: fewer are too few to compare (spec §8). */
 const COMPARED = 20;
 
-type Model = { agent: string; model: string; name: string; kept: number | null; of: number; finished: number; retried: number };
+type Model = { agent: string; model: string; name: string; kept: number | null; of: number; finished: number; retried: number; cut?: number };
 /**
  * Your own outcomes per job, then per model, credited to the model that really ran (C5): `job` null is Named model;
  * `kept` null, a job whose workers make no commits. The adversarial reviews' counts [D2038, D3026].
  */
 export type Results = {
   jobs: { job: string | null; models: Model[] }[];
-  reviews: { count: number; findings: number | null; fixed: number | null; rejected: number | null } | null;
+  reviews: { count: number; off?: number; findings: number | null; fixed: number | null; rejected: number | null } | null;
 };
 
 /** Your results, grouped by job (spec §8): a share from 20 runs, counts below it. Nothing reorders from it [D2038]. `results` null is loading. */
@@ -39,19 +39,20 @@ export function YourResults({ results, groups }: { results: Results | null; grou
           </p>
         )}
       </SettingsCard>
-      <Note>Kept: finished with commits that are in its parent's branch, never retried or reverted. A percentage shows from 20 runs. Jobs get different work, so compare models within a job.</Note>
+      <Note>Kept: finished with commits that are in its parent's branch, never retried or reverted. Work cut off, stopped or out of quota isn't counted. A percentage shows from 20 runs. Jobs get different work, so compare models within a job.</Note>
     </SettingsSection>
   );
 }
 
-/** "✻ Claude · Opus 5.5  21 of 24 kept ▬▬▬ 88%"; below 20 runs, "5 of 7 kept · too few to compare"; no commits, "9 finished · 1 retried · 1 failed". */
-function ResultRow({ agent, name, kept, of, finished, retried, group }: Model & { group: ModelGroup | undefined }) {
+/** "✻ Claude · Opus 5.5  21 of 24 kept ▬▬▬ 88%"; below 20 runs, "5 of 7 kept · too few to compare"; no commits, "9 finished · 1 retried · 1 failed"; then "2 cut off". */
+function ResultRow({ agent, name, kept, of, finished, retried, cut = 0, group }: Model & { group: ModelGroup | undefined }) {
   const share = kept !== null && of >= COMPARED ? Math.round((kept / of) * 100) : null;
   const counts =
     kept === null
       ? // With no commits, a counted run not retried failed.
         [finished > 0 && `${finished} finished`, retried > 0 && `${retried} retried`, of > retried && `${of - retried} failed`].filter(Boolean).join(" · ")
       : `${kept} of ${of} kept${share === null ? " · too few to compare" : ""}`;
+  const aside = cut > 0 ? ` · ${cut} cut off, not counted` : "";
   return (
     <div data-slot="result-row" className="flex items-center gap-3.5 py-2">
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -60,7 +61,10 @@ function ResultRow({ agent, name, kept, of, finished, retried, group }: Model & 
           <span className="truncate text-label font-medium text-foreground">
             {group?.short ?? group?.label ?? agent} · {name}
           </span>
-          <span className="shrink-0 text-xs text-muted-foreground">{counts}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {counts}
+            {aside}
+          </span>
         </span>
       </span>
       {share !== null && (
@@ -73,8 +77,8 @@ function ResultRow({ agent, name, kept, of, finished, retried, group }: Model & 
   );
 }
 
-/** "2 reviews · 5 findings · 3 fixed": a count no review said is left out, never 0 [D74]. */
-function reviewsLine({ count, findings, fixed, rejected }: NonNullable<Results["reviews"]>) {
+/** "76 reviews · 357 findings · 217 fixed · 48 rejected · 10 didn't run": each sum of the reviews that said it; one none said is left out, never 0 [D74]. */
+function reviewsLine({ count, off = 0, findings, fixed, rejected }: NonNullable<Results["reviews"]>) {
   const n = (v: number | null, one: string, many = one) => (v === null ? null : `${v} ${v === 1 ? one : many}`);
-  return [n(count, "review", "reviews"), n(findings, "finding", "findings"), n(fixed, "fixed"), n(rejected, "rejected")].filter(Boolean).join(" · ");
+  return [n(count, "review", "reviews"), n(findings, "finding", "findings"), n(fixed, "fixed"), n(rejected, "rejected"), off > 0 && `${off} didn't run`].filter(Boolean).join(" · ");
 }

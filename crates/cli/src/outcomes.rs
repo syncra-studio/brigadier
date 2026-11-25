@@ -74,48 +74,60 @@ fn landed(
     wid: &str,
     branches: &mut HashMap<(String, String), Branch>,
 ) -> (bool, bool) {
-    let Some(l) = core::worktrees::lands(&core::session_dir(data, wid))
-        .ok()
-        .flatten()
-    else {
-        return (false, false);
-    };
+    let dir = core::session_dir(data, wid);
+    // A folder chat's worker lands in each repository it claimed [D494].
+    let claims = core::folder::claims(&dir).into_iter().map(|(_, rec)| rec);
+    let each: Vec<(bool, bool)> = std::iter::once(dir)
+        .chain(claims)
+        .filter_map(|rec| landed_in(&rec, branches))
+        .collect();
+    (
+        !each.is_empty() && each.iter().all(|e| e.0),
+        each.iter().any(|e| e.1),
+    )
+}
+
+/// The same, for one record's worktree; none where it made no commits.
+fn landed_in(rec: &Path, branches: &mut HashMap<(String, String), Branch>) -> Option<(bool, bool)> {
+    let l = core::worktrees::lands(rec).ok().flatten()?;
     let repo = l.repo.to_string_lossy().to_string();
     let b =
         (branches.entry((repo.clone(), l.base.clone()))).or_insert_with(|| branch(&repo, &l.base));
-    let Some(head) = l.branch.and_then(|name| b.heads.get(&name).cloned()) else {
-        return (false, false);
-    };
-    if head == l.base_commit || !b.first.contains_key(&head) {
-        return (false, false);
+    let head = l.branch.and_then(|name| b.heads.get(&name).cloned())?;
+    if head == l.base_commit {
+        return None;
+    }
+    if !b.first.contains_key(&head) {
+        return Some((false, false));
     }
     let mut at = head;
     while at != l.base_commit && !at.is_empty() {
         let merge = b.merged_by.get(&at);
         if b.reverted.contains(&at) || merge.is_some_and(|m| b.reverted.contains(m)) {
-            return (false, true);
+            return Some((false, true));
         }
         at = b.first.get(&at).cloned().unwrap_or_default();
     }
-    (true, false)
+    Some((true, false))
 }
 
 /// `routing results` [C5, D388 Q13]: by job (`ran.job`; `--model` workers under none, those from
 /// before jobs under their row's title), then by model as it ran (after any move in its job): how
 /// many it kept, of those counted [D2038]; and the reviews' counts [D3026]. Kept: finished, its
 /// last commit in its parent's branch, never retried or reverted. Work not merged yet isn't
-/// counted until it is.
+/// counted until it is, nor is one its model didn't end: cut off, at a limit, stopped.
 pub(crate) fn results(data: &Path) -> Value {
     let mut rows = vec![];
     let mut retried: HashMap<String, u64> = HashMap::new();
-    // A sum any review left unknown is unknown, never 0 [D74].
-    let mut reviews = (0u64, [Some(0u64); 3]);
+    // Each sum is of the reviews that said it: none is guessed [D74].
+    let (mut reviews, mut off) = ((0u64, [None::<u64>; 3]), 0u64);
     let mut add = |n: &Value| {
         reviews.0 += 1;
         // "Findings: 0" fixed and rejected none, said or not [D74, D357].
         let none = (n["findings"] == 0).then_some(0);
         for (sum, k) in reviews.1.iter_mut().zip(["findings", "fixed", "rejected"]) {
-            *sum = sum.zip(n[k].as_u64().or(none)).map(|(a, b)| a + b);
+            let said = n[k].as_u64().or(none);
+            *sum = said.map_or(*sum, |n| Some(sum.unwrap_or(0) + n));
         }
     };
     for wid in core::ids(data) {
@@ -141,35 +153,52 @@ pub(crate) fn results(data: &Path) -> Value {
         }
         let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
         for n in &notes {
-            if n["phase"] == "review" && n["ran"] == true {
-                add(n);
+            match n["phase"] == "review" {
+                true if n["ran"] == true => add(n),
+                true => off += 1,
+                false => {}
             }
         }
-        rows.push((wid, l.ran, end.unwrap_or_default()));
+        let cause = workers::cause(&l, &notes).to_string();
+        rows.push((wid, l.ran, end.unwrap_or_default(), cause));
     }
     // An alias its CLI didn't name the real model of groups under the one another worker on it
     // said [D392 P7]. shortcut: any such worker's, not the latest, until an alias moves often.
     let known: HashMap<(String, String), String> = (rows.iter())
-        .filter_map(|(_, r, _)| {
+        .filter_map(|(_, r, ..)| {
             let key = (r["agent"].as_str()?.into(), r["model"].as_str()?.into());
             Some((key, r["real"].as_str()?.into()))
         })
         .collect();
     let mut branches = HashMap::new();
-    // (job, agent, model) → name, kept, of, finished, retried, any commits.
-    type Tally = (Value, u64, u64, u64, u64, bool);
+    // (job, agent, model) → its counts.
+    #[derive(Default)]
+    struct Tally {
+        name: Value,
+        kept: u64,
+        of: u64,
+        finished: u64,
+        retried: u64,
+        committed: u64,
+        cut: u64,
+    }
     let mut tally: BTreeMap<(Option<String>, String, String), Tally> = BTreeMap::new();
-    for (wid, ran, end) in rows {
+    for (wid, ran, end, cause) in rows {
+        // Its model didn't end it, so it says nothing of its model, retried or not.
+        let other = matches!(cause.as_str(), "infrastructure" | "environment" | "quota");
         let commits = end["commits"].as_u64().unwrap_or(0);
         let (landed, reverted) = match commits {
             0 => (false, false),
             _ => landed(data, &wid, &mut branches),
         };
         // Each `--retry` is its parent reporting a failed check on it: the only check report.
-        let retries = retried.get(&wid).copied().unwrap_or(0);
-        let finished = end["how"] == "finished";
+        let retries = match other {
+            true => 0,
+            false => retried.get(&wid).copied().unwrap_or(0),
+        };
+        let finished = end["how"] == "finished" && cause.is_empty();
         let kept = finished && commits > 0 && landed && retries == 0 && !reverted;
-        let failed = end["how"] == "failed" && end["temporary"] != true;
+        let failed = cause == "unknown" && end["how"] == "failed";
         let counted = kept || failed || retries > 0 || reverted;
         let job = (ran["job"].as_str().map(String::from))
             .or(ran["row"].as_str().map(crate::routing::capital));
@@ -179,15 +208,15 @@ pub(crate) fn results(data: &Path) -> Value {
             .or(known.get(&(agent.clone(), alias.clone())).cloned())
             .unwrap_or(alias);
         let t = tally.entry((job, agent, model)).or_default();
-        if t.0.is_null() {
-            t.0 = ran.get("name").cloned().unwrap_or_default();
+        if t.name.is_null() {
+            t.name = ran.get("name").cloned().unwrap_or_default();
         }
-        (t.1, t.2) = (t.1 + kept as u64, t.2 + counted as u64);
-        (t.3, t.4, t.5) = (
-            t.3 + finished as u64,
-            t.4 + (retries > 0) as u64,
-            t.5 || commits > 0,
-        );
+        t.kept += kept as u64;
+        t.of += counted as u64;
+        t.finished += finished as u64;
+        t.retried += (retries > 0) as u64;
+        t.committed += (finished && commits > 0) as u64;
+        t.cut += (cause == "infrastructure") as u64;
     }
     // Jobs in the user's order, then any gone or from before jobs, then named models.
     let order: Vec<Value> =
@@ -200,13 +229,15 @@ pub(crate) fn results(data: &Path) -> Value {
         None => order.len() + 1,
     };
     let mut jobs: Vec<(Option<String>, Vec<Value>)> = vec![];
-    for ((job, agent, model), (name, kept, of, finished, retried, commits)) in tally {
-        // Nothing to say yet: only stopped runs, or commits not merged yet.
-        if of == 0 && (commits || finished == 0) {
+    for ((job, agent, model), t) in tally {
+        // Judged by its commits where most of its work makes some, not by one run that did.
+        let commits = t.kept > 0 || (t.committed > 0 && t.committed * 2 >= t.finished);
+        // Nothing to say yet: only stopped or cut runs, or commits not merged yet.
+        if t.of == 0 && (commits || t.finished == 0) {
             continue;
         }
-        let m = json!({"agent": agent, "model": model, "name": name, "kept": commits.then_some(kept),
-            "of": of, "finished": finished, "retried": retried});
+        let m = json!({"agent": agent, "model": model, "name": t.name, "kept": commits.then_some(t.kept),
+            "of": t.of, "finished": t.finished, "retried": t.retried, "cut": t.cut});
         match jobs.iter_mut().find(|(j, _)| *j == job) {
             Some((_, l)) => l.push(m),
             None => jobs.push((job, vec![m])),
@@ -217,8 +248,8 @@ pub(crate) fn results(data: &Path) -> Value {
         .map(|(job, models)| json!({"job": job, "models": models}))
         .collect();
     let (count, [findings, fixed, rejected]) = reviews;
-    let reviews = (count > 0).then(
-        || json!({"count": count, "findings": findings, "fixed": fixed, "rejected": rejected}),
-    );
+    let reviews = (count + off > 0).then(|| {
+        json!({"count": count, "off": off, "findings": findings, "fixed": fixed, "rejected": rejected})
+    });
     json!({"jobs": jobs, "reviews": reviews, "ok": true})
 }

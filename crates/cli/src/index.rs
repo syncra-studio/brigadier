@@ -328,6 +328,7 @@ impl Index {
             );
             row["holding"] = holds.into(); // answered, its block open on its subagents or workers: a message waits or steers [D521]
             row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
+            row["child"] = live.child.is_some().into(); // its agent's process is up: a finished worker's idle one is closed
             fold::background_row(&mut row, &dir, &live);
             crate::workers::brigade_row(&mut row, e.spec.as_ref());
             crate::overnight::row(&mut row, &e.marks.overnight, f.fold.finished);

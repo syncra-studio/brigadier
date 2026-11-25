@@ -12,7 +12,7 @@ const SEEDED: [(&str, &str); 6] = [
     ("Write code", "Writing or changing code, with its tests."),
     (
         "Look into the codebase",
-        "Reading and analysing code without changing it: tracing, audits, explaining how something works.",
+        "Reading and analysing code without changing it: tracing, audits, explaining how something works. Not reviews.",
     ),
     (
         "Research the web",
@@ -75,11 +75,10 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-/// The jobs as they stand: the saved list, else the saved rows carried over and then the seeds,
-/// rebuilt on each read until the first save [D392 P3]. An entry its agent no longer lists (gone,
-/// or hidden in Settings) is dropped, so it never blocks a save; an agent off keeps its entries.
-pub(super) fn of(saved: &Value, groups: &[Value]) -> Vec<Value> {
-    let mut jobs = match saved["jobs"].as_array() {
+/// The jobs whole: the saved list, else the saved rows carried over and then the seeds, rebuilt on
+/// each read until the first save [D392 P3].
+pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
+    match saved["jobs"].as_array() {
         Some(l) => l.clone(),
         None => (CARRIED.iter())
             .filter_map(|(key, name, line)| {
@@ -88,12 +87,19 @@ pub(super) fn of(saved: &Value, groups: &[Value]) -> Vec<Value> {
             })
             .chain(seeds(groups))
             .collect(),
-    };
+    }
+}
+
+/// The jobs as they stand. An entry its agent no longer lists (gone, or hidden in Settings) is
+/// dropped, so it never blocks a save; an agent off, or one that lists nothing now, keeps its entries.
+pub(super) fn of(saved: &Value, groups: &[Value]) -> Vec<Value> {
+    let mut jobs = all(saved, groups);
     for j in &mut jobs {
         if let Some(l) = j["entries"].as_array_mut() {
             l.retain(|e| {
                 let a = str_of(e, "agent");
-                groups.iter().all(|g| g["provider"] != a)
+                let lists = |g: &Value| g["models"].as_array().is_some_and(|m| !m.is_empty());
+                !groups.iter().any(|g| g["provider"] == a && lists(g))
                     || model_of(groups, a, str_of(e, "model")).is_some()
             });
         }
@@ -169,6 +175,7 @@ pub(crate) fn lead(jobs: &[Value]) -> String {
         text += &format!("- {}: {}\n", str_of(j, "name"), str_of(j, "for"));
     }
     // A start with neither --job nor --model is refused with how to fix it, so that isn't said here [D529].
+    text += "To review code, a plan or a pull request: `brigadier start --reviewing session \"<what>\"`, or `--reviewing <id>` for your worker's commits; never a job.\n";
     text += "An image to make or edit: your own image tool, else `brigadier start --images \"<brief>\"`; never drawn with code.";
     text
 }
@@ -198,6 +205,25 @@ pub(super) fn and(words: &[String]) -> String {
         [one] => one.clone(),
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
+}
+
+/// "A and B had no account with room, and C can't run (barred by your rule)".
+pub(super) fn reasons(passed: &[(String, &str)]) -> String {
+    let mut whys: Vec<&str> = vec![];
+    for (_, why) in passed {
+        if !whys.contains(why) {
+            whys.push(why);
+        }
+    }
+    let said: Vec<String> = (whys.iter())
+        .map(|why| {
+            let names: Vec<String> = (passed.iter().filter(|p| p.1 == *why))
+                .map(|p| p.0.clone())
+                .collect();
+            format!("{} {why}", and(&names))
+        })
+        .collect();
+    said.join(", and ")
 }
 
 /// The page's two grey lines, from the user's agents' own capabilities and names [D392 P1].

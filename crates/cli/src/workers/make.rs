@@ -149,7 +149,11 @@ pub fn start(
                 "This session is being deleted, so it starts no workers.",
             ));
         }
-        if let Some(no) = full(data, &root, running) {
+        // A review Brigadier itself starts takes the slot of the work that waits on it.
+        let own = |r: &super::review::Plan| r.mark["switch"] == true || r.mark["plan"].is_string();
+        if !review.as_ref().is_some_and(own)
+            && let Some(no) = full(data, &root, running)
+        {
             return Err(no);
         }
         if let Some(no) = retry.as_ref().and_then(|r| r.taken(data, me)) {
@@ -259,13 +263,16 @@ pub fn start(
 /// a held one let go counts the same way.
 pub(crate) fn full(data: &Path, root: &str, running: &dyn Fn(&str) -> bool) -> Option<Value> {
     let limit = setting(data, "workers", 6);
+    // Ended, waiting on its review: its reviewer has its slot.
+    let reviewed = |id: &str| super::link(data, id).is_some_and(|l| l.review["state"] == "running");
     let busy = (below(data, root).iter())
         // A Brigade's sub-sessions head families of their own [D189].
         .filter(|r| r.root == root)
         // Its own log, not only the row, which lags just after a launch.
         .filter(|r| {
             r.state == "starting"
-                || (r.state == "started" && (running(&r.wid) || super::busy(data, &r.wid)))
+                || (r.state == "started"
+                    && (running(&r.wid) || (!reviewed(&r.wid) && super::busy(data, &r.wid))))
         })
         .count() as u64;
     (busy >= limit).then(|| refuse(&format!(

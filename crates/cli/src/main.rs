@@ -6,6 +6,8 @@
 
 use brigadier_frames::{procs, wire};
 use serde_json::{Value, json};
+use std::fmt::Display;
+use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use std::{env, process};
@@ -19,7 +21,7 @@ fn main() {
         let helper = brigadier_core::adapters::get(args.get(1).map_or("", String::as_str));
         let done = helper.map_or(Err("unknown agent".into()), |a| a.helper(&args[2..]));
         if let Err(e) = done {
-            eprintln!("{e}");
+            complain(e);
             process::exit(1);
         }
         return;
@@ -38,7 +40,7 @@ fn main() {
             _ => dir.and_then(|d| brigadier_core::folder::edit_hook(&input, &d)),
         };
         if let Some(out) = out {
-            println!("{out}");
+            print(out);
         }
         return;
     }
@@ -53,19 +55,32 @@ fn main() {
         Some(mut reply) => {
             reply.as_object_mut().map(|o| o.remove("re"));
             match reply["text"].as_str() {
-                Some(text) => println!("{}", text.trim_end()),
+                Some(text) => print(text.trim_end()),
                 None if reply["ok"] == false => {
-                    eprintln!("{}", reply["error"].as_str().unwrap_or("refused"))
+                    complain(reply["error"].as_str().unwrap_or("refused"))
                 }
-                None => println!("{reply}"),
+                None => print(&reply),
             }
             process::exit(if reply["ok"] == true { 0 } else { 1 });
         }
     };
     if !out.is_null() {
-        println!("{out}");
+        print(&out);
     }
     process::exit(if out["ok"] == false { 1 } else { 0 });
+}
+
+/// Prints a command's answer; one that can't be written (a full disk) is a failure.
+fn print(text: impl Display) {
+    if let Err(e) = brigadier::heard(writeln!(std::io::stdout(), "{text}")) {
+        complain(format!("The answer couldn't be written: {e}"));
+        process::exit(1);
+    }
+}
+
+/// `eprintln!`, but for its panic where nobody reads what a command says went wrong.
+fn complain(text: impl Display) {
+    let _ = writeln!(std::io::stderr(), "{text}");
 }
 
 /// `computer type` takes its text on stdin, never on the command line, where others could read it [D902].

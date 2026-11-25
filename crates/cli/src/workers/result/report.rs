@@ -8,6 +8,7 @@ use crate::workers::{Link, git, read_json, write_json};
 use brigadier_core::{self as core};
 use brigadier_frames::log;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -36,6 +37,33 @@ fn fork(dir: &str, base: &str) -> String {
                 .unwrap_or(u64::MAX)
         })
         .unwrap_or_else(|| base.into())
+}
+
+/// The commits a worktree's own HEAD made since `start`, oldest last, by its reflog: what it merged,
+/// rebased onto or checked out of others' isn't its work. None where its reflog doesn't go back to
+/// `start`: none, or a worktree made again, whose log starts after commits it had made.
+pub(in crate::workers) fn own(dir: &str, start: &str) -> Option<Vec<String>> {
+    let log = git(dir, &["log", "-g", "--format=%H %gs", "HEAD"])?;
+    let first = log.lines().last()?.split(' ').next()?;
+    if first != start {
+        return None;
+    }
+    let made = |why: &str| {
+        let picked = |w: &str| why.starts_with(w) && why.contains("(pick)");
+        (why.starts_with("commit") || why.starts_with("cherry-pick") || why.starts_with("revert"))
+            || picked("rebase")
+            || picked("pull")
+            || ["(reword)", "(squash)", "(fixup)", "(continue)"]
+                .iter()
+                .any(|x| why.starts_with("rebase") && why.contains(x))
+    };
+    let mine: HashSet<&str> = (log.lines().filter_map(|l| l.split_once(' ')))
+        .filter(|(_, why)| made(why))
+        .map(|(sha, _)| sha)
+        .collect();
+    let range = git(dir, &["rev-list", &format!("{start}..HEAD")])?;
+    let kept = range.lines().filter(|sha| mine.contains(sha));
+    Some(kept.map(String::from).collect())
 }
 
 /// Writes one result: the sender's record, first, in the parent's folder [D54]. Then the worker's
@@ -147,8 +175,10 @@ pub(in crate::workers) fn write_as(
     // Its own commits since it began; merged once they're all in the parent's branch [D97].
     let start = (core::worktrees::lands(&dir).ok().flatten()).map(|l| l.base_commit);
     let made = start.as_ref().map_or(0, |c| {
-        let range = format!("{c}..HEAD");
-        git(&cwd, &["rev-list", "--count", &range]).map_or(0, |n| n.parse().unwrap_or(0))
+        let range = || git(&cwd, &["rev-list", "--count", &format!("{c}..HEAD")]);
+        (own(&cwd, c).map(|l| l.len()))
+            .or_else(|| range()?.parse().ok())
+            .unwrap_or(0)
     });
     let merged = landed && made > 0;
     let mut merge = String::new();
@@ -159,7 +189,7 @@ pub(in crate::workers) fn write_as(
         let log = git_lines(&cwd, &["log", "--oneline", &range], 20);
         let ahead = git(&cwd, &["rev-list", "--count", &format!("{base}..HEAD")]);
         let ahead: usize = ahead.map_or(0, |n| n.parse().unwrap_or(0));
-        commits = if merged { made } else { ahead };
+        commits = if merged { made } else { ahead.min(made) };
         text += &match merged {
             true => format!("Its branch {branch}, from {base}: {made} commits\n"),
             false => format!("Its branch {branch}, from {base}: {ahead} commits not in {base}\n"),
@@ -218,11 +248,13 @@ pub(in crate::workers) fn write_as(
         ) else {
             continue;
         };
-        let own = fork(&at, &base);
-        let made = git(&at, &["rev-list", "--count", &format!("{own}..HEAD")]);
+        let from = fork(&at, &base);
+        let start = (core::worktrees::lands(&rec).ok().flatten()).map(|l| l.base_commit);
+        let made = git(&at, &["rev-list", "--count", &format!("{from}..HEAD")]);
         let made: usize = made.map_or(0, |n| n.parse().unwrap_or(0));
+        let made = (start.and_then(|s| own(&at, &s))).map_or(made, |l| l.len().min(made));
         text += &format!("In {name}, its branch {branch}, from {base}: {made} commits\n");
-        for line in git_lines(&at, &["log", "--oneline", &format!("{own}..HEAD")], 20) {
+        for line in git_lines(&at, &["log", "--oneline", &format!("{from}..HEAD")], 20) {
             text += &format!("  {line}\n");
         }
         let dirty = git_lines(&at, &["status", "--porcelain"], 20);
@@ -233,7 +265,7 @@ pub(in crate::workers) fn write_as(
             text += &format!("Not merged into {base} in {name}.\n");
             merge = format!("unmerged={base}");
         }
-        let num = git(&at, &["diff", "--numstat", &format!("{own}...HEAD")]).unwrap_or_default();
+        let num = git(&at, &["diff", "--numstat", &format!("{from}...HEAD")]).unwrap_or_default();
         for mut n in num
             .lines()
             .map(|l| l.split_whitespace().map(|x| x.parse::<u64>().unwrap_or(0)))
@@ -257,12 +289,35 @@ pub(in crate::workers) fn write_as(
         (end.map_or(turn, |e| &e.id).into(), u64::MAX)
     });
     let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
+    // Its host died in it: the log says so, or left the turn open. A reviewer's end isn't named.
+    let logged = match of.end {
+        0 => f.end(turn),
+        at => (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == at),
+    };
+    let unended = of.end == u64::MAX || (of.end == 0 && f.turns.iter().any(|t| t.id == turn));
+    let cut = unended || logged.is_some_and(|e| e.how == "interrupted");
     let ended = f.last;
     text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
     text += &why.map_or(String::new(), |w| take::retry(wid, w));
+    // What it ended for, where that wasn't its model's work [D2038].
+    let cause = match how {
+        "finished" => Value::Null,
+        "stopped" => "user".into(),
+        "limit" => "quota".into(),
+        "failed" if cut || error.is_some() || why.is_some() => "infrastructure".into(),
+        "failed" if (ended.as_ref()).is_some_and(|e| e["outcome"] == "sign_in") => {
+            "environment".into()
+        }
+        _ => "unknown".into(),
+    };
+    if cut && how == "failed" {
+        text += &format!(
+            "Its process was cut off; nothing says its work was wrong. `brigadier send {wid} \"<go on>\"` carries it on where it stopped.\n"
+        );
+    }
     if direct {
         text = compact(
             wid,
@@ -344,12 +399,12 @@ pub(in crate::workers) fn write_as(
     let link_path = dir.join("worker.json");
     if let Some(mut l) = read_json::<Link>(&link_path) {
         l.last = json!({"how": how, "at": res.at, "landed": landed, "merged": merged,
-            "commits": commits, "added": added, "removed": removed});
+            "commits": commits, "added": added, "removed": removed, "cause": cause});
         crate::routing::real(&dir, &mut l.ran);
         write_json(&link_path, &l)?;
         // Its outcomes are its parent's asks; a turn the user started isn't one [D2038].
         if spec.is_some() && !direct {
-            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why});
+            let end = json!({"event": "outcome", "phase": "end", "how": how, "commits": commits, "at": res.at, "temporary": why.is_some(), "reason": why, "cause": cause});
             let _ = owner::call(data, wid, json!({"op": "note", "data": end}));
         }
     }

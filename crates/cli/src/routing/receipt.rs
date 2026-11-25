@@ -44,3 +44,19 @@ pub(crate) fn receipt(ran: &Value) -> Option<String> {
     }
     Some(text)
 }
+
+/// An account as Providers names it, for the receipt [D24]: its name, else which login it is.
+pub(super) fn label(v: &Value, agent: &str, id: &str) -> String {
+    if adapters::get(agent).is_none_or(|a| a.accounts().is_none()) {
+        return String::new();
+    }
+    let name = (accounts_of(v, agent).into_iter())
+        .find(|(x, _)| x == id)
+        .map(|(_, n)| n)
+        .unwrap_or_default();
+    match (name.is_empty(), id.is_empty()) {
+        (false, _) => name,
+        (true, true) => "This computer's login".into(),
+        (true, false) => "Another account".into(),
+    }
+}

@@ -3,11 +3,11 @@
 //! processes that ended, and the user's corrections. `--recall` prints the standard recall prompt
 //! and a checklist from the record to grade the answer against. Nothing is written.
 
-use crate::has;
+use crate::{has, heard};
 use brigadier_core::{self as core, Spec, archive};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::io;
+use std::io::{self, Write};
 
 const RECALL: &str = "Quick recall check, answer from memory only — don't run any command, read any file or open any link.
 
@@ -72,13 +72,13 @@ pub fn run(spec: &Spec, args: &[String]) -> io::Result<Value> {
             .collect();
         return Ok(json!({"ok": true, "sections": s}));
     }
+    let mut text = String::new();
     for (title, lines) in sections {
-        println!("{title}");
-        lines
-            .iter()
-            .for_each(|l| println!("  {}", l.replace('\n', "\n  ")));
-        println!();
+        text += &format!("{title}\n");
+        (lines.iter()).for_each(|l| text += &format!("  {}\n", l.replace('\n', "\n  ")));
+        text += "\n";
     }
+    heard(io::stdout().write_all(text.as_bytes()))?;
     Ok(Value::Null)
 }
 

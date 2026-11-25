@@ -385,6 +385,25 @@ pub fn still(data: &Path, id: &str) {
     }
 }
 
+/// What ended a worker's last task where it didn't finish: "infrastructure", "environment",
+/// "quota", "user" or "unknown"; "" where it did. One written before causes were kept: a failure
+/// its log has no end of was its host dying.
+pub(crate) fn cause<'a>(l: &'a Link, notes: &[Value]) -> &'a str {
+    if let Some(c) = l.last["cause"].as_str() {
+        return c;
+    }
+    let end = notes.iter().rev().find(|n| n["phase"] == "end");
+    match l.last["how"].as_str() {
+        Some("failed") if end.is_none_or(|e| e["how"] != "failed" || e["temporary"] == true) => {
+            "infrastructure"
+        }
+        Some("failed" | "context") => "unknown",
+        Some("limit") => "quota",
+        Some("stopped") => "user",
+        _ => "",
+    }
+}
+
 /// The start and end outcomes in a worker's log [D2038].
 pub(crate) fn outcomes(data: &Path, wid: &str) -> Vec<Value> {
     let f = core::fold(&core::session_dir(data, wid), true);
