@@ -13,13 +13,11 @@ import { Chevron } from "../src/components/thread/activity-row";
 import { ThreadLine } from "../src/components/thread/line";
 import { WorkingLine } from "../src/components/thread/work";
 import { showToast } from "../src/components/toast";
-import { Check, QuestionMarkCircle, Shuffle, XCircleFilled } from "../src/icons";
+import { Check, Moon, QuestionMarkCircle, Shuffle, Sun, XCircleFilled } from "../src/icons";
+import { nightLook as look, OvernightPill } from "../src/sessions/overnight-parts";
 import { Markdown } from "../src/thread/markdown";
-import { Brigade, DECIDED, DONE, FakeComposer, Hero, Level, MenuRoom, Moon, noop, NOT_DONE, OvernightMenu, OvernightPill, Panel, PLAN, ProjectRail, QUESTIONS, RESEARCH, run, Says, Scene, Step, Sun, TASK, WAITING, You } from "./overnight-parts";
+import { Brigade, DECIDED, DONE, FakeComposer, Hero, Level, MenuRoom, noop, NOT_DONE, OvernightMenu, Panel, PLAN, ProjectRail, QUESTIONS, RESEARCH, run, Says, Scene, Step, TASK, WAITING, You } from "./overnight-parts";
 
-const PILL = "aria-pressed:bg-picked-row aria-pressed:moonlit";
-const pill = (on: boolean) => cx(PILL, on && "moonlit");
-const look = (on: boolean) => (on ? "night-sky" : undefined);
 
 function NewChat() {
   const [on, setOn] = useState(true);
@@ -30,7 +28,7 @@ function NewChat() {
         look={look(on)}
         rail={<RailItem label="Composer utility bar"><ProjectRail /></RailItem>}
         placeholder={on ? "What should be done by morning?" : "Do anything"}
-        pills={<><Level overnight={on} /><Brigade /><OvernightPill on={on} onChange={setOn} className={pill(on)} /></>}
+        pills={<><Level overnight={on} /><Brigade /><OvernightPill on={on} onChange={setOn} /></>}
       />
     </>
   );
@@ -49,7 +47,7 @@ function Running() {
           initial={on ? undefined : "/over"}
           key={String(on)}
           menu={!on && <OvernightMenu onPick={() => setOn(true)} />}
-          pills={<><Level overnight={on} /><OvernightPill divider on={on} onChange={setOn} className={pill(on)} /></>}
+          pills={<><Level overnight={on} /><OvernightPill divider on={on} onChange={setOn} /></>}
         />
       }
     />
@@ -85,7 +83,7 @@ function Asking() {
   return (
     <Panel
       thread={<><Says id="a-a2">{PLAN}</Says>{started && <ThreadLine icon={Moon}>Overnight since 23:42</ThreadLine>}</>}
-      composer={<FakeComposer look="night-sky" rail={rail} placeholder={started ? "Working until you’re back" : "Anything else before you go?"} pills={<><Level overnight /><OvernightPill divider on onChange={noop} className={pill(true)} /></>} />}
+      composer={<FakeComposer look="night-sky" rail={rail} placeholder={started ? "Working until you’re back" : "Anything else before you go?"} pills={<><Level overnight /><OvernightPill divider on onChange={noop} /></>} />}
     />
   );
 }
@@ -107,7 +105,7 @@ function Night() {
           look="night-sky"
           running
           placeholder="Working until you’re back"
-          pills={<><Level overnight /><OvernightPill divider on onChange={noop} className={pill(true)} /></>}
+          pills={<><Level overnight /><OvernightPill divider on onChange={noop} /></>}
           rail={
             <RailItem label="Overnight">
               <div className="flex items-center gap-2 px-3.5 py-2 text-sm">
@@ -219,7 +217,7 @@ function Morning() {
           </SettingsCard>
         </>
       }
-      composer={<FakeComposer placeholder="Do anything" pills={<><Level overnight={false} /><OvernightPill divider on={false} onChange={noop} className={PILL} /></>} />}
+      composer={<FakeComposer placeholder="Do anything" pills={<><Level overnight={false} /><OvernightPill divider on={false} onChange={noop} /></>} />}
     />
   );
 }

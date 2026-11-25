@@ -19,6 +19,8 @@ import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
 import { BranchPicker, type RepoState } from "./branch";
 import { type DraftProject, ProjectPicker, RepoCount, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
+import { OVERNIGHT } from "../sessions/overnight";
+import { nightLook } from "../sessions/overnight-parts";
 
 /** "Good morning" from five until noon, "Good afternoon" until six, else "Good evening" (the old app's). */
 function greeting(now: number): string {
@@ -72,6 +74,9 @@ export type HomeProps = {
   modelError?: string | null;
   /** The permission level pill, 1t's LevelPicker, mounted by the caller. */
   level?: ReactNode;
+  /** Overnight picked for the session it starts. */
+  overnight?: boolean;
+  onOvernight?: (on: boolean) => void;
   offline: boolean;
   /** Whose words and files these are. */
   draft?: string;
@@ -108,7 +113,7 @@ export function HomeView(props: HomeProps) {
   const model = props.groups?.find((group) => group.provider === props.model?.provider)?.models.find((each) => each.id === props.model?.model);
   const files = useComposerFiles({ owner: HOME_DRAFT, draft: props.draft, run: daemonRun, field, backend: props.model?.provider, project: project?.id, images: model?.images !== false, onTiles: (tiles) => props.onDraft?.({ parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   // Asked once the project and model are known, and again once the project is trusted, whose folder it then reads [D178].
-  const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: !projects ? undefined : noModel ? null : props.model?.provider, project: project?.id, fresh: project?.trusted, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
+  const extras = useComposerCommands({ owner: HOME_DRAFT, run: daemonRun, field, backend: !projects ? undefined : noModel ? null : props.model?.provider, project: project?.id, extra: props.onOvernight ? [{ ...OVERNIGHT, run: () => props.onOvernight!(!props.overnight) }] : [], fresh: project?.trusted, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   // Put in from elsewhere (a note's selection), above what's typed, as a session's composer takes it.
   usePutBack(HOME_DRAFT, (message, above, draft) => {
     const now = above ? (field.current?.parts() ?? []) : [];
@@ -210,6 +215,7 @@ export function HomeView(props: HomeProps) {
       }
       onDragOver={files.onDragOver}
       onDrop={files.onDrop}
+      look={nightLook(props.overnight === true)}
       tiles={files.tilesRow}
       plus={extras.plus}
       level={props.level}
@@ -219,7 +225,7 @@ export function HomeView(props: HomeProps) {
       <ComposerField
         ref={field}
         initial={props.initial}
-        placeholder={props.review ? "Ask about this pull request" : "Do anything"}
+        placeholder={props.review ? "Ask about this pull request" : props.overnight ? "What should be done by morning?" : "Do anything"}
         autoFocus
         attachments={files.attachments}
         onAttach={files.attach}

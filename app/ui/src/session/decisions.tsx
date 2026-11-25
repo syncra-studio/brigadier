@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../components/button";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
@@ -252,7 +252,7 @@ export const useApprovalWaiting = (id: string, source: Source) => useWaiting(id,
  * The questions waiting, on the rail above the composer, one at a time, ‹ 1 of 2 › between them; Esc puts them aside
  * [D199, D207]. A mockup's card shows its variants' pictures as they are now, and Open brings its own tab to the front.
  */
-export function SessionQuestions({ id, run, source, ...takes }: { id: string; run: Runner; source: Source; /** The agent that takes an answer's images, and whether its model can. */ backend?: string; images: boolean }) {
+export function SessionQuestions({ id, run, source, night, ...takes }: { id: string; run: Runner; source: Source; /** Under the card: Overnight's Start night. */ night?: ReactNode; /** The agent that takes an answer's images, and whether its model can. */ backend?: string; images: boolean }) {
   const { questions, error, dismiss } = useWaiting(id, source);
   const [aside, setAside] = useState(false);
   // The card shown, by id, so another coming or going doesn't change it; where it was, for the one after it when it goes.
@@ -269,7 +269,7 @@ export function SessionQuestions({ id, run, source, ...takes }: { id: string; ru
     ? question
     : { ...question, items: question.items.map((item) => ({ ...item, options: item.options.map((option) => ({ ...option, shot: drawn.find((each) => each.letter === option.letter)?.shot })) })) };
   return (
-    <RailItem variant="decision" label="Waiting for you">
+    <RailItem variant="decision" label={night ? "Before you go" : "Waiting for you"}>
       <QuestionCard
         key={question.id}
         session={id}
@@ -288,20 +288,23 @@ export function SessionQuestions({ id, run, source, ...takes }: { id: string; ru
           )
         }
         footer={
-          questions.length > 1 && (
-            <div className="flex items-start">
-              <MoreWaiting more={questions.length - 1 - at} />
-              <StepCounter
-                noun="decision"
-                at={at}
-                count={questions.length}
-                canBack={at > 0}
-                canForward={at < questions.length - 1}
-                onStep={(by) => setShown({ id: questions[at + by]?.id ?? null, index: at + by })}
-                className="ms-auto pe-4 pb-3"
-              />
-            </div>
-          )
+          <>
+            {night}
+            {questions.length > 1 && (
+              <div className="flex items-start">
+                <MoreWaiting more={questions.length - 1 - at} />
+                <StepCounter
+                  noun="decision"
+                  at={at}
+                  count={questions.length}
+                  canBack={at > 0}
+                  canForward={at < questions.length - 1}
+                  onStep={(by) => setShown({ id: questions[at + by]?.id ?? null, index: at + by })}
+                  className="ms-auto pe-4 pb-3"
+                />
+              </div>
+            )}
+          </>
         }
       />
     </RailItem>

@@ -39,6 +39,8 @@ export type HomeDraft = {
   level?: PermissionLevel;
   /** Brigade picked here, for the next session only: a session is one from its first message or never [D209]. */
   brigade?: boolean;
+  /** Overnight picked here, for the next session only. */
+  overnight?: boolean;
   /** Bumped to put the cursor in the field. */
   focus: number;
   /** A PR sent to the agent, while Home is in its project in a new worktree [D699]. */
@@ -243,7 +245,7 @@ const placeArgs = ({ workIn, base, worktree, pr }: Place): string[] =>
 const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
 
 /** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
-export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean): void {
+export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean, overnight?: boolean): void {
   const id = sessionId();
   const cid = newId();
   const key = draftKey();
@@ -253,13 +255,14 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
   if (brigade) args.push("--brigade");
+  if (overnight) args.push("--overnight");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", link ? withLink(parts, link) : parts);
   const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ level: undefined, brigade: undefined, pr: undefined, once: undefined, model });
+  setHomeDraft({ level: undefined, brigade: undefined, overnight: undefined, pr: undefined, once: undefined, model });
   // Its PR tab closes on Home: the session has the PR's page instead [D699].
   const tab = place.pr && tabsOf(HOME).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
   if (tab) closeTab(HOME, tab.id);

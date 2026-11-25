@@ -1,10 +1,6 @@
-/* Mockup only: Overnight's looks on the composer's own card. */
-@reference "../src/theme.css";
-
-/* A: a night sky behind the card's words: a violet glow from its end corner over the page's darkest fill, and stars. */
+/* Overnight's looks. The composer's card: a night sky behind the card's words: a violet glow from its end corner over the page's darkest fill, and stars. */
 .night-sky [data-slot="composer-card"] {
   isolation: isolate;
-  overflow: hidden;
   background-color: var(--color-surface-under);
   box-shadow: inset 0 0 0 calc(var(--spacing) * 0.25) var(--color-picked);
 }
@@ -15,6 +11,7 @@
   position: absolute;
   inset: 0;
   z-index: -1;
+  border-radius: inherit;
   pointer-events: none;
 }
 .night-sky [data-slot="composer-card"]::before {
@@ -71,31 +68,4 @@
 .sunrise::before {
   opacity: 0.28;
   background-image: radial-gradient(ellipse at top right, var(--color-tile-coral), var(--color-tile-violet) calc(var(--spacing) * 45), transparent calc(var(--spacing) * 95));
-}
-
-/* B: lights out. The window goes to its darkest fill and quiets down; the card is a hairline, the moon the one light. */
-.lights-out {
-  background-color: var(--color-surface-under);
-}
-.lights-out [data-slot="composer-card"] {
-  background-color: var(--color-surface-under);
-  box-shadow: inset 0 0 0 calc(var(--spacing) * 0.25) var(--color-border);
-}
-.lights-out .dim {
-  opacity: 0.55;
-}
-.lights-out .dim:hover,
-.lights-out .dim:focus-within {
-  opacity: 1;
-}
-
-/* C: moonlight on the card's edge only; the card keeps its fill. */
-.moon-edge [data-slot="composer-card"] {
-  position: relative;
-  box-shadow:
-    inset 0 0 0 calc(var(--spacing) * 0.375) var(--color-tile-periwinkle),
-    0 0 calc(var(--spacing) * 10) calc(var(--spacing) * -4) var(--color-tile-periwinkle);
-}
-.moonlit-blue {
-  color: var(--color-tile-periwinkle);
 }

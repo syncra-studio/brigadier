@@ -21,11 +21,11 @@ type Listed = { name: string; description?: string; kind: SlashCommand["kind"]; 
 
 /**
  * A composer's `/` menu, its + menu and what a chip opens, for `owner` (a session's id, or Home's draft): the agent's
- * own commands from Rust, kept per agent and project, plus `extra` (Brigadier's /new); an instant one runs at once
+ * own commands from Rust, kept per agent and project, plus `extra` (Brigadier's /new and /overnight, which runs its own); an instant one runs at once
  * through the agent's own call [D164, D315, D2009, D2011]. Asked again when `fresh` changes (a turn starts or ends) or a menu opens (Settings › Plugins may have changed since).
  * Home's `backend`: undefined until its project and model are known, the menu loading meanwhile; null, no agent to ask [D178].
  */
-export function useComposerCommands({ owner, run, field, backend, project, extra = [], fresh, onFiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string | null; project?: string | null; extra?: SlashCommand[]; fresh?: unknown; onFiles: (files: File[]) => void }) {
+export function useComposerCommands({ owner, run, field, backend, project, extra = [], fresh, onFiles }: { owner: string; run: Runner; field: RefObject<ComposerFieldHandle | null>; backend?: string | null; project?: string | null; extra?: (SlashCommand & { run?: () => void })[]; fresh?: unknown; onFiles: (files: File[]) => void }) {
   // Kept with what it was asked for: another agent's or project's list reads as loading, never as this one's [D178].
   const [kept, setKept] = useState<{ key: string; list: SlashCommand[] } | null>(null);
   const [chats, setChats] = useState<Mention[]>([]);
@@ -60,13 +60,15 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     for (const heard of hearing) heard();
   }, [owner, listed]);
 
-  // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra` is [] or [/new].
+  // The same array until the list changes: a new one each render re-ran the `/` menu, whose update re-rendered Home, and so on. `extra`'s length says what it holds.
   // Brigadier's tools first, so an agent's own command of the same name is the one typing it makes.
   const all = useMemo(() => listed && [...TOOL_COMMANDS, ...listed, ...extra], [listed, extra.length]);
   const commands: Commands = {
     commands: all,
     onMenu: () => setOpened((times) => times + 1),
     onRun: (command) => {
+      const own = extra.find((each) => each.id === command.id)?.run;
+      if (own) return own();
       // Home has no session to run it in yet: the old app's hint (its instant ones are /compact) [D2098].
       if (home) return void showToast("Send a message before compacting.");
       void run(["command", owner, command.label.slice(1)]).then((reply) => {
