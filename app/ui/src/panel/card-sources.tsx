@@ -12,7 +12,7 @@ import { openSettings } from "../settings/shell";
 import { openTab } from "../shell/tab-store";
 import type { Item } from "../thread/item";
 import { CardSection } from "./card";
-import { Line } from "./source/rows";
+import { Line, Rows } from "./source/rows";
 
 type Source = { kind: "link"; url: string } | { kind: "server" | "skill"; name: string };
 
@@ -44,14 +44,13 @@ const shown = (url: string) => url.replace(/^https?:\/\/(www\.)?/, "").replace(/
 
 /**
  * Sources [D146 D153 D154 D155]: a row a link, opening in a browser tab, and a row a plugin the session
- * called, opening Settings › Plugins; 5, then View all. Its + uses a plugin (an @ chip in the composer) or attaches
- * files through the composer's own attach. None when there's nothing to list.
+ * called, opening Settings › Plugins; folded as Attachments [D139, D151]. Its + uses a plugin (an @ chip in the
+ * composer) or attaches files through the composer's own attach. None when there's nothing to list.
  */
 export function SourcesCard({ owner }: { owner: string }) {
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
   const items = session?.id === owner ? session.items : NONE;
   const sources = useMemo(() => sourcesOf(items), [items]);
-  const [all, setAll] = useState(false);
   const [plugins, setPlugins] = useState<PluginItem[] | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   if (sources.length === 0) return null;
@@ -82,22 +81,19 @@ export function SourcesCard({ owner }: { owner: string }) {
   );
   return (
     <CardSection title="Sources" fold="sources" count={sources.length} end={add}>
-      {(all ? sources : sources.slice(0, 5)).map((source) =>
-        source.kind === "link" ? (
-          <Line key={source.url} icon={<Link />} title={source.url} onClick={() => openTab(owner, "browser", source.url)}>
-            {shown(source.url)}
-          </Line>
-        ) : (
-          <Line key={source.name} icon={source.kind === "server" ? <Mcp /> : <ToolsSkills />} onClick={() => openSettings("plugins")}>
-            {source.name}
-          </Line>
-        ),
-      )}
-      {!all && sources.length > 5 && (
-        <Line icon={<Link />} onClick={() => setAll(true)} className="text-muted-foreground">
-          View all
-        </Line>
-      )}
+      <Rows items={sources} fold={3}>
+        {(source) =>
+          source.kind === "link" ? (
+            <Line key={source.url} icon={<Link />} title={source.url} onClick={() => openTab(owner, "browser", source.url)}>
+              {shown(source.url)}
+            </Line>
+          ) : (
+            <Line key={source.name} icon={source.kind === "server" ? <Mcp /> : <ToolsSkills />} onClick={() => openSettings("plugins")}>
+              {source.name}
+            </Line>
+          )
+        }
+      </Rows>
       <input
         ref={picker}
         type="file"
