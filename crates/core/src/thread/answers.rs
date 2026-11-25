@@ -7,9 +7,10 @@ use std::collections::BTreeSet;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub(super) struct Answers {
-    /// The first message its running turn took, by `n`, and how many its block took.
+    /// The first message its running turn took, by `n`.
     asked: Option<u64>,
-    took: usize,
+    /// One came after the request that opened its block, whoever made that.
+    followed: bool,
     /// The last reply of each turn that took some and ended well, by `n`.
     replies: Vec<u64>,
 }
@@ -28,13 +29,13 @@ impl Open {
     }
 
     /// `n` of its rows before its last reply that stay out of its work fold, those answers too
-    /// once it took several messages: a lone one's is its last reply [D118].
+    /// once it was followed up: till then the block's answer is its last reply [D118].
     pub(super) fn kept_till(&self, answer: u64) -> Vec<u64> {
         let replies = self
             .answers
             .replies
             .iter()
-            .filter(|_| self.answers.took > 1);
+            .filter(|_| self.answers.followed);
         let kept: BTreeSet<u64> = self.kept.iter().chain(replies).copied().collect();
         kept.range(..answer).copied().collect()
     }
@@ -46,7 +47,7 @@ impl Thread {
         let user = row["kind"] == "message" && row["role"] == "user" && row["origin"] == "user";
         if let Some(o) = self.open.as_mut().filter(|_| user) {
             o.answers.asked.get_or_insert(n);
-            o.answers.took += 1;
+            o.answers.followed |= row["cid"] != o.id.as_str();
         }
     }
 
@@ -60,10 +61,10 @@ impl Thread {
         };
         let holds = self.helpers(id) > 0 || self.working();
         if let Some((o, work)) = (self.held.get_mut(id)).filter(|(o, _)| holds && !o.cut()) {
-            o.answers.took += 1;
+            o.answers.followed = true;
             // Kept to carry on from, as the held one is.
             if let Some(ended) = self.ended.as_mut().filter(|e| e.id == o.id) {
-                ended.answers.took += 1;
+                ended.answers.followed = true;
             }
             if let (Some(answer), false) = (o.answer, work.is_null()) {
                 work["kept"] = o.kept_till(answer).into();
