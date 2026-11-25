@@ -53,17 +53,6 @@ fn tell<'a>(data: &Path, id: &str, jobs: impl IntoIterator<Item = &'a fold::Job>
     }
 }
 
-/// The workers under a session, theirs too; a Brigade's sessions aren't among them [D189].
-pub(super) fn family(data: &Path, id: &str) -> Vec<workers::Record> {
-    (workers::records(data, id).into_iter())
-        .filter(|r| !r.session)
-        .flat_map(|r| {
-            let below = family(data, &r.wid);
-            std::iter::once(r).chain(below)
-        })
-        .collect()
-}
-
 /// Ends what a worker whose turns are over, their results not held for it, left running, a mockup's
 /// server too, but what it `leaves`. Those that couldn't be ended.
 pub(crate) fn end(

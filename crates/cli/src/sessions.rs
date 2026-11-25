@@ -17,12 +17,11 @@ mod audit;
 mod jobs;
 mod servers;
 pub(crate) use jobs::end as end_jobs;
-use jobs::family;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let spec = match core::load(data, id) {
-        // One already deleted, with its Brigade or by another delete, has nothing to check or remove.
+        // One already deleted, by another delete, has nothing to check or remove.
         Err(e) if e.kind() == io::ErrorKind::NotFound && args[0] == "delete" => {
             return Ok(match has(args, "--check") {
                 true => json!({"ok": true}),
@@ -43,24 +42,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .collect::<io::Result<_>>()?;
             let mut running = vec![];
             for (id, spec) in specs {
-                running.extend(archive(data, id, &spec, false)?);
-                // A Brigade's sessions go with it, each archived as it would be alone; one that
-                // fails stays and is named, and those archived stay archived [D3111].
-                let failed: Vec<String> = (subs(data, &spec, unarchived).iter())
-                    .filter_map(|sub| {
-                        match core::load(data, sub).and_then(|s| archive(data, sub, &s, true)) {
-                            Ok(more) => running.extend(more),
-                            Err(e) => return Some(format!("{sub}: {e}")),
-                        }
-                        None
-                    })
-                    .collect();
-                if !failed.is_empty() {
-                    let failed = failed.join("; ");
-                    return Err(io::Error::other(format!(
-                        "its sessions not archived: {failed}"
-                    )));
-                }
+                running.extend(archive(data, id, &spec)?);
             }
             // All are archived; a worker's process that wouldn't stop is named.
             if !running.is_empty() {
@@ -70,24 +52,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 )));
             }
         }
-        // The Brigade's restore brings back the sessions archived with it, not one archived on
-        // its own before [D3111].
-        "restore" => {
-            let with = subs(data, &spec, session::went_with);
-            session::restore(data, &spec)?;
-            let failed: Vec<String> = (with.iter())
-                .filter_map(|sub| {
-                    let e = core::load(data, sub).and_then(|s| session::restore(data, &s));
-                    e.err().map(|e| format!("{sub}: {e}"))
-                })
-                .collect();
-            if !failed.is_empty() {
-                let failed = failed.join("; ");
-                return Err(io::Error::other(format!(
-                    "its sessions not restored: {failed}"
-                )));
-            }
-        }
+        "restore" => session::restore(data, &spec)?,
         // `jobs <id> history`: everything that ran in the background, its workers' too, each with
         // its worker's name, newest first [D200].
         "jobs" if arg(args, 2)? == "history" => {
@@ -98,7 +63,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Ok::<_, io::Error>(fold::history(dir, &left))
             };
             let mut history = runs(&spec.dir)?;
-            for r in family(data, id) {
+            for r in workers::below(data, id) {
                 let dir = core::session_dir(data, &r.wid);
                 if dir.join(fold::HISTORY).exists() {
                     history.extend(runs(&dir)?.into_iter().map(|mut run| {
@@ -163,60 +128,26 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
 /// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
-/// A Brigade's sessions that go with it are checked too, and listed under it in `with` [D3111].
 fn check(data: &Path, ids: &[String]) -> Value {
-    let mut ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
-    // One picked as well isn't counted twice.
-    let family: Vec<(String, Vec<String>)> = (ids.iter())
-        .filter_map(|id| core::load(data, id).ok())
-        .map(|s| {
-            let subs = subs(data, &s, unarchived);
-            (
-                s.id,
-                subs.into_iter().filter(|x| !ids.contains(x)).collect(),
-            )
-        })
-        .filter(|(_, subs): &(String, Vec<String>)| !subs.is_empty())
-        .collect();
-    ids.extend(family.iter().flat_map(|(_, subs)| subs.iter().cloned()));
-    let with: serde_json::Map<String, Value> = (family.into_iter())
-        .map(|(id, subs)| (id, subs.into()))
-        .collect();
+    let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
     let all = procs::all();
     let running: Vec<&String> = (ids.iter())
         .filter(|s| workers::at_work(data, s, &all))
         .collect();
-    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids), "with": with})
-}
-
-/// A Brigade's sessions whose folder passes `keep`, oldest first [D3111].
-fn subs(data: &Path, spec: &core::Spec, keep: fn(&Path) -> bool) -> Vec<String> {
-    (spec.brigade.then(|| workers::records(data, &spec.id)))
-        .into_iter()
-        .flatten()
-        .filter(|r| r.session && keep(&core::session_dir(data, &r.wid)))
-        .map(|r| r.wid)
-        .collect()
-}
-
-/// Those an archive takes with their Brigade: ones that exist, not archived, with no archive,
-/// restore or delete recorded, so a delete left unfinished keeps its record [D35, D3111].
-fn unarchived(dir: &Path) -> bool {
-    dir.join("session.json").exists() && matches!(session::lifecycle(dir), (None, Value::Null))
+    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids)})
 }
 
 /// One session's archive: what a rewind or Replace all cut short settles first, its host stops,
-/// then core archives it. `with`: a Brigade's session going with it [D3111]. Archived, its workers
-/// whose processes didn't stop.
-fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
+/// then core archives it. Archived, its workers whose processes didn't stop.
+fn archive(data: &Path, id: &str, spec: &core::Spec) -> io::Result<Vec<String>> {
     crate::overnight::archived(data, id)?;
     let _family = workers::family_lock(data, id)?;
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
-        .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
+        .and_then(|()| session::archive(spec, || stop(data, id, "archive")))?;
     // What its finished workers left running goes; one at work keeps its own.
-    let running = (family(data, id).iter())
+    let running = (workers::below(data, id).iter())
         .filter_map(|w| {
             let why = match end_jobs(data, &w.wid, |_| false) {
                 Ok(left) => format!("process {} didn't stop", left.first()?.0),
@@ -244,7 +175,7 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
 }
 
 /// One session's delete: its host stops, then core deletes it, recording its intent first. One
-/// whose folder went meanwhile, by its Brigade's delete or its own, is done [D35].
+/// whose folder went meanwhile, by another delete, is done [D35].
 pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
     let dir = core::session_dir(data, id);
     match delete_one(data, id, drop, by) {

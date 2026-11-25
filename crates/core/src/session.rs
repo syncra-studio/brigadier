@@ -19,8 +19,6 @@ use std::{fs, io};
 const INTENT: &str = "lifecycle.json";
 /// When the session was archived (ms).
 const ARCHIVED: &str = "archived";
-/// A Brigade's sub-session archived with it: the Brigade's restore brings back only these [D3111].
-const WITH: &str = "archived-with";
 
 fn intent(dir: &Path) -> Option<Value> {
     serde_json::from_slice(&fs::read(dir.join(INTENT)).ok()?).ok()
@@ -35,11 +33,6 @@ fn clear(dir: &Path, name: &str) -> io::Result<()> {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
     }
-}
-
-/// Whether it was archived with its Brigade, and is still [D3111].
-pub fn went_with(dir: &Path) -> bool {
-    dir.join(WITH).exists() && dir.join(ARCHIVED).exists()
 }
 
 /// When it was archived, and the operation recorded on it: what its row shows.
@@ -88,16 +81,10 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
-/// `with`: a Brigade's sub-session going with it, so its restore brings this back [D3111].
-pub fn archive(spec: &Spec, with: bool, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+pub fn archive(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
         return Ok(());
-    }
-    // Set or cleared first: one left by an archive that failed never counts once archived alone.
-    match with {
-        true => write_atomic(&spec.dir.join(WITH), b"")?,
-        false => clear(&spec.dir, WITH)?,
     }
     record(&spec.dir, &json!({"op": "archive"}))?;
     // A host that won't exit may still be working in the worktree: nothing goes, nothing is left to finish.
@@ -228,7 +215,6 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         }
     }
     clear(&spec.dir, ARCHIVED)?;
-    clear(&spec.dir, WITH)?;
     clear(&spec.dir, INTENT)
 }
 
@@ -308,7 +294,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         Err(_) if !dir.join("session.json").exists() => return gone(dir),
         Err(e) => return fail(vec![format!("{}: {e}", dir.display())], 0),
     };
-    // Another delete got here first, its Brigade's or its own: what's gone is done [D35].
+    // Another delete got here first: what's gone is done [D35].
     if !dir.join("session.json").exists() {
         return gone(dir);
     }
