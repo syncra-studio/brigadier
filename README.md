@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/screenshot.png" width="800" alt="Brigadier on made-up data: a chat mid-task that started two workers, one already merged with its review's result, the other still running.">
+  <img src=".github/assets/screenshot.png" width="800" alt="Brigadier on made-up data: a chat mid-task showing the code it edited, with three workers running and two messages queued. Beside it, the changes, the pull request, the plan and the project's files.">
 </p>
 
 Brigadier runs the coding agents you already use, Claude Code, Codex and OpenCode, each one's own
