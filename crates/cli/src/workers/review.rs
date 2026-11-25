@@ -138,7 +138,8 @@ pub(super) fn holds(
         None | Some("done" | "off") if on && again(l, &r, turn) => {
             let past = past(&r);
             l.review = json!({"state": "running", "turn": turn, "past": past,
-                "since": r["head"], "head": r["head"], "line": null});
+                "since": r["head"], "head": r["head"],
+                "asked": r["at"], "at": r["at"], "line": null});
             let _ = save(data, wid, l);
             if task::spans(data, wid, &l.review["since"]).is_empty() {
                 // Nothing new of its own: as it was.
@@ -193,7 +194,7 @@ pub(super) fn holds(
                 line += &format!("; the fix turn {}", word(how));
             }
             (l.review["state"], l.review["line"]) = ("done".into(), line.into());
-            l.review["head"] = task::heads(data, wid);
+            (l.review["head"], l.review["at"]) = task::heads(data, wid);
             note(
                 data,
                 wid,
@@ -335,7 +336,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
             (Some(why), ..) => off(data, &mut a, of, &why),
             (None, Some(0), _) => {
                 a.review["state"] = "done".into();
-                a.review["head"] = task::heads(data, of);
+                (a.review["head"], a.review["at"]) = task::heads(data, of);
                 a.review["line"] = reviewed(&a.review, None, None).into();
                 note(data, of, &a.review, [Some(0), None, None], None);
             }

@@ -39,25 +39,44 @@ pub(super) fn spans(data: &Path, wid: &str, since: &Value) -> Vec<Span> {
         .collect()
 }
 
-/// Where each of its worktrees is now, for `spans` after the next ask.
-pub(super) fn heads(data: &Path, wid: &str) -> Value {
+/// Where each of its worktrees is now, for `spans` after the next ask, and when (ms).
+pub(super) fn heads(data: &Path, wid: &str) -> (Value, Value) {
     let heads = trees(data, wid).into_iter().filter_map(|(repo, _, at)| {
         let head = git(&at, &["rev-parse", "HEAD"])?;
         Some((repo, Value::from(head)))
     });
-    Value::Object(heads.collect())
+    (
+        Value::Object(heads.collect()),
+        brigadier_frames::log::now_ms().into(),
+    )
 }
 
-/// What it was asked after its brief, in its parent's words.
-fn asked_since(data: &Path, wid: &str) -> String {
-    let f = core::fold(&core::session_dir(data, wid), true).map(|f| f.fold);
-    let last = f.ok().and_then(|f| f.last).unwrap_or_default();
-    match last["text"].as_str().filter(|t| !t.trim().is_empty()) {
-        Some(t) => format!(
-            "\n\nIt was asked since, and only this is new:\n{}",
-            cut(t.trim().into(), 4 << 10)
+/// What its parent or the user asked it after `since` (ms), or after its brief where that's none.
+fn asked_since(data: &Path, wid: &str, l: &Link, since: Option<u64>) -> String {
+    let mut asked = vec![];
+    let _ = core::read(&core::session_dir(data, wid), |i| {
+        let e = core::archive::entry(i, String::new());
+        asked.extend(e.filter(|e| e.from == "user" || (e.from == "peer" && e.who == l.parent)));
+    });
+    let words: Vec<String> = (asked.iter().skip(since.is_none() as usize))
+        .filter(|e| since.is_none_or(|at| e.ts > at))
+        .map(|e| {
+            // Without the line a peer's message opens with.
+            let own = e
+                .text
+                .starts_with("[From session")
+                .then(|| e.text.split_once("]\n\n"));
+            own.flatten()
+                .map_or(e.text.trim(), |x| x.1.trim())
+                .to_string()
+        })
+        .collect();
+    match words.is_empty() {
+        true => String::new(),
+        false => format!(
+            "\n\nIt was asked since, and only what it did for this is new:\n{}",
+            cut(words.join("\n\n"), 6 << 10)
         ),
-        None => String::new(),
     }
 }
 
@@ -139,14 +158,19 @@ pub(crate) fn plan(
             "" => format!(
                 "Its work is the commits {base}..{head}; your worktree is checked out at {head}: `git log -p {base}..{head}`."
             ),
-            repo => format!(
-                "In {repo}, its work is the commits {base}..{head}: `brigadier repo {repo}`, then there `git checkout --detach {head}` and `git log -p {base}..{head}`.\n"
-            ),
+            name => {
+                let repo = format!("'{}'", name.replace('\'', r"'\''"));
+                format!(
+                    "In {name}, its work is the commits {base}..{head}: `brigadier repo {repo}`, then there `git checkout --detach {head}` and `git log -p {base}..{head}`.\n"
+                )
+            }
         };
     }
-    let since = match l.review["since"].is_object() && switch {
+    // After an earlier review: what came since is what this one is of.
+    let later = switch && l.review["past"].as_array().is_some_and(|p| !p.is_empty());
+    let since = match later {
         false => String::new(),
-        true => asked_since(data, of),
+        true => asked_since(data, of, &l, l.review["asked"].as_u64()),
     };
     let brief = format!(
         "Adversarial review of {} ({of}). Its task, as it was given:\n{}{since}\n\n{}{given}\n\n{BRIEF}",
