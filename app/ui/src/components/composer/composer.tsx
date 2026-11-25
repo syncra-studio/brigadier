@@ -1,13 +1,10 @@
 import { Button as BaseButton } from "@base-ui/react/button";
-import { type ComponentProps, type MouseEvent, type ReactNode, useRef, useState } from "react";
+import { type ComponentProps, type MouseEvent, type ReactNode } from "react";
 
 import { Plus } from "../../icons";
-import { Button } from "../button";
 import { cx } from "../cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
 import { Kbd } from "../kbd";
-import { type Draft, isEmpty } from "./draft";
-import { ComposerField, type ComposerFieldHandle } from "./field";
 import { ComposerRail } from "./rail";
 
 /**
@@ -145,43 +142,5 @@ export function SharedComposer({
       </ComposerCard>
       {after}
     </Composer>
-  );
-}
-
-/**
- * Editing a sent message in the thread, to send it again: the composer's field in a composer-coloured card,
- * Cancel and Send under it. Enter sends, Esc cancels.
- */
-export function EditComposer({ initial, onCancel, onSend }: { initial: Draft; onCancel: () => void; onSend: (parts: Draft["parts"]) => void }) {
-  const field = useRef<ComposerFieldHandle>(null);
-  const [empty, setEmpty] = useState(isEmpty(initial));
-  const send = () => {
-    const parts = field.current!.parts();
-    if (!isEmpty({ parts, attachmentIds: initial.attachmentIds })) onSend(parts);
-  };
-  return (
-    <div className="flex flex-col px-2">
-      <div className="ms-auto flex w-full flex-col gap-2 rounded-composer bg-composer p-2">
-        <ComposerField
-          ref={field}
-          initial={initial}
-          placeholder=""
-          label="Edit message"
-          size="edit"
-          autoFocus
-          onChange={(parts) => setEmpty(isEmpty({ parts, attachmentIds: initial.attachmentIds }))}
-          onSubmit={send}
-          onEscape={onCancel}
-        />
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" className="border border-border" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button size="sm" disabled={empty} onClick={send}>
-            Send
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }

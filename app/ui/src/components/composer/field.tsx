@@ -63,11 +63,10 @@ export type ComposerFieldHandle = {
   focus(): void;
 };
 
-// The composer's field grows to a quarter of the window, then scrolls; the edit box to its bubble's limit; a
-// question card's answer to 8rem, a line tall at first; an approval's reason stays one line and slides sideways.
+// The composer's field grows to a quarter of the window, then scrolls; a question
+// card's answer to 8rem, a line tall at first; an approval's reason stays one line and slides sideways.
 const SIZES = {
   composer: { box: "max-h-composer-max text-base", pad: "min-h-composer px-2 py-2.5" },
-  edit: { box: "max-h-user-message text-base", pad: "min-h-composer px-2 py-1" },
   card: { box: "max-h-32 text-code", pad: "min-h-5" },
   line: { box: "h-5 text-code", pad: "min-h-5" },
 };
