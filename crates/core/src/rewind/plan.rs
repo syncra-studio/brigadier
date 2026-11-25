@@ -48,13 +48,15 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     let pre = store.capture().map_err(unread)?;
     // Between the turns, where what changed is the user's: how each path was then last left.
     let (mut agent, mut theirs) = (BTreeSet::new(), BTreeMap::new());
+    let mut between = vec![];
     // The same for permissions alone.
     let (mut bits, mut since) = (BTreeSet::new(), BTreeSet::new());
     for (i, (before, end)) in shots.iter().enumerate() {
         agent.extend(store.diff(before, end).map_err(unread)?);
         let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
         let gap = store.diff(end, next).map_err(unread)?;
-        theirs.extend(gap.into_iter().map(|p| (p, next)));
+        theirs.extend(gap.iter().cloned().map(|p| (p, next)));
+        between.push((gap, next));
         bits.extend(store.modes_differ(before, end).map_err(unread)?);
         since.extend(store.modes_differ(end, next).map_err(unread)?);
     }
@@ -82,11 +84,28 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         .collect();
     let held = |p: &String| !put.contains(p) && store.file(p).is_some_and(|f| own.contains(&f));
     hand.extend((agent.intersection(&moved)).filter(|p| held(p)).cloned());
-    let wanted: BTreeSet<String> = (agent.intersection(&moved))
+    // What the user left where something else is now stays, wherever the agent put it.
+    let mut kept = vec![];
+    for (gap, shot) in between {
+        let lost = &(&gap & &agent) - &put;
+        kept.extend(store.copies(shot, &pre, &lost).map_err(unread)?);
+    }
+    hand.extend(kept.into_iter().filter(|p| moved.contains(p)));
+    let mut wanted: BTreeSet<String> = (agent.intersection(&moved))
         .filter(|p| put.contains(*p) || (!hand.contains(*p) && !out.contains(*p)))
         .cloned()
         .collect();
-    let (paths, blocked) = store.open(&wanted);
+    let (paths, blocked) = loop {
+        let (paths, blocked) = store.open(&wanted);
+        // So does what can't go back.
+        let kept = store.copies(&target, &pre, &blocked).map_err(unread)?;
+        let before = wanted.len();
+        wanted.retain(|p| !kept.contains(p) || put.contains(p));
+        if wanted.len() == before {
+            break (paths, blocked);
+        }
+        hand.extend(kept);
+    };
     // The agent's copy must not go without it.
     if !put.is_disjoint(&blocked) {
         return Err("unreadable");

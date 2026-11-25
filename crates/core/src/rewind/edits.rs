@@ -15,6 +15,25 @@ impl Store {
             || above(path).any(|d| at(d).is_ok_and(|m| m.is_symlink()))
     }
 
+    /// The files in `now` that git takes for copies of `paths` as `of` has them.
+    pub(super) fn copies(
+        &self,
+        of: &Shot,
+        now: &Shot,
+        paths: &BTreeSet<String>,
+    ) -> io::Result<Vec<String>> {
+        if paths.is_empty() {
+            return Ok(vec![]);
+        }
+        let args = ["diff-tree", "-r", "-z", "-C", "--no-rename-empty"];
+        let only = ["--diff-filter=CR", "--name-status", &of.tree, &now.tree];
+        let all = split(self.read(&[&args[..], &only].concat())?)?;
+        Ok((all.as_chunks::<3>().0.iter())
+            .filter(|[_, from, _]| paths.contains(from))
+            .map(|[_, _, to]| to.clone())
+            .collect())
+    }
+
     /// `target` with each of `theirs` as its own capture has it, and those that one has a file for.
     pub(super) fn with(
         &self,
