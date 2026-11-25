@@ -130,6 +130,7 @@ const ARM = {
       fs.rmSync(path.join(PROFILE, 'Default', 'Sessions'), { recursive: true, force: true })
     },
     async setup(url) {
+      fs.mkdirSync(path.dirname(CHROME_PID), { recursive: true })
       const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: OWNER } })
       chrome.unref()
       fs.writeFileSync(CHROME_PID, String(chrome.pid))
