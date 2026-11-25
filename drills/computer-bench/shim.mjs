@@ -11,7 +11,7 @@ const raw = process.env.BENCH_RAW
 const argv = process.argv.slice(2)
 const id = crypto.randomUUID()
 const keep = (line) => fs.appendFileSync(path.join(raw, 'calls.jsonl'), JSON.stringify({ id, ...line }) + '\n')
-keep({ from: Date.now(), argv })
+keep({ from: Date.now(), argv, pid: process.pid })
 const p = spawn(process.env.BENCH_BRIGADIER, argv, { stdio: ['inherit', 'pipe', 'pipe'] })
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => p.kill(s))
 let out = ''
