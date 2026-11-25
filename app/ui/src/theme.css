@@ -1220,15 +1220,11 @@
 @utility note-y {
   translate: 0 attr(data-y px, 0px);
 }
-/* A mockup's pin and the outline of what the pointer is over, at fractions of its frame (mockup/pins.tsx), and a
+/* A mockup's pin, at fractions of its frame (mockup/pins.tsx), and a
    frame's screenshot at a zoom (mockup/frame.tsx). */
 @utility mockup-at {
   left: calc(attr(data-x type(<number>), 0) * 100%);
   top: calc(attr(data-y type(<number>), 0) * 100%);
-}
-@utility mockup-box {
-  width: calc(attr(data-w type(<number>), 0) * 100%);
-  height: calc(attr(data-h type(<number>), 0) * 100%);
 }
 /* The tour's spotlight (onboarding/tour.tsx): the window dimmed as behind a dialog but round the part it lights,
    placed where it measures that part [D3109]. */

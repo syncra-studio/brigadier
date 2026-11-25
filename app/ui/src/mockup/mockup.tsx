@@ -14,7 +14,6 @@ import { matches } from "../shortcuts";
 import { type PageOf, VariantColumn, type Zoom } from "./frame";
 import { drawn, type Load, type Mockup, ready as allIn, slots, statusOf } from "./model";
 import { type MockupNote, noteCount, type Notes } from "./notes";
-import type { Hovered } from "./pins";
 import { type Send, Tray } from "./tray";
 
 /** The zoom menu's steps, and the canvas's bounds for pinch or ⌘-scroll: those a live page's zoom follows. */
@@ -64,7 +63,6 @@ export function MockupView({
   page,
   actions,
   loads = {},
-  hovers = {},
 }: {
   mockup: Mockup | null;
   notes: Notes;
@@ -75,7 +73,6 @@ export function MockupView({
   page: PageOf;
   actions: MockupActions;
   loads?: Record<string, Load>;
-  hovers?: Record<string, Hovered>;
 }) {
   const newest = (mockup?.rounds.length ?? 1) - 1;
   // The newest round drawn: a later round draws while the one before stays up and takes notes.
@@ -303,7 +300,6 @@ export function MockupView({
             page={page}
             notes={mockup.real ? [] : pins}
             pointing={takes && mode === "point"}
-            hovered={hovers[variant.letter]}
             onNotes={takes && !older && send !== "sending" ? changePins : undefined}
             use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
             picked={!mockup.real && (confirm ?? picked) === variant.letter}

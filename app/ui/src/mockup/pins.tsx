@@ -5,19 +5,13 @@ import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react"
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { ArrowUp, Trash } from "../icons";
-import { markerNumber, type MockupNote, notePlacement, type Pointed, pointIn, tokenPx } from "./notes";
+import { markerNumber, type MockupNote, notePlacement, pointIn, tokenPx } from "./notes";
 
 /** A press that moves less than this is a click (it drops a pin), not a drag. */
 const CLICK_SLOP = 8;
 
-/** What the pointer is over on a live frame: its box, as fractions of the frame, and what it is. */
-export type Hovered = { x: number; y: number; width: number; height: number; element: Pointed };
-
 /** A place on the frame, for `mockup-at`. */
 const at = (point: { x: number; y: number }) => ({ "data-x": point.x, "data-y": point.y });
-
-/** "SidebarRow · Sidebar.tsx:42": what a pin points at, as its outline and the tray name it. */
-export const pointedName = (element: Pointed) => (element.file ? `${element.name} · ${element.file}` : element.name);
 
 /**
  * The pins of a frame and, while pointing, the layer that takes its clicks: `notes` are the round's, numbered through
@@ -27,17 +21,15 @@ export function PinLayer({
   variant,
   notes,
   pointing,
-  hovered,
   onNotes,
 }: {
   variant: string;
   notes: readonly MockupNote[];
   pointing: boolean;
-  hovered?: Hovered | null;
   onNotes?: (change: (pins: MockupNote[]) => MockupNote[]) => void;
 }) {
   const own = notes.filter((note) => note.variant === variant);
-  const [draft, setDraft] = useState<{ x: number; y: number; element: Pointed | null } | null>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -68,20 +60,11 @@ export function PinLayer({
               const end = local(event);
               if (Math.hypot(end.x - start.x, end.y - start.y) > CLICK_SLOP) return;
               setEditing(null);
-              // What the pointer was over when it dropped the pin goes with it.
-              setDraft({ ...pointIn(end, end), element: hovered?.element ?? null });
+              setDraft(pointIn(end, end));
             }
           : undefined
       }
     >
-      {active && hovered && (
-        <>
-          <span className="mockup-at mockup-box pointer-events-none absolute rounded-xs outline-2 outline-mockup-pin" {...at(hovered)} data-w={hovered.width} data-h={hovered.height} />
-          <span className="mockup-at pointer-events-none absolute -translate-y-full rounded-xs bg-mockup-pin px-1 font-mono text-2xs whitespace-nowrap text-foreground" {...at(hovered)}>
-            {pointedName(hovered.element)}
-          </span>
-        </>
-      )}
       {own.map((note) => (
         <Marker
           key={note.id}

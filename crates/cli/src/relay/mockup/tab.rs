@@ -11,7 +11,7 @@ use std::io;
 use std::path::Path;
 
 /// `mockup <wid> [draft '<notes>' | send '<notes>' | use <letter> '<notes>']`, the notes as the tab keeps them:
-/// `{"pins": [{variant, x, y, text, element: {name, file}}], "all": "<a note for all variants>", "round": <the round shown, 1-based>,
+/// `{"pins": [{variant, x, y, text}], "all": "<a note for all variants>", "round": <the round shown, 1-based>,
 /// "cid": "<a send's id, the same on its retries>"}`.
 pub(crate) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let wid = args.get(1).map_or("", String::as_str);
@@ -125,7 +125,7 @@ fn shown(data: &Path, wid: &str) -> io::Result<Value> {
 }
 
 /// The notes as the one message they go as, the old app's by variant: each numbered as its pin, at
-/// its point, with the element it was on, then the note for all variants. None with no notes.
+/// its point, then the note for all variants. None with no notes.
 fn message(m: &Value, round: usize, pins: &[Value], all: &str) -> Option<String> {
     if pins.is_empty() && all.is_empty() {
         return None;
@@ -146,14 +146,9 @@ fn message(m: &Value, round: usize, pins: &[Value], all: &str) -> Option<String>
         let own: Vec<String> = (pins.iter().enumerate())
             .filter(|(_, p)| p["variant"] == l)
             .map(|(i, p)| {
-                let on = match (p["element"]["name"].as_str(), p["element"]["file"].as_str()) {
-                    (Some(n), Some(f)) => format!(" · on {n} ({f})"),
-                    (Some(n), None) => format!(" · on {n}"),
-                    _ => String::new(),
-                };
                 let text = p["text"].as_str().unwrap_or("").trim();
                 format!(
-                    "{}. (x: {}%, y: {}%) {text}{on}",
+                    "{}. (x: {}%, y: {}%) {text}",
                     i + 1,
                     pct(&p["x"]),
                     pct(&p["y"])
