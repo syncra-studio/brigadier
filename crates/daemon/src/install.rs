@@ -21,7 +21,7 @@ use std::fs::{self, File};
 use std::io;
 use std::os::unix::fs::symlink;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -66,21 +66,28 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
 #[cfg(target_os = "macos")]
 fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
     let lock = data.join("daemon.lock");
+    let mut older = None;
     if lock_held(&lock) {
         // The job can't be loaded twice, so an older daemon is stopped here rather than by the new one.
         match crate::answering(data)? {
             Some((pid, build)) if build.is_none_or(|b| b < wire::build() as u64) => {
-                crate::stop(data, pid)
+                older = Some(pid)
             }
             _ => return Ok(true),
         }
+    }
+    // Copied while the older daemon still runs, so an install cut off here leaves it running.
+    let staged = stage_launcher(bin);
+    if let Some(pid) = older {
+        crate::stop(data, pid);
         if lock_held(&lock) {
             return Ok(true);
         }
     }
     // Only now the last daemon, and its launcher, is gone: macOS refuses what a process asks for
-    // while the code it runs isn't what its path holds. Without it the job runs the bare daemon.
-    if let Err(e) = put_launcher(bin) {
+    // while the code it runs isn't what its path holds. Failed, the job runs the launcher there is,
+    // else the bare daemon.
+    if let Err(e) = staged.and_then(|stage| stage.map_or(Ok(()), |s| swap_launcher(bin, &s))) {
         eprintln!("brigadierd: the launcher: {e}");
     }
     let launcher = Some(bin.join(LAUNCHER)).filter(|p| p.exists());
@@ -135,9 +142,12 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
     )?;
     let domain = format!("gui/{}", unsafe { libc::geteuid() });
     // A loaded job whose daemon has exited; its hosts are in sessions of their own and stay.
-    let _ = Command::new("/bin/launchctl")
-        .args(["bootout", &format!("{domain}/{label}")])
-        .status();
+    let bootout = || {
+        let _ = Command::new("/bin/launchctl")
+            .args(["bootout", &format!("{domain}/{label}")])
+            .status();
+    };
+    bootout();
     if !Command::new("/bin/launchctl")
         .args(["bootstrap", &domain])
         .arg(&plist)
@@ -146,11 +156,16 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
     {
         return Ok(false);
     }
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(10);
     while !lock_held(&lock) && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(20));
     }
-    Ok(true)
+    // Taken but never started, as with a launcher that can't run, is refused too.
+    let started = lock_held(&lock);
+    if !started {
+        bootout();
+    }
+    Ok(started)
 }
 
 /// The build `current` points at, if its folder holds a daemon.
@@ -172,28 +187,35 @@ fn wait_lock(path: &Path) -> io::Result<File> {
     }
 }
 
-/// Puts `current`'s launcher at its one path, `bin/Brigadier.app`, unless its Info.plist, which
-/// names the build, is there already. Whole or not at all: staged, then swapped by one rename.
+/// `current`'s launcher, copied beside its one path, `bin/Brigadier.app`, unless its Info.plist,
+/// which names the build, is there already.
 #[cfg(target_os = "macos")]
-fn put_launcher(bin: &Path) -> io::Result<()> {
-    use std::os::unix::ffi::OsStrExt;
-    let (from, app) = (bin.join("current/Brigadier.app"), bin.join("Brigadier.app"));
-    let plist = |app: &Path| fs::read(app.join("Contents/Info.plist"));
-    if plist(&app).ok() != Some(plist(&from)?) {
-        let stage = bin.join(format!(".stage-app-{}", process::id()));
-        let _ = fs::remove_dir_all(&stage);
-        copy(&from, &stage)?;
-        if app.exists() {
-            let c = |p: &Path| std::ffi::CString::new(p.as_os_str().as_bytes());
-            let (a, b) = (c(&stage)?, c(&app)?);
-            if unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) } != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            let _ = fs::remove_dir_all(&stage);
-        } else {
-            fs::rename(&stage, &app)?;
-        }
+fn stage_launcher(bin: &Path) -> io::Result<Option<PathBuf>> {
+    let from = bin.join("current/Brigadier.app");
+    let plist = fs::read(from.join("Contents/Info.plist"))?;
+    if fs::read(bin.join("Brigadier.app/Contents/Info.plist")).is_ok_and(|old| old == plist) {
+        return Ok(None);
     }
+    let stage = bin.join(format!(".stage-app-{}", process::id()));
+    let _ = fs::remove_dir_all(&stage);
+    copy(&from, &stage)?;
+    Ok(Some(stage))
+}
+
+/// Puts the copy at its path by one rename, so it is there whole or not at all.
+#[cfg(target_os = "macos")]
+fn swap_launcher(bin: &Path, stage: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let app = bin.join("Brigadier.app");
+    if !app.exists() {
+        return fs::rename(stage, &app);
+    }
+    let c = |p: &Path| std::ffi::CString::new(p.as_os_str().as_bytes());
+    let (a, b) = (c(stage)?, c(&app)?);
+    if unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let _ = fs::remove_dir_all(stage);
     Ok(())
 }
 
@@ -206,11 +228,15 @@ fn copy(from: &Path, to: &Path) -> io::Result<()> {
         if entry.file_type()?.is_dir() {
             copy(&entry.path(), &to)?;
         } else {
-            fs::copy(entry.path(), &to)?;
-            File::open(&to)?.sync_all()?;
+            copy_file(&entry.path(), &to)?;
         }
     }
     Ok(())
+}
+
+fn copy_file(from: &Path, to: &Path) -> io::Result<()> {
+    fs::copy(from, to)?;
+    File::open(to)?.sync_all()
 }
 
 fn put(bin: &Path, here: &Path, build: u32) -> io::Result<()> {
@@ -226,7 +252,16 @@ fn put(bin: &Path, here: &Path, build: u32) -> io::Result<()> {
     // A folder only ever appears whole, so one that exists is complete.
     if !dest.exists() {
         let stage = bin.join(format!(".stage-{}", process::id()));
-        copy(here, &stage)?;
+        fs::create_dir(&stage)?;
+        for entry in fs::read_dir(here)? {
+            let entry = entry?;
+            let to = stage.join(entry.file_name());
+            if entry.file_type()?.is_file() {
+                copy_file(&entry.path(), &to)?;
+            } else if entry.file_name() == "Brigadier.app" {
+                copy(&entry.path(), &to)?;
+            }
+        }
         fs::rename(&stage, &dest)?;
     }
     let link = bin.join(format!(".current-{}", process::id()));
@@ -268,8 +303,11 @@ fn the_launcher_keeps_one_path_across_builds() {
     fs::create_dir_all(&src).unwrap();
     fs::create_dir_all(&bin).unwrap();
     fs::write(src.join("brigadierd"), "old").unwrap();
+    // Any other folder beside it isn't the build's, as in a target folder holding the data folder.
+    fs::create_dir(src.join("deps")).unwrap();
     put(&bin, &src, 1).unwrap();
-    assert!(put_launcher(&bin).is_err());
+    assert!(!bin.join("1/deps").exists());
+    assert!(stage_launcher(&bin).is_err());
 
     let program = bin.join(LAUNCHER);
     fs::create_dir_all(src.join("Brigadier.app/Contents/MacOS")).unwrap();
@@ -287,7 +325,13 @@ fn the_launcher_keeps_one_path_across_builds() {
         .unwrap();
         put(&bin, &src, build).unwrap();
         for _ in 0..2 {
-            put_launcher(&bin).unwrap();
+            // Staged, and cut off or not, what was there stays until the swap.
+            let was = fs::read(&program).ok();
+            let stage = stage_launcher(&bin).unwrap();
+            assert_eq!(fs::read(&program).ok(), was);
+            if let Some(stage) = stage {
+                swap_launcher(&bin, &stage).unwrap();
+            }
             assert_eq!(fs::read_to_string(&program).unwrap(), build.to_string());
         }
         assert_eq!(build_of(&bin.join("current")), Some(build));

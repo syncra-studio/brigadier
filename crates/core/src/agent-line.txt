@@ -1,1 +1,1 @@
-`brigadier help` in a shell lists tools for other sessions, the user's apps, models. Temp files: `$BRIGADIER_SESSION/tmp`. Search the project or a named folder, never all of / or ~: macOS asks the user for private folders.
+`brigadier help` in a shell lists tools for other sessions, the user's apps, models. Temp files: `$BRIGADIER_SESSION/tmp`. Search the project or a named folder, never from / or ~: macOS asks the user for private folders.
