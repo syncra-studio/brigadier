@@ -79,9 +79,50 @@ pub fn external(spec: &Spec, resume: &str) -> Vec<PathBuf> {
         );
     }
     paths.extend(scratch(spec).into_iter().map(|p| p.join(resume)));
+    paths.extend(unclosed(spec, resume));
     paths.sort();
     paths.dedup();
     // Keep shared lastSessionId, plugin usage rows and project memory; no project-wide purge.
+    paths
+}
+
+/// What a run of it that was killed left, which only the run itself removes: its
+/// `sessions/<pid>.json` naming this conversation, the key beside it and the socket it names. Its
+/// shell snapshot stays: nothing names it, and its time can be another run's.
+fn unclosed(spec: &Spec, resume: &str) -> Vec<PathBuf> {
+    let sessions = cli_home(spec, ".claude", "sessions");
+    let mut paths = vec![];
+    for entry in fs::read_dir(&sessions).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let Some(pid) = (path.extension() == Some("json".as_ref()))
+            .then(|| path.file_stem()?.to_str()?.parse::<i32>().ok())
+            .flatten()
+        else {
+            continue;
+        };
+        let Some(v) = fs::read(&path)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        else {
+            continue;
+        };
+        // A run still going keeps its own.
+        if s(&v, &["sessionId"]) != resume || unsafe { libc::kill(pid, 0) } == 0 {
+            continue;
+        }
+        let socket = PathBuf::from(s(&v, &["messagingSocketPath"]));
+        if socket.is_absolute() && socket.file_name() == Some(format!("{pid}.sock").as_ref()) {
+            paths.push(socket);
+        }
+        let key = |name: &str| name.starts_with(&format!("{pid}.")) && name.ends_with(".key");
+        let names = fs::read_dir(&sessions).into_iter().flatten().flatten();
+        paths.extend(
+            names
+                .filter(|e| key(&e.file_name().to_string_lossy()))
+                .map(|e| e.path()),
+        );
+        paths.push(path);
+    }
     paths
 }
 
