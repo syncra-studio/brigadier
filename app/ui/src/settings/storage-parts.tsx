@@ -41,8 +41,9 @@ export function TotalBar({ storage }: { storage: Storage }) {
 /** Counts it all again. */
 export function Recount({ storage, online }: { storage: Storage; online: boolean }) {
   return (
-    <Button variant="ghost" size="icon-sm" aria-label="Count again" title="Count again" disabled={storage.counting || storage.freeing !== null || !online} className="text-quiet-foreground" onClick={storage.recount}>
-      <Reload className={storage.counting ? "motion-safe:animate-spin" : undefined} />
+    <Button variant="soft" size="sm" disabled={storage.counting || storage.freeing !== null || !online} onClick={storage.recount}>
+      <Reload aria-hidden className={storage.counting ? "animate-spin motion-reduce:animate-none" : undefined} />
+      Count again
     </Button>
   );
 }
