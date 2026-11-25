@@ -109,8 +109,8 @@ only in that build. Brigadier keeps its data in `~/Library/Application Support/B
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md) first. `pnpm gallery`
-shows the app's components, and `pnpm thread` the chat, both on made-up data.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md) first. `pnpm thread`
+shows the chat on made-up data.
 
 ## Community and support
 

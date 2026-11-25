@@ -359,11 +359,8 @@ listenToSettingsKeys();
 // The Review diff's engine loads at idle, so the first diff opened draws at once (the old app's warmCode).
 void import("./review/diff-view").then((view) => view.warmReview());
 
-// Dev-only component gallery (pnpm gallery); other builds drop it.
-const Gallery = import.meta.env.MODE === "gallery" ? lazy(() => import("../gallery/gallery")) : null;
 // `pnpm thread` builds the thread demo in place of the app.
-const ThreadDemo = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
-const Screen = Gallery ?? ThreadDemo;
+const Screen = import.meta.env.VITE_SCREEN === "thread" ? lazy(() => import("./thread/demo").then(({ Demo }) => ({ default: Demo }))) : null;
 if (Screen) endLaunchScreen(true);
 // A screen that never comes, as when the app throws, isn't left hidden under it.
 setTimeout(endLaunchScreen, 10_000);

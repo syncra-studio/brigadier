@@ -88,7 +88,6 @@ done
 # The product's name stays only where a user or a provider's CLI meets the product itself [D269, D276]. Each kept
 # mention goes once, by its file and words; what's left fails. [C] keeps these lines from matching themselves.
 found="$({ git grep --untracked -IniE '[c]hat[ _-]?gpt'; files; } | sed -E \
-  -e '\#^app/ui/gallery/onboarding\.tsx:#s#how: "[C]hatGPT account"##' \
   -e '\#^crates/core/src/adapters/codex/control\.rs:#{
 s#// The [C]hatGPT app.s computer-use plugins##
 s#the [C]hatGPT app.s \(node_repl\)##
