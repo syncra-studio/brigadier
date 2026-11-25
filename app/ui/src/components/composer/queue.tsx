@@ -31,6 +31,8 @@ export type QueuedMessage = {
   to?: { name: string | null; ended?: boolean };
   /** A `!` command, run in its turn; never steered. */
   shell?: boolean;
+  /** Why it waits, once the session decided so. */
+  waits?: string;
   /** The agent couldn't be given it. */
   refused?: boolean;
 };
@@ -265,6 +267,8 @@ function QueueRow({
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding
         </span>
+      ) : item.waits ? (
+        <span className="shrink-0 text-xs text-muted-foreground">{item.waits}</span>
       ) : (
         item.to && <ToWorker name={item.to.name} />
       )}
