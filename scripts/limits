@@ -108,6 +108,25 @@ s#`node_repl`, the [C]hatGPT app.s MCP server##
   echo "$found"
 }
 
+# Other apps' names stay only as a credit, or where the app needs them to work (browser import,
+# computer use) [D23]. Each kept mention goes once, by its file and words; what's left fails.
+found="$({ git grep --untracked -InE '(^|[^a-zA-Z_])([I]ntent|[D]ia|[R]EA)([^a-zA-Z_]|$)|[T]3 Code|[t]3code'; files; } | sed -E \
+  -e '\#^THIRD_PARTY_NOTICES\.md:#{
+s#[T]3 Code##
+s#[t]3code##
+}' \
+  -e '\#^app/ui/src/settings/browser-import\.tsx:#s#[D]ia##' \
+  -e '\#^crates/browser-data/src/chromium\.rs:#s#[D]ia##' \
+  -e '\#^crates/browser-data/src/chromium/catalog\.rs:#s#[D]ia##g' \
+  -e '\#^crates/browser-data/src/types\.rs:#s#[D]ia##' \
+  -e '\#^crates/cli/src/computer/verbs\.rs:#s#[D]ia##g' \
+  -e '\#^crates/cli/src/computer/verbs/open\.rs:#s#[D]ia##g' \
+  -e '\#^crates/cli/src/computer/verbs/window\.rs:#s#[D]ia##' |
+  grep -E '(^|[^a-zA-Z_])([I]ntent|[D]ia|[R]EA)([^a-zA-Z_]|$)|[T]3 Code|[t]3code')" && {
+  fail "another app's name outside the kept mentions: say what the behaviour or look is"
+  echo "$found"
+}
+
 found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)')" && {
   fail "commit with an attribution line"
   echo "$found"
