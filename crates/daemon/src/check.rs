@@ -36,6 +36,7 @@ fn check(data: &Path, id: &str) -> Option<()> {
     let hit = rules::asks_in_prose(reply);
     // A worker's last words go to its lead as its result, a question included.
     let sent = hit
+        && !core::overnight::load(&dir).night()
         && !retry
         && !core::load(data, id).is_ok_and(|s| s.naked)
         && queue::send_back(data, id, turn, rules::SEND_BACK).unwrap_or(false);

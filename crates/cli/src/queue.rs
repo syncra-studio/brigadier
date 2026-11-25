@@ -23,6 +23,7 @@ mod to;
 pub mod wake;
 pub use cut::{goes_on, off as cut_off, recover};
 pub use drain::{drain, takes};
+pub(crate) use peer::own;
 pub use peer::{UNSURE, add_peer, pending, send_back, waits_for};
 pub use to::held as give_held;
 

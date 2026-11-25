@@ -314,7 +314,6 @@ export type Item = Base &
         done: { title: string; proof: string; more?: string | null }[];
         left: { title: string; why: string; next?: string | null }[];
         decided: { title: string; why: string; /** What it could be instead. */ other?: string | null }[];
-        waiting: { text: string; options: string[]; recommended?: number | null }[];
       }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }

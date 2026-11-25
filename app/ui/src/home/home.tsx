@@ -165,7 +165,7 @@ export function HomeDraft() {
         level={
           agent && (
             <>
-              <LevelPicker levels={agent.levels} level={draft.overnight && agent.levels.includes("full") ? "full" : (pick ?? agent.level)} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
+              <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
               <BrigadeToggle on={draft.brigade === true} onChange={(brigade) => setHomeDraft({ brigade })} />
               <OvernightPill on={draft.overnight === true} onChange={(overnight) => setHomeDraft({ overnight })} />
             </>

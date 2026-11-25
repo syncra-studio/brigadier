@@ -233,7 +233,9 @@ fn reserve(
         None => Err(refuse(&format!("{backend:?} isn't an agent."))),
     };
     let mut at_level = parent.clone();
-    at_level.level = level(parent, models::next_agent(parent, f))?.map(String::from);
+    // A night's Full access is its own session's alone.
+    at_level.level = core::overnight::own_level(&parent.dir, &parent.level);
+    at_level.level = level(&at_level, models::next_agent(parent, f))?.map(String::from);
     let level = level(&at_level, &run.backend)?.map(String::from);
 
     let id = loop {

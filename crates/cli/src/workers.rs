@@ -357,6 +357,21 @@ fn working(data: &Path, id: &str) -> Vec<String> {
         .collect()
 }
 
+/// The user is back mid-night: every worker still at it ends with its session's turn.
+pub(crate) fn end_all(data: &Path, id: &str) -> io::Result<()> {
+    let now = working(data, id);
+    let mine: Vec<String> = (records(data, id).into_iter().map(|r| r.wid))
+        .filter(|w| now.contains(w) || below(data, w).iter().any(|r| now.contains(&r.wid)))
+        .collect();
+    for w in &mine {
+        end(data, id, w, "user")?;
+    }
+    if !mine.is_empty() {
+        ended(data, id, &mine, "user");
+    }
+    Ok(())
+}
+
 /// After the user's Stop on a session: its turn alone ended, so the thread says which of its
 /// workers still run, one click from stopping too [D3009, D3011].
 pub fn still(data: &Path, id: &str) {

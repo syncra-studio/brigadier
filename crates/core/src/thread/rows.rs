@@ -24,7 +24,7 @@ impl Thread {
             return;
         };
         o.stop.1 = true;
-        let Some(reason) = super::turn::stop_line(o.stop.0.as_deref()) else {
+        let Some(reason) = super::changes::stop_line(o.stop.0.as_deref()) else {
             // A rebirth runs from where its cut turn ended, its divider live till the fresh
             // conversation starts [D112, D203]; a model picked mid-turn is no rebirth [D124].
             if !self.fold.switched {
@@ -236,7 +236,9 @@ impl Thread {
                 self.end_children("cancelled", ts);
                 // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
                 self.settle_held(item["by"] != "handoff");
-                if let Some(by @ ("user" | "pause" | "rebirth" | "stall")) = item["by"].as_str() {
+                if let Some(by @ ("user" | "pause" | "rebirth" | "stall" | "overnight")) =
+                    item["by"].as_str()
+                {
                     match self.open.as_mut() {
                         Some(o) => _ = o.stop.0.get_or_insert(by.into()),
                         // A worker paused between turns stops only its background jobs: its line, untimed.
@@ -372,12 +374,7 @@ impl Thread {
                 };
                 if item["phase"] != "intent" {
                     let row = &mut self.items[at];
-                    row["state"] = if item["ok"] == true {
-                        "started"
-                    } else {
-                        "failed"
-                    }
-                    .into();
+                    row["state"] = ["failed", "started"][(item["ok"] == true) as usize].into();
                     for k in ["base", "title", "error", "left", "text"] {
                         if k != "text" || item[k].is_string() {
                             row[k] = item[k].clone();
@@ -388,6 +385,7 @@ impl Thread {
             }
             k if k == "image" || (k == "note" && item["event"] == "image") => self.image(item),
             "note" if item["event"] == "worker" => self.team(item, ts),
+            "note" if item["event"] == "overnight" => self.overnight(item),
             "note" if item["event"] == "peer" => self.peer(item),
             "note" if item["event"] == "shell" => self.shell(item),
             "note" if item["event"] == "plan_review" => self.plan_review(item, ts),

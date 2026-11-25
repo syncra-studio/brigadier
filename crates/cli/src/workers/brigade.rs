@@ -50,7 +50,8 @@ pub(super) fn capped(data: &Path, me: &str, spec: &core::Spec, session: bool) ->
     let started = (mine.iter())
         .filter(|r| r.session == session && r.at > since)
         .count();
-    if started >= most {
+    // A night has caps of its own, and no user to ask.
+    if started >= most && crate::overnight::of(data, me).is_none() {
         return Some(refuse(&format!(
             "{ASK_USER}: you started {started} {kind} since their last message, the most allowed. Tell them where the job stands and end your turn."
         )));
@@ -84,6 +85,9 @@ pub fn to_user(data: &Path, me: &str, sid: &str) -> Value {
     let Some(l) = link(data, sid).filter(|l| l.parent == me && l.session) else {
         return refuse("Only a Brigade passes its own sessions' asks to the user.");
     };
+    if crate::overnight::of(data, me).is_some() {
+        return refuse("The user is away overnight: decide it yourself, by research, and answer.");
+    }
     if let Err(e) = pass(data, sid, &l) {
         return refuse(&e);
     }
@@ -118,7 +122,10 @@ fn pass(data: &Path, sid: &str, l: &Link) -> Result<(), String> {
 
 /// A sub-session's question to its boss: its third goes to the user instead [D189].
 pub(super) fn third(data: &Path, sid: &str, l: &Link) -> bool {
-    l.session && peers::asked(data, sid) >= THIRD && pass(data, sid, l).is_ok()
+    l.session
+        && peers::asked(data, sid) >= THIRD
+        && crate::overnight::of(data, sid).is_none()
+        && pass(data, sid, l).is_ok()
 }
 
 /// The user's answer on a sub-session's card to the question it sent its boss: back to its wait.

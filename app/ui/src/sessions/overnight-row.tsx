@@ -3,12 +3,11 @@ import { type ReactNode, useContext, useState } from "react";
 import { SessionOfThread } from "../accounts/limit";
 import { Button } from "../components/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
-import { ActionOption } from "../components/composer/decision-parts";
 import { cx } from "../components/cx";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Chevron } from "../components/thread/activity-row";
 import { ThreadLine } from "../components/thread/line";
-import { Check, Moon, QuestionMarkCircle, Shuffle, Sun, XCircleFilled } from "../icons";
+import { Check, Moon, Shuffle, Sun, XCircleFilled } from "../icons";
 import { openReview } from "../panel/open";
 import { putBack } from "../session/side";
 import type { Item } from "../thread/item";
@@ -70,13 +69,12 @@ function List({ title, count, children }: { title: string; count?: number; child
   );
 }
 
-/** The morning: what is done and how it's known, what isn't, and each decision taken for the user and each question waiting, to follow up on. */
+/** The morning: what is done and how it's known, what isn't, and each decision taken for the user, to follow up on. */
 function Morning({ item, session }: { item: Report; session: string | undefined }) {
   // Into the composer, never sent: the user says more or sends it. A change of mind takes the place of the words it had put there.
   const follow = (words: string, swap?: { was: string; now: string }) => session && putBack(session, words, true, null, swap);
-  // shortcut: picks show while the card is mounted; keep them on the item once Rust acts on one.
+  // shortcut: changes of mind show while the card is mounted; keep them on the item once Rust acts on one.
   const [changed, setChanged] = useState<readonly number[]>([]);
-  const [answers, setAnswers] = useState<Readonly<Record<number, number>>>({});
   return (
     <>
       <ThreadLine icon={Sun}>
@@ -122,43 +120,6 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
               return <ActionPart key={at} keep={`${item.id}:decided:${at}`} mark={<Shuffle className={cx(MARK, "text-muted-foreground")} />} title={each.title} line={other ? `Changing to: ${each.other}` : each.why} action={each.other && (other ? "Keep" : each.other)} onAction={toggle} />;
             })}
           </List>
-        )}
-        {item.waiting.length > 0 && (
-          <div className="pb-2">
-            <p className="px-4 pt-3 pb-2 text-label text-muted-foreground">
-              Waiting for you <span className="tabular-nums">{item.waiting.length}</span>
-            </p>
-            {item.waiting.map((each, at) => (
-              <div key={at}>
-                <div className="flex items-center gap-3 px-4 pb-2 text-label font-medium">
-                  <QuestionMarkCircle className="size-icon-md shrink-0 text-link" />
-                  {each.text}
-                </div>
-                <div role="radiogroup" aria-label={each.text} className="flex flex-col gap-1 ps-9 pe-2">
-                  {each.options.map((option, index) => (
-                    <ActionOption
-                      key={option}
-                      role="radio"
-                      aria-checked={answers[at] === index}
-                      number={index + 1}
-                      name={option}
-                      label={option}
-                      recommended={each.recommended === index}
-                      highlighted={answers[at] === index}
-                      chosen={answers[at] === index}
-                      onClick={() => {
-                        const was = answers[at];
-                        if (was === index) return;
-                        setAnswers({ ...answers, [at]: index });
-                        const now = `${each.text} ${option}`;
-                        follow(now, was === undefined ? undefined : { was: `${each.text} ${each.options[was]}`, now });
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </SettingsCard>
     </>

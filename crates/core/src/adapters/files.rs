@@ -228,11 +228,12 @@ pub fn sha1(data: &[u8]) -> String {
 }
 
 /// What a deny tells the agent: who denied it, the user or the session that started this worker
-/// (`by: parent`), with their reason when they gave one [D192, D131].
+/// (`by: parent`), or Brigadier in a night, with their reason when they gave one [D192, D131].
 pub fn denied(msg: &Value) -> String {
-    let who = match msg["by"] == "parent" {
-        true => "The session that started you",
-        false => "The user",
+    let who = match msg["by"].as_str() {
+        Some("parent") => "The session that started you",
+        Some("overnight") => "Brigadier",
+        _ => "The user",
     };
     match msg["reason"].as_str().unwrap_or("").trim() {
         "" => format!("{who} denied this."),

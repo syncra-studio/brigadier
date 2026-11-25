@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react
 import { Button } from "../components/button";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
 import { StepCounter } from "../components/composer/decision-parts";
-import { type Footer, forgetQuestions, type Given, type PendingQuestion, QuestionCard } from "../components/composer/question";
+import { type Footer, forgetQuestions, type Given, type PendingQuestion, QuestionCard, standing } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
 import { ask, threadSource, useDaemon } from "../daemon";
 import { useMockup } from "../mockup/live";
@@ -268,6 +268,16 @@ export function SessionQuestions({ id, run, source, night, ...takes }: { id: str
   const pictured = !drawn
     ? question
     : { ...question, items: question.items.map((item) => ({ ...item, options: item.options.map((option) => ({ ...option, shot: drawn.find((each) => each.letter === option.letter)?.shot })) })) };
+  // Start night sends every card's answers: one nothing waits on, or with no Skip, has nothing to send.
+  const open = (each: (typeof questions)[number]) => !each.held && !dismiss(each.id);
+  const others = async () => {
+    const rest = questions.flatMap((each) => (each.id !== question.id && open(each) ? [{ request: each, answers: standing(id, each) }] : [])).filter(({ answers }) => answers.some((given) => given !== null));
+    const went = await Promise.allSettled(rest.map((each) => send(run, id, { ...each, state: "sending" })));
+    // A refusal shows on its own card.
+    const refused = went.findIndex(({ status }) => status === "rejected");
+    if (refused >= 0) setShown({ id: rest[refused]!.request.id, index: questions.findIndex((each) => each.id === rest[refused]!.request.id) });
+    return refused < 0;
+  };
   return (
     <RailItem variant="decision" label={night ? "Before you go" : "Waiting for you"}>
       <QuestionCard
@@ -289,8 +299,7 @@ export function SessionQuestions({ id, run, source, night, ...takes }: { id: str
         }
         footer={(round) => (
           <>
-            {/* One nothing waits on, or with no Skip, has nothing to send. */}
-            {night?.(question.held || dismiss(question.id) ? undefined : round)}
+            {night?.({ ...round, finish: async () => (open(question) ? await round.finish() : true) && (await others()) })}
             {questions.length > 1 && (
               <div className="flex items-start">
                 <MoreWaiting more={questions.length - 1 - at} />

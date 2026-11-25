@@ -1,5 +1,6 @@
 //! Sending a message to a session's agent, and the one recovery for a turn that didn't finish.
 
+mod lead;
 mod recover;
 pub(crate) use recover::{RECONNECT, RESUME};
 pub use recover::{reconnect, recover};
@@ -16,9 +17,6 @@ use std::time::{Duration, Instant};
 pub type Call<'a> = &'a dyn Fn(Value) -> io::Result<Value>;
 /// The same, to any session's host, by its id.
 pub type CallIn<'a> = &'a dyn Fn(&str, Value) -> io::Result<Value>;
-
-/// What a Brigade's every message from its user starts with, for its agent only [D185].
-const BRIGADE: &str = "[Brigade: you are this job's boss. Run `brigadier help brigade` and follow it before anything else.]";
 
 /// The child a host holds, from its ping: its spawn id (0 from a host too old to say).
 pub type Running = Option<u64>;
@@ -37,19 +35,7 @@ pub fn send(
     backend: Option<&str>,
     retry_of: Option<&str>,
 ) -> Value {
-    // The agent reads the message as composed; the record keeps what the user wrote [D109, D127].
-    // A Brigade's own message points its agent at the recipe first, as Fusion's did [D185].
-    let led = (spec.brigade && origin == "user").then(|| format!("{BRIGADE}\n\n{}", msg.agent));
-    // A note's side chat is told each time which note it's beside, as the old app's page chat was [D281].
-    let led = led.or_else(|| {
-        let note = spec.opts.get("note").filter(|_| origin == "user")?;
-        let reads = spec.opts.get("reads").map(String::as_str);
-        Some(format!(
-            "{}\n\n{}",
-            crate::message::notes::lead(note, reads),
-            msg.agent
-        ))
-    });
+    let (led, night) = lead::led(spec, origin, &msg.agent);
     let text = led.as_deref().unwrap_or(msg.agent.as_str());
     // The user's next turn, or their Resume, goes to the agent they picked; a message into a
     // running turn stays with it, the pick waiting for the next [D90, D76].
@@ -134,7 +120,10 @@ pub fn send(
         let why = if cut { "cut" } else { "rebirth" };
         let last = f.last.clone().unwrap_or_default();
         match crate::handoff::build(spec, f, why, &last, a.label()) {
-            Ok(seed) if cut => (Some(crate::rebirth::record(spec, f, why)), seed),
+            Ok(seed) if cut => (
+                Some(crate::rebirth::record(spec, f, why)),
+                night.map_or(seed.clone(), |night| format!("{seed}\n\n{night}")),
+            ),
             Ok(seed) => (
                 Some(crate::rebirth::record(spec, f, why)),
                 format!("{seed}\n\n{text}"),

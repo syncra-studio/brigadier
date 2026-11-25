@@ -37,6 +37,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier browser …         Brigadier's browser: open a page, snapshot it, click and type, its console and requests
   brigadier computer …        the user's Mac apps, in the background, when files, shell and CLIs can't; never osascript
   brigadier mockup \"<what>\"   before a big UI change, never a small fix: offer the user a mockup first
+  brigadier overnight …       the user's Overnight, only once they turned it on: ready, decided, proven, left, report
   brigadier repo <name>       in a chat on a folder of repos: your own copy of a repo, before your first edit there
   brigadier help [command]    this, or one command's help
 
@@ -202,6 +203,7 @@ pub fn run(
     let help = args.iter().any(|a| a == "--help");
     match args.first().map(String::as_str) {
         Some("mcp" | "terminal") => return crate::relay::worded(data, me, args),
+        Some("overnight") => return crate::overnight::agent::run(data, me, args),
         Some("browser") if help => return json!({"ok": true, "text": crate::browser::HELP}),
         Some("browser") => return crate::browser::agent(data, me, args, here),
         _ => {}
@@ -215,6 +217,7 @@ pub fn run(
             Some("brigade") => include_str!("agent/brigade.txt"),
             Some("reviews") => include_str!("agent/reviews.txt"),
             Some("browser") => crate::browser::HELP,
+            Some("overnight") => crate::overnight::agent::HELP,
             Some("computer") => crate::computer::HELP,
             Some(c) => match spec(c) {
                 Some((h, ..)) => h,

@@ -487,14 +487,3 @@ impl Thread {
         );
     }
 }
-
-/// The line a stop draws, by who stopped it: none for a rebirth's, whose divider follows [D108];
-/// the loop guard's says why, with Continue [D144].
-pub(super) fn stop_line(by: Option<&str>) -> Option<&'static str> {
-    match by {
-        Some("rebirth") => None,
-        Some("pause") => Some("paused"),
-        Some("stall") => Some("stalled"),
-        _ => Some("stopped"),
-    }
-}

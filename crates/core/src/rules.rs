@@ -188,7 +188,9 @@ pub fn stop_hook(input: &Value, agent: &str, dir: Option<&Path>) -> Option<Value
     let reply = input["last_assistant_message"].as_str().unwrap_or("");
     let retry = input["stop_hook_active"] == true;
     let hit = asks_in_prose(reply);
-    let sent = hit && !retry;
+    // At night nobody answers: Brigadier carries the turn on itself.
+    let night = dir.is_some_and(|d| crate::overnight::load(d).night());
+    let sent = hit && !retry && !night;
     if let Some(dir) = dir {
         count(dir, reply, hit, sent, retry, json!({"hook": agent}));
     }

@@ -231,12 +231,19 @@ fn main() -> io::Result<()> {
         brigadier::usage::pass(&data, &index.rows);
         brigadier::peers::pass(&data, &index.rows);
         brigadier::signin::pass(&data);
+        brigadier::overnight::pass(&data, &index.rows);
         // Off, while a session works, or always [D30, D36]. A failed pass keeps its folded rows.
         let on = match awake_mode(&data) {
             "off" => false,
             "always" => true,
             _ => index.rows.values().any(|r| r["works"] == true),
         };
+        // A night holds it whatever the setting.
+        let on = on
+            || index
+                .rows
+                .values()
+                .any(|r| r["overnight"]["state"] == "night");
         awake.set(on);
         lid.set(&data, on && brigadier_core::lid::wanted(&data));
         changed = brigadier::queue::wake::changed(changed, TICK);
@@ -255,7 +262,7 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
         return Ok(false);
     }
     // The old one may hold the Mac awake: hold first, until this one's first pass decides.
-    if awake_mode(data) != "off" {
+    if awake_mode(data) != "off" || brigadier_core::overnight::any_night(data) {
         awake.hold_confirmed();
     }
     stop(data, pid);

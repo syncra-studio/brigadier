@@ -209,6 +209,7 @@ fn unarchived(dir: &Path) -> bool {
 /// then core archives it. `with`: a Brigade's session going with it [D3111]. Archived, its workers
 /// whose processes didn't stop.
 fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
+    crate::overnight::archived(data, id)?;
     let _family = workers::family_lock(data, id)?;
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)

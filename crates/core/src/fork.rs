@@ -376,7 +376,7 @@ fn build(
                 .map_or(run.effort.clone(), |(_, _, e, _)| e.map(String::from)),
             fast: ask.to.map_or(run.fast, |(.., fast)| fast),
             // Full access isn't carried into a session nobody picked it for [D187].
-            level: src.level.clone().filter(|l| l != "full"),
+            level: crate::overnight::own_level(&src.dir, &src.level).filter(|l| l != "full"),
             opts: src.opts.clone(),
             created: now_ms(),
             fork_of: Some(src.id.clone()),

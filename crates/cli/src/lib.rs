@@ -23,11 +23,13 @@ pub mod mcp;
 pub mod mention;
 mod models;
 mod outcomes;
+pub mod overnight;
 pub mod owner;
 mod panel;
 pub mod peers;
 mod plugins;
 pub mod queue;
+mod read;
 mod relay;
 mod rename;
 pub mod rewind;
@@ -48,10 +50,9 @@ use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
-use std::time::{Duration, Instant};
-use std::{env, fs, thread};
+use std::{env, fs};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--overnight]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -61,7 +62,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
        brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id> [--check | --branch keep|delete] | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full] [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W | --shell] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
+       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W | --shell] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id> | git --project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]
@@ -218,6 +219,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             } else {
                 core::load(data, id)?
             };
+            // Before its first message, which tells its agent.
+            if fresh && has(args, "--overnight") {
+                overnight::on(data, &spec, None)?;
+            }
             let parts = parts(args)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
             // The tabs are extras: a failure here never stops the session from starting.
@@ -380,6 +385,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "feedback" => feedback::run(data, args),
         "title" => Ok(json!({"ok": true, "title": title::from(arg(args, 1)?)})),
         "level" => control::level(data, args),
+        "overnight" => overnight::run(data, args),
         "answer" => control::answer(data, args),
         "up" => (args[1..].iter())
             .try_for_each(|id| owner::ensure(data, &core::load(data, id)?))
@@ -388,7 +394,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "owner" => Ok(
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),
-        "read" => read(data, arg(args, 1)?, args),
+        "read" => read::run(data, arg(args, 1)?, args),
         // (proposed) A diagnostic: the thread the app draws, from the same fold [D64, D65].
         "thread" => {
             let id = arg(args, 1)?;
@@ -447,46 +453,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "ours": {"texts": texts, "tools": tools}, "theirs": theirs}))
         }
         _ => Err(io::Error::other(USAGE)),
-    }
-}
-
-fn read(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
-    let spec = core::load(data, id)?;
-    let started = Instant::now();
-    if let Some(n) = flag(args, "--tail") {
-        let items = core::tail(&spec.dir, &spec, n.parse().unwrap_or(50))?;
-        return Ok(
-            json!({"ok": true, "items": items.len(), "ms": started.elapsed().as_secs_f64() * 1000.0}),
-        );
-    }
-    let quiet = has(args, "--hash");
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
-    let mut count = 0u64;
-    if !has(args, "--follow") {
-        let hash = core::read(&spec.dir, |item| {
-            count += 1;
-            if !quiet {
-                let _ = writeln!(stdout, "{item}");
-            }
-        })?;
-        stdout.flush()?;
-        return Ok(
-            json!({"ok": true, "items": count, "hash": format!("{hash:016x}"), "ms": started.elapsed().as_millis() as u64}),
-        );
-    }
-    // Follow: the same normaliser over the same frames, as they arrive.
-    let mut reader = log::Reader::open(&spec.dir.join("log"), 0, 0)?;
-    let mut norm = brigadier_core::norm::Norm::default();
-    let mut items = vec![];
-    loop {
-        while let Some(frame) = reader.frame()? {
-            norm.push(&frame, &mut items);
-            for item in items.drain(..) {
-                writeln!(stdout, "{item}")?;
-            }
-        }
-        stdout.flush()?;
-        thread::sleep(Duration::from_millis(100));
     }
 }
 

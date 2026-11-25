@@ -8,7 +8,7 @@ import { viewImage } from "../image-viewer";
 import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
 import { openChip } from "../../session/commands";
 import type { Runner } from "../../session/composer";
-import { dropTiles, forgetTiles, useComposerFiles } from "../../session/files";
+import { dropTiles, forgetTiles, tilesOf, useComposerFiles } from "../../session/files";
 import { type Draft, isEmpty, plainText } from "./draft";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
@@ -63,6 +63,18 @@ export const forgetQuestions = (session: string, keep: ReadonlySet<string>) => {
   forgetTiles(session, keep);
 };
 const tilesKey = (card: string, at: number) => `${card}\n${at}`;
+
+/** The round's answers as they stand, sent or not: picked, typed with its files, or marked; null for what's still open. */
+export function standing(session: string, { id, items }: PendingQuestion): Given[] {
+  const key = cardKey(session, id);
+  const { answers, drafts, marked } = keptCards.get(key) ?? FRESH;
+  return items.map((item, at) => {
+    if (answers[at] !== undefined) return answers[at];
+    const draft = { parts: drafts[at] ?? [], attachmentIds: tilesOf(session, tilesKey(key, at)) };
+    if (!isEmpty(draft)) return draft.attachmentIds.length > 0 || draft.parts.some((part) => typeof part !== "string" && "attachmentId" in part) ? draft : plainText(draft.parts).trim();
+    return marked[at]?.length ? marked[at].map((one) => item.options[one]!.label).join(", ") : null;
+  });
+}
 
 function useKeptQuestion(id: string) {
   const [kept, setKept] = useState(() => keptCards.get(id) ?? FRESH);
@@ -153,13 +165,6 @@ export function QuestionCard({
     keep((now) => ({ answers: next, drafts: put(now.drafts, at, undefined), ...(open >= 0 && { page: open }) }));
     if (open < 0) void send(next.map((each) => each ?? null));
   };
-  // Marked or typed on a question paged away from, not yet sent.
-  // shortcut: files attached to one paged away from aren't in it, only its words and chips; read its tiles here if rounds take files.
-  const unsent = (index: number): Given => {
-    const parts = drafts[index];
-    if (parts && !isEmpty({ parts, attachmentIds: [] })) return parts.some((part) => typeof part !== "string" && "attachmentId" in part) ? { parts, attachmentIds: [] } : plainText(parts).trim();
-    return marked[index]?.length ? marked[index].map((one) => items[index]!.options[one]!.label).join(", ") : null;
-  };
   const given = answers[at];
   const picked = typeof given === "string" ? item.options.findIndex((option) => option.label === given) : -1;
   const marks = marked[at];
@@ -202,7 +207,7 @@ export function QuestionCard({
       onDismiss={onDismiss}
       // ✕ skips what is still open in the round, so the asker hears and carries on.
       onClose={() => void send(items.map((_, index) => answers[index] ?? null))}
-      onFinish={(now) => send(items.map((_, index) => (index === at ? (now ?? answers[index] ?? null) : (answers[index] ?? unsent(index)))))}
+      onFinish={(now) => send(standing(session, question).map((each, index) => (index === at ? (now ?? answers[index] ?? null) : each)))}
       busy={busy}
       error={error ?? refused}
       dismiss={dismiss}

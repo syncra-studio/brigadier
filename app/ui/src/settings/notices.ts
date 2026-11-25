@@ -28,7 +28,7 @@ function words(row: Row, notice: Notice): { title: string; body: string } {
     case "sign_in":
       return { title: "Sign-in needed", body: notice.text || titleOf(row) };
     case "done":
-      return { title: titleOf(row), body: "Done" };
+      return { title: titleOf(row), body: notice.text || "Done" };
     case "failed":
       return { title: titleOf(row), body: notice.text ? `Stopped with an error: ${notice.text}` : "Stopped with an error" };
   }

@@ -27,6 +27,7 @@ pub(super) struct Marks {
     /// Its PRs as the last reads kept them (`prs.json`, its claims' too), and the sidebar chip they make [D1018].
     pub(super) prs: Value,
     pub(super) pr: Value,
+    pub(super) overnight: core::overnight::Overnight,
 }
 
 impl Marks {
@@ -50,6 +51,7 @@ impl Marks {
             queue: crate::workers::held(dir, crate::queue::row(dir)),
             pr: core::host::chip(dir, &prs),
             prs,
+            overnight: core::overnight::load(dir),
         }
     }
 }

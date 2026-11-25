@@ -128,10 +128,26 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     format!("It's queued: {why}.")
 }
 
-/// Brigadier's send-back of turn `turn`'s reply, as its own words [D529]: sent at once under the
-/// queue's lock, only while that turn is still the session's last and nothing waits to go, and
-/// only if nothing reached its log since. Never queued, so a refusal leaves nothing behind.
+/// Brigadier's send-back of turn `turn`'s reply, as its own words [D529].
 pub fn send_back(data: &Path, id: &str, turn: &str, text: &str) -> io::Result<bool> {
+    let dir = core::session_dir(data, id);
+    let waits = || read(&dir).is_ok_and(|q| !q.items.is_empty());
+    own(data, id, turn, &format!("{turn}.sb"), text, false, &waits)
+}
+
+/// Brigadier's own words after turn `turn`: sent at once under the queue's lock, only while that
+/// turn is still the session's last and nothing waits to go, and only if nothing reached its log
+/// since. Never queued, so a refusal leaves nothing behind. `more`: what's held for the session's
+/// next message goes with it [D329].
+pub(crate) fn own(
+    data: &Path,
+    id: &str,
+    turn: &str,
+    cid: &str,
+    text: &str,
+    more: bool,
+    waits: &dyn Fn() -> bool,
+) -> io::Result<bool> {
     let dir = core::session_dir(data, id);
     // The send that started the turn may hold it a moment longer than a quick turn lasts.
     let mut lock = None;
@@ -145,13 +161,15 @@ pub fn send_back(data: &Path, id: &str, turn: &str, text: &str) -> io::Result<bo
     if lock.is_none() {
         return Ok(false);
     }
+    // Gone between turns, a Mac restart say.
+    owner::ensure(data, &core::load(data, id)?)?;
     let ping = owner::call(data, id, json!({"op": "ping"}))?;
     let Some(len) = ping["len"].as_u64() else {
         return Ok(false);
     };
     let f = core::fold(&dir, true)?.fold;
     let last = f.last.as_ref().filter(|_| f.turns.is_empty());
-    if !last.is_some_and(|l| l["id"] == turn) || read(&dir).is_ok_and(|q| !q.items.is_empty()) {
+    if !last.is_some_and(|l| l["id"] == turn) || waits() {
         return Ok(false);
     }
     let spec = crate::routing::told(data, &core::load(data, id)?);
@@ -162,8 +180,15 @@ pub fn send_back(data: &Path, id: &str, turn: &str, text: &str) -> io::Result<bo
         }
         owner::call(data, id, req)
     };
-    let msg = core::message::Message::plain(text);
-    let cid = format!("{turn}.sb");
-    let reply = core::send(&spec, &f, child, &call, &cid, "system", &msg, None, None);
-    Ok(reply["ok"] == true)
+    let mut msg = core::message::Message::plain(text);
+    let held = match more {
+        true => crate::workers::with_next(data, id, Some(cid), &mut msg.agent),
+        false => vec![],
+    };
+    let reply = core::send(&spec, &f, child, &call, cid, "system", &msg, None, None);
+    let went = super::went(&dir, &reply, cid);
+    if went {
+        crate::workers::went_with(data, id, held);
+    }
+    Ok(went)
 }

@@ -24,7 +24,7 @@ const ANSWER_WAIT: Duration = Duration::from_secs(300);
 pub(crate) const LETTERS: [&str; 3] = ["A", "B", "C"];
 const YES_3: &str = "Yes, 3 variants";
 const YES_1: &str = "Yes, just 1";
-const SKIP: &str = "Skip, build it";
+pub(crate) const SKIP: &str = "Skip, build it";
 /// The longest --title, so the tab and the rows hold it.
 const TITLE_MAX: usize = 36;
 const REUSE: &str = "Reuse the other build";
@@ -106,6 +106,9 @@ pub(super) fn run(
     ];
     if reports.iter().any(|k| value(k).is_some()) {
         return refuse("Only a mockup worker reports variants.");
+    }
+    if crate::overnight::of(data, me).is_some() {
+        return refuse("The user is away overnight: decide the look yourself and build it.");
     }
     let Some(what) = what.map(str::trim).filter(|w| !w.is_empty()) else {
         return refuse("`brigadier mockup` needs the change, in quotes.");

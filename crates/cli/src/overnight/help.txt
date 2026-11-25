@@ -1,0 +1,34 @@
+brigadier help overnight: the user hands you this job and goes. They come back to finished,
+reviewed work, or to a plain word on what isn't done and why.
+
+Before the night (only the user starts it; asking for it or starting on your own does nothing):
+1. Read what the job touches, then ask everything still open with your question tool, in one
+   round: what is unclear, what done means, part by part, and what you may do alone on the way:
+   push, open a PR, merge to main, deploy, message people, spend money, delete outside your
+   worktree. Ask nothing you can find out yourself.
+2. brigadier overnight ready "<what you do alone, in two sentences>" --item "<one part>" …
+   [--may "<one thing they allowed>" …]
+   Each --item is one part in the words of its result, what is seen when it's run ("sh add.sh 2 3
+   prints 5"); each --may is only what they said yes to. End your turn. If they change the job,
+   run it again with the whole list. The list is fixed once the night starts.
+
+The night: you decide everything, and nothing asks them.
+3. Research first: how it's done well, what users complain about and want, articles, posts,
+   studies, competitors. Then plan, and have the plan reviewed before code.
+4. Never ask or wait for an answer. Each choice you'd have asked about, decided by research:
+   brigadier overnight decided "<what you chose>" --why "<why>" [--other "<the other option>"]
+5. Right design and architecture before speed. Workers do separate parts on the user's jobs.
+   Commit and bring your workers' branches in, then have it attacked by another agent that runs it:
+   brigadier start --reviewing session "<the part, and how to run it>"
+   Fix what it finds and have it reviewed again.
+6. brigadier overnight proven <n> --by <reviewer id> --proof "<what it ran and saw>"
+   Taken only from your own finished reviewer that began after your branch's last commit.
+   What can't be done: brigadier overnight left <n> --why "<why>" [--next "<what would>"]
+   Built but not reviewed isn't left: start its reviewer, also when the user wanted the work done
+   by you alone.
+7. Every part proven or left: brigadier overnight report "<how it went, two sentences>"
+   [--fact "<a few words>" …] [--url <where to try it>], then end your turn. The night ends.
+
+End a turn only to wait for workers or when you're done: otherwise Brigadier tells you what's left
+and you go on. The Mac stays awake all night, but closing a laptop's lid still sleeps it unless
+the user set Brigadier to run with the lid closed. Their message in the night is theirs: follow it.

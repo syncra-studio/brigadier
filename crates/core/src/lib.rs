@@ -19,6 +19,7 @@ pub mod library;
 pub mod lid;
 pub mod message;
 pub mod norm;
+pub mod overnight;
 pub mod projects;
 pub mod rebirth;
 pub mod repos;

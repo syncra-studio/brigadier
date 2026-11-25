@@ -249,10 +249,13 @@ pub(crate) fn resolve(
                 list.drain(..at.map_or(0, |i| i + 1));
             }
             if let Some(authors) = review {
-                // Never on its author's agent [D385].
-                let n = list.len();
-                list.retain(|e| !authors.iter().any(|a| e["agent"] == a.as_str()));
-                passed = list.len() < n;
+                // Never on its author's agent [D385]; overnight last, with nobody to ask for another.
+                let theirs = |e: &Value| authors.iter().any(|a| e["agent"] == a.as_str());
+                let (own, others): (Vec<_>, Vec<_>) = list.into_iter().partition(theirs);
+                (list, passed) = (others, !own.is_empty());
+                if crate::overnight::of(data, me).is_some() {
+                    list.extend(own);
+                }
                 // The switch's reviewers that failed or met their limit are passed by [D3026].
                 let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
                 let gone: Vec<Value> = gone.unwrap_or_default();
@@ -317,7 +320,7 @@ pub(crate) fn resolve(
         if images {
             pick.ran["images"] = true.into();
         }
-        if passed {
+        if passed && !review.is_some_and(|by| by.iter().any(|x| x == a)) {
             // Its why line: "the first in Review on another agent than Claude" [D385].
             pick.ran["other_than"] = jobs::and(&by).into();
         }

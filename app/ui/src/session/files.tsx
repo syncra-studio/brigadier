@@ -40,6 +40,9 @@ const set = (owner: string, id: string, attachment: Attachment) => change(owner,
 
 export const dropTiles = (draft: string) => change(draft, (now) => ({ ...now, tiles: [] }));
 
+/** The files `draft` would go with: `owner`'s, the failed ones left out. */
+export const tilesOf = (owner: string, draft: string) => filesOf(draft).tiles.filter((id) => filesOf(owner).all.get(id)?.state !== "failed");
+
 /** Drops the tiles of a session's question cards that no longer wait, its other drafts' kept. */
 export function forgetTiles(session: string, keep: ReadonlySet<string>): void {
   for (const draft of owners.keys()) if (draft.startsWith(`${session}\n`) && !keep.has(draft.split("\n")[1]!)) owners.delete(draft);

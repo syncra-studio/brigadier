@@ -3,7 +3,7 @@
 import type { Row } from "../src/daemon";
 import type { Overnight } from "../src/sessions/overnight";
 import type { Item, Session } from "../src/thread/item";
-import { DECIDED, DONE, NOT_DONE, PLAN, QUESTIONS, RESEARCH, TASK, TITLE, WAITING } from "./overnight-parts";
+import { DECIDED, DONE, NOT_DONE, PLAN, QUESTIONS, RESEARCH, TASK, TITLE } from "./overnight-parts";
 
 type Fake = { row: Row & Record<string, unknown>; session: Session & { n: number } };
 const HOUR = 3_600_000;
@@ -13,17 +13,16 @@ const READY: Overnight = { state: "ready", words: "Full access until you’re ba
 const started = (at: number): Item => ({ id: "started", turnId: "t1", kind: "overnight", moment: "started", at });
 const report: Item = {
   id: "report", turnId: "t1", kind: "overnight", moment: "report", at: now, ms: 7.4 * HOUR,
-  summary: "Export works and is ready to review. PDF isn’t done, and one question waits for you.",
+  summary: "Export works and is ready to review. PDF isn’t done.",
   facts: ["+612 −88 in 14 files", RESEARCH],
   url: "http://localhost:5317/",
   done: DONE, left: [NOT_DONE], decided: DECIDED,
-  waiting: WAITING.items.map((each) => ({ text: each.text, options: each.options.map((option) => option.label), recommended: each.recommended })),
 };
 const user = (id: string): Item => ({ id, turnId: "t1", kind: "message", role: "user", text: TASK, streaming: false, sentAt: now - 8 * HOUR });
 const says = (id: string): Item => ({ id, turnId: "t1", kind: "message", role: "assistant", text: PLAN, streaming: false, final: true, sentAt: now - 8 * HOUR });
 
 function fake(id: string, title: string, overnight: Overnight | null, items: Item[], questions = false): Fake {
-  const level = overnight ? "full" : "auto";
+  const level = overnight?.state === "night" ? "full" : "auto";
   const row = {
     id, title, state: "idle", reason: null, mark: null, resets: null, sent: now, finished: now, project: null, backend: "claude", updated: now, items: 2, error: null,
     model: "opus", effort: "high", levels: ["ask", "auto", "full"], level, overnight, steer: true, running: false,
@@ -78,7 +77,7 @@ function daemon() {
     const at = Date.now();
     const was = one.row.overnight;
     const state: Overnight | null = what === "off" ? null : what === "start" ? { state: "night", since: at, done: 0, total: 4, decided: 0 } : { state: "asking" };
-    row(id, { overnight: state, overnight_op: op, level: what === "off" ? "auto" : "full" });
+    row(id, { overnight: state, overnight_op: op, level: what === "start" ? "full" : "auto" });
     if (what === "on") thread(id, [], [QUESTIONS]);
     if (what === "start") thread(id, [started(at)]);
     if (what === "off") thread(id, was?.state === "night" ? [{ ...report, at, ms: at - (was.since ?? at) } as Item] : [], []);

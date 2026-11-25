@@ -16,12 +16,27 @@ impl Thread {
 
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
     pub(super) fn kept_row(&mut self, row: Value) -> usize {
+        self.kept_as(row, None)
+    }
+
+    fn kept_as(&mut self, row: Value, id: Option<String>) -> usize {
         self.break_group();
-        let at = self.add(row);
+        let at = self.add_as(row, id);
         if let Some(o) = self.open.as_mut() {
             o.kept.push(at as u64 + 1);
         }
         at
+    }
+
+    /// Overnight's moments, each written to the log till it's there: drawn once, by its id.
+    pub(super) fn overnight(&mut self, item: &Value) {
+        let id = format!("overnight:{}", item["id"].as_str().unwrap_or(""));
+        if self.named.contains_key(&id) {
+            return;
+        }
+        let mut row = item["row"].clone();
+        row["kind"] = "overnight".into();
+        self.kept_as(row, Some(id));
     }
 
     /// A `worker` note: `started` joins the start row just before it, so one turn's starts read
