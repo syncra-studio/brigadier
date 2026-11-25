@@ -22,6 +22,7 @@ mod last;
 pub mod mcp;
 pub mod mention;
 mod models;
+mod out;
 mod outcomes;
 pub mod owner;
 mod panel;
@@ -48,8 +49,7 @@ use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::Path;
-use std::time::{Duration, Instant};
-use std::{env, fs, thread};
+use std::{env, fs};
 
 pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
@@ -123,6 +123,7 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     Ok(s)
 }
 
+pub use out::heard;
 pub use switching::{switch_settings, wants};
 
 /// Home's unsent words have no session to live in; this can't be a session id.
@@ -358,7 +359,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             for id in &ids {
                 let s = status_of(data, id, &all)
                     .unwrap_or_else(|e| json!({"id": id, "ok": false, "error": e.to_string()}));
-                writeln!(stdout, "{s}")?;
+                if !heard(writeln!(stdout, "{s}"))? {
+                    break;
+                }
             }
             Ok(Value::Null)
         }
@@ -389,7 +392,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "owner" => Ok(
             json!({"pid": owner::pid(data, arg(args, 1)?), "state": format!("{:?}", owner::state(data, arg(args, 1)?))}),
         ),
-        "read" => read(data, arg(args, 1)?, args),
+        "read" => out::read(data, arg(args, 1)?, args),
         // (proposed) A diagnostic: the thread the app draws, from the same fold [D64, D65].
         "thread" => {
             let id = arg(args, 1)?;
@@ -448,46 +451,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true, "ours": {"texts": texts, "tools": tools}, "theirs": theirs}))
         }
         _ => Err(io::Error::other(USAGE)),
-    }
-}
-
-fn read(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
-    let spec = core::load(data, id)?;
-    let started = Instant::now();
-    if let Some(n) = flag(args, "--tail") {
-        let items = core::tail(&spec.dir, &spec, n.parse().unwrap_or(50))?;
-        return Ok(
-            json!({"ok": true, "items": items.len(), "ms": started.elapsed().as_secs_f64() * 1000.0}),
-        );
-    }
-    let quiet = has(args, "--hash");
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
-    let mut count = 0u64;
-    if !has(args, "--follow") {
-        let hash = core::read(&spec.dir, |item| {
-            count += 1;
-            if !quiet {
-                let _ = writeln!(stdout, "{item}");
-            }
-        })?;
-        stdout.flush()?;
-        return Ok(
-            json!({"ok": true, "items": count, "hash": format!("{hash:016x}"), "ms": started.elapsed().as_millis() as u64}),
-        );
-    }
-    // Follow: the same normaliser over the same frames, as they arrive.
-    let mut reader = log::Reader::open(&spec.dir.join("log"), 0, 0)?;
-    let mut norm = brigadier_core::norm::Norm::default();
-    let mut items = vec![];
-    loop {
-        while let Some(frame) = reader.frame()? {
-            norm.push(&frame, &mut items);
-            for item in items.drain(..) {
-                writeln!(stdout, "{item}")?;
-            }
-        }
-        stdout.flush()?;
-        thread::sleep(Duration::from_millis(100));
     }
 }
 
