@@ -6,7 +6,6 @@ import { Button } from "../button";
 import { cx } from "../cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
 import { Kbd } from "../kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { type Draft, isEmpty } from "./draft";
 import { ComposerField, type ComposerFieldHandle } from "./field";
 import { ComposerRail } from "./rail";
@@ -54,7 +53,7 @@ function ComposerCard({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-/** The card's bottom row: tools on the left (`ComposerTools`), then the context ring, a picker and Send. */
+/** The card's bottom row: tools on the left (`ComposerTools`), then a picker and Send. */
 export function ComposerFooter({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="composer-footer" className={cx("flex items-center gap-1", className)} {...props} />;
 }
@@ -97,7 +96,7 @@ export function PillDivider() {
 /**
  * The one composer Home and a session mount [D2108]: the rail over the card, the card's tiles over
  * its field (`children`), and the footer in the old app's order: + and the permission pill side by side, then
- * `status`, the context ring, the model and Send [D2106, D2111]. `above` (an approval) takes the card's place
+ * `status`, the model and Send [D2106, D2111]. `above` (an approval) takes the card's place
  * while `hidden`; `after` holds its dialogs.
  */
 export function SharedComposer({
@@ -108,7 +107,6 @@ export function SharedComposer({
   plus,
   level,
   status,
-  ring,
   model,
   send,
   after,
@@ -116,7 +114,7 @@ export function SharedComposer({
   look,
   children,
   ...card
-}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean; /** A shell command is typed: nothing attached, no permission or model pick. */ shell?: boolean; /** A class the whole composer wears, but as a shell command. */ look?: string }) {
+}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean; /** A shell command is typed: nothing attached, no permission or model pick. */ shell?: boolean; /** A class the whole composer wears, but as a shell command. */ look?: string }) {
   return (
     <Composer className={shell ? undefined : look}>
       <ComposerRail>{rail}</ComposerRail>
@@ -141,64 +139,12 @@ export function SharedComposer({
             )}
           </ComposerTools>
           {status}
-          {ring}
           {!shell && model}
           {send}
         </ComposerFooter>
       </ComposerCard>
       {after}
     </Composer>
-  );
-}
-
-/** "45k": tokens in thousands. */
-const thousands = (tokens: number) => `${Math.round(tokens / 1000)}k`;
-
-/**
- * How full the model's context is: a thin ring whose arc is the share used (no number, no colour change),
- * and on hover "Context window:", "17% used (83% left)", "45k / 258k tokens used". With no known window,
- * only the tokens.
- */
-export function ContextRing({ usedTokens, windowTokens }: { usedTokens: number; windowTokens: number | null }) {
-  const share = windowTokens ? Math.min(1, Math.max(0, usedTokens / windowTokens)) : null;
-  const percent = share === null ? null : Math.round(share * 100);
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        delay={0}
-        render={
-          <span
-            role="img"
-            aria-label={percent === null ? `Context usage: ${thousands(usedTokens)} tokens` : `Context usage: ${percent}%`}
-            className="flex size-control-sm shrink-0 items-center justify-center"
-          />
-        }
-      >
-        <svg viewBox="0 0 16 16" aria-hidden className="size-icon-md -rotate-90">
-          <circle cx="8" cy="8" r="7" fill="none" className="stroke-input stroke-2" />
-          {share !== null && share > 0 && (
-            <circle cx="8" cy="8" r="7" fill="none" pathLength={100} strokeDasharray={`${share * 100} 100`} strokeLinecap="round" className="stroke-muted-foreground stroke-2" />
-          )}
-        </svg>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <span className="flex flex-col gap-0.5 py-0.75">
-          <span className="text-muted-foreground">Context window:</span>
-          {percent !== null && windowTokens ? (
-            <>
-              <span>
-                {percent}% used ({100 - percent}% left)
-              </span>
-              <span>
-                {thousands(usedTokens)} / {thousands(windowTokens)} tokens used
-              </span>
-            </>
-          ) : (
-            <span>{thousands(usedTokens)} tokens used</span>
-          )}
-        </span>
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
