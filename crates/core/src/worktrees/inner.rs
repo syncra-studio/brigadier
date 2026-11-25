@@ -14,6 +14,9 @@ fn walk(dir: &Path, skip: &[PathBuf], one: bool) -> Vec<PathBuf> {
         if one && !found.is_empty() {
             break;
         }
+        if skip.contains(&next) {
+            continue;
+        }
         let entries = match fs::read_dir(&next) {
             Ok(entries) => entries,
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
@@ -31,10 +34,10 @@ fn walk(dir: &Path, skip: &[PathBuf], one: bool) -> Vec<PathBuf> {
                 break;
             };
             let path = entry.path();
-            if skip.contains(&path) {
-                continue;
-            }
             if entry.file_name() == ".git" {
+                if skip.contains(&path) {
+                    continue;
+                }
                 repo = true;
                 break;
             }

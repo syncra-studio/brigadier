@@ -18,7 +18,7 @@ import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
 import { useStored } from "../sidebar/sidebar";
 import type { SessionRow } from "../sidebar/words";
-import { type ArchiveCheck, hideDeleting, LostLine } from "./archive";
+import { type ArchiveCheck, ConfirmLines, hideDeleting, LostLine } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
@@ -196,44 +196,46 @@ export function DeleteForm({ rows, first, onClose }: { rows: Deleted[]; first: C
       onConfirm={confirm}
       onCancel={onClose}
     >
-      {check.state === "checking" && <p className="text-xs text-muted-foreground">{one ? "Checking its branch…" : "Checking their branches…"}</p>}
-      {check.state === "failed" && (
-        <div className="flex items-center gap-2">
-          <ErrorLine error={`Couldn't check ${one ? "its branch" : "their branches"}: ${check.error}`} />
-          <Button variant="ghost" size="sm" onClick={() => setAttempt(attempt + 1)}>
-            Retry
-          </Button>
-        </div>
-      )}
-      {done && done.running.length > 0 && (
-        <p className="text-xs text-muted-foreground">{one ? "Its agent is working and will be stopped." : `${done.running.map((id) => `“${called(id)}”`).join(", ")}: working, and will be stopped.`}</p>
-      )}
-      {done?.lost.map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} />)}
-      {done?.stays.map(({ id, repo, by }) => (
-        <p key={`${id} ${repo}`} className="text-xs text-muted-foreground">
-          {whose([id])}Its {repo ? <>copy of <code className="font-mono text-foreground">{repo}</code></> : "folder"} stays: {called(by)} still works there.
-        </p>
-      ))}
-      {done && done.kept.length > 0 && (
-        <div className="flex flex-col gap-1 text-xs break-words text-muted-foreground">
-          {[...new Map(done.kept.map((each) => [`${each.repo} ${each.branch}`, each]))].map(([key, { repo, branch, why }]) => (
-            <p key={key}>
-              <code className="font-mono text-foreground">{branch}</code>
-              {repo && ` in ${repo}`} stays either way: {why === "pr" ? "it's a pull request's branch." : "another session uses it."}
-            </p>
-          ))}
-        </div>
-      )}
-      {[...repos].map(([repo, branches]) => (
-        <BranchChoice
-          key={repo}
-          repo={repo}
-          branches={branches}
-          own={one !== null && repo === "" && branches.length === 1 && branches[0]!.id === one.id}
-          drop={dropped.has(repo)}
-          setDrop={(drop) => setDropped((now) => new Set(drop ? [...now, repo] : [...now].filter((each) => each !== repo)))}
-        />
-      ))}
+      <ConfirmLines>
+        {check.state === "checking" && <p className="text-xs text-muted-foreground">{one ? "Checking its branch…" : "Checking their branches…"}</p>}
+        {check.state === "failed" && (
+          <div className="flex items-center gap-2">
+            <ErrorLine error={`Couldn't check ${one ? "its branch" : "their branches"}: ${check.error}`} />
+            <Button variant="ghost" size="sm" onClick={() => setAttempt(attempt + 1)}>
+              Retry
+            </Button>
+          </div>
+        )}
+        {done && done.running.length > 0 && (
+          <p className="text-xs text-muted-foreground">{one ? "Its agent is working and will be stopped." : `${done.running.map((id) => `“${called(id)}”`).join(", ")}: working, and will be stopped.`}</p>
+        )}
+        {done?.lost.map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} />)}
+        {done?.stays.map(({ id, repo, by }) => (
+          <p key={`${id} ${repo}`} className="text-xs text-muted-foreground">
+            {whose([id])}Its {repo ? <>copy of <code className="font-mono text-foreground">{repo}</code></> : "folder"} stays: {called(by)} still works there.
+          </p>
+        ))}
+        {done && done.kept.length > 0 && (
+          <div className="flex flex-col gap-1 text-xs break-words text-muted-foreground">
+            {[...new Map(done.kept.map((each) => [`${each.repo} ${each.branch}`, each]))].map(([key, { repo, branch, why }]) => (
+              <p key={key}>
+                <code className="font-mono text-foreground">{branch}</code>
+                {repo && ` in ${repo}`} stays either way: {why === "pr" ? "it's a pull request's branch." : "another session uses it."}
+              </p>
+            ))}
+          </div>
+        )}
+        {[...repos].map(([repo, branches]) => (
+          <BranchChoice
+            key={repo}
+            repo={repo}
+            branches={branches}
+            own={one !== null && repo === "" && branches.length === 1 && branches[0]!.id === one.id}
+            drop={dropped.has(repo)}
+            setDrop={(drop) => setDropped((now) => new Set(drop ? [...now, repo] : [...now].filter((each) => each !== repo)))}
+          />
+        ))}
+      </ConfirmLines>
     </ConfirmForm>
   );
 }

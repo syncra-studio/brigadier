@@ -483,6 +483,8 @@
   /* The message rail beside the thread (the old app's): its list's most, each tick's hit box, its line at rest and
      hovered, and its list's end fades. */
   --spacing-rail-list: min(70vh, 40rem);
+  /* A long confirm scrolls its lines, its title and buttons in view. */
+  --spacing-confirm-lines: calc(100vh - 16rem);
   --spacing-rail-marker: 2.25rem;
   --spacing-rail-marker-height: 0.625rem;
   --spacing-rail-line: 0.375rem;

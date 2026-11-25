@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 
 import { ConfirmForm } from "../components/confirm-dialog";
 import { Dialog, DialogContent } from "../components/dialog";
@@ -150,6 +150,9 @@ export function LostLine({ lost: { files, repos, error }, whose, more = "" }: { 
   );
 }
 
+/** The lines under a confirm's question, scrolling when there are many. */
+export const ConfirmLines = ({ children }: { children: ReactNode }) => <div className="-m-1 flex max-h-confirm-lines flex-col gap-4 overflow-y-auto p-1 empty:hidden">{children}</div>;
+
 /** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
 export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
   const one = rows.length === 1;
@@ -176,13 +179,15 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      {(check?.running ?? []).map((id) => (
-        <p key={id} className="text-xs text-muted-foreground">
-          {lone ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
-        </p>
-      ))}
-      {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more=", and restore won't bring them back" />)}
-      <ErrorLine error={error && `Couldn't check what archiving loses: ${error}`} />
+      <ConfirmLines>
+        {(check?.running ?? []).map((id) => (
+          <p key={id} className="text-xs text-muted-foreground">
+            {lone ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
+          </p>
+        ))}
+        {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more=", and restore won't bring them back" />)}
+        <ErrorLine error={error && `Couldn't check what archiving loses: ${error}`} />
+      </ConfirmLines>
     </ConfirmForm>
   );
 }
