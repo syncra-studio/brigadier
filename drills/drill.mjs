@@ -1684,6 +1684,7 @@ async function speed() {
       const up = await daemonList(20000)
       if (!up) bad.push({ size, arm, error: 'no daemon for search' })
       spawnSync(`${bin(arm)}/brigadier`, ['start', 's', '--backend', 'fake', '--cwd', '/tmp', '--opt', `FAKE_LEDGER=${DATA}/ledger`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+      const readS = () => spawnSync(`${bin(arm)}/brigadier`, ['read', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA }, encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l))
       for (let k = 0; k < n && up; k++) {
         const t = performance.now()
         const m = await daemonCall({ op: 'search', q: 'ipsum dolor' }, 20000)
@@ -1691,11 +1692,13 @@ async function speed() {
         else bad.push({ size, arm, error: `search: ${JSON.stringify(m)}` })
         spawnSync(`${bin(arm)}/brigadier`, ['send', 's', `k${k} brigadier:search+"ipsum+dolor"`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
         await sleep(400)
+        // The next is sent once this one ended; the first that never does ends the round.
+        if (!(await waitFor(() => readS().filter((i) => i.kind === 'turn_end').length > k, 30000, 200)).ok) break
       }
-      await sleep(1500)
-      const items = spawnSync(`${bin(arm)}/brigadier`, ['read', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA }, encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      const items = readS()
       const at = {}
       for (const i of items) { if (i.kind === 'tool') at[i.id] = i.ts; if (i.kind === 'tool_done' && at[i.id]) { if (i.ok) got[arm].search.push(i.ts - at[i.id]); else bad.push({ size, arm, error: 'the agent\'s search failed' }) } }
+      if (got[arm].search.length !== n) bad.push({ size, arm, error: `${got[arm].search.length} of ${n} agent searches measured` })
       spawnSync(`${bin(arm)}/brigadier`, ['stop', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
       spawnSync(`${bin(arm)}/brigadier`, ['delete', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
       for (const d of daemons.splice(was)) kill(d.pid)
