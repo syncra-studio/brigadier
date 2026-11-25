@@ -447,6 +447,13 @@ impl Adapter for OpenCode {
             .map(|(m, _)| m.id.clone())
     }
 
+    /// Its log and its commands' output files, in the session's own data folder: nothing reads
+    /// them once it stops, and a restored session makes them again.
+    fn scratch(&self, spec: &Spec, _resume: &str) -> Vec<PathBuf> {
+        let data = spec.dir.join("runtime/opencode");
+        vec![data.join("log"), data.join("shell")]
+    }
+
     /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
     /// as deleted. Never touches credentials or other sessions.
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
