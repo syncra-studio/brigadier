@@ -14,7 +14,9 @@
 
 mod line;
 mod plan;
+mod task;
 pub(crate) use plan::{plan_gone, plan_held};
+pub(crate) use task::plan;
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};
@@ -49,102 +51,6 @@ pub(crate) struct Plan {
 /// Whether a worker at its limit moves within its job: a reviewer and a fix turn end there [D3026].
 pub(crate) fn moves(l: &Link) -> bool {
     l.review["of"].is_null() && l.review["state"] != "sent"
-}
-
-/// A worker's own commits, `base_commit..head`, none when it made none.
-fn span(data: &Path, wid: &str) -> Option<(String, String)> {
-    let base = (core::worktrees::lands(&core::session_dir(data, wid))
-        .ok()
-        .flatten())?
-    .base_commit;
-    let cwd = core::load(data, wid).ok()?.cwd;
-    let head = git(&cwd, &["rev-parse", "HEAD"])?;
-    let n = git(&cwd, &["rev-list", "--count", &format!("{base}..{head}")])?;
-    (n != "0").then_some((base, head))
-}
-
-/// `start --reviewing <id>|session "<brief>"` for session `me` [D3026]: the reviewed task and its
-/// done-when, its commits by `base..head`, never its summary or transcript; the agent's brief,
-/// then the fixed one. Refusals and the authors of `session` are proposed.
-pub(crate) fn plan(
-    data: &Path,
-    me: &str,
-    of: &str,
-    given: &str,
-    flags: &dyn Fn(&str) -> Option<String>,
-) -> Result<Plan, Value> {
-    let named = ["--job", "--agent", "--model", "--effort", "--retry"];
-    if let Some(f) = named.into_iter().find(|f| flags(f).is_some()) {
-        return Err(refuse(&format!(
-            "--reviewing takes no {f}: a review runs on your Review job, on another agent than the author's."
-        )));
-    }
-    let switch = flags(SWITCH).is_some();
-    let mut mark = json!({"of": of, "switch": switch});
-    if let Some(id) = flags(plan::PLAN) {
-        mark["plan"] = id.into();
-        return plan::plan_of(data, me, mark);
-    }
-    let given = match given.trim() {
-        "" => String::new(),
-        g => format!("\n\nFrom the session that asked for this review:\n{g}"),
-    };
-    if of == "session" {
-        let task = link(data, me).map(|l| l.brief);
-        if task.is_none() && given.is_empty() {
-            return Err(refuse(
-                "`brigadier start --reviewing session \"<plan>\"` needs the plan or work to review, in quotes: your session has no brief of its own.",
-            ));
-        }
-        let spec = core::load(data, me).map_err(|e| refuse(&e.to_string()))?;
-        let f = core::fold(&spec.dir, true).map_err(|e| refuse(&e.to_string()))?;
-        // Its author is the session's own agent [D385, §6].
-        let authors = vec![crate::models::next_agent(&spec, &f.fold).to_string()];
-        let task = task.map_or(String::new(), |t| {
-            format!("\n\nIts task, as it was given:\n{}", t.trim_end())
-        });
-        let brief = format!(
-            "Adversarial review of {}'s plan or merged work; your worktree is at its current head.{task}{given}\n\n{BRIEF}",
-            core::share::title(&spec)
-        );
-        let title = "Adversarial review".into();
-        return Ok(Plan {
-            brief,
-            title,
-            base: None,
-            authors,
-            mark,
-        });
-    }
-    let Some(l) = link(data, of).filter(|l| l.parent == me && !l.session && moves(l)) else {
-        return Err(refuse(
-            "--reviewing takes one of your own workers, by its id, or `session`.",
-        ));
-    };
-    if !switch && (l.last.is_null() || l.review["state"] == "running") {
-        return Err(refuse(&format!(
-            "{of} hasn't ended. Wait for its result, then review it."
-        )));
-    }
-    let Some((base, head)) = span(data, of) else {
-        return Err(refuse(&format!("Nothing to review: {of} made no commits.")));
-    };
-    let brief = format!(
-        "Adversarial review of {} ({of}). Its task, as it was given:\n{}\n\nIts work is the commits {base}..{head}; your worktree is checked out at {head}: `git log -p {base}..{head}`.{given}\n\n{BRIEF}",
-        l.title,
-        l.brief.trim_end()
-    );
-    let authors = (l.ran["agent"].as_str().map(String::from))
-        .into_iter()
-        .collect();
-    let title = format!("Adversarial review of {}", l.title);
-    Ok(Plan {
-        brief,
-        title,
-        base: Some(head),
-        authors,
-        mark,
-    })
 }
 
 /// After `--reviewing <id>` is reserved as `rid`: its worker is marked, so the switch never
@@ -228,9 +134,20 @@ pub(super) fn holds(
     }
     let r = l.review.clone();
     match r["state"].as_str() {
-        None if r.is_null() && span(data, wid).is_some() => {
+        // Its first commits, or new ones since its last review, for what it was asked after it.
+        None | Some("done" | "off") if on && again(l, &r, turn) => {
+            let past = past(&r);
+            l.review = json!({"state": "running", "turn": turn, "past": past,
+                "since": r["head"], "head": r["head"], "line": null});
+            let _ = save(data, wid, l);
+            if task::spans(data, wid, &l.review["since"]).is_empty() {
+                // Nothing new of its own: as it was.
+                l.review = r;
+                let _ = save(data, wid, l);
+                return Some(how);
+            }
             match next(data, l, wid) {
-                Ok(by) => l.review = json!({"state": "running", "by": by, "turn": turn}),
+                Ok(by) => l.review["by"] = by.into(),
                 Err(why) => off(data, l, wid, &why),
             }
             let _ = save(data, wid, l);
@@ -276,6 +193,7 @@ pub(super) fn holds(
                 line += &format!("; the fix turn {}", word(how));
             }
             (l.review["state"], l.review["line"]) = ("done".into(), line.into());
+            l.review["head"] = task::heads(data, wid);
             note(
                 data,
                 wid,
@@ -291,12 +209,30 @@ pub(super) fn holds(
     }
 }
 
+/// Whether `turn` may be reviewed after `r`: the first, or one asked for after the last review
+/// ended; a mockup's rounds are the user's to judge. An agent's own review is the only one.
+fn again(l: &Link, r: &Value, turn: &str) -> bool {
+    let known = r["state"] != "done" || r["head"].is_object();
+    r.is_null()
+        || (l.asked["mockup"].is_null() && known && r["turn"].is_string() && r["turn"] != turn)
+}
+
+/// The reviewers of its earlier reviews, so a new one never takes one of theirs.
+fn past(r: &Value) -> Vec<Value> {
+    let mut past = r["past"].as_array().cloned().unwrap_or_default();
+    let tried = r["tried"].as_array().into_iter().flatten();
+    past.extend(tried.map(|t| t["by"].clone()));
+    past.extend(r["by"].is_string().then(|| r["by"].clone()));
+    past
+}
+
 /// Starts the switch's reviewer of `wid`, its sibling, on the next eligible model past those
 /// tried; one a restart cut short is reserved already: taken, never a second [D54]. The why it
 /// can't, once none is left.
 fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
     let tried = a.review["tried"].as_array().cloned().unwrap_or_default();
-    let new = |x: &str| tried.iter().all(|t| t["by"] != x);
+    let past = a.review["past"].as_array().cloned().unwrap_or_default();
+    let new = |x: &str| tried.iter().all(|t| t["by"] != x) && past.iter().all(|p| p != x);
     let made = (records(data, &a.parent).into_iter())
         .find(|x| x.review["of"] == wid && x.review["switch"] == true && new(&x.wid));
     if let Some(x) = made {
@@ -399,6 +335,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
             (Some(why), ..) => off(data, &mut a, of, &why),
             (None, Some(0), _) => {
                 a.review["state"] = "done".into();
+                a.review["head"] = task::heads(data, of);
                 a.review["line"] = reviewed(&a.review, None, None).into();
                 note(data, of, &a.review, [Some(0), None, None], None);
             }
