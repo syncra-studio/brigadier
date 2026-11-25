@@ -98,11 +98,19 @@ function startFake(id, extra = [], env = {}, ledgerName) {
   return cli(['start', id, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts(ledgerName), ...extra], env).out
 }
 
+// A fixture's shell line: one that fails is the drill's failure, not the product's.
+function must(line, cwd) {
+  const r = spawnSync('sh', ['-c', line], { cwd, encoding: 'utf8' })
+  if (r.status !== 0) throw new Error(`${line}: ${r.stderr}`)
+}
+// A new repository with an identity of its own, whatever the home has: its agents commit too.
+const GIT_INIT = 'git init -q -b main && git config user.email drill@example.invalid && git config user.name drill'
+
 function gitRepo(name) {
   const dir = `${ROOT}/repo-${name}`
   fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(dir, { recursive: true })
-  spawnSync('sh', ['-c', 'git init -q && echo hi > a.txt && git add . && git -c user.email=drill@example.invalid -c user.name=drill commit -qm init'], { cwd: dir })
+  must(`${GIT_INIT} && echo hi > a.txt && git add . && git commit -qm init`, dir)
   return dir
 }
 
@@ -904,7 +912,7 @@ function wordFiles(dir) {
     fs.writeFileSync(`${dir}/f${f}.txt`, lines.join('\n') + '\n')
     truth[`f${f}.txt`] = omegas
   }
-  spawnSync('sh', ['-c', 'git add . && git -c user.email=drill@example.invalid -c user.name=drill commit -qm files'], { cwd: dir })
+  must('git add . && git commit -qm files', dir)
   return truth
 }
 
@@ -1312,7 +1320,7 @@ function applyOps(fs, cp, dir, ops) {
       if (o.op === 'todir') { const was = fs.readFileSync(at(o.path)); fs.rmSync(at(o.path)); fs.mkdirSync(at(o.path)); fs.writeFileSync(at(`${o.path}/inner.txt`), was) }
       if (o.op === 'tofile') { fs.rmSync(at(o.path), { recursive: true }); fs.writeFileSync(at(o.path), 'was a folder\n') }
       if (o.op === 'mkdir') fs.mkdirSync(at(o.path), { recursive: true })
-      if (o.op === 'nested') { fs.mkdirSync(at(o.path), { recursive: true }); fs.writeFileSync(at(`${o.path}/in.txt`), 'nested\n'); cp.spawnSync('sh', ['-c', 'git init -q && git add . && git commit -qm nested'], { cwd: at(o.path) }) }
+      if (o.op === 'nested') { fs.mkdirSync(at(o.path), { recursive: true }); fs.writeFileSync(at(`${o.path}/in.txt`), 'nested\n'); cp.spawnSync('sh', ['-c', 'git init -q && git add . && git -c user.email=drill@example.invalid -c user.name=drill commit -qm nested'], { cwd: at(o.path) }) }
       if (o.op === 'commit') cp.spawnSync('sh', ['-c', 'git add -A && git commit -qm work'], { cwd: dir })
       if (o.op === 'stage') cp.spawnSync('git', ['add', '-A'], { cwd: dir })
     } catch {}
@@ -1409,7 +1417,7 @@ async function rewindOne(k) {
   for (const [p, t] of Object.entries({ 'a.txt': 'alpha\n', 'b/c.txt': 'gamma\n', 'b/d.bin': Buffer.from([0, 255, 1, 254, 10]), 'same.txt': '100\n', 'crlf.txt': 'one\r\ntwo\r\n', '.gitignore': 'build/\n*.log\n', 'kept.log': 'tracked though ignored\n', 'run.sh': '#!/bin/sh\n', 'secret.env': 'KEY=1\n', '.gitattributes': '*.txt text=auto\n' })) { fs.mkdirSync(path.dirname(`${repo}/${p}`), { recursive: true }); fs.writeFileSync(`${repo}/${p}`, t) }
   fs.chmodSync(`${repo}/run.sh`, 0o755)
   fs.chmodSync(`${repo}/secret.env`, 0o600)
-  spawnSync('sh', ['-c', 'git init -q -b main && git add -A && git add -f kept.log && git commit -qm init'], { cwd: repo })
+  must(`${GIT_INIT} && git add -A && git add -f kept.log && git commit -qm init`, repo)
   fs.writeFileSync(`${repo}/untracked.txt`, 'the user\'s own, never added\n')
   // An id is the clock's millisecond, so a folder added at another's is refused: asked again.
   let proj = {}
@@ -1814,8 +1822,7 @@ function caseRepo(c, tag) {
   for (const b of ['slack', 'jira']) fs.writeFileSync(`${dir}/bin/${b}`, `#!/bin/sh\n${OUTBOX}\n`, { mode: 0o755 })
   fs.writeFileSync(`${dir}/a.txt`, 'hi\n')
   c.setup?.(dir)
-  const git = '-c user.email=drill@example.invalid -c user.name=drill'
-  spawnSync('sh', ['-c', `git init -q && echo .outbox.log > .gitignore && git add . && git ${git} commit -qm "chore: start" && git ${git} commit -q --allow-empty -m "chore: add the stubs"`], { cwd: dir })
+  must(`${GIT_INIT} && echo .outbox.log > .gitignore && git add . && git commit -qm "chore: start" && git commit -q --allow-empty -m "chore: add the stubs"`, dir)
   return dir
 }
 
