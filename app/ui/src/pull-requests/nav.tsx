@@ -46,6 +46,9 @@ type Read = { found: Record<string, Found>; error?: string };
 const FRESH_MS = 60_000;
 // Each view's last read this run, by its queries and flags: a view seen before paints at once on a revisit [D262].
 const last = new Map<string, Read>();
+// Reads asked so far, and each view's newest to have landed whole: an older one that lands after it is dropped.
+let asks = 0;
+const landed = new Map<string, number>();
 
 /**
  * The sections' rows: the kept read at once, then GitHub's; again on focus once stale, and on `again`. `flags` go with each
@@ -67,7 +70,10 @@ export function useSections(queries: string[], flags: string[] = []): { read: Re
     setRead(last.get(key) ?? null);
   }
   // A reply for a view since left is still remembered for it, but only the view asked for is shown.
-  const land = (asked: string, reply: Record<string, any>, keptOnly: boolean) => {
+  const land = (asked: string, reply: Record<string, any>, turn?: number) => {
+    const keptOnly = turn === undefined;
+    if (!keptOnly && turn < (landed.get(asked) ?? 0)) return;
+    if (!keptOnly && reply.ok && (reply.found as Found[]).every((each) => !each?.error)) landed.set(asked, turn);
     const now = last.get(asked);
     if (!reply.ok) return !keptOnly && asked === asking.current && setRead({ found: now?.found ?? {}, error: String(reply.error) });
     const found = { ...(now?.found ?? {}) };
@@ -79,16 +85,17 @@ export function useSections(queries: string[], flags: string[] = []): { read: Re
   const again = () => {
     if (!queries.length) return;
     at.current = Date.now();
+    const turn = ++asks;
     const count = (by: number) => setReads((all) => ({ ...all, [key]: (all[key] ?? 0) + by }));
     count(1);
     ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags] }, (reply) => {
       count(-1);
-      if (reply.error !== "disconnected") land(key, reply, false);
+      if (reply.error !== "disconnected") land(key, reply, turn);
     });
   };
   useEffect(() => {
     if (!daemon || !queries.length) return;
-    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags, "--kept"] }, (reply) => land(key, reply, true));
+    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags, "--kept"] }, (reply) => land(key, reply));
     again();
     const focus = () => Date.now() - at.current > FRESH_MS && again();
     addEventListener("focus", focus);
