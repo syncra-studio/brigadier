@@ -349,7 +349,7 @@ fn check(data: &Path, a: &dyn Adapter, cwd: &Path) -> io::Result<Value> {
                 out["plan"] = c.who.plan.into();
                 out["logins"] = c.logins.into();
                 out["models"] = (c.models.iter())
-                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "draws": m.draws, "fast": m.fast, "legacy": m.legacy, "window": m.window, "default": m.default}))
+                    .map(|m| json!({"id": m.id, "name": m.name, "local": m.local, "efforts": m.efforts, "default_effort": m.default_effort, "retiring": m.retiring, "images": m.images, "draws": m.draws, "fast": m.fast, "legacy": m.legacy, "window": m.window, "cost": m.cost, "default": m.default}))
                     .collect();
                 // A list that couldn't be read is the last one read, never a guess.
                 if c.signed_in != Some(false) && out["models"] == json!([]) {
@@ -429,7 +429,7 @@ pub(crate) fn start(
             .ok_or_else(|| io::Error::other(format!("{} is not installed", a.label())))?;
         let argv =
             std::iter::once(exe.display().to_string()).chain(words.iter().map(|w| w.to_string()));
-        (argv.collect(), adapters::base_env(&spec, &exe, a.keys()))
+        (argv.collect(), adapters::base_env(&spec, &exe, &a.keys()))
     } else {
         let line = a
             .install()

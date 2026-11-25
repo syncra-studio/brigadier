@@ -8,16 +8,17 @@ mod events;
 mod grants;
 mod http;
 mod image;
+mod models;
 mod rewind;
 mod server;
 
 use super::setup::run as bounded;
 use super::{
     Adapter, Can, Check, Cut, Delivery, Event, Failed, Landing, Launch, ModelInfo, Retune, Rewound,
-    Timing, base_env, home_path, mark_superseded, probe, s, sha1, uuid, version,
+    Timing, base_env, home_path, probe, s, sha1, uuid, version,
 };
 use crate::Spec;
-use control::{answers, before_2, message, model, model_info, model_ref, prompt, rules, stopped};
+use control::{answers, before_2, message, model_ref, prompt, rules, stopped};
 use events::tool_use;
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
@@ -30,7 +31,7 @@ const LOCAL: [&str; 3] = ["ollama", "lmstudio", "vllm"];
 
 impl OpenCode {
     fn env(&self, spec: &Spec) -> Vec<(String, String)> {
-        let mut env = base_env(spec, &self.exe().unwrap_or_default(), self.keys());
+        let mut env = base_env(spec, &self.exe().unwrap_or_default(), &self.keys());
         // Keep credentials in its normal database; even output missed during a stream drop is
         // session-owned and removed on delete [D35, D89].
         env.extend([
@@ -95,10 +96,6 @@ impl Adapter for OpenCode {
     fn subagents(&self) -> super::Subagents {
         super::Subagents::Defaults
     }
-    fn runs(&self, spec: &Spec) -> Option<String> {
-        Some(control::model(spec))
-    }
-
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
         ("opencode", &[".opencode/bin"])
     }
@@ -144,10 +141,11 @@ impl Adapter for OpenCode {
         true
     }
 
-    /// The models.dev variables of the providers people most often use with it; a saved account
-    /// wins over a variable.
-    fn keys(&self) -> &'static [&'static str] {
-        &[
+    /// The variables its providers' keys are read from, as its last check found them, and the ones
+    /// people most often use with it; a saved account wins over a variable.
+    fn keys(&self) -> Vec<String> {
+        let kept = std::fs::read_to_string(models::keys_file()).unwrap_or_default();
+        let usual = [
             "ANTHROPIC_API_KEY",
             "OPENAI_API_KEY",
             "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -159,7 +157,10 @@ impl Adapter for OpenCode {
             "MISTRAL_API_KEY",
             "XAI_API_KEY",
             "OPENCODE_API_KEY",
-        ]
+        ];
+        (usual.into_iter().chain(kept.lines()))
+            .map(String::from)
+            .collect()
     }
 
     /// Signed in means a saved account (`auth list`); usable means `models` lists something for
@@ -173,7 +174,7 @@ impl Adapter for OpenCode {
             ));
         }
         let text = |args: &[&str]| -> Result<String, String> {
-            let out = probe(exe, cwd, self.keys(), args, 30)?;
+            let out = probe(exe, cwd, &self.keys(), args, 30)?;
             let said = String::from_utf8_lossy(&out.stdout).into_owned();
             match out.status.success() {
                 true => Ok(said),
@@ -196,25 +197,7 @@ impl Adapter for OpenCode {
             .map(|p| s(p, &["name"]))
             .collect();
         let local = |id: &str| LOCAL.iter().any(|p| id.starts_with(&format!("{p}/")));
-        // Its server's list, as the old app read it; where that can't be read, its plain list of ids.
-        let listed = text(&["api", "--standalone", "GET", "/api/model"]).ok();
-        let listed: Value = (listed
-            .and_then(|t| serde_json::from_str(&t[t.find('{').unwrap_or(0)..]).ok()))
-        .unwrap_or_default();
-        let images = image::any(text(&["api", "--standalone", "GET", image::LIST]));
-        let mut models: Vec<ModelInfo> = (listed["data"].as_array().into_iter().flatten())
-            .filter(|m| m["enabled"] != false)
-            .map(|m| model_info(m, &local, images))
-            .collect();
-        models.sort_by(|a, b| a.id.cmp(&b.id));
-        mark_superseded(&mut models);
-        if models.is_empty() {
-            models = text(&["models", "--standalone"])?
-                .lines()
-                .filter(|l| l.contains('/') && !l.contains(' '))
-                .map(|l| ModelInfo::plain(l, local(l)))
-                .collect();
-        }
+        let models = models::list(exe, cwd, &self.keys(), &local)?;
         Ok(Check {
             version,
             signed_in: Some(!saved.is_empty()),
@@ -269,10 +252,9 @@ impl Adapter for OpenCode {
         let grants: Vec<Value> = (spec.grants.iter())
             .map(|g| json!({"action": g["cli"]["action"], "save": g["cli"]["save"]}))
             .collect();
-        let mut lines = vec![
-            json!({"open": open, "grants": grants, "must": true}),
-            json!({"model": model_ref(spec), "must": true}),
-        ];
+        let mut lines = vec![json!({"open": open, "grants": grants, "must": true})];
+        // With none picked, OpenCode's own default.
+        lines.extend(model_ref(spec).map(|m| json!({"model": m, "must": true})));
         lines.push(json!({"permissions": rules(spec), "must": true}));
         lines.extend(text.map(|t| message(spec, t)));
         Launch {
@@ -301,8 +283,8 @@ impl Adapter for OpenCode {
     /// before the message [D222].
     fn retune(&self, last: &Spec, next: &Spec) -> Retune {
         let mut lines = vec![];
-        if (model(last), &last.effort) != (model(next), &next.effort) {
-            lines.push(json!({"model": model_ref(next)}));
+        if (&last.model, &last.effort) != (&next.model, &next.effort) {
+            lines.extend(model_ref(next).map(|m| json!({"model": m})));
         }
         if last.level != next.level {
             lines.push(json!({"permissions": rules(next)}));
@@ -447,15 +429,24 @@ impl Adapter for OpenCode {
 
     /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
     /// as deleted. Never touches credentials or other sessions.
-    /// Its small model: on the session model's own provider, the first its list names by a
-    /// small model's word, in the list's order [D1029].
+    /// The cheapest its server lists on the session model's own provider, never a free one, which may
+    /// keep what it's sent; None for a session on a free or local model [D1029].
     fn cheap(&self, current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
-        const SMALL: [&str; 6] = ["haiku", "mini", "nano", "flash", "lite", "small"];
-        let provider = current?.split_once('/')?.0;
+        let provider = |id: &str| id.split_once('/').map(|(p, _)| p.to_string());
+        let own = provider(current?)?;
+        let priced = |id: &str| {
+            models
+                .iter()
+                .find(|m| m.id == id)?
+                .cost
+                .filter(|c| *c > 0.0)
+        };
+        priced(current?)?;
         (models.iter())
-            .filter(|m| m.id.split_once('/').is_some_and(|(p, _)| p == provider))
-            .find(|m| (m.id.split(['/', '-', '.', ':', '_'])).any(|w| SMALL.contains(&w)))
-            .map(|m| m.id.clone())
+            .filter(|m| provider(&m.id).as_ref() == Some(&own))
+            .filter_map(|m| Some((m, m.cost.filter(|c| *c > 0.0)?)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(m, _)| m.id.clone())
     }
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {

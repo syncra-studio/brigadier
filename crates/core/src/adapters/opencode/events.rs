@@ -6,17 +6,27 @@ use super::super::{
 };
 use serde_json::{Value, json};
 
-/// An error of its API as an event, by the whole error, telling the user its message, not its JSON.
+/// An error of its API as an event: a full context or no credits by its words, its provider's answer
+/// included, then its HTTP status, then its message where it has none.
 pub fn refusal(error: &Value) -> Option<Event> {
     let said = (error["message"]
         .as_str()
         .or(error["data"]["message"].as_str()))
     .map_or_else(|| error.to_string(), String::from);
-    Some(match classify(&error.to_string())? {
-        Event::Limited(_, resets) => Event::Limited(said, resets),
-        Event::SignIn(_) => Event::SignIn(said),
-        e => e,
-    })
+    let body = s(error, &["response", "body"]);
+    match classify(&format!("{said} {body}")) {
+        Some(Event::Failed("context", _)) => return Some(Event::Failed("context", said)),
+        Some(Event::OutOfCredits) => return Some(Event::OutOfCredits),
+        _ => {}
+    }
+    match error["status"].as_u64() {
+        Some(429) => Some(Event::Limited(said, None)),
+        Some(401 | 403) => Some(Event::SignIn(said)),
+        Some(402) => Some(Event::OutOfCredits),
+        Some(500..) => Some(Event::Failed("capacity", said)),
+        Some(_) => None,
+        None => classify(&said),
+    }
 }
 
 /// A failed turn's error, with the cause its type names [D487]; its words, not its JSON.
@@ -73,6 +83,10 @@ pub fn server(v: &Value) -> Option<Vec<Event>> {
             s(d, &["reply"]) != "reject",
         )],
         "form.created" => vec![form(&d["form"])],
+        "brigadier.declined" => vec![Event::Unknown(format!(
+            "OpenCode asked for a form Brigadier can't show, so it was cancelled: {}",
+            id("title")
+        ))],
         "form.replied" => {
             let answer = d["answer"]
                 .as_object()
@@ -274,9 +288,6 @@ fn approval(d: &Value) -> Event {
 
 /// The question tool's form as D177's PendingQuestion: one item per field, keyed `q0…`.
 fn form(f: &Value) -> Event {
-    if f["metadata"]["kind"] != "question" {
-        return Event::Unknown(f.to_string());
-    }
     let fields = f["fields"].as_array().cloned().unwrap_or_default();
     let items: Vec<Value> = (fields.iter())
         .map(|q| {

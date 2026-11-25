@@ -6,11 +6,10 @@ mod child;
 
 use super::grants::{allow, grant, granted, inside, skipping};
 use super::http::Server;
-use brigadier_frames::base64;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::io::{self, BufRead, BufReader, Write};
-use std::process::{self, Child, Command, Stdio};
+use std::io::{self, BufRead, Write};
+use std::process::{self, Child, Command};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{mem, thread};
@@ -70,26 +69,11 @@ pub(super) fn start(
 ) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
     std::fs::create_dir_all(super::super::home_path(".local/share/opencode"))
         .map_err(|e| e.to_string())?;
-    let mut child = Command::new(exe)
-        .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
-        .env("OPENCODE_PASSWORD", password)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("OpenCode didn't start: {e}"))?;
+    let mut child = super::models::serve(&mut Command::new(exe), password)?;
     let lease = child.stdin.take();
-    let mut out = BufReader::new(child.stdout.take().ok_or("no stdout")?);
-    let mut first = String::new();
-    out.read_line(&mut first).map_err(|e| e.to_string())?;
-    let url: Value =
-        serde_json::from_str(&first).map_err(|_| format!("OpenCode said {first:?}"))?;
-    let addr = super::super::s(&url, &["url"]).trim_start_matches("http://");
+    let (mut out, server) = super::models::dial(&mut child, password)?;
     thread::spawn(move || io::copy(&mut out, &mut io::stderr()));
-    let server = Arc::new(Server {
-        addr: addr.into(),
-        auth: base64(format!("opencode:{password}").as_bytes()),
-    });
+    let server = Arc::new(server);
     let state = Shared::default();
     let child = Arc::new(Mutex::new(child));
     let (ready, connected) = std::sync::mpsc::channel();
@@ -307,6 +291,14 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
         "form.created" if d["form"]["metadata"]["kind"] == "question" => {
             st.forms
                 .insert(d["form"]["id"].as_str().unwrap_or("").into());
+        }
+        // One of a kind Brigadier can't show is cancelled, never left to hold its turn.
+        "form.created" => {
+            drop(st);
+            let at = |k: &str| d["form"][k].as_str().unwrap_or("");
+            let path = format!("/api/session/{}/form/{}", at("sessionID"), at("id"));
+            let _ = server.request("DELETE", &path, &Value::Null);
+            return say(json!({"type": "brigadier.declined", "data": d["form"]}));
         }
         "form.replied" | "form.cancelled" if st.forms.remove(d["id"].as_str().unwrap_or("")) => {}
         "shell.created" => {}

@@ -129,6 +129,8 @@ pub struct ModelInfo {
     pub fast: Option<String>,
     /// An older model its CLI still offers beside a newer one: pickers tuck it under Older models.
     pub legacy: bool,
+    /// What it costs, input and output added, where its CLI's list says; only to find the cheapest.
+    pub cost: Option<f64>,
     /// Its context window in tokens, where its CLI's list says [D113].
     pub window: Option<u64>,
     /// The one its CLI runs unpicked, where its own list says so [D2075, D388 Q12].

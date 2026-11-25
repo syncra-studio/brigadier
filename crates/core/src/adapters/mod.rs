@@ -308,8 +308,8 @@ pub trait Adapter: Sync {
         Ok(code.trim().into())
     }
     /// Credential variables it reads, passed on from the login shell, never stored or logged.
-    fn keys(&self) -> &'static [&'static str] {
-        &[]
+    fn keys(&self) -> Vec<String> {
+        vec![]
     }
     /// Its own status commands, run in `cwd` in the environment its sessions get; every probe
     /// is bounded, on the account `spec` names. Never reads a credential.
@@ -438,7 +438,7 @@ pub trait Adapter: Sync {
         None
     }
     /// The cheapest of `models`, its last check's list, for the message writer, by its own reading of them; `current` is
-    /// the session's model. None: it can't tell, so the writer uses the session's model (proposed, D1163) [D1029].
+    /// the session's model. None: it can't tell, so the writer uses the session's model at its lowest effort (proposed, D1163) [D1029].
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }

@@ -4,7 +4,7 @@ use super::Seed;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
-    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, home_path, probe_as, s, version,
+    Retune, Rewound, Timing, base_env, cli_home, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use crate::fold::Boundary;
@@ -240,7 +240,7 @@ impl Adapter for Codex {
                 .into_iter()
                 .chain(flags)
                 .collect(),
-            env: base_env(spec, &exe, self.keys()),
+            env: base_env(spec, &exe, &self.keys()),
             keep_stdin: true,
             input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),
         }
@@ -281,13 +281,6 @@ impl Adapter for Codex {
 
     /// The thread and the Auto reviewers that worked for it, each by its own id; the thread goes
     /// last, so a retry after a failure can still find them [D35].
-    /// Its small model: the first its `model/list` names a mini, in the list's order [D1029].
-    fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
-        (models.iter())
-            .find(|m| m.id.split(['-', '.']).any(|w| w == "mini"))
-            .map(|m| m.id.clone())
-    }
-
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         let home = cli_home(spec, ".codex", "");
         let mut ids = helpers(&home, &spawned(self, spec, resume));

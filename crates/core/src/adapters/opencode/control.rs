@@ -15,8 +15,8 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     config["experimental"] = json!({"todo": crate::rebirth::todo()});
     // Where a rule names OpenCode, its subagent-mode agents start on the session's model and
     // capped effort; its task tool can still name others [D376].
-    if spec.ruled.touched {
-        let mut agent = json!({"model": model(spec)});
+    if let Some(model) = spec.model.as_deref().filter(|_| spec.ruled.touched) {
+        let mut agent = json!({"model": model});
         if let Some(e) = &spec.effort {
             agent["variant"] = e.as_str().into();
         }
@@ -96,24 +96,23 @@ pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool, images: Option<bool>
         images: Some(input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"))),
         window: m["limit"]["context"].as_u64(),
         draws: super::image::draws(m, images),
+        cost: (m["cost"][0]["input"]
+            .as_f64()
+            .zip(m["cost"][0]["output"].as_f64()))
+        .map(|(i, o)| i + o),
         ..ModelInfo::plain(&id, local(&id))
     }
 }
 
-/// The model a session runs; a free one OpenCode serves when none is picked.
-pub fn model(spec: &Spec) -> String {
-    (spec.model.clone()).unwrap_or_else(|| "opencode/deepseek-v4.1-flash-free".into())
-}
-
-/// The model as its server names it: `provider/model`, the effort as its variant.
-pub fn model_ref(spec: &Spec) -> Value {
-    let model = model(spec);
-    let (provider, id) = model.split_once('/').unwrap_or(("opencode", &model));
+/// The model picked, as its server names it: `provider/model`, the effort as its variant.
+pub fn model_ref(spec: &Spec) -> Option<Value> {
+    let model = spec.model.as_deref()?;
+    let (provider, id) = model.split_once('/').unwrap_or(("opencode", model));
     let mut r = json!({"id": id, "providerID": provider});
     if let Some(e) = &spec.effort {
         r["variant"] = e.as_str().into();
     }
-    r
+    Some(r)
 }
 
 /// Commands Auto still asks before: destructive ones and network installs [D130]. A plain curl

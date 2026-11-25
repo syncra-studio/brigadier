@@ -216,7 +216,7 @@ impl Adapter for Claude {
             }
         }
         let input = text.map(|t| control::user(t, &spec.images));
-        let mut env = base_env(spec, &exe, self.keys());
+        let mut env = base_env(spec, &exe, &self.keys());
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
         // The queue's judge has no tools (code.claude.com/docs/en/cli-reference) [D771].

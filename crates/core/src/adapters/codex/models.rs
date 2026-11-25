@@ -261,6 +261,7 @@ fn info(m: &Value) -> ModelInfo {
             .map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
+        cost: None,
         default: m["isDefault"] == true,
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
