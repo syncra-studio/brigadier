@@ -66,6 +66,14 @@ pub(crate) fn review_on(data: &Path) -> bool {
     read(&data.join(FILE))["review"] == true
 }
 
+/// An effort as the picker words it: "Extra high" for "xhigh", "High" for "high".
+fn level(effort: &str) -> String {
+    match effort {
+        "xhigh" => "Extra high".into(),
+        e => capital(e),
+    }
+}
+
 /// "High" for "high"; a row's title for one from before jobs.
 pub(crate) fn capital(word: &str) -> String {
     let mut c = word.chars();

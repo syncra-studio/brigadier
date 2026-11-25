@@ -52,7 +52,7 @@ pub(super) fn now(data: &Path, groups: &[Value], t: &Value) -> Value {
                     m.and_then(|m| effort_of(&rules, agent, m, e["effort"].as_str(), false).ok());
                 let effort = (effort.and_then(|x| x.0))
                     .or(m.and_then(|m| m["default_effort"].as_str().map(String::from)))
-                    .map_or(String::new(), |x| format!(" · {}", capital(&x)));
+                    .map_or(String::new(), |x| format!(" · {}", level(&x)));
                 runs = Some(format!("{name}{effort}"));
             }
             if off && runs.is_none() && first.is_none() {

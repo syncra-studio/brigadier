@@ -47,6 +47,12 @@ let lastGroups: ModelGroup[] | null = null;
 export const takesImages = (provider?: string, model?: string | null) =>
   lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model)?.images !== false;
 
+/** The levels a model runs at, by the last list read: no Auto where its CLI says it has none. */
+export const levelsOf = <Level extends string>(levels: readonly Level[], provider?: string, model?: string | null) => {
+  const listed = lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model);
+  return listed?.auto === false ? levels.filter((level) => level !== "auto") : levels;
+};
+
 /** A model's pick, by session, until Rust's line for it is in [D76]: `agent` names another agent picked. */
 type Pick = { op: string; from: string | null; to: string; agent?: string };
 const picks = store<ReadonlyMap<string, Pick>>(new Map());

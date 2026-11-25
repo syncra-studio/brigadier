@@ -105,7 +105,7 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
     models.iter_mut().for_each(|m| m.draws = draws);
     mark_superseded(&mut models);
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
-    who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
+    who.plan = who.plan.as_deref().and_then(plan_name);
     let usage = limits.as_ref().map(usage);
     Some(Check {
         models,
@@ -252,6 +252,7 @@ fn info(m: &Value) -> ModelInfo {
         efforts: efforts
             .filter_map(|e| e["reasoningEffort"].as_str().map(String::from))
             .collect(),
+        auto: None,
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
         images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
         // The provider's, set by `list`.
@@ -274,20 +275,17 @@ fn info(m: &Value) -> ModelInfo {
 }
 
 /// Its plan as the old app named it; None for one it can't name (`unknown`).
-fn plan_name(plan: &str) -> Option<&'static str> {
+fn plan_name(plan: &str) -> Option<String> {
     Some(match plan {
-        "free" => "Free",
-        "go" => "Go",
-        "plus" => "Plus",
-        "pro" => "Pro",
-        "prolite" => "Pro Lite",
-        "promax" => "Pro Max",
-        "team" => "Team",
-        p if p.contains("business") => "Business",
-        p if p.contains("ent") => "Enterprise",
-        "edu" => "Edu",
-        "edu_plus" => "Edu Plus",
-        "edu_pro" => "Edu Pro",
-        _ => return None,
+        "" | "unknown" => return None,
+        "prolite" => "Pro Lite".into(),
+        "promax" => "Pro Max".into(),
+        p if p.contains("business") => "Business".into(),
+        p if p.starts_with("ent") => "Enterprise".into(),
+        // "edu_plus", "sci": by its own words.
+        p => (p.split('_').filter(|w| w.is_ascii() && !w.is_empty()))
+            .map(|w| w[..1].to_ascii_uppercase() + &w[1..])
+            .collect::<Vec<_>>()
+            .join(" "),
     })
 }

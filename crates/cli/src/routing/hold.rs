@@ -14,7 +14,7 @@ fn words(e: &Value) -> String {
     let model = e["name"].as_str().unwrap_or(str_of(e, "model"));
     let effort = e["effort"]
         .as_str()
-        .map_or(String::new(), |x| format!(" · {}", capital(x)));
+        .map_or(String::new(), |x| format!(" · {}", level(x)));
     format!("{agent} · {model}{effort}")
 }
 

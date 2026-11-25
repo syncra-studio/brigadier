@@ -243,7 +243,7 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
                 .any(|x| Some(x.as_str().unwrap_or("")) == effort)
         });
         match (effort, has) {
-            (Some(e), true) => format!("It keeps the same place and effort ({}).", capital(e)),
+            (Some(e), true) => format!("It keeps the same place and effort ({}).", level(e)),
             _ => "It keeps the same place, at its own default effort.".into(),
         }
     };

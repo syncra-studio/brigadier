@@ -42,11 +42,6 @@ fn level_of(mode: &str) -> Option<&'static str> {
     }
 }
 
-/// The model a session runs, as launch and a retune name it.
-pub fn model(spec: &Spec) -> String {
-    spec.model.clone().unwrap_or_else(|| "haiku".into())
-}
-
 /// A user message on stdin, its images as Claude's own base64 blocks [D2008].
 pub fn user(text: &str, images: &[PathBuf]) -> String {
     let mut content = json!(text);
@@ -91,8 +86,10 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
     if let Some(level) = next.level.as_deref().filter(|_| last.level != next.level) {
         changes.push(json!({"subtype": "set_permission_mode", "mode": mode(level)}));
     }
-    if model(last) != model(next) {
-        changes.push(json!({"subtype": "set_model", "model": model(next)}));
+    if last.model != next.model {
+        // With none picked, the alias of its own default.
+        let model = next.model.as_deref().unwrap_or("default");
+        changes.push(json!({"subtype": "set_model", "model": model}));
     }
     if changes.is_empty() {
         return Retune::InMessage;

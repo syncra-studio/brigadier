@@ -18,7 +18,7 @@ import type { Draft } from "../components/composer/draft";
 import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
-import { asGroups } from "../session/model";
+import { asGroups, levelsOf } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
@@ -167,7 +167,7 @@ export function HomeDraft() {
         level={
           agent && (
             <>
-              <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
+              <LevelPicker levels={levelsOf(agent.levels, agent.provider, model?.model)} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
               <BrigadeToggle on={draft.brigade === true} onChange={(brigade) => setHomeDraft({ brigade })} />
             </>
           )

@@ -3,15 +3,18 @@
 //! folded into the model it runs, and older models of a family marked legacy; and its usage limits
 //! as it answers `get_usage` in the same run, the old app's way [D28].
 
-use super::super::setup::run_fed;
 use super::super::{
-    Check, Event, Limit, ModelInfo, base_env, home_path, iso_ms, mark_superseded, s,
+    Check, Event, Limit, ModelInfo, Who, base_env, home_path, iso_ms, mark_superseded, s,
 };
+use super::commands;
 use crate::Spec;
-use serde_json::Value;
+use serde_json::{Value, json};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::Command;
-use std::sync::atomic::AtomicBool;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::channel;
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// The jobs Claude's models seed, in the spec's order (D392 P1).
 pub const SEEDS: &[super::super::Seed] = &[
@@ -22,14 +25,9 @@ pub const SEEDS: &[super::super::Seed] = &[
     ("Review", "opus", Some("high")),
 ];
 
-/// Its models and usage; none where its list can't be read.
+/// Its models, usage and plan; none where its list can't be read.
 pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
-    let (models, usage) = listed(spec, exe, cwd).unwrap_or_default();
-    Check {
-        models,
-        usage,
-        ..Check::default()
-    }
+    listed(spec, exe, cwd).unwrap_or_default()
 }
 
 /// Its own subagents can't run a model a rule bars: the allowlist, merged into the one `--settings`
@@ -45,11 +43,14 @@ pub fn bar(spec: &Spec, mut standing: Vec<String>) -> Vec<String> {
     standing
 }
 
-type Listed = (Vec<ModelInfo>, Option<Vec<Limit>>);
-
-/// A throwaway `claude` that answers `initialize` and `get_usage`, then ends at its input's end: no
-/// settings, MCP servers or hooks loaded, and no session written.
-fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
+/// A throwaway `claude` that answers control requests, one at a time: no settings, MCP servers or
+/// hooks loaded, and no session written. Bounded to 30 s in all.
+fn asked<T>(
+    spec: &Spec,
+    exe: &Path,
+    cwd: &Path,
+    work: impl FnOnce(&mut dyn FnMut(Value) -> Result<Value, String>) -> Result<T, String>,
+) -> Result<T, String> {
     let args = [
         "-p",
         "--input-format",
@@ -67,34 +68,86 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
         "--settings",
         r#"{"autoMemoryEnabled":false,"disableAllHooks":true}"#,
     ];
-    let mut command = Command::new(exe);
-    command
+    let mut child = Command::new(exe)
         .args(args)
         .env_clear()
         .envs(base_env(spec, exe, &[]))
-        .current_dir(cwd);
-    let ask = concat!(
-        r#"{"type":"control_request","request_id":"models","request":{"subtype":"initialize"}}"#,
-        "\n",
-        r#"{"type":"control_request","request_id":"usage","request":{"subtype":"get_usage","skip_behaviors":true}}"#,
-        "\n"
-    );
-    let out = run_fed(&mut command, 30, &AtomicBool::new(false), Some(ask))?;
-    let answers: Vec<Value> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter(|v| v["type"] == "control_response" && v["response"]["subtype"] == "success")
-        .collect();
-    let answer = |id: &str| answers.iter().find(|v| v["response"]["request_id"] == id);
-    let said_usage = answer("usage");
-    let answer = answer("models").ok_or("Claude didn't list its models")?;
-    let listed = answer["response"]["response"]["models"].as_array().cloned();
+        .current_dir(cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let (stdin, out) = (child.stdin.take(), child.stdout.take());
+    let (tx, rx) = channel::<Value>();
+    thread::spawn(move || {
+        let lines = out.map(BufReader::new).into_iter().flat_map(|r| r.lines());
+        for v in (lines.map_while(Result::ok)).filter_map(|l| serde_json::from_str(&l).ok()) {
+            if tx.send(v).is_err() {
+                break;
+            }
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut id = 0_u64;
+    let mut stdin = stdin.ok_or("no stdin")?;
+    let mut ask = |request: Value| -> Result<Value, String> {
+        id += 1;
+        let (id, what) = (id.to_string(), s(&request, &["subtype"]).to_string());
+        let line = json!({"type": "control_request", "request_id": id, "request": request});
+        writeln!(stdin, "{line}").map_err(|e| e.to_string())?;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let v = (rx.recv_timeout(left)).map_err(|_| format!("Claude didn't answer {what}"))?;
+            let r = &v["response"];
+            if v["type"] == "control_response" && r["request_id"] == id.as_str() {
+                return match r["subtype"] == "success" {
+                    true => Ok(r["response"].clone()),
+                    false => Err(s(r, &["error"]).to_string()),
+                };
+            }
+        }
+    };
+    let done = work(&mut ask);
+    let _ = child.kill();
+    let _ = child.wait();
+    done
+}
+
+fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
+    let (answer, usage, efforts) = asked(spec, exe, cwd, |ask| {
+        let answer = ask(json!({"subtype": "initialize"}))?;
+        let usage = ask(json!({"subtype": "get_usage", "skip_behaviors": true})).ok();
+        // The effort it runs each at with none asked for, as it says it applies; none where it doesn't.
+        let mut efforts = std::collections::HashMap::new();
+        for id in (answer["models"].as_array().into_iter().flatten())
+            .filter(|m| m["supportsEffort"] == true)
+            .filter_map(|m| m["value"].as_str())
+        {
+            if ask(json!({"subtype": "set_model", "model": id})).is_err() {
+                continue;
+            }
+            match ask(json!({"subtype": "get_settings"})) {
+                Ok(v) => efforts.insert(id.to_string(), s(&v, &["applied", "effort"]).to_string()),
+                Err(_) => break,
+            };
+        }
+        Ok((answer, usage, efforts))
+    })?;
+    commands::keep(&answer["commands"]);
+    let listed = answer["models"].as_array();
     let settings: Value = std::fs::read(home_path(".claude/settings.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    let mut models: Vec<(ModelInfo, String)> = (listed.iter().flatten())
-        .filter_map(|m| info(m, &settings))
+    // Auto is said per model, where the CLI says it at all.
+    let says = (listed.into_iter().flatten()).any(|m| m["supportsAutoMode"].is_boolean());
+    let mut models: Vec<(ModelInfo, String)> = (listed.into_iter().flatten())
+        .filter_map(|m| {
+            let (mut info, resolved) = info(m, &settings, &efforts)?;
+            info.auto = says.then(|| m["supportsAutoMode"] == true);
+            Some((info, resolved))
+        })
         .collect();
     // The `default` alias names the model run unpicked: a second row for a model already listed,
     // whose own row stays and takes the mark.
@@ -105,7 +158,7 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
             models.remove(at);
         }
     }
-    let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));
+    let usage = usage.map(|v| self::usage(&v, &models));
     // Two rows under one name: the long-context one says so.
     let names: Vec<String> = models.iter().map(|(m, _)| m.name.clone()).collect();
     for (m, _) in &mut models {
@@ -115,7 +168,17 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
     }
     let mut models: Vec<ModelInfo> = models.into_iter().map(|(m, _)| m).collect();
     mark_superseded(&mut models);
-    Ok((models, usage))
+    let plan = s(&answer, &["account", "subscriptionType"]);
+    let plan = plan.strip_prefix("Claude ").unwrap_or(plan);
+    Ok(Check {
+        models,
+        usage,
+        who: Who {
+            plan: (!plan.is_empty()).then(|| plan.into()),
+            ..Who::default()
+        },
+        ..Check::default()
+    })
 }
 
 /// Its `get_usage` answer's limits, the old app's reading: its `limits` list where it gives one (the
@@ -233,8 +296,12 @@ fn window(
     })
 }
 
-/// A model and the one its alias resolves to.
-fn info(m: &Value, settings: &Value) -> Option<(ModelInfo, String)> {
+/// A model and the one its alias resolves to; `applied`: the effort it runs each at unasked.
+fn info(
+    m: &Value,
+    settings: &Value,
+    applied: &std::collections::HashMap<String, String>,
+) -> Option<(ModelInfo, String)> {
     let id = m["value"].as_str()?;
     let resolved = m["resolvedModel"].as_str().unwrap_or(id).to_string();
     let efforts: Vec<String> = (m["supportedEffortLevels"].as_array().into_iter().flatten())
@@ -246,7 +313,8 @@ fn info(m: &Value, settings: &Value) -> Option<(ModelInfo, String)> {
     );
     let info = ModelInfo {
         name,
-        default_effort: settings_effort(settings, &resolved, &efforts),
+        default_effort: settings_effort(settings, &resolved, &efforts)
+            .or(applied.get(id).filter(|e| efforts.contains(e)).cloned()),
         efforts,
         ..ModelInfo::plain(id, false)
     };
@@ -264,17 +332,14 @@ fn real_name(display: &str, description: &str) -> String {
     if named { name } else { display }.to_string()
 }
 
-/// The effort `claude` runs a model at: its `modelSettings` entry in the user's `settings.json`,
-/// then the global `effortLevel`, each kept only if the model takes it; else High, else its
-/// highest.
+/// The effort the user's `settings.json` has `claude` run a model at: its `modelSettings` entry, then
+/// the global `effortLevel`, each only if the model takes it.
 fn settings_effort(settings: &Value, resolved: &str, efforts: &[String]) -> Option<String> {
     let taken = |l: &&str| efforts.iter().any(|e| e == l);
     let bare = resolved.strip_suffix("[1m]").unwrap_or(resolved);
     let own = settings["modelSettings"][bare]["effortLevel"].as_str();
     (own.filter(taken))
         .or(settings["effortLevel"].as_str().filter(taken))
-        .or(Some("high").filter(taken))
-        .or(efforts.last().map(String::as_str))
         .map(String::from)
 }
 

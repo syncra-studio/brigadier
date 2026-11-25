@@ -20,6 +20,8 @@ export type Model = {
   retiring?: { at: number | null; to: string | null } | null;
   /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
   images?: boolean | null;
+  /** Whether it runs at the Auto level; unknown counts as yes. */
+  auto?: boolean | null;
   /** Whether it makes and edits images with a tool of its own, where its CLI says [D298]. */
   draws?: boolean | null;
   /** What its fast tier offers, where it has one: the Fast key's tip. */
@@ -49,8 +51,7 @@ export type ModelChoice = { provider: string; model: string; effort: string | nu
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
-  const known: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
-  return known[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
+  return effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
 /** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */
@@ -101,9 +102,6 @@ const RULE = <div aria-hidden className="w-px shrink-0 self-stretch bg-divider" 
 
 /** A CLI with more models than this (older ones too) gets a search over them [D92]. */
 const SEARCH_PAST = 20;
-
-/** Effort levels from least to most, as the CLIs list them. */
-const LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export type ShelfProps = {
   groups: ModelGroup[];
@@ -184,14 +182,17 @@ export function ModelShelf({ groups, value, onChange, onSetUp, asksSwitch = true
   // one in use when its CLI is the one browsed.
   const inHand = (underKeys?.provider === group?.provider ? underKeys?.model : null) ?? (shown ? models.find((each) => isChecked(group!.provider, each)) : null) ?? null;
   const inHandChecked = Boolean(group && inHand && isChecked(group.provider, inHand));
-  // Every level the CLI's models take, highest on top: known ones in their order, another just above the one its list
-  // puts before it ("ultra" over "max").
-  const rankOf = (level: string) => {
-    if (LEVELS.includes(level)) return LEVELS.indexOf(level);
-    const list = models.find((each) => each.efforts.includes(level))!.efforts;
-    return LEVELS.indexOf(list[list.indexOf(level) - 1] ?? "") + 0.5;
-  };
-  const levels = [...new Set(models.flatMap((each) => each.efforts))].toSorted((a, b) => rankOf(b) - rankOf(a));
+  // Every level the CLI's models take, highest on top: the longest list's order, then each other's just above the one
+  // its own list puts before it.
+  const levels: string[] = [];
+  for (const { efforts: own } of models.toSorted((a, b) => b.efforts.length - a.efforts.length)) {
+    let at = levels.length;
+    for (const level of own) {
+      const here = levels.indexOf(level);
+      if (here < 0) levels.splice(at, 0, level);
+      else at = here;
+    }
+  }
   const fastOn = inHandChecked && value.fast === true;
   const act = (also: { effort?: string; fast?: boolean }) => {
     if (!group || !inHand) return;
