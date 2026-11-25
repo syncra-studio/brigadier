@@ -127,6 +127,9 @@ pub struct End {
     pub id: String,
     /// When that one began (ms).
     pub began: u64,
+    /// Why it failed (`Turn::why`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
 }
 
 /// The paths a FileChange list names.
@@ -328,6 +331,7 @@ impl Fold {
                 how: outcome.into(),
                 id: turn.id.clone(),
                 began: turn.ts,
+                why: turn.why.clone(),
             };
             let ends = self.ends.entry(turn.report().into()).or_default();
             ends.push(end);

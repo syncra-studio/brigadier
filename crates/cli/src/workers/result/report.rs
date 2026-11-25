@@ -161,6 +161,7 @@ pub(in crate::workers) fn write_as(
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
         "context" => "stopped: its context is full",
+        "refused" => "was refused by its provider",
         _ => "failed",
     };
     let mut text = format!("Worker {} ({wid}) {word}.\n", l.title);
@@ -306,6 +307,7 @@ pub(in crate::workers) fn write_as(
         "finished" => Value::Null,
         "stopped" => "user".into(),
         "limit" => "quota".into(),
+        "refused" => "refused".into(),
         "failed" if cut || error.is_some() || why.is_some() => "infrastructure".into(),
         "failed" if (ended.as_ref()).is_some_and(|e| e["outcome"] == "sign_in") => {
             "environment".into()
@@ -316,6 +318,9 @@ pub(in crate::workers) fn write_as(
         text += &format!(
             "Its process was cut off; nothing says its work was wrong. `brigadier send {wid} \"<go on>\"` carries it on where it stopped.\n"
         );
+    }
+    if how == "refused" {
+        text += "Its provider's safety checks stopped it and it isn't coming back; sent again, it's likely refused again. Ask the user, or give the work to another agent: `brigadier start --job \"<job>\" --agent <another> \"<brief>\"`.\n";
     }
     if direct {
         text = compact(

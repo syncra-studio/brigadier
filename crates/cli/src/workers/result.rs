@@ -47,7 +47,8 @@ pub(super) struct Res {
     pub wid: String,
     /// The worker's turn it reports, by its stable id; for `asks`, its request's id.
     pub turn: String,
-    /// finished | failed | limit | stopped | asks (a request for the parent, `asks`)
+    /// finished | failed | refused (by its provider's safety checks) | context | limit | stopped |
+    /// asks (a request for the parent, `asks`)
     pub how: String,
     pub text: String,
     pub at: u64,
@@ -174,6 +175,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 "stopped" => "stopped",
                 "limited" => "limit",
                 _ if last.is_some_and(|l| l["why"] == "context") => "context",
+                "failed" if end.why.as_deref() == Some("blocked") => "refused",
                 _ => "failed",
             };
             // A late wake's end reports at once, whatever else still runs.
@@ -227,6 +229,7 @@ pub(super) fn unsaid(
             how: "cut".into(),
             id: ends.last().map_or(turn.into(), |e| e.id.clone()),
             began: f.turns.first().map_or(0, |t| t.ts),
+            why: None,
         });
     }
     // An input no turn of its own ended for, as one that joined another's.

@@ -376,7 +376,7 @@ pub fn still(data: &Path, id: &str) {
 }
 
 /// What ended a worker's last task where it didn't finish: "infrastructure", "environment",
-/// "quota", "user" or "unknown"; "" where it did. One written before causes were kept: a failure
+/// "quota", "user", "refused" or "unknown"; "" where it did. One written before causes were kept: a failure
 /// its log has no end of was its host dying.
 pub(crate) fn cause<'a>(l: &'a Link, notes: &[Value]) -> &'a str {
     if let Some(c) = l.last["cause"].as_str() {

@@ -320,7 +320,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         (a.review["model"], a.review["reviewer"]) = (model.clone(), reviewer);
         a.review["findings"] = json!(findings);
         match (why, findings, said) {
-            (Some(_), ..) if matches!(how, "failed" | "limit") => {
+            (Some(_), ..) if matches!(how, "failed" | "limit" | "refused") => {
                 let me = json!({"by": wid, "agent": l.ran["agent"], "model": l.ran["model"], "name": model, "how": how});
                 let mut tried = a.review["tried"].as_array().cloned().unwrap_or_default();
                 tried.push(me);

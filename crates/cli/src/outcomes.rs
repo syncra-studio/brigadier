@@ -185,7 +185,10 @@ pub(crate) fn results(data: &Path) -> Value {
     let mut tally: BTreeMap<(Option<String>, String, String), Tally> = BTreeMap::new();
     for (wid, ran, end, cause) in rows {
         // Its model didn't end it, so it says nothing of its model, retried or not.
-        let other = matches!(cause.as_str(), "infrastructure" | "environment" | "quota");
+        let other = matches!(
+            cause.as_str(),
+            "infrastructure" | "environment" | "quota" | "refused"
+        );
         let commits = end["commits"].as_u64().unwrap_or(0);
         let (landed, reverted) = match commits {
             0 => (false, false),

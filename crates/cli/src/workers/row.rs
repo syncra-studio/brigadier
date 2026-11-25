@@ -40,6 +40,7 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         _ => match last["how"].as_str() {
             Some("failed") => ("failed", "Failed".into()),
             Some("context") => ("failed", "Context full".into()),
+            Some("refused") => ("failed", "Refused by its provider".into()),
             Some("stopped") => ("stopped", "Stopped".into()),
             Some(_) if last["merged"] == true => match core::worktrees::base(dir) {
                 Some(base) => ("merged", format!("Merged into {base}")),
