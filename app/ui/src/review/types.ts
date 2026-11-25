@@ -6,7 +6,7 @@
 import type { FileStatus } from "../panel/status";
 
 /** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000), and a night,
- * by when it began and ended (ms), its turns, from theirs. */
+ * by when it began and ended (ms), from its own two. */
 export type ReviewScope = "last" | `night:${number}-${number}` | "uncommitted" | "staged" | "unstaged" | "branch";
 
 /** Why a file is worth a look first, as Rust classed it (D1188, D1213): a test file deleted or with lines removed, a

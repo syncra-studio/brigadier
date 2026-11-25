@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ask, useDaemon } from "../daemon";
 import { addChip, dropChips, useChips, useCommentDraft } from "../panel/chips";
 import { sourceArgs, useGit } from "../panel/git";
+import { leaveNight, useNight } from "../panel/open";
 import { HOME, openFile, setTabScope } from "../shell/tab-store";
 import { PrSource, type SourcePr } from "./pr-source";
 import { ReviewTab } from "./review-tab";
@@ -19,12 +20,13 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   const { daemon } = useDaemon();
   // Last turn first: what the agent just did (D1188). Home's Review is a project's, with no turns.
   // The tab's record keeps the one picked last [D1187].
-  const [scope, setScope] = useState<ReviewScope>((keptScope as ReviewScope | undefined) ?? (owner === HOME ? "uncommitted" : "last"));
-  // A folder chat's repo has no captured turns: its work is on its branch [D494].
+  const own = (keptScope as ReviewScope | undefined) ?? (owner === HOME ? "uncommitted" : "last");
+  const night = useNight(owner);
+  const [scope, setScope] = useState<ReviewScope>(night ?? own);
+  // A folder chat's repo has no captured turns: its work is on its branch [D494]. A night is all its repos'.
   const repo = git.target && "session" in git.target && git.target.session.includes("@") ? git.target.session : null;
-  useEffect(() => {
-    if (repo) setScope((now) => (captured(now) ? "branch" : now));
-  }, [repo]);
+  const fits = (next: ReviewScope): ReviewScope => (repo && next === "last" ? "branch" : next);
+  useEffect(() => setScope(fits), [repo]);
   const [review, setReview] = useState<Review | null>(null);
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | PatchContents | { error: string }>>(new Map());
   // A PR picked under Pull requests: its host's diff in the scope's place [D172].
@@ -110,13 +112,15 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     panel.current?.querySelector(`[data-slot="review-file"][data-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: "start" });
   }, [review, contents, target]);
 
-  // Opened again on another scope: a morning card's night. A folder chat's repo shows its branch, as above.
+  // A morning card opened its night, or something else the tab's own.
   useEffect(() => {
-    if (keptScope && keptScope !== scope && !repo) show(keptScope as ReviewScope);
-  }, [keptScope]);
+    if (night) show(night);
+    else if (scope.startsWith("night:")) show(fits(own));
+  }, [night]);
 
   // Another scope's diff isn't shown under this one's loading or error.
   const show = (next: ReviewScope, picked: SourcePr | null = null) => {
+    if (next !== night) leaveNight(owner);
     setScope(next);
     setPr(picked);
     setReview(null);
@@ -130,7 +134,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       scope={scope}
       onScope={(next) => {
         show(next);
-        if (tab) setTabScope(owner, tab, next);
+        if (tab && next !== night) setTabScope(owner, tab, next);
       }}
       review={review}
       contents={contents}
@@ -143,7 +147,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
         if (file) load(file, read.current);
       }}
       // A folder chat's file tab names its repo: `<repo>/<path>` [D776].
-      onOpenIn={(path) => openFile(owner, repo ? `${repo.slice(repo.indexOf("@") + 1)}/${path}` : path, { preview: false })}
+      onOpenIn={(path) => openFile(owner, repo && !captured(scope) ? `${repo.slice(repo.indexOf("@") + 1)}/${path}` : path, { preview: false })}
       comments={chips.flatMap((chip) => (chip.kind === "comment" && chip.on === "review" ? [chip.comment] : []))}
       // Home's composer starts a session and carries no chips, so its diff takes no comments.
       onComment={owner === HOME ? undefined : (comment) => addChip(owner, { kind: "comment", id: comment.id, on: "review", comment })}
@@ -151,7 +155,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
       target={target}
       {...(owner === HOME ? {} : kept)}
       picked={pr && `#${pr.number} ${pr.title}`}
-      sources={owner !== HOME && !repo && <PrSource owner={owner} picked={pr} onPick={(picked) => show(scope, picked)} />}
+      sources={owner !== HOME && !repo && <PrSource owner={owner} picked={pr} onPick={(picked) => show(scope === night ? own : scope, picked)} />}
       />
     </div>
   );

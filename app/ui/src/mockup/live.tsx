@@ -9,6 +9,7 @@ import { showPage } from "../browser/hole";
 import { type BrowserBounds, placePage } from "../browser/layer";
 import { closeBrowserPage, openPage, useBrowserPage, zoomPage } from "../browser/pages";
 import { daemonRun, failure } from "../session/composer";
+import { openReview } from "../panel/open";
 import { CHAT, openTab, selectTab, type Tab } from "../shell/tab-store";
 import type { Zoom } from "./frame";
 import { type MockupActions, MockupView } from "./mockup";
@@ -238,7 +239,7 @@ export function MockupTab({ owner, tab, active }: { owner: string; tab: Tab; act
     },
     askAgain: () => selectTab(owner, CHAT),
     openReal: () => mockup?.real && openTab(owner, "browser", mockup.real),
-    openReview: () => openTab(owner, "review"),
+    openReview: () => openReview(owner),
   };
   return (
     <MockupView

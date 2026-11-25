@@ -56,7 +56,7 @@ export function runWords(run: LastRun | null, now = Date.now()): BriefLine {
 /** Last turn or a night with nothing to compare: Rust's reason in words (D30). */
 export function noTurnWords(why: NoTurn): string {
   return {
-    noNight: "No turn of this night was captured, so there's nothing to compare.",
+    noNight: "This night's start or end wasn't captured, so there's nothing to compare.",
     noProject: "This chat has no project folder, so there's no turn's files to show.",
     notGit: "This folder isn't a git checkout, so Review can't show the last turn.",
     noTurn: "No turn yet. What the next one changes shows here.",
@@ -69,9 +69,8 @@ export function noTurnWords(why: NoTurn): string {
 export function turnWords(review: Review): BriefLine[] {
   const lines: BriefLine[] = [];
   const turn = review.turn;
-  const night = review.scope !== "last";
-  if (turn?.live) lines.push({ text: `The turn is still running: ${night ? "the night's" : "its"} start against now`, tone: "quiet" });
-  if (turn?.missed) lines.push({ text: `The ${night ? "night" : "turn"}'s end wasn't captured: its start against now`, tone: "warn" });
+  if (turn?.live) lines.push({ text: "The turn is still running: its start against now", tone: "quiet" });
+  if (turn?.missed) lines.push({ text: "The turn's end wasn't captured: its start against now", tone: "warn" });
   if (review.shared) lines.push({ text: "Another session works in this folder: its changes may be in this diff", tone: "warn" });
   if (turn) {
     const out = turn.excluded.slice(0, 3).map((path) => `\`${baseName(path)}\``);

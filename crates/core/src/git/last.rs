@@ -1,5 +1,5 @@
-//! Review's Last turn [D1000, D1035, D1192]: what the session's last turn changed, or all the turns
-//! of a night (Overnight), read from the captures rewind already takes of its folder, in the
+//! Review's Last turn [D1000, D1035, D1192]: what the session's last turn changed, or a whole night
+//! (Overnight), read from the captures rewind already takes of its folder, in the
 //! session's own `sessions/<id>/rewind.git` [D35]. A turn still running, or one whose end
 //! capture was missed, compares its start with the folder now and says so: that one capture is
 //! written to the store, under the session's fence. Nothing in the folder changes: no stage or
@@ -8,11 +8,11 @@
 use super::diff::{Patch, SIDE_MAX, binary, ids_in, shape, text};
 use super::listed::{listed, review_of};
 use super::{Checkout, err};
-use crate::Spec;
 use crate::fold::Fold;
 use crate::rewind::{Shot, Store};
+use crate::{Spec, folder};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::{fs, io};
 
@@ -76,47 +76,43 @@ pub fn of(spec: &Spec, f: &Fold, checkout: &Checkout) -> Result<Last, &'static s
     })
 }
 
-/// A night's, from its first turn's start to its last one's end: what was there before it, commits and
-/// uncommitted edits, and what came after it stay out.
+/// A finished night's, between its own two captures (`rewind::night_starts`): what was there before
+/// Start night, commits and uncommitted edits, and what came after it ended stay out. Each repo a
+/// folder chat claimed has its own, its paths `<repo>/<path>`.
 pub fn night(
     spec: &Spec,
-    f: &Fold,
-    checkout: &Checkout,
+    checkout: Option<&Checkout>,
     name: &str,
-    (since, at): (u64, u64),
-) -> Result<Last, &'static str> {
-    let store = Store::of(spec).ok_or("noProject")?;
-    let all = store.records();
-    let ended = |i: usize| {
-        let end = all[i].end.as_ref().and_then(|e| e.at);
-        end.or(all.get(i + 1).and_then(|next| next.before.at))
+    since: u64,
+) -> Result<Vec<Last>, &'static str> {
+    let stores: Vec<(Store, String)> = match checkout {
+        Some(checkout) => {
+            let store = Store::of(spec).ok_or("noProject")?;
+            let prefix = prefix(&store, checkout);
+            vec![(store, prefix)]
+        }
+        None => (folder::claims(&spec.dir).into_iter())
+            .filter_map(|(name, rec)| Some((Store::claim(&rec)?, format!("{name}/"))))
+            .collect(),
     };
-    // shortcut: a turn running at Start night counts from its own start; capture the folder there
-    // if what a turn does before it (it only asks) ever matters.
-    let mine = |i: &usize| {
-        all[*i].before.at.is_some_and(|b| b <= at) && ended(*i).is_none_or(|e| e >= since)
-    };
-    let mine: Vec<usize> = (0..all.len()).filter(mine).collect();
-    let (Some(&first), Some(&last)) = (mine.first(), mine.last()) else {
-        return Err("noNight");
-    };
-    let live = last + 1 == all.len() && !f.turns.is_empty() && all[last].end.is_none();
-    let before = all[first].before.clone();
-    let last = all[last].clone();
-    let (after, missed) = match last.end {
-        Some(end) => (end, false),
-        None => (now(spec, &store)?, !live),
-    };
-    let prefix = prefix(&store, checkout);
-    Ok(Last {
-        name: name.into(),
-        store,
-        before,
-        after,
-        live,
-        missed,
-        prefix,
-    })
+    let nights: Vec<Last> = (stores.into_iter())
+        .filter_map(|(store, prefix)| {
+            let record = store.night(since)?;
+            Some(Last {
+                name: name.into(),
+                before: record.before,
+                after: record.end?,
+                store,
+                live: false,
+                missed: false,
+                prefix,
+            })
+        })
+        .collect();
+    match nights.is_empty() {
+        true => Err("noNight"),
+        false => Ok(nights),
+    }
 }
 
 /// The folder now, under the session's fence, tried and never waited for: a delete, a closing
@@ -164,29 +160,48 @@ fn tree(store: &Store, id: &str) -> io::Result<()> {
 }
 
 impl Last {
-    /// Review's list for the turn [D1036], with `turn`: the two trees `file` takes back, whether
-    /// it compares with now, and what the captures leave out [D1192]. Files the project ignores are
-    /// never in a capture; the UI says so in general, never which.
-    pub fn list(&self) -> io::Result<Value> {
+    fn files(&self) -> io::Result<BTreeMap<String, Value>> {
         let (a, b) = (&self.before.tree, &self.after.tree);
         let names = diff(&self.store, a, b, &["--name-status", "-z"])?;
         let counts = diff(&self.store, a, b, &["--numstat", "-z"])?;
-        let files = listed(&names, &counts, false)
+        Ok(listed(&names, &counts, false)
             .into_iter()
             .map(|(path, mut file)| {
                 let at = |v: &Value| v.as_str().map(|p| format!("{}{p}", self.prefix));
                 (file["path"], file["from"]) = (at(&file["path"]).into(), at(&file["from"]).into());
                 (format!("{}{path}", self.prefix), file)
             })
-            .collect();
-        let mut review = review_of(&self.name, files);
-        let excluded: BTreeSet<String> = (self.before.out.keys().chain(self.after.out.keys()))
-            .map(|p| format!("{}{p}", self.prefix))
-            .collect();
-        review["turn"] = json!({"before": a, "after": b, "live": self.live, "missed": self.missed,
-                                "excluded": excluded});
-        Ok(review)
+            .collect())
     }
+}
+
+/// Review's list for the turn [D1036], with `turn`: the two trees `file` takes back, whether it
+/// compares with now, and what the captures leave out [D1192]. Files the project ignores are never
+/// in a capture; the UI says so in general, never which. `parts`: the turn, or a night's folders.
+pub fn list(parts: &[Last]) -> io::Result<Value> {
+    let Some(first) = parts.first() else {
+        return err("nothing to compare");
+    };
+    let mut files = BTreeMap::new();
+    let mut excluded = BTreeSet::new();
+    for part in parts {
+        files.append(&mut part.files()?);
+        let out = part.before.out.keys().chain(part.after.out.keys());
+        excluded.extend(out.map(|p| format!("{}{p}", part.prefix)));
+    }
+    let mut review = review_of(&first.name, files);
+    review["turn"] = json!({"before": first.before.tree, "after": first.after.tree,
+        "live": first.live, "missed": first.missed, "excluded": excluded});
+    Ok(review)
+}
+
+/// One file of a finished night's, as `file` gives a turn's: its captures stay, so it names none.
+pub fn night_file(parts: &[Last], path: &str, from: Option<&str>) -> io::Result<Value> {
+    let Some(part) = parts.iter().find(|p| path.starts_with(&p.prefix)) else {
+        return err(format!("{path:?} isn't in this night"));
+    };
+    let trees = (part.before.tree.as_str(), part.after.tree.as_str());
+    contents(&part.store, &part.prefix, trees, path, from)
 }
 
 /// One file of the turn between two trees `list` gave: `{before, after, hunks}` or `{error}`.
@@ -202,9 +217,18 @@ pub fn file(
     };
     tree(&store, trees.0)?;
     tree(&store, trees.1)?;
-    let prefix = prefix(&store, checkout);
+    contents(&store, &prefix(&store, checkout), trees, path, from)
+}
+
+fn contents(
+    store: &Store,
+    prefix: &str,
+    trees: (&str, &str),
+    path: &str,
+    from: Option<&str>,
+) -> io::Result<Value> {
     let rel = |p: &str| -> io::Result<String> {
-        let rel = p.strip_prefix(prefix.as_str()).unwrap_or(p);
+        let rel = p.strip_prefix(prefix).unwrap_or(p);
         if rel.is_empty() || rel.split('/').any(|part| part == ".." || part.is_empty()) {
             return err(format!("{p:?} isn't in this turn's folder"));
         }
@@ -234,7 +258,7 @@ pub fn file(
     let mut args = vec!["-U3", "--"];
     args.extend(from_in.as_deref());
     args.push(&path_in);
-    let patch = Patch::parse(&diff(&store, trees.0, trees.1, &args)?);
+    let patch = Patch::parse(&diff(store, trees.0, trees.1, &args)?);
     let ids = ids_in("last", path, &patch.hunks);
     let hunks: Vec<Value> = (patch.hunks.iter().zip(ids))
         .map(|(hunk, id)| shape(hunk, id, false))

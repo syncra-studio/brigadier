@@ -1,15 +1,21 @@
 import { view } from "../daemon";
+import { store } from "../onboarding/api";
 import { pastedRef } from "../pull-requests/route";
 import type { ReviewScope } from "../review/types";
-import { openTab, setTabScope, tabsOf } from "../shell/tab-store";
+import { openTab } from "../shell/tab-store";
 
 /** What card rows, sidebar chips and thread rows open [D1013, D1022]. */
 
-/** A file's diff in `owner`'s Review tab, or every file's with no path [D1032, D1038]; on `scope`, else the one it has. */
-export function openReview(owner: string, path?: string, scope?: ReviewScope): void {
+/** A morning card's night in its session's Review tab, till anything else opens or picks a scope there: the tab's own stays as it was. */
+const nights = store<Record<string, ReviewScope | undefined>>({});
+export const useNight = (owner: string) => nights.use()[owner];
+export const leaveNight = (owner: string) => void (nights.get()[owner] && nights.set({ ...nights.get(), [owner]: undefined }));
+
+/** A file's diff in `owner`'s Review tab, or every file's with no path [D1032, D1038]; on `night`, else the scope it has. */
+export function openReview(owner: string, path?: string, night?: ReviewScope): void {
+  if (night) nights.set({ ...nights.get(), [owner]: night });
+  else leaveNight(owner);
   openTab(owner, "review", path);
-  const tab = scope && tabsOf(owner).tabs.find((each) => each.kind === "review");
-  if (tab) setTabScope(owner, tab.id, scope);
 }
 
 type PrAt = { number: number; repo?: string | null; url?: string };

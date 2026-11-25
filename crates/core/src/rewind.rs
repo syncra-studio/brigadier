@@ -5,6 +5,7 @@
 
 mod active;
 pub mod fork;
+mod night;
 mod plan;
 mod repos;
 mod shared;
@@ -17,6 +18,7 @@ use crate::{Call, CallIn, Spec, as_run, session, session_dir, worktrees, write_a
 pub use active::{Active, read_active};
 use brigadier_frames::log::now_ms;
 pub use fork::{end_of, now_of, write_into, write_shot};
+pub use night::{night_ends, night_starts};
 use plan::plan_for;
 use repos::Part;
 pub use repos::claimed;

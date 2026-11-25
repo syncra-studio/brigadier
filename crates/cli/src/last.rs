@@ -1,9 +1,11 @@
 //! `brigadier source <id> review last` and `review-file last <before> <after> <path> [<from>]`:
-//! Review's Last turn [D1000, D1035, D1192], or a night's turns with `night:<since>-<at>` for `last`;
+//! Review's Last turn [D1000, D1035, D1192], or a finished night's with `night:<since>-<at>` for `last`,
+//! a folder chat's in all its repos;
 //! and the brief every review carries, risky files and the session's last test or build run
 //! [D1188, D1213].
 
 use super::arg;
+use brigadier_core::folder;
 use brigadier_core::git::{self, Target, branch, last, risk};
 use serde_json::{Value, json};
 use std::fs;
@@ -11,9 +13,9 @@ use std::io;
 use std::path::Path;
 
 /// A night's scope, from when it began to when it ended (ms).
-pub(super) fn night(scope: &str) -> Option<(u64, u64)> {
-    let (since, at) = scope.strip_prefix("night:")?.split_once('-')?;
-    Some((since.parse().ok()?, at.parse().ok()?))
+fn night(scope: &str) -> Option<u64> {
+    let (since, _) = scope.strip_prefix("night:")?.split_once('-')?;
+    since.parse().ok()
 }
 
 /// Last turn's two moves, a night's the same; None for every other.
@@ -21,8 +23,8 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
     let (target, at) = super::git::target(args)?;
     let word = |i: usize| args.get(at + i).map(String::as_str);
     let scope = word(1).unwrap_or_default();
-    let span = night(scope);
-    if (scope != "last" && span.is_none()) || !matches!(word(0), Some("review" | "review-file")) {
+    let since = night(scope);
+    if (scope != "last" && since.is_none()) || !matches!(word(0), Some("review" | "review-file")) {
         return Ok(None);
     }
     let none = |why: &str| {
@@ -30,16 +32,37 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
                           "deletions": 0, "none": why});
         Ok(Some(json!({"ok": true, "review": none})))
     };
-    // A claimed repo's turns aren't captured: Branch and Uncommitted show its work [D494].
-    if let Target::Repo(..) = target {
-        return none("noSnapshot");
-    }
-    let Target::Session(id) = target else {
-        return none("noProject");
+    let id = match target {
+        Target::Session(id) => id,
+        // A folder chat's night is of all its repos, whichever its card has picked.
+        Target::Repo(id, _) if since.is_some() => id,
+        // A claimed repo's turns aren't listed: Branch and Uncommitted show its work [D494].
+        Target::Repo(..) => return none("noSnapshot"),
+        Target::Project(_) => return none("noProject"),
     };
     let spec = brigadier_core::load(data, id)?;
     if spec.project.is_none() {
         return none("noProject");
+    }
+    if let Some(since) = since.filter(|_| folder::chat(&spec)) {
+        let nights = match last::night(&spec, None, scope, since) {
+            Ok(nights) => nights,
+            Err(why) => return none(why),
+        };
+        if word(0) == Some("review-file") {
+            let from = word(5).filter(|w| *w != "-");
+            let contents = last::night_file(&nights, arg(args, at + 4)?, from)?;
+            return Ok(Some(json!({"ok": true, "contents": contents})));
+        }
+        let mut review = last::list(&nights)?;
+        review["shared"] = (folder::claims(&spec.dir).iter())
+            .filter_map(|(name, _)| git::checkout(data, &Target::Repo(id, name)).ok())
+            .any(|c| branch::sharing(data, &c).iter().any(|other| other != id))
+            .into();
+        let f = brigadier_core::fold(&spec.dir, true)?.fold;
+        let cwd = fs::canonicalize(&spec.cwd).unwrap_or_else(|_| spec.cwd.clone().into());
+        risk::brief(&mut review, f.runs.last.as_ref(), &cwd, &cwd);
+        return Ok(Some(json!({"ok": true, "review": review})));
     }
     let Ok(checkout) = git::checkout(data, &target) else {
         return none("notGit");
@@ -51,12 +74,12 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
         return Ok(Some(json!({"ok": true, "contents": contents})));
     }
     let f = brigadier_core::fold(&spec.dir, true)?.fold;
-    let moments = match span {
-        Some(span) => last::night(&spec, &f, &checkout, scope, span),
-        None => last::of(&spec, &f, &checkout),
+    let moments = match since {
+        Some(since) => last::night(&spec, Some(&checkout), scope, since),
+        None => last::of(&spec, &f, &checkout).map(|turn| vec![turn]),
     };
     let mut review = match moments {
-        Ok(turn) => turn.list()?,
+        Ok(parts) => last::list(&parts)?,
         // The folder now couldn't be captured at once: the app keeps what it drew and asks again.
         Err("busy") => return Ok(Some(json!({"ok": false, "busy": true, "error": "busy"}))),
         Err(why) => return none(why),

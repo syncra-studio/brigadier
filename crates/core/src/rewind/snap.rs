@@ -306,6 +306,27 @@ impl Store {
         all
     }
 
+    /// The records of the turns that began between these two moments (ms), oldest first.
+    pub(super) fn turns_in(&self, since: u64, at: u64) -> Vec<Record> {
+        let mut all = self.records();
+        all.retain(|r| r.before.at.is_some_and(|b| since <= b && b <= at));
+        all
+    }
+
+    fn night_at(&self, since: u64) -> PathBuf {
+        self.git.join("nights").join(format!("{since}.json"))
+    }
+
+    /// The folder at the two edges of the night that began at `since` (ms).
+    pub fn night(&self, since: u64) -> Option<Record> {
+        serde_json::from_slice(&fs::read(self.night_at(since)).ok()?).ok()
+    }
+
+    pub(super) fn save_night(&self, since: u64, record: &Record) -> io::Result<()> {
+        fs::create_dir_all(self.git.join("nights"))?;
+        write_atomic(&self.night_at(since), &serde_json::to_vec(record)?)
+    }
+
     /// The paths that differ between two moments.
     pub fn diff(&self, a: &Shot, b: &Shot) -> io::Result<BTreeSet<String>> {
         let index = self.git.join("index");

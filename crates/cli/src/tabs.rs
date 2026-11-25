@@ -361,8 +361,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "scope" => {
             let scope = arg(args, 4)?;
-            let night = crate::last::night(scope).is_some();
-            if !night && !["last", "uncommitted", "staged", "unstaged", "branch"].contains(&scope) {
+            if !["last", "uncommitted", "staged", "unstaged", "branch"].contains(&scope) {
                 return Err(io::Error::other(format!("unknown scope {scope}")));
             }
             if let Some(at) = now

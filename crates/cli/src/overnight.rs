@@ -59,10 +59,11 @@ pub(crate) fn on(data: &Path, spec: &core::Spec, op: Option<&str>) -> io::Result
             *o = Overnight {
                 state: "asking".into(),
                 on: log::now_ms(),
-                // What the last night still has to give back or say.
+                // What the last night still has to give back or say, and what its morning told.
                 before: old.before,
                 stop: old.stop,
                 notes: old.notes,
+                morning: old.morning,
                 ..Overnight::default()
             };
         }
@@ -91,6 +92,10 @@ fn start(data: &Path, spec: &core::Spec, op: Option<&str>) -> io::Result<()> {
     let now = log::now_ms();
     let one = control::held_level(&spec.dir)?;
     let level = core::load(data, &spec.id)?.level;
+    let o = load(&spec.dir);
+    if o.on() && !o.night() {
+        core::rewind::night_starts(data, spec, now);
+    }
     let was = change(&spec.dir, |o| {
         if !o.on() {
             return Err(no("Overnight is off. Turn it on first."));
@@ -230,6 +235,12 @@ fn settle(data: &Path, id: &str) -> io::Result<()> {
             o.stop = false;
             Ok(())
         })?;
+    }
+    // Before its thread shows it: what comes after isn't the night's.
+    if let Some(m) = &o.morning
+        && (o.notes.iter()).any(|n| n["id"] == format!("report:{}", m.since))
+    {
+        core::rewind::night_ends(data, &spec, m.since, m.at);
     }
     if o.before.is_some() && !o.night() {
         give_back(data, id)?;
