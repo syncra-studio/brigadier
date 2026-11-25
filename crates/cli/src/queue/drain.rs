@@ -23,8 +23,10 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
         let Ok(q) = serde_json::from_value::<Queue>(q.clone()) else {
             continue;
         };
+        let held = (row["holding"] == true).then(|| row["finished"].as_u64().unwrap_or(0));
         let first = (q.items.iter().enumerate()).find(|(at, i)| {
-            q.goes(*at) && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
+            q.goes(*at, held)
+                && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
         });
         if first.is_none_or(|(_, i)| i.error.is_some())
             || q.paused
@@ -43,10 +45,12 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
-/// Whether session `dir` takes a message from its queue as its next turn: what's first may go.
-pub fn takes(dir: &Path) -> bool {
+/// Whether session `dir` takes a message from its queue as its next turn: what's first may go,
+/// its block `held` open or not. Brigadier's own words ask as if it isn't: they go after one that
+/// waits for that.
+pub fn takes(dir: &Path, held: Option<u64>) -> bool {
     let q = read(dir).unwrap_or_default();
-    let first = (0..q.items.len()).find(|at| q.goes(*at));
+    let first = (0..q.items.len()).find(|at| q.goes(*at, held));
     !q.paused && first.is_some_and(|at| q.items[at].error.is_none())
 }
 
@@ -64,9 +68,10 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
     locked(&dir, |q| {
         let (f, state) = cut::now(data, id)?;
         let cut = state == "interrupted";
+        let held = crate::workers::holding(data, id).then_some(f.finished);
         let goes = |at: &usize| {
             let origin = q.items[*at].origin.as_deref();
-            q.goes(*at) && (!cut || cut::carries(&dir, &f, origin))
+            q.goes(*at, held) && (!cut || cut::carries(&dir, &f, origin))
         };
         let Some(at) = (0..q.items.len()).find(goes) else {
             return Ok(());

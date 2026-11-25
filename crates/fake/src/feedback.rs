@@ -23,7 +23,7 @@ pub fn reply(text: &str) -> String {
             w.split("\n\nDecide whether").next().unwrap_or("")
         });
         if words.contains("late") {
-            std::thread::sleep(std::time::Duration::from_secs(8));
+            std::thread::sleep(std::time::Duration::from_secs(13));
         }
         return if words.contains("fits") {
             "FITS"

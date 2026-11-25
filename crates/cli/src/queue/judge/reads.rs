@@ -46,6 +46,8 @@ pub struct Reads {
     said: String,
     /// The reply being written, as far as the user sees it.
     saying: String,
+    /// The titles of the workers it goes on in, its turn over.
+    pub working: Vec<String>,
     /// The input the work began with: a resume or a wake carries it on.
     pub work: String,
     /// The cards up now, by id, and each card's words for the answer that names it.
@@ -161,6 +163,12 @@ impl Reads {
                     true => self.said.clone(),
                     false => ends(&self.saying),
                 },
+            ),
+            (
+                "The agent's turn is over, and the work goes on in the workers it started:\n",
+                (self.working.iter().map(|t| format!("- {}", line(t, 160))))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             ),
             ("It asks the user now: ", line(&asks.join(" / "), 1000)),
         ];
