@@ -47,5 +47,9 @@ another folder.
 - A security problem: privately, as [SECURITY.md](SECURITY.md) says. Never in a public issue.
 - Someone's conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the rules for changes. Third-party code and icons are listed in
+[CONTRIBUTING.md](CONTRIBUTING.md) has the rules for changes.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Third-party code and icons are listed in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

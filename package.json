@@ -2,6 +2,7 @@
   "name": "brigadier",
   "productName": "Brigadier",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "main": "app/main/dist/main.js",
   "packageManager": "pnpm@12.18.0",
