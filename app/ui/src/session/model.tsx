@@ -47,9 +47,9 @@ let lastGroups: ModelGroup[] | null = null;
 export const takesImages = (provider?: string, model?: string | null) =>
   lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model)?.images !== false;
 
-/** The levels a model runs at, by the last list read: no Auto where its CLI says it has none. */
-export const levelsOf = <Level extends string>(levels: readonly Level[], provider?: string, model?: string | null) => {
-  const listed = lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model);
+/** The levels a model runs at, by `groups` (else the last list read): no Auto where its CLI says it has none. */
+export const levelsOf = <Level extends string>(levels: readonly Level[], provider?: string, model?: string | null, groups = lastGroups) => {
+  const listed = groups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model);
   return listed?.auto === false ? levels.filter((level) => level !== "auto") : levels;
 };
 

@@ -8,6 +8,8 @@ use serde_json::Value;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -27,10 +29,10 @@ pub(super) fn serve(command: &mut Command, password: &str) -> Result<Child, Stri
 
 /// The server it says it runs, and the rest of what it prints.
 pub(super) fn dial(
-    child: &mut Child,
+    out: Option<ChildStdout>,
     password: &str,
 ) -> Result<(BufReader<ChildStdout>, http::Server), String> {
-    let mut out = BufReader::new(child.stdout.take().ok_or("no stdout")?);
+    let mut out = BufReader::new(out.ok_or("no stdout")?);
     let mut first = String::new();
     out.read_line(&mut first).map_err(|e| e.to_string())?;
     let url: Value =
@@ -106,19 +108,23 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
         .stderr(Stdio::null());
     let password = uuid();
     let mut child = serve(&mut command, &password)?;
-    // It stops once its stdin closes, so a hung one ends by the clock.
+    let (_lease, out) = (child.stdin.take(), child.stdout.take());
+    // A hung one is ended by the clock, whatever it's waited on for.
+    let child = Arc::new(Mutex::new(child));
     let (over, wait) = std::sync::mpsc::channel::<()>();
-    let lease = child.stdin.take();
+    let held = child.clone();
     thread::spawn(move || {
-        let _ = wait.recv_timeout(FILL * 2);
-        drop(lease);
+        if wait.recv_timeout(FILL * 2) == Err(RecvTimeoutError::Timeout) {
+            let _ = held.lock().unwrap().kill();
+        }
     });
-    let read = dial(&mut child, &password).and_then(|(out, server)| {
+    let read = dial(out, &password).and_then(|(out, server)| {
         // Read on, so it never waits on a full pipe.
         thread::spawn(move || std::io::copy(&mut { out }, &mut std::io::sink()));
         ask(&server, ids)
     });
     drop(over);
+    let mut child = child.lock().unwrap();
     let _ = child.kill();
     let _ = child.wait();
     read

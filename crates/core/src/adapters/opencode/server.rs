@@ -71,7 +71,7 @@ pub(super) fn start(
         .map_err(|e| e.to_string())?;
     let mut child = super::models::serve(&mut Command::new(exe), password)?;
     let lease = child.stdin.take();
-    let (mut out, server) = super::models::dial(&mut child, password)?;
+    let (mut out, server) = super::models::dial(child.stdout.take(), password)?;
     thread::spawn(move || io::copy(&mut out, &mut io::stderr()));
     let server = Arc::new(server);
     let state = Shared::default();

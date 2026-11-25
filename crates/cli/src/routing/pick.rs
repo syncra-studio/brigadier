@@ -110,11 +110,9 @@ pub(super) fn place(
         // 98, reservations counted on the shortest only, by its length [D343].
         let short = ws.iter().min_by_key(|w| w.minutes.unwrap_or(u64::MAX));
         let shortest = |w: &usage::Window| short.is_some_and(|s| s.minutes == w.minutes);
-        let each = |w: &usage::Window| 10 * 300 / w.minutes.unwrap_or(300).max(300) as u32;
-        let used = |w: &usage::Window| {
-            w.used
-                .map(|u| u + if shortest(w) { each(w) * n } else { 0 })
-        };
+        let taken =
+            |w: &usage::Window| (3000 * n).div_ceil(w.minutes.unwrap_or(300).max(300) as u32);
+        let used = |w: &usage::Window| w.used.map(|u| u + if shortest(w) { taken(w) } else { 0 });
         let brief = |w: &usage::Window| w.minutes.is_none_or(|m| m < 24 * 60);
         let most = |w: &usage::Window| if shortest(w) && brief(w) { 90 } else { 98 };
         let full = ws.iter().find(|w| used(w).is_some_and(|u| u >= most(w)));
