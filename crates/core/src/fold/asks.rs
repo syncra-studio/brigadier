@@ -103,12 +103,16 @@ impl Fold {
     }
 
     /// Who answers a request instead of the user: Brigadier, an exact repeat of a command allowed
-    /// for the session, as Codex's and OpenCode's helpers do [D389]; or a worker's parent agent.
+    /// for the session, as Codex's and OpenCode's helpers do [D389], or a plain computer use call;
+    /// or a worker's parent agent.
     pub fn to(&self, item: &Value) -> Option<&'static str> {
         let r = &item["request"];
         let cwd = &r["cli"]["cwd"];
+        // Or a plain `brigadier computer` call, which asks on its own card where it must [D31]; by
+        // the line its CLI runs, as a card's may be cut to what matters of it.
         if r["grant"]["scope"] == "command"
-            && (self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+            && ((self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+                || r["whole"].as_str().is_some_and(crate::agent::computer))
         {
             return Some("brigadier");
         }
@@ -124,6 +128,10 @@ impl Fold {
         let Some(g) = self.given.as_ref().filter(|g| g["worker"] == true) else {
             return false;
         };
+        // An app of the user's Mac is the user's to allow [D31].
+        if item["request"]["action"] == "computer" {
+            return false;
+        }
         // A turn the user started in it is the user's conversation: its asks are theirs [D305].
         if self.turns.first().is_some_and(|t| t.direct) {
             return false;

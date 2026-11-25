@@ -239,7 +239,7 @@ fn command(v: &Value) -> Event {
     let net = &p["networkApprovalContext"];
     let host = net["host"].as_str();
     let mut a = json!({"id": v["id"], "action": if host.is_some() { "network" } else { "command" },
-        "reason": p["reason"], "command": p["command"], "host": net["host"], "cli": cli(v)});
+        "reason": p["reason"], "command": p["command"], "whole": p["whole"], "host": net["host"], "cli": cli(v)});
     if p["insideSession"] != true {
         a["cwd"] = p["cwd"].clone();
     }

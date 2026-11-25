@@ -159,6 +159,43 @@ pub fn call(command: &str) -> bool {
         && !mcp_call
 }
 
+/// Whether a shell command is one `brigadier computer …` call and nothing else, its text perhaps
+/// from `echo` or `printf` with literal words: the daemon asks for each app itself [D31], so its
+/// CLI's prompt is answered for it. Stricter than `call`, as nobody reads it: the bare name, which
+/// our folder comes first for on its PATH, and a CLI's own shell around it by the system's path.
+pub fn computer(command: &str) -> bool {
+    // A space is the one blank its shell and this both read as one.
+    if (command.chars()).any(|c| c != ' ' && (c.is_whitespace() || c.is_control())) {
+        return false;
+    }
+    let shell = plain_words(command).and_then(|w| match w.as_slice() {
+        [sh, flag, script]
+            if matches!(sh.as_str(), "/bin/sh" | "/bin/bash" | "/bin/zsh")
+                && matches!(flag.as_str(), "-c" | "-lc") =>
+        {
+            Some(script.clone())
+        }
+        _ => None,
+    });
+    let line = shell.as_deref().unwrap_or(command);
+    let words = |c: &str| plain_words(c).unwrap_or_default();
+    let is = |w: &[String], first: &[&str]| {
+        w.len() >= first.len() && w.iter().zip(first).all(|(a, b)| a == b)
+    };
+    // The one pipe outside quotes: what's before it is plain words only if that's it.
+    let piped = (line.match_indices('|')).find_map(|(at, _)| {
+        let (text, call) = (words(&line[..at]), words(&line[at + 1..]));
+        (!text.is_empty() && !call.is_empty()).then_some((text, call))
+    });
+    match piped {
+        Some((text, call)) => {
+            (is(&text, &["echo"]) || is(&text, &["printf"]))
+                && is(&call, &["brigadier", "computer"])
+        }
+        None => is(&words(line), &["brigadier", "computer"]),
+    }
+}
+
 /// What a session allow of one plain `brigadier mcp tools <server>` or `mcp call <server> <tool>`
 /// covers: that server's list, or that tool with any arguments, as an MCP tool's own allow does;
 /// never another server's or tool's, as a CLI's suggested `brigadier mcp *` would [D3023].
