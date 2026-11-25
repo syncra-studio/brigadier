@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, catalogue, scale, sleep, rebirth, standing
+//   drills: killloop, hang, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
 //   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -1502,6 +1502,172 @@ async function rewindDrill() {
   verdict('rewindfiles', { all_ran: !errors.length, byte_for_byte: !wrong.length, no_user_change_lost: r.user_changes_lost === 0, names_keep_their_letters: r.names_with_other_letters === 0, permissions_kept: r.permissions_not_put_back === 0, folders_kept: r.folders_removed === 0, no_leftovers: r.leftovers.length === 0 })
 }
 
+// Speed of the app: its start, opening a long chat, ⌘K and `brigadier search`, over 1, 100 and 1,000 sessions, each
+// build against the other in turns. APP and OLD_APP are folders holding a built app (app/main/dist, app/ui/dist) and
+// its binaries in target/debug; ELECTRON is a copy of Electron with its own bundle id and LSUIElement. The window is
+// never shown: a hook loaded before the app's code leaves out show, focus, the Dock and the menu bar's item.
+// N launches each (20). A start is the app's and its daemon's, with the disk's cache warm.
+function speedHook() {
+  const Module = require('module'), fs = require('fs'), load = Module._load
+  const nothing = new Proxy(function () {}, { get: (_t, k) => (k === 'isDestroyed' ? () => false : k === Symbol.toPrimitive ? () => '' : () => {}), construct: () => nothing, apply: () => undefined })
+  let hooked
+  Module._load = function (name, ...rest) {
+    const m = load.call(this, name, ...rest)
+    if (name !== 'electron') return m
+    if (hooked) return hooked
+    class Hidden extends m.BrowserWindow {
+      constructor(o) { super({ ...o, show: false, webPreferences: { ...o?.webPreferences, backgroundThrottling: false } }) }
+      show() {} showInactive() {} focus() {} moveTop() {} maximize() {} restore() {}
+    }
+    m.app.focus = () => {}
+    if (m.app.dock) { m.app.dock.show = () => Promise.resolve(); m.app.dock.hide(); m.app.dock.bounce = () => 0 }
+    m.app.setActivationPolicy?.('prohibited')
+    m.shell.openExternal = async () => {}
+    m.app.on('web-contents-created', (_e, wc) => wc.once('dom-ready', async () => {
+      if (!wc.getURL().startsWith('app://')) return
+      const out = await wc.executeJavaScript(`(${measure})(${JSON.stringify({ big: process.env.SPEED_BIG, typed: process.env.SPEED_WORD })})`).catch((e) => ({ error: String(e) }))
+      const visible = m.BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length
+      fs.writeFileSync(process.env.SPEED_OUT, JSON.stringify({ ...out, created: process.getCreationTime(), visible }))
+      wc.session.flushStorageData()
+      setTimeout(() => m.app.exit(0), 300)
+    }))
+    hooked = new Proxy(m, { get: (t, k) => (k === 'BrowserWindow' ? Hidden : k === 'Tray' || k === 'Notification' ? nothing : t[k]) })
+    return hooked
+  }
+  // Runs in the page: when the first session row is there, a long chat's end, the palette and its first text hit.
+  async function measure({ big, typed }) {
+    const frames = { drawn: 0, not: 0 }
+    const drawn = () => new Promise((res) => {
+      const t = setTimeout(() => { frames.not++; res(Date.now()) }, 250)
+      requestAnimationFrame(() => { clearTimeout(t); frames.drawn++; res(Date.now()) })
+    })
+    const until = (f, ms = 30000) => new Promise((res) => {
+      const t0 = Date.now()
+      const end = (v) => { seen.disconnect(); clearInterval(poll); v ? drawn().then(res) : res(null) }
+      const look = () => { if (f()) end(true); else if (Date.now() - t0 > ms) end(false) }
+      const seen = new MutationObserver(look)
+      seen.observe(document, { subtree: true, childList: true, characterData: true })
+      const poll = setInterval(look, 20)
+      look()
+    })
+    const has = (w) => () => document.body?.textContent.includes(w)
+    const r = { start: performance.timeOrigin }
+    r.row = await until(has('message 0'))
+    await new Promise((res) => setTimeout(res, 1500)) // the start's own reads done, so the next times are their own
+    let t = Date.now()
+    location.hash = `#thread/${big}`
+    r.open_at = await until(has('39 lorem ipsum'))
+    r.open = r.open_at && r.open_at - t
+    t = Date.now()
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', metaKey: true, bubbles: true, cancelable: true }))
+    const options = () => [...document.querySelectorAll('[role=option]')]
+    const shown = await until(() => options().length > 0, 5000)
+    r.palette = shown && shown - t
+    const input = document.querySelector('[role=dialog] input')
+    if (input) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, typed)
+      t = Date.now()
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      const hit = await until(() => options().some((o) => o.textContent.includes(typed)), 20000)
+      r.typed = hit && hit - t
+    }
+    localStorage.setItem('route', '') // the next start opens on Home again
+    return { ...r, frames, page: document.visibilityState, text: r.row ? undefined : document.body?.textContent.slice(0, 200) }
+  }
+}
+
+async function speed() {
+  const n = +(process.env.N || 20), arms = { new: process.env.APP, old: process.env.OLD_APP }
+  const sizes = (process.env.SIZES || '1,100,1000').split(',').map(Number)
+  const main = `${ROOT}/speed-hook.cjs`
+  fs.writeFileSync(main, `(${speedHook})()\n`)
+  const bin = (arm) => `${arms[arm]}/target/debug`
+  const r = { drill: 'speed', launches: n, load: spawnSync('sysctl', ['-n', 'vm.loadavg'], { encoding: 'utf8' }).stdout.trim(), at: {} }
+  const bad = []
+  let left = []
+  for (const size of sizes) {
+    const got = Object.fromEntries(Object.keys(arms).filter((a) => arms[a]).map((a) => [a, { start: [], open: [], palette: [], typed: [], search: [], daemon_search: [], index_cold_ms: 0 }]))
+    const datas = {}
+    for (const arm of Object.keys(got)) {
+      const data = datas[arm] = DATA = `${ROOT}/speed-${arm}-${size}`
+      fs.rmSync(DATA, { recursive: true, force: true })
+      fs.mkdirSync(`${DATA}/sessions`, { recursive: true, mode: 0o700 })
+      for (let i = 0; i < size; i++) spawnSync(`${bin(arm)}/brigadier-fake`, ['gen', `${DATA}/sessions/g${String(i).padStart(4, '0')}`, String(i ? 200 << 10 : 50 << 20)])
+      fs.writeFileSync(`${DATA}/profile.json`, JSON.stringify({ name: 'Bench', intro_seen: true, onboarded: true, tour_seen: true }))
+      const t = now()
+      spawnSync(`${bin(arm)}/brigadier`, ['index', '--cold'], { env: { ...process.env, BRIGADIER_DATA: data }, timeout: 600000 })
+      got[arm].index_cold_ms = now() - t
+    }
+    const launch = async (arm) => {
+      DATA = datas[arm]
+      const out = `${ROOT}/speed.json`
+      fs.rmSync(out, { force: true })
+      const t = now()
+      const c = spawn(process.env.ELECTRON, ['-r', main, '--host-resolver-rules=MAP * ~NOTFOUND', '--use-mock-keychain', arms[arm]], { env: { ...process.env, BRIGADIER_DATA: DATA, SPEED_OUT: out, SPEED_BIG: 'g0000', SPEED_WORD: 'ipsum' }, stdio: ['ignore', 'ignore', 'pipe'] })
+      let err = ''
+      c.stderr.on('data', (d) => { err += d })
+      const ended = new Promise((res) => c.on('exit', res))
+      await Promise.race([ended, sleep(90000)])
+      if (c.exitCode === null) { kill(c.pid); await ended }
+      // The daemon the app started, by its own first frame, so the next start is whole.
+      const d = await daemonHello()
+      if (d?.pid) { kill(d.pid); await waitFor(() => !alive(d.pid), 3000, 20) }
+      try { return { ...JSON.parse(fs.readFileSync(out, 'utf8')), spawned: t } } catch { return { error: err.slice(-300) || 'no answer' } }
+    }
+    for (let k = -1; k < n; k++) {
+      // The order changes each round; the first round only warms the disk's cache.
+      const order = k % 2 ? Object.keys(got) : Object.keys(got).reverse()
+      for (const arm of order) {
+        const x = await launch(arm)
+        // The older build may have no ⌘K dialog, so only its start and its chat are asked of it.
+        if (x.error || !x.row || !x.open || (arm === 'new' && (!x.palette || !x.typed)) || x.visible) bad.push({ size, arm, k, ...x })
+        if (k < 0) continue
+        if (x.row) got[arm].start.push(x.row - x.spawned)
+        for (const key of ['open', 'palette', 'typed']) if (x[key]) got[arm][key].push(x[key])
+        log({ drill: 'speed', size, arm, k, start: x.row && x.row - x.spawned, open: x.open, palette: x.palette, typed: x.typed, frames: x.frames, page: x.page, visible: x.visible, error: x.error, text: x.text })
+      }
+    }
+    // Search: the daemon's answer to ⌘K's question, and an agent's own `brigadier search` as its step's length.
+    for (const arm of Object.keys(got)) {
+      DATA = datas[arm]
+      const was = daemons.length
+      startDaemon(bin(arm))
+      const up = await daemonList(20000)
+      if (!up) bad.push({ size, arm, error: 'no daemon for search' })
+      spawnSync(`${bin(arm)}/brigadier`, ['start', 's', '--backend', 'fake', '--cwd', '/tmp', '--opt', `FAKE_LEDGER=${DATA}/ledger`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+      for (let k = 0; k < n && up; k++) {
+        const t = performance.now()
+        const m = await daemonCall({ op: 'search', q: 'ipsum dolor' }, 20000)
+        if (m?.ok) got[arm].daemon_search.push(performance.now() - t)
+        else bad.push({ size, arm, error: `search: ${JSON.stringify(m)}` })
+        spawnSync(`${bin(arm)}/brigadier`, ['send', 's', `k${k} brigadier:search+"ipsum+dolor"`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+        await sleep(400)
+      }
+      await sleep(1500)
+      const items = spawnSync(`${bin(arm)}/brigadier`, ['read', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA }, encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      const at = {}
+      for (const i of items) { if (i.kind === 'tool') at[i.id] = i.ts; if (i.kind === 'tool_done' && at[i.id]) { if (i.ok) got[arm].search.push(i.ts - at[i.id]); else bad.push({ size, arm, error: 'the agent\'s search failed' }) } }
+      spawnSync(`${bin(arm)}/brigadier`, ['stop', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+      spawnSync(`${bin(arm)}/brigadier`, ['delete', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+      for (const d of daemons.splice(was)) kill(d.pid)
+    }
+    await sleep(500)
+    for (const arm of Object.keys(got)) {
+      DATA = datas[arm]
+      left.push(...mine().map((p) => p.cmd.slice(0, 100)))
+      for (const p of mine()) kill(p.pid)
+      fs.rmSync(datas[arm], { recursive: true, force: true })
+    }
+    r.at[size] = Object.fromEntries(Object.entries(got).map(([arm, g]) => [arm, Object.fromEntries(Object.entries(g).map(([k, v]) => [k, Array.isArray(v) ? times(v) : v]))]))
+    log({ drill: 'speed', size, ...r.at[size] })
+  }
+  r.bad = bad.slice(0, 5)
+  r.leftovers = [...new Set(left)]
+  log(r)
+  // No bar is set on the times; this says only that each was really measured.
+  verdict('speed', { every_launch_measured: bad.length === 0, no_window_shown: !bad.some((b) => b.visible), no_leftovers: r.leftovers.length === 0 })
+}
+
 // The standing rules' case bank [D527, D529]: bad cases from real misses, guards and controls,
 // each run on a pinned baseline build (BASE=<dir>) and this one (BIN) as a pair, on hidden
 // instances (HOME=<scratch>, plain PATH). AGENTS=claude,codex,opencode SAMPLES=3 CASES=B1,G3
@@ -1714,6 +1880,6 @@ async function standing() {
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, peers: peersDrill, rewindfiles: rewindDrill }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
 await run()
