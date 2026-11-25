@@ -142,8 +142,8 @@ function Row({ line, onToggle }: { line: Shown; onToggle: (id: string) => void }
     // A reply still streaming shows from its first word.
     if (item.streaming && !item.text.trim()) return null;
     return item.role === "user" ? (
-      <div data-slot="worker-received" className="max-w-full min-w-0 self-end rounded-thread bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
-        {item.text}
+      <div data-slot="worker-received" className="max-w-full min-w-0 self-end rounded-thread bg-muted px-3 py-2 text-sm">
+        <Markdown text={item.text} keep={item.id} />
       </div>
     ) : (
       <div className="min-w-0 leading-relaxed wrap-anywhere text-foreground">
