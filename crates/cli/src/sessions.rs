@@ -14,6 +14,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 mod audit;
+pub(crate) mod freed;
 mod jobs;
 mod servers;
 pub(crate) use jobs::end as end_jobs;
@@ -41,15 +42,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let specs: Vec<_> = ids
                 .map(|id| core::load(data, id).map(|s| (id, s)))
                 .collect::<io::Result<_>>()?;
-            let mut running = vec![];
+            let mut stayed = vec![];
             for (id, spec) in specs {
-                running.extend(archive(data, id, &spec, false)?);
+                stayed.extend(archive(data, id, &spec, false)?);
                 // A Brigade's sessions go with it, each archived as it would be alone; one that
                 // fails stays and is named, and those archived stay archived [D3111].
                 let failed: Vec<String> = (subs(data, &spec, unarchived).iter())
                     .filter_map(|sub| {
                         match core::load(data, sub).and_then(|s| archive(data, sub, &s, true)) {
-                            Ok(more) => running.extend(more),
+                            Ok(more) => stayed.extend(more),
                             Err(e) => return Some(format!("{sub}: {e}")),
                         }
                         None
@@ -62,29 +63,31 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     )));
                 }
             }
-            // All are archived; a worker's process that wouldn't stop is named.
-            if !running.is_empty() {
-                let running = running.join("; ");
+            // All are archived; a worker that couldn't go with them is named.
+            if !stayed.is_empty() {
+                let stayed = stayed.join("; ");
                 return Err(io::Error::other(format!(
-                    "archived, but its workers' processes still run: {running}"
+                    "archived, but not its workers: {stayed}"
                 )));
             }
         }
         // The Brigade's restore brings back the sessions archived with it, not one archived on
-        // its own before [D3111].
+        // its own before [D3111]. A worker's is its chat's: it went with that.
         "restore" => {
-            let with = subs(data, &spec, session::went_with);
-            session::restore(data, &spec)?;
-            let failed: Vec<String> = (with.iter())
-                .filter_map(|sub| {
-                    let e = core::load(data, sub).and_then(|s| session::restore(data, &s));
-                    e.err().map(|e| format!("{sub}: {e}"))
-                })
-                .collect();
+            let root = freed::lead(data, id).map(|(_, root)| core::load(data, &root));
+            let root = root.transpose()?.unwrap_or(spec);
+            let with = subs(data, &root, session::went_with);
+            let mut failed = freed::restore(data, &root)?;
+            for sub in &with {
+                match core::load(data, sub).and_then(|s| freed::restore(data, &s)) {
+                    Ok(more) => failed.extend(more),
+                    Err(e) => failed.push(format!("{sub}: {e}")),
+                }
+            }
             if !failed.is_empty() {
                 let failed = failed.join("; ");
                 return Err(io::Error::other(format!(
-                    "its sessions not restored: {failed}"
+                    "restored, but not all that went with it: {failed}"
                 )));
             }
         }
@@ -158,7 +161,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
     }
     crate::tabs::terminal::sweep(data);
-    Ok(json!({"ok": true, "at": index::touched(&spec.dir)}))
+    Ok(json!({"ok": true, "at": index::touched(&core::session_dir(data, id))}))
 }
 
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
@@ -186,7 +189,14 @@ fn check(data: &Path, ids: &[String]) -> Value {
     let running: Vec<&String> = (ids.iter())
         .filter(|s| workers::at_work(data, s, &all))
         .collect();
-    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &ids), "with": with})
+    // Their finished workers' folders go too.
+    let mut gone = ids.clone();
+    for w in ids.iter().flat_map(|id| freed::finished(data, id, &all)) {
+        if !gone.contains(&w) {
+            gone.push(w);
+        }
+    }
+    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &gone), "with": with})
 }
 
 /// A Brigade's sessions whose folder passes `keep`, oldest first [D3111].
@@ -207,7 +217,7 @@ fn unarchived(dir: &Path) -> bool {
 
 /// One session's archive: what a rewind or Replace all cut short settles first, its host stops,
 /// then core archives it. `with`: a Brigade's session going with it [D3111]. Archived, its workers
-/// whose processes didn't stop.
+/// that couldn't go with it.
 fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
     crate::overnight::archived(data, id)?;
     let _family = workers::family_lock(data, id)?;
@@ -215,23 +225,15 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<V
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
         .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
-    // What its finished workers left running goes; one at work keeps its own.
-    let running = (family(data, id).iter())
-        .filter_map(|w| {
-            let why = match end_jobs(data, &w.wid, |_| false) {
-                Ok(left) => format!("process {} didn't stop", left.first()?.0),
-                Err(e) => e.to_string(),
-            };
-            Some(format!("{}: {why}", w.title))
-        })
-        .collect();
+    // Its finished workers go too; one at work keeps its own, and goes when it finishes.
+    let stayed = freed::archive(data, id, true);
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].
     let parent = crate::workers::link(data, id).map(|l| l.parent);
     for owner in [Some(id.to_string()), parent].into_iter().flatten() {
         let args = ["tabs", &owner, "ungroup", id].map(String::from);
         crate::tabs::run(data, &args)?;
     }
-    Ok(running)
+    Ok(stayed)
 }
 
 fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {

@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // shortcut: a fixed list of common build output (proposed); widen it when a tool's output is named as lost.
 const BUILT: &[&str] = &[
@@ -32,6 +32,60 @@ const BUILT: &[&str] = &[
     ".gradle",
     ".DS_Store",
 ];
+
+/// Those a build or an install makes again by itself, which a finished worker's worktree loses. The
+/// rest may hold something made or put there by hand: a release in `dist`, a package in `.venv`.
+const REBUILT: &[&str] = &[
+    "node_modules",
+    "target",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".parcel-cache",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".gradle",
+];
+
+/// The rebuildable build output in `dir`'s worktree: folders git ignores and tracks nothing in, none
+/// a repository of its own, none behind a link, and none the include rules copied in, which nothing
+/// would copy again.
+pub fn rebuilt(dir: &Path, picks: &[String]) -> io::Result<Vec<PathBuf>> {
+    let Some(owned) = read(dir)? else {
+        return Ok(vec![]);
+    };
+    let Some(path) = live(&owned) else {
+        return Ok(vec![]);
+    };
+    let ignored = git(
+        path,
+        &[
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+        ],
+    )?;
+    let mut found: Vec<&str> = (ignored.split('\0'))
+        // A link has no slash of its own at its end.
+        .filter_map(|rel| rel.strip_suffix('/'))
+        .filter(|rel| rel.rsplit('/').next().is_some_and(|n| REBUILT.contains(&n)))
+        .filter(|rel| !path.join(rel).join(".git").exists())
+        .collect();
+    if !found.is_empty() {
+        let copied = copy::selected(Path::new(&owned.repo), picks)?;
+        found.retain(|rel| !copied.iter().any(|c| Path::new(c).starts_with(rel)));
+    }
+    let top = fs::canonicalize(path)?;
+    Ok((found.into_iter().map(|rel| path.join(rel)))
+        .filter(|p| !p.is_symlink() && fs::canonicalize(p).is_ok_and(|p| p.starts_with(&top)))
+        .collect())
+}
 
 /// Whether `rel` is the same in both folders: a link to the same place, or a file with the same bytes.
 fn same(a: &Path, b: &Path, rel: &str) -> bool {

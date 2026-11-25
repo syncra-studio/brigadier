@@ -468,6 +468,11 @@ impl Adapter for Claude {
         cleanup::external(spec, resume)
     }
 
+    fn scratch(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
+        let dirs = cleanup::scratch(spec).into_iter();
+        dirs.map(|d| d.join(resume)).collect()
+    }
+
     /// Its small model, by its family's name [D1029].
     fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
         ModelInfo::of_family(models, "haiku").map(|m| m.id.clone())

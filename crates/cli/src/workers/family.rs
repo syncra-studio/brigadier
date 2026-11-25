@@ -91,12 +91,14 @@ pub fn delete(data: &Path, id: &str, drop: bool) -> io::Result<Value> {
     Ok(reply)
 }
 
-/// Once per daemon: a family delete a crash cut short goes on.
+/// Once per daemon: a family delete a crash cut short goes on, and what archives left goes.
 pub(super) fn resume(data: &Path) {
     static DONE: AtomicBool = AtomicBool::new(false);
     if DONE.swap(true, Ordering::SeqCst) {
         return;
     }
+    let all = data.to_path_buf();
+    thread::spawn(move || sessions::freed::sweep(&all));
     for id in core::ids(data) {
         if core::session_dir(data, &id).join(CLOSING).exists() {
             let data = data.to_path_buf();

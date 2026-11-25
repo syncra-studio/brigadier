@@ -400,6 +400,10 @@ pub trait Adapter: Sync {
     fn external(&self, _spec: &Spec, _resume: &str) -> Vec<PathBuf> {
         vec![]
     }
+    /// Those of them that are throwaway: an archive takes these too.
+    fn scratch(&self, _spec: &Spec, _resume: &str) -> Vec<PathBuf> {
+        vec![]
+    }
     /// Folders the backend shares with other sessions. Delete removes them only once empty.
     fn shared(&self, _spec: &Spec) -> Vec<PathBuf> {
         vec![]

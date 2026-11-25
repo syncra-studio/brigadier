@@ -139,8 +139,15 @@ fn own_merged(dir: &Path) -> io::Result<bool> {
     Ok(branch.is_none_or(|b| in_base(repo, &owned.base, &b, owned.landing.as_ref())))
 }
 
-/// The branch is in `base`, by ancestry or a landing that still holds.
-fn in_base(repo: &Path, base: &str, branch: &str, landing: Option<&Landing>) -> bool {
+/// The branch is in `base`, by ancestry or a landing that still holds. A base that's an archived
+/// session's branch, gone as its own base holds it, is where it was.
+pub(super) fn in_base(repo: &Path, base: &str, branch: &str, landing: Option<&Landing>) -> bool {
+    let freed = format!("{}{base}", super::freed::REFS);
+    let is = |r: &str| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok();
+    let base = match !is(&format!("{base}^{{commit}}")) && is(&freed) {
+        true => &freed,
+        false => base,
+    };
     git(repo, &["merge-base", "--is-ancestor", branch, base]).is_ok()
         || landing.is_some_and(|l| {
             git(repo, &["rev-parse", &format!("refs/heads/{branch}")])

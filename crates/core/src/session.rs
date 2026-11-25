@@ -5,8 +5,8 @@
 
 use crate::fold::{Fold, Live, Owner};
 use crate::{
-    Spec, adapters, as_run, check_id, data_of, ids, projects, session_dir, share,
-    sweep as kill_left, worktrees, write_atomic,
+    Spec, adapters, as_run, check_id, data_of, projects, share, sweep as kill_left, worktrees,
+    write_atomic,
 };
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -14,13 +14,21 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+mod litter;
+mod sweep;
+pub use litter::{built, tidy, unbuild, unbuilt};
+pub use sweep::{archives, sweep};
+
 /// The operation under way (`op`: archive, restore or delete), the delete's branch choice, and
 /// what a delete couldn't remove.
 const INTENT: &str = "lifecycle.json";
 /// When the session was archived (ms).
 const ARCHIVED: &str = "archived";
-/// A Brigade's sub-session archived with it: the Brigade's restore brings back only these [D3111].
+/// A Brigade's sub-session archived with it, or a chat's worker: its restore brings back only these [D3111].
 const WITH: &str = "archived-with";
+
+/// What says a worktree's setup ran: without them it runs again before the next turn [D263].
+const SETUP: [&str; 3] = ["setup.started", "setup.exit", "setup.log"];
 
 fn intent(dir: &Path) -> Option<Value> {
     serde_json::from_slice(&fs::read(dir.join(INTENT)).ok()?).ok()
@@ -37,7 +45,7 @@ fn clear(dir: &Path, name: &str) -> io::Result<()> {
     }
 }
 
-/// Whether it was archived with its Brigade, and is still [D3111].
+/// Whether it was archived with its Brigade or its chat, and is still [D3111].
 pub fn went_with(dir: &Path) -> bool {
     dir.join(WITH).exists() && dir.join(ARCHIVED).exists()
 }
@@ -88,7 +96,7 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
-/// `with`: a Brigade's sub-session going with it, so its restore brings this back [D3111].
+/// `with`: a Brigade's sub-session or a chat's worker going with it, so its restore brings this back [D3111].
 pub fn archive(spec: &Spec, with: bool, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
@@ -158,6 +166,7 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
         });
     match freed {
         Ok(()) => {
+            litter::drop(spec, holder.as_deref());
             write_atomic(&dir.join(ARCHIVED), now_ms().to_string().as_bytes())?;
             clear(dir, INTENT)
         }
@@ -223,7 +232,7 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
     // Restore always re-runs setup in trusted projects before the next turn [D263]; a shared
     // worktree's, only when this brought it back: another user may be running it now.
     if project.is_some_and(|p| p.trusted == Some(true)) && (others.is_empty() || !was) {
-        for name in ["setup.started", "setup.exit", "setup.log"] {
+        for name in SETUP {
             clear(&holder, name)?;
         }
     }
@@ -388,6 +397,10 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         }
     }
     left.extend(crate::writer::forget(spec, f));
+    // After the CLIs' own deletes, which run with it.
+    if let Err(e) = crate::background::drop_temp(dir) {
+        left.push(format!("{}: {e}", crate::background::tmp(dir).display()));
+    }
     // Anything left keeps the folder: its log holds the ids a later delete tries again with.
     if !left.is_empty() {
         left.push(format!("{}: kept to try again", dir.display()));
@@ -419,26 +432,6 @@ pub fn gone(dir: &Path) -> Value {
     json!({"ok": left.is_empty(), "swept": 0, "removed": [], "left": left, "kept_branches": []})
 }
 
-/// Rolls back a restore cut short: its worktree is freed again, unless another session still
-/// works there unarchived [D1080]; a claim another session works in stays, as archive left it.
-fn undo_restore(spec: &Spec) -> io::Result<()> {
-    let (others, _held) = sharers(spec)?;
-    if others.iter().any(|o| !o.dir.join(ARCHIVED).exists()) {
-        return Ok(());
-    }
-    worktrees::free(&holder(spec, &others))?;
-    let data = data_of(spec);
-    crate::folder::claims(&spec.dir)
-        .iter()
-        .try_for_each(|(_, rec)| {
-            let _one = worktrees::lock(rec)?;
-            match shared_claim(&data, spec, rec) {
-                true => Ok(()),
-                false => worktrees::free(rec),
-            }
-        })
-}
-
 /// The session's folder goes, its record and intent last, so a file that won't go leaves a session
 /// that deletes again; one still holding a worktree another uses keeps only that [D35, D1080].
 fn remove(dir: &Path) -> io::Result<()> {
@@ -465,33 +458,5 @@ fn remove(dir: &Path) -> io::Result<()> {
     match retained {
         true => clear(dir, INTENT),
         false => fs::remove_dir_all(dir),
-    }
-}
-
-/// At the daemon's start, after `worktrees::sweep`'s own: an archive cut short finishes, a restore
-/// rolls back (the session stays archived), a delete runs again with the choice it was given.
-pub fn sweep(data: &Path) {
-    for id in ids(data) {
-        let dir = session_dir(data, &id);
-        let Some(cut) = intent(&dir) else { continue };
-        match cut["op"].as_str() {
-            Some("archive") => {
-                if let (Ok(_one), Ok(spec)) = (worktrees::lock(&dir), crate::load(data, &id)) {
-                    let _ = finish_archive(&spec);
-                }
-            }
-            Some("restore") => {
-                if let (Ok(_one), Ok(spec)) = (worktrees::lock(&dir), crate::load(data, &id))
-                    && undo_restore(&spec).is_ok()
-                {
-                    let _ = clear(&dir, INTENT);
-                }
-            }
-            _ => {
-                if let (Ok(spec), Ok(f)) = (crate::load(data, &id), crate::fold(&dir, false)) {
-                    delete(&spec, &f.fold, cut["drop_branch"] == true);
-                }
-            }
-        }
     }
 }

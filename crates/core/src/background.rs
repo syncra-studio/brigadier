@@ -11,6 +11,7 @@ use brigadier_frames::procs::{self, Proc};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -278,4 +279,60 @@ fn wait(tree: &[Proc], grace: Duration) {
 /// A session's throwaway files and test instances, its own folder's `tmp`: gone with it.
 pub fn tmp(dir: &Path) -> PathBuf {
     dir.join("tmp")
+}
+
+/// The link to `tmp` its agent's TMPDIR names, for the folder's own path has a space, which builds
+/// break on, and is too long for a socket in it: agents made folders in /tmp instead. Its name is
+/// the session's and its folder's, so another data folder's copy of it has its own.
+fn link(dir: &Path) -> PathBuf {
+    let hash = (dir.as_os_str().as_encoded_bytes().iter())
+        .fold(0u16, |h, b| h.wrapping_mul(31).wrapping_add(*b as u16));
+    let name = dir.file_name().unwrap_or_default().to_string_lossy();
+    roof().join(format!("{name}.{hash:04x}"))
+}
+
+fn roof() -> PathBuf {
+    PathBuf::from(format!("/tmp/brigadier-{}", unsafe { libc::getuid() }))
+}
+
+/// Makes `tmp` and the link to it, for an agent's TMPDIR; `tmp` itself where the links' folder isn't
+/// the user's alone.
+pub fn temp(dir: &Path) -> PathBuf {
+    let tmp = tmp(dir);
+    let _ = fs::create_dir_all(&tmp);
+    let (roof, link) = (roof(), link(dir));
+    let _ = fs::DirBuilder::new().mode(0o700).create(&roof);
+    let mine = fs::symlink_metadata(&roof)
+        .is_ok_and(|m| m.is_dir() && m.uid() == unsafe { libc::getuid() } && m.mode() & 0o077 == 0);
+    if !mine {
+        return tmp;
+    }
+    if fs::read_link(&link).ok().as_ref() != Some(&tmp) {
+        let _ = fs::remove_file(&link);
+        if std::os::unix::fs::symlink(&tmp, &link).is_err() {
+            return tmp;
+        }
+    }
+    link
+}
+
+/// Both names of it, for what its agent may write.
+pub fn temps(dir: &Path) -> Vec<String> {
+    let mut all = vec![tmp(dir), temp(dir)];
+    all.dedup();
+    all.iter().map(|p| p.display().to_string()).collect()
+}
+
+/// Its throwaway files and the link to them go.
+pub fn drop_temp(dir: &Path) -> io::Result<()> {
+    let (tmp, link) = (tmp(dir), link(dir));
+    if fs::read_link(&link).ok().as_ref() == Some(&tmp) {
+        fs::remove_file(&link)?;
+        // The last one's folder too.
+        let _ = fs::remove_dir(roof());
+    }
+    match fs::remove_dir_all(&tmp) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }

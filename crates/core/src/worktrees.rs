@@ -16,7 +16,9 @@ mod copy;
 use branch::has_branch;
 pub use branch::rename_held;
 mod branches;
+mod freed;
 pub use branches::{drop_branches, put_branches};
+pub use freed::shed;
 mod hand;
 mod kept;
 use kept::keeps;
@@ -56,6 +58,8 @@ struct Owned {
     landing: Option<Landing>,
     /// The deleted session that made it and handed it on, whose folder holds it [D1080].
     inherited: Option<String>,
+    /// Its branch that went with an archive, its base holding all of it: restore makes it again.
+    freed: Option<freed::Freed>,
     /// Started on a branch that was there before (a PR's, by an older build): delete never takes it [D703].
     on: bool,
 }
@@ -391,6 +395,9 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     };
     hand::drop_maker(&owned)?;
     let repo = Path::new(&owned.repo);
+    if let Some(f) = &owned.freed {
+        f.forget(repo);
+    }
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
@@ -415,12 +422,16 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
     let Some(mut owned) = read(dir)? else {
         return Ok(());
     };
-    let (Some(branch), Some(path)) = (owned.branch.clone(), owned.path.clone()) else {
+    let Some(path) = owned.path.clone() else {
         return Ok(());
     };
     if Path::new(&path).exists() {
         return Ok(());
     }
+    freed::bring_back(dir, &mut owned)?;
+    let Some(branch) = owned.branch.clone() else {
+        return Ok(());
+    };
     let repo = PathBuf::from(&owned.repo);
     if !has_branch(&repo, &branch) {
         return err(format!(
