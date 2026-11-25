@@ -48,7 +48,9 @@ fn prune(data: &Path, held: &mut Value) {
 /// no limit lately. Each live reservation counts +10 points on its account's shortest window
 /// until its worker ends, a newer sample comes or an hour passes (proposed, Codex review 3).
 /// Its quota at the start, or the soonest reset of those without room. `wid` "": placed only to
-/// be shown, nothing reserved (a card the user may never press, D352).
+/// be shown, nothing reserved (a card the user may never press, D352). `ask`: an account never
+/// checked is, which runs its CLI; else it's taken as usable.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn place(
     data: &Path,
     a: &dyn adapters::Adapter,
@@ -57,6 +59,7 @@ pub(super) fn place(
     cwd: &str,
     wid: &str,
     skip: &str,
+    ask: bool,
 ) -> Result<(String, Value), Option<u64>> {
     let name = a.name();
     let v = accounts::load(data);
@@ -69,7 +72,7 @@ pub(super) fn place(
             // Its last check's word, so a pick makes no sample newer than the reservations.
             .filter(|id| {
                 usage::usable(data, name, id)
-                    .unwrap_or_else(|| accounts::usable(&accounts::check(a, data, id, cwd)))
+                    .unwrap_or_else(|| !ask || accounts::usable(&accounts::check(a, data, id, cwd)))
             })
             .collect(),
         false => (base != skip)
@@ -307,7 +310,7 @@ pub(crate) fn resolve(
             // Its why line: "the first in Review on another agent than Claude" [D385].
             pick.ran["other_than"] = jobs::and(&by).into();
         }
-        match place(data, adapter, id, &base, &parent.cwd, wid, "\0") {
+        match place(data, adapter, id, &base, &parent.cwd, wid, "\0", true) {
             Ok((account, kept)) => {
                 pick.account = Some(account).filter(|x| !x.is_empty());
                 (pick.ran["label"], pick.ran["quota"]) =
@@ -431,7 +434,7 @@ pub(crate) fn next(
         };
         let base = account_for(data, &parent, &pf, a);
         let skip = if same { cur } else { "\0" };
-        match place(data, adapter, id, &base, &spec.cwd, wid, skip) {
+        match place(data, adapter, id, &base, &spec.cwd, wid, skip, true) {
             Ok((account, kept)) => {
                 let name = m.get("name").unwrap_or(&m["id"]).clone();
                 let note = match same {

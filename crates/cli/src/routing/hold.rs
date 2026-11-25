@@ -45,7 +45,7 @@ pub(super) fn other(
             let has = |w: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == w);
             let (effort, _) = effort_of(&rules, a, m, want.filter(has), false).ok()?;
             let base = account_for(data, parent, f, a);
-            place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0").ok()?;
+            place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0", true).ok()?;
             let effort = effort.or(m["default_effort"].as_str().map(String::from));
             Some(json!({"agent": a, "model": id, "effort": effort, "name": m.get("name").unwrap_or(&m["id"])}))
         })
@@ -252,13 +252,22 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                 Err(why) => return Ok(json!({"ok": false, "error": "invalid", "message": why})),
             };
             let base = account_for(data, &parent, &pf, &backend);
-            let (account, kept) = place(data, a, str_of(e, "model"), &base, &spec.cwd, wid, "\0")
-                .unwrap_or_else(|_| {
-                    (
-                        base.clone(),
-                        json!({"label": label(&accounts::load(data), &backend, &base)}),
-                    )
-                });
+            let (account, kept) = place(
+                data,
+                a,
+                str_of(e, "model"),
+                &base,
+                &spec.cwd,
+                wid,
+                "\0",
+                true,
+            )
+            .unwrap_or_else(|_| {
+                (
+                    base.clone(),
+                    json!({"label": label(&accounts::load(data), &backend, &base)}),
+                )
+            });
             // It keeps its job (or a row from before jobs), its retry and what failed.
             let effort_ran = effort
                 .clone()

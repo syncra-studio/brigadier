@@ -75,10 +75,33 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+/// The id `agent` lists now for a model it no longer lists as `id`: the one listed under the name it
+/// last had, else, an id that is a family's own name ("fable"), that family's one listed model.
+pub(super) fn renamed(saved: &Value, groups: &[Value], agent: &str, id: &str) -> Option<String> {
+    let g = groups.iter().find(|g| g["provider"] == agent)?;
+    let current = || (g["models"].as_array().into_iter().flatten()).filter(|m| m["legacy"] != true);
+    if current().next().is_none() || model_of(groups, agent, id).is_some() {
+        return None;
+    }
+    let was = saved["seen"][agent]["names"][id].as_str();
+    let family = |m: &&Value| super::offers::family(str_of(m, "name")).is_some_and(|f| f.0 == id);
+    let mut found = match was {
+        Some(name) => current().filter(|m| m["name"] == name).collect::<Vec<_>>(),
+        None => vec![],
+    };
+    if found.is_empty() {
+        found = current().filter(family).collect();
+    }
+    match found[..] {
+        [one] => Some(str_of(one, "id").into()),
+        _ => None,
+    }
+}
+
 /// The jobs whole: the saved list, else the saved rows carried over and then the seeds, rebuilt on
-/// each read until the first save [D392 P3].
+/// each read until the first save [D392 P3]. A model its agent renamed stays, under its new id.
 pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
-    match saved["jobs"].as_array() {
+    let mut jobs: Vec<Value> = match saved["jobs"].as_array() {
         Some(l) => l.clone(),
         None => (CARRIED.iter())
             .filter_map(|(key, name, line)| {
@@ -87,7 +110,28 @@ pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
             })
             .chain(seeds(groups))
             .collect(),
+    };
+    for l in jobs.iter_mut().filter_map(|j| j["entries"].as_array_mut()) {
+        for i in 0..l.len() {
+            let agent = str_of(&l[i], "agent").to_string();
+            let Some(id) = renamed(saved, groups, &agent, str_of(&l[i], "model")) else {
+                continue;
+            };
+            if l.iter()
+                .any(|e| e["agent"] == agent.as_str() && e["model"] == id.as_str())
+            {
+                continue;
+            }
+            let has = model_of(groups, &agent, &id).is_some_and(|m| {
+                (m["efforts"].as_array().into_iter().flatten()).any(|x| *x == l[i]["effort"])
+            });
+            l[i]["model"] = id.into();
+            if !has {
+                l[i]["effort"] = Value::Null;
+            }
+        }
     }
+    jobs
 }
 
 /// The jobs as they stand. An entry its agent no longer lists (gone, or hidden in Settings) is

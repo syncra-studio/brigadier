@@ -23,12 +23,14 @@ export type Rule = { never: "model"; agent: string; model: string } | { never: "
 export type Job = { name: string; for: string; entries: Entry[] };
 /** Brigadier's offer, from facts it can see [D383, D386]; `job` null is the quiet line under Jobs. */
 export type Offer = { id: string; job: string | null; kind: "newer" | "results" | "mark" | "alias"; title: string; facts: string; done: string };
+/** What each job would run now, by its name: its row's line, and each model's quota or why it can't run, by `agent/model`. */
+export type Now = Readonly<Record<string, { runs: string; entries: Readonly<Record<string, { text: string | null; off: boolean }>> }>>;
 /** Rust's routing table (C5): the jobs in your order, the rules, the review switch, the model images go to first (null: automatic), the open offers and the page's grey lines. */
-export type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; images?: { agent: string; model: string } | null; offers: Offer[]; notes: { review: string; rules: string } };
+export type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; images?: { agent: string; model: string } | null; offers: Offer[]; notes: { review: string; rules: string }; now?: Now };
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const ROUTING_ROWS = {
-  jobs: { label: "Jobs", description: "Your agents start each worker on the job that fits. Each job tries its models in your order: the next runs only when one is out of quota." },
+  jobs: { label: "Jobs", description: "Your agents start each worker on the job that fits. Each job tries its models in your order: the next runs only when one is out of quota or can't run." },
   review: {
     label: "Adversarial review",
     description: "Another agent reviews each worker's code, and each plan before it's acted on, and tries to break it: the first model in your Review job on another agent than the author's.",
@@ -147,6 +149,7 @@ export function RoutingPage({
           <ErrorLine error={(editorOpen ? null : failed?.text) ?? error} />
           <Jobs
             jobs={shown.jobs}
+            now={shown.now}
             offers={shown.offers}
             groups={groups}
             failed={editorOpen ? (failed?.text ?? null) : null}

@@ -15,6 +15,7 @@ use std::path::Path;
 
 mod hold;
 mod jobs;
+mod now;
 mod offers;
 mod pick;
 mod receipt;
@@ -301,6 +302,7 @@ fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value
     let mut t = table(data, groups);
     let offers = offers::open(data, groups, &t, r).unwrap_or_default();
     (t["offers"], t["notes"]) = (offers.into(), jobs::notes(groups));
+    t["now"] = now::now(data, groups, &t);
     t["ok"] = why.is_none().into();
     if let Some(why) = why {
         (t["error"], t["message"]) = ("invalid".into(), why.into());

@@ -70,6 +70,14 @@ const TABLE: Routing = {
     { never: "above", effort: "high", agent: null },
     { never: "model", agent: "other", model: "mini" },
   ],
+  now: {
+    "Write code": { runs: "Runs Large model · High", entries: { "cloud/large": { text: "Weekly 46%, resets 13:00", off: false }, "other/big": { text: "Weekly 29%, resets 12:20", off: false } } },
+    "Look into the codebase": { runs: "Runs Medium model · Low", entries: { "cloud/medium": { text: null, off: false } } },
+    "Research the web": { runs: "Nothing here can run now", entries: { "other/mini": { text: "Barred by your rule", off: true } } },
+    "Plan and orchestrate": { runs: "Runs Large model · High", entries: {} },
+    "Quick actions": { runs: "Nothing here can run now", entries: { "cloud/small": { text: "Full until 15:10", off: true } } },
+    Review: { runs: "Runs the first not on the author's agent", entries: {} },
+  },
   review: true,
   offers: [
     {
@@ -110,7 +118,7 @@ const RESULTS: Results = {
     },
     { job: "Best", models: [{ agent: "cloud", model: "large", name: "Large model", kept: 17, of: 20, finished: 20, retried: 1 }] },
   ],
-  reviews: { count: 6, findings: 14, fixed: 11, rejected: 3 },
+  reviews: { count: 6, off: 1, findings: 14, fixed: 11, rejected: 3 },
 };
 
 const DRAFT: Job = {

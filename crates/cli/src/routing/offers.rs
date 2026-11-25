@@ -52,7 +52,7 @@ fn label(agent: &str) -> &str {
 
 /// A name's family, its version cut and case, spaces and hyphens dropped, and its version:
 /// "GPT-6.2-Sol" → ("gptsol", [6, 2]).
-fn family(name: &str) -> Option<(String, Vec<u32>)> {
+pub(super) fn family(name: &str) -> Option<(String, Vec<u32>)> {
     let (f, v) = adapters::versioned(name)?;
     Some((f.to_lowercase().replace([' ', '-'], ""), v))
 }
@@ -352,17 +352,32 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::R
                 }
             }
         }
-        let names: serde_json::Map<String, Value> = (models.iter())
-            .map(|m| (str_of(m, "id").to_string(), m["name"].clone()))
-            .collect();
+        // A model gone from the list keeps the name it last had: its agent may list it under a new id.
+        let mut names = was["names"].as_object().cloned().unwrap_or_default();
+        names.extend((models.iter()).map(|m| (str_of(m, "id").to_string(), m["name"].clone())));
+        let ids: Vec<&Value> = models.iter().map(|m| &m["id"]).collect();
         let mark = |k: &str| {
             models
                 .iter()
                 .find(|m| m[k] == true)
                 .map(|m| m["id"].clone())
         };
-        saved["seen"][agent] = json!({"ids": names.keys().collect::<Vec<_>>(), "names": names,
+        saved["seen"][agent] = json!({"ids": ids, "names": names,
             "default": mark("default"), "top": mark("top"), "moved": moved});
+    }
+    // A model its agent renamed is saved under its new id, so what names it keeps holding.
+    if saved["jobs"].is_array() {
+        saved["jobs"] = jobs::all(&saved, groups).into();
+    }
+    let was = saved.clone();
+    let rename = |x: &mut Value| {
+        let id = jobs::renamed(&was, groups, str_of(x, "agent"), str_of(x, "model"));
+        id.inspect(|id| x["model"] = id.as_str().into());
+    };
+    let rules = saved["rules"].as_array_mut().into_iter().flatten();
+    rules.filter(|r| r["never"] == "model").for_each(rename);
+    if saved["images"].is_object() {
+        rename(&mut saved["images"]);
     }
     // Kept while it still fits: its job there and holding what it replaces, both models listed,
     // a mark's model still marked.

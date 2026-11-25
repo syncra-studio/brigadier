@@ -3,13 +3,14 @@ import { SettingsCard } from "../components/settings-card";
 import { UsageBar } from "../components/usage-bar";
 import { SettingsSection } from "./parts";
 import { Note, ROUTING_ROWS } from "./routing";
+import { REVIEW_JOB } from "./routing-jobs";
 
 /** Runs from which a share is drawn: fewer are too few to compare (spec §8). */
 const COMPARED = 20;
 
 type Model = { agent: string; model: string; name: string; kept: number | null; of: number; finished: number; retried: number; cut?: number };
 /**
- * Your own outcomes per job, then per model, credited to the model that really ran (C5): `job` null is Named model;
+ * Your own outcomes per job, then per model, credited to the model that really ran (C5): `job` null is work started on a named model;
  * `kept` null, a job whose workers make no commits. The adversarial reviews' counts [D2038, D3026].
  */
 export type Results = {
@@ -20,6 +21,13 @@ export type Results = {
 /** Your results, grouped by job (spec §8): a share from 20 runs, counts below it. Nothing reorders from it [D2038]. `results` null is loading. */
 export function YourResults({ results, groups }: { results: Results | null; groups: readonly ModelGroup[] }) {
   const empty = results && results.jobs.length === 0 && !results.reviews;
+  // Under the Review job; on their own while it has no row.
+  const reviews = results?.reviews && (
+    <p data-slot="reviews-line" className="py-1.5 text-label text-foreground">
+      {reviewsLine(results.reviews)}
+    </p>
+  );
+  const under = results?.jobs.some(({ job }) => job === REVIEW_JOB);
   return (
     <SettingsSection title={ROUTING_ROWS.results.label} description={ROUTING_ROWS.results.description} setting={ROUTING_ROWS.results.label}>
       <SettingsCard inset data-slot="your-results">
@@ -27,17 +35,14 @@ export function YourResults({ results, groups }: { results: Results | null; grou
         {empty && <p className="py-3 text-xs text-muted-foreground">No results yet</p>}
         {results?.jobs.map(({ job, models }) => (
           <div key={job ?? ""} data-slot="result-job" className="flex flex-col pt-3.5 pb-1.5">
-            <p className="text-xs font-medium text-quiet-foreground">{job ?? "Named model"}</p>
+            <p className="text-xs font-medium text-quiet-foreground">{job ?? "Started on a named model"}</p>
+            {job === REVIEW_JOB && reviews}
             {models.map((each) => (
               <ResultRow key={`${each.agent}/${each.model}`} {...each} group={groups.find((group) => group.provider === each.agent)} />
             ))}
           </div>
         ))}
-        {results?.reviews && (
-          <p data-slot="reviews-line" className="py-3 text-label text-foreground">
-            {reviewsLine(results.reviews)}
-          </p>
-        )}
+        {!under && reviews}
       </SettingsCard>
       <Note>Kept: finished with commits that are in its parent's branch, never retried or reverted. Work cut off, stopped or out of quota isn't counted. A percentage shows from 20 runs. Jobs get different work, so compare models within a job.</Note>
     </SettingsSection>
