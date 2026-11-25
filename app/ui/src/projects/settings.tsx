@@ -66,8 +66,8 @@ function Row({ label, line, error, wide = false, children }: { label: string; li
   );
 }
 
-/** A text that saves when you leave it or press Enter; Escape puts the saved one back. */
-function SavedInput({ value, onSave, ...props }: { value: string; onSave: (value: string) => void; placeholder?: string; "aria-label": string; className?: string }) {
+/** A text that saves when you leave it or press Enter; Escape puts the saved one back. `onBack`: it's the saved one again. */
+function SavedInput({ value, onSave, onBack, ...props }: { value: string; onSave: (value: string) => void; onBack: () => void; placeholder?: string; "aria-label": string; className?: string }) {
   const [typed, setTyped] = useState(value);
   useEffect(() => setTyped(value), [value]);
   return (
@@ -76,10 +76,13 @@ function SavedInput({ value, onSave, ...props }: { value: string; onSave: (value
       value={typed}
       spellCheck={false}
       onChange={(event) => setTyped(event.target.value)}
-      onBlur={() => typed !== value && onSave(typed)}
+      onBlur={() => (typed === value ? onBack() : onSave(typed))}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
-        escape(event, typed !== value, () => setTyped(value));
+        escape(event, typed !== value, () => {
+          setTyped(value);
+          onBack();
+        });
       }}
     />
   );
@@ -160,7 +163,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
     };
   }, [project.id, project.folder, folderKind, daemon]);
 
-  // Clicking outside both saves a field and closes the dialog: what Rust refused is then said in a toast.
+  // Clicking outside both saves a field and closes the dialog: what was refused is then said in a toast.
   const refused = useRef<Record<string, string>>({});
   const here = useRef(true);
   const say = (why: string) => showToast(`Couldn't save ${project.name}'s settings: ${why}`, { tone: "error" });
@@ -171,15 +174,19 @@ export function ProjectSettings({ project, source }: { project: Project; source:
       Object.values(refused.current).forEach(say);
     };
   }, []);
+  const refuse = (field: string, why: string) => {
+    if (!here.current) return say(why);
+    refused.current[field] = why;
+    setErrors((now) => ({ ...now, [field]: why }));
+  };
+  const clear = (field: string) => {
+    delete refused.current[field];
+    setErrors((now) => ({ ...now, [field]: null }));
+  };
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
-    setErrors((now) => ({ ...now, [field]: null }));
-    delete refused.current[field];
-    source.save(project, change, args).catch((cause) => {
-      if (!here.current) return say(errorText(cause));
-      refused.current[field] = errorText(cause);
-      setErrors((now) => ({ ...now, [field]: errorText(cause) }));
-    });
+    clear(field);
+    source.save(project, change, args).catch((cause) => refuse(field, errorText(cause)));
   };
   const saveFiles = (next: string[]) => {
     setFiles(next);
@@ -238,7 +245,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
         <Row label="Name" line={project.icon ? "What the sidebar calls it; click its icon to change it" : "What the sidebar calls it; its icon is the folder's logo, else these initials — click it to pick another"} error={errors.name ?? errors.icon}>
           {/* An image shows once Rust has copied it in; a colour or emoji at once [D30]. */}
           <IconPicker id={project.id} name={project.name} icon={project.icon} onChange={(icon) => save("icon", icon.startsWith("image:") ? {} : { icon: icon || null }, ["--icon", icon])} />
-          <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : setErrors((now) => ({ ...now, name: "Name can't be empty." })))} />
+          <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : refuse("name", "Name can't be empty."))} onBack={() => clear("name")} />
         </Row>
         <Row label="Folder" line={sessions > 0 ? `Where it is on this Mac; it has ${plural(sessions, "session", "sessions")}, so it can't move` : "Where it is on this Mac; a new folder is asked about trust again"} error={errors.folder}>
           <span className="min-w-0 flex-1 truncate text-end font-mono text-xs text-foreground">{shortPath(project.folder)}</span>
@@ -275,7 +282,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
           <Switch aria-label="Trust this folder" checked={project.trusted === true} onCheckedChange={(on) => save("trusted", { trusted: on }, ["--trusted", String(on)])} />
         </Row>
         <Row label="Branch prefix" line="Starts each new session's branch name; leave it empty for none" error={errors.branch_prefix}>
-          <SavedInput aria-label="Branch prefix" className="font-mono" placeholder="No prefix" value={project.branch_prefix ?? "brigadier/"} onSave={(prefix) => save("branch_prefix", { branch_prefix: prefix }, ["--branch-prefix", prefix])} />
+          <SavedInput aria-label="Branch prefix" className="font-mono" placeholder="No prefix" value={project.branch_prefix ?? "brigadier/"} onSave={(prefix) => save("branch_prefix", { branch_prefix: prefix }, ["--branch-prefix", prefix])} onBack={() => clear("branch_prefix")} />
         </Row>
         <Row wide label="Secret files" line="Git-ignored files, such as .env.local, copied into every new session's worktree and never shown" error={errors.include}>
           <div className="flex w-full flex-col gap-1.5">
