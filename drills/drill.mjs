@@ -784,7 +784,7 @@ function sleepDrill() {
 async function sleepPrep() {
   freshData('sleep')
   for (let i = 1; i <= 5; i++) { startFake(`z${i}`); cli(['send', `z${i}`, `${cid()} tree:900`]) }
-  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
+  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), home: process.env.HOME, agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
   log({ drill: 'sleepprep', data: DATA, status: Object.values(statusAll()).map((s) => [s.id, s.state]) })
 }
 
@@ -798,6 +798,8 @@ async function sleepCheck() {
   r.children_alive = Object.keys(before.children).filter((p) => alive(+p)).length + '/' + Object.keys(before.children).length
   r.duplicates = Object.keys(before.agents).filter((id) => agentsOf(id).length > 1).length
   r.leftovers = cleanup()
+  // The home sleepprep left its hosts, unless it was given one.
+  if (path.basename(before.home ?? '').startsWith('drill-home-') && process.env.KEEP !== '1') fs.rmSync(before.home, { recursive: true, force: true })
   log({ drill: 'sleepcheck', ...r })
 }
 

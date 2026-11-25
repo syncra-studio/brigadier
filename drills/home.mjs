@@ -1,7 +1,7 @@
 // A drill's own home. Brigadier writes folder trust into ~/.claude.json and ~/.codex/config.toml, whatever agent
 // runs, and a real CLI writes its own there: never the owner's. From `isolate` on, every child gets this home
 // instead: HOME, when it's already a scratch one outside the owner's (real CLIs are signed in there), else
-// <root>/drill-home, removed at the end. Throws, so the drill doesn't start, when that home leads to the owner's.
+// a <root>/drill-home-… of this process alone, removed at the end. Throws, so the drill doesn't start, when that home leads to the owner's.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -15,9 +15,8 @@ const at = (p, see = fs.statSync) => see(p, { throwIfNoEntry: false })
 export function isolate(root) {
   const given = process.env.HOME && at(process.env.HOME) ? fs.realpathSync.native(process.env.HOME) : OWNER
   const own = within(given, OWNER)
-  const made = path.resolve(root, 'drill-home')
-  if (own) fs.mkdirSync(made, { recursive: true, mode: 0o700 })
-  const home = own ? fs.realpathSync.native(made) : given
+  if (own) fs.mkdirSync(root, { recursive: true })
+  const home = own ? fs.realpathSync.native(fs.mkdtempSync(path.resolve(root, 'drill-home-'))) : given
   // By the folder or file itself, so no other name for it (a link, a volume's path) passes.
   for (const f of ['', '.claude', '.claude.json', '.claude/.claude.json', '.codex', '.codex/config.toml']) {
     const [here, theirs, link] = [at(path.join(home, f)), at(path.join(OWNER, f)), at(path.join(home, f), fs.lstatSync)]

@@ -42,8 +42,6 @@ const PW_MCP = process.env.PW_MCP // path to @playwright/mcp's cli.js
 // Chrome's headless shell, so the baseline never shows as a second Chrome for Testing to computer use.
 const PW_CHROME = process.env.PW_CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 const LIMIT = 6 * 60_000
-isolate(OUT)
-if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY && !fs.existsSync(`${process.env.CLAUDE_CONFIG_DIR}/.credentials.json`)) { console.error('Claude is not signed in here: set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY'); process.exit(2) }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // A recorded pid's command now, empty once it's gone: checked before a kill, as a pid may be reused.
 const commandOf = (pid) => spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim()
@@ -68,6 +66,8 @@ const stopAgent = (signal = 'SIGKILL') => {
 }
 process.on('exit', () => { stopAgent(); fs.rmSync(lock, { force: true }); fs.rmSync(bin, { recursive: true, force: true }) })
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(1))
+isolate(OUT)
+if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY && !fs.existsSync(`${process.env.CLAUDE_CONFIG_DIR}/.credentials.json`)) { console.error('Claude is not signed in here: set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY'); process.exit(2) }
 
 // Each task: where it starts, what the agent is told, and what in the log means it passed. The
 // last, T9, is not of the eight: it runs only by name.
