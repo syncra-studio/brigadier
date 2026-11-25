@@ -1,6 +1,7 @@
 //! The queue's drain [D188]: what may go now goes, a message to the agent, a `!` command to its shell.
 
 use super::*;
+use std::cell::Cell;
 
 /// What the agent reads after a command's report (proposed words).
 const REPLY: &str =
@@ -57,12 +58,24 @@ pub fn takes(dir: &Path, held: Option<u64>) -> bool {
 /// Sends the first queued message, judged and sent under the queue's lock (another pass that finds
 /// it held leaves it). The host takes it only if nothing reached the log since the session was
 /// judged between turns; a changed session keeps it queued. It leaves the queue only once the log
-/// has it; a refusal stays on it, and the queue waits there.
+/// has it; a refusal stays on it, and the queue waits there. A call to its host that
+/// failed is no refusal: it's tried again under its id, which the log takes once.
 fn send_first(data: &Path, id: &str) -> io::Result<()> {
     let dir = core::session_dir(data, id);
     let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
         return Ok(());
     };
+    for last in [false, false, true] {
+        if !try_first(data, id, last)? {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// One try of it, the queue's lock held; says whether another is due. The `last` says why on it.
+fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
+    let dir = core::session_dir(data, id);
     let spec = core::load(data, id)?;
     crate::rewind::settle_held(data, &spec)?;
     locked(&dir, |q| {
@@ -74,15 +87,15 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             q.goes(*at, held) && (!cut || cut::carries(&dir, &f, origin))
         };
         let Some(at) = (0..q.items.len()).find(goes) else {
-            return Ok(());
+            return Ok(false);
         };
         let item = q.items[at].clone();
         if q.paused || item.error.is_some() {
-            return Ok(());
+            return Ok(false);
         }
         if f.cids.contains_key(&item.id) {
             q.items.remove(at);
-            return Ok(());
+            return Ok(false);
         }
         if item.shell.as_deref() == Some("wait") {
             if f.turns.is_empty() && DRAINS.contains(&state.as_str()) {
@@ -94,12 +107,12 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
                     Err(e) => q.items[at].error = Some(e.to_string()),
                 }
             }
-            return Ok(());
+            return Ok(false);
         }
         owner::ensure(data, &spec)?;
         let ping = owner::call(data, id, json!({"op": "ping"}))?;
         let Some(len) = ping["len"].as_u64() else {
-            return Ok(());
+            return Ok(false);
         };
         let f = core::fold(&dir, true)?;
         let live = fold::live(&f.fold, owner::state(data, id), &dir, &procs::all());
@@ -111,7 +124,7 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
             false => DRAINS.contains(&state),
         };
         if live.owner != Owner::Alive || !free {
-            return Ok(());
+            return Ok(false);
         }
         if cut {
             core::sweep(&f.fold, &dir);
@@ -119,12 +132,15 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         let child = ping["child"]
             .as_i64()
             .map(|_| ping["spawn"].as_u64().unwrap_or(0));
+        let unanswered = Cell::new(false);
         let call = |mut req: Value| {
             // A replace judges idleness itself, later: its own guard stands.
             if req["if_len"].is_null() && matches!(req["op"].as_str(), Some("input" | "spawn")) {
                 req["if_len"] = len.into();
             }
-            owner::call(data, id, req)
+            let reply = owner::call(data, id, req);
+            unanswered.set(reply.is_err());
+            reply
         };
         let mut msg = core::message::compose(&spec, &item.text, item.parts.clone(), None)?;
         if item.shell.is_some() {
@@ -146,6 +162,8 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
         if went(&dir, &reply, &item.id) {
             crate::workers::went_with(data, id, held);
             q.items.remove(at);
+        } else if unanswered.get() && !last {
+            return Ok(true);
         } else if reply["error"] != "changed" {
             let why = reply["message"]
                 .as_str()
@@ -153,6 +171,6 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
                 .unwrap_or("refused");
             q.items[at].error = Some(why.into());
         }
-        Ok(())
+        Ok(false)
     })
 }
