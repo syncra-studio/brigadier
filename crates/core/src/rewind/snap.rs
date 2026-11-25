@@ -373,9 +373,9 @@ impl Store {
             let Ok(m) = fs::symlink_metadata(&at) else {
                 return false;
             };
-            if m.is_symlink() || (!m.is_dir() && !changed.contains(&named(&parts[..=i].join("/"))))
-            {
-                return true;
+            // One that's named is gone by the time `path` is written.
+            if !m.is_dir() {
+                return !changed.contains(&named(&parts[..=i].join("/")));
             }
         }
         at.push(parts[parts.len() - 1]);

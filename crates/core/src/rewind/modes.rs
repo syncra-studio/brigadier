@@ -89,7 +89,7 @@ pub(crate) fn stand_out(root: &Path, entries: &[String]) -> Modes {
 }
 
 /// Every folder above `path`.
-fn above(path: &str) -> impl Iterator<Item = &str> {
+pub(super) fn above(path: &str) -> impl Iterator<Item = &str> {
     path.match_indices('/').map(|(i, _)| &path[..i])
 }
 

@@ -1,16 +1,18 @@
 //! The user's own edit of a file that the agent then renamed or removed: it goes back as the user
 //! left it, so a rewind never removes it with the agent's copy [D26].
 
-use super::modes::Modes;
+use super::modes::{Modes, above};
 use super::snap::{Shot, Store, fed, split};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 
 impl Store {
-    /// Whether no file is at `path` now.
+    /// Whether no file is at `path` now; one that's only reached through a link isn't.
     pub(super) fn absent(&self, path: &str) -> bool {
-        fs::symlink_metadata(self.cwd().join(path)).map_or(true, |m| m.is_dir())
+        let at = |p: &str| fs::symlink_metadata(self.cwd().join(p));
+        at(path).map_or(true, |m| m.is_dir())
+            || above(path).any(|d| at(d).is_ok_and(|m| m.is_symlink()))
     }
 
     /// `target` with each of `theirs` as its own capture has it, and those that one has a file for.
