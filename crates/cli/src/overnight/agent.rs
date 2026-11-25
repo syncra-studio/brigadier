@@ -139,7 +139,7 @@ fn decided(dir: &Path, call: &Call) -> io::Result<String> {
     let d = Decision {
         title: call.words("what you decided")?,
         why: call.need("--why")?,
-        other: call.one("--other"),
+        other: call.need("--other")?,
     };
     change(dir, |o| {
         in_night(o)?;
@@ -174,7 +174,7 @@ fn proven(data: &Path, me: &str, dir: &Path, call: &Call) -> io::Result<String> 
 }
 
 /// Who proves a part: a reviewer of this session's, on another agent than the author's as Rust
-/// picked it, finished, and begun once the work was all in.
+/// picked it, finished, and begun at the commits the work is at now.
 fn reviewer(data: &Path, me: &str, by: &str) -> io::Result<String> {
     let l = workers::link(data, by).filter(|l| !l.review.is_null() && l.review["plan"].is_null());
     let Some(l) = l.filter(|_| workers::below(data, me).iter().any(|r| r.wid == by)) else {
@@ -190,12 +190,9 @@ fn reviewer(data: &Path, me: &str, by: &str) -> io::Result<String> {
             "That reviewer hasn't finished. Its result comes to you by itself.",
         ));
     }
-    let cwd = core::load(data, me)?.cwd;
-    let last = workers::git(&cwd, &["log", "-1", "--format=%ct"]);
-    let last = last.and_then(|t| t.trim().parse::<u64>().ok()).unwrap_or(0);
-    if l.at / 1000 < last {
+    if l.review["heads"] != workers::at(data, me) {
         return Err(no(
-            "Your branch has commits from after that reviewer began: have what it is now reviewed.",
+            "That reviewer saw another commit than your branch is at now: have what it is now reviewed.",
         ));
     }
     let ran = |k: &str| l.ran[k].as_str().unwrap_or("").to_string();
@@ -211,8 +208,11 @@ fn left(dir: &Path, call: &Call) -> io::Result<String> {
         next: call.one("--next"),
     };
     change(dir, |o| {
-        part(o, call)?.left = Some(left);
-        o.tries.open = 0;
+        let item = part(o, call)?;
+        // Left already, only its words change: nothing moved.
+        if item.left.replace(left).is_none() {
+            o.tries.open = 0;
+        }
         Ok(rest(o))
     })
 }

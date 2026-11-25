@@ -23,7 +23,7 @@ mod steer;
 pub use given::beside;
 use given::with;
 pub use level::level;
-pub(crate) use level::relevel;
+pub(crate) use level::{held_level, relevel};
 pub use steer::{steer_as, steer_turn};
 
 pub(crate) fn refused(error: &str, why: Value) -> Value {

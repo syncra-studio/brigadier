@@ -51,6 +51,16 @@ pub(super) fn heads(data: &Path, wid: &str) -> (Value, Value) {
     )
 }
 
+/// The commits a session is at, by repository as `heads`; without a worktree, its folder's.
+pub(crate) fn at(data: &Path, id: &str) -> Value {
+    let heads = heads(data, id).0;
+    if heads.as_object().is_some_and(|h| !h.is_empty()) {
+        return heads;
+    }
+    let cwd = core::load(data, id).map_or(String::new(), |s| s.cwd);
+    json!({"": git(&cwd, &["rev-parse", "HEAD"])})
+}
+
 /// What its parent or the user asked it after `since` (ms), or after its brief where that's none.
 fn asked_since(data: &Path, wid: &str, l: &Link, since: Option<u64>) -> String {
     let mut asked = vec![];
@@ -125,6 +135,7 @@ pub(crate) fn plan(
             core::share::title(&spec)
         );
         let title = "Adversarial review".into();
+        mark["heads"] = at(data, me);
         return Ok(Plan {
             brief,
             title,
@@ -182,6 +193,10 @@ pub(crate) fn plan(
         .into_iter()
         .collect();
     let title = format!("Adversarial review of {}", l.title);
+    let heads = spans
+        .iter()
+        .map(|s| (s.repo.clone(), s.head.clone().into()));
+    mark["heads"] = Value::Object(heads.collect());
     Ok(Plan {
         brief,
         title,

@@ -4,8 +4,20 @@ use super::new_cid;
 use crate::owner;
 use brigadier_core::{self as core, Spec, adapters};
 use serde_json::{Value, json};
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
+
+/// Held while its level changes, so the user's pick and a night's own never cross.
+pub(crate) fn held_level(dir: &Path) -> io::Result<File> {
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("level.lock"))?;
+    lock.lock()?;
+    Ok(lock)
+}
 
 /// The session's permission level: a running turn takes it at once [D166], else its next turn start [D129, D170].
 pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -19,6 +31,8 @@ pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
                 "This folder isn't trusted, so sessions here ask first. Change it in the project's settings.",
             ));
         }
+        let _one = held_level(&spec.dir)?;
+        spec = core::load(data, id)?;
         spec.level = Some(want.clone());
         spec.level_op = op.map(String::from);
         at_level(data, &spec)?;
@@ -28,6 +42,7 @@ pub fn level(data: &Path, args: &[String]) -> io::Result<Value> {
 }
 
 /// The same for Brigadier's own change: a night's Full access, then the level it took over.
+/// Its caller holds `held_level`.
 pub(crate) fn relevel(data: &Path, id: &str, level: Option<String>) -> io::Result<()> {
     let spec = core::load(data, id)?;
     at_level(data, &Spec { level, ..spec })

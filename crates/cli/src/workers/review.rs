@@ -5,18 +5,19 @@
 //! blocks: a review that can't run says why in the result. Each review's note goes to the outcome
 //! log (`outcomes.rs`) [D2038]. One review, one fix pass, never a loop.
 //!
-//! A reviewer's `worker.json` `review` is `{"of": <id> | "session", "switch": bool}`; a reviewed
-//! worker's is `{"state", "by", "turn", "tried", "model", "reviewer", "findings", "line"}`, its
-//! state running (its reviewer works), sending (its findings go), sent (its fix turn runs), done
-//! or off (its result goes, with `line`), or agent (reviewed by `--reviewing`, so the switch never
-//! reviews it again). `tried`: the reviewers that failed or met their limit, each passed by for
-//! the next eligible one; only when none is left does the review not run.
+//! A reviewer's `worker.json` `review` is `{"of": <id> | "session", "switch": bool, "heads"}`,
+//! `heads` the commits it sees, by repository; a reviewed worker's is `{"state", "by", "turn",
+//! "tried", "model", "reviewer", "findings", "line"}`, its state running (its reviewer works),
+//! sending (its findings go), sent (its fix turn runs), done or off (its result goes, with
+//! `line`), or agent (reviewed by `--reviewing`, so the switch never reviews it again).
+//! `tried`: the reviewers that failed or met their limit, each passed by for the next eligible
+//! one; only when none is left does the review not run.
 
 mod line;
 mod plan;
 mod task;
 pub(crate) use plan::{plan_gone, plan_held};
-pub(crate) use task::plan;
+pub(crate) use task::{at, plan};
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};

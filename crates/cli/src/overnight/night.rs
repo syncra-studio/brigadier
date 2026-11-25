@@ -26,6 +26,8 @@ const SETTLE_MS: u64 = 3_000;
 /// left running would for good), and how long a silent turn is left before it's stopped.
 const JOBS_MS: u64 = 15 * MINUTE;
 const SILENT_MS: u64 = 30 * MINUTE;
+/// Proposed: how long a message the agent took has to begin its turn before it's stopped.
+const BEGIN_MS: u64 = 5 * MINUTE;
 /// Proposed: Overnight turned on between turns, how long the user has to say the job first.
 const ASK_MS: u64 = 20_000;
 /// Proposed: when a limit that gave no reset is tried again.
@@ -82,7 +84,10 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
             settle(&data, &sid).map(|()| 10_000)
         });
     }
-    let asks = |r: &Value| r["overnight"]["state"] == "asking" && r["state"] == "idle";
+    let asks = |r: &Value| {
+        let between = matches!(r["state"].as_str(), Some("idle" | "idle_jobs" | "stopped"));
+        r["overnight"]["state"] == "asking" && between
+    };
     for (id, row) in rows.iter().filter(|(_, r)| asks(r)) {
         let (data, sid) = (data.to_path_buf(), id.clone());
         once(id, &row.clone(), move || ask(&data, &sid));
@@ -134,7 +139,14 @@ fn str_of(row: &Value, key: &str) -> String {
 fn waits_on_us(row: &Value) -> bool {
     matches!(
         row["state"].as_str(),
-        Some("waiting_answer" | "interrupted" | "undelivered" | "uncertain" | "stalled")
+        Some(
+            "waiting_answer"
+                | "interrupted"
+                | "undelivered"
+                | "uncertain"
+                | "stalled"
+                | "no_turn_started"
+        )
     )
 }
 
@@ -146,6 +158,12 @@ fn unstick(data: &Path, id: &str, row: &Value) -> io::Result<u64> {
             // Its process stopped, or not a word for long: a tool it runs would show as working.
             let silent = row["reason"]["silent_ms"].as_u64().unwrap_or(SILENT_MS);
             if silent >= SILENT_MS {
+                halt(data, id)?;
+            }
+            Ok(MINUTE)
+        }
+        "no_turn_started" => {
+            if row["reason"].as_u64().unwrap_or(0) >= BEGIN_MS {
                 halt(data, id)?;
             }
             Ok(MINUTE)
@@ -182,7 +200,7 @@ fn halt(data: &Path, id: &str) -> io::Result<()> {
 }
 
 /// Every request of `id`'s that waits on its user, answered for them: a question hears they're
-/// away, an approval is denied with that, a plan goes ahead, a mockup is skipped, a worker out of
+/// away, an approval is denied with that, a reviewed plan goes ahead, a mockup is skipped, a worker out of
 /// quota waits for its reset.
 fn answer(data: &Path, id: &str) -> io::Result<()> {
     let f = core::fold(&core::session_dir(data, id), true)?.fold;
@@ -213,6 +231,10 @@ fn answer(data: &Path, id: &str) -> io::Result<()> {
         } else if r["items"].is_array() {
             control::reply(data, id, AWAY, &Value::Null, None, Some("overnight"))?;
         } else if r["action"] == "plan" {
+            // Asked in a turn from before its night, no review held it: its next turn's has one.
+            if !f.plans.on && workers::link(data, id).is_none() {
+                return halt(data, id);
+            }
             control::answer_as(data, id, request, "allow", None, "overnight")?;
         } else {
             control::answer_as(data, id, request, "deny", Some(AWAY), "overnight")?;
@@ -252,7 +274,12 @@ fn step(data: &Path, id: &str, row: &Value, team: &[Value]) -> io::Result<u64> {
     let Some(last) = f.last.as_ref().filter(|_| f.turns.is_empty()) else {
         return Ok(2_000);
     };
-    if !o.night() || row["rebirth"].is_string() || row["optimizing"] == true || queue::takes(&dir) {
+    if !o.night()
+        || o.full
+        || row["rebirth"].is_string()
+        || row["optimizing"] == true
+        || queue::takes(&dir)
+    {
         return Ok(1_000);
     }
     if team_works(data, id, team) {

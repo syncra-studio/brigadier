@@ -89,6 +89,8 @@ fn start(data: &Path, spec: &core::Spec, op: Option<&str>) -> io::Result<()> {
         return Err(no("This session is archived."));
     }
     let now = log::now_ms();
+    let one = control::held_level(&spec.dir)?;
+    let level = core::load(data, &spec.id)?.level;
     let was = change(&spec.dir, |o| {
         if !o.on() {
             return Err(no("Overnight is off. Turn it on first."));
@@ -99,25 +101,69 @@ fn start(data: &Path, spec: &core::Spec, op: Option<&str>) -> io::Result<()> {
             return Ok(was);
         }
         (o.state, o.since) = ("night".into(), now);
-        o.before.get_or_insert(Before {
-            level: spec.level.clone(),
-        });
+        o.before.get_or_insert(Before { level });
+        o.full = true;
         o.head = workers::git(&spec.cwd, &["rev-parse", "HEAD"]);
         o.notes
             .push(json!({"id": format!("started:{now}"), "row": {"moment": "started", "at": now}}));
         Ok(was)
     })?;
-    if was.night() {
-        return Ok(());
-    }
-    if let Err(e) = control::relevel(data, &spec.id, Some("full".into())) {
+    drop(one);
+    if !was.night()
+        && let Err(e) = grant(data, &spec.id)
+    {
         change(&spec.dir, |o| {
-            *o = was;
+            if o.night() && o.since == now {
+                *o = was;
+            }
             Ok(())
         })?;
         return Err(e);
     }
     settle(data, &spec.id)
+}
+
+/// Full access, unless the user picked a level meanwhile.
+fn grant(data: &Path, id: &str) -> io::Result<()> {
+    let dir = core::session_dir(data, id);
+    let _one = control::held_level(&dir)?;
+    let o = load(&dir);
+    if !o.night() || !o.full {
+        return Ok(());
+    }
+    control::relevel(data, id, Some("full".into()))?;
+    change(&dir, |o| {
+        o.full = false;
+        Ok(())
+    })
+}
+
+/// The level the night took over, given back.
+fn give_back(data: &Path, id: &str) -> io::Result<()> {
+    let dir = core::session_dir(data, id);
+    let _one = control::held_level(&dir)?;
+    let (spec, o) = (core::load(data, id)?, load(&dir));
+    let Some(before) = o.before.filter(|_| o.state != "night") else {
+        return Ok(());
+    };
+    let full = |level: &Option<String>| level.as_deref() == Some("full");
+    if full(&spec.level) {
+        control::relevel(data, id, before.level.clone())?;
+    }
+    // What it started in the night has its Full access too.
+    for w in workers::below(data, id).iter().filter(|w| w.at >= o.since) {
+        let theirs = core::load(data, &w.wid).is_ok_and(|s| full(&s.level));
+        if theirs && !full(&before.level) {
+            let _ = control::relevel(data, &w.wid, before.level.clone());
+        }
+    }
+    change(&dir, |o| {
+        // Started again meanwhile, it is that night's.
+        if !o.night() {
+            (o.before, o.full) = (None, false);
+        }
+        Ok(())
+    })
 }
 
 /// The night is over: what it did goes to its thread, and its level is still to give back. `user`:
@@ -167,11 +213,14 @@ fn end(o: &mut Overnight, user: bool, why: Option<&str>) {
     o.state.clear();
 }
 
-/// What a night still owes: its agent and workers stopped, its level given back, its thread told.
+/// What a night still owes: its Full access, its agent and workers stopped, its level given back, its thread told.
 /// Each is marked done only once it is, so whatever cut it short, the next pass goes on.
 fn settle(data: &Path, id: &str) -> io::Result<()> {
     let spec = core::load(data, id)?;
     let o = load(&spec.dir);
+    if o.full && o.night() {
+        grant(data, id)?;
+    }
     if o.stop {
         if !core::fold(&spec.dir, true)?.fold.turns.is_empty() {
             queue::stop(data, id, "user")?;
@@ -182,23 +231,8 @@ fn settle(data: &Path, id: &str) -> io::Result<()> {
             Ok(())
         })?;
     }
-    if let Some(before) = o.before.clone().filter(|_| !o.night()) {
-        let full = |level: &Option<String>| level.as_deref() == Some("full");
-        if full(&spec.level) {
-            control::relevel(data, id, before.level.clone())?;
-        }
-        // What it started in the night has its Full access too.
-        for w in workers::below(data, id).iter().filter(|w| w.at >= o.since) {
-            let theirs = core::load(data, &w.wid).is_ok_and(|s| full(&s.level));
-            if theirs && !full(&before.level) {
-                let _ = control::relevel(data, &w.wid, before.level.clone());
-            }
-        }
-        change(&spec.dir, |o| {
-            // Started again meanwhile, it is that night's.
-            o.before = o.before.take().filter(|_| o.night());
-            Ok(())
-        })?;
+    if o.before.is_some() && !o.night() {
+        give_back(data, id)?;
     }
     // An archived session gets no host: its thread is told once it's back.
     if o.notes.is_empty() || session::lifecycle(&spec.dir) != (None, Value::Null) {
@@ -224,7 +258,7 @@ pub(crate) fn picked(dir: &Path) -> io::Result<()> {
     match load(dir).before {
         None => Ok(()),
         Some(_) => change(dir, |o| {
-            o.before = None;
+            (o.before, o.full) = (None, false);
             Ok(())
         }),
     }

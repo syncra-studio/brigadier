@@ -32,6 +32,8 @@ pub struct Overnight {
     pub decided: Vec<Decision>,
     /// The level the night took over, till it is given back or the user picks one by hand.
     pub before: Option<Before>,
+    /// Full access is still to begin: a night that started and was cut short there takes it next.
+    pub full: bool,
     /// The commit its branch was at when the night began.
     pub head: Option<String>,
     /// The agent's own words for the morning: the night ends as its turn does.
@@ -69,7 +71,7 @@ pub struct Left {
 pub struct Decision {
     pub title: String,
     pub why: String,
-    pub other: Option<String>,
+    pub other: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -124,7 +126,9 @@ impl Overnight {
     }
     /// Whether something of it is still to be done: a level, a stop, a word in its thread.
     pub fn due(&self) -> bool {
-        self.stop || !self.notes.is_empty() || (self.before.is_some() && !self.night())
+        self.stop
+            || !self.notes.is_empty()
+            || (self.before.is_some() && (self.full || !self.night()))
     }
 
     pub fn row(&self) -> Value {
