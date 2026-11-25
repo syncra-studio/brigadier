@@ -75,8 +75,14 @@ impl Store {
             return Ok(());
         }
         let kept: BTreeMap<String, &String> = kept.iter().map(|p| (p.to_lowercase(), p)).collect();
+        // One taken out above that the disk has under that very spelling is its own file, as a hard
+        // link's is, or on a disk that tells letter cases apart.
+        let own: BTreeSet<&String> = twice.iter().copied().collect();
         let (old, new): (Vec<&String>, Vec<&String>) = (new.iter())
-            .filter_map(|p| Some((*kept.get(&p.to_lowercase())?, p)))
+            .filter_map(|p| {
+                let old = own.get(p).or(kept.get(&p.to_lowercase()))?;
+                Some((*old, p))
+            })
             .filter(|(old, p)| self.file(old).is_some() && self.file(old) == self.file(p))
             .unzip();
         self.each(index, &["update-index", "--force-remove"], &old)?;
