@@ -259,6 +259,11 @@ pub fn run(
         _ => (id, None),
     };
     if !id.is_empty() && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
+        if core::check_id(id).is_ok() && core::load(data, id).is_ok() {
+            return refuse(&format!(
+                "{id} isn't in Brigadier's list yet. Try again in a moment."
+            ));
+        }
         return refuse(&format!(
             "No session {id:?}. `brigadier sessions` lists them."
         ));
