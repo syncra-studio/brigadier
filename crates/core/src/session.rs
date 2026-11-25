@@ -16,7 +16,7 @@ use std::{fs, io};
 
 mod litter;
 mod sweep;
-pub use litter::{built, may_take, own, tidy, unbuild, unbuilt};
+pub use litter::{built, left, may_take, own, tidy, unbuild, unbuilt};
 pub use sweep::{archives, sweep};
 pub use worktrees::lost::Guard;
 
@@ -115,6 +115,11 @@ pub fn archive(
         false => clear(&spec.dir, WITH)?,
     }
     record(&spec.dir, &json!({"op": "archive", "guard": guard}))?;
+    stopped(spec, stop)
+}
+
+/// The archive recorded, from its stop on.
+fn stopped(spec: &Spec, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     // A host that won't exit may still be working in the worktree: nothing goes, nothing is left to finish.
     if let Err(e) = stop() {
         clear(&spec.dir, INTENT)?;

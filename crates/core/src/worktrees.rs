@@ -236,8 +236,7 @@ pub fn create(
         None => {
             let commit = git(repo, &["rev-parse", "--verify", "HEAD"])
                 .or_else(|_| err("This project has no commit to start from.".into()))?;
-            let name = git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-                .unwrap_or(commit.clone());
+            let name = branch::at(repo).unwrap_or(commit.clone());
             (commit, name)
         }
     };
@@ -354,7 +353,7 @@ pub fn free(dir: &Path) -> io::Result<()> {
         return Ok(());
     };
     if let Some(path) = live(&owned) {
-        let branch = git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+        let branch = branch::at(path)?;
         if Some(&branch) != owned.branch.as_ref() {
             return err("The worktree is on another branch; switch back first.".into());
         }
@@ -396,7 +395,7 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     hand::drop_maker(&owned)?;
     let repo = Path::new(&owned.repo);
     if let Some(f) = &owned.freed {
-        f.forget(repo);
+        f.forget(repo)?;
     }
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);

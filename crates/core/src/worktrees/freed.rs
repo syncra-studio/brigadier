@@ -1,9 +1,8 @@
 //! An archived session's branch goes once its base holds all of it. A ref of ours keeps its commit,
 //! whatever becomes of the base, so restore makes the same branch again; delete takes the ref.
 
-use super::{Owned, err, git, has_branch, keeps, landing, live, read, write};
+use super::{Owned, err, git, has_branch, kept, landing, live, read, write};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io;
 use std::path::Path;
 
@@ -23,8 +22,12 @@ impl Freed {
         format!("{REFS}{}", self.branch)
     }
 
-    pub(super) fn forget(&self, repo: &Path) {
-        let _ = git(repo, &["update-ref", "-d", &self.name()]);
+    /// Takes the ref; one gone, its repository too, is done.
+    pub(super) fn forget(&self, repo: &Path) -> io::Result<()> {
+        match git(repo, &["rev-parse", "--verify", "--quiet", &self.name()]) {
+            Ok(_) => git(repo, &["update-ref", "-d", &self.name()]).map(drop),
+            Err(_) => Ok(()),
+        }
     }
 }
 
@@ -34,10 +37,7 @@ fn tip(repo: &Path, branch: &str) -> io::Result<String> {
 
 /// Whether another session's worktree in place started from it: its diff is against it.
 fn based(dir: &Path, owned: &Owned, branch: &str) -> bool {
-    let all = dir.parent().and_then(|d| fs::read_dir(d).ok());
-    (all.into_iter().flatten().flatten()).any(|e| {
-        matches!(read(&e.path()), Ok(Some(o)) if o.repo == owned.repo && o.base == branch && live(&o).is_some())
-    })
+    kept::others(dir).any(|o| o.repo == owned.repo && o.base == branch && live(&o).is_some())
 }
 
 /// Drops a freed worktree's branch when its base holds all of it; one with work not merged, a PR's
@@ -52,7 +52,7 @@ pub fn shed(dir: &Path) -> io::Result<()> {
     };
     let repo = Path::new(&owned.repo).to_path_buf();
     if has_branch(&repo, &branch) {
-        if keeps(dir, &owned, &branch).is_some()
+        if kept::keeps(dir, &owned, &branch).is_some()
             || based(dir, &owned, &branch)
             || !landing::in_base(&repo, &owned.base, &branch, owned.landing.as_ref())
         {
@@ -74,9 +74,10 @@ pub fn shed(dir: &Path) -> io::Result<()> {
         write(dir, &owned)?;
         // Not one checked out anywhere, which git refuses.
         if let Err(e) = git(&repo, &["branch", "-D", &freed.branch]) {
-            freed.forget(&repo);
-            owned.freed = None;
-            write(dir, &owned)?;
+            if freed.forget(&repo).is_ok() {
+                owned.freed = None;
+                write(dir, &owned)?;
+            }
             return Err(e);
         }
     } else if owned.freed.is_none() {
@@ -92,7 +93,10 @@ pub(super) fn bring_back(dir: &Path, owned: &mut Owned) -> io::Result<()> {
         return Ok(());
     };
     let repo = Path::new(&owned.repo).to_path_buf();
+    // Back already, but for the ref.
+    let back = (owned.branch.as_ref()).is_some_and(|b| has_branch(&repo, b));
     match has_branch(&repo, &freed.branch) {
+        _ if back => {}
         true if tip(&repo, &freed.branch)? != freed.commit => {
             return err(format!(
                 "Another branch is named {} now. Rename it, then restore.",
@@ -105,13 +109,19 @@ pub(super) fn bring_back(dir: &Path, owned: &mut Owned) -> io::Result<()> {
             &["branch", "--no-track", &freed.branch, &freed.commit],
         )?),
     }
-    if !freed.upstream.is_empty() {
+    if !back && !freed.upstream.is_empty() {
         let to = format!("--set-upstream-to={}", freed.upstream);
         // One gone meanwhile has nothing to follow.
         let _ = git(&repo, &["branch", &to, &freed.branch]);
     }
-    freed.forget(&repo);
-    owned.branch = Some(freed.branch);
-    owned.freed = None;
-    write(dir, owned)
+    if !back {
+        owned.branch = Some(freed.branch.clone());
+        write(dir, owned)?;
+    }
+    // One that won't go now is its next restore's, or delete's.
+    if freed.forget(&repo).is_ok() {
+        owned.freed = None;
+        write(dir, owned)?;
+    }
+    Ok(())
 }

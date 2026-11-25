@@ -46,6 +46,12 @@ pub fn rename_held(dir: &Path, new: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// The branch checked out in `path`; git's own short name isn't it beside a tag of that name.
+pub(super) fn at(path: &Path) -> io::Result<String> {
+    let full = git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
+    Ok(full.strip_prefix("refs/heads/").unwrap_or(&full).into())
+}
+
 /// Whether the branch exists in the repository.
 pub(super) fn has_branch(repo: &Path, branch: &str) -> bool {
     git(

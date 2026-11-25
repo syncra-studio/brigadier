@@ -46,6 +46,15 @@ pub fn may_take(data: &Path, spec: &Spec) -> bool {
     matches!(worktrees::unlanded(&spec.dir), Ok(None)) && own(data, spec).iter().all(|rec| may(rec))
 }
 
+/// Whether an archived session still has a worktree, a branch or throwaway files.
+pub fn left(data: &Path, spec: &Spec) -> bool {
+    let claims = crate::folder::claims(&spec.dir).into_iter();
+    crate::background::tmp(&spec.dir).exists()
+        || !own(data, spec).is_empty()
+        || (claims.map(|(_, rec)| rec).chain([spec.dir.clone()]))
+            .any(|rec| !matches!(worktrees::branch(&rec), Ok(None)))
+}
+
 /// Takes them. The caller holds `lock`; `freed`: whose record held its folder, if it went.
 pub(super) fn drop(spec: &Spec, freed: Option<&Path>) {
     let dir = &spec.dir;

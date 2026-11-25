@@ -1,7 +1,7 @@
 //! The daemon's start: an archive, restore or delete cut short finishes or rolls back.
 
 use super::{
-    ARCHIVED, Guard, INTENT, clear, delete, finish_archive, holder, intent, shared_claim, sharers,
+    ARCHIVED, Guard, INTENT, clear, delete, holder, intent, shared_claim, sharers, stopped,
 };
 use crate::{Spec, data_of, ids, session_dir, worktrees};
 use std::io;
@@ -57,8 +57,9 @@ pub fn sweep(data: &Path) {
     }
 }
 
-/// Each archive cut short finishes: off the daemon's start, for a worktree may be big to remove.
-pub fn archives(data: &Path) {
+/// Each archive cut short finishes, its host stopped first, which may not have been: off the daemon's
+/// start, for a worktree may be big to remove.
+pub fn archives(data: &Path, stop: impl Fn(&str) -> io::Result<()>) {
     for id in ids(data) {
         let dir = session_dir(data, &id);
         if intent(&dir).is_some_and(|i| i["op"] == "archive")
@@ -66,7 +67,7 @@ pub fn archives(data: &Path) {
             // Not one an archive at work now, which held the lock, has finished since.
             && intent(&dir).is_some_and(|i| i["op"] == "archive")
             && let Ok(spec) = crate::load(data, &id)
-            && let Err(e) = finish_archive(&spec)
+            && let Err(e) = stopped(&spec, || stop(&id))
         {
             eprintln!("brigadierd: archiving {id}: {e}");
         }

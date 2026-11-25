@@ -49,7 +49,8 @@ pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
     };
     let all = procs::all();
     let gone = finished(data, id, &all);
-    for wid in &gone {
+    // Each before the one its folder is based on the branch of.
+    for wid in gone.iter().rev() {
         if let Err(e) = one(data, wid, guard) {
             let dir = core::session_dir(data, wid);
             let title =
@@ -57,11 +58,20 @@ pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
             stayed.push(format!("{title}: {e}"));
         }
     }
-    // A worker's folder that was based on its branch held that.
-    if !(new && gone.is_empty())
-        && let Ok(spec) = core::load(data, id)
-    {
-        let _ = session::tidy(&spec);
+    // What a guard kept, or a folder based on their branch held: of those archived before, later.
+    let below = match new {
+        true => vec![],
+        false => family(data, id),
+    };
+    let below = below.into_iter().rev().map(|r| r.wid);
+    for at in below.chain([id.to_string()]) {
+        if let Ok(spec) = core::load(data, &at)
+            && session::lifecycle(&spec.dir).0.is_some()
+            && session::left(data, &spec)
+            && let Err(e) = session::tidy(&spec)
+        {
+            eprintln!("brigadierd: archived {at}: {e}");
+        }
     }
     stayed
 }
@@ -72,15 +82,17 @@ fn one(data: &Path, wid: &str, guard: Guard) -> io::Result<()> {
     crate::agent::new::settle(data, wid)?;
     crate::rewind::settled(data, &spec)?;
     core::git::recover::settled(data, wid)?;
-    let works = || workers::at_work(data, wid, &procs::all());
-    let done = session::archive(&spec, true, guard, || match works() {
-        // Under its lock, so no turn starts after the look.
+    match session::archive(&spec, true, guard, || stop_idle(data, wid)) {
+        Err(_) if workers::at_work(data, wid, &procs::all()) => Ok(()),
+        done => done,
+    }
+}
+
+/// A worker's stop, unless it's at work: under its lock, so no turn starts after the look.
+fn stop_idle(data: &Path, wid: &str) -> io::Result<()> {
+    match workers::at_work(data, wid, &procs::all()) {
         true => Err(io::Error::other("it's at work")),
         false => stop(data, wid, "archive"),
-    });
-    match done {
-        Err(_) if works() => Ok(()),
-        done => done,
     }
 }
 
@@ -163,20 +175,17 @@ fn again(data: &Path, id: &str) {
 /// The daemon's start, off its way: what archives and restores cut short, or from before workers
 /// went with them, left.
 pub fn sweep(data: &Path) {
-    session::archives(data);
+    session::archives(data, |id| match lead(data, id) {
+        Some(_) => stop_idle(data, id),
+        None => stop(data, id, "archive"),
+    });
     for id in core::ids(data) {
         let dir = core::session_dir(data, &id);
         if session::lifecycle(&dir).0.is_none() {
             continue;
         }
         if lead(data, &id).is_some() {
-            // What a guard kept, once nothing in it is lost.
-            if let Ok(spec) = core::load(data, &id)
-                && !session::own(data, &spec).is_empty()
-                && let Err(e) = session::tidy(&spec)
-            {
-                eprintln!("brigadierd: archived worker {id}: {e}");
-            }
+            // With its family's topmost.
             continue;
         }
         let worker = workers::link(data, &id).filter(|l| !l.session);

@@ -47,7 +47,6 @@ pub fn external_landing(
     head: &str,
     commit: &str,
 ) -> io::Result<()> {
-    let oid = |s: &str| matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit());
     if !oid(head) || !oid(commit) {
         return Ok(());
     }
@@ -60,11 +59,12 @@ pub fn external_landing(
     let Some(path) = owned.path.as_deref().map(Path::new) else {
         return Ok(());
     };
-    let same = git(path, &["symbolic-ref", "--quiet", "--short", "HEAD"])? == branch
+    let same = super::branch::at(path)? == branch
         && git(path, &["rev-parse", "HEAD"])? == head
         && git(path, &["status", "--porcelain", "--untracked-files=all"])?.is_empty();
     let repo = Path::new(&owned.repo);
-    if !same || git(repo, &["merge-base", "--is-ancestor", commit, base]).is_err() {
+    let held = |base: String| git(repo, &["merge-base", "--is-ancestor", commit, &base]).is_ok();
+    if !same || !base_ref(repo, base).is_some_and(held) {
         return Ok(());
     }
     if owned
@@ -139,18 +139,29 @@ fn own_merged(dir: &Path) -> io::Result<bool> {
     Ok(branch.is_none_or(|b| in_base(repo, &owned.base, &b, owned.landing.as_ref())))
 }
 
-/// The branch is in `base`, by ancestry or a landing that still holds. A base that's an archived
-/// session's branch, gone as its own base holds it, is where it was.
+fn oid(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// What a record's `base` names, in full, as git reads a short name as a tag first: a branch, an
+/// archived session's that went as its own base holds it, a remote's, one named past `refs/`, or a
+/// commit.
+fn base_ref(repo: &Path, base: &str) -> Option<String> {
+    ["refs/heads/", super::freed::REFS, "refs/remotes/", "refs/"]
+        .map(|at| format!("{at}{base}"))
+        .into_iter()
+        .find(|r| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok())
+        .or_else(|| oid(base).then(|| base.into()))
+}
+
+/// The branch is in `base`, by ancestry or a landing that still holds.
 pub(super) fn in_base(repo: &Path, base: &str, branch: &str, landing: Option<&Landing>) -> bool {
-    let freed = format!("{}{base}", super::freed::REFS);
-    let is = |r: &str| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok();
-    let base = match !is(&format!("{base}^{{commit}}")) && is(&freed) {
-        true => &freed,
-        false => base,
+    let Some(base) = base_ref(repo, base) else {
+        return false;
     };
-    git(repo, &["merge-base", "--is-ancestor", branch, base]).is_ok()
+    let branch = format!("refs/heads/{branch}");
+    git(repo, &["merge-base", "--is-ancestor", &branch, &base]).is_ok()
         || landing.is_some_and(|l| {
-            git(repo, &["rev-parse", &format!("refs/heads/{branch}")])
-                .is_ok_and(|tip| landed(repo, base, &tip, l))
+            git(repo, &["rev-parse", &branch]).is_ok_and(|tip| landed(repo, &base, &tip, l))
         })
 }

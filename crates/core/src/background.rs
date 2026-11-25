@@ -286,9 +286,12 @@ pub fn tmp(dir: &Path) -> PathBuf {
 /// the session's and its folder's, so another data folder's copy of it has its own.
 fn link(dir: &Path) -> PathBuf {
     let hash = (dir.as_os_str().as_encoded_bytes().iter())
-        .fold(0u16, |h, b| h.wrapping_mul(31).wrapping_add(*b as u16));
+        // FNV-1a, so that two folders' don't meet.
+        .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+            (h ^ *b as u64).wrapping_mul(0x100_0000_01b3)
+        });
     let name = dir.file_name().unwrap_or_default().to_string_lossy();
-    roof().join(format!("{name}.{hash:04x}"))
+    roof().join(format!("{name}.{hash:016x}"))
 }
 
 fn roof() -> PathBuf {
