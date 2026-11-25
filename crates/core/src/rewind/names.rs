@@ -15,6 +15,12 @@ impl Store {
         Some((m.dev(), m.ino()))
     }
 
+    /// Whether the disk takes two letter cases for one, as the folder's own path tells.
+    pub(super) fn folds(&self) -> bool {
+        let there = self.file("");
+        there.is_some() && there == self.file(&self.cwd().to_string_lossy().to_uppercase())
+    }
+
     /// `path` as the disk spells it, only its letter case ever apart; None where nothing is there.
     pub(super) fn spelled(&self, path: &str) -> Option<String> {
         let (mut at, mut out) = (self.cwd().to_path_buf(), vec![]);

@@ -49,18 +49,22 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     // Between the turns, where what changed is the user's: how each path was then last left.
     let (mut agent, mut theirs) = (BTreeSet::new(), BTreeMap::new());
     let mut between = vec![];
+    let (folds, lower) = (store.folds(), |p: &String| p.to_lowercase());
     // The same for permissions alone.
     let (mut bits, mut since) = (BTreeSet::new(), BTreeSet::new());
     for (i, (before, end)) in shots.iter().enumerate() {
         agent.extend(store.diff(before, end).map_err(unread)?);
         let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
         let gap = store.diff(end, next).map_err(unread)?;
+        // On a disk that takes two letter cases for one, the later is the file's.
+        let later: BTreeSet<String> = (gap.iter().filter(|_| folds)).map(lower).collect();
+        theirs.retain(|p, _| !later.contains(&lower(p)));
         theirs.extend(gap.iter().cloned().map(|p| (p, next)));
         between.push((gap, next));
         bits.extend(store.modes_differ(before, end).map_err(unread)?);
         since.extend(store.modes_differ(end, next).map_err(unread)?);
     }
-    let mut gaps: BTreeSet<String> = theirs.keys().cloned().collect();
+    let mut gaps: BTreeSet<String> = between.iter().flat_map(|b| b.0.clone()).collect();
     let alone = bits.difference(&agent).filter(|p| since.contains(*p));
     gaps.extend(alone.cloned());
     agent.extend(bits);
@@ -91,8 +95,11 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         kept.extend(store.copies(shot, &pre, &lost).map_err(unread)?);
     }
     hand.extend(kept.into_iter().filter(|p| moved.contains(p)));
+    // So the user's is the one written.
+    let theirs: BTreeSet<String> = (put.iter().filter(|_| folds)).map(lower).collect();
+    let other = |p: &String| hand.contains(p) || out.contains(p) || theirs.contains(&lower(p));
     let mut wanted: BTreeSet<String> = (agent.intersection(&moved))
-        .filter(|p| put.contains(*p) || (!hand.contains(*p) && !out.contains(*p)))
+        .filter(|p| put.contains(*p) || !other(p))
         .cloned()
         .collect();
     let (paths, blocked) = loop {
