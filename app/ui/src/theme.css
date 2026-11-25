@@ -1200,15 +1200,6 @@
   }
 }
 
-/* A question card's rows when one card follows another: each fades in 50ms after the row above
-   (decision-parts.tsx numbers them in data-row); reduced motion shows them at once. */
-@utility row-stagger {
-  @media (prefers-reduced-motion: no-preference) {
-    animation: fade-in var(--duration-fold) var(--ease-out) backwards;
-    animation-delay: calc(attr(data-row type(<number>), 0) * 50ms);
-  }
-}
-
 /* A dialog held by its top edge where it opened (dialog.tsx measures it), so new content only grows
    it downward. */
 /* A note's floating parts, placed where its editor measures them (note/tools.tsx): the selection toolbar at the

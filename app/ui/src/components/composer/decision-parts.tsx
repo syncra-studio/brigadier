@@ -384,8 +384,3 @@ export function ActionFreeText({
     </div>
   );
 }
-
-/** When one question card follows another its rows fade in 50ms apart (`row-stagger`); the first shows as is. */
-export function staggered(on: boolean, index: number): { className?: string; "data-row"?: number } {
-  return on ? { className: "row-stagger", "data-row": index } : {};
-}
