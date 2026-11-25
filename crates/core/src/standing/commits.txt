@@ -1,1 +1,1 @@
-Write commit messages the way this repo's recent commits are written, else an imperative subject of ≤72 characters and a body wrapped at 72 if needed. No trailers or attribution in commits or PRs.
+Write commit messages as this repo's recent ones are, else an imperative subject ≤72 characters, body wrapped at 72 if needed. No trailers or attribution, PRs too.

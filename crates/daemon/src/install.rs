@@ -2,8 +2,12 @@
 //! build's binaries in `bin/<build>/` under the data folder, points `bin/current` at them, and
 //! starts the daemon there. On macOS it is a launchd job of its own, labelled by data folder: in
 //! the app's coalition, a quit with a helper left running had macOS force-quit the daemon, every
-//! host and every agent [D598, D606]. Its embedded Info.plist (build.rs) makes privacy prompts read
-//! as Brigadier. If launchd refuses it, or elsewhere, the daemon is exec'd as before.
+//! host and every agent [D598, D606]. The job runs the build's small `Brigadier.app`, copied to
+//! `bin/Brigadier.app`, which starts the daemon as its child and stays its parent (launcher.rs), so
+//! macOS's privacy prompts read as Brigadier and their answers last across builds: what asks is the
+//! responsible process, kept as its bundle's id, where a bare binary is kept, and shown, as its path.
+//! That path outlives the daemon in the hosts it started, so the bundle's never moves with a build
+//! and is never swept. If launchd refuses it, or elsewhere, the daemon is exec'd as before.
 //!
 //! A build folder is never written once it is in place: a busy host keeps running its old build's
 //! files, while an idle one sees `current/brigadier-host` change and re-execs onto the new build
@@ -21,6 +25,10 @@ use std::path::Path;
 use std::process::{self, Command};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// The launcher's program in `bin`.
+#[cfg(target_os = "macos")]
+const LAUNCHER: &str = "Brigadier.app/Contents/MacOS/Brigadier";
 
 pub fn install_and_exec(data: &Path) -> io::Result<()> {
     let bin = data.join("bin");
@@ -40,11 +48,12 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
         let current = build_of(&bin.join("current"));
         // Never replace a newer build: an older app copy runs the newer daemon instead [D82].
         if current.is_none_or(|c| c < mine) {
-            put(&bin, mine)?;
+            let here = std::env::current_exe()?;
+            put(&bin, here.parent().unwrap_or(Path::new(".")), mine)?;
             sweep(data, &bin, mine, current);
         }
         #[cfg(target_os = "macos")]
-        if start_job(data, &bin.join("current/brigadierd"))? {
+        if start_job(data, &bin)? {
             return Ok(());
         }
     }
@@ -55,7 +64,7 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
 /// says whether launchd took it. Runs under the install lock, which it holds until the daemon holds
 /// its own, so a second install can't boot out a job just started.
 #[cfg(target_os = "macos")]
-fn start_job(data: &Path, daemon: &Path) -> io::Result<bool> {
+fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
     let lock = data.join("daemon.lock");
     if lock_held(&lock) {
         // The job can't be loaded twice, so an older daemon is stopped here rather than by the new one.
@@ -69,6 +78,12 @@ fn start_job(data: &Path, daemon: &Path) -> io::Result<bool> {
             return Ok(true);
         }
     }
+    // Only now the last daemon, and its launcher, is gone: macOS refuses what a process asks for
+    // while the code it runs isn't what its path holds. Without it the job runs the bare daemon.
+    if let Err(e) = put_launcher(bin) {
+        eprintln!("brigadierd: the launcher: {e}");
+    }
+    let launcher = Some(bin.join(LAUNCHER)).filter(|p| p.exists());
     // FNV-1a: the same label from every build.
     let path = data.to_string_lossy();
     let hash = path.bytes().fold(0xcbf29ce484222325u64, |h, b| {
@@ -95,6 +110,10 @@ fn start_job(data: &Path, daemon: &Path) -> io::Result<bool> {
         })
         .map(|(k, v)| format!("<key>{}</key><string>{}</string>", esc(&k), esc(&v)))
         .collect();
+    let argv: String = (launcher.into_iter())
+        .chain([bin.join("current/brigadierd")])
+        .map(|p| format!("<string>{}</string>", esc(&p.to_string_lossy())))
+        .collect();
     let plist = data.join("daemon.plist");
     // Interactive: no resource limits, as when the app started it. No KeepAlive: the app starts it.
     fs::write(
@@ -104,15 +123,14 @@ fn start_job(data: &Path, daemon: &Path) -> io::Result<bool> {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>{label}</string>
-<key>ProgramArguments</key><array><string>{}</string></array>
+<key>ProgramArguments</key><array>{argv}</array>
 <key>EnvironmentVariables</key><dict>{env}</dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><false/>
 <key>AbandonProcessGroup</key><true/>
 <key>ProcessType</key><string>Interactive</string>
 </dict></plist>
-"#,
-            esc(&daemon.to_string_lossy())
+"#
         ),
     )?;
     let domain = format!("gui/{}", unsafe { libc::geteuid() });
@@ -154,7 +172,48 @@ fn wait_lock(path: &Path) -> io::Result<File> {
     }
 }
 
-fn put(bin: &Path, build: u32) -> io::Result<()> {
+/// Puts `current`'s launcher at its one path, `bin/Brigadier.app`, unless its Info.plist, which
+/// names the build, is there already. Whole or not at all: staged, then swapped by one rename.
+#[cfg(target_os = "macos")]
+fn put_launcher(bin: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let (from, app) = (bin.join("current/Brigadier.app"), bin.join("Brigadier.app"));
+    let plist = |app: &Path| fs::read(app.join("Contents/Info.plist"));
+    if plist(&app).ok() != Some(plist(&from)?) {
+        let stage = bin.join(format!(".stage-app-{}", process::id()));
+        let _ = fs::remove_dir_all(&stage);
+        copy(&from, &stage)?;
+        if app.exists() {
+            let c = |p: &Path| std::ffi::CString::new(p.as_os_str().as_bytes());
+            let (a, b) = (c(&stage)?, c(&app)?);
+            if unsafe { libc::renamex_np(a.as_ptr(), b.as_ptr(), libc::RENAME_SWAP) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let _ = fs::remove_dir_all(&stage);
+        } else {
+            fs::rename(&stage, &app)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copies a folder, each file on disk before it returns.
+fn copy(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let to = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy(&entry.path(), &to)?;
+        } else {
+            fs::copy(entry.path(), &to)?;
+            File::open(&to)?.sync_all()?;
+        }
+    }
+    Ok(())
+}
+
+fn put(bin: &Path, here: &Path, build: u32) -> io::Result<()> {
     // Under the lock, so these are what a cut-off or failed install left.
     for entry in fs::read_dir(bin)?.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -167,16 +226,7 @@ fn put(bin: &Path, build: u32) -> io::Result<()> {
     // A folder only ever appears whole, so one that exists is complete.
     if !dest.exists() {
         let stage = bin.join(format!(".stage-{}", process::id()));
-        fs::create_dir(&stage)?;
-        let here = std::env::current_exe()?;
-        for entry in fs::read_dir(here.parent().unwrap_or(Path::new(".")))? {
-            let entry = entry?;
-            if entry.file_type()?.is_file() {
-                let to = stage.join(entry.file_name());
-                fs::copy(entry.path(), &to)?;
-                File::open(&to)?.sync_all()?;
-            }
-        }
+        copy(here, &stage)?;
         fs::rename(&stage, &dest)?;
     }
     let link = bin.join(format!(".current-{}", process::id()));
@@ -206,4 +256,47 @@ fn sweep(data: &Path, bin: &Path, mine: u32, replaced: Option<u32>) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
+}
+
+/// A build from before the launcher, then two with one: each put in a folder of its own, the launcher
+/// at one path and swapped whole, the older builds as they were, an install cut off cleared.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_launcher_keeps_one_path_across_builds() {
+    let root = std::env::temp_dir().join(format!("brigadier-install-{}", process::id()));
+    let (src, bin) = (root.join("src"), root.join("bin"));
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(src.join("brigadierd"), "old").unwrap();
+    put(&bin, &src, 1).unwrap();
+    assert!(put_launcher(&bin).is_err());
+
+    let program = bin.join(LAUNCHER);
+    fs::create_dir_all(src.join("Brigadier.app/Contents/MacOS")).unwrap();
+    for build in [2, 3] {
+        fs::create_dir(bin.join(".stage-app-0")).unwrap();
+        fs::write(
+            src.join("Brigadier.app/Contents/Info.plist"),
+            build.to_string(),
+        )
+        .unwrap();
+        fs::write(
+            src.join("Brigadier.app/Contents/MacOS/Brigadier"),
+            build.to_string(),
+        )
+        .unwrap();
+        put(&bin, &src, build).unwrap();
+        for _ in 0..2 {
+            put_launcher(&bin).unwrap();
+            assert_eq!(fs::read_to_string(&program).unwrap(), build.to_string());
+        }
+        assert_eq!(build_of(&bin.join("current")), Some(build));
+        assert!(bin.join(format!("{build}/Brigadier.app")).is_dir());
+    }
+    assert_eq!(fs::read_to_string(bin.join("1/brigadierd")).unwrap(), "old");
+    let names = || fs::read_dir(&bin).unwrap().flatten().map(|e| e.file_name());
+    assert!(!names().any(|n| n.to_string_lossy().starts_with('.')));
+    sweep(&root, &bin, 3, Some(2));
+    assert!(!bin.join("1").exists() && program.exists());
+    fs::remove_dir_all(&root).unwrap();
 }

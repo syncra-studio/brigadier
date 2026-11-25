@@ -10,3 +10,11 @@ brigadier-core = { path = "../core" }
 brigadier-frames = { path = "../frames" }
 libc.workspace = true
 serde_json.workspace = true
+
+[[bin]]
+name = "brigadierd"
+path = "src/main.rs"
+
+[[bin]]
+name = "brigadier-launcher"
+path = "src/launcher.rs"

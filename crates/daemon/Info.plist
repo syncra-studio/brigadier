@@ -20,5 +20,21 @@
 	<string>This app needs access to the camera</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to the microphone</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>An agent in Brigadier wants to read files here for your task.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>An agent in Brigadier wants to read your photos for your task.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>An agent in Brigadier wants to read your media library for your task.</string>
 </dict>
 </plist>

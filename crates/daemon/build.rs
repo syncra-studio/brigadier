@@ -1,5 +1,6 @@
-//! Embeds an Info.plist in brigadierd, so macOS privacy prompts for what its agents do read as
-//! Brigadier, with the app's own reasons [D606]. The id follows the app's (`APP_ID`, scripts/package).
+//! Embeds an Info.plist in brigadierd: its signing id, which follows the app's (`APP_ID`,
+//! scripts/package), and the reasons a privacy prompt gives. The prompts' name and the id their
+//! answers are kept by are the launcher's instead, whose bundle has these reasons too (install.rs).
 
 fn main() {
     println!("cargo:rerun-if-env-changed=APP_ID");

@@ -15,6 +15,18 @@ pnpm build
 rm -rf target/bin
 mkdir target/bin
 cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,libbrigadier_panel.dylib} target/bin/
+# The daemon's launcher is a small app of its own, so macOS's privacy prompts read as Brigadier and
+# keep their answers by its id, not by each build's path (crates/daemon/src/install.rs).
+LAUNCHER="target/bin/Brigadier.app/Contents"
+mkdir -p "$LAUNCHER/MacOS" "$LAUNCHER/Resources"
+cp target/release/brigadier-launcher "$LAUNCHER/MacOS/Brigadier"
+cp app/main/icons/icon.icns "$LAUNCHER/Resources/"
+cp crates/daemon/Info.plist "$LAUNCHER/"
+for pair in "CFBundleIdentifier ${APP_ID:-sh.brigadier.app}.agents" "CFBundleExecutable Brigadier" "CFBundlePackageType APPL" \
+  "CFBundleIconFile icon.icns" "CFBundleVersion $BUILD" "CFBundleShortVersionString $BUILD"; do
+  plutil -replace "${pair%% *}" -string "${pair#* }" "$LAUNCHER/Info.plist"
+done
+plutil -replace LSUIElement -bool true "$LAUNCHER/Info.plist"
 # Computer use's helper is its own app, launched through LaunchServices, so macOS charges the
 # Accessibility and Screen Recording grants to it, not to Brigadier or an agent's shell [D908, D913].
 # It hosts Cua Driver 0.54.0 (MIT) as released; osx-sign re-signs it, inside out, with the app.
@@ -60,8 +72,9 @@ const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "de
 // Hardened runtime needs a Team ID: ad hoc and self-signed code fail its library validation on Electron's
 // own framework. A Developer ID build runs every part hardened, so no dylib can be injected into one [O300].
 const hardenedRuntime = (process.env.BRIGADIER_SIGN_IDENTITY ?? "").startsWith("Developer ID");
-// The daemon is the responsible process for its agents: hardened, macOS asks for these on their behalf
-// only if it declares them, so it declares every resource Apple lists for hardened runtime [D606].
+// The daemon's launcher is the responsible process for its agents: hardened, macOS asks for these on their behalf
+// only if it declares them, so it declares every resource Apple lists for hardened runtime, and the
+// daemon too, which runs alone where launchd refuses the launcher [D606].
 const daemon = ["automation.apple-events", "device.audio-input", "device.camera", "personal-information.location",
   "personal-information.photos-library", "personal-information.addressbook", "personal-information.calendars"]
   .map((e) => `com.apple.security.${e}`);
@@ -97,7 +110,7 @@ await packager({
             // Hardened, the app gets only the resources it declares: every one the daemon does too [D951].
             ...(file.endsWith("/Brigadier.app") && { entitlements: hardenedRuntime ? [...new Set([...entitlements, ...daemon])] : entitlements }),
             ...(file.includes("(Plugin).app") && { entitlements: ["com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"] }),
-            ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") ? daemon : [] }) },
+            ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") || file.includes("/bin/Brigadier.app") ? daemon : [] }) },
   },
 });
 EOF
