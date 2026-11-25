@@ -1,19 +1,19 @@
 // Mockup only: the app itself on a fake daemon, at Settings › Storage, with the mockup's numbers.
 import { type Counted, type Holder, PER_CHAT } from "../src/settings/storage-data";
-import { BROWSER, CHATS_SHOWN, free, measure } from "./storage-data";
+import { CHATS_SHOWN, WHOLE, free, measure } from "./storage-data";
 
 const replies: Record<string, object> = {
   profile: { name: "", onboarded: true, intro_seen: true, tour_seen: true, agents: [] },
   models: { groups: [] },
   commands: { commands: [] },
 };
-const DELAY: Record<string, number> = { build: 1800, worktrees: 1200, temp: 500, history: 800, browser: 300 };
+const DELAY: Record<string, number> = { build: 1800, worktrees: 1200, temp: 500, history: 800, browser: 300, programs: 200 };
 const holders = CHATS_SHOWN.flatMap((chat): Holder[] => [chat, ...chat.workers]);
 const sizes: Counted["sizes"] = Object.fromEntries(PER_CHAT.map((kind) => [kind, measure(kind)]));
 
 function storage([, what, group, id]: string[]): object {
   if (!what) return { free: free(sizes), chats: CHATS_SHOWN };
-  if (what === "browser") return { total: BROWSER };
+  if (what === "browser" || what === "programs") return { total: WHOLE[what] };
   if (what !== "free") return { sizes: { ...sizes[what as (typeof PER_CHAT)[number]] } };
   const goes = holders.find((each) => each.id === id)?.goes ?? {};
   const went = PER_CHAT.filter((kind) => goes[kind] === group);

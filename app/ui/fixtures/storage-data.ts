@@ -48,7 +48,7 @@ const SMALLER: Fake[] = REST.flatMap(({ many, ...rest }) =>
   Array.from({ length: many }, (_, n) => ({ ...rest, id: `${rest.id}-${n}`, gigabytes: Object.fromEntries(PER_CHAT.map((kind) => [kind, rest.gigabytes[kind] / many])) as Gigabytes })),
 );
 const ALL = [...CHATS, ...SMALLER];
-export const BROWSER = 1.3 * GB;
+export const WHOLE = { browser: 1.3 * GB, programs: 0.2 * GB };
 /** What Brigadier uses and what is free, together. */
 const DISK = 324.7 * GB;
 
@@ -62,7 +62,7 @@ export const CHATS_SHOWN: Chat[] = ALL.map(({ project, workers, ...own }) => ({ 
 
 const holders = ALL.flatMap((chat): FakeHolder[] => [chat, ...chat.workers]);
 export const measure = (kind: Own): Record<string, number> => Object.fromEntries(holders.map((each) => [each.id, each.gigabytes[kind] * GB]));
-export const free = (sizes: Counted["sizes"]) => DISK - BROWSER - Object.values(sizes).flatMap((each) => Object.values(each)).reduce((total, size) => total + size, 0);
+export const free = (sizes: Counted["sizes"]) => DISK - WHOLE.browser - WHOLE.programs - Object.values(sizes).flatMap((each) => Object.values(each)).reduce((total, size) => total + size, 0);
 const EVERY = Object.fromEntries(PER_CHAT.map((kind) => [kind, measure(kind)])) as Record<Own, Record<string, number>>;
 
 /** `sizes` without what `groups` take. */
@@ -89,7 +89,7 @@ export function useStorage() {
     chats: CHATS_SHOWN,
     free: free(sizes),
     sizes: Object.fromEntries(PER_CHAT.filter(here).map((kind) => [kind, sizes[kind]])),
-    browser: here("browser") ? BROWSER : undefined,
+    whole: { browser: here("browser") ? WHOLE.browser : undefined, programs: here("programs") ? WHOLE.programs : undefined },
     freeing,
   };
   const take = (groups: readonly Group[]) => {

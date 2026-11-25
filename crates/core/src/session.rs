@@ -16,6 +16,7 @@ use std::{fs, io};
 
 mod litter;
 mod sweep;
+pub(crate) use litter::guarded;
 pub use litter::{built, left, may_take, own, tidy, unbuild, unbuilt};
 pub use sweep::{archives, sweep};
 pub use worktrees::lost::Guard;
@@ -154,9 +155,9 @@ fn shared_claim(data: &Path, spec: &Spec, rec: &Path) -> bool {
 fn finish_archive(spec: &Spec) -> io::Result<()> {
     let dir = &spec.dir;
     let (others, _held) = sharers(spec)?;
-    // None: an archive cut short by an older build, which had but the chat's own.
+    // None: an archive cut short by an older build.
     let guard = intent(dir).and_then(|i| serde_json::from_value(i["guard"].clone()).ok());
-    let may = litter::guarded(spec, guard.unwrap_or(Guard::Chat));
+    let may = guarded(spec, guard.unwrap_or(Guard::Named));
     // Another still working there keeps the folder; the last user archived frees it [D1080].
     let holder = (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists()))
         .then(|| holder(spec, &others))
@@ -285,17 +286,20 @@ pub fn stays(spec: &Spec) -> Option<String> {
 
 /// While others use the folder, its worktree's record goes to the oldest not being deleted
 /// itself, landing with it [D1080, D1082], named in the intent first so a crash finishes the same
-/// handover [D35]. Only users left archived: it's freed, as the last archive would [D180].
+/// handover [D35]. Only users left archived: it's freed, as the last archive would,
+/// unless a repository inside keeps it [D180].
 fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
     let (others, _held) = sharers(spec)?;
     if others.is_empty() {
         return Ok(false);
     }
     let archived = others.iter().all(|o| o.dir.join(ARCHIVED).exists());
+    let may = guarded(spec, Guard::Named);
     // A user with no record leaving only archived ones: the holder's worktree is freed [D180].
     if !worktrees::made(&spec.dir) {
-        if archived {
-            worktrees::free(&holder(spec, &others))?;
+        let holder = holder(spec, &others);
+        if archived && may(&holder) {
+            worktrees::free(&holder)?;
         }
         return Ok(false);
     }
@@ -310,7 +314,7 @@ fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
     intent["heir"] = heir.id.clone().into();
     record(&spec.dir, intent)?;
     worktrees::handover(&spec.dir, &heir.dir)?;
-    if archived {
+    if archived && may(&heir.dir) {
         worktrees::free(&heir.dir)?;
     }
     Ok(true)

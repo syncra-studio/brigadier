@@ -21,7 +21,7 @@ fn picks(data: &Path, spec: &Spec) -> Vec<String> {
 }
 
 /// Whether `guard` lets a worktree of `spec`'s be freed.
-pub(super) fn guarded(spec: &Spec, guard: Guard) -> impl Fn(&Path) -> bool {
+pub(crate) fn guarded(spec: &Spec, guard: Guard) -> impl Fn(&Path) -> bool {
     let picks = picks(&data_of(spec), spec);
     move |rec| lost::may_go(rec, &picks, guard)
 }

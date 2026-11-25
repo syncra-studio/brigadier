@@ -155,9 +155,7 @@ fn hidden(path: &Path) -> io::Result<Vec<String>> {
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Guard {
-    /// A chat's own: what its archive's confirm names, and what git holds.
-    Chat,
-    /// A worker's with it: the same, but no repository inside, which the confirm doesn't name.
+    /// What the archive's confirm names, and what git holds: no repository inside.
     Named,
     /// Nothing: nobody was asked.
     Lossless,
@@ -166,7 +164,6 @@ pub enum Guard {
 /// Whether `guard` lets `dir`'s worktree be freed; one that can't be told stays.
 pub fn may_go(dir: &Path, picks: &[String], guard: Guard) -> bool {
     match guard {
-        Guard::Chat => true,
         Guard::Named => keeps_none(dir, picks, false).unwrap_or(false),
         Guard::Lossless => keeps_none(dir, picks, true).unwrap_or(false),
     }
@@ -241,18 +238,19 @@ fn lost_in(dir: &Path, picks: &[String], built: &dyn Fn(&str) -> bool) -> io::Re
     Ok(left)
 }
 
-/// What the confirm names before `ids` are archived or deleted together [D180, D185, D1080,
+/// What the confirm names before `ids` are archived, or deleted, together [D180, D185, D1080,
 /// D1197]: once per folder the batch frees, which is each worktree whose every other user is
-/// archived or goes with them. `ids`: the batch's sessions in it; `files` or the `error` that kept
-/// them from being listed.
-pub fn losses(data: &Path, ids: &[String]) -> Vec<Value> {
+/// archived or goes with them, but one a repository keeps until its last user's delete. `ids`: the
+/// batch's sessions in it; `files` or the `error` that kept them from being listed.
+pub fn losses(data: &Path, ids: &[String], delete: bool) -> Vec<Value> {
     let (mut seen, mut out) = (BTreeSet::new(), vec![]);
     for id in ids {
         let Ok(spec) = load(data, id) else { continue };
+        let may = session::guarded(&spec, Guard::Named);
         // A folder chat's claims, each its own worktree, named by repo [D494].
         for (name, rec) in crate::folder::claims(&spec.dir) {
             match lost_in(&rec, &[], &built) {
-                Ok(files) if files.is_empty() => {}
+                Ok(files) if files.is_empty() || !(delete || may(&rec)) => {}
                 Ok(files) => {
                     let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
                     out.push(json!({"ids": [id], "files": files}));
@@ -275,11 +273,12 @@ pub fn losses(data: &Path, ids: &[String]) -> Vec<Value> {
             .and_then(|p| projects::get(data, p).ok())
             .map(|p| p.include)
             .unwrap_or_default();
+        let goes = (delete && users.iter().all(|u| ids.contains(&u.id))) || may(&holder.dir);
         let ids: Vec<&String> = (users.iter().map(|u| &u.id))
             .filter(|u| ids.contains(u))
             .collect();
         match lost_in(&holder.dir, &picks, &built) {
-            Ok(files) if files.is_empty() => {}
+            Ok(files) if files.is_empty() || !goes => {}
             Ok(files) => out.push(json!({"ids": ids, "files": files})),
             Err(e) => out.push(json!({"ids": ids, "error": e.to_string()})),
         }

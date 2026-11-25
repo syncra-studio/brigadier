@@ -16,7 +16,7 @@ import { ChatList, CountingRows, Recount, Size, Stays, TotalBar, titleOf } from 
 /** The Storage page's rows, for Settings search. */
 export const STORAGE_ROWS = {
   free: { label: "Free up space", description: "Finished workers' build files and leftovers of archived chats" },
-  everything: { label: "Everything", description: "Build files, worktrees, temp files, chat history and browser data" },
+  everything: { label: "Everything", description: "Build files, worktrees, temp files, chat history, browser data and Brigadier's programs" },
   chats: { label: "Largest chats", description: "How much each chat and its workers take" },
 } as const;
 

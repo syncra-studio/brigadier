@@ -5,8 +5,10 @@ import { useDaemon } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 
 /** What Rust measures for Settings › Storage, in bytes. */
-export type Kind = "worktrees" | "build" | "temp" | "history" | "browser";
-type Own = Exclude<Kind, "browser">;
+export type Kind = "worktrees" | "build" | "temp" | "history" | Whole;
+/** The kinds no chat holds. */
+type Whole = "browser" | "programs";
+type Own = Exclude<Kind, Whole>;
 /** The two things Free up space takes: live chats' finished workers' build files, and archived chats' leftovers. */
 export type Group = "build" | "left";
 /** A chat's own files, or one of its workers'. `goes`: the kinds Rust says can go now, each with its group. */
@@ -19,7 +21,7 @@ export type Counted = {
   /** The disk's free space. */
   free?: number | null;
   sizes: Partial<Record<Own, Record<string, number>>>;
-  browser?: number;
+  whole: Partial<Record<Whole, number>>;
   freeing: { done: number; total: number } | null;
   error?: string;
 };
@@ -30,8 +32,11 @@ export const KINDS: { kind: Kind; label: string; fill: string }[] = [
   { kind: "temp", label: "Temp files", fill: "bg-tile-sunflower" },
   { kind: "history", label: "Chat history", fill: "bg-tile-mint" },
   { kind: "browser", label: "Browser data", fill: "bg-tile-coral" },
+  { kind: "programs", label: "Brigadier's programs", fill: "bg-tile-periwinkle" },
 ];
 export const PER_CHAT: readonly Own[] = ["build", "worktrees", "temp", "history"];
+const WHOLE: readonly Whole[] = ["browser", "programs"];
+const isWhole = (kind: Kind): kind is Whole => WHOLE.includes(kind as Whole);
 
 export const GROUPS: { group: Group; label: string; line: string }[] = [
   { group: "build", label: "Finished workers' build files", line: "The next build makes them again. Their code stays." },
@@ -52,12 +57,12 @@ export type Storage = ReturnType<typeof storageOf>;
 
 /** The page's sums over what is counted; `named`: how many chats it names. */
 export function storageOf(counted: Counted, acts: { free: (groups: readonly Group[]) => void; recount: () => void }, named = NAMED) {
-  const { sizes, freeing } = counted;
-  const ready = (kind: Kind) => (kind === "browser" ? counted.browser !== undefined : sizes[kind] !== undefined);
+  const { sizes, whole, freeing } = counted;
+  const ready = (kind: Kind) => (isWhole(kind) ? whole[kind] !== undefined : sizes[kind] !== undefined);
   const sizeOf = (holder: Holder, kind: Own) => sizes[kind]?.[holder.id] ?? 0;
   const holderSize = (holder: Holder) => sum(PER_CHAT.map((kind) => sizeOf(holder, kind)));
   const chatSize = (chat: Chat, kind?: Own) => sum(holdersOf(chat).map((holder) => (kind ? sizeOf(holder, kind) : holderSize(holder))));
-  const kindSize = (kind: Kind) => (kind === "browser" ? (counted.browser ?? 0) : sum(Object.values(sizes[kind] ?? {})));
+  const kindSize = (kind: Kind) => (isWhole(kind) ? (whole[kind] ?? 0) : sum(Object.values(sizes[kind] ?? {})));
   const total = sum(KINDS.map(({ kind }) => kindSize(kind)));
   const all = [...(counted.chats ?? [])].sort((a, b) => chatSize(b) - chatSize(a));
   const chats = all.slice(0, named);
@@ -85,7 +90,7 @@ export function storageOf(counted: Counted, acts: { free: (groups: readonly Grou
   };
 }
 
-const NONE: Counted = { sizes: {}, freeing: null };
+const NONE: Counted = { sizes: {}, whole: {}, freeing: null };
 const counted = store<Counted>(NONE);
 const patch = (change: Partial<Counted>) => counted.set({ ...counted.get(), ...change });
 
@@ -116,7 +121,7 @@ function recount(): void {
     );
   void land(list());
   for (const kind of PER_CHAT) void land(run(["storage", kind]).then((reply) => () => ({ sizes: { ...counted.get().sizes, [kind]: reply.sizes as Record<string, number> } })));
-  void land(run(["storage", "browser"]).then((reply) => ({ browser: reply.total as number })));
+  for (const kind of WHOLE) void land(run(["storage", kind]).then((reply) => () => ({ whole: { ...counted.get().whole, [kind]: reply.total as number } })));
 }
 
 /** Frees each chat and worker in `groups`, one by one; what Rust no longer lets go stays. */

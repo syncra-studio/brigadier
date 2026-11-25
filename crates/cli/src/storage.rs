@@ -21,7 +21,9 @@ const AT_ONCE: usize = 8;
 /// Live chats' finished workers' build files, and what archived chats left.
 const BUILD: &str = "build";
 const LEFT: &str = "left";
-const BROWSER: [&str; 2] = ["browser", "chromium"];
+const BROWSER: &[&str] = &["browser", "chromium"];
+/// Brigadier's own programs, with nothing to free.
+const PROGRAMS: &[&str] = &["bin"];
 /// In a kind's total but no session's, which can't be ids: the rest of the data folder, and files
 /// with a name elsewhere too, which freeing one session wouldn't give back.
 const REST: &str = "@rest";
@@ -31,8 +33,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args.get(1).map(String::as_str) {
         None => list(data),
         Some("free") => free(data, arg(args, 2)?, arg(args, 3)?),
-        Some("browser") => {
-            let size = size(&BROWSER.map(|d| data.join(d)), &[]);
+        Some(kind @ ("browser" | "programs")) => {
+            let dirs = match kind {
+                "browser" => BROWSER,
+                _ => PROGRAMS,
+            };
+            let dirs: Vec<PathBuf> = dirs.iter().map(|d| data.join(d)).collect();
+            let size = size(&dirs, &[]);
             Ok(json!({"ok": true, "total": size.own + size.shared.values().sum::<u64>()}))
         }
         Some(kind @ ("build" | "worktrees" | "temp" | "history")) => {
@@ -101,7 +108,7 @@ fn code(spec: &Spec) -> Vec<PathBuf> {
     all
 }
 
-/// What the data folder holds besides the sessions and the browser: Home's draft, the search index,
+/// What the data folder holds besides the sessions, the browser and its programs: Home's draft, the search index,
 /// and what deleted sessions left.
 fn rest(data: &Path, specs: &[Spec]) -> Vec<PathBuf> {
     let inside = |dir: &Path| fs::read_dir(dir).into_iter().flatten().flatten();
@@ -109,7 +116,8 @@ fn rest(data: &Path, specs: &[Spec]) -> Vec<PathBuf> {
         specs.iter().any(|s| s.dir == *p)
     });
     let top = inside(data).map(|e| e.path());
-    let top = top.filter(|p| *p != sessions && !BROWSER.iter().any(|b| *p == data.join(b)));
+    let apart = BROWSER.iter().chain(PROGRAMS).map(|d| data.join(d));
+    let top = top.filter(|p| *p != sessions && !apart.clone().any(|d| *p == d));
     let gone = inside(&sessions).map(|e| e.path()).filter(|p| !known(p));
     top.chain(gone).collect()
 }

@@ -35,7 +35,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
-        "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
+        "archive" if has(args, "--check") => return Ok(check(data, &args[1..], false)),
         // Every id given, each loaded first so an unknown one refuses before any is archived.
         "archive" => {
             let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
@@ -143,7 +143,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .into_iter()
                 .map(|r| r.wid)
                 .collect();
-            let mut reply = check(data, &[&args[1..2], &family[..]].concat());
+            let mut reply = check(data, &[&args[1..2], &family[..]].concat(), true);
             // A PR's branch or another session's stays whatever the choice: said, not offered [D703].
             let branch = session::unlanded(&spec)?;
             let kept = branch.as_ref().and(core::worktrees::kept(&spec.dir)?);
@@ -167,7 +167,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
 /// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
 /// A Brigade's sessions that go with it are checked too, and listed under it in `with` [D3111].
-fn check(data: &Path, ids: &[String]) -> Value {
+fn check(data: &Path, ids: &[String], delete: bool) -> Value {
     let mut ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
     // One picked as well isn't counted twice.
     let family: Vec<(String, Vec<String>)> = (ids.iter())
@@ -196,7 +196,7 @@ fn check(data: &Path, ids: &[String]) -> Value {
             gone.push(w);
         }
     }
-    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &gone), "with": with})
+    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &gone, delete), "with": with})
 }
 
 /// A Brigade's sessions whose folder passes `keep`, oldest first [D3111].
@@ -224,7 +224,7 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<V
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
-        .and_then(|()| session::archive(spec, with, Guard::Chat, || stop(data, id, "archive")))?;
+        .and_then(|()| session::archive(spec, with, Guard::Named, || stop(data, id, "archive")))?;
     // Its finished workers go too; one at work keeps its own, and goes when it finishes.
     let stayed = freed::archive(data, id, true);
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].
@@ -346,7 +346,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         // one session's time instead of their sum, so the dialog can open with it [D463].
         let all = &all;
         let (facts, lost) = std::thread::scope(|t| {
-            let lost = t.spawn(|| core::worktrees::lost::losses(data, &ids));
+            let lost = t.spawn(|| core::worktrees::lost::losses(data, &ids, true));
             let mut facts = vec![];
             for chunk in ids.chunks(16) {
                 let each: Vec<_> = (chunk.iter())
