@@ -6,6 +6,7 @@ use super::{control, http, image};
 use brigadier_frames::base64;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::mpsc::RecvTimeoutError;
@@ -105,7 +106,8 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
         .env_clear()
         .envs(super::base_env(&crate::Spec::default(), exe, keys))
         .current_dir(cwd)
-        .stderr(Stdio::null());
+        .stderr(Stdio::null())
+        .process_group(0);
     let password = uuid();
     let mut child = serve(&mut command, &password)?;
     let (_lease, out) = (child.stdin.take(), child.stdout.take());
@@ -115,7 +117,7 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
     let held = child.clone();
     thread::spawn(move || {
         if wait.recv_timeout(FILL * 2) == Err(RecvTimeoutError::Timeout) {
-            let _ = held.lock().unwrap().kill();
+            end(&held);
         }
     });
     let read = dial(out, &password).and_then(|(out, server)| {
@@ -124,10 +126,17 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
         ask(&server, ids)
     });
     drop(over);
-    let mut child = child.lock().unwrap();
-    let _ = child.kill();
-    let _ = child.wait();
+    end(&child);
+    let _ = child.lock().unwrap().wait();
     read
+}
+
+/// Ends its whole group, a wrapper's server too, while it still runs: its pid is its own till then.
+fn end(child: &Mutex<Child>) {
+    let mut child = child.lock().unwrap();
+    if let Ok(None) = child.try_wait() {
+        unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    }
 }
 
 fn ask(server: &http::Server, ids: &[String]) -> Result<Catalogue, String> {

@@ -131,8 +131,8 @@ export function HomeDraft() {
   // The model's agent's levels here; a pick it can't take, or any while held, falls back to Rust's start default [D166, D187, D239].
   const agent = groups?.find((group) => group.provider === model?.provider);
   const levels = agent ? levelsOf(agent.levels, agent.provider, model?.model, groups) : [];
-  const start = agent?.level && !levels.includes(agent.level) ? levels[0] : undefined;
-  const pick = !agent || agent.held ? undefined : levels.includes(draft.level!) ? draft.level : start;
+  const other = agent?.level && !levels.includes(agent.level) ? levels[0] : undefined;
+  const pick = !agent || agent.held ? undefined : levels.includes(draft.level!) ? draft.level : other;
 
   return (
     <>
