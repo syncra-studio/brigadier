@@ -76,6 +76,12 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     // The same file, where the disk has it under another letter case.
     let cased: Vec<String> = hand.iter().filter_map(|p| store.spelled(p)).collect();
     hand.extend(cased);
+    // So it is where only its file tells, as with two ways to write an accent.
+    let own: BTreeSet<_> = (hand.difference(&put))
+        .filter_map(|p| store.file(p))
+        .collect();
+    let held = |p: &String| !put.contains(p) && store.file(p).is_some_and(|f| own.contains(&f));
+    hand.extend((agent.intersection(&moved)).filter(|p| held(p)).cloned());
     let wanted: BTreeSet<String> = (agent.intersection(&moved))
         .filter(|p| put.contains(*p) || (!hand.contains(*p) && !out.contains(*p)))
         .cloned()

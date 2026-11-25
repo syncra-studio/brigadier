@@ -1,7 +1,7 @@
 //! Names on a disk that takes two letter cases for one [D26]: a capture keeps each as the disk
 //! spells it, so a rename that changes only its case goes back like any other.
 
-use super::snap::{Store, split};
+use super::snap::{CHUNK, Store, done, split};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
@@ -9,6 +9,12 @@ use std::os::unix::fs::{DirEntryExt, MetadataExt};
 use std::path::Path;
 
 impl Store {
+    /// Which file is at `path`, whatever its name's spelling.
+    pub(super) fn file(&self, path: &str) -> Option<(u64, u64)> {
+        let m = fs::symlink_metadata(self.cwd().join(path)).ok()?;
+        Some((m.dev(), m.ino()))
+    }
+
     /// `path` as the disk spells it, only its letter case ever apart; None where nothing is there.
     pub(super) fn spelled(&self, path: &str) -> Option<String> {
         let (mut at, mut out) = (self.cwd().to_path_buf(), vec![]);
@@ -35,20 +41,37 @@ impl Store {
     pub(super) fn respell(&self, index: &Path) -> io::Result<()> {
         let exact = ["-c", "core.ignorecase=false"];
         let list = ["ls-files", "-o", "--exclude-standard", "-z"];
-        // Everything is in the index by now, but for what it has under another spelling.
-        let new = split(self.run(index, &[&exact[..], &list].concat())?)?;
+        let kept = split(self.run(index, &["ls-files", "-z"])?)?;
+        // Git folds only ASCII letters, so it may have one file under two names: the disk's goes back in.
+        let ascii = kept.iter().all(|p| p.is_ascii());
+        let mut named = BTreeMap::new();
+        for path in kept.iter().filter(|_| !ascii) {
+            let names: &mut Vec<&String> = named.entry(self.file(path)).or_default();
+            names.push(path);
+        }
+        let one = |(at, names): &(Option<_>, Vec<&String>)| {
+            at.is_some() && names.len() > 1 && !names.iter().all(|p| p.is_ascii())
+        };
+        let twice: Vec<&String> = (named.into_iter().filter(one)).flat_map(|n| n.1).collect();
+        self.each(index, &["update-index", "--force-remove"], &twice)?;
+        // Everything else is in the index by now, but for what it has under another spelling.
+        let mut new = split(self.run(index, &[&exact[..], &list].concat())?)?;
+        // One that's ignored too, though the project has it.
+        for chunk in twice.chunks(CHUNK) {
+            let mut disk = self.store(
+                index,
+                &[&exact[..], &["ls-files", "-o", "-z", "--"]].concat(),
+            );
+            disk.args(chunk);
+            new.extend(split(done(disk, "ls-files")?)?);
+        }
         if new.is_empty() {
             return Ok(());
         }
-        let kept = split(self.run(index, &["ls-files", "-z"])?)?;
         let kept: BTreeMap<String, &String> = kept.iter().map(|p| (p.to_lowercase(), p)).collect();
-        let file = |path: &String| {
-            let m = fs::symlink_metadata(self.cwd().join(path)).ok()?;
-            Some((m.dev(), m.ino()))
-        };
         let (old, new): (Vec<&String>, Vec<&String>) = (new.iter())
             .filter_map(|p| Some((*kept.get(&p.to_lowercase())?, p)))
-            .filter(|(old, p)| file(old).is_some() && file(old) == file(p))
+            .filter(|(old, p)| self.file(old).is_some() && self.file(old) == self.file(p))
             .unzip();
         self.each(index, &["update-index", "--force-remove"], &old)?;
         self.each(index, &[&exact[..], &["add", "-f"]].concat(), &new)
