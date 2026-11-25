@@ -5,6 +5,7 @@ import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Segmented } from "../components/segmented";
+import { useSidebar } from "../components/sidebar";
 import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { spacingPx } from "../components/tooltip";
@@ -226,6 +227,7 @@ const USAGE_ROW = "flex h-control-sm w-full items-center gap-2 rounded-menu-item
 export function StripFoot({ settings = false, row = false }: { settings?: boolean; row?: boolean }) {
   // An offer on a job is open [D386].
   const offered = useRoutingDot();
+  const { setOpen } = useSidebar();
   const archived = useContext(FootArchived);
   const side = row ? "top" : "right";
   const items = [
@@ -236,7 +238,19 @@ export function StripFoot({ settings = false, row = false }: { settings?: boolea
     <TooltipIconButton key="feedback" look="rail" side={side} tooltip="Send Feedback" onClick={() => openFeedback()}>
       <ThumbMixed />
     </TooltipIconButton>,
-    <TooltipIconButton key="settings" look="rail" side={side} tooltip="Settings" shortcut={keysOf("settings")[0]} pressed={settings} dot={offered ? "bg-link" : undefined} onClick={() => openSettings("general")}>
+    <TooltipIconButton
+      key="settings"
+      look="rail"
+      side={side}
+      tooltip="Settings"
+      shortcut={keysOf("settings")[0]}
+      pressed={settings}
+      dot={offered ? "bg-link" : undefined}
+      onClick={() => {
+        setOpen(true);
+        openSettings("general");
+      }}
+    >
       <Settings />
     </TooltipIconButton>,
   ];
