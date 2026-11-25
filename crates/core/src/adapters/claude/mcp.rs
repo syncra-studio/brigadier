@@ -120,19 +120,29 @@ fn slack(cwd: &Path) -> Map<String, Value> {
         .collect()
 }
 
+/// A worker's servers that only Claude signs in to: its own, a plugin's or its settings', that the
+/// library holds as signed in by each agent and on for the worker's project, under their own
+/// names so Claude uses the sign-in it keeps. The relay can't reach these, so a worker has them
+/// from its CLI: Slack's rule [D586], for every such server (owner, 2026-11-25).
+fn held(spec: &Spec, cwd: &Path) -> Map<String, Value> {
+    let root = crate::projects::root(cwd).unwrap_or_else(|| cwd.into());
+    let items = library::on_for(&crate::data_of(spec), spec.project.as_deref());
+    let ours = |s: &Value| (items.iter()).any(|i| i["sign_in"] == "cli" && library::same(s, i));
+    (mcp_servers(&root).into_iter().filter(ours))
+        .filter_map(|mut s| {
+            let o = s.as_object_mut()?;
+            o.remove("source");
+            let name = o.remove("name")?.as_str()?.to_string();
+            Some((name, s))
+        })
+        .collect()
+}
+
 /// A worker's launch is naked [D89]; any other gets the library.
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     let cwd = Path::new(&spec.cwd);
     if spec.naked {
-        // Where the library holds Slack, its switch and projects decide, as Settings › Plugins says.
-        let items = library::items(&crate::data_of(spec));
-        let off =
-            |i: &Value| i["key"] == "server:slack" && !library::on(i, spec.project.as_deref());
-        let servers = match items.iter().any(off) {
-            true => Map::new(),
-            false => slack(cwd),
-        };
-        return super::control::naked(argv, servers);
+        return super::control::naked(argv, held(spec, cwd));
     }
     let mut off = library(spec, cwd, argv, env);
     let (data, project) = (crate::data_of(spec), spec.project.as_deref());
