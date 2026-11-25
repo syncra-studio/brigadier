@@ -315,7 +315,16 @@ fn approval(id: &str, r: &Value) -> Event {
             let rules = match agent {
                 true => vec![json!({"toolName": tool, "ruleContent": command})],
                 false if command.contains(['$', '`']) => vec![],
-                false => suggested,
+                false => match crate::agent::mcp_prefix(&command) {
+                    Some(p) => vec![json!({"toolName": tool, "ruleContent": format!("{p}:*")})],
+                    // Nor `brigadier mcp *` for one part of a longer command.
+                    None => (suggested.into_iter())
+                        .filter(|r| {
+                            let first = s(r, &["ruleContent"]).split([' ', ':']).next();
+                            !first.is_some_and(|w| w.rsplit('/').next() == Some("brigadier"))
+                        })
+                        .collect(),
+                },
             };
             let first = (rules.first()).map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
             let first = first.map(|p| p.trim_end_matches(":*").to_string());

@@ -141,6 +141,27 @@ pub fn call(command: &str) -> bool {
         && !mcp_call
 }
 
+/// What a session allow of one plain `brigadier mcp tools <server>` or `mcp call <server> <tool>`
+/// covers: that server's list, or that tool with any arguments, as an MCP tool's own allow does;
+/// never another server's or tool's, as a CLI's suggested `brigadier mcp *` would [D3023].
+pub fn mcp_prefix(command: &str) -> Option<String> {
+    let words = past_cd(command.trim()).and_then(plain_words)?;
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let covers = match words.as_slice() {
+        ["brigadier", "mcp", "tools", _, ..] => &words[..4],
+        ["brigadier", "mcp", "call", _, _, ..] => &words[..5],
+        _ => return None,
+    };
+    let name = |w: &&str| {
+        w.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-:.".contains(c))
+    };
+    (covers[3..]
+        .iter()
+        .all(|w| !w.is_empty() && !w.starts_with('-') && name(w)))
+    .then(|| covers.join(" "))
+}
+
 /// Whether `url`'s host is one a local development server answers on: localhost, *.localhost,
 /// 127.x, 0.0.0.0 and [::1] [D507].
 pub fn local_address(url: &str) -> bool {
