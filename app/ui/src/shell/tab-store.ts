@@ -422,10 +422,5 @@ export function rereadTabs(key: string): void {
   read(key);
 }
 
-/** The gallery's fixed tabs; Infinity so no answer from Rust replaces them. */
-export function seedTabs(owner: string, shown: Tabs): void {
-  slots.set(owner, { rev: Infinity, rust: shown, pending: [], shown });
-}
-
 /** A file that isn't an image opens in a tab, never the default app: `label` names it there [D2104]. */
 export const openAttachment = (owner: string, id: string, label: string) => openTab(owner, "attachment", `${id}/${label.replaceAll("/", " ")}`);

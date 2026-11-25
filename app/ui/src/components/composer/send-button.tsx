@@ -9,8 +9,8 @@ import type { FollowUp } from "./draft";
 
 /** A second Esc within this long stops the run (the first one arms the button). */
 const ESC_WINDOW_MS = 2000;
-/** Menus, dialogs and the composer's own menus take their Esc first (not the gallery's, held open). */
-const TAKES_ESC = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
+/** Menus, dialogs and the composer's own menus take their Esc first. */
+const TAKES_ESC = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].join(", ");
 const TEXT_FIELD = "input, textarea, select, [contenteditable=true], [contenteditable='']";
 
 /**

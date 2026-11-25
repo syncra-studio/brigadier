@@ -16,7 +16,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 import { type AddFirst, AddDialog, type Draft, InstallDialog, RemoveDialog, StartDialog } from "./plugins-dialogs";
 import { BrowseTab, entryRow, type Found, PickGrid, SearchResults } from "./plugins-browse";
 import { MyTab } from "./plugins-mine";
-import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
+import { DetailsPage, type Device } from "./plugins-details";
 import { AgentTile, PluginMark } from "./plugins-marks";
 import { type Shown, ViewDialog } from "./plugins-view";
 import type { App } from "./plugins-app";
@@ -130,8 +130,8 @@ export function chipOf(value: Plugins, item: Item): string | null {
 
 export const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
-/** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "remove"; key: string } | { type: "start"; key: string } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
+/** A dialog open over the page. */
+type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "remove"; key: string } | { type: "start"; key: string } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
 
 /** A catalog entry's mark: its logo. */
 export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, detail: entry.url ?? "", logo: entry.id });
@@ -144,7 +144,7 @@ export const inCategory = (entry: Entry, category: string) => (category === "Pop
  * Pure props: a change shows at once and settles on the page Rust answers with, or goes back with Rust's words [D30].
  * `value` null is loading; `detail` an item's page. `remote` offers remote servers in Add (4.13).
  */
-export function PluginsPage({
+function PluginsPage({
   value,
   error,
   offline = false,
@@ -153,8 +153,6 @@ export function PluginsPage({
   detail,
   onDetail,
   remote,
-  open: openFirst = null,
-  signing,
   tab: firstTab = "browse",
 }: {
   value: Plugins | null;
@@ -166,14 +164,12 @@ export function PluginsPage({
   detail: string | null;
   onDetail: (key: string | null) => void;
   remote: boolean;
-  open?: Open | null;
   /** The tab the list opens on, when no item's page is open. */
   tab?: Tab;
-  signing?: SignInStart;
 }) {
   const [tab, setTab] = useState<Tab>(() => value?.items.find((item) => item.key === detail)?.kind ?? firstTab);
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<Open | null>(openFirst);
+  const [open, setOpen] = useState<Open | null>(null);
   const [checking, setChecking] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   // A change in flight, or settled, on the page it was made from; a newer page from Rust replaces it.
@@ -286,7 +282,6 @@ export function PluginsPage({
         entry={entry}
         marks={marks}
         actions={actions}
-        signing={signing}
         onInstall={() => entry && onEntry.onInstall(entry)}
         onScope={(scope) => item && set(item.key, { scope })}
         onSwitch={(on) => item && onSwitch(item.key, on)}

@@ -43,7 +43,7 @@ function focusField(event: MouseEvent<HTMLDivElement>) {
 }
 
 /** The card: the field over its footer. */
-export function ComposerCard({ className, ...props }: ComponentProps<"div">) {
+function ComposerCard({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="composer-card"
@@ -95,7 +95,7 @@ export function PillDivider() {
 }
 
 /**
- * The one composer the gallery, Home and a session mount [D2108]: the rail over the card, the card's tiles over
+ * The one composer Home and a session mount [D2108]: the rail over the card, the card's tiles over
  * its field (`children`), and the footer in the old app's order: + and the permission pill side by side, then
  * `status`, the context ring, the model and Send [D2106, D2111]. `above` (an approval) takes the card's place
  * while `hidden`; `after` holds its dialogs.

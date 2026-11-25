@@ -3,7 +3,7 @@ import { ROW } from "./activity-row";
 import { InfoTip } from "./tip";
 
 /** Where a fork came from, as Rust records it [D48]. `source` is null once that session is gone. */
-export type ForkOrigin = {
+type ForkOrigin = {
   source: { id: string; title: string } | null;
   where: "worktree" | null;
   /** Its conversation began from the hand-off (proposed). */

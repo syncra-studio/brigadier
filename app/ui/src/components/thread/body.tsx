@@ -53,7 +53,7 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade, older }: {
 type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
 
 /**
- * The group line, the gallery's, for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. Live,
+ * The group line for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. Live,
  * it is one line saying what it does now: its running step, its thought, or Thinking while it is the running
  * turn's latest run. Once the run ends, the line says what its steps did [D755, D762].
  */

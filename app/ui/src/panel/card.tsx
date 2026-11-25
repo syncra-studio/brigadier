@@ -106,7 +106,7 @@ const TRY = "shrink-0 cursor-pointer rounded-sm text-link hover:underline focus-
  * The card's Changes section [D140 D141 D148 D149]: one row, "project · branch" with its +/− counts,
  * opening Review; its "…" copies the branch and, in your own folder, switches it (the composer's quick pick). A gone
  * folder, a read that failed and the checkout's notes are rows under it; disconnected, "Offline · 14:32" takes the
- * counts' place [D30, D1206]. Without `ops` (the gallery) it moves nothing. A session's branch with a remote also has
+ * counts' place [D30, D1206]. A session's branch with a remote also has
  * Compare branch, Create pull request, Attach pull request and View PR [D168 D169].
  */
 export function ChangesCard({
@@ -122,7 +122,7 @@ export function ChangesCard({
   data: SourceData;
   nowMs: number;
   project?: string | null;
-  ops?: SourceOps;
+  ops: SourceOps;
   onReview?: () => void;
   owner?: string;
   prs?: readonly Pr[];
@@ -141,7 +141,7 @@ export function ChangesCard({
           text="This session's folder is gone"
           end={
             data.truth.restorable ? (
-              <button type="button" disabled={restoring || offline} onClick={ops?.restore} className={TRY}>
+              <button type="button" disabled={restoring || offline} onClick={ops.restore} className={TRY}>
                 {restoring ? "Restoring…" : data.restoreError ? "Try again" : "Restore"}
               </button>
             ) : (
@@ -158,7 +158,7 @@ export function ChangesCard({
     <WarnLine
       text={`Couldn't read: ${data.error}`}
       end={
-        <button type="button" onClick={ops?.retry} className={TRY}>
+        <button type="button" onClick={ops.retry} className={TRY}>
           Try again
         </button>
       }

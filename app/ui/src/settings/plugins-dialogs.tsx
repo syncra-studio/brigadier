@@ -15,7 +15,7 @@ import { errorText } from "../onboarding/api";
 import { BrigadierMark } from "../onboarding/mark";
 import type { Item, PluginActions, Scope } from "./plugins";
 import { type App, type AppPick, OwnApp } from "./plugins-app";
-import type { Device, SignInStart } from "./plugins-details";
+import type { Device } from "./plugins-details";
 import { PluginMark } from "./plugins-marks";
 
 /** What Add sends Rust: a skill's folder, a server at an address, or a command this computer runs [D2046]; on where picked [D727]. */
@@ -49,10 +49,10 @@ function PluginDialog({ onClose, title, description, slot, children }: { onClose
 
 /** One env value or header: its name, and its value hidden as it's typed. Values go to Brigadier's Keychain item, names to the library. */
 type ValueRow = { id: number; name: string; value: string };
-/** The Add form as filled so far; the gallery opens it filled. */
+/** The Add form as filled so far. */
 export type AddForm = { kind: "skill" | "server"; remote: boolean; name: string; url: string; command: string; values: ValueRow[]; folder: string | null; from?: { source: string; skill: string } };
 type Step = "form" | "install";
-/** Where the gallery and search open Add: filled in, on the install step where nothing is left to fill [D726]; `mark` a result's own address and icon. */
+/** Where search opens Add: filled in, on the install step where nothing is left to fill [D726]; `mark` a result's own address and icon. */
 export type AddFirst = { form: Partial<AddForm>; step?: Step; mark?: { detail: string; icon?: string | null } };
 
 const EMPTY: AddForm = { kind: "server", remote: false, name: "", url: "", command: "", values: [], folder: null };
@@ -274,7 +274,7 @@ export function StartDialog({ item, onStart, onClose }: { item: Item; onStart: (
 /**
  * Install, a dialog [D571]: Brigadier's mark and its, where it's on (all projects or the ones picked: nothing
  * is on without a pick), Install; then, for a server Brigadier signs in to, the browser's sign-in with Cancel, and
- * Try again if it didn't finish. `install` null opens on the sign-in, an installed one's Sign in; `signing` the gallery's.
+ * Try again if it didn't finish. `install` null opens on the sign-in, an installed one's Sign in.
  */
 export function InstallDialog({
   name,
@@ -284,7 +284,6 @@ export function InstallDialog({
   install,
   app,
   signKey,
-  signing,
   actions,
   onClose,
 }: {
@@ -296,17 +295,14 @@ export function InstallDialog({
   install: ((scope: Scope, clientId: string | null) => Promise<string | null>) | null;
   app?: App;
   signKey?: string;
-  signing?: SignInStart;
   actions: Pick<PluginActions, "signIn" | "cancel">;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<"choose" | "installing" | "waiting" | "failed">(
-    install ? "choose" : typeof signing === "object" && "error" in signing ? "failed" : "waiting",
-  );
+  const [step, setStep] = useState<"choose" | "installing" | "waiting" | "failed">(install ? "choose" : "waiting");
   const [some, setSome] = useState<string[] | null>(null);
   const [pick, setPick] = useState<AppPick>({ agent: Boolean(app?.agent), clientId: "" });
-  const [device, setDevice] = useState<Device | null>(typeof signing === "object" && "code" in signing ? signing : null);
-  const [error, setError] = useState<string | null>(typeof signing === "object" && "error" in signing ? signing.error : null);
+  const [device, setDevice] = useState<Device | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const key = useRef(signKey ?? null);
   const generation = useRef(0);
   const signIn = () => {
@@ -323,9 +319,9 @@ export function InstallDialog({
       },
     );
   };
-  // Opened on the sign-in: it starts at once, unless the gallery opens it mid-way.
+  // Opened on the sign-in: it starts at once.
   useEffect(() => {
-    if (!install && signing === undefined) signIn();
+    if (!install) signIn();
     return () => {
       generation.current++;
     };

@@ -18,7 +18,7 @@ export type GitHubRepo = { name: string; description: string | null; private: bo
 export type GitHub = { repos: GitHubRepo[] } | { gh: "missing" | "signed-out" };
 
 /**
- * Where Add project's data comes from: the daemon, or the gallery's Fake. Each add, clone and new
+ * Where Add project's data comes from: the daemon. Each add, clone and new
  * repository goes under an id made here and resolves once Rust has the project, or throws its
  * reason; "disconnected" while the daemon is away, the add then settling by id [D30].
  */

@@ -366,10 +366,10 @@ export function AgentCard({ agent, online, starting, retrying, failed, testing =
 }
 
 /** An agent whose test prompt failed [D617]: its CLI's own words, and its sign-in as typed in a terminal. */
-export type TestFailure = { label: string; reason: string; login: string | null };
+type TestFailure = { label: string; reason: string; login: string | null };
 
 /** Under the cards: what to do about each agent that didn't answer its test prompt. */
-export function TestFailed({ failures }: { failures: TestFailure[] }) {
+function TestFailed({ failures }: { failures: TestFailure[] }) {
   if (!failures.length) return null;
   return (
     <div role="alert" className="flex flex-col gap-4 rounded-settings border border-border bg-card p-4 text-sm">

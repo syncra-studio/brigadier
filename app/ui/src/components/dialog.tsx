@@ -2,7 +2,6 @@ import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { type ComponentProps, useCallback } from "react";
 
 import { X } from "../icons";
-import { Button } from "./button";
 import { cx } from "./cx";
 
 export const Dialog = BaseDialog.Root;
@@ -48,10 +47,10 @@ function usePinnedTop(area: HTMLElement | null | undefined) {
 /**
  * Base UI's modal only hides the page from screen readers, so code focusing a field behind it (the composer)
  * would let typing and Enter reach it. While the card is open, focus that lands outside every popup comes back
- * to it. The gallery's held cards are left alone.
+ * to it.
  */
 function holdFocus(card: HTMLDivElement | null) {
-  if (!card || card.closest("[data-held]")) return;
+  if (!card) return;
   const take = (event: FocusEvent) => {
     // Focus moved inside a focus event doesn't take: moved right after it.
     if (card.hasAttribute("data-open") && event.target instanceof Element && !event.target.closest("[data-base-ui-portal]")) queueMicrotask(() => card.focus());
@@ -126,18 +125,8 @@ export function DialogHeader({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="dialog-header" className={cx("flex flex-col gap-2", className)} {...props} />;
 }
 
-export function DialogFooter({
-  className,
-  showCloseButton = false,
-  children,
-  ...props
-}: ComponentProps<"div"> & { showCloseButton?: boolean }) {
-  return (
-    <div data-slot="dialog-footer" className={cx("flex flex-row justify-end gap-2", className)} {...props}>
-      {children}
-      {showCloseButton && <BaseDialog.Close render={<Button variant="outline" />}>Close</BaseDialog.Close>}
-    </div>
-  );
+export function DialogFooter({ className, ...props }: ComponentProps<"div">) {
+  return <div data-slot="dialog-footer" className={cx("flex flex-row justify-end gap-2", className)} {...props} />;
 }
 
 export function DialogTitle({ className, ...props }: Omit<BaseDialog.Title.Props, "className"> & { className?: string }) {

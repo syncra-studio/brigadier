@@ -48,7 +48,7 @@ function answerAfter(items: readonly Item[], id: string): string {
 
 const typing = (target: EventTarget | null) => target instanceof Element && !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
 
-export type Entry = { id: string; text: string; index: number };
+type Entry = { id: string; text: string; index: number };
 
 export function MessageRail({ rows, items, list, scroller, box, away }: { rows: readonly Line[]; items: readonly Item[]; list: RefObject<VirtualizerHandle | null>; scroller: () => HTMLElement | null; box: RefObject<HTMLDivElement | null>; away: () => void }) {
   // Its own messages and those steered into a running turn; another session's aren't the user's.
@@ -148,8 +148,8 @@ export function MessageRail({ rows, items, list, scroller, box, away }: { rows: 
 
 type Hover = { index: number; top: number };
 
-/** The ticks and the preview, given what's in view and how to go to a message (the gallery draws it alone). */
-export function Rail({ entries, items, inView, jumpTo }: { entries: readonly Entry[]; items: readonly Item[]; inView: ReadonlySet<string>; jumpTo: (id: string, how: { smooth: boolean; flash: boolean }) => Promise<void> }) {
+/** The ticks and the preview, given what's in view and how to go to a message. */
+function Rail({ entries, items, inView, jumpTo }: { entries: readonly Entry[]; items: readonly Item[]; inView: ReadonlySet<string>; jumpTo: (id: string, how: { smooth: boolean; flash: boolean }) => Promise<void> }) {
   const navRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -269,7 +269,7 @@ export function Rail({ entries, items, inView, jumpTo }: { entries: readonly Ent
 }
 
 /** Beside the hovered tick: the message on one line, then the start of its answer. */
-export function RailPreview({ text, reply, top }: { text: string; reply: string; top: number }) {
+function RailPreview({ text, reply, top }: { text: string; reply: string; top: number }) {
   return (
     <div role="tooltip" data-slot="rail-preview" data-top={top} className="pointer-events-none absolute left-full ms-2 flex w-80 -translate-y-1/2 flex-col gap-1 rounded-surface bg-popover p-2 text-sm text-foreground shadow-overlay rail-preview">
       {text || reply ? (

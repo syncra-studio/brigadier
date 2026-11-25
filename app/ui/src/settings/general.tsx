@@ -159,13 +159,13 @@ function ComposerSection({ settings }: { settings: Settings }) {
 }
 
 /** macOS's word on notices, or, where it can't be asked, what it did with the last one [D2024]. */
-export type Notices = Settings["notices"] | "hidden";
+type Notices = Settings["notices"] | "hidden";
 
 /**
  * Notifications, the old app's rows [D2022], plus the sound [D2012]. The status line says what macOS allows [D611].
  * The rows stay usable, and look it, whatever it allows: they apply once notices show.
  */
-export function NotificationsSection({ settings, notices, reload }: { settings: Settings; notices: Notices; reload: () => unknown }) {
+function NotificationsSection({ settings, notices, reload }: { settings: Settings; notices: Notices; reload: () => unknown }) {
   const status = useSave();
   const finished = useSave();
   const needs = useSave();

@@ -9,7 +9,7 @@ import { loadAccounts, switchSession, useAccounts } from "./api";
 import { maskEmails } from "./parts";
 import { agentHref } from "./providers";
 
-/** The session a thread shows, for its switch row's one click; none outside a session (the gallery). */
+/** The session a thread shows, for its switch row's one click; none outside a session. */
 export const SessionOfThread = createContext<{ id: string; offline: boolean } | null>(null);
 
 type Switch = Extract<Item, { kind: "switch" }>;

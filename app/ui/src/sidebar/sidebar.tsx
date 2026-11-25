@@ -70,7 +70,6 @@ export function AppSidebar({
   onNewChat,
   rail,
   nav,
-  storeKey = "sidebar",
 }: {
   /** undefined until the first list arrives. */
   rows: SessionRow[] | undefined;
@@ -87,12 +86,10 @@ export function AppSidebar({
   rail?: (squares: ReactNode) => ReactNode;
   /** Settings' or Pull Requests' nav, shown in place of the sessions [D225]. */
   nav?: ReactNode;
-  /** Where its view is kept; the gallery's demos keep theirs apart. */
-  storeKey?: string;
 }) {
-  const [grouping, setGrouping] = useStored<Grouping>(`${storeKey}.grouping`, "project");
-  const [sort, setSort] = useStored<Sort>(`${storeKey}.sort`, "sent");
-  const [folded, setFolded] = useStored<string[]>(`${storeKey}.folded`, []);
+  const [grouping, setGrouping] = useStored<Grouping>("sidebar.grouping", "project");
+  const [sort, setSort] = useStored<Sort>("sidebar.sort", "sent");
+  const [folded, setFolded] = useStored<string[]>("sidebar.folded", []);
   const [renaming, setRenaming] = useState<SessionRow | null>(null);
   // The last nav stays drawn while it fades out, then goes.
   const lastNav = useRef(nav);
@@ -112,7 +109,7 @@ export function AppSidebar({
   // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a row in its tree [D308].
   const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
-  const show = useShowFilter(storeKey, projects);
+  const show = useShowFilter(projects);
   const kept = shown?.filter(show.keeps);
   const picks = new Set(usePicked().map((each) => each.id));
   const projectOf = new Map(projects.map((project) => [project.id, project]));
@@ -364,7 +361,7 @@ export function AppSidebar({
               </>
             )}
           </div>
-          {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} storeKey={storeKey} />}
+          {pinsSessions && <ArchivedSection rows={archived} projects={projects} active={active} offline={offline} onOpen={onOpen} />}
         </div>
         {!navGone && (
           <div

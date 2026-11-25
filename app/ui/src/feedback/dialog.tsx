@@ -110,7 +110,6 @@ export function FeedbackView({
         {signingIn && <GitHubSignIn signIn={signingIn} onOpen={onOpenSignIn} />}
         {step && (
           <ProgressLine
-            icon={false}
             title="Writing up your reports…"
             description={
               step.step === "writing"

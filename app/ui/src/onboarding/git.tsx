@@ -16,7 +16,7 @@ const RECHECK_MS = 2000;
  * GitHub or GitLab as Rust reads them through their own CLIs (gh, glab) [D616]: whether the CLI is here, every login it's
  * signed in as (the active one first, read from its own config) [D624, D625], its docs, and its sign-in run (a device code to enter on its page).
  */
-export type Forge = {
+type Forge = {
   name: "github" | "gitlab";
   label: string;
   cli: boolean;
@@ -26,7 +26,7 @@ export type Forge = {
 };
 
 /** One forge's card: the agents' card, plain: its mark, its name, how it stands and Connect. */
-export function ForgeCard({ forge, starting, failed, online, onConnect, onCancel }: {
+function ForgeCard({ forge, starting, failed, online, onConnect, onCancel }: {
   forge: Forge;
   starting: boolean;
   failed: string | undefined;
@@ -94,7 +94,7 @@ export function ForgeCard({ forge, starting, failed, online, onConnect, onCancel
 }
 
 /** The step's line: what connecting gives, and that it can wait. */
-export const GIT_LINE = "Push changes and open pull or merge requests from your sessions. Skip it if you don't use them.";
+const GIT_LINE = "Push changes and open pull or merge requests from your sessions. Skip it if you don't use them.";
 
 /**
  * Connect GitHub or GitLab (optional) [D616]: each through its own CLI's sign-in, run by Rust;

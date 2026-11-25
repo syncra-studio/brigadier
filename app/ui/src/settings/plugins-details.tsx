@@ -17,8 +17,6 @@ import { type Entry, type Item, type Kind, type PluginActions, type Plugins, typ
 
 /** A device sign-in's one-time code and the page it's entered on (GitHub's). */
 export type Device = { code: string; page: string };
-/** How the gallery opens a sign-in: waiting on the browser, or failed with these words. */
-export type SignInStart = "waiting" | Device | { error: string } | undefined;
 
 const KIND_LABEL = { server: "MCP server", skill: "Skill" } as const;
 
@@ -63,7 +61,6 @@ export function DetailsPage({
   entry,
   marks,
   actions,
-  signing,
   onInstall,
   onScope,
   onSwitch,
@@ -76,7 +73,6 @@ export function DetailsPage({
   entry?: Entry;
   marks: Record<string, string | null>;
   actions: PluginActions;
-  signing: SignInStart;
   onInstall: () => void;
   onScope: (scope: Scope) => void;
   onSwitch: (on: boolean) => void;
@@ -91,7 +87,7 @@ export function DetailsPage({
   const some = item && "projects" in item.scope ? item.scope.projects : null;
   const toggle = (id: string, on: boolean) => onScope({ projects: on ? [...some!, id] : some!.filter((each) => each !== id) });
   const first = kind === "skill" ? "Folder" : /^[a-z]+:\/\//.test(detail) ? "Address" : "Command";
-  const [signIn, setSignIn] = useState<boolean>(signing !== undefined);
+  const [signIn, setSignIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const signedIn = item?.signed_in === true;
@@ -263,7 +259,6 @@ export function DetailsPage({
           projects={value.projects}
           install={null}
           signKey={item.key}
-          signing={signing}
           actions={actions}
           onClose={() => setSignIn(false)}
         />

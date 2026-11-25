@@ -118,15 +118,14 @@ function RepoRow({ repo, on, current, busy, props }: { repo: GitHubRepo; on: boo
  * ticked folders, clones the ticked repositories (each with the account it's listed under [D625, D634]) and, while New is
  * open, creates the new one; then hands their ids to `onDone`.
  */
-export function useProjectSources({ source, offline, start = "mac", initialPath = "", onExisting, onDone }: {
+export function useProjectSources({ source, offline, initialPath = "", onExisting, onDone }: {
   source: Source;
   offline: boolean;
-  start?: Where;
   initialPath?: string;
   onExisting?: (id: string) => void;
   onDone: (ids: string[]) => Promise<unknown> | void;
 }) {
-  const [where, setWhere] = useState<Where>(start);
+  const [where, setWhere] = useState<Where>("mac");
   const [repo, setRepo] = useState("");
   const [typedOn, setTypedOn] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");

@@ -34,16 +34,14 @@ export function ArchivedSection({
   active,
   offline,
   onOpen,
-  storeKey = "sidebar",
 }: {
   rows: SessionRow[];
   projects: Project[];
   active: string | null;
   offline: boolean;
   onOpen: (id: string) => void;
-  storeKey?: string;
 }) {
-  const [open, setOpen] = useStored(`${storeKey}.archived`, false);
+  const [open, setOpen] = useStored("sidebar.archived", false);
   const projectOf = new Map(projects.map((project) => [project.id, project]));
   if (rows.length === 0) return null;
   return (

@@ -29,9 +29,9 @@ export type ShowFilter = {
   setHideChats: (hide: boolean) => void;
 };
 
-export function useShowFilter(storeKey: string, projects: Project[]): ShowFilter {
-  const [hidden, setHiddenProjects] = useStored<string[]>(`${storeKey}.hiddenProjects`, []);
-  const [hideChats, setHideChats] = useStored(`${storeKey}.hideChats`, false);
+export function useShowFilter(projects: Project[]): ShowFilter {
+  const [hidden, setHiddenProjects] = useStored<string[]>("sidebar.hiddenProjects", []);
+  const [hideChats, setHideChats] = useStored("sidebar.hideChats", false);
   const hiddenProjects = new Set(hidden.filter((id) => projects.some((project) => project.id === id)));
   const homeless = (row: SessionRow) => row.project === null || !projects.some((project) => project.id === row.project);
   return {

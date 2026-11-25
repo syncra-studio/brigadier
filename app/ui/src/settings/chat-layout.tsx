@@ -2,7 +2,7 @@ import { cx } from "../components/cx";
 import { Segment, SegmentedRoot } from "../components/segmented";
 
 /** The thread's two layouts: centered with your messages as bubbles, or full width and stacked [D914, D915]. */
-export type ChatLayout = "bubbles" | "stacked";
+type ChatLayout = "bubbles" | "stacked";
 
 const CHOICES: { mode: ChatLayout; label: string }[] = [
   { mode: "bubbles", label: "Bubbles" },

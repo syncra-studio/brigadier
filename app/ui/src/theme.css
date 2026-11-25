@@ -175,7 +175,6 @@
   --color-faint-foreground: rgb(255 255 255 / 50%);
   /* A progress bar: filling, and stopped. */
   --color-progress: color-mix(in oklab, var(--color-foreground) 80%, transparent);
-  --color-progress-cancelled: color-mix(in oklab, var(--color-foreground) 20%, transparent);
   /* A thread row's words, its object ("Read" then "blocks.ts"), and a shell box's title and output. */
   --color-row-foreground: color-mix(in oklab, var(--color-foreground) 60%, transparent);
   --color-row-object: color-mix(in oklab, var(--color-foreground) 40%, transparent);

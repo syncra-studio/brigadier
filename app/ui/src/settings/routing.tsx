@@ -26,7 +26,7 @@ export type Offer = { id: string; job: string | null; kind: "newer" | "results" 
 /** What each job would run now, by its name: its row's line, and each model's quota or why it can't run, by `agent/model`. */
 export type Now = Readonly<Record<string, { runs: string; entries: Readonly<Record<string, { text: string | null; off: boolean }>> }>>;
 /** Rust's routing table (C5): the jobs in your order, the rules, the review switch, the model images go to first (null: automatic), the open offers and the page's grey lines. */
-export type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; images?: { agent: string; model: string } | null; offers: Offer[]; notes: { review: string; rules: string }; now?: Now };
+type Routing = { jobs: Job[]; rules: Rule[]; review: boolean; images?: { agent: string; model: string } | null; offers: Offer[]; notes: { review: string; rules: string }; now?: Now };
 
 /** The page's rows, for Settings search; the page draws these words. */
 export const ROUTING_ROWS = {
@@ -67,16 +67,13 @@ export const useRoutingDot = (): boolean =>
     },
     () => offered,
   );
-/** The gallery's: the dot as a table would set it. */
-export const showRoutingDot = (table: Routing) => void note(table);
 
 /**
  * Settings › Routing [D383–D388]: your jobs, each its order always open, Brigadier's offers on them; the adversarial
  * review switch; the rules; your results per job. Pure props: a change shows at once and settles on the table
  * `onChange` or `onOffer` returns, or goes back with Rust's words [D30]. `value` null is loading; `results` null too.
- * `editing` and `draft` open the editor on a job or a new one, as the gallery shows them.
  */
-export function RoutingPage({
+function RoutingPage({
   value,
   groups,
   onChange,
@@ -84,8 +81,6 @@ export function RoutingPage({
   error,
   offline = false,
   results,
-  editing: editingFirst = null,
-  draft: draftFirst = null,
 }: {
   value: Routing | null;
   groups: ModelGroup[];
@@ -96,13 +91,11 @@ export function RoutingPage({
   /** Brigadier isn't running: the page shows the last table, dimmed. */
   offline?: boolean;
   results: Results | null;
-  editing?: string | null;
-  draft?: Job | null;
 }) {
   // A change in flight, or settled, on the table it was made from; a new table from Rust replaces it.
   const [mine, setMine] = useState<{ base: Routing; shown: Routing } | null>(null);
-  const [editing, setEditing] = useState(editingFirst);
-  const [draft, setDraft] = useState(draftFirst);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Job | null>(null);
   // The editor open: `true` the new job's, a name that job's, null none. A refusal belongs to the one it came from:
   // it goes once another opens or that one closes, not when a failed save puts its editor back [D384, D387].
   const at = draft !== null || editing;

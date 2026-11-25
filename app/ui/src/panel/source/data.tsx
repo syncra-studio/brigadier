@@ -1,8 +1,8 @@
 import type { Freshness, Truth } from "../git";
-import type { Branch, KeptPrs, Pr, SourceState } from "../types";
+import type { Pr, SourceState } from "../types";
 import type { BranchRead } from "./branch-ops";
 
-/** What the summary card's git part shows, from Rust; the gallery's own fake without it. */
+/** What the summary card's git part shows, from Rust. */
 export type SourceData = {
   /** Null while the first read is under way. */
   source: SourceState | null;
@@ -10,7 +10,6 @@ export type SourceData = {
   error?: string | null;
   /** The daemon is out of reach: what was last read shows, read-only. */
   offline?: boolean;
-  branches?: Branch[] | null;
   /** The session's agent is working: the user's own folder can't switch branches [D1021]. */
   agentWorking?: boolean;
   /** When the watch last read the checkout: "Offline · 14:32" [D1205, D1206]. */
@@ -23,20 +22,18 @@ export type SourceData = {
   freshness?: Freshness | null;
   /** The branch's pull requests (2.13); none without a host [D1030]. */
   prs?: Pr[];
-  /** The watch's last read, kept: a gallery's stand-in for the session row's [D1009]. */
-  kept?: KeptPrs;
   /** The name a switch or create is moving to, until the watch reads it [D30]. */
   naming?: string | null;
 };
 
-/** The branch item's moves on Rust's git (2.21) [D1020, D1021]; without them (the gallery) a pick only closes. */
+/** The branch item's moves on Rust's git (2.21) [D1020, D1021]. */
 export type BranchOps = {
   read: (done: (read: BranchRead | null) => void) => void;
   switchTo: (name: string, remote: boolean) => void;
   create: (name: string, from: string | null) => void;
 };
 
-/** Rust's moves on the checkout, once wired: without them (the gallery) nothing moves. */
+/** Rust's moves on the checkout. */
 export type SourceOps = {
   retry: () => void;
   branch?: BranchOps;

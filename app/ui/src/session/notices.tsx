@@ -143,7 +143,7 @@ export function PluginSignIn({ plugin }: { plugin: string }) {
 }
 
 /** "A retires on 12 Dec." with what it suggests, never a move it hasn't said it makes [D74]. */
-export function retiringNotice({ name, at, to }: Retiring): Notice {
+function retiringNotice({ name, at, to }: Retiring): Notice {
   const when = at === null ? `${name} is being retired.` : at > Date.now() ? `${name} retires on ${new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}.` : `${name} was retired.`;
   return {
     id: "retiring",
