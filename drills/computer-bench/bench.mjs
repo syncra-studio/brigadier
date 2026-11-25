@@ -26,6 +26,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { OWNER, isolate } from '../home.mjs'
+import { made, make } from '../made.mjs'
 import { serve } from './server.mjs'
 
 const tool = process.argv[2]
@@ -64,7 +65,7 @@ const stopAgent = (signal = 'SIGKILL') => {
   // Its background calls have groups of their own: those the shim recorded and that haven't ended.
   for (const c of calls(running.raw)) if (!c.to && commandOf(c.pid).includes(bin)) stop(c.pid)
 }
-process.on('exit', () => { stopAgent(); fs.rmSync(lock, { force: true }); fs.rmSync(bin, { recursive: true, force: true }) })
+process.on('exit', () => { stopAgent(); if (fs.existsSync(lock) && fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.rmSync(lock); fs.rmSync(bin, { recursive: true, force: true }) })
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(1))
 isolate(OUT)
 if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY && !fs.existsSync(`${process.env.CLAUDE_CONFIG_DIR}/.credentials.json`)) { console.error('Claude is not signed in here: set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY'); process.exit(2) }
@@ -122,6 +123,8 @@ const ARM = {
     args: ['--allowedTools', 'Bash(brigadier computer:*)', 'Read'],
     // Chrome starts afresh on the start page alone: no tab or window from before.
     clear: async () => {
+      // A profile of the bench's own, as its tabs are deleted: never one that was there.
+      if (!made(PROFILE)) make(PROFILE)
       // The Chrome the last setup started, this bench's or one cut short.
       const pid = fs.existsSync(CHROME_PID) ? Number(fs.readFileSync(CHROME_PID, 'utf8')) : 0
       const up = () => pid > 0 && commandOf(pid).includes(`user-data-dir=${PROFILE}`)
@@ -130,7 +133,6 @@ const ARM = {
       fs.rmSync(path.join(PROFILE, 'Default', 'Sessions'), { recursive: true, force: true })
     },
     async setup(url) {
-      fs.mkdirSync(path.dirname(CHROME_PID), { recursive: true })
       const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: OWNER } })
       chrome.unref()
       fs.writeFileSync(CHROME_PID, String(chrome.pid))

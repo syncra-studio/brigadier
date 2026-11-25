@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { isolate } from './home.mjs'
+import { drop, made, make } from './made.mjs'
 
 const BIN = process.env.BIN
 const ROOT = process.env.DRILL_ROOT ?? '/tmp/brigadier-drill'
@@ -31,7 +32,7 @@ const log = (o) => console.log(JSON.stringify(o))
 let DATA = ''
 // Codex's rollouts, for `standing`: where AGENT_PATHS's wrapper keeps them.
 const ROLLOUTS = process.env.CODEX_HOME ?? ''
-isolate(ROOT)
+const HOME_MADE = isolate(ROOT)
 
 function cli(args, env = {}, timeout = 30000) {
   const t = performance.now()
@@ -85,8 +86,7 @@ function ledger(name = 'ledger') {
 function freshData(name) {
   DATA = `${ROOT}/${name}`
   stopAll()
-  fs.rmSync(DATA, { recursive: true, force: true })
-  fs.mkdirSync(DATA, { recursive: true, mode: 0o700 })
+  make(DATA)
 }
 
 function fakeOpts(ledgerName = 'ledger') {
@@ -108,8 +108,7 @@ const GIT_INIT = 'git init -q -b main && git config user.email drill@example.inv
 
 function gitRepo(name) {
   const dir = `${ROOT}/repo-${name}`
-  fs.rmSync(dir, { recursive: true, force: true })
-  fs.mkdirSync(dir, { recursive: true })
+  make(dir)
   must(`${GIT_INIT} && echo hi > a.txt && git add . && git commit -qm init`, dir)
   return dir
 }
@@ -190,7 +189,7 @@ async function daemonList(ms) {
 }
 
 function stopAll() {
-  if (!DATA || !fs.existsSync(`${DATA}/sessions`)) return
+  if (!DATA || !made(DATA) || !fs.existsSync(`${DATA}/sessions`)) return
   for (const id of fs.readdirSync(`${DATA}/sessions`)) cli(['stop', id], {}, 15000)
   for (const id of fs.readdirSync(`${DATA}/sessions`)) cli(['delete', id], {}, 15000)
 }
@@ -206,7 +205,7 @@ function cleanup() {
   for (let grew = true; grew;) { grew = false; for (const p of all) if (!tools.includes(p) && tools.some((t) => t.pid === p.ppid)) { tools.push(p); grew = true } }
   const left = [...mine(), ...tools].filter((p) => p.pid !== process.pid)
   for (const p of left) kill(p.pid)
-  if (process.env.KEEP !== '1') fs.rmSync(DATA, { recursive: true, force: true })
+  if (process.env.KEEP !== '1') drop(DATA)
   return left.map((p) => p.cmd.slice(0, 120))
 }
 
@@ -276,6 +275,7 @@ function seeded(seed) {
 // Drill 1 ------------------------------------------------------------------------------------------
 async function killloop(minutes) {
   freshData('killloop')
+  const orig = make(BIN + '.orig')
   // A previous release's daemon first, when given: the first update must replace it [D60].
   const OLD = process.env.OLD_BIN
   startDaemon(OLD ?? BIN)
@@ -312,8 +312,8 @@ async function killloop(minutes) {
   await Promise.all(starts.map((c) => new Promise((r) => c.on('exit', r))))
   const followed = ['f01', 'chat', ...real.map(([id]) => id)]
   let followers = followed.map((id) => ({ id, ...follow(id, 0) }))
-  const builds = [BIN + '.orig', ...BUILDS]
-  fs.cpSync(BIN, BIN + '.orig', { recursive: true })
+  const builds = [orig, ...BUILDS]
+  fs.cpSync(BIN, orig, { recursive: true })
   const events = []
   const pidsBefore = () => Object.fromEntries(fakes.map((id) => [id, agentsOf(id).map((p) => p.pid)]))
   for (let k = 1; k <= minutes; k++) {
@@ -428,8 +428,8 @@ async function killloop(minutes) {
     idle_acked: Object.keys(idleAcked).length, idle_lost: Object.keys(idleAcked).filter((c) => !(LI.recv[c] >= 1)).length, idle_doubled: Object.keys(idleAcked).filter((c) => LI.recv[c] > 1).length,
   }
   summary.leftovers = cleanup()
-  for (const [id] of real) fs.rmSync(`${ROOT}/repo-${id}`, { recursive: true, force: true })
-  fs.rmSync(BIN + '.orig', { recursive: true, force: true })
+  for (const [id] of real) drop(`${ROOT}/repo-${id}`)
+  drop(orig)
   log(summary)
   verdict('killloop', {
     nothing_replaced: summary.agents_replaced_total === 0, no_duplicate_agents: summary.duplicate_agents_seen === 0, no_agent_restarts: restarts === 0,
@@ -660,15 +660,14 @@ async function catalogue() {
 }
 
 async function diskFull() {
-  const img = `${ROOT}/small.dmg`, vol = `${ROOT}/vol`
-  fs.mkdirSync(vol, { recursive: true })
+  const dir = make(`${ROOT}/disk`), img = `${dir}/small.dmg`, vol = `${dir}/vol`
+  fs.mkdirSync(vol)
   spawnSync('hdiutil', ['create', '-quiet', '-size', '24m', '-fs', 'HFS+', '-volname', 'brigadier-drill', '-ov', img])
   const at = spawnSync('hdiutil', ['attach', '-quiet', '-nobrowse', '-mountpoint', vol, img])
-  if (at.status !== 0) return { error: 'could not attach the small volume' }
+  if (at.status !== 0) return drop(dir), { error: 'could not attach the small volume' }
   const r = {}
   try {
-    DATA = `${vol}/data`
-    fs.mkdirSync(DATA, { recursive: true, mode: 0o700 })
+    DATA = make(`${vol}/data`)
     startFake('d1')
     cli(['send', 'd1', `${cid()} say:1`])
     await sleep(300)
@@ -691,8 +690,7 @@ async function diskFull() {
     r.leftovers = cleanup()
   } finally {
     spawnSync('hdiutil', ['detach', '-quiet', '-force', vol])
-    fs.rmSync(img, { force: true })
-    fs.rmSync(vol, { recursive: true, force: true })
+    drop(dir)
   }
   return r
 }
@@ -705,8 +703,8 @@ async function scale() {
   freshData('scale')
   const r = { sessions: n, gb }
   // Synthetic logs are made once and kept with KEEP_SCALE=1 for a re-run.
-  if (!fs.existsSync(`${shared}/done`)) {
-    fs.rmSync(shared, { recursive: true, force: true })
+  if (!made(shared) || !fs.existsSync(`${shared}/done`)) {
+    make(shared)
     const t = now()
     const per = Math.floor((gb * 2 ** 30) / n)
     // Four generators at a time, so the disk stays usable.
@@ -716,7 +714,8 @@ async function scale() {
     r.generate_s = Math.round((now() - t) / 1000)
   }
   fs.mkdirSync(`${DATA}/sessions`, { recursive: true })
-  for (const g of fs.readdirSync(shared).filter((g) => g.startsWith('g'))) fs.symlinkSync(`${shared}/${g}`, `${DATA}/sessions/${g}`)
+  const gs = fs.readdirSync(shared).filter((g) => g.startsWith('g'))
+  for (const g of gs) fs.symlinkSync(`${shared}/${g}`, `${DATA}/sessions/${g}`)
   const big = 'g000'
   const tail = cli(['read', big, '--tail', '200'])
   r.cold_open_tail200_ms = Math.round(tail.out.ms ?? tail.ms)
@@ -765,9 +764,9 @@ async function scale() {
     await sleep(500)
     r.old_owner = { builds: old.map((id) => cli(['owner', id]).out.pid && JSON.parse(fs.readFileSync(`${DATA}/sessions/${id}/owner.json`, 'utf8')).build), send: res, states: old.map((id) => status([id])[id].state), stop: old.map((id) => cli(['stop', id]).out.ok) }
   }
-  for (const g of fs.readdirSync(`${DATA}/sessions`).filter((g) => g.startsWith('g'))) fs.unlinkSync(`${DATA}/sessions/${g}`)
+  for (const g of gs) fs.unlinkSync(`${DATA}/sessions/${g}`)
   r.leftovers = cleanup()
-  if (process.env.KEEP_SCALE !== '1') fs.rmSync(shared, { recursive: true, force: true })
+  if (process.env.KEEP_SCALE !== '1') drop(shared)
   log({ drill: 'scale', ...r })
   // Whether it works at this size; its times are for reading, no bar is set on them here.
   verdict('scale', {
@@ -793,7 +792,7 @@ function sleepDrill() {
 async function sleepPrep() {
   freshData('sleep')
   for (let i = 1; i <= 5; i++) { startFake(`z${i}`); cli(['send', `z${i}`, `${cid()} tree:900`]) }
-  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), home: process.env.HOME, agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
+  fs.writeFileSync(`${DATA}/before.json`, JSON.stringify({ at: now(), home: HOME_MADE, agents: Object.fromEntries(['z1', 'z2', 'z3', 'z4', 'z5'].map((id) => [id, agentsOf(id).map((p) => p.pid)])), children: ledger().children }))
   log({ drill: 'sleepprep', data: DATA, status: Object.values(statusAll()).map((s) => [s.id, s.state]) })
 }
 
@@ -807,8 +806,8 @@ async function sleepCheck() {
   r.children_alive = Object.keys(before.children).filter((p) => alive(+p)).length + '/' + Object.keys(before.children).length
   r.duplicates = Object.keys(before.agents).filter((id) => agentsOf(id).length > 1).length
   r.leftovers = cleanup()
-  // The home sleepprep left its hosts, unless it was given one.
-  if (path.basename(before.home ?? '').startsWith('drill-home-') && process.env.KEEP !== '1') fs.rmSync(before.home, { recursive: true, force: true })
+  // The home sleepprep made for its hosts; one it was given is the caller's.
+  if (before.home && process.env.KEEP !== '1') drop(before.home)
   log({ drill: 'sleepcheck', ...r })
 }
 
@@ -966,7 +965,7 @@ async function rebirthReal(backend, todo) {
     noise: { thread_items: thread.length, todo_steps: thread.filter((i) => /todo|plan/i.test(`${i.name ?? ''}${i.step ?? ''}`)).length } }
   delete process.env.BRIGADIER_NO_TODO
   result.leftovers = cleanup()
-  fs.rmSync(dir, { recursive: true, force: true })
+  drop(dir)
   return result
 }
 
@@ -1098,7 +1097,7 @@ async function handoffDrill() {
   }
   r.lost = chats.flatMap((c) => c.lost.map((l) => ({ chat: c.id, ...l })))
   r.leftovers = cleanup()
-  for (const c of chats) fs.rmSync(`${ROOT}/repo-${c.id}`, { recursive: true, force: true })
+  for (const c of chats) drop(`${ROOT}/repo-${c.id}`)
   log(r)
   const each = (f) => HO_AT.every((k) => f(r.at[k]))
   verdict('handoff', {
@@ -1126,6 +1125,7 @@ const PEER_DONE = ['delivered', 'uncertain', 'dropped', 'stopped', 'refused']
 async function peersDrill() {
   const want = +(process.env.N || 2000), kills = +(process.env.KILLS || 20)
   freshData('peers')
+  const kept = process.env.KEEP === '1' && make(`${DATA}-kept`)
   startDaemon()
   await sleep(1500)
   const senders = Array.from({ length: 10 }, (_, i) => `s${i}`), receivers = Array.from({ length: 5 }, (_, i) => `r${i}`)
@@ -1296,7 +1296,7 @@ async function peersDrill() {
     lost: interval(bad.lost.length, outs.length), doubled: interval(bad.doubled.length, outs.length), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
     examples: { lost: bad.lost.slice(0, 5), doubled: bad.doubled.slice(0, 5), swapped: swapped.slice(0, 5), open: bad.open.slice(0, 5), wrong: bad.wrong.slice(0, 5) } }
   // Cleanup deletes the sessions: KEEP=1 keeps their logs first, to see why a message was lost.
-  if (process.env.KEEP === '1') fs.rmSync(`${DATA}-kept`, { recursive: true, force: true }), fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
+  if (kept) fs.cpSync(DATA, kept, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
   r.leftovers = cleanup()
   log(r)
   verdict('peers', { sent_all: want > 0 && sent.size >= want && (kills > 0 || !states['no record']), none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
@@ -1413,7 +1413,8 @@ function judge(expect, now_, after, named, skip, snaps = []) {
 
 async function rewindOne(k) {
   const r = seeded(9000 + k), id = `rw${k}`, root = `${ROOT}/rw/${id}`, repo = `${root}/repo`
-  fs.mkdirSync(repo, { recursive: true })
+  make(root)
+  fs.mkdirSync(repo)
   const plain = r.next() < 0.06, local = r.next() < 0.5, missing = !plain && r.next() < 0.05
   for (const [p, t] of Object.entries({ 'a.txt': 'alpha\n', 'b/c.txt': 'gamma\n', 'b/d.bin': Buffer.from([0, 255, 1, 254, 10]), 'same.txt': '100\n', 'crlf.txt': 'one\r\ntwo\r\n', '.gitignore': 'build/\n*.log\n', 'kept.log': 'tracked though ignored\n', 'run.sh': '#!/bin/sh\n', 'secret.env': 'KEY=1\n', '.gitattributes': '*.txt text=auto\n' })) { fs.mkdirSync(path.dirname(`${repo}/${p}`), { recursive: true }); fs.writeFileSync(`${repo}/${p}`, t) }
   fs.chmodSync(`${repo}/run.sh`, 0o755)
@@ -1538,14 +1539,14 @@ async function rewindOne(k) {
   }
   if (res.wrong.length) res.ops = turns.map((x) => x.ops)
   await cliAsync(['stop', id]); await cliAsync(['delete', id, '--branch', 'delete'])
-  fs.rmSync(root, { recursive: true, force: true })
+  drop(root)
   return res
 }
 
 async function rewindDrill() {
   const want = +(process.env.N || 300), first = +(process.env.SEED || 0)
   freshData('rewind')
-  fs.rmSync(`${ROOT}/rw`, { recursive: true, force: true })
+  make(`${ROOT}/rw`)
   startDaemon()
   await sleep(1500)
   const all = []
@@ -1569,7 +1570,7 @@ async function rewindDrill() {
     names_with_other_letters: bad((x) => x.letters?.length).length, permissions_not_put_back: bad((x) => x.modes?.length).length, folders_removed: bad((x) => x.hollow?.length).length,
     kinds: Object.entries(all.flatMap((x) => x.wrong ?? []).reduce((a, w) => ({ ...a, [w.what]: (a[w.what] ?? 0) + 1 }), {})), examples: wrong.slice(0, 5).map((x) => ({ seed: x.k, wrong: x.wrong.slice(0, 3), user_lost: x.user_lost })), errors: errors.slice(0, 5) }
   r.leftovers = cleanup()
-  fs.rmSync(`${ROOT}/rw`, { recursive: true, force: true })
+  drop(`${ROOT}/rw`)
   log(r)
   verdict('rewindfiles', { all_ran: ran > 0 && !errors.length, byte_for_byte: !wrong.length, no_user_change_lost: r.user_changes_lost === 0, names_keep_their_letters: r.names_with_other_letters === 0, permissions_kept: r.permissions_not_put_back === 0, folders_kept: r.folders_removed === 0, no_leftovers: r.leftovers.length === 0 })
 }
@@ -1652,7 +1653,7 @@ async function speed() {
   const n = +(process.env.N || 20), arms = { new: process.env.APP, old: process.env.OLD_APP }
   if (!arms.new && !arms.old) throw new Error('set APP or OLD_APP to a folder with a built app')
   const sizes = (process.env.SIZES || '1,100,1000').split(',').map(Number)
-  const main = `${ROOT}/speed-hook.cjs`
+  const own = make(`${ROOT}/speed`), main = `${own}/hook.cjs`
   fs.writeFileSync(main, `(${speedHook})()\n`)
   const bin = (arm) => `${arms[arm]}/target/debug`
   const r = { drill: 'speed', launches: n, load: spawnSync('sysctl', ['-n', 'vm.loadavg'], { encoding: 'utf8' }).stdout.trim(), at: {} }
@@ -1663,8 +1664,8 @@ async function speed() {
     const datas = {}
     for (const arm of Object.keys(got)) {
       const data = datas[arm] = DATA = `${ROOT}/speed-${arm}-${size}`
-      fs.rmSync(DATA, { recursive: true, force: true })
-      fs.mkdirSync(`${DATA}/sessions`, { recursive: true, mode: 0o700 })
+      make(DATA)
+      fs.mkdirSync(`${DATA}/sessions`, { mode: 0o700 })
       for (let i = 0; i < size; i++) spawnSync(`${bin(arm)}/brigadier-fake`, ['gen', `${DATA}/sessions/g${String(i).padStart(4, '0')}`, String(i ? 200 << 10 : 50 << 20)])
       fs.writeFileSync(`${DATA}/profile.json`, JSON.stringify({ name: 'Bench', intro_seen: true, onboarded: true, tour_seen: true }))
       const t = now()
@@ -1673,7 +1674,7 @@ async function speed() {
     }
     const launch = async (arm) => {
       DATA = datas[arm]
-      const out = `${ROOT}/speed.json`
+      const out = `${own}/out.json`
       fs.rmSync(out, { force: true })
       const t = now()
       const c = spawn(process.env.ELECTRON, ['-r', main, '--host-resolver-rules=MAP * ~NOTFOUND', '--use-mock-keychain', arms[arm]], { env: { ...process.env, BRIGADIER_DATA: DATA, SPEED_OUT: out, SPEED_BIG: 'g0000', SPEED_WORD: 'ipsum' }, stdio: ['ignore', 'ignore', 'pipe'] })
@@ -1732,11 +1733,12 @@ async function speed() {
       DATA = datas[arm]
       left.push(...mine().map((p) => p.cmd.slice(0, 100)))
       for (const p of mine()) kill(p.pid)
-      fs.rmSync(datas[arm], { recursive: true, force: true })
+      drop(datas[arm])
     }
     r.at[size] = Object.fromEntries(Object.entries(got).map(([arm, g]) => [arm, Object.fromEntries(Object.entries(g).map(([k, v]) => [k, Array.isArray(v) ? times(v) : v]))]))
     log({ drill: 'speed', size, ...r.at[size] })
   }
+  drop(own)
   r.bad = bad.slice(0, 5)
   r.leftovers = [...new Set(left)]
   log(r)
@@ -1819,7 +1821,6 @@ function side(name, bin, data) {
 
 function caseRepo(c, tag) {
   const dir = `${ROOT}/repos/${tag}`
-  fs.rmSync(dir, { recursive: true, force: true })
   fs.mkdirSync(`${dir}/bin`, { recursive: true })
   for (const b of ['slack', 'jira']) fs.writeFileSync(`${dir}/bin/${b}`, `#!/bin/sh\n${OUTBOX}\n`, { mode: 0o755 })
   fs.writeFileSync(`${dir}/a.txt`, 'hi\n')
@@ -1887,7 +1888,6 @@ async function sample(c, sd, agent, k, b3) {
   const folder = process.env.FOLDER === '1' && sd.name === 'new'
   if (folder) {
     const home = `${ROOT}/folders/${id}`
-    fs.rmSync(home, { recursive: true, force: true })
     fs.mkdirSync(home, { recursive: true })
     fs.renameSync(repo, `${home}/app`)
     repo = `${home}/app`
@@ -1923,6 +1923,8 @@ async function standing() {
   const agents = (process.env.AGENTS ?? 'claude,codex,opencode').split(',')
   const n = +(process.env.SAMPLES ?? 3)
   const pick = (process.env.CASES ?? '').split(',').filter(Boolean)
+  // What this run makes, and all it ends and deletes.
+  const own = ['standing', 'repos', 'folders'].map((d) => make(`${ROOT}/${d}`))
   const sides = [side('base', process.env.BASE, `${ROOT}/standing/base`), side('new', BIN, `${ROOT}/standing/new`)]
   sides.forEach((sd) => sd.up())
   await sleep(2000)
@@ -1947,9 +1949,9 @@ async function standing() {
   }
   sides.forEach((sd) => sd.down())
   // Hosts wait on after a stop: every process under this run's folder ends with it.
-  for (const p of ps()) if (p.cmd.includes(`${ROOT}/`) && p.pid !== process.pid) kill(p.pid)
+  for (const p of ps()) if (own.some((d) => p.cmd.includes(`${d}/`)) && p.pid !== process.pid) kill(p.pid)
   log({ summary: 'standing', pass: results.length > 0 && n > 0 && !blocked.length, results, blocked })
-  if (process.env.KEEP !== '1') fs.rmSync(ROOT, { recursive: true, force: true })
+  if (process.env.KEEP !== '1') own.forEach(drop)
 }
 
 const [drill, arg] = process.argv.slice(2)
