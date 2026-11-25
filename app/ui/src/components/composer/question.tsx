@@ -36,6 +36,9 @@ export type PendingQuestion = {
 /** One answer: an option's label or the user's words, those with images or files as their draft; null for a skipped one. */
 export type Given = string | Draft | null;
 
+/** What goes under the card; a function's can send the round as it stands, what's open skipped: whether it was taken. `waits` says why it can't yet. */
+export type Footer = ReactNode | ((round: { finish: () => Promise<boolean>; waits?: string; busy: boolean }) => ReactNode);
+
 /** How long a picked answer shows its dot before it goes: time for a double-click's second click to call it off. */
 const COMMIT_MS = 300;
 /** How far a press moves before it's a drag, not a click. */
@@ -98,7 +101,7 @@ export function QuestionCard({
   question: PendingQuestion;
   onAnswer: (answers: Given[]) => Promise<void>;
   onDismiss: () => void;
-  footer?: ReactNode;
+  footer?: Footer;
   /** At the question's end: what opens what it asks about. */
   actions?: ReactNode;
   /** A refusal that came after the card was hidden at once, so it shows when the card comes back. */
@@ -123,16 +126,20 @@ export function QuestionCard({
   const item = items[at];
   if (!item) return null;
 
-  const send = (all: Given[]) => {
-    if (busy) return;
+  const send = async (all: Given[]): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
     setError(null);
-    onAnswer(all)
+    return onAnswer(all)
       .then(() => {
         keptCards.delete(key);
         items.forEach((_, index) => dropTiles(tilesKey(key, index)));
+        return true;
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return false;
+      })
       .finally(() => setBusy(false));
   };
   const answered = answers.filter((given) => given !== undefined).length;
@@ -144,7 +151,14 @@ export function QuestionCard({
     const next = items.map((_, index) => (index === at ? given : answers[index]));
     const open = next.findIndex((each) => each === undefined);
     keep((now) => ({ answers: next, drafts: put(now.drafts, at, undefined), ...(open >= 0 && { page: open }) }));
-    if (open < 0) send(next.map((each) => each ?? null));
+    if (open < 0) void send(next.map((each) => each ?? null));
+  };
+  // Marked or typed on a question paged away from, not yet sent.
+  // shortcut: files attached to one paged away from aren't in it, only its words and chips; read its tiles here if rounds take files.
+  const unsent = (index: number): Given => {
+    const parts = drafts[index];
+    if (parts && !isEmpty({ parts, attachmentIds: [] })) return parts.some((part) => typeof part !== "string" && "attachmentId" in part) ? { parts, attachmentIds: [] } : plainText(parts).trim();
+    return marked[index]?.length ? marked[index].map((one) => items[index]!.options[one]!.label).join(", ") : null;
   };
   const given = answers[at];
   const picked = typeof given === "string" ? item.options.findIndex((option) => option.label === given) : -1;
@@ -187,7 +201,8 @@ export function QuestionCard({
       onMarked={(indexes) => keep((now) => ({ marked: put(now.marked, at, indexes) }))}
       onDismiss={onDismiss}
       // ✕ skips what is still open in the round, so the asker hears and carries on.
-      onClose={() => send(items.map((_, index) => answers[index] ?? null))}
+      onClose={() => void send(items.map((_, index) => answers[index] ?? null))}
+      onFinish={(now) => send(items.map((_, index) => (index === at ? (now ?? answers[index] ?? null) : (answers[index] ?? unsent(index)))))}
       busy={busy}
       error={error ?? refused}
       dismiss={dismiss}
@@ -226,6 +241,7 @@ function QuestionPage({
   error,
   dismiss,
   footer,
+  onFinish,
   stagger,
 }: {
   title: ReactNode;
@@ -249,7 +265,9 @@ function QuestionPage({
   busy: boolean;
   error: string | null;
   dismiss?: () => void;
-  footer?: ReactNode;
+  footer?: Footer;
+  /** Sends the round as it stands, `now` this question's own answer so far. */
+  onFinish: (now: Given) => Promise<boolean>;
   stagger: boolean;
 }) {
   const { options } = item;
@@ -321,11 +339,19 @@ function QuestionPage({
   // Something to send: words typed, files attached, or answers marked.
   const ready = filled || marked.length > 0;
   const waits = filled ? files.hold(typed) : undefined;
+  const now = (): Given => {
+    if (filled) return draft.attachmentIds.length > 0 || typed.some((part) => typeof part !== "string" && "attachmentId" in part) ? draft : plainText(typed).trim();
+    return marked.length > 0 ? marked.map((index) => options[index]!.label).join(", ") : null;
+  };
   const submit = () => {
     if (!idle || waits) return;
-    if (filled) onAnswer(draft.attachmentIds.length > 0 || typed.some((part) => typeof part !== "string" && "attachmentId" in part) ? draft : plainText(typed).trim());
-    else if (marked.length > 0) onAnswer(marked.map((index) => options[index]!.label).join(", "));
-    else onAnswer(null);
+    onAnswer(now());
+  };
+  // A pick still showing its dot goes with it.
+  const finish = () => {
+    clearTimeout(timer.current);
+    setChosen(null);
+    return onFinish(chosen !== null ? options[chosen]!.label : now());
   };
   useCardKeys(
     idle,
@@ -453,7 +479,7 @@ function QuestionPage({
         )}
       </div>
       <ErrorLine error={error} className="px-4 pb-2" actions={dismiss && <DismissButton onClick={dismiss} />} />
-      {footer}
+      {typeof footer === "function" ? footer({ finish, waits, busy }) : footer}
     </ActionCard>
   );
 }

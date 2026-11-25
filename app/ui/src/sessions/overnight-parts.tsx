@@ -34,11 +34,11 @@ export function SessionOvernight({ id, now }: { id: string; now: Overnight | nul
   return <OvernightPill divider on={now !== null} tip={now?.state === "night" ? "I’m back: end the night" : undefined} onChange={(on) => overnight(id, on ? "on" : "off")} />;
 }
 
-/** Start night, under what is asked before the user goes. */
-export function StartNight({ id, label }: { id: string; label: string }) {
+/** Start night, under what is asked before the user goes, whose answers go first (`finish`). */
+export function StartNight({ id, label, finish, waits, busy }: { id: string; label: string; finish?: () => Promise<boolean>; waits?: string; busy?: boolean }) {
   return (
     <ActionCardActions leading={<span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>}>
-      <Button size="sm" onClick={() => overnight(id, "start")}>
+      <Button size="sm" disabled={busy || waits !== undefined} title={waits} onClick={() => overnight(id, "start", finish?.())}>
         <Moon />
         Start night
       </Button>

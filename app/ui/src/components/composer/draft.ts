@@ -32,6 +32,17 @@ export function plainText(parts: Draft["parts"]): string {
   return parts.map((part) => (typeof part === "string" ? part : "label" in part ? part.label : "")).join("");
 }
 
+/** `parts` with the words `was` in them now `now`, nothing left of them when that's empty; null when they aren't there. */
+export function swapWords(parts: Draft["parts"], was: string, now: string): Draft["parts"] | null {
+  const at = parts.findIndex((part) => typeof part === "string" && part.includes(was));
+  if (at < 0) return null;
+  const part = parts[at] as string;
+  const from = part.indexOf(was);
+  const after = part.slice(from + was.length);
+  const next = part.slice(0, from) + now + (now ? after : after.replace(/^\n+/, ""));
+  return parts.with(at, now || after.trim() ? next : next.trimEnd());
+}
+
 /** How a message goes: at once, or while a turn runs, queued after it or steered into it. */
 export type SendMode = "now" | "queue" | "steer";
 

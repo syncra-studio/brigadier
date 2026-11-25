@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react
 import { Button } from "../components/button";
 import { type ApprovalDecision, ApprovalSlot, forgetReasons, MoreWaiting, type PendingApproval } from "../components/composer/approval";
 import { StepCounter } from "../components/composer/decision-parts";
-import { forgetQuestions, type Given, type PendingQuestion, QuestionCard } from "../components/composer/question";
+import { type Footer, forgetQuestions, type Given, type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { RailItem, WaitingRow } from "../components/composer/rail";
 import { ask, threadSource, useDaemon } from "../daemon";
 import { useMockup } from "../mockup/live";
@@ -252,7 +252,7 @@ export const useApprovalWaiting = (id: string, source: Source) => useWaiting(id,
  * The questions waiting, on the rail above the composer, one at a time, ‹ 1 of 2 › between them; Esc puts them aside
  * [D199, D207]. A mockup's card shows its variants' pictures as they are now, and Open brings its own tab to the front.
  */
-export function SessionQuestions({ id, run, source, night, ...takes }: { id: string; run: Runner; source: Source; /** Under the card: Overnight's Start night. */ night?: ReactNode; /** The agent that takes an answer's images, and whether its model can. */ backend?: string; images: boolean }) {
+export function SessionQuestions({ id, run, source, night, ...takes }: { id: string; run: Runner; source: Source; /** Under the card: Overnight's Start night, which first sends what is answered (`finish`). */ night?: (round?: Parameters<Extract<Footer, Function>>[0]) => ReactNode; /** The agent that takes an answer's images, and whether its model can. */ backend?: string; images: boolean }) {
   const { questions, error, dismiss } = useWaiting(id, source);
   const [aside, setAside] = useState(false);
   // The card shown, by id, so another coming or going doesn't change it; where it was, for the one after it when it goes.
@@ -287,9 +287,10 @@ export function SessionQuestions({ id, run, source, night, ...takes }: { id: str
             </Button>
           )
         }
-        footer={
+        footer={(round) => (
           <>
-            {night}
+            {/* One nothing waits on, or with no Skip, has nothing to send. */}
+            {night?.(question.held || dismiss(question.id) ? undefined : round)}
             {questions.length > 1 && (
               <div className="flex items-start">
                 <MoreWaiting more={questions.length - 1 - at} />
@@ -305,7 +306,7 @@ export function SessionQuestions({ id, run, source, night, ...takes }: { id: str
               </div>
             )}
           </>
-        }
+        )}
       />
     </RailItem>
   );

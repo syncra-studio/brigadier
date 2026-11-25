@@ -51,19 +51,21 @@ export function sendAsNew(source: string, text: string, qid?: string, made = { i
   run(entry);
 }
 
+/** Words an earlier put back left in the composer, and what takes their place there; gone from it, the text goes in as any. */
+type Swap = { was: string; now: string };
 // Put back: the text, and the draft it was sent from, go to the composer of the session it came from.
-const back = store<{ source: string; text: string; n: number; above: boolean; draft?: Draft | null } | null>(null);
-export const putBack = (source: string, text: string, above = false, draft?: Draft | null) => back.set({ source, text, above, draft, n: (back.get()?.n ?? 0) + 1 });
+const back = store<{ source: string; text: string; n: number; above: boolean; draft?: Draft | null; swap?: Swap } | null>(null);
+export const putBack = (source: string, text: string, above = false, draft?: Draft | null, swap?: Swap) => back.set({ source, text, above, draft, swap, n: (back.get()?.n ?? 0) + 1 });
 
 /** The last put back, without taking it: the PR page's review chat comes forward for one [D237]. */
 export const usePutBackAsked = () => back.use();
 
 /** Fills session `id`'s composer when one of its lines puts a message back. */
-export function usePutBack(id: string, fill: (text: string, above: boolean, draft?: Draft | null) => void): void {
+export function usePutBack(id: string, fill: (text: string, above: boolean, draft?: Draft | null, swap?: Swap) => void): void {
   const asked = back.use();
   useEffect(() => {
     if (asked?.source !== id) return;
-    fill(asked.text, asked.above, asked.draft);
+    fill(asked.text, asked.above, asked.draft, asked.swap);
     // Taken once: the composer mounts again each time its session opens.
     back.set(null);
   }, [asked?.n]);
