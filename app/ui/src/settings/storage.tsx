@@ -77,8 +77,8 @@ export function StorageView({ storage, online = true }: { storage: Storage; onli
               <span className="min-w-0 flex-1">
                 <Stays />
               </span>
-              <Button size="sm" disabled={going < SOME || !online} onClick={() => storage.free(picked)}>
-                {going < SOME ? "Free up space" : `Free up ${gb(going)}`}
+              <Button size="sm" disabled={going === 0 || !online} onClick={() => storage.free(picked)}>
+                {going === 0 ? "Free up space" : `Free up ${gb(going)}`}
               </Button>
             </div>
           </SettingsCard>
@@ -113,7 +113,7 @@ function GroupRow({ group, label, line, storage, checked, onChange }: (typeof GR
   named.sort((a, b) => b.size - a.size);
   const rest = storage.smaller.map((chat) => storage.freeableIn(chat, group)).filter((part) => part > 0);
   const inside = [...named, ...(rest.length > 0 ? [{ id: "rest", title: `${rest.length} smaller ${rest.length === 1 ? "chat" : "chats"}`, size: rest.reduce((sum, part) => sum + part, 0) }] : [])];
-  if (size < SOME) return null;
+  if (size === 0) return null;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-3 px-4 py-3">

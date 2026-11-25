@@ -108,9 +108,10 @@ function recount(): void {
       (change) => mine === counting && patch(typeof change === "function" ? change() : change),
       (cause: unknown) => {
         if (mine !== counting) return;
-        // The daemon went: counted again once it's back.
-        if (errorText(cause) === "disconnected") asked = false;
-        else patch({ error: errorText(cause) });
+        const gone = errorText(cause) === "disconnected";
+        // Counted again once it's back.
+        if (gone) asked = false;
+        patch({ error: gone ? "Brigadier isn't running" : errorText(cause) });
       },
     );
   void land(list());

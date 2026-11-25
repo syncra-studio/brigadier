@@ -50,8 +50,39 @@ const REBUILT: &[&str] = &[
     ".gradle",
 ];
 
+/// Whether `dir` holds a repository below it, not in `skip`, whose work git doesn't list from
+/// outside. A folder that can't be read counts as one.
+pub fn repo_inside(dir: &Path, skip: &[PathBuf]) -> bool {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(next) = stack.pop() {
+        let entries = match fs::read_dir(&next) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => return true,
+        };
+        // A bare one has no `.git`.
+        if next.join("HEAD").is_file() && next.join("objects").is_dir() {
+            return true;
+        }
+        for entry in entries {
+            let Ok(entry) = entry else { return true };
+            let path = entry.path();
+            if skip.contains(&path) {
+                continue;
+            }
+            if entry.file_name() == ".git" {
+                return true;
+            }
+            if entry.file_type().map_or(true, |t| t.is_dir()) {
+                stack.push(path);
+            }
+        }
+    }
+    false
+}
+
 /// The rebuildable build output in `dir`'s worktree: folders git ignores and tracks nothing in, none
-/// a repository of its own, none behind a link, and none the include rules copied in, which nothing
+/// holding a repository, none behind a link, and none the include rules copied in, which nothing
 /// would copy again.
 pub fn rebuilt(dir: &Path, picks: &[String]) -> io::Result<Vec<PathBuf>> {
     let Some(owned) = read(dir)? else {
@@ -75,7 +106,7 @@ pub fn rebuilt(dir: &Path, picks: &[String]) -> io::Result<Vec<PathBuf>> {
         // A link has no slash of its own at its end.
         .filter_map(|rel| rel.strip_suffix('/'))
         .filter(|rel| rel.rsplit('/').next().is_some_and(|n| REBUILT.contains(&n)))
-        .filter(|rel| !path.join(rel).join(".git").exists())
+        .filter(|rel| !repo_inside(&path.join(rel), &[]))
         .collect();
     if !found.is_empty() {
         let copied = copy::selected(Path::new(&owned.repo), picks)?;
@@ -101,10 +132,51 @@ fn same(a: &Path, b: &Path, rel: &str) -> bool {
     }
 }
 
-/// The ignored files, one by one, in the worktree `dir`'s record holds, that freeing it deletes and
-/// restore won't bring back: not common build output, and not a file the include rules copy back
-/// that still matches its source. None when the worktree isn't there.
-fn lost_in(dir: &Path, picks: &[String]) -> io::Result<Vec<String>> {
+/// The tracked files git is told not to look at (assume-unchanged, skip-worktree) that hold an edit:
+/// neither its status nor a checkpoint has it.
+fn hidden(path: &Path) -> io::Result<Vec<String>> {
+    let all = git(path, &["ls-files", "-v", "-z"])?;
+    Ok((all.split('\0').filter_map(|line| line.split_once(' ')))
+        .filter(|(tag, _)| *tag == "S" || tag.chars().all(char::is_lowercase))
+        .map(|(_, rel)| rel)
+        .filter(|rel| path.join(rel).symlink_metadata().is_ok())
+        .filter(|rel| {
+            let literal = format!(":(literal){rel}");
+            let kept = git(path, &["ls-files", "-s", "-z", "--", &literal]);
+            let now = git(path, &["hash-object", "--", rel]);
+            !matches!((kept, now), (Ok(k), Ok(n)) if k.split(' ').nth(1) == Some(n.as_str()))
+        })
+        .map(String::from)
+        .collect())
+}
+
+/// Whether freeing `dir`'s worktree loses nothing but what is made again: stricter than the confirm's
+/// list, which the user reads, as `dist` may hold a release, and a repository inside its own work.
+pub fn lossless(dir: &Path, picks: &[String]) -> io::Result<bool> {
+    let Some(path) = read(dir)?.and_then(|o| live(&o).map(Path::to_path_buf)) else {
+        return Ok(true);
+    };
+    let mut made = rebuilt(dir, picks)?;
+    let again = |rel: &str| {
+        let at = path.join(rel);
+        at.ends_with(".DS_Store") || made.iter().any(|m| at.starts_with(m))
+    };
+    if !lost_in(dir, picks, &again)?.is_empty() {
+        return Ok(false);
+    }
+    made.push(path.join(".git"));
+    Ok(!repo_inside(&path, &made))
+}
+
+/// Common build output, which the confirm doesn't name.
+fn built(rel: &str) -> bool {
+    rel.split('/').any(|part| BUILT.contains(&part))
+}
+
+/// The files, one by one, in the worktree `dir`'s record holds, that freeing it deletes and restore
+/// won't bring back: edits hidden from git, and ignored files but what is `built` and what the
+/// include rules copy back that still matches its source. None when the worktree isn't there.
+fn lost_in(dir: &Path, picks: &[String], built: &dyn Fn(&str) -> bool) -> io::Result<Vec<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(vec![]);
     };
@@ -119,7 +191,6 @@ fn lost_in(dir: &Path, picks: &[String]) -> io::Result<Vec<String>> {
         "--ignored",
         "--exclude-standard",
     ];
-    let built = |rel: &str| rel.split('/').any(|part| BUILT.contains(&part));
     // A wholly ignored folder comes as one entry first, so build output isn't walked; any other
     // is listed again file by file.
     let mut left = vec![];
@@ -139,11 +210,11 @@ fn lost_in(dir: &Path, picks: &[String]) -> io::Result<Vec<String>> {
                 .map(String::from),
         );
     }
-    if left.is_empty() {
-        return Ok(vec![]);
+    if !left.is_empty() {
+        let copied: BTreeSet<String> = copy::selected(repo, picks)?.into_iter().collect();
+        left.retain(|rel| !(copied.contains(rel) && same(repo, path, rel)));
     }
-    let copied: BTreeSet<String> = copy::selected(repo, picks)?.into_iter().collect();
-    left.retain(|rel| !(copied.contains(rel) && same(repo, path, rel)));
+    left.extend(hidden(path)?);
     Ok(left)
 }
 
@@ -157,7 +228,7 @@ pub fn losses(data: &Path, ids: &[String]) -> Vec<Value> {
         let Ok(spec) = load(data, id) else { continue };
         // A folder chat's claims, each its own worktree, named by repo [D494].
         for (name, rec) in crate::folder::claims(&spec.dir) {
-            match lost_in(&rec, &[]) {
+            match lost_in(&rec, &[], &built) {
                 Ok(files) if files.is_empty() => {}
                 Ok(files) => {
                     let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
@@ -184,7 +255,7 @@ pub fn losses(data: &Path, ids: &[String]) -> Vec<Value> {
         let ids: Vec<&String> = (users.iter().map(|u| &u.id))
             .filter(|u| ids.contains(u))
             .collect();
-        match lost_in(&holder.dir, &picks) {
+        match lost_in(&holder.dir, &picks, &built) {
             Ok(files) if files.is_empty() => {}
             Ok(files) => out.push(json!({"ids": ids, "files": files})),
             Err(e) => out.push(json!({"ids": ids, "error": e.to_string()})),
