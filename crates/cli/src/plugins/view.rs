@@ -72,3 +72,21 @@ pub(super) fn reveal(data: &Path, key: &str) -> io::Result<Value> {
         ))),
     }
 }
+
+/// Each session's project, when its proxy last noted a connect, and the servers it couldn't
+/// reach then (`plugins/unreached.json`).
+pub(super) fn unreached(data: &Path) -> Vec<(Option<String>, std::time::SystemTime, Vec<String>)> {
+    let sessions = std::fs::read_dir(data.join("sessions"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    sessions
+        .filter_map(|s| {
+            let file = s.path().join("plugins/unreached.json");
+            let at = file.metadata().ok()?.modified().ok()?;
+            let names = serde_json::from_slice(&std::fs::read(&file).ok()?).ok()?;
+            let spec = brigadier_core::load(data, &s.file_name().to_string_lossy()).ok()?;
+            Some((spec.project, at, names))
+        })
+        .collect()
+}
