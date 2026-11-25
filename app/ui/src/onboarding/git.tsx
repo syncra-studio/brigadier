@@ -97,7 +97,7 @@ export function ForgeCard({ forge, starting, failed, online, onConnect, onCancel
 export const GIT_LINE = "Push changes and open pull or merge requests from your sessions. Skip it if you don't use them.";
 
 /**
- * Connect GitHub or GitLab (optional), this step in our kit [D616]: each through its own CLI's sign-in, run by Rust;
+ * Connect GitHub or GitLab (optional) [D616]: each through its own CLI's sign-in, run by Rust;
  * Skip for now goes on without.
  */
 export function GitStep({ onBack, onContinue }: { onBack: () => void; onContinue: () => void }) {
