@@ -72,7 +72,8 @@ don't overwrite each other.
   has left.
 - **Built-in browser.** Agents read and use web pages in it.
 - **Computer use.** Off until you turn it on. Agents can then use other Mac apps while your mouse and
-  keyboard stay yours; Stop is in the menu bar.
+  keyboard stay yours; Stop is in the menu bar. At Ask you're asked once per app per chat; at Auto and
+  Full access you aren't asked.
 
 ## Install
 
