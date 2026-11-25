@@ -1,0 +1,77 @@
+name: Bug report
+description: Something Brigadier does wrong, reproduced on the latest main.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One bug per issue.
+        Security problems go to [a private report](https://github.com/syncra-studio/brigadier/security/advisories/new), never here.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you file
+      options:
+        - label: I reproduced this on the latest `main`.
+          required: true
+        - label: I searched open and closed issues and found no duplicate.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Settings › General › About, or `git rev-parse --short HEAD` for a source build.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS and its version, and the agent CLIs with their versions (`claude --version`, `codex --version`, `opencode --version`).
+      placeholder: macOS 27.0 (arm64), Claude Code 2.1.x
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sessions, workers, landing or review
+        - Accounts, usage or routing
+        - Terminal, files or source
+        - Settings, onboarding or uninstall
+        - Build from source
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps from a fresh start. Include the permission level and the prompt, if any.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Remove anything private (paths, emails, tokens) from logs and screenshots first.
+    validations:
+      required: true
+  - type: input
+    id: ai
+    attributes:
+      label: AI assistance
+      description: If an AI tool wrote any of this report, name it. You must still have reproduced the bug yourself.
+      placeholder: None

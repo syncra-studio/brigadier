@@ -112,7 +112,7 @@ found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)
   fail "commit with an attribution line"
   echo "$found"
 }
-found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
+found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
   fail ".md file not on the allowed list"
   echo "$found"
 }
