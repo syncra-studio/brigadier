@@ -5,6 +5,7 @@
 //! message; the user sees no card, and the worker's thread shows the ask and the answer.
 
 mod left;
+pub(crate) use left::{ready as built_goes, unbuilt};
 
 use super::result::{Res, dir_of, open, path_of};
 use super::write_json;

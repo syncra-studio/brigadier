@@ -6,7 +6,7 @@
 use crate::owner;
 use crate::relay::mockup;
 use crate::sessions;
-use crate::workers::{busy, link, read_json, result, write_json};
+use crate::workers::{Link, busy, link, read_json, result, write_json};
 use brigadier_core as core;
 use brigadier_frames::{log, procs, take_lock};
 use serde::{Deserialize, Serialize};
@@ -117,18 +117,27 @@ fn unbuild(data: &Path, wid: &str, items: &Value) {
     });
 }
 
-/// Whether nothing is left to take: it's gone, or the worker has none.
-fn unbuilt(data: &Path, wid: &str) -> io::Result<bool> {
+/// Whether its build output may go, by its record: its result says it finished, as one stopped,
+/// failed or waiting for an answer may go on, and nothing waits on it.
+pub fn ready(data: &Path, wid: &str) -> bool {
+    let dir = core::session_dir(data, wid);
+    matches!(core::session::lifecycle(&dir), (None, Value::Null))
+        && link(data, wid).is_some_and(|l| l.last["how"] == "finished" && is_over(data, wid, &l))
+}
+
+/// Whether nothing is left to take: it's gone, or the worker has none. Free up space's too.
+pub fn unbuilt(data: &Path, wid: &str) -> io::Result<bool> {
     let Some(held) = over(data, wid)? else {
         return Ok(false);
     };
     let spec = core::load(data, wid)?;
-    if !matches!(core::session::lifecycle(&spec.dir), (None, Value::Null)) {
+    if !ready(data, wid) {
         return Ok(true);
     }
     let f = core::fold(&spec.dir, true)?.fold;
     let live = core::fold::live(&f, owner::state(data, wid), &spec.dir, &procs::all());
-    if (live.jobs, live.left.len(), f.turns.len()) != (0, 0, 0) || busy(data, wid) {
+    let frozen = live.owner == core::fold::Owner::Frozen;
+    if (live.jobs, live.left.len(), f.turns.len()) != (0, 0, 0) || frozen || busy(data, wid) {
         return Ok(false);
     }
     let built = core::session::built(data, &spec)?;
@@ -176,20 +185,24 @@ fn over(data: &Path, wid: &str) -> io::Result<Option<(File, File)>> {
         return Ok(None);
     };
     let fence = core::worktrees::lock(&dir)?;
-    let Some(l) = link(data, wid).filter(|l| !l.session && !l.paused) else {
-        return Ok(None);
-    };
+    let over = link(data, wid).is_some_and(|l| is_over(data, wid, &l));
+    Ok(over.then_some((queue, fence)))
+}
+
+fn is_over(data: &Path, wid: &str, l: &Link) -> bool {
+    if l.session || l.paused {
+        return false;
+    }
     // Until the pick the user may still compare a mockup's variants.
     let comparing = mockup::state(data, wid).is_some_and(|m| m["picked"].is_null());
-    if comparing || !result::told(data, &l.parent, wid, &l) {
-        return Ok(None);
+    if comparing || !result::told(data, &l.parent, wid, l) {
+        return false;
     }
     // Written isn't in: a parent at work or waiting on the user takes it after. A held one is.
     let coming = |r: &result::Res| {
         r.wid == wid && r.how != "asks" && matches!(r.state.as_str(), "written" | "sent")
     };
-    let on = (result::all(data, &l.parent).iter()).any(|(_, r)| coming(r));
-    Ok((!on).then_some((queue, fence)))
+    !(result::all(data, &l.parent).iter()).any(|(_, r)| coming(r))
 }
 
 /// Ends what a worker that's over left running.

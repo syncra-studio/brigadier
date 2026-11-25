@@ -5,7 +5,7 @@
 //! A job a turn left running is stopped here too, alone [D105].
 
 use crate::{arg, flag, has, index, owner, workers};
-use brigadier_core::{self as core, fold, projects, session};
+use brigadier_core::{self as core, fold, projects, session, session::Guard};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::fs;
@@ -224,7 +224,7 @@ fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<V
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))
-        .and_then(|()| session::archive(spec, with, || stop(data, id, "archive")))?;
+        .and_then(|()| session::archive(spec, with, Guard::Chat, || stop(data, id, "archive")))?;
     // Its finished workers go too; one at work keeps its own, and goes when it finishes.
     let stayed = freed::archive(data, id, true);
     // Its tab groups go, its own and a worker's in its parent's row: the tabs stay the user's [D901 D909].

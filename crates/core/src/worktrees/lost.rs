@@ -3,6 +3,7 @@
 
 use super::{copy, git, live, read};
 use crate::{Spec, load, projects, session, share};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs;
@@ -150,9 +151,31 @@ fn hidden(path: &Path) -> io::Result<Vec<String>> {
         .collect())
 }
 
-/// Whether freeing `dir`'s worktree loses nothing but what is made again: stricter than the confirm's
-/// list, which the user reads, as `dist` may hold a release, and a repository inside its own work.
-pub fn lossless(dir: &Path, picks: &[String]) -> io::Result<bool> {
+/// What freeing a worktree may take beyond what is made again; its record, so one cut short keeps to it.
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Guard {
+    /// A chat's own: what its archive's confirm names, and what git holds.
+    Chat,
+    /// A worker's with it: the same, but no repository inside, which the confirm doesn't name.
+    Named,
+    /// Nothing: nobody was asked.
+    Lossless,
+}
+
+/// Whether `guard` lets `dir`'s worktree be freed; one that can't be told stays.
+pub fn may_go(dir: &Path, picks: &[String], guard: Guard) -> bool {
+    match guard {
+        Guard::Chat => true,
+        Guard::Named => keeps_none(dir, picks, false).unwrap_or(false),
+        Guard::Lossless => keeps_none(dir, picks, true).unwrap_or(false),
+    }
+}
+
+/// Whether the worktree holds no repository, whose work git here doesn't see, and, `all`, nothing
+/// else freeing it loses that isn't made again: stricter than the confirm's list, which the user
+/// reads, as `dist` may hold a release.
+fn keeps_none(dir: &Path, picks: &[String], all: bool) -> io::Result<bool> {
     let Some(path) = read(dir)?.and_then(|o| live(&o).map(Path::to_path_buf)) else {
         return Ok(true);
     };
@@ -161,7 +184,7 @@ pub fn lossless(dir: &Path, picks: &[String]) -> io::Result<bool> {
         let at = path.join(rel);
         at.ends_with(".DS_Store") || made.iter().any(|m| at.starts_with(m))
     };
-    if !lost_in(dir, picks, &again)?.is_empty() {
+    if all && !lost_in(dir, picks, &again)?.is_empty() {
         return Ok(false);
     }
     made.push(path.join(".git"));

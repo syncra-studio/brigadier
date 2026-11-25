@@ -16,8 +16,9 @@ use std::{fs, io};
 
 mod litter;
 mod sweep;
-pub use litter::{built, tidy, unbuild, unbuilt};
+pub use litter::{built, may_take, own, tidy, unbuild, unbuilt};
 pub use sweep::{archives, sweep};
+pub use worktrees::lost::Guard;
 
 /// The operation under way (`op`: archive, restore or delete), the delete's branch choice, and
 /// what a delete couldn't remove.
@@ -97,7 +98,13 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
 /// `with`: a Brigade's sub-session or a chat's worker going with it, so its restore brings this back [D3111].
-pub fn archive(spec: &Spec, with: bool, stop: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+/// What `guard` keeps stays in its worktree, archived all the same.
+pub fn archive(
+    spec: &Spec,
+    with: bool,
+    guard: Guard,
+    stop: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
     if spec.dir.join(ARCHIVED).exists() {
         return Ok(());
@@ -107,7 +114,7 @@ pub fn archive(spec: &Spec, with: bool, stop: impl FnOnce() -> io::Result<()>) -
         true => write_atomic(&spec.dir.join(WITH), b"")?,
         false => clear(&spec.dir, WITH)?,
     }
-    record(&spec.dir, &json!({"op": "archive"}))?;
+    record(&spec.dir, &json!({"op": "archive", "guard": guard}))?;
     // A host that won't exit may still be working in the worktree: nothing goes, nothing is left to finish.
     if let Err(e) = stop() {
         clear(&spec.dir, INTENT)?;
@@ -142,9 +149,13 @@ fn shared_claim(data: &Path, spec: &Spec, rec: &Path) -> bool {
 fn finish_archive(spec: &Spec) -> io::Result<()> {
     let dir = &spec.dir;
     let (others, _held) = sharers(spec)?;
+    // None: an archive cut short by an older build, which had but the chat's own.
+    let guard = intent(dir).and_then(|i| serde_json::from_value(i["guard"].clone()).ok());
+    let may = litter::guarded(spec, guard.unwrap_or(Guard::Chat));
     // Another still working there keeps the folder; the last user archived frees it [D1080].
-    let holder =
-        (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists())).then(|| holder(spec, &others));
+    let holder = (!others.iter().any(|o| !o.dir.join(ARCHIVED).exists()))
+        .then(|| holder(spec, &others))
+        .filter(|rec| may(rec));
     // A folder chat's claims go too, each as a worktree does, its work kept on its branch [D3105].
     // One another session works in ("Existing worktree"), archived too, stays: that session's
     // restore couldn't bring it back [D1080].
@@ -155,7 +166,7 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
         .and_then(|()| {
             crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
                 let _one = worktrees::lock(rec)?;
-                if shared_claim(&data, spec, rec) {
+                if shared_claim(&data, spec, rec) || !may(rec) {
                     return Ok(());
                 }
                 let was = worktrees::present(rec);

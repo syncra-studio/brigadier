@@ -114,24 +114,8 @@ fn rest(data: &Path, specs: &[Spec]) -> Vec<PathBuf> {
     top.chain(gone).collect()
 }
 
-/// Each worktree it made, with the project's include rules; a folder chat's claims have none.
-fn picked(data: &Path, spec: &Spec) -> Vec<(PathBuf, Vec<String>)> {
-    let project = spec.project.as_deref();
-    let picks = (project.and_then(|p| projects::get(data, p).ok()))
-        .map(|p| p.include)
-        .unwrap_or_default();
-    (records(spec).into_iter())
-        .map(|rec| match rec == spec.dir {
-            true => (rec, picks.clone()),
-            false => (rec, vec![]),
-        })
-        .collect()
-}
-
 fn built(data: &Path, spec: &Spec) -> Vec<PathBuf> {
-    (picked(data, spec).iter())
-        .flat_map(|(rec, picks)| worktrees::lost::rebuilt(rec, picks).unwrap_or_default())
-        .collect()
+    session::built(data, spec).unwrap_or_default()
 }
 
 fn measure(data: &Path, spec: &Spec, kind: &str) -> Size {
@@ -205,34 +189,28 @@ fn state(data: &Path, spec: &Spec, all: &[procs::Proc]) -> State {
     let made = records(spec);
     // Anything git can't answer counts as unmerged, so it stays.
     let unmerged = !made.is_empty() && !matches!(worktrees::unlanded(&spec.dir), Ok(None));
-    let link = workers::link(data, id).filter(|l| !l.session);
     // Another session working in one of its folders keeps them all.
-    let shared = || {
-        (made.iter().filter_map(|r| worktrees::folder(r)))
-            .any(|f| !share::in_folder(data, &f, Some(id)).is_empty())
-    };
+    let alone = || session::own(data, spec).len() == made.len();
     let mut goes = BTreeMap::new();
     match (working || moving, archived) {
         (true, _) => {}
         (_, true) => {
-            // A repository in there may hold work of its own.
-            if !worktrees::lost::repo_inside(&background::tmp(&spec.dir), &[]) {
-                goes.insert("temp", LEFT);
-            }
-            if !made.is_empty() && !shared() {
-                goes.insert("build", LEFT);
-                // A file restore wouldn't bring back is as good as unmerged.
-                let lossless = || {
-                    (picked(data, spec).iter())
-                        .all(|(rec, picks)| worktrees::lost::lossless(rec, picks).unwrap_or(false))
-                };
-                if !unmerged && lossless() {
+            let whole = alone() && session::may_take(data, spec);
+            // One its chat's archive left is archived as a whole, or not at all.
+            if whole || lives[0].0.is_some() {
+                // A repository in there may hold work of its own.
+                if !worktrees::lost::repo_inside(&background::tmp(&spec.dir), &[]) {
+                    goes.insert("temp", LEFT);
+                }
+                if !made.is_empty() && alone() {
+                    goes.insert("build", LEFT);
+                }
+                if !made.is_empty() && whole {
                     goes.insert("worktrees", LEFT);
                 }
             }
         }
-        // Its result says so: one stopped, failed or waiting for an answer may go on.
-        _ if link.is_some_and(|l| l.last["how"] == "finished") && !made.is_empty() && !shared() => {
+        _ if !made.is_empty() && alone() && workers::built_goes(data, id) => {
             goes.insert("build", BUILD);
         }
         _ => {}
@@ -300,44 +278,26 @@ fn disk_free(data: &Path) -> Option<u64> {
     Some(s.f_bavail as u64 * s.f_frsize)
 }
 
-/// Frees `id`'s part of `group`, if it still goes: the kinds that went. Under the session's lock, so
-/// no turn starts meanwhile, and with its idle host ended, so its next message sets up again.
+/// Frees `id`'s part of `group`, if it still goes, as an archive or the worker's end would have: the
+/// kinds that went.
 fn free(data: &Path, group: &str, id: &str) -> io::Result<Value> {
     core::check_id(id)?;
     let spec = core::load(data, id)?;
-    let _one = worktrees::lock(&spec.dir)?;
     let goes = state(data, &spec, &procs::all()).goes;
-    let takes = |kind: &str| goes.get(kind).is_some_and(|g| *g == group);
-    let mut went = vec![];
-    if !["build", "worktrees", "temp"].iter().any(|k| takes(k)) {
-        return Ok(json!({"ok": true, "went": went}));
+    let mut went: Vec<&str> = (goes.into_iter())
+        .filter(|(_, g)| *g == group)
+        .map(|(kind, _)| kind)
+        .collect();
+    match group {
+        _ if went.is_empty() => {}
+        BUILD => drop(workers::unbuilt(data, id)?),
+        _ => crate::sessions::freed::again_of(data, id)?,
     }
-    owner::release(data, id)?;
-    // The build files first, also of a worktree that goes: what's left then goes in a moment.
-    if takes("build") {
-        for path in built(data, &spec) {
-            fs::remove_dir_all(path)?;
-        }
-        for name in ["setup.started", "setup.exit", "setup.log"] {
-            crate::remove(&spec.dir.join(name))?;
-        }
-        went.push("build");
-    }
-    if takes("temp") {
-        match fs::remove_dir_all(background::tmp(&spec.dir)) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
-            _ => went.push("temp"),
-        }
-    }
-    if takes("worktrees") {
-        for rec in records(&spec) {
-            // The session's own is locked already.
-            let _claim = (rec != spec.dir)
-                .then(|| worktrees::lock(&rec))
-                .transpose()?;
-            worktrees::free(&rec)?;
-        }
-        went.push("worktrees");
-    }
+    // What a guard kept meanwhile stays.
+    went.retain(|kind| match *kind {
+        "temp" => !background::tmp(&spec.dir).exists(),
+        "build" => built(data, &spec).is_empty(),
+        _ => records(&spec).is_empty(),
+    });
     Ok(json!({"ok": true, "went": went}))
 }

@@ -4,7 +4,7 @@
 
 use super::{family, stop, unarchived};
 use crate::workers;
-use brigadier_core::{self as core, session};
+use brigadier_core::{self as core, session, session::Guard};
 use brigadier_frames::procs;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -42,10 +42,15 @@ pub(super) fn finished(data: &Path, id: &str, all: &[procs::Proc]) -> Vec<String
 /// The caller holds `id`'s family lock.
 pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
     let mut stayed = vec![];
+    // Its confirm named what theirs lose; later nobody is asked.
+    let guard = match new {
+        true => Guard::Named,
+        false => Guard::Lossless,
+    };
     let all = procs::all();
     let gone = finished(data, id, &all);
     for wid in &gone {
-        if let Err(e) = one(data, wid) {
+        if let Err(e) = one(data, wid, guard) {
             let dir = core::session_dir(data, wid);
             let title =
                 core::load(data, wid).map_or(dir.display().to_string(), |s| core::share::title(&s));
@@ -62,13 +67,13 @@ pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
 }
 
 /// One worker's archive, unless it's at work again.
-fn one(data: &Path, wid: &str) -> io::Result<()> {
+fn one(data: &Path, wid: &str, guard: Guard) -> io::Result<()> {
     let spec = core::load(data, wid)?;
     crate::agent::new::settle(data, wid)?;
     crate::rewind::settled(data, &spec)?;
     core::git::recover::settled(data, wid)?;
     let works = || workers::at_work(data, wid, &procs::all());
-    let done = session::archive(&spec, true, || match works() {
+    let done = session::archive(&spec, true, guard, || match works() {
         // Under its lock, so no turn starts after the look.
         true => Err(io::Error::other("it's at work")),
         false => stop(data, wid, "archive"),
@@ -125,6 +130,23 @@ pub(crate) fn pass(data: &Path, wid: &str, row: &Value) {
     std::thread::spawn(move || again(&data, &root));
 }
 
+/// Free up space's: what its archive, or its chat's, left of `id`.
+pub(crate) fn again_of(data: &Path, id: &str) -> io::Result<()> {
+    let spec = core::load(data, id)?;
+    let Some((_, root)) = lead(data, id) else {
+        return session::tidy(&spec);
+    };
+    let _family = workers::family_lock(data, &root)?;
+    if lead(data, id).is_none() {
+        return Ok(());
+    }
+    match session::lifecycle(&spec.dir) {
+        (Some(_), _) => session::tidy(&spec),
+        (None, Value::Null) => one(data, id, Guard::Lossless),
+        _ => Ok(()),
+    }
+}
+
 /// What an archive of `id` before left: its finished workers, and what they kept of it.
 fn again(data: &Path, id: &str) {
     let Ok(_family) = workers::family_lock(data, id) else {
@@ -148,6 +170,13 @@ pub fn sweep(data: &Path) {
             continue;
         }
         if lead(data, &id).is_some() {
+            // What a guard kept, once nothing in it is lost.
+            if let Ok(spec) = core::load(data, &id)
+                && !session::own(data, &spec).is_empty()
+                && let Err(e) = session::tidy(&spec)
+            {
+                eprintln!("brigadierd: archived worker {id}: {e}");
+            }
             continue;
         }
         let worker = workers::link(data, &id).filter(|l| !l.session);

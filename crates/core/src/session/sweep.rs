@@ -1,7 +1,7 @@
 //! The daemon's start: an archive, restore or delete cut short finishes or rolls back.
 
 use super::{
-    ARCHIVED, INTENT, clear, delete, finish_archive, holder, intent, shared_claim, sharers,
+    ARCHIVED, Guard, INTENT, clear, delete, finish_archive, holder, intent, shared_claim, sharers,
 };
 use crate::{Spec, data_of, ids, session_dir, worktrees};
 use std::io;
@@ -14,7 +14,13 @@ fn undo_restore(spec: &Spec) -> io::Result<()> {
     if others.iter().any(|o| !o.dir.join(ARCHIVED).exists()) {
         return Ok(());
     }
-    worktrees::free(&holder(spec, &others))?;
+    // What a guard kept stays.
+    let may = super::litter::guarded(spec, Guard::Lossless);
+    let free = |rec: &Path| match may(rec) {
+        true => worktrees::free(rec),
+        false => Ok(()),
+    };
+    free(&holder(spec, &others))?;
     let data = data_of(spec);
     crate::folder::claims(&spec.dir)
         .iter()
@@ -22,7 +28,7 @@ fn undo_restore(spec: &Spec) -> io::Result<()> {
             let _one = worktrees::lock(rec)?;
             match shared_claim(&data, spec, rec) {
                 true => Ok(()),
-                false => worktrees::free(rec),
+                false => free(rec),
             }
         })
 }

@@ -1,23 +1,75 @@
-//! What an archive takes beyond the worktree: throwaway files, and branches their base holds. Best
-//! effort: what won't go waits for the daemon's next start, or delete.
+//! What an archive takes beyond the worktree: build output, throwaway files, and branches their base
+//! holds. One routine and one set of guards for the archive, the daemon's start and Free up space.
+//! Best effort: what won't go waits for the daemon's next start, or delete.
 
 use super::{ARCHIVED, SETUP, clear, holder, lifecycle, shared_claim, sharers};
-use crate::worktrees::{self, lost};
-use crate::{Spec, adapters, as_run, check_id, projects, share};
+use crate::worktrees::{
+    self,
+    lost::{self, Guard},
+};
+use crate::{Spec, adapters, as_run, check_id, data_of, projects, share};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+/// The project's include rules, which a restore copies by into each of its worktrees.
+fn picks(data: &Path, spec: &Spec) -> Vec<String> {
+    (spec.project.as_deref())
+        .and_then(|id| projects::get(data, id).ok())
+        .map(|p| p.include)
+        .unwrap_or_default()
+}
+
+/// Whether `guard` lets a worktree of `spec`'s be freed.
+pub(super) fn guarded(spec: &Spec, guard: Guard) -> impl Fn(&Path) -> bool {
+    let picks = picks(&data_of(spec), spec);
+    move |rec| lost::may_go(rec, &picks, guard)
+}
+
+/// Its worktrees in place, its own and its claims', by record: those no other session needs.
+pub fn own(data: &Path, spec: &Spec) -> Vec<PathBuf> {
+    let others = share::others(data, spec);
+    let alone = others.iter().all(|o| o.dir.join(ARCHIVED).exists());
+    let claims = crate::folder::claims(&spec.dir).into_iter();
+    let claims = claims
+        .map(|(_, rec)| rec)
+        .filter(|r| !shared_claim(data, spec, r));
+    (alone.then(|| spec.dir.clone()).into_iter().chain(claims))
+        .filter(|rec| worktrees::present(rec))
+        .collect()
+}
+
+/// Whether nothing is lost if all its worktrees go: each holds only what is made again or git has,
+/// its work merged. One another needs, or git can't answer for, stays.
+pub fn may_take(data: &Path, spec: &Spec) -> bool {
+    let may = guarded(spec, Guard::Lossless);
+    matches!(worktrees::unlanded(&spec.dir), Ok(None)) && own(data, spec).iter().all(|rec| may(rec))
+}
+
 /// Takes them. The caller holds `lock`; `freed`: whose record held its folder, if it went.
 pub(super) fn drop(spec: &Spec, freed: Option<&Path>) {
     let dir = &spec.dir;
-    let _ = crate::background::drop_temp(dir);
+    // Of what a guard kept.
+    let gone = built(&data_of(spec), spec).and_then(|all| match all.is_empty() {
+        true => Ok(()),
+        false => unbuild(spec, &all),
+    });
+    if let Err(e) = gone.and_then(|()| unbuilt(dir)) {
+        eprintln!("{}: {e}", dir.display());
+    }
+    // A repository in there may hold work of its own.
+    if !lost::repo_inside(&crate::background::tmp(dir), &[]) {
+        let _ = crate::background::drop_temp(dir);
+    }
     if let Ok(f) = crate::fold(dir, true) {
         for (backend, account, id) in &f.fold.convs {
             let Some(a) = adapters::get(backend).filter(|_| check_id(id).is_ok()) else {
                 continue;
             };
             for path in a.scratch(&as_run(spec, &f.fold, backend, Some(account)), id) {
+                if lost::repo_inside(&path, &[]) {
+                    continue;
+                }
                 let _ = fs::remove_dir_all(&path);
                 // The project's, once empty.
                 let _ = path.parent().map(fs::remove_dir);
@@ -37,34 +89,35 @@ pub(super) fn drop(spec: &Spec, freed: Option<&Path>) {
     }
 }
 
-/// The same for one archived before: its branch may have gone in since, or what worked from it gone.
+/// The same for one archived before: its branch may have gone in since, or what worked from it gone;
+/// and the worktree a guard kept, once nothing in it is lost.
 pub fn tidy(spec: &Spec) -> io::Result<()> {
     let _one = worktrees::lock(&spec.dir)?;
     if !matches!(lifecycle(&spec.dir), (Some(_), Value::Null)) {
         return Ok(());
     }
+    let data = data_of(spec);
     let (others, _held) = sharers(spec)?;
+    if may_take(&data, spec) {
+        for rec in own(&data, spec) {
+            // The session's own is locked already.
+            let _claim = (rec != spec.dir)
+                .then(|| worktrees::lock(&rec))
+                .transpose()?;
+            worktrees::free(&rec)?;
+        }
+    }
     let gone = others.iter().all(|o| lifecycle(&o.dir).0.is_some());
     drop(spec, gone.then(|| holder(spec, &others)).as_deref());
     Ok(())
 }
 
-/// What a finished worker's worktree, and its claims, would lose: the build output that makes itself
-/// again. None while another session works in that folder.
+/// What its worktrees would lose as a finished worker's: the build output that makes itself again.
 pub fn built(data: &Path, spec: &Spec) -> io::Result<Vec<PathBuf>> {
-    let picks = (spec.project.as_deref())
-        .and_then(|id| projects::get(data, id).ok())
-        .map(|p| p.include)
-        .unwrap_or_default();
-    let mut all = match (share::others(data, spec).iter()).all(|o| o.dir.join(ARCHIVED).exists()) {
-        true => lost::rebuilt(&spec.dir, &picks)?,
-        false => vec![],
-    };
-    for (_, rec) in crate::folder::claims(&spec.dir) {
-        let _one = worktrees::lock(&rec)?;
-        if !shared_claim(data, spec, &rec) {
-            all.extend(lost::rebuilt(&rec, &picks)?);
-        }
+    let picks = picks(data, spec);
+    let mut all = vec![];
+    for rec in own(data, spec) {
+        all.extend(lost::rebuilt(&rec, &picks)?);
     }
     Ok(all)
 }
