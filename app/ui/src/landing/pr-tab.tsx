@@ -13,9 +13,6 @@ import { Summary } from "./pr-summary";
 import { PrToolbar } from "./pr-toolbar";
 import type { PrComment, PullRequest } from "./pull-requests";
 
-/** PRs whose tab opens on Changes: the summary card's Code changes [D167]. shortcut: a tab already open stays where it is. */
-export const codeFirst = new Set<string>();
-
 /** Why Merge can't be pressed now; null when it can [D164]. */
 export function mergeBlocked(pr: PullRequest): string | null {
   if (pr.state === "closed") return "Reopen this pull request before merging";
@@ -67,8 +64,8 @@ export function PrTab({
     setTick((n) => n + 1);
   };
   // Changes is drawn once first opened, then kept laid out under Summary, so going back to it is only a repaint [D656].
-  const [tab, setTab] = useState<"summary" | "code">(() => (codeFirst.delete(target) ? "code" : "summary"));
-  const [coded, setCoded] = useState(tab === "code");
+  const [tab, setTab] = useState<"summary" | "code">("summary");
+  const [coded, setCoded] = useState(false);
   const [merging, setMerging] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -220,9 +220,6 @@ impl Pr {
                 "conflicts": conflicts})),
             "mergeState": pr["mergeStateStatus"].as_str().map(str::to_lowercase),
             "head": pr["headRefOid"], "branch": pr["headRefName"], "base": pr["baseRefName"],
-            // Its branch in another repository, or deleted: Bring to agent fetches it by number [D674].
-            "fork": pr["headRef"].is_null() || !(pr["headRepository"]["nameWithOwner"].as_str())
-                .is_some_and(|h| h.eq_ignore_ascii_case(&repo.path)),
             // Its diff is the session's own branch's, which the Review tab shows [D204].
             "onBranch": mine,
             "openedBy": author, "openedAtMs": ms(&pr["createdAt"]),

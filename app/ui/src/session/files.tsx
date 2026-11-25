@@ -58,7 +58,7 @@ export function saidDraft(owner: string, draft: Draft, from: number): { text: st
   return { text, images: n, files: [...new Set(ids)].flatMap((id) => all.get(id) ?? []).map(({ id, name, mime }) => ({ id, name, mime, bytes: 0, pasted: mime === "text/plain" && !draft.attachmentIds.includes(id) })) };
 }
 
-/** A file put in `owner`'s folder from elsewhere (a PR sent to the agent [D699]), known to its composer if that has listed them. */
+/** A file put in `owner`'s folder from elsewhere (a PR's Fix [D174]), known to its composer if that has listed them. */
 export const stored = (owner: string, id: string, name: string) => owners.has(owner) && set(owner, id, { id, name, mime: "text/plain", state: "ready", url: urlOf(owner, id) });
 
 export const base64 = (buffer: ArrayBuffer) => {

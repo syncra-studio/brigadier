@@ -1,4 +1,4 @@
-//! A session's branch renamed in its record [D35, D1021], and a PR's fetched to work on [D674].
+//! A session's branch renamed in its record [D35, D1021].
 
 use super::{Owned, err, git, read, write};
 use std::io;
@@ -44,25 +44,6 @@ pub fn rename_held(dir: &Path, new: &str) -> io::Result<()> {
     // Tracking moved with the name; a branch never published has none.
     let _ = git(path, &["branch", "--unset-upstream", new]);
     Ok(())
-}
-
-/// Fetches PR `number`'s branch `head` from `origin` for a session to work on [D674]: its own name,
-/// tracking the host's so a push updates the PR, kept as it is when it's here already. A `fork`'s
-/// PR comes by its number as `pr-<number>`, whose pushes don't reach the fork.
-pub fn fetch_pr(repo: &Path, number: u64, head: &str, fork: bool) -> io::Result<String> {
-    if fork {
-        let local = format!("pr-{number}");
-        let spec = format!("refs/pull/{number}/head:refs/heads/{local}");
-        git(repo, &["fetch", "--quiet", "origin", &spec])?;
-        return Ok(local);
-    }
-    let spec = format!("+refs/heads/{head}:refs/remotes/origin/{head}");
-    git(repo, &["fetch", "--quiet", "origin", &spec])?;
-    if !has_branch(repo, head) {
-        let from = format!("origin/{head}");
-        git(repo, &["branch", "--quiet", "--track", head, &from])?;
-    }
-    Ok(head.into())
 }
 
 /// Whether the branch exists in the repository.

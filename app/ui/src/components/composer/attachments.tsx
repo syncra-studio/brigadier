@@ -105,7 +105,7 @@ export function InlineAttachment({
 }) {
   const attachment = useContext(AttachmentsContext).get(id);
   const n = useContext(ChipNumbers).get(id);
-  // A paste of a name of its own goes by it: a PR sent to the agent's "Pull request #7" [D699].
+  // A paste of a name of its own goes by it: a PR's "Merge conflicts – PR #7" [D171].
   const named = paste && attachment && attachment.name !== "Pasted text.txt" ? attachment.name.replace(/\.txt$/, "") : null;
   const label = named ?? (paste ? (preview ? `Pasted text: ${preview}…` : `Pasted text${n ? ` #${n}` : ""}`) : `Image${n ? ` #${n}` : ""}`);
   const busy = attachment?.state === "uploading";

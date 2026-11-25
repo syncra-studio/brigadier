@@ -25,8 +25,6 @@ export type PullRequest = {
   /** What stands in the way of merging; null when nothing does. */
   blockers: { failedChecks: number; changesBy: string[]; conflicts: boolean } | null;
   branch: string;
-  /** Its branch is in another repository (a fork's, or deleted): Send to agent takes it by number [D674]. */
-  fork?: boolean;
   base: string;
   openedBy: string;
   /** The author's, the repository's and the head branch's pages on the host; absent in a read kept before them [D656]. */

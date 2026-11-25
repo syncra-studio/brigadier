@@ -78,9 +78,7 @@ export function HomeDraft() {
   const spot = draft.spot?.project === id ? draft.spot : undefined;
   const known = <T,>(picked: string | undefined, list: T[] | undefined, same: (each: T) => boolean) => (picked && (!list || list.some(same)) ? picked : null);
   // A pick the repository no longer has falls back; until it's read, the pick stands.
-  // A PR sent to the agent: a new worktree on its branch, until another branch or place is picked [D699].
-  const pr = draft.pr?.project === id && workIn === "worktree" ? draft.pr : undefined;
-  const base = pr ? (pr.fork ? `pr-${pr.number}` : pr.branch) : known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
+  const base = known(spot?.base, repo.info?.branches, (each) => each === spot?.base);
   const picked = once?.worktree ?? spot?.worktree;
   // A session's own worktree isn't one Home offers, so its one-off is taken as it is [D152].
   const worktree = once?.worktree ?? known(picked, repo.info?.worktrees, (each) => each.path === picked);
@@ -136,9 +134,8 @@ export function HomeDraft() {
   return (
     <>
       <HomeView
-        // Drawn again as a PR is sent to the agent, so its field shows the draft with the PR's chip [D699].
-        // and again on another draft's words: the composer reads `initial` as it mounts.
-        key={`${key}:${draft.pr ? draft.focus : 0}`}
+        // Drawn again on another draft's words: the composer reads `initial` as it mounts.
+        key={key}
         name={name}
         review={draft.review && prName(draft.review)}
         // Its project is looked up first: until then it can't start.
@@ -156,7 +153,7 @@ export function HomeDraft() {
         onWorkIn={(workIn) => setHomeDraft({ workIn, once: undefined })}
         repo={repo}
         base={base}
-        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined }, pr: undefined, once: undefined })}
+        onBase={(branch) => id && setHomeDraft({ spot: { project: id, base: branch, worktree: worktree ?? undefined }, once: undefined })}
         worktree={worktree}
         worktreeName={once?.name}
         onWorktree={(path) => id && setHomeDraft({ spot: { project: id, base: base ?? undefined, worktree: path }, once: undefined })}
@@ -183,7 +180,7 @@ export function HomeDraft() {
         onDraft={(text) => keepDraft(daemonRun, key, text)}
         loadDraft={() => loadDraft(daemonRun, key)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, pr, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade, draft.overnight)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade, draft.overnight)}
       />
       <SetUpAgentDialog
         name={setUp}

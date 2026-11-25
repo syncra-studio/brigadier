@@ -1,4 +1,4 @@
-//! `brigadier host <id> view|list|files|search|project|session`: a session's PRs through its git host [D1030]. `view <n>`
+//! `brigadier host <id> view|list|files|search|project`: a session's PRs through its git host [D1030]. `view <n>`
 //! reads PR n whole, `view <n> kept` answers its last read at once [D207]; `list` reads all the
 //! session's PRs now (Check again); `files <n>` is its Files changed, `files <n> kept` the last
 //! read [D231]; `search <query>...` is the tab's other views, GitHub's search of the repository's
@@ -7,8 +7,7 @@
 //! menus [D243]; `runs <query>... [--kept]`,
 //! `run <id> [kept]`, `job-log <job>` and `rerun <id> <all|failed>` are the Actions tab [D264];
 //! `sides <n> <path>` is a file's two sides whole [D262]; `project <owner/name>` is the project
-//! whose repository that is, or null, and `<project> session <branch>` its session whose worktree
-//! is on that branch, or null, for Bring to agent [D674].
+//! whose repository that is, or null, for a PR's review chat [D198].
 //! `<id>` may be `@`, the Code Review page, with no session or project: its PRs are named
 //! `host/owner/name#n` and its search has no repository scope [D159]. The PR page's writes and the
 //! reads behind them (`users`, `stack`, `generated`) take that name only [D161, D164–D166]; a
@@ -74,15 +73,6 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
     if arg(args, 2)? == "project" {
         return Ok(json!({"ok": true, "project": host::project_of(data, arg(args, 3)?)}));
     }
-    if arg(args, 2)? == "session" {
-        let on = Some(arg(args, 3)?);
-        let held = (core::projects::sessions(data, id)?.into_iter()).find(|s| {
-            let dir = core::session_dir(data, s);
-            core::worktrees::present(&dir)
-                && core::worktrees::branch(&dir).ok().flatten().as_deref() == on
-        });
-        return Ok(json!({"ok": true, "session": held}));
-    }
     if let Some(done) = actions(data, id, args)? {
         return Ok(done);
     }
@@ -129,45 +119,6 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => return Err(io::Error::other(super::USAGE)),
     })
-}
-
-/// Send to agent's `start --pr <n> --head <branch> [--fork] [--title T] [--url U]`: the PR's own
-/// branch, fetched, which the new session's worktree is on [D674], the session named `T` after the
-/// PR [D689] and its page `U` in a browser tab behind Chat [D699]. None without `--pr`, and in a
-/// folder of repositories.
-pub(super) fn pr_branch(
-    data: &Path,
-    args: &[String],
-    project: &brigadier_core::projects::Project,
-    spec: &core::Spec,
-) -> io::Result<Option<String>> {
-    let Some(n) = super::flag(args, "--pr") else {
-        return Ok(None);
-    };
-    if let Some(title) = super::flag(args, "--title") {
-        let title = super::title::clean(title).map_err(io::Error::other)?;
-        core::write_atomic(&spec.dir.join("title"), title.as_bytes())?;
-    }
-    if let Some(url) = super::flag(args, "--url") {
-        let open = [
-            "tabs",
-            &spec.id,
-            "open",
-            &format!("t-pr-{n}"),
-            "browser",
-            url,
-            "--behind",
-        ];
-        // The tabs are extras: a failure here never stops the session from starting.
-        let _ = super::tabs::run(data, &open.map(String::from));
-    }
-    if !project.kind.is_empty() {
-        return Ok(None);
-    }
-    let n = n.parse().map_err(|_| io::Error::other("not a PR number"))?;
-    let head = super::flag(args, "--head").unwrap_or_default();
-    let fork = super::has(args, "--fork");
-    brigadier_core::worktrees::fetch_pr(Path::new(&project.folder), n, head, fork).map(Some)
 }
 
 /// `n`, or `owner/name#n` for another repository's PR [D213]; the Code Review page's are

@@ -107,15 +107,7 @@ pub fn make(src: &Spec, new: &Spec, repos: Vec<Repo>, title: &str) -> io::Result
         };
         let base = worktrees::base(&r.rec);
         let head = shot.head.as_deref();
-        worktrees::create(
-            &claimer,
-            &repo,
-            base.as_deref(),
-            head,
-            title,
-            Some(&path),
-            None,
-        )?;
+        worktrees::create(&claimer, &repo, base.as_deref(), head, title, Some(&path))?;
         folder::mark(&rec, None)?;
         let kept = write_into(&store, &shot, &path)?;
         left.extend(kept.into_iter().map(|p| format!("{}/{p}", r.name)));

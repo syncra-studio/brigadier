@@ -4,7 +4,9 @@ import { openLink } from "../browser/links";
 import { ask, useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { ASK } from "../pull-requests/review";
-import { askInChat } from "./send-to-agent";
+import { liveReviewChat } from "../pull-requests/route";
+import { HOME, isRef } from "../shell/tab-store";
+import { askInChat } from "./ask-in-chat";
 import { useHost } from "./host";
 import { PrTab } from "./pr-tab";
 import { FRESH_MS } from "./pr-words";
@@ -23,6 +25,8 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   // A full name's host goes: rows name their repository `owner/name`.
   const repo = hash < 0 ? null : target.slice(0, hash).split("/").slice(-2).join("/");
   const number = Number(target.slice(hash + 1));
+  // In a chat's own tab it's read as on the Pull Requests page, but the chat doesn't know which PR that is.
+  const named = isRef(target) && owner !== HOME && owner !== liveReviewChat(target);
   const { daemon, rows } = useDaemon();
   const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);
   const [pr, setPr] = useState<PullRequest>();
@@ -64,7 +68,7 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       latest.current = reply.ok && reply.pr && (!latest.current || reply.pr.checkedAtMs > (latest.current.checkedAtMs ?? 0)) ? reply.pr : latest.current;
       if (stale()) read();
     });
-  }, [daemon, host, target, row?.viewedAtMs]);
+  }, [daemon, host, target, row?.viewedAtMs, row?.updatedAtMs, row?.health]);
   useEffect(() => {
     if (!daemon) return;
     const focus = () => stale() && read();
@@ -80,13 +84,17 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       error={error}
       checking={checking}
       onCheck={read}
-      onReview={(instructions) => void askInChat(owner, null, { text: instructions ? `${ASK}\n\n${instructions}` : ASK })}
+      onReview={(instructions) => void askInChat(owner, null, { text: [ASK, instructions, named && pr?.url].filter(Boolean).join("\n\n") })}
       onFix={(focus, check) => pr && askInChat(owner, check ? { ...pr, checks: pr.checks.filter((each) => each.id === check) } : pr, { focus }).catch((cause) => setError(errorText(cause)))}
       onAddToChat={(c) => void askInChat(owner, null, { text: `${c.author}${c.path ? ` on ${c.path}${c.line === null ? "" : `:${c.line}`}` : ""} (${c.url ?? pr?.url}):\n${c.body.split("\n").map((line) => `> ${line}`).join("\n")}\n\n` })}
       sends={{
         now: Date.now(),
         offline: !daemon,
-        onChanged: read,
+        onChanged: () => {
+          read();
+          // A named PR's read leaves the chat's card as it was: its watch reads it now.
+          if (named) ask({ op: "git_refresh", session: owner });
+        },
         onOpen: (what) => {
           const url =
             what === "pr"
