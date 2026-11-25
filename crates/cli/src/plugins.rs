@@ -180,7 +180,7 @@ fn list(data: &Path) -> Value {
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
                 "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
                 "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
-                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found"), "folders": own_folders})
+                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found"), "repo": i["repo"] == true, "folders": own_folders})
         })
         .collect();
     json!({"ok": true, "items": shown, "projects": projects, "catalog": catalog::page(&items)})

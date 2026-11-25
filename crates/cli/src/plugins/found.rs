@@ -59,6 +59,7 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         // One from a project's own file (`.mcp.json`) is the repo's word, not the user's: it
         // starts off, and switching it on is their yes [D418].
         w["on"] = (o["enabled"] != false && o["repo"] != true).into();
+        w["repo"] = (o["repo"] == true).then_some(true).into();
         want.push(w);
     }
     // Skills from one source are one skillset [D720]: two or more whose SKILL.md names the same

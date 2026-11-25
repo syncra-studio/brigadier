@@ -13,7 +13,7 @@ import { errorText, run, useAgents } from "../onboarding/api";
 import { ChevronDown, Folder, Folders, Mcp, Reload, ToolsSkills } from "../icons";
 import { SearchField } from "./archived-toolbar";
 import { SettingsPage, SettingsSection } from "./parts";
-import { type AddFirst, AddDialog, type Draft, InstallDialog, RemoveDialog } from "./plugins-dialogs";
+import { type AddFirst, AddDialog, type Draft, InstallDialog, RemoveDialog, StartDialog } from "./plugins-dialogs";
 import { BrowseTab, entryRow, type Found, PickGrid, SearchResults } from "./plugins-browse";
 import { MyTab } from "./plugins-mine";
 import { DetailsPage, type Device, type SignInStart } from "./plugins-details";
@@ -46,6 +46,8 @@ export type Item = {
   /** The catalog entry it is or came with [D572]; `with` only on a skill that came with a service. */
   catalog?: string | null;
   with?: string | null;
+  /** From a project's own file (`.mcp.json`): switching it on asks first [D418]. */
+  repo?: boolean;
   /** Found on this machine [D721]: where ("In Claude Code's settings"), and the skillset of its source [D720]. */
   from?: string | null;
   /** Project ids where it was found; "" means at home, independent of where it is switched on. */
@@ -129,7 +131,7 @@ export function chipOf(value: Plugins, item: Item): string | null {
 export const matches = (query: string, ...texts: string[]) => texts.join(" ").toLowerCase().includes(query.trim().toLowerCase());
 
 /** A dialog open over the page; the gallery opens one at first. */
-export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "remove"; key: string } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
+export type Open = { type: "add"; remote: boolean; first?: AddFirst; added?: () => void } | { type: "remove"; key: string } | { type: "start"; key: string } | { type: "catalog"; entry: Entry } | { type: "view"; key: string; title: string; kind: Kind; at?: string };
 
 /** A catalog entry's mark: its logo. */
 export const markOf = (entry: Entry) => ({ kind: entry.kind, name: entry.name, detail: entry.url ?? "", logo: entry.id });
@@ -208,6 +210,8 @@ export function PluginsPage({
   const withItem = (key: string, patch: Partial<Item>) =>
     shown && { ...shown, items: shown.items.map((item) => (item.key === key || (item.kind === "skill" && key === `skillset:${item.with ?? item.set}`) ? { ...item, ...patch } : item)) };
   const set = (key: string, patch: { on?: boolean; scope?: Scope }) => void change(withItem(key, patch)!, () => actions.set(key, patch));
+  // A project's own server names a program: switching it on asks first, as adding one does [D418].
+  const onSwitch = (key: string, on: boolean) => (on && shown?.items.find((each) => each.key === key)?.repo ? setOpen({ type: "start", key }) : set(key, { on }));
   const remove = (key: string) => {
     if (!shown) return Promise.resolve(false);
     // The list shows at once (the item is gone from it); the route follows once Rust agrees, so a refusal is said here.
@@ -285,7 +289,7 @@ export function PluginsPage({
         signing={signing}
         onInstall={() => entry && onEntry.onInstall(entry)}
         onScope={(scope) => item && set(item.key, { scope })}
-        onSwitch={(on) => item && set(item.key, { on })}
+        onSwitch={(on) => item && onSwitch(item.key, on)}
         onRemove={() => item && setOpen({ type: "remove", key: item.key })}
         onView={(key, kind, at) => setOpen({ type: "view", key, kind, at, title: entry?.name ?? item?.name ?? key })}
       />
@@ -343,13 +347,14 @@ export function PluginsPage({
           ) : tab === "browse" ? (
             <BrowseTab value={shown} onEntry={onEntry} onCategory={(name) => toCategory(name)()} />
           ) : (
-            <MyTab value={shown} kind={tab} onOpen={onDetail} onSwitch={(key, on) => set(key, { on })} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
+            <MyTab value={shown} kind={tab} onOpen={onDetail} onSwitch={onSwitch} onBrowse={() => setTab((lastTab = "browse"))} onAdd={() => toAdd(tab)} />
           )}
         </div>
       </SettingsPage>
     );
   }
   const target = open?.type === "remove" ? shown?.items.find((each) => each.key === open.key) : undefined;
+  const start = open?.type === "start" ? shown?.items.find((each) => each.key === open.key) : undefined;
   return (
     <div className="@container relative flex h-full min-w-0 flex-1">
       {/* Brigadier isn't running: the last page, dimmed, nothing on it reachable. */}
@@ -394,6 +399,7 @@ export function PluginsPage({
         />
       )}
       {open?.type === "view" && <ViewDialog title={open.title} kind={open.kind} at={open.at} read={() => actions.show(open.key)} reveal={(name) => actions.reveal(`skill:${name}`)} onClose={close} />}
+      {start && <StartDialog item={start} onStart={() => (set(start.key, { on: true }), close())} onClose={close} />}
       {target && (
         <RemoveDialog
           item={target}

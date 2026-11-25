@@ -257,6 +257,20 @@ export function RemoveDialog({ item, onRemove, onClose }: { item: Item; onRemove
   );
 }
 
+/** Switching on a server a project's own file names: its command or address, shown first, as Add shows one [D418]. */
+export function StartDialog({ item, onStart, onClose }: { item: Item; onStart: () => void; onClose: () => void }) {
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={`Switch on ${item.name}?`}
+      description={`It comes from a project's own files, not from you. Your agents reach ${item.detail} from this computer, with your permissions.`}
+      confirm="Switch on"
+      onConfirm={onStart}
+    />
+  );
+}
+
 /**
  * Install, a dialog [D571]: Brigadier's mark and its, where it's on (all projects or the ones picked: nothing
  * is on without a pick), Install; then, for a server Brigadier signs in to, the browser's sign-in with Cancel, and
