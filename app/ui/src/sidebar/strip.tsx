@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useRef } from "react";
 
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -37,6 +37,16 @@ export function Strip({ pulls, settings, children }: {
   children?: ReactNode;
 }) {
   const { setOpen } = useSidebar();
+  // Settings, Plugins and Pull Requests unfold the sidebar as they're entered, whichever way; not as one is launched or
+  // reloaded on, nor for a later fold or window change. A click here on the one in front unfolds it too [D236].
+  const page = pulls ? "pulls" : settings === undefined ? null : settings.split("/")[0] === "plugins" ? "plugins" : "settings";
+  const entered = useRef(page);
+  const unfold = useEffectEvent(() => setOpen(true));
+  useEffect(() => {
+    if (entered.current === page) return;
+    entered.current = page;
+    if (page) unfold();
+  }, [page]);
   return (
     <nav aria-label="Strip" className="rail scroll-fade-scope flex h-full shrink-0 flex-col items-center pt-tab-bar pb-1">
       {/* The actions stay put; only the squares between them and the foot scroll, faded at an end while there is more [D284]. */}
@@ -45,7 +55,16 @@ export function Strip({ pulls, settings, children }: {
         <TooltipIconButton look="rail" side="right" tooltip="New chat" onClick={newChat}>
           <ComposeEditSquare />
         </TooltipIconButton>
-        <TooltipIconButton look="rail" side="right" tooltip="Plugins" pressed={settings === "plugins"} onClick={() => openSettings("plugins")}>
+        <TooltipIconButton
+          look="rail"
+          side="right"
+          tooltip="Plugins"
+          pressed={settings === "plugins"}
+          onClick={() => {
+            setOpen(true);
+            openSettings("plugins");
+          }}
+        >
           <Plugin />
         </TooltipIconButton>
         <TooltipIconButton
@@ -54,7 +73,6 @@ export function Strip({ pulls, settings, children }: {
           tooltip="Pull Requests"
           pressed={pulls}
           onClick={() => {
-            // The page and the sidebar with its list, as the toggle shows it [D236].
             setOpen(true);
             window.location.hash = "#pull-requests";
           }}
