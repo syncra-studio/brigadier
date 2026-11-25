@@ -3,7 +3,7 @@
 //! Auto and Full never ask [D903]. An app is the bundle its process runs from, as the kernel says,
 //! so a name, an id or a pid used again never stands for another one. Kept in memory only.
 
-use super::{Sess, Words, apps::past_app, lock, refuse, take};
+use super::{Sess, Words, apps::past_app, lock, refuse, still, take};
 use crate::owner;
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::procs;
@@ -76,7 +76,7 @@ fn name(app: &Path) -> String {
 /// Whether session `me` is at Ask now, and its running turn. Its saved level, held to Ask in a
 /// folder that isn't trusted, and Auto asking for a turn its own check gave no verdict in [D455].
 /// What can't be read is Ask.
-fn level(data: &Path, me: &str) -> (bool, Option<String>) {
+pub(super) fn level(data: &Path, me: &str) -> (bool, Option<String>) {
     let Ok(spec) = core::load(data, me) else {
         return (true, None);
     };
@@ -104,7 +104,7 @@ fn born(data: &Path, chat: &str) -> Option<u64> {
     core::load(data, chat).ok().map(|s| s.created)
 }
 
-fn allowed(data: &Path, chat: &str, app: &Path) -> bool {
+pub(super) fn allowed(data: &Path, chat: &str, app: &Path) -> bool {
     let yes = (lock(&ASKS).yes.get(&(chat.into(), app.into()))).copied();
     yes.is_some() && yes == born(data, chat)
 }
@@ -187,10 +187,9 @@ pub(super) fn gate(
     rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<bool, Value> {
-    match level(data, me).0 {
-        true => asked(data, me, &app_of(pid)?, rows, here),
-        false => Ok(false),
-    }
+    let asks = level(data, me).0 && asked(data, me, &app_of(pid)?, rows, here)?;
+    still::checked(!asks);
+    Ok(asks)
 }
 
 /// Waits for the user's yes to `app`, where it still needs one; false once `me` is past Ask.

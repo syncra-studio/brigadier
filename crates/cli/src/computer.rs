@@ -192,6 +192,9 @@ pub(crate) fn tool(
             return Err(Fail::NotSent("Stopped.".into()));
         }
     }
+    if let Some(why) = verbs::still::closed(name, &args) {
+        return Err(Fail::NotSent(why));
+    }
     let answer = send(
         "tools/call",
         json!({"name": name, "arguments": args}),
@@ -227,6 +230,9 @@ pub(crate) fn own(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Result<Value, String>, Fail> {
     ready(data)?;
+    if let Some(why) = verbs::still::closed(method, &params) {
+        return Err(Fail::NotSent(why));
+    }
     let answer = send(&format!("brigadier/{method}"), params, CALL_WAIT, cancel)?;
     Ok(match answer["error"]["message"].as_str() {
         Some(e) => Err(e.to_string()),

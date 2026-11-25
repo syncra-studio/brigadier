@@ -12,6 +12,7 @@ mod diff;
 mod open;
 mod run;
 mod shot;
+pub(super) mod still;
 mod typing;
 mod web;
 mod window;
@@ -188,6 +189,7 @@ pub fn agent(
     if ["help", "--help"].contains(&w.verb) || w.flags.contains("--help") {
         return json!({"ok": true, "text": HELP});
     }
+    still::begin(data, me);
     // What the launch watch saw since, said once.
     let verb = match w.verb {
         "run" => run::run(data, me, &w, rows, here),

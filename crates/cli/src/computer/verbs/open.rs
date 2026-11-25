@@ -104,6 +104,7 @@ pub(super) fn open(
     if listed.is_none_or(|a| a["running"] == false) {
         launch.arg("--args").args(windowed(bundle));
     }
+    super::still::start(data, me, asked.as_deref())?;
     let sent = launch.output();
     if !sent.as_ref().is_ok_and(|o| o.status.success()) {
         let why = sent.map(|o| {

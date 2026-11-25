@@ -2,7 +2,7 @@
 //! Return, which in an address bar says whether the page changed [D2032].
 
 use super::act::{act, no_keys, token, wait_for_user};
-use super::{Sess, Words, call, cap, refuse, window};
+use super::{Sess, Words, call, cap, refuse, still, window};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -50,7 +50,7 @@ pub(super) fn type_into(
         o.lines().next().is_some_and(|l| l.contains(": refused"))
     });
     if refused && !old.is_empty() {
-        let back = match put_back(data, me, s, &field, &old, here) {
+        let back = match still::undo(|| put_back(data, me, s, &field, &old, here)) {
             Ok(()) => " Its old text is put back.".to_string(),
             Err(why) => cap(&format!(
                 " Its old text isn't put back: {why}. Read it; it was \"{old}\"."
