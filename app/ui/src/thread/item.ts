@@ -98,7 +98,7 @@ export type FileChange = {
 };
 
 /** What an approval asks to do, provider-neutral (the old app's approval kinds). */
-export type ApprovalAction = "command" | "edit" | "network" | "permission" | "plan" | "land" | "message" | "browser" | "other";
+export type ApprovalAction = "command" | "edit" | "network" | "permission" | "plan" | "land" | "message" | "browser" | "computer" | "other";
 
 type Base = {
   id: string;

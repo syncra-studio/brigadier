@@ -2,7 +2,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
-import { Commit, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
+import { Commit, Cursor, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
 import { MentionedWorker } from "../../workers/live";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
@@ -139,6 +139,8 @@ export function describe(approval: PendingApproval): Shown {
       };
     case "browser":
       return { icon: <Globe />, kind: "Browser", title: reason || "Go ahead in the browser?", body: prose, allow: "Go ahead", deny: "Don't" };
+    case "computer":
+      return { icon: <Cursor />, kind: "Computer use", title: reason || "Use this app?", body: prose, allow: "Allow in this chat" };
     default:
       return {
         icon: <Key />,
