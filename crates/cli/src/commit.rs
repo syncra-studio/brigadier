@@ -134,6 +134,9 @@ pub(crate) fn written_for(
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);
+        // It only writes a message: none of the user's skills, servers, plugins or hooks, which
+        // cost it 8k tokens a message on Claude (measured 2026-11-25).
+        run.naked = true;
         run.level = a.can().levels.first().map(|l| l.to_string());
         run.grants = vec![];
     };

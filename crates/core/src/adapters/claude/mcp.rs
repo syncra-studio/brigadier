@@ -158,7 +158,11 @@ fn held(spec: &Spec, cwd: &Path) -> Map<String, Value> {
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     let cwd = Path::new(&spec.cwd);
     if spec.naked {
-        return super::control::naked(argv, held(spec, cwd));
+        // A worker's, not the message writer's (its own folder) or the queue's judge's (no tools).
+        let worker = spec.dir == crate::session_dir(&crate::data_of(spec), &spec.id)
+            && !spec.opts.contains_key("no_tools");
+        let servers = if worker { held(spec, cwd) } else { Map::new() };
+        return super::control::naked(argv, servers);
     }
     let mut off = library(spec, cwd, argv, env);
     let (data, project) = (crate::data_of(spec), spec.project.as_deref());
