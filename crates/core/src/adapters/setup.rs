@@ -94,6 +94,15 @@ pub fn memory(spec: &crate::Spec) -> bool {
     !spec.naked && saved["memory"] == "true"
 }
 
+/// `rest` in the CLI's home for this spec: the account's home when it runs on one, else `default`
+/// under HOME.
+pub fn cli_home(spec: &crate::Spec, default: &str, rest: &str) -> PathBuf {
+    match &spec.account {
+        Some((_, home)) => home.join(rest),
+        None => super::home_path(default).join(rest),
+    }
+}
+
 /// The first line of its `--version`.
 pub fn version(exe: &Path, cwd: &Path) -> Result<String, String> {
     let out = super::probe(exe, cwd, &[], &["--version"], 10)?;

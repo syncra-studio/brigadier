@@ -167,7 +167,9 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     let home = crate::folder::of(spec).map(|p| p.folder);
     if home.is_some() {
         let edit = stop.replace("hook stop", "hook edit");
-        let guard = json!({"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": edit}]});
+        // Every tool but the ones known to only read, so an editor it adds is kept out too; the hook
+        // passes one that names no file.
+        let guard = json!({"matcher": "^(?!(Read|Grep|Glob|LS|LSP|NotebookRead|Bash|WebFetch|WebSearch)$).*", "hooks": [{"type": "command", "command": edit}]});
         if let Some(hooks) = settings["hooks"]["PreToolUse"].as_array_mut() {
             hooks.push(guard);
         }

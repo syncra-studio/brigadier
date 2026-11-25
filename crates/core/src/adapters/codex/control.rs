@@ -358,12 +358,10 @@ pub fn turn(spec: &Spec, text: &str) -> Value {
     }
     // Always named, so the thread never keeps a tier the session didn't pick; "default" is its
     // standard speed.
-    let tier = if spec.fast {
-        super::models::FAST_TIER
-    } else {
-        "default"
+    turn["serviceTier"] = match spec.fast {
+        true => super::models::fast_tier().into(),
+        false => "default".into(),
     };
-    turn["serviceTier"] = tier.into();
     json!({"id": spec.cid, "turn": turn})
 }
 

@@ -98,6 +98,7 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
         Some((models, account["account"].clone(), limits, draws))
     });
     let (mut models, account, limits, draws) = found??;
+    keep_tier(&models);
     models.sort_by_key(|m| m["isDefault"] != true);
     let mut models: Vec<ModelInfo> = models.iter().map(info).collect();
     // Its image tool is the provider's, so every model makes images or none does [D298].
@@ -170,8 +171,35 @@ pub(super) fn usage(read: &Value) -> Vec<Limit> {
     Limit::ordered(found)
 }
 
-/// Its fast service tier, as `model/list` names it.
-pub const FAST_TIER: &str = "priority";
+/// Its fast service tier's id, as its last check's `model/list` had it.
+pub fn fast_tier() -> String {
+    std::fs::read_to_string(tier_file()).unwrap_or_else(|_| "priority".into())
+}
+
+fn tier_file() -> std::path::PathBuf {
+    crate::data_dir().join("agents/codex.tier")
+}
+
+/// The fast tier a model's list names.
+fn fast(m: &Value) -> Option<&Value> {
+    (m["serviceTiers"].as_array()?.iter()).find(|t| {
+        t["name"]
+            .as_str()
+            .is_some_and(|n| n.eq_ignore_ascii_case("fast"))
+    })
+}
+
+/// Keeps the fast tier's id for the next turns, where the list has one.
+fn keep_tier(models: &[Value]) {
+    let id = models.iter().find_map(|m| fast(m)?["id"].as_str());
+    if let Some(id) = id.filter(|id| *id != fast_tier()) {
+        let path = tier_file();
+        let _ = std::fs::create_dir_all(path.parent().unwrap());
+        if let Err(e) = crate::write_atomic(&path, id.as_bytes()) {
+            eprintln!("Codex's fast tier wasn't kept: {e}");
+        }
+    }
+}
 
 /// Codex's own delete of a thread and the agents it spawned. Ok only on its word that they're gone:
 /// done now, or one of its two "unknown thread" answers, given only with no row and no rollout left.
@@ -263,9 +291,7 @@ fn info(m: &Value) -> ModelInfo {
         images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
         // The provider's, set by `list`.
         draws: None,
-        fast: (m["serviceTiers"].as_array().into_iter().flatten())
-            .find(|t| t["id"] == FAST_TIER)
-            .map(|t| t["description"].as_str().unwrap_or("").into()),
+        fast: fast(m).map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
         cost: None,

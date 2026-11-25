@@ -16,7 +16,7 @@ pub use files::repeat;
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
 pub use model::{Check, Limit, ModelInfo, Subagents, Who, family, iso_ms, mark_superseded};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
-pub use setup::{base_env, memory, probe, probe_as, version};
+pub use setup::{base_env, cli_home, memory, probe, probe_as, version};
 pub use shell::{relay_call, shell_step, unwrap_shell};
 
 use crate::Spec;
@@ -451,6 +451,10 @@ pub trait Adapter: Sync {
     fn plans(&self) -> bool {
         false
     }
+    /// Whether image work goes to its models first [D337].
+    fn draws_first(&self) -> bool {
+        false
+    }
     /// What its CLI lets the rules make of its own subagents [D376].
     fn subagents(&self) -> Subagents {
         Subagents::Untold
@@ -483,15 +487,6 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
 
 pub fn home_path(rest: &str) -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)
-}
-
-/// `rest` in the CLI's home for this spec: the account's home when it runs on one, else `default`
-/// under HOME.
-pub fn cli_home(spec: &Spec, default: &str, rest: &str) -> PathBuf {
-    match &spec.account {
-        Some((_, home)) => home.join(rest),
-        None => home_path(default).join(rest),
-    }
 }
 
 /// Text of a JSON line's field, or empty.

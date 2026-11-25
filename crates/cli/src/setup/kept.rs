@@ -29,6 +29,9 @@ pub(super) fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) 
         .filter(|v| v.is_object())
         .unwrap_or_else(|| json!({}));
     if let (Some(map), Some(cwd)) = (all.as_object_mut(), cwd.to_str()) {
+        // A deleted session's folder goes with it.
+        let own = data.join("sessions");
+        map.retain(|f, _| !Path::new(f).starts_with(&own) || Path::new(f).is_dir());
         map.insert(cwd.into(), out.clone());
         fs::create_dir_all(path.parent().unwrap())?;
         core::write_atomic(&path, all.to_string().as_bytes())?;

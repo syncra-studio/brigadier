@@ -42,6 +42,10 @@ impl Adapter for Codex {
     }
 
     // `agents.default_subagent_*` are defaults its `spawn_agent` overrides [D376].
+    fn draws_first(&self) -> bool {
+        true
+    }
+
     fn subagents(&self) -> super::Subagents {
         super::Subagents::Defaults
     }

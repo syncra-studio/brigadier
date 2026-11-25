@@ -100,7 +100,11 @@ pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool, images: Option<bool>
             .as_f64()
             .zip(m["cost"][0]["output"].as_f64()))
         .map(|(i, o)| i + o),
-        ..ModelInfo::plain(&id, local(&id))
+        // A server of the user's own on this computer, whatever it's named.
+        ..ModelInfo::plain(
+            &id,
+            local(&id) || crate::agent::local_address(s(m, &["settings", "baseURL"])),
+        )
     }
 }
 
@@ -119,8 +123,8 @@ pub fn model_ref(spec: &Spec) -> Option<Value> {
 /// runs; one piped into a shell asks, as OpenCode checks each part of a pipe [D152].
 const RISKY: &str = concat!(
     "rm *|rmdir *|sudo *|dd *|mkfs*|chmod -R *|chown *|kill *|pkill *|killall *|git push*|",
-    "git reset --hard*|git clean *|git checkout -- *|sh|bash|zsh|sh -s *|bash -s *|npx *|npm install*|",
-    "npm i *|npm add *|pnpm add *|pnpm install *|yarn add *|bun add *|pip install *|",
+    "git reset --hard*|git clean *|git checkout -- *|sh|bash|zsh|sh -s *|bash -s *|npx *|bunx *|bun x *|",
+    "uvx *|pnpm dlx *|yarn dlx *|npm exec *|pipx *|uv tool *|npm install*|npm i *|npm add *|pnpm add *|pnpm install *|yarn add *|bun add *|pip install *|",
     "pip3 install *|uv add *|cargo install *|brew install *|gem install *",
 );
 
