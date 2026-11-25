@@ -6,6 +6,7 @@
 mod active;
 pub mod fork;
 mod modes;
+mod names;
 mod night;
 mod plan;
 mod repos;

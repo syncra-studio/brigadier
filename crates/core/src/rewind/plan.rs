@@ -65,6 +65,9 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     let mut moved = store.diff(&target, &pre).map_err(unread)?;
     moved.extend(store.modes_differ(&target, &pre).map_err(unread)?);
     let mut hand: BTreeSet<String> = agent.intersection(&gaps).cloned().collect();
+    // The same file, where the disk has it under another letter case.
+    let cased: Vec<String> = hand.iter().filter_map(|p| store.spelled(p)).collect();
+    hand.extend(cased);
     let wanted: BTreeSet<String> = (agent.intersection(&moved))
         .filter(|p| !hand.contains(*p) && !out.contains(*p))
         .cloned()

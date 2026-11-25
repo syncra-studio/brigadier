@@ -192,11 +192,11 @@ impl Store {
         &self.cwd
     }
 
-    fn run(&self, index: &Path, args: &[&str]) -> io::Result<Vec<u8>> {
+    pub(super) fn run(&self, index: &Path, args: &[&str]) -> io::Result<Vec<u8>> {
         done(self.store(index, args), args[0])
     }
 
-    fn each(&self, index: &Path, args: &[&str], paths: &[&String]) -> io::Result<()> {
+    pub(super) fn each(&self, index: &Path, args: &[&str], paths: &[&String]) -> io::Result<()> {
         for chunk in paths.chunks(CHUNK) {
             let mut command = self.store(index, args);
             command.arg("--").args(chunk);
@@ -257,6 +257,7 @@ impl Store {
         let tracked = split(self.source(&["ls-files", "-c", "-i", "--exclude-standard", "-z"])?)?;
         let tracked: Vec<&String> = tracked.iter().collect();
         self.each(&index, &["add", "-f"], &tracked)?;
+        self.respell(&index)?;
         let entries = split(self.run(&index, &["ls-files", "-s", "-z"])?)?;
         for line in &entries {
             if let (Some(rest), Some((meta, path))) =
@@ -363,6 +364,8 @@ impl Store {
 
     /// Whether writing `path` would go through a link, or take something `changed` doesn't name.
     pub fn blocked(&self, path: &str, changed: &BTreeSet<String>) -> bool {
+        // What's there under another letter case is some other path's.
+        let named = |path: &str| self.spelled(path).unwrap_or(path.into());
         let parts: Vec<&str> = path.split('/').collect();
         let mut at = self.cwd.clone();
         for (i, part) in parts[..parts.len() - 1].iter().enumerate() {
@@ -370,12 +373,17 @@ impl Store {
             let Ok(m) = fs::symlink_metadata(&at) else {
                 return false;
             };
-            if m.is_symlink() || (!m.is_dir() && !changed.contains(&parts[..=i].join("/"))) {
+            if m.is_symlink() || (!m.is_dir() && !changed.contains(&named(&parts[..=i].join("/"))))
+            {
                 return true;
             }
         }
         at.push(parts[parts.len() - 1]);
-        fs::symlink_metadata(&at).is_ok_and(|m| m.is_dir()) && self.foreign(&at, path, changed)
+        let there = named(path);
+        match fs::symlink_metadata(&at) {
+            Ok(m) if m.is_dir() => self.foreign(&at, &there, changed),
+            _ => there != path && !changed.contains(&there),
+        }
     }
 
     /// Whether a folder holds anything `changed` doesn't name.
@@ -402,7 +410,11 @@ impl Store {
             return false;
         };
         let entry = String::from_utf8_lossy(&entry);
-        let disk = fs::symlink_metadata(self.cwd.join(path));
+        // Under another letter case it's some other path's file.
+        let disk = match self.spelled(path).is_some_and(|there| there != path) {
+            true => Err(io::ErrorKind::NotFound.into()),
+            false => fs::symlink_metadata(self.cwd.join(path)),
+        };
         // A file the turn put in a folder's place, or the other way round, leaves its path absent.
         let gone = |e: io::Error| {
             matches!(
@@ -472,6 +484,9 @@ impl Store {
             }
         }
         self.check_out(&index, &files, &back)?;
+        if files.len() < paths.len() {
+            (files.iter()).try_for_each(|(path, _)| self.spell(path, paths))?;
+        }
         fs::remove_file(index)
     }
 }
