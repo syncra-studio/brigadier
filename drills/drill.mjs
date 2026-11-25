@@ -1456,6 +1456,11 @@ async function rewindOne(k) {
   const out = outAll([...range.flatMap((x) => [x.before, x.end]), now_])
   const expect = { ...now_.files }
   for (const p of agent) if (!gaps.has(p) && !ignoredName(p) && !inside(out, p)) { if (range[0].before.files[p] === undefined) delete expect[p]; else expect[p] = range[0].before.files[p] }
+  // One the user changed and the agent then took away goes back as the user's last change left it.
+  const theirs = {}
+  range.forEach((x, i) => { const next = range[i + 1]?.before ?? now_; for (const p of differ(x.end.files, next.files)) theirs[p] = { file: next.files[p], mode: next.modes[p] } })
+  for (const p of Object.keys(theirs)) { if (!agent.has(p) || now_.files[p] !== undefined || theirs[p].file === undefined || ignoredName(p) || inside(out, p)) delete theirs[p]; else expect[p] = theirs[p].file }
+  res.theirs = Object.keys(theirs)
   const rewind = (extra, env) => cliAsync(['rewind', id, range[0].cid, '--op', op, ...extra], env)
   const same = (a, b) => differ(a.files, b.files).length === 0
   if (plain || range.some((x) => !x.kept)) {
@@ -1476,6 +1481,8 @@ async function rewindOne(k) {
     res.reply = { restored: reply.restored, hand: reply.hand, leftOut: reply.leftOut, error: reply.error, already: reply.already }
     if (reply.ok !== true) res.wrong.push({ what: 'rewind refused', reply })
     // A finished one asked again answers `already`, with no list: what stayed is then not told here.
+    const missed = Object.keys(theirs).filter((p) => after.files[p] !== theirs[p].file); res.theirs_missed = missed
+    for (const p of missed) res.user_lost.push(p)
     const named = reply.already ? differ(now_.files, expect).filter((p) => after.files[p] === now_.files[p]) : [...(reply.hand ?? []), ...(reply.leftOut ?? [])]
     const v = judge(expect, now_.files, after.files, named, (p) => ignoredName(p) && now_.files[p] === after.files[p], snaps)
     for (const w of v.wrong) res.wrong.push({ what: 'rewind', to: t, ...w })
@@ -1483,10 +1490,10 @@ async function rewindOne(k) {
     res.stayed = v.stayed.length
     res.put_back = differ(now_.files, after.files).length
     const twice = cased([...snaps, after.files])
-    for (const p of [...gaps].filter((p) => after.files[p] !== now_.files[p] && !twice.has(p.toLowerCase()))) res.user_lost.push(p)
+    for (const p of [...gaps].filter((p) => !(theirs[p] && after.files[p] === theirs[p].file) && after.files[p] !== now_.files[p] && !twice.has(p.toLowerCase()))) res.user_lost.push(p)
     for (const p of Object.keys(now_.files)) if (ignoredName(p) && !agent.has(p) && after.files[p] !== now_.files[p]) res.user_lost.push(p)
     if (after.git !== now_.git) res.wrong.push({ what: 'rewind changed HEAD, the index or the stash' })
-    for (const p of differ(now_.files, after.files)) if (range[0].before.modes[p] !== undefined && after.modes[p] !== undefined && after.modes[p] !== range[0].before.modes[p]) res.modes.push({ path: p, before: range[0].before.modes[p].toString(8), after: after.modes[p].toString(8) })
+    for (const p of differ(now_.files, after.files)) if (range[0].before.modes[p] !== undefined && after.modes[p] !== undefined && after.modes[p] !== (theirs[p]?.mode ?? range[0].before.modes[p])) res.modes.push({ path: p, before: range[0].before.modes[p].toString(8), after: after.modes[p].toString(8) })
     for (const d of range[0].before.dirs) if (now_.dirs.has(d) && !after.dirs.has(d)) res.hollow.push(d)
     // Redo file changes: as just before the rewind.
     if (!crash && reply.restored > 0 && r.next() < 0.5) {
