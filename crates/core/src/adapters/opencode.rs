@@ -427,8 +427,6 @@ impl Adapter for OpenCode {
         files
     }
 
-    /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
-    /// as deleted. Never touches credentials or other sessions.
     /// The cheapest its server lists on the session model's own provider, never a free one, which may
     /// keep what it's sent; None for a session on a free or local model [D1029].
     fn cheap(&self, current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
@@ -449,6 +447,8 @@ impl Adapter for OpenCode {
             .map(|(m, _)| m.id.clone())
     }
 
+    /// Deletes the session and its child sessions from OpenCode's store; one already gone counts
+    /// as deleted. Never touches credentials or other sessions.
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         match self.run(spec, &["session", "delete", resume]) {
             Err(e) if !e.contains("Session not found") => Err(format!("OpenCode: {}", e.trim())),
