@@ -50,7 +50,7 @@ pub fn sweep(data: &Path) {
             }
             _ => {
                 if let (Ok(spec), Ok(f)) = (crate::load(data, &id), crate::fold(&dir, false)) {
-                    delete(&spec, &f.fold, cut["drop_branch"] == true);
+                    delete(&spec, &f.fold, &super::Chosen::of(&cut["drop_branch"]));
                 }
             }
         }

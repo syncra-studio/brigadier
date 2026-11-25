@@ -58,7 +58,9 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
  * Rust's check before archiving [D1197]: whose agent is working, and per folder the batch frees, the ignored files
  * it deletes for good (or why they couldn't be listed).
  */
-export type ArchiveCheck = { running: string[]; lost: { ids: string[]; files?: string[]; error?: string }[]; with?: Record<string, string[]> };
+export type ArchiveCheck = { running: string[]; lost: Lost[]; with?: Record<string, string[]> };
+/** `repos`: a delete's, the repositories in what it takes. */
+export type Lost = { ids: string[]; files?: string[]; repos?: string[]; error?: string };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
 const asking = store<Asking | null>(null);
 /** Rows Rust checks or the confirm asks about: hidden at once [D198], back on Cancel or a failed check. */
@@ -129,6 +131,25 @@ function archiveNow(rows: SessionRow[], focus: Element | null, check?: ArchiveCh
 
 const titleOf = (row: SessionRow | undefined) => `“${row?.title || "New session"}”`;
 
+/** What one folder loses for good, in archive's and delete's confirm, or why it couldn't be listed. */
+export function LostLine({ lost: { files, repos, error }, whose, more = "" }: { lost: Lost; whose: string; more?: string }) {
+  if (error !== undefined) return <ErrorLine error={`${whose}Couldn't list its ignored files: ${error}`} />;
+  return (
+    <p className="text-xs break-words text-muted-foreground">
+      {whose}
+      {repos ? (
+        <>
+          {repos.length === 1 ? "The repository in it is" : "The repositories in it are"} deleted for good, even if a branch is kept: <span className="text-foreground">{repos.join(", ")}</span>.
+        </>
+      ) : (
+        <>
+          Its ignored files are deleted for good{more}: <span className="text-foreground">{named(files ?? [])}</span>.
+        </>
+      )}
+    </p>
+  );
+}
+
 /** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
 export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
   const one = rows.length === 1;
@@ -160,15 +181,7 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
           {lone ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
         </p>
       ))}
-      {(check?.lost ?? []).map((each) =>
-        each.files ? (
-          <p key={each.ids.join()} className="text-xs break-words text-muted-foreground">
-            {whose(each.ids)}Its ignored files are deleted for good, and restore won't bring them back: <span className="text-foreground">{named(each.files)}</span>.
-          </p>
-        ) : (
-          <ErrorLine key={each.ids.join()} error={`${whose(each.ids)}Couldn't list its ignored files: ${each.error}`} />
-        ),
-      )}
+      {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more=", and restore won't bring them back" />)}
       <ErrorLine error={error && `Couldn't check what archiving loses: ${error}`} />
     </ConfirmForm>
   );

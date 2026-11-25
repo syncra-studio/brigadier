@@ -14,7 +14,6 @@ import { Branch, Chats, Folder, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useArchiveSplit } from "../sessions/archive";
 import { type Check, DeleteForm, readDelete } from "../sessions/archived";
-import { DeleteManyForm } from "./archived-delete";
 import { type ArchivedFilter, KindMenu, MoreMenu, ProjectMenu, SearchField } from "./archived-toolbar";
 import { SettingsPage } from "./parts";
 
@@ -44,7 +43,7 @@ const countOf = (group: Group) => {
  * Delete all is in the toolbar's "…" menu.
  */
 export function ArchivedPage() {
-  const { daemon, rows, projects } = useDaemon();
+  const { daemon, rows } = useDaemon();
   const online = Boolean(daemon);
   const [typed, setTyped] = useState("");
   const [filter, setFilter] = useState<ArchivedFilter>({ query: "", kind: "all", project: "all", order: "updated" });
@@ -54,7 +53,7 @@ export function ArchivedPage() {
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
-  const [asking, setAsking] = useState<{ rows: ArchivedRow[]; checks: Check[] } | null>(null);
+  const [asking, setAsking] = useState<{ rows: ArchivedRow[]; check: Check } | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setFilter((now) => (now.query === typed ? now : { ...now, query: typed })), TYPING_MS);
@@ -122,17 +121,11 @@ export function ArchivedPage() {
       });
     }
   };
-  // Delete stays off for a folder chat, archived or not [D3102].
-  const folders = new Set(projects?.filter((each) => each.kind === "folder").map((each) => each.id));
-  const deletable = (targets: ArchivedRow[]) => targets.filter((row) => !folders.has(row.project ?? ""));
-  const askDelete = (all: ArchivedRow[]) => {
-    const targets = deletable(all);
-    if (targets.length === 0) return;
+  const askDelete = (targets: ArchivedRow[]) => {
     setPicked([]);
-    // Each check read first: the confirm opens whole [D463]. A later click's answer replaces it, keyed, so no choice carries over.
-    void Promise.all(targets.map((row) => readDelete(row.id))).then((checks) => setAsking({ rows: targets, checks }));
+    // The check read first: the confirm opens whole [D463]. A later click's answer replaces it, keyed, so no choice carries over.
+    void readDelete(targets).then((check) => setAsking({ rows: targets, check }));
   };
-  const one = asking?.rows.length === 1 ? byId.get(asking.rows[0]!.id) : undefined;
   const project = reply?.projects.some((choice) => choice.value === filter.project) ? filter.project : "all";
   const retry = () => setAttempt(attempt + 1);
 
@@ -165,7 +158,7 @@ export function ArchivedPage() {
                   <SearchField label="Search archived chats" value={typed} onChange={setTyped} />
                   <KindMenu filter={filter} onChange={(next) => setFilter((now) => ({ ...now, ...next }))} />
                   <ProjectMenu value={project} choices={reply.projects} onChange={(next) => setFilter((now) => ({ ...now, project: next }))} />
-                  <MoreMenu count={deletable(shown).length} narrowed={reply.narrowed} onDeleteAll={() => askDelete(shown)} />
+                  <MoreMenu count={shown.length} narrowed={reply.narrowed} onDeleteAll={() => askDelete(shown)} />
                 </div>
                 {pick.length > 0 && (
                   <div role="toolbar" aria-label="Picked chats" className="flex items-center gap-2">
@@ -176,11 +169,9 @@ export function ArchivedPage() {
                     <Button variant="soft" size="sm" disabled={!online} onClick={() => unarchive(pick)}>
                       Unarchive ({pick.length})
                     </Button>
-                    {deletable(pick).length > 0 && (
-                      <Button variant="soft-destructive" size="sm" disabled={!online} onClick={() => askDelete(pick)}>
-                        Delete ({deletable(pick).length})…
-                      </Button>
-                    )}
+                    <Button variant="soft-destructive" size="sm" disabled={!online} onClick={() => askDelete(pick)}>
+                      Delete ({pick.length})…
+                    </Button>
                   </div>
                 )}
               </div>
@@ -209,7 +200,6 @@ export function ArchivedPage() {
                           picked={selected}
                           // A right-click acts on every picked row when it is one of them.
                           targets={selected ? pick : [row]}
-                          deletes={deletable(selected ? pick : [row]).length}
                           pending={pending(row.id)}
                           offline={!online}
                           onTitle={onTitle}
@@ -228,7 +218,7 @@ export function ArchivedPage() {
       </div>
       <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
         <DialogContent showCloseButton={false}>
-          {one ? <DeleteForm key={one.id} row={one} first={asking!.checks[0]!} onClose={() => setAsking(null)} /> : asking && asking.rows.length > 0 && <DeleteManyForm key={asking.rows.map((row) => row.id).join()} rows={asking.rows} first={asking.checks} onClose={() => setAsking(null)} />}
+          {asking && asking.rows.length > 0 && <DeleteForm key={asking.rows.map((row) => row.id).join()} rows={asking.rows} first={asking.check} onClose={() => setAsking(null)} />}
         </DialogContent>
       </Dialog>
     </SettingsPage>
@@ -248,7 +238,6 @@ function ArchivedRowItem({
   row,
   picked,
   targets,
-  deletes,
   pending,
   offline,
   onTitle,
@@ -259,8 +248,6 @@ function ArchivedRowItem({
   row: ArchivedRow;
   picked: boolean;
   targets: ArchivedRow[];
-  /** How many of `targets` can be deleted: a folder chat can't [D3102]. */
-  deletes: number;
   pending: boolean;
   offline: boolean;
   onTitle: (id: string, event: MouseEvent) => void;
@@ -292,11 +279,9 @@ function ArchivedRowItem({
           <Button variant="soft" size="sm" disabled={off} onClick={() => onUnarchive([row])}>
             {pending ? "Restoring…" : "Unarchive"}
           </Button>
-          {deletes > 0 && (
-            <Button variant="soft-destructive" size="sm" disabled={off} aria-label={`Delete “${titleOf(row)}”…`} onClick={() => onDelete([row])}>
-              Delete
-            </Button>
-          )}
+          <Button variant="soft-destructive" size="sm" disabled={off} aria-label={`Delete “${titleOf(row)}”…`} onClick={() => onDelete([row])}>
+            Delete
+          </Button>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -304,15 +289,11 @@ function ArchivedRowItem({
           <Unarchive />
           {targets.length > 1 ? `Unarchive (${targets.length})` : "Unarchive"}
         </ContextMenuItem>
-        {deletes > 0 && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" disabled={off} onClick={() => onDelete(targets)}>
-              <Trash />
-              {deletes > 1 ? `Delete (${deletes})` : "Delete"}
-            </ContextMenuItem>
-          </>
-        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem variant="destructive" disabled={off} onClick={() => onDelete(targets)}>
+          <Trash />
+          {targets.length > 1 ? `Delete (${targets.length})` : "Delete"}
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

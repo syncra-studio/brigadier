@@ -105,7 +105,8 @@ pub fn unlanded(dir: &Path) -> io::Result<Option<String>> {
     Ok((!all.is_empty()).then(|| all.join(", ")))
 }
 
-fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
+/// The same of one record: the session's own, or a claim's.
+pub fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(None);
     };
@@ -113,8 +114,18 @@ fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
-    let dirty = live(&owned)
-        .is_some_and(|p| git(p, &["status", "--porcelain"]).map_or(true, |s| !s.is_empty()));
+    // What the checkpoint would take.
+    let status = |p: &Path| {
+        let held = super::inner::held(p)?;
+        let args = ["status", "--porcelain", "--"].into_iter();
+        git(
+            p,
+            &args
+                .chain(held.iter().map(String::as_str))
+                .collect::<Vec<_>>(),
+        )
+    };
+    let dirty = live(&owned).is_some_and(|p| status(p).map_or(true, |s| !s.is_empty()));
     Ok((dirty || !in_base(repo, &owned.base, &branch, owned.landing.as_ref())).then_some(branch))
 }
 

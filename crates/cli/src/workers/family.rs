@@ -6,7 +6,7 @@
 
 use super::{CLOSING, below, family_lock, make, place, read_json, write_json};
 use crate::sessions;
-use brigadier_core::{self as core, session};
+use brigadier_core::{self as core, session::Chosen};
 use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
@@ -14,22 +14,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// The workers among `ids` whose branch holds work that never landed: what the confirm lists.
-pub fn unlanded(data: &Path, ids: &[String]) -> Vec<Value> {
-    (ids.iter())
-        .filter_map(|id| {
-            let spec = core::load(data, id).ok()?;
-            let branch = session::unlanded(&spec).ok().flatten()?;
-            Some(json!({"id": id, "title": core::share::title(&spec), "branch": branch}))
-        })
-        .collect()
-}
-
-/// `delete <id> [--branch keep|delete]`: its workers, deepest first, then itself. With none,
+/// `delete <id> [--branch keep|delete] [--delete-in <repo>]…`: its workers, deepest first, then itself. With none,
 /// the plain delete.
-pub fn delete(data: &Path, id: &str, drop: bool) -> io::Result<Value> {
+pub fn delete(data: &Path, id: &str, drop: &Chosen) -> io::Result<Value> {
     let record = core::session_dir(data, id).join(CLOSING);
-    let drop = read_json::<Value>(&record).map_or(drop, |r| r["drop"] == true);
+    let drop = &read_json::<Value>(&record).map_or(drop.clone(), |r| Chosen::of(&r["drop"]));
     {
         let (root, _) = place(data, id);
         // A worker whose family's root went first is a family of its own.
@@ -103,7 +92,7 @@ pub(super) fn resume(data: &Path) {
         if core::session_dir(data, &id).join(CLOSING).exists() {
             let data = data.to_path_buf();
             thread::spawn(move || {
-                if let Err(e) = delete(&data, &id, false) {
+                if let Err(e) = delete(&data, &id, &Chosen::All(false)) {
                     eprintln!("brigadierd: family delete {id}: {e}");
                 }
             });

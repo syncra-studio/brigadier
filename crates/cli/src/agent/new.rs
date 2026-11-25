@@ -334,7 +334,8 @@ fn finish(data: &Path, me: &str, mut r: Record) -> io::Result<()> {
     }
     if r.error.is_some() {
         if dir.join("session.json").exists() {
-            let reply = crate::sessions::delete(data, &r.id, true, "delete")?;
+            let reply =
+                crate::sessions::delete(data, &r.id, &core::session::Chosen::All(true), "delete")?;
             if reply["ok"] != true {
                 return Err(io::Error::other(reply.to_string()));
             }

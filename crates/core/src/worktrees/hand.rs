@@ -22,7 +22,9 @@ pub fn handover(from: &Path, to: &Path) -> io::Result<()> {
     let Some(mut owned) = read(from)? else {
         return Ok(());
     };
-    let maker = from.file_name().map(|n| n.to_string_lossy().into_owned());
+    // A claim's record is inside its session's folder.
+    let made = (from.ancestors().find(|d| d.join("session.json").exists())).unwrap_or(from);
+    let maker = made.file_name().map(|n| n.to_string_lossy().into_owned());
     owned.inherited = owned.inherited.or(maker);
     for name in [
         "setup.started",
@@ -38,20 +40,23 @@ pub fn handover(from: &Path, to: &Path) -> io::Result<()> {
         .path
         .as_deref()
         // The record's path is canonical; the session's folder may not be.
-        .is_some_and(|p| Path::new(p).starts_with(fs::canonicalize(from).unwrap_or(from.into())))
+        .is_some_and(|p| Path::new(p).starts_with(fs::canonicalize(made).unwrap_or(made.into())))
     {
-        fs::write(from.join(RETAINED), b"")?;
+        fs::write(made.join(RETAINED), b"")?;
     }
     write(to, &owned)?;
     fs::remove_file(from.join(RECORD))
 }
 
-/// The folder of the session that made a handed-on worktree, kept only for it [D35, D1080].
-pub(super) fn drop_maker(owned: &Owned) -> io::Result<()> {
-    if let Some(maker) = owned.path.as_deref().and_then(|p| Path::new(p).parent())
+/// The folder of the session that made a handed-on worktree, kept only for it and any other handed
+/// on from there [D35, D1080].
+pub(super) fn drop_maker(dir: &Path, owned: &Owned) -> io::Result<()> {
+    let path = Path::new(owned.path.as_deref().unwrap_or_default());
+    if let Some(maker) = path.ancestors().find(|d| d.join(RETAINED).exists())
         && owned.inherited.is_some()
-        && maker.join(RETAINED).exists()
         && !maker.join("session.json").exists()
+        && !(super::kept::others(dir))
+            .any(|o| o.path.is_some_and(|p| Path::new(&p).starts_with(maker)))
     {
         fs::remove_dir_all(maker)?;
     }

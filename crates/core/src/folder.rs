@@ -3,6 +3,7 @@
 //! change there, which makes that repository's branch and worktree for this session only.
 
 use crate::git::{self, diff};
+use crate::session::Chosen;
 use crate::{Spec, data_of, projects, worktrees};
 use serde_json::{Value, json};
 use std::fs;
@@ -286,11 +287,11 @@ pub fn claims(dir: &Path) -> Vec<(String, PathBuf)> {
 
 /// Takes every claim's worktree away for delete, as `worktrees::delete` does a session's; the
 /// branches with work that never landed, kept, as `repo branch`.
-pub fn delete(dir: &Path, drop: bool) -> io::Result<Vec<String>> {
+pub fn delete(dir: &Path, chosen: &Chosen) -> io::Result<Vec<String>> {
     let mut kept = vec![];
     for (name, rec) in claims(dir) {
         let _one = worktrees::lock(&rec)?;
-        kept.extend(worktrees::delete(&rec, drop)?.map(|b| format!("{name} {b}")));
+        kept.extend(worktrees::delete(&rec, chosen.takes(&name))?.map(|b| format!("{name} {b}")));
     }
     Ok(kept)
 }

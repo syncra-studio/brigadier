@@ -6,12 +6,11 @@ import { ConfirmForm } from "../components/confirm-dialog";
 import { CopyButton } from "../components/copy-button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/dialog";
 import { ErrorLine } from "../components/error-line";
-import { named } from "../components/thread/rewind";
 import { showToast } from "../components/toast";
 import { ask, useDaemon } from "../daemon";
 import { Branch, Chats, ChevronRightAlt, Folder, StickyNote, Spinner } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
-import type { ArchiveCheck } from "../sessions/archive";
+import { type ArchiveCheck, LostLine } from "../sessions/archive";
 import { shortPath } from "./add-project";
 import { type Project, useProjects } from "./projects";
 
@@ -187,15 +186,7 @@ export function RemoveFlow({ project, first, onClose }: { project: Project; firs
           </ul>
         )}
         {preview && preview.worktrees > 0 && <p className="text-xs leading-4.25 text-muted-foreground">Uncommitted changes in a worktree are saved as a commit on its branch first.</p>}
-        {preview?.lost?.map((each) =>
-          each.files ? (
-            <p key={each.ids.join()} className="text-xs break-words text-muted-foreground">
-              {each.ids.map((id) => `“${titleOf(id)}”`).join(", ")} loses its ignored files for good: <span className="text-foreground">{named(each.files)}</span>.
-            </p>
-          ) : (
-            <ErrorLine key={each.ids.join()} error={`${each.ids.map((id) => `“${titleOf(id)}”`).join(", ")}: its ignored files couldn't be listed: ${each.error}`} />
-          ),
-        )}
+        {preview?.lost?.map((each, at) => <LostLine key={at} lost={each} whose={`${each.ids.map((id) => `“${titleOf(id)}”`).join(", ")}: `} />)}
         {preview && preview.branches.length > 0 && (
           <p className="text-xs leading-4.25 text-muted-foreground">
             {plural(preview.branches.length, "branch has", "branches have")} work that never landed: kept, with it. You can delete them after.

@@ -5,6 +5,7 @@
 use super::GRACE_MS;
 use crate::adapters::setup;
 use crate::fold::Fold;
+use crate::worktrees::inner;
 use crate::{Spec, check_id, write_atomic};
 use brigadier_frames::log::now_ms;
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ const GIT_SECS: u64 = 60;
 const CHUNK: usize = 200;
 
 /// The folder at one moment. `out` holds what the tree can't: each big untracked file's size and
-/// time, each nested repository's commit, by path. `at`: when its capture started (ms), so a
+/// time, each nested repository's commit, none yet as "", by path. `at`: when its capture started (ms), so a
 /// turn spans its two captures [D1078, D1089]; none on one taken before that.
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Shot {
@@ -211,6 +212,13 @@ impl Store {
         let _ = fs::remove_file(self.git.join("index.lock"));
         let mut out = BTreeMap::new();
         for path in split(self.source(&["ls-files", "-o", "--exclude-standard", "-z"])?)? {
+            // Only a repository comes as a folder: git refuses one with no commit.
+            if let Some(repo) = path.strip_suffix('/') {
+                if !inner::has_commit(&self.cwd.join(repo)) {
+                    out.insert(repo.into(), String::new());
+                }
+                continue;
+            }
             let Ok(m) = fs::symlink_metadata(self.cwd.join(&path)) else {
                 continue;
             };

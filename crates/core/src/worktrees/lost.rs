@@ -1,8 +1,9 @@
 //! What freeing a session's worktree deletes for good [D180, D1197]: `worktree remove --force`
 //! takes its ignored files, and restore copies back only what the include rules select.
 
-use super::{copy, git, live, read};
-use crate::{Spec, load, projects, session, share};
+pub use super::inner::repo_inside;
+use super::{copy, git, inner, live, read};
+use crate::{Spec, load, session, share};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -50,37 +51,6 @@ const REBUILT: &[&str] = &[
     ".ruff_cache",
     ".gradle",
 ];
-
-/// Whether `dir` holds a repository below it, not in `skip`, whose work git doesn't list from
-/// outside. A folder that can't be read counts as one.
-pub fn repo_inside(dir: &Path, skip: &[PathBuf]) -> bool {
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(next) = stack.pop() {
-        let entries = match fs::read_dir(&next) {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-            Err(_) => return true,
-        };
-        // A bare one has no `.git`.
-        if next.join("HEAD").is_file() && next.join("objects").is_dir() {
-            return true;
-        }
-        for entry in entries {
-            let Ok(entry) = entry else { return true };
-            let path = entry.path();
-            if skip.contains(&path) {
-                continue;
-            }
-            if entry.file_name() == ".git" {
-                return true;
-            }
-            if entry.file_type().map_or(true, |t| t.is_dir()) {
-                stack.push(path);
-            }
-        }
-    }
-    false
-}
 
 /// The rebuildable build output in `dir`'s worktree: folders git ignores and tracks nothing in, none
 /// holding a repository, none behind a link, and none the include rules copied in, which nothing
@@ -226,7 +196,8 @@ fn lost_in(dir: &Path, picks: &[String], built: &dyn Fn(&str) -> bool) -> io::Re
         let files = git(path, &[&ignored[..], &["--", &inside]].concat())?;
         left.extend(
             (files.split('\0'))
-                .filter(|f| !f.is_empty() && !built(f))
+                // A repository comes as a folder: no file of it is git's to list.
+                .filter(|f| !f.is_empty() && !f.ends_with('/') && !built(f))
                 .map(String::from),
         );
     }
@@ -240,17 +211,38 @@ fn lost_in(dir: &Path, picks: &[String], built: &dyn Fn(&str) -> bool) -> io::Re
 
 /// What the confirm names before `ids` are archived, or deleted, together [D180, D185, D1080,
 /// D1197]: once per folder the batch frees, which is each worktree whose every other user is
-/// archived or goes with them, but one a repository keeps until its last user's delete. `ids`: the
-/// batch's sessions in it; `files` or the `error` that kept them from being listed.
+/// archived or goes with them, but one a repository keeps until its last user's delete, and a claim
+/// another works in, which an archive keeps. `ids`: the batch's sessions in it; `files` or the
+/// `error` that kept them from being listed. A delete's `repos`: each repository in a session's
+/// folders, whose work goes whatever becomes of the branch.
 pub fn losses(data: &Path, ids: &[String], delete: bool) -> Vec<Value> {
-    let (mut seen, mut out) = (BTreeSet::new(), vec![]);
+    let (mut seen, mut named, mut out) = (BTreeSet::new(), BTreeSet::new(), vec![]);
     for id in ids {
         let Ok(spec) = load(data, id) else { continue };
+        let picks = session::picks(data, &spec);
         let may = session::guarded(&spec, Guard::Named);
+        // Whether the folder `users` share goes. `alone`: only with them all.
+        let goes = |users: &[Spec], rec: &Path, alone: bool| {
+            let batch = |u: &Spec| ids.contains(&u.id);
+            let gone = |u: &Spec| batch(u) || session::lifecycle(&u.dir).0.is_some();
+            (delete && users.iter().all(batch))
+                || (!(alone && !users.is_empty()) && users.iter().all(gone) && may(rec))
+        };
+        // Where the delete finds no repository: worktrees' own `.git`, and folders that stay.
+        let folder_of = |rec: &Path| super::folder(rec).map(|f| share::key(&f));
+        let (mut skip, mut roots) = (vec![], session::takes(&spec));
         // A folder chat's claims, each its own worktree, named by repo [D494].
         for (name, rec) in crate::folder::claims(&spec.dir) {
-            match lost_in(&rec, &[], &built) {
-                Ok(files) if files.is_empty() || !(delete || may(&rec)) => {}
+            let Some(folder) = folder_of(&rec) else {
+                continue;
+            };
+            if !goes(&share::in_folder(data, &folder, Some(id)), &rec, !delete) {
+                skip.push(folder);
+                continue;
+            }
+            skip.push(folder.join(".git"));
+            match lost_in(&rec, &picks, &built) {
+                Ok(files) if files.is_empty() => {}
                 Ok(files) => {
                     let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
                     out.push(json!({"ids": [id], "files": files}));
@@ -258,29 +250,39 @@ pub fn losses(data: &Path, ids: &[String], delete: bool) -> Vec<Value> {
                 Err(e) => out.push(json!({"ids": [id], "error": e.to_string()})),
             }
         }
-        let Some(holder) = share::holder(data, &spec) else {
-            continue;
-        };
-        if !seen.insert(holder.id.clone()) {
-            continue;
+        let users = share::in_folder(data, Path::new(&spec.cwd), None);
+        if let Some(holder) = share::holder(data, &spec)
+            && let Some(folder) = folder_of(&holder.dir)
+        {
+            match goes(&users, &holder.dir, false) {
+                true => skip.push(folder.join(".git")),
+                false => skip.push(folder.clone()),
+            }
+            if seen.insert(holder.id.clone()) && skip.last() != Some(&folder) {
+                roots.push(folder);
+                let ids: Vec<&String> = (users.iter().map(|u| &u.id))
+                    .filter(|u| ids.contains(u))
+                    .collect();
+                match lost_in(&holder.dir, &picks, &built) {
+                    Ok(files) if files.is_empty() => {}
+                    Ok(files) => out.push(json!({"ids": ids, "files": files})),
+                    Err(e) => out.push(json!({"ids": ids, "error": e.to_string()})),
+                }
+            }
         }
-        let users: Vec<Spec> = share::in_folder(data, Path::new(&spec.cwd), None);
-        let gone = |u: &Spec| ids.contains(&u.id) || session::lifecycle(&u.dir).0.is_some();
-        if !users.iter().all(gone) {
-            continue;
-        }
-        let picks = (holder.project.as_deref())
-            .and_then(|p| projects::get(data, p).ok())
-            .map(|p| p.include)
-            .unwrap_or_default();
-        let goes = (delete && users.iter().all(|u| ids.contains(&u.id))) || may(&holder.dir);
-        let ids: Vec<&String> = (users.iter().map(|u| &u.id))
-            .filter(|u| ids.contains(u))
-            .collect();
-        match lost_in(&holder.dir, &picks, &built) {
-            Ok(files) if files.is_empty() || !goes => {}
-            Ok(files) => out.push(json!({"ids": ids, "files": files})),
-            Err(e) => out.push(json!({"ids": ids, "error": e.to_string()})),
+        if delete {
+            let (dir, cwd) = (share::key(&spec.dir), share::key(Path::new(&spec.cwd)));
+            let repos: Vec<String> = (roots.iter().filter_map(|r| fs::canonicalize(r).ok()))
+                .flat_map(|root| inner::repos(&root, &skip))
+                .filter(|repo| named.insert(repo.clone()))
+                .map(|repo| {
+                    let rel = repo.strip_prefix(&cwd).or(repo.strip_prefix(&dir));
+                    rel.unwrap_or(&repo).display().to_string()
+                })
+                .collect();
+            if !repos.is_empty() {
+                out.push(json!({"ids": [id], "repos": repos}));
+            }
         }
     }
     out

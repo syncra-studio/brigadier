@@ -344,7 +344,7 @@ fn resave(spec: &core::Spec) -> io::Result<()> {
 pub(crate) fn drop_chat(data: &Path, dir: &Path, note: &str) -> io::Result<()> {
     for chat in chats_of(dir, note) {
         if core::session_dir(data, &chat).join("session.json").exists() {
-            crate::sessions::delete(data, &chat, false, "delete")?;
+            crate::sessions::delete(data, &chat, &core::session::Chosen::All(false), "delete")?;
         }
     }
     remove(&dir.join(format!("{note}.chat")))

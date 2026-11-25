@@ -21,7 +21,7 @@ pub use brigade::{brigade_row, to_user, user_answer};
 pub(crate) use busy::at_work;
 use busy::busy_in;
 pub use busy::{busy, owes};
-pub use family::{delete, unlanded};
+pub use family::delete;
 pub use make::start;
 pub(crate) use make::{begin, full, land_line};
 pub use pause::held;

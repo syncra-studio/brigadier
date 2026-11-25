@@ -23,7 +23,7 @@ const BUILD: &str = "build";
 const LEFT: &str = "left";
 const BROWSER: &[&str] = &["browser", "chromium"];
 /// Brigadier's own programs, with nothing to free.
-const PROGRAMS: &[&str] = &["bin"];
+const PROGRAMS: [&str; 1] = ["bin"];
 /// In a kind's total but no session's, which can't be ids: the rest of the data folder, and files
 /// with a name elsewhere too, which freeing one session wouldn't give back.
 const REST: &str = "@rest";
@@ -36,11 +36,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         Some(kind @ ("browser" | "programs")) => {
             let dirs = match kind {
                 "browser" => BROWSER,
-                _ => PROGRAMS,
+                _ => &PROGRAMS,
             };
             let dirs: Vec<PathBuf> = dirs.iter().map(|d| data.join(d)).collect();
             let size = size(&dirs, &[]);
-            Ok(json!({"ok": true, "total": size.own + size.shared.values().sum::<u64>()}))
+            Ok(json!({"ok": true, "total": size.total()}))
         }
         Some(kind @ ("build" | "worktrees" | "temp" | "history")) => {
             let specs = specs(data);
@@ -53,6 +53,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             for (id, size) in &all {
                 sizes.insert(id, size.own);
                 shared.extend(&size.shared);
+            }
+            // One with a name in the programs too is theirs.
+            let programs = PROGRAMS.map(|d| data.join(d));
+            for file in size(&programs, &[]).shared.keys() {
+                shared.remove(file);
             }
             sizes.insert(SHARED, shared.values().copied().sum());
             Ok(json!({"ok": true, "sizes": sizes}))
@@ -116,14 +121,15 @@ fn rest(data: &Path, specs: &[Spec]) -> Vec<PathBuf> {
         specs.iter().any(|s| s.dir == *p)
     });
     let top = inside(data).map(|e| e.path());
-    let apart = BROWSER.iter().chain(PROGRAMS).map(|d| data.join(d));
+    let apart = BROWSER.iter().chain(&PROGRAMS).map(|d| data.join(d));
     let top = top.filter(|p| *p != sessions && !apart.clone().any(|d| *p == d));
     let gone = inside(&sessions).map(|e| e.path()).filter(|p| !known(p));
     top.chain(gone).collect()
 }
 
+/// Its worktrees' build files, a shared one's too.
 fn built(data: &Path, spec: &Spec) -> Vec<PathBuf> {
-    session::built(data, spec).unwrap_or_default()
+    session::built_in(data, spec, &records(spec)).unwrap_or_default()
 }
 
 fn measure(data: &Path, spec: &Spec, kind: &str) -> Size {
@@ -143,6 +149,12 @@ fn measure(data: &Path, spec: &Spec, kind: &str) -> Size {
 struct Size {
     own: u64,
     shared: HashMap<(u64, u64), u64>,
+}
+
+impl Size {
+    fn total(&self) -> u64 {
+        self.own + self.shared.values().sum::<u64>()
+    }
 }
 
 /// What folders take together, their links not followed, a file with several names counted once.
@@ -304,7 +316,7 @@ fn free(data: &Path, group: &str, id: &str) -> io::Result<Value> {
     // What a guard kept meanwhile stays.
     went.retain(|kind| match *kind {
         "temp" => !background::tmp(&spec.dir).exists(),
-        "build" => built(data, &spec).is_empty(),
+        "build" => session::built(data, &spec).is_ok_and(|all| all.is_empty()),
         _ => records(&spec).is_empty(),
     });
     Ok(json!({"ok": true, "went": went}))

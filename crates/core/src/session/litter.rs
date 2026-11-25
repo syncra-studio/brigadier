@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 /// The project's include rules, which a restore copies by into each of its worktrees.
-fn picks(data: &Path, spec: &Spec) -> Vec<String> {
+pub(crate) fn picks(data: &Path, spec: &Spec) -> Vec<String> {
     (spec.project.as_deref())
         .and_then(|id| projects::get(data, id).ok())
         .map(|p| p.include)
@@ -24,6 +24,22 @@ fn picks(data: &Path, spec: &Spec) -> Vec<String> {
 pub(crate) fn guarded(spec: &Spec, guard: Guard) -> impl Fn(&Path) -> bool {
     let picks = picks(&data_of(spec), spec);
     move |rec| lost::may_go(rec, &picks, guard)
+}
+
+/// The folders a delete takes that its agents work in, besides what is shared: its own folder and
+/// `tmp`, and what each CLI keeps for it elsewhere.
+pub(crate) fn takes(spec: &Spec) -> Vec<PathBuf> {
+    let cwd = PathBuf::from(&spec.cwd);
+    let mut all = vec![crate::background::tmp(&spec.dir)];
+    all.extend(cwd.starts_with(&spec.dir).then_some(cwd));
+    if let Ok(f) = crate::fold(&spec.dir, true) {
+        for (backend, account, id) in &f.fold.convs {
+            let a = adapters::get(backend).filter(|_| check_id(id).is_ok());
+            let spec = as_run(spec, &f.fold, backend, Some(account));
+            all.extend(a.into_iter().flat_map(|a| a.external(&spec, id)));
+        }
+    }
+    all
 }
 
 /// Its worktrees in place, its own and its claims', by record: those no other session needs.
@@ -123,10 +139,15 @@ pub fn tidy(spec: &Spec) -> io::Result<()> {
 
 /// What its worktrees would lose as a finished worker's: the build output that makes itself again.
 pub fn built(data: &Path, spec: &Spec) -> io::Result<Vec<PathBuf>> {
+    built_in(data, spec, &own(data, spec))
+}
+
+/// The same of the worktrees in `recs`, shared ones too.
+pub fn built_in(data: &Path, spec: &Spec, recs: &[PathBuf]) -> io::Result<Vec<PathBuf>> {
     let picks = picks(data, spec);
     let mut all = vec![];
-    for rec in own(data, spec) {
-        all.extend(lost::rebuilt(&rec, &picks)?);
+    for rec in recs {
+        all.extend(lost::rebuilt(rec, &picks)?);
     }
     Ok(all)
 }

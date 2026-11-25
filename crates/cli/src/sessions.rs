@@ -5,7 +5,10 @@
 //! A job a turn left running is stopped here too, alone [D105].
 
 use crate::{arg, flag, has, index, owner, workers};
-use brigadier_core::{self as core, fold, projects, session, session::Guard};
+use brigadier_core::{
+    self as core, fold, projects, session,
+    session::{Chosen, Guard},
+};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::fs;
@@ -22,13 +25,13 @@ use jobs::family;
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
+    if args[0] == "delete" && has(args, "--check") {
+        return check_delete(data, &args[1..]);
+    }
     let spec = match core::load(data, id) {
-        // One already deleted, with its Brigade or by another delete, has nothing to check or remove.
+        // One already deleted, with its Brigade or by another delete, has nothing to remove.
         Err(e) if e.kind() == io::ErrorKind::NotFound && args[0] == "delete" => {
-            return Ok(match has(args, "--check") {
-                true => json!({"ok": true}),
-                false => session::gone(&core::session_dir(data, id)),
-            });
+            return Ok(session::gone(&core::session_dir(data, id)));
         }
         spec => spec?,
     };
@@ -129,39 +132,46 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let (pid, start_us) = (num(3)? as i32, num(4)?);
             return jobs::stop(data, &spec, &f.fold, pid, start_us);
         }
-        // Off for a folder chat that claimed a repo: its confirm doesn't name the repos' branches
-        // yet [D3102]. A start that never took still goes.
-        "delete" if core::folder::chat(&spec) && !core::folder::claims(&spec.dir).is_empty() => {
-            return Err(io::Error::other(
-                "Delete isn't available yet in a chat on a folder of repos.",
-            ));
-        }
-        // Proposed: `--check` names the branch the confirm asks about [D181].
-        _ if has(args, "--check") => {
-            // Its whole worker family goes with it [D3017]: the confirm lists their work too.
-            let family: Vec<String> = workers::below(data, id)
-                .into_iter()
-                .map(|r| r.wid)
-                .collect();
-            let mut reply = check(data, &[&args[1..2], &family[..]].concat(), true);
-            // A PR's branch or another session's stays whatever the choice: said, not offered [D703].
-            let branch = session::unlanded(&spec)?;
-            let kept = branch.as_ref().and(core::worktrees::kept(&spec.dir)?);
-            reply["branch"] = branch.filter(|_| kept.is_none()).into();
-            reply["kept"] = kept.map(|(b, why)| json!({"branch": b, "why": why})).into();
-            reply["stays"] = session::stays(&spec).into();
-            reply["workers"] = workers::unlanded(data, &family).into();
-            return Ok(reply);
-        }
         // Its terminals go too, also those of one cut short before [repo D35].
         _ => {
-            let done = workers::delete(data, id, flag(args, "--branch") == Some("delete"));
+            // A folder chat's, each repository's as chosen.
+            let repos = args.windows(2).filter(|w| w[0] == "--delete-in");
+            let repos: Vec<String> = repos.map(|w| w[1].clone()).collect();
+            let chosen = match repos.is_empty() {
+                true => Chosen::All(flag(args, "--branch") == Some("delete")),
+                false => Chosen::In(repos),
+            };
+            let done = workers::delete(data, id, &chosen);
             crate::tabs::terminal::sweep(data);
             return done;
         }
     }
     crate::tabs::terminal::sweep(data);
     Ok(json!({"ok": true, "at": index::touched(&core::session_dir(data, id))}))
+}
+
+/// Proposed: what delete's confirm asks of every id given, together: the branches too [D181], and its
+/// whole worker family's with each [D3017]. One already deleted has nothing to check.
+fn check_delete(data: &Path, args: &[String]) -> io::Result<Value> {
+    let mut ids: Vec<String> = vec![];
+    for id in args.iter().filter(|a| !a.starts_with("--")) {
+        match core::load(data, id) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            spec => spec?,
+        };
+        let family = workers::below(data, id).into_iter().map(|r| r.wid);
+        for id in [id.clone()].into_iter().chain(family) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    let mut reply = check(data, &ids, true);
+    let asked = session::branches(data, &ids)?;
+    for part in ["branches", "kept", "stays"] {
+        reply[part] = asked[part].clone();
+    }
+    Ok(reply)
 }
 
 /// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
@@ -247,7 +257,7 @@ fn stop(data: &Path, id: &str, by: &str) -> io::Result<()> {
 
 /// One session's delete: its host stops, then core deletes it, recording its intent first. One
 /// whose folder went meanwhile, by its Brigade's delete or its own, is done [D35].
-pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+pub(crate) fn delete(data: &Path, id: &str, drop: &Chosen, by: &str) -> io::Result<Value> {
     let dir = core::session_dir(data, id);
     match delete_one(data, id, drop, by) {
         Err(e) if e.kind() == io::ErrorKind::NotFound && !dir.join("session.json").exists() => {
@@ -257,7 +267,7 @@ pub(crate) fn delete(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<
     }
 }
 
-fn delete_one(data: &Path, id: &str, drop: bool, by: &str) -> io::Result<Value> {
+fn delete_one(data: &Path, id: &str, drop: &Chosen, by: &str) -> io::Result<Value> {
     let spec = core::load(data, id)?;
     // A rewind cut short finishes or rolls back first, or its unheard conversation leaks [D35].
     crate::rewind::settled(data, &spec)?;
@@ -425,7 +435,7 @@ pub fn remove_project(data: &Path, args: &[String]) -> io::Result<Value> {
         })
     };
     let (apart, after): (Vec<&String>, Vec<&String>) = ids.iter().partition(|s| alone(s));
-    let one = |s: &String| delete(data, s, false, "remove");
+    let one = |s: &String| delete(data, s, &Chosen::All(false), "remove");
     let mut done = vec![];
     std::thread::scope(|t| {
         for chunk in apart.chunks(16) {

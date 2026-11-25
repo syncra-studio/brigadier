@@ -88,7 +88,7 @@ pub fn remove(data: &Path, id: &str) -> io::Result<()> {
     {
         let _one = worktrees::lock(&dir)?;
         worktrees::delete(&dir, true)?;
-        crate::folder::delete(&dir, true)?;
+        crate::folder::delete(&dir, &crate::session::Chosen::All(true))?;
     }
     fs::remove_dir_all(&dir)
 }

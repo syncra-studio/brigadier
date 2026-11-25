@@ -20,6 +20,7 @@ mod freed;
 pub use branches::{drop_branches, put_branches};
 pub use freed::shed;
 mod hand;
+pub mod inner;
 mod kept;
 use kept::keeps;
 pub use kept::kept;
@@ -30,7 +31,9 @@ use missing::{live, registration};
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
-pub use landing::{Landing, Lands, external_landing, landed, lands, merged, unlanded};
+pub use landing::{
+    Landing, Lands, external_landing, landed, lands, merged, own_unlanded, unlanded,
+};
 pub use missing::restore_missing;
 
 pub const RECORD: &str = "worktree.json";
@@ -357,7 +360,13 @@ pub fn free(dir: &Path) -> io::Result<()> {
         if Some(&branch) != owned.branch.as_ref() {
             return err("The worktree is on another branch; switch back first.".into());
         }
-        git(path, &["add", "-A"])?;
+        let held = inner::held(path)?;
+        let add = ["add", "-A", "--"].into_iter();
+        git(
+            path,
+            &add.chain(held.iter().map(String::as_str))
+                .collect::<Vec<_>>(),
+        )?;
         if !git(path, &["diff", "--cached", "--name-only", "-z"])?.is_empty() {
             git(
                 path,
@@ -392,7 +401,7 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
     let Some(owned) = read(dir)? else {
         return Ok(None);
     };
-    hand::drop_maker(&owned)?;
+    hand::drop_maker(dir, &owned)?;
     let repo = Path::new(&owned.repo);
     if let Some(f) = &owned.freed {
         f.forget(repo)?;

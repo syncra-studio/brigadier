@@ -24,6 +24,32 @@ pub fn in_folder(data: &Path, folder: &Path, except: Option<&str>) -> Vec<Spec> 
     all
 }
 
+/// The folders in `dir`, itself too, that sessions other than `except` work in.
+pub fn within(data: &Path, dir: &Path, except: &str) -> Vec<PathBuf> {
+    let dir = key(dir);
+    (ids(data).iter().filter(|id| *id != except))
+        .filter_map(|id| load(data, id).ok())
+        .map(|o| key(Path::new(&o.cwd)))
+        .filter(|cwd| cwd.starts_with(&dir))
+        .collect()
+}
+
+/// Empties `dir` of all but `keep`, folders in it or itself.
+pub fn prune(dir: &Path, keep: &[PathBuf]) -> io::Result<()> {
+    if keep.iter().any(|k| k == dir) || !dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)?.flatten() {
+        let path = entry.path();
+        match entry.file_type()?.is_dir() {
+            true if keep.iter().any(|k| k.starts_with(&path)) => prune(&path, keep)?,
+            true => fs::remove_dir_all(path)?,
+            false => fs::remove_file(path)?,
+        }
+    }
+    Ok(())
+}
+
 /// Refuses new session `spec` in its project's own folder while another unarchived session works
 /// there: one Local checkout session at a time [D306].
 pub fn one_local(data: &Path, project: Option<&Project>, spec: &Spec) -> io::Result<()> {

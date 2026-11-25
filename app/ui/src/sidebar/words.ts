@@ -33,7 +33,7 @@ export type SessionRow = {
   labels?: string[];
   /** Archived with its Brigade: the Brigade's restore brings it back [D3111]. */
   archivedWith?: boolean;
-} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss">;
+} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss" | "worker">;
 
 export type Project = { id: string; name: string; folder: string; icon?: string | null };
 

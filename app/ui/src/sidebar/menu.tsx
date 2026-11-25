@@ -75,8 +75,7 @@ export function RowMenuItems({ row, project, canPin = true, onRename, onFork }: 
       )}
       <DropdownMenuSeparator />
       <ArchiveMenuItem row={row} />
-      {/* Off for a folder chat: delete's check doesn't see its repos' branches yet [D494, D3102]. */}
-      {!folder && <DeleteMenuItem row={row} />}
+      <DeleteMenuItem row={row} />
     </>
   );
 }

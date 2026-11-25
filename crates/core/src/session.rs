@@ -14,10 +14,14 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+mod branches;
+mod hand;
 mod litter;
 mod sweep;
-pub(crate) use litter::guarded;
-pub use litter::{built, left, may_take, own, tidy, unbuild, unbuilt};
+pub use branches::{Chosen, branches};
+use hand::hand_on;
+pub use litter::{built, built_in, left, may_take, own, tidy, unbuild, unbuilt};
+pub(crate) use litter::{guarded, picks, takes};
 pub use sweep::{archives, sweep};
 pub use worktrees::lost::Guard;
 
@@ -268,67 +272,15 @@ pub fn busy(f: &Fold, live: &Live) -> bool {
     }
 }
 
-/// The branch a delete would ask about, if any [D181]: none while another session uses the
-/// folder, which keeps it [D1080].
-pub fn unlanded(spec: &Spec) -> io::Result<Option<String>> {
-    if !share::others(&data_of(spec), spec).is_empty() {
-        return Ok(None);
-    }
-    worktrees::unlanded(&spec.dir)
-}
-
-/// Who still works in the folder after this session goes, for the confirm [D1080].
-pub fn stays(spec: &Spec) -> Option<String> {
-    share::others(&data_of(spec), spec)
-        .first()
-        .map(|o| o.id.clone())
-}
-
-/// While others use the folder, its worktree's record goes to the oldest not being deleted
-/// itself, landing with it [D1080, D1082], named in the intent first so a crash finishes the same
-/// handover [D35]. Only users left archived: it's freed, as the last archive would,
-/// unless a repository inside keeps it [D180].
-fn hand_on(spec: &Spec, intent: &mut Value) -> io::Result<bool> {
-    let (others, _held) = sharers(spec)?;
-    if others.is_empty() {
-        return Ok(false);
-    }
-    let archived = others.iter().all(|o| o.dir.join(ARCHIVED).exists());
-    let may = guarded(spec, Guard::Named);
-    // A user with no record leaving only archived ones: the holder's worktree is freed [D180].
-    if !worktrees::made(&spec.dir) {
-        let holder = holder(spec, &others);
-        if archived && may(&holder) {
-            worktrees::free(&holder)?;
-        }
-        return Ok(false);
-    }
-    let deleting = |o: &Spec| self::intent(&o.dir).is_some_and(|i| i["op"] == "delete");
-    let named = intent["heir"].as_str().map(String::from);
-    let Some(heir) = (others.iter())
-        .find(|o| named.as_ref() == Some(&o.id))
-        .or_else(|| others.iter().find(|o| !deleting(o)))
-    else {
-        return Ok(false);
-    };
-    intent["heir"] = heir.id.clone().into();
-    record(&spec.dir, intent)?;
-    worktrees::handover(&spec.dir, &heir.dir)?;
-    if archived && may(&heir.dir) {
-        worktrees::free(&heir.dir)?;
-    }
-    Ok(true)
-}
-
-/// Removes the session folder and every recorded path outside it, its branch too when `drop`
-/// says so or it all landed. Anything left keeps the folder and its record, so the daemon's next
+/// Removes the session folder and every recorded path outside it, the branches too that `chosen`
+/// says, or that all landed. Anything left keeps the folder and its record, so the daemon's next
 /// start tries again with the same choice; the reply says what stayed.
-pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
+pub fn delete(spec: &Spec, f: &Fold, chosen: &Chosen) -> Value {
     let dir = &spec.dir;
     let fail = |left: Vec<String>, swept: usize| {
         let _ = record(
             dir,
-            &json!({"op": "delete", "drop_branch": drop_branch, "left": left}),
+            &json!({"op": "delete", "drop_branch": chosen, "left": left}),
         );
         json!({"ok": false, "swept": swept, "removed": [], "left": left, "kept_branches": []})
     };
@@ -350,7 +302,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         .filter(|i| i["op"] == "delete")
         .unwrap_or_default();
     cut["op"] = "delete".into();
-    cut["drop_branch"] = drop_branch.into();
+    cut["drop_branch"] = json!(chosen);
     if let Err(e) = record(dir, &cut).and_then(|()| hand_on(spec, &mut cut)) {
         return fail(vec![format!("{}: {e}", dir.display())], 0);
     }
@@ -360,8 +312,8 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         return fail(vec![format!("process {} didn't stop", p.pid)], swept);
     }
     // Preserve transcripts too when a checkpoint fails: delete must remain retryable [D35].
-    let deleted = worktrees::delete(dir, drop_branch).and_then(|branch| {
-        let claims = crate::folder::delete(dir, drop_branch)?;
+    let deleted = worktrees::delete(dir, chosen.takes("")).and_then(|branch| {
+        let claims = crate::folder::delete(dir, chosen)?;
         Ok(branch.into_iter().chain(claims).collect::<Vec<_>>())
     });
     let kept_branches = match deleted {
@@ -429,7 +381,7 @@ pub fn delete(spec: &Spec, f: &Fold, drop_branch: bool) -> Value {
         reply["kept_branches"] = kept_branches.into();
         return reply;
     }
-    match remove(dir) {
+    match remove(spec) {
         Ok(()) => removed.push(dir.display().to_string()),
         Err(e) => left.push(format!("{}: {e}", dir.display())),
     }
@@ -454,8 +406,17 @@ pub fn gone(dir: &Path) -> Value {
 
 /// The session's folder goes, its record and intent last, so a file that won't go leaves a session
 /// that deletes again; one still holding a worktree another uses keeps only that [D35, D1080].
-fn remove(dir: &Path) -> io::Result<()> {
-    let retained = dir.join(worktrees::RETAINED).exists();
+fn remove(spec: &Spec) -> io::Result<()> {
+    let dir = &spec.dir;
+    // The worktrees in there others work in.
+    let others = match dir.join(worktrees::RETAINED).exists() {
+        true => share::within(&data_of(spec), &dir.join("worktree"), &spec.id),
+        false => vec![],
+    };
+    let retained = !others.is_empty();
+    if retained {
+        share::prune(&share::key(&dir.join("worktree")), &others)?;
+    }
     // Its lock stays held to the end: a second delete waits on it, then finds the session gone.
     let keep = [
         "session.json",
