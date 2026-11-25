@@ -24,7 +24,6 @@ import {
   CUT_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
-  KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
@@ -197,8 +196,6 @@ type FieldProps = {
   size?: keyof typeof SIZES;
   /** Takes the keyboard as it mounts, unless the user is already somewhere else. */
   autoFocus?: boolean;
-  /** The session's sent prompts, oldest first: ↑ in an empty field walks back through them, ↓ forward. */
-  prompts?: Draft[];
   onChange?: (parts: Parts) => void;
   /** Enter: `other` when ⌥ (or ⌘) asked for the other way. Without it Enter is a new line. */
   onSubmit?: (other: boolean) => void;
@@ -206,7 +203,7 @@ type FieldProps = {
   onSubmitNew?: () => void;
   /** Esc in the field; without it Esc is left to the page (the send button's stop). */
   onEscape?: () => void;
-  /** ↑ in an empty field, before the prompts: pulls the last queued message back; true when it did. */
+  /** ↑ in an empty field: pulls the last queued message back; true when it did. */
   onPullQueued?: () => boolean;
   /** The `@` menu's results; without it `@` is plain text. */
   mentions?: Mentions;
@@ -334,7 +331,6 @@ function Keys({
   ref,
   size,
   autoFocus,
-  prompts = [],
   onChange,
   onSubmit,
   onSubmitNew,
@@ -346,8 +342,6 @@ function Keys({
   setMode,
 }: Omit<FieldProps, "initial" | "placeholder" | "label" | "mentions" | "commands" | "attachments" | "onOpen"> & { mode: RefObject<boolean>; setMode: (on: boolean) => void }) {
   const [editor] = useLexicalComposerContext();
-  // How far back ↑ has walked, and the text it showed: typing anything else ends the walk.
-  const walk = useRef<{ back: number; shown: string } | null>(null);
   const caret = useRef<RangeSelection | null>(null); // the field's last caret, for a pick from the +, which takes the focus
   // What's typed, a command's with its `!`.
   const read = () => (!shell ? $read() : mode.current ? asShell($read()) : asWords($read()));
@@ -396,21 +390,8 @@ function Keys({
     onEscape();
     return true;
   });
-  const recall = useEffectEvent((event: KeyboardEvent, up: boolean) => {
-    if (!matches(event, "history")) return false;
-    const now = $read();
-    if (walk.current && JSON.stringify(now) !== walk.current.shown) walk.current = null;
-    if (!walk.current) {
-      if (!up || !blank(now)) return false;
-      if (onPullQueued?.()) {
-        event.preventDefault();
-        return true;
-      }
-    }
-    const back = (walk.current?.back ?? -1) + (up ? 1 : -1);
-    if (back >= prompts.length) return prompts.length > 0;
-    write(back < 0 ? [] : prompts[prompts.length - 1 - back]!.parts);
-    walk.current = back < 0 ? null : { back, shown: JSON.stringify($read()) };
+  const pull = useEffectEvent((event: KeyboardEvent) => {
+    if (!matches(event, "pull-queued") || !blank($read()) || !onPullQueued?.()) return false;
     event.preventDefault();
     return true;
   });
@@ -475,8 +456,7 @@ function Keys({
         editor.registerCommand(KEY_DOWN_COMMAND, (event) => event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "u" && leave(event), COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ENTER_COMMAND, submit, COMMAND_PRIORITY_NORMAL),
         editor.registerCommand(KEY_ESCAPE_COMMAND, escape, COMMAND_PRIORITY_NORMAL),
-        editor.registerCommand(KEY_ARROW_UP_COMMAND, (event) => recall(event, true), COMMAND_PRIORITY_NORMAL),
-        editor.registerCommand(KEY_ARROW_DOWN_COMMAND, (event) => recall(event, false), COMMAND_PRIORITY_NORMAL),
+        editor.registerCommand(KEY_ARROW_UP_COMMAND, pull, COMMAND_PRIORITY_NORMAL),
       ),
     [editor],
   );
