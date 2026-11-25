@@ -458,8 +458,8 @@ pub(crate) fn answered(data: &Path, id: &str, request: &str, control: &Value) ->
         };
         let app = name(&card.app);
         let why = format!(
-            "{} Nothing was done in {app}; don't reach it another way.",
-            adapters::denied(control)
+            "{}. Nothing was done in {app}; don't reach it another way.",
+            adapters::denied(control).trim_end_matches('.')
         );
         if allow && let Some(born) = born(data, &card.chat) {
             a.yes.insert((card.chat.clone(), card.app.clone()), born);
