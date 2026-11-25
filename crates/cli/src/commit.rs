@@ -84,7 +84,7 @@ pub(crate) fn first(data: &Path) -> Option<writer::Choice> {
 
 /// One write of `prompt` (built from the session's own asks) on `chosen`, else its agent at its
 /// cheapest model, else its own model at its lowest effort; offline, on a local model any agent listed [D1029]; none a rule bars [D376].
-/// The reason why not, else.
+/// With the model that wrote it; the reason why not, else.
 pub(crate) fn written_for(
     data: &Path,
     spec: &Spec,
@@ -92,7 +92,7 @@ pub(crate) fn written_for(
     active: &fs::File,
     chosen: Option<&writer::Choice>,
     prompt: impl Fn(&[String]) -> String,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let prompt = prompt(&writer::asks(&spec.dir));
     // Each candidate a rule bars is skipped for the next: the chosen, the cheap, the session's own,
     // the offline one [D376].
@@ -144,7 +144,7 @@ pub(crate) fn written_for(
     };
     ready(&mut run, a);
     let failure = match writer::write(a, &run, &account, &prompt, active, writer::WRITE_SECS) {
-        Ok(text) => return Ok(text),
+        Ok(text) => return Ok((text, run.model)),
         Err(failure) => failure,
     };
     if !failure.offline {
@@ -161,6 +161,7 @@ pub(crate) fn written_for(
         let mut run = check(run, local.name())?;
         ready(&mut run, local);
         return writer::write(local, &run, "", &prompt, active, writer::WRITE_SECS)
+            .map(|text| (text, run.model))
             .map_err(|e| e.why);
     }
     Err(failure.why)

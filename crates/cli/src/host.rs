@@ -372,7 +372,7 @@ fn written(data: &Path, id: &str, changes: &str) -> io::Result<(String, String)>
         "Write a pull request title on the first line (under 72 characters), then a blank line, \
          then a short description of what changed and why. Reply with only that.\n\n{changes}"
     );
-    let reply = super::commit::written_for(data, &spec, &f, &active, chosen.as_ref(), |_| {
+    let (reply, _) = super::commit::written_for(data, &spec, &f, &active, chosen.as_ref(), |_| {
         prompt.clone()
     })
     .map_err(|why| io::Error::other(format!("Couldn't write the title: {why}")))?;
