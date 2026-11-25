@@ -8,7 +8,7 @@ const record = (dir) => path.join(path.dirname(dir), `.${path.basename(dir)}.dri
 const stamp = (dir) => { const s = fs.lstatSync(dir, { throwIfNoEntry: false, bigint: true }); return s && `drill made ${s.dev}:${s.ino}:${s.birthtimeNs}` }
 const linked = (p) => { const s = fs.lstatSync(p, { throwIfNoEntry: false }); return s ? s.isSymbolicLink() : false }
 // Never a symlink: a planted one shouldn't make the drill treat an absent marker as present, nor follow it on write.
-const noted = (dir) => { try { return linked(record(dir)) ? null : fs.readFileSync(record(dir), 'utf8') } catch { return null } }
+const noted = (dir) => { try { return linked(record(dir)) ? null : fs.readFileSync(record(dir), 'utf8') } catch (e) { if (e.code === 'ENOENT') return null; throw e } }
 const EXCL_NOFOLLOW = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0)
 
 export const made = (dir) => noted(dir) !== null && noted(dir) === stamp(dir)
@@ -17,7 +17,8 @@ export const made = (dir) => noted(dir) !== null && noted(dir) === stamp(dir)
 export function mark(dir) {
   const r = record(dir)
   if (linked(r)) throw new Error(`${r} is a symlink, not the drill's marker: move it, or give the drill another folder`)
-  const was = noted(dir)
+  let was
+  try { was = fs.readFileSync(r, 'utf8') } catch (e) { if (e.code !== 'ENOENT') throw new Error(`${r} can't be read: ${e.message} — refuse to replace it`); was = null }
   if (was !== null && !was.startsWith('drill made ')) throw new Error(`${r} isn't the drill's own`)
   fs.rmSync(r, { force: true })
   const fd = fs.openSync(r, EXCL_NOFOLLOW, 0o600)
