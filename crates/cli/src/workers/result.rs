@@ -16,7 +16,7 @@ use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core};
 use brigadier_frames::{log, procs};
-pub(super) use report::write;
+pub(super) use report::{Of, write, write_as};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -191,11 +191,6 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             if (l.paused && (how == "stopped" || own.is_none())) || moves {
                 break;
             }
-            let how = match late || *direct {
-                true => Some(how),
-                false => review::holds(data, &mut l, wid, turn, how, &f),
-            };
-            let Some(how) = how else { break };
             let of = report::Of {
                 direct: *direct,
                 end: end.at,
@@ -203,6 +198,15 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 // Its own last word, or its wake's, never one that came after this end.
                 said: (end.at > 0).then_some((end.id, end.at)),
             };
+            let how = match late || *direct {
+                true => Some(how),
+                false if l.review["of"].is_string() => {
+                    review::after(data, &l, wid, turn, how, None, of);
+                    continue;
+                }
+                false => review::holds(data, &mut l, wid, turn, how, &f),
+            };
+            let Some(how) = how else { break };
             report::write_as(data, &l, wid, turn, how, None, of)?;
         }
     }
@@ -242,7 +246,6 @@ pub(super) fn unsaid(
     }
     let path = |key: &str| path_of(data, &l.parent, wid, key);
     let told = |end: u64| path(&format!("{turn}.{end}")).exists();
-    // A reviewer says its findings once.
     let once = !direct && (l.review["of"].is_string() || l.review["plan"].is_string());
     let since = match path(turn).exists() {
         false => {
@@ -250,15 +253,25 @@ pub(super) fn unsaid(
             let over = |w: &[fold::End]| w[1].began.saturating_sub(w[0].at) >= WAKE_MS;
             let first = ends.windows(2).position(over).unwrap_or(ends.len() - 1);
             ends.drain(..first);
+            if once {
+                review::once(data, l, wid, turn, &mut ends);
+            }
             return (ends.into_iter().enumerate())
                 .map(|(i, e)| (e, i > 0))
-                .filter(|(_, late)| !late || !once)
                 .collect();
         }
-        true if once || told(u64::MAX) => return vec![],
+        true if told(u64::MAX) => return vec![],
         true => read_json::<Res>(&path(turn)),
     };
     let Some(r) = since else { return vec![] };
+    if once {
+        // An older build's, whose result doesn't name its end, stays over.
+        if r.end == 0 || (r.how == "finished" && review::found(&r.text)) {
+            return vec![];
+        }
+        ends.retain(|e| e.at >= r.end);
+        review::once(data, l, wid, turn, &mut ends);
+    }
     let late = |e: &fold::End| match r.end {
         // shortcut: an older build's result doesn't name its end, and a wake long before the
         // upgrade isn't news; one is told if the daemon sees it this soon.
@@ -307,7 +320,7 @@ pub(super) fn failed(data: &Path, pid: &str, r: &Record) {
     };
     let error = r.error.as_deref();
     match l.review["of"].is_string() {
-        true => review::after(data, &l, &r.wid, &r.cid, "failed", error),
+        true => review::after(data, &l, &r.wid, &r.cid, "failed", error, Of::default()),
         false => drop(write(data, &l, &r.wid, &r.cid, "failed", error)),
     }
 }

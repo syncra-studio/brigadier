@@ -289,7 +289,7 @@ pub(in crate::workers) fn write_as(
         (end.map_or(turn, |e| &e.id).into(), u64::MAX)
     });
     let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
-    // Its host died in it: the log says so, or left the turn open. A reviewer's end isn't named.
+    // Its host died in it: the log says so, or left the turn open.
     let logged = match of.end {
         0 => f.end(turn),
         at => (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == at),

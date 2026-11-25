@@ -21,9 +21,13 @@ pub(crate) use task::{at, plan};
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};
-use brigadier_core::{self as core, fold::Fold};
+use brigadier_core::{
+    self as core,
+    fold::{End, Fold},
+};
 use brigadier_frames::procs;
 use line::{count, cut, reviewed, word};
+use result::Of;
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io;
@@ -108,8 +112,7 @@ fn off(data: &Path, a: &mut Link, wid: &str, why: &str) {
 }
 
 /// `write_ended`'s one call, for a reported turn of `wid` that ended `how` with no result yet: the
-/// end its result is written with, or none while a review holds it [D3026]. A reviewer's own
-/// result is written here.
+/// end its result is written with, or none while a review holds it [D3026].
 pub(super) fn holds(
     data: &Path,
     l: &mut Link,
@@ -118,10 +121,6 @@ pub(super) fn holds(
     how: &'static str,
     f: &Fold,
 ) -> Option<&'static str> {
-    if l.review["of"].is_string() {
-        after(data, l, wid, turn, how, None);
-        return None;
-    }
     let on = how == "finished" && routing::review_on(data);
     if l.review.is_null() && !on {
         return Some(how);
@@ -274,11 +273,19 @@ fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
 }
 
 /// A reviewer's end, its start's failure too: its result, then what comes next, under the lock.
-pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str, error: Option<&str>) {
+pub(super) fn after(
+    data: &Path,
+    l: &Link,
+    wid: &str,
+    turn: &str,
+    how: &str,
+    error: Option<&str>,
+    of: Of,
+) {
     let next = {
         let Ok(_one) = lock(data) else { return };
         let path = result::path_of(data, &l.parent, wid, turn);
-        if path.exists() || result::write(data, l, wid, turn, how, error).is_err() {
+        if path.exists() || result::write_as(data, l, wid, turn, how, error, of).is_err() {
             return;
         }
         act(data, l, wid, turn, how)
@@ -286,6 +293,26 @@ pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str, err
     if let Some(of) = next {
         let _ = result::write_ended(data, &of, false);
     }
+}
+
+/// A reviewer says its findings once: the switch's or a plan's is over at its first end, an agent's
+/// at the one that said them, so one that failed is heard again. Leaves `ends` up to that one.
+pub(super) fn once(data: &Path, l: &Link, wid: &str, turn: &str, ends: &mut Vec<End>) {
+    let says = |e: &End| {
+        let said = || last_by(data, wid, turn, e.at);
+        e.how == "done" && said().is_some_and(|m| found(&m))
+    };
+    if l.review["switch"] == true || l.review["plan"].is_string() {
+        ends.truncate(1);
+    } else if ends.len() > 1
+        && let Some(i) = ends.iter().position(says)
+    {
+        ends.truncate(i + 1);
+    }
+}
+
+pub(super) fn found(text: &str) -> bool {
+    count(text, "findings:").is_some()
 }
 
 /// Under the lock, after a reviewer's result: its note; under the switch, its findings to its
