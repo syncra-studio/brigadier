@@ -135,12 +135,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         let cid = |k: &str| item[k].as_str().unwrap_or("").to_string();
         match item["kind"].as_str() {
             Some("input") if c["kind"] == "answer" => {
-                let given_text = (c["answers"].as_array().into_iter().flatten())
-                    .filter_map(Value::as_str)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let text = c["reply"].as_str().map_or(given_text, String::from);
-                if !text.trim().is_empty() {
+                if let Some(text) = archive::answer(item) {
                     given.insert(cid("cid"), (at.clone(), text, item["ack"] == true));
                 }
             }

@@ -125,6 +125,44 @@ pub fn output(dir: &Path, at: &str) -> Option<(String, String)> {
     found.filter(|(_, o)| !o.trim().is_empty())
 }
 
+/// The user's answer to an agent's question, if `item` is one.
+pub fn answer(item: &Value) -> Option<String> {
+    let c = &item["control"];
+    if item["kind"] != "input" || c["kind"] != "answer" {
+        return None;
+    }
+    let given = (c["answers"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = c["reply"].as_str().map_or(given, String::from);
+    Some(text).filter(|t| !t.trim().is_empty())
+}
+
+/// An answer, from the log, by the reference a hand-off gives it, as the user's entry. Nothing
+/// indexes it; only the log keeps it.
+pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
+    let mut found = None;
+    crate::rewind::read_active(dir, |item| {
+        if self::at(item) == at
+            && let Some(text) = answer(item)
+        {
+            found = Some(Entry {
+                at: at.into(),
+                from: "user",
+                who: String::new(),
+                text,
+                files: vec![],
+                ts: item["ts"].as_u64().unwrap_or(0),
+                sent: vec![],
+                out: String::new(),
+            });
+        }
+    })
+    .ok()?;
+    found
+}
+
 /// A fork's inherited copy as entries, by line; none for any other session.
 pub fn inherited(dir: &Path) -> Vec<Entry> {
     let text = std::fs::read_to_string(dir.join("inherited.jsonl")).unwrap_or_default();
