@@ -18,7 +18,7 @@ export const OLDER = 64;
 const INTENT_MS = 1000;
 /** The jump to the end: an ease-out cubic over this long. */
 const JUMP_MS = 260;
-/** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second), as measured [D56]. */
+/** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second) [D56]. */
 const PLACE_MS = 200;
 const PLACE_RATE = 46.25;
 /** Rust's rows come in bursts that regroup a moment later: work is followed only if it still outgrows the view then. */
