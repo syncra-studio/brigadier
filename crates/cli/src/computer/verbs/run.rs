@@ -3,7 +3,7 @@
 
 use super::diff::{Seen, baseline, changes};
 use super::window::shows;
-use super::{SESSIONS, Words, lock, refuse, verb, words};
+use super::{SESSIONS, Words, asks, lock, refuse, verb, words};
 use serde_json::Value;
 use std::path::Path;
 
@@ -34,6 +34,9 @@ pub(super) fn run(
         ));
     }
     let mut s = lock(&SESSIONS).get(me).cloned().unwrap_or_default();
+    if s.pid != 0 {
+        asks::gate(data, me, s.pid, rows, here)?;
+    }
     if s.window != 0 && !s.snapshot.is_empty() {
         baseline(data, &mut s, here);
         lock(&SESSIONS).insert(me.to_string(), s);
@@ -62,7 +65,8 @@ pub(super) fn run(
     }
     batch(me, false);
     let mut s = lock(&SESSIONS).get(me).cloned().unwrap_or_default();
-    if s.window == 0 || s.snapshot.is_empty() {
+    // A level lowered meanwhile and a no: nothing of the app is read.
+    if s.window == 0 || s.snapshot.is_empty() || asks::shut(data, me, s.pid) {
         return Ok(lines.join("\n"));
     }
     let (seen, diff) = changes(data, me, &mut s, here);

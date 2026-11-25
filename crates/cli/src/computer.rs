@@ -7,6 +7,7 @@
 
 mod verbs;
 
+pub(crate) use verbs::asks::answered;
 pub use verbs::turn_ended;
 pub(crate) use verbs::{HELP, VERBS};
 
@@ -418,6 +419,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 false => {
                     stop_helper();
                     verbs::release_all();
+                    verbs::asks::forget();
                 }
             }
             Ok(json!({"ok": true}))

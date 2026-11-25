@@ -144,10 +144,10 @@ fn unread(seen: Seen, text: &str, app: &str) -> (Seen, String) {
 pub(super) struct Control {
     pub(super) role: String,
     pub(super) n: u64,
-    name: String,
+    pub(super) name: String,
     on: Option<bool>,
     at: Option<[f64; 2]>,
-    reads: Vec<u64>,
+    pub(super) reads: Vec<u64>,
 }
 
 pub(super) fn controls(found: &Value) -> Vec<Control> {

@@ -39,6 +39,7 @@ pub(super) fn open(
     me: &str,
     s: &mut Sess,
     w: &Words,
+    rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     let mut words = w.rest.clone();
@@ -82,6 +83,7 @@ pub(super) fn open(
     {
         return Err(refuse(&no));
     }
+    let asked = super::asks::opening(data, me, listed, target.as_deref(), rows, here)?;
     let titled = |pid: i64| -> Vec<(Value, Value)> {
         (windows(data, pid, here).unwrap_or_default().iter())
             .map(|w| (w["window_id"].clone(), w["title"].clone()))
@@ -95,6 +97,8 @@ pub(super) fn open(
     let before = was.map(titled).unwrap_or_default();
     let mut launch = std::process::Command::new("open");
     let app_path = listed.and_then(|a| a["launch_path"].as_str());
+    // At Ask, the very app its card named.
+    let app_path = asked.as_deref().and_then(Path::to_str).or(app_path);
     launch.args(["-g", "-a", app_path.unwrap_or(&name)]);
     launch.args(&target);
     if listed.is_none_or(|a| a["running"] == false) {
@@ -122,6 +126,7 @@ pub(super) fn open(
             found => break found?,
         }
     };
+    super::asks::gate(data, me, pid, rows, here)?;
     let window = match s.pid == pid {
         true => s.window,
         false => 0,

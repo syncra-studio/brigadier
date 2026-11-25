@@ -239,6 +239,9 @@ fn answered(
     if request.starts_with("browser-") {
         return crate::browser::answered(data, id, request, &control);
     }
+    if request.starts_with("computer-") {
+        return crate::computer::answered(data, id, request, &control);
+    }
     let decision = control["decision"].as_str().map(String::from);
     let answers = control["answers"].as_array().cloned();
     let images = beside(data, id, given, Some(request))?;
