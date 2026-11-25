@@ -7,7 +7,8 @@ import { useSidebar } from "../components/sidebar";
 import { newChat } from "../home/start";
 import { ComposeEditSquare, Plugin, PullRequestOpen } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openSettings } from "../settings/shell";
+import { prPageOf } from "../pull-requests/route";
+import { openSettings, settingsPageOf } from "../settings/shell";
 import { StripFoot } from "./foot";
 
 /**
@@ -29,7 +30,16 @@ export function HomeMark({ rail = false }: { rail?: boolean }) {
   );
 }
 
-export function Strip({ pulls, settings, children }: {
+function pageOf(hash: string): "settings" | "plugins" | "pulls" | null {
+  const settings = settingsPageOf(hash);
+  if (settings !== null) return settings.split("/")[0] === "plugins" ? "plugins" : "settings";
+  return prPageOf(hash) !== null ? "pulls" : null;
+}
+
+export function Strip({ hash, launched, pulls, settings, children }: {
+  hash: string;
+  /** The hash the app started on. */
+  launched: string;
   /** The pull requests show. */
   pulls: boolean;
   /** The Settings page that shows. */
@@ -38,14 +48,16 @@ export function Strip({ pulls, settings, children }: {
 }) {
   const { setOpen } = useSidebar();
   // Settings, Plugins and Pull Requests unfold the sidebar as they're entered, whichever way; not as one is launched or
-  // reloaded on, nor for a later fold or window change. A click here on the one in front unfolds it too [D236].
-  const page = pulls ? "pulls" : settings === undefined ? null : settings.split("/")[0] === "plugins" ? "plugins" : "settings";
-  const entered = useRef(page);
+  // reloaded on, as Settings closes back to Pull Requests, nor for a later fold or window change. A click here on the one
+  // in front unfolds it too [D236].
+  const page = pageOf(hash);
+  const entered = useRef(pageOf(launched));
   const unfold = useEffectEvent(() => setOpen(true));
   useEffect(() => {
-    if (entered.current === page) return;
+    const from = entered.current;
+    if (from === page) return;
     entered.current = page;
-    if (page) unfold();
+    if (page && !(from && page === "pulls")) unfold();
   }, [page]);
   return (
     <nav aria-label="Strip" className="rail scroll-fade-scope flex h-full shrink-0 flex-col items-center pt-tab-bar pb-1">
