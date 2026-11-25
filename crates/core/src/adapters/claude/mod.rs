@@ -104,6 +104,7 @@ impl Adapter for Claude {
             "api_key" | "api_key_helper" => "API key",
             "oauth_token" => "token",
             "third_party" => "cloud provider",
+            other if signed_in => other,
             _ => "",
         };
         let listed = match signed_in {

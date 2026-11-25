@@ -8,11 +8,17 @@ use serde_json::{Value, json};
 mod app_server;
 pub use app_server::{compact, limited};
 
-const TOOLS: [&str; 4] = [
-    "command_execution",
-    "mcp_tool_call",
-    "file_change",
-    "web_search",
+/// Its items that aren't tools; any other, one it adds too, is a step [D74].
+const SAID: [&str; 9] = [
+    "user_message",
+    "hook_prompt",
+    "agent_message",
+    "function_call_output",
+    "plan",
+    "reasoning",
+    "context_compaction",
+    "entered_review_mode",
+    "exited_review_mode",
 ];
 
 pub fn parse(line: &str) -> Vec<Event> {
@@ -51,7 +57,9 @@ pub fn parse(line: &str) -> Vec<Event> {
         "item.started" | "item.completed" if kind == "image_generation" => {
             vec![Event::Image(image(item, done))]
         }
-        "item.started" | "item.completed" if TOOLS.contains(&kind) => {
+        "item.started" | "item.completed"
+            if !SAID.contains(&kind) && kind != "sub_agent_activity" && item["id"].is_string() =>
+        {
             let mut events = vec![Event::ToolStart(tool(item))];
             if done {
                 events.push(Event::ToolEnd(end(item)));
@@ -102,10 +110,17 @@ fn tool(item: &Value) -> Tool {
             (kind.to_string(), "edit", path.to_string())
         }
         "web_search" => (kind.to_string(), "web", s(item, &["query"]).to_string()),
+        "image_view" => (kind.to_string(), "read", s(item, &["path"]).to_string()),
         _ => (
-            s(item, &["tool"]).to_string(),
+            match s(item, &["tool"]) {
+                "" => kind.replace('_', " "),
+                tool => tool.to_string(),
+            },
             "other",
-            item["arguments"].to_string(),
+            match &item["arguments"] {
+                Value::Null => String::new(),
+                input => input.to_string(),
+            },
         ),
     };
     Tool {
@@ -182,7 +197,7 @@ fn agents(item: &Value, done: bool) -> Vec<Event> {
             let status = s(state, &["status"]);
             if matches!(
                 status,
-                "completed" | "errored" | "failed" | "shutdown" | "not_found"
+                "completed" | "errored" | "failed" | "interrupted" | "shutdown" | "not_found"
             ) {
                 events.push(Event::ToolEnd(Done {
                     id: child.clone(),

@@ -131,7 +131,11 @@ impl Adapter for Codex {
         Ok(Check {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
-            how: how.into(),
+            // Its account's kind where it's read, else by its words.
+            how: match listed.how.as_str() {
+                "" => how.into(),
+                kind => kind.into(),
+            },
             ..listed
         })
     }

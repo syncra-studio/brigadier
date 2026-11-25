@@ -243,7 +243,12 @@ pub fn parse(v: &Value) -> Option<Vec<Event>> {
             "AskUserQuestion" => vec![question(&id(), r)],
             _ => vec![approval(&id(), r)],
         },
-        "control_request" => vec![Event::Unknown(v.to_string())],
+        // A request of a kind it adds: shown, and either choice tells it there's no answer, so its
+        // turn never waits on one unseen.
+        "control_request" => vec![Event::Approval(
+            json!({"id": id(), "action": "other", "reason": "Brigadier can't answer this request. Either choice turns it down.",
+            "input": s(r, &["subtype"]), "cli": {"unknown": true}}),
+        )],
         "control_cancel_request" => vec![Event::Resolved(id())],
         "control_response" => {
             let r = &v["response"];
@@ -404,6 +409,11 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         }
         Some("answer") => {
             let r = &msg["request"];
+            if r["cli"]["unknown"] == true {
+                let error = "Brigadier doesn't handle this request.";
+                let line = json!({"type": "control_response", "response": {"subtype": "error", "request_id": r["id"], "error": error}});
+                return Ok(Delivery::Stdin(format!("{line}\n")));
+            }
             let response = if r["items"].is_array() {
                 answers(r, msg)
             } else {

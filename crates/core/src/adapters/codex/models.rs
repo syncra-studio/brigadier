@@ -107,8 +107,14 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
     who.plan = who.plan.as_deref().and_then(plan_name);
     let usage = limits.as_ref().map(usage);
+    let how = match account["type"].as_str().unwrap_or("") {
+        "chatgpt" => "ChatGPT account",
+        "apiKey" => "API key",
+        other => other,
+    };
     Some(Check {
         models,
+        how: how.into(),
         who,
         usage,
         ..Check::default()
