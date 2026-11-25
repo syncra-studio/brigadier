@@ -124,7 +124,15 @@ fn slack(cwd: &Path) -> Map<String, Value> {
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     let cwd = Path::new(&spec.cwd);
     if spec.naked {
-        return super::control::naked(argv, slack(cwd));
+        // Where the library holds Slack, its switch and projects decide, as Settings › Plugins says.
+        let items = library::items(&crate::data_of(spec));
+        let off =
+            |i: &Value| i["key"] == "server:slack" && !library::on(i, spec.project.as_deref());
+        let servers = match items.iter().any(off) {
+            true => Map::new(),
+            false => slack(cwd),
+        };
+        return super::control::naked(argv, servers);
     }
     let mut off = library(spec, cwd, argv, env);
     // Claude Code drops its Slack plugin's server for a claude.ai Slack connector at the same
