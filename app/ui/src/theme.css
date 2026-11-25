@@ -1275,6 +1275,11 @@
   flex: 0 0 calc(attr(data-share type(<number>), 0.42) * 100%);
 }
 
+/* A part of a stacked bar, as wide as its share of the rest (settings/storage-parts.tsx). */
+@utility storage-share {
+  flex-grow: attr(data-share type(<number>), 0);
+}
+
 @utility dialog-top {
   top: attr(data-top px, 0px);
 }

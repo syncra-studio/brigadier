@@ -2,139 +2,109 @@
 import { useEffect, useState } from "react";
 
 import { showToast } from "../src/components/toast";
+import { type Chat, type Counted, GROUPS, type Group, type Holder, KINDS, type Kind, PER_CHAT, gb, storageOf } from "../src/settings/storage-data";
 
-export type Kind = "worktrees" | "build" | "temp" | "history" | "browser";
-type Sizes = Record<Exclude<Kind, "browser">, number>;
-/** A chat's own files, or one of its workers'. */
-export type Holder = { id: string; title: string; sizes: Sizes; archived: boolean; worker: boolean; working?: boolean; unmerged?: boolean };
-export type Chat = Holder & { project: string; workers: Holder[]; /** Chats it stands for, past the listed ones. */ many?: number };
+type Own = (typeof PER_CHAT)[number];
+type Gigabytes = Record<Own, number>;
+type FakeHolder = Pick<Holder, "id" | "title" | "archived" | "worker"> & { gigabytes: Gigabytes; working?: boolean; unmerged?: boolean };
+type Fake = FakeHolder & { project: string | null; workers: FakeHolder[] };
 
-const sizes = (worktrees: number, build: number, temp: number, history: number): Sizes => ({ worktrees, build, temp, history });
-const worker = (id: string, title: string, archived: boolean, own: Sizes, state: Pick<Holder, "working" | "unmerged"> = {}): Holder => ({ id, title, sizes: own, archived, worker: true, ...state });
+const gigabytes = (worktrees: number, build: number, temp: number, history: number): Gigabytes => ({ worktrees, build, temp, history });
+const worker = (id: string, title: string, archived: boolean, own: Gigabytes, state: Pick<FakeHolder, "working" | "unmerged"> = {}): FakeHolder => ({ id, title, gigabytes: own, archived, worker: true, ...state });
 
-const CHATS: Chat[] = [
+const CHATS: Fake[] = [
   {
-    id: "export", title: "Ship the export dialog", project: "atlas", archived: false, worker: false, sizes: sizes(0.6, 3.1, 0.2, 0.4),
+    id: "export", title: "Ship the export dialog", project: "atlas", archived: false, worker: false, gigabytes: gigabytes(0.6, 3.1, 0.2, 0.4),
     workers: [
-      worker("w1", "Draw the PDF pages", false, sizes(0.5, 4.2, 0.3, 0.1)),
-      worker("w2", "Check the CSV columns", false, sizes(0.5, 3.8, 0.1, 0.1)),
-      worker("w3", "Review the export", false, sizes(0.5, 2.9, 0.1, 0.1), { working: true }),
+      worker("w1", "Draw the PDF pages", false, gigabytes(0.5, 4.2, 0.3, 0.1)),
+      worker("w2", "Check the CSV columns", false, gigabytes(0.5, 3.8, 0.1, 0.1)),
+      worker("w3", "Review the export", false, gigabytes(0.5, 2.9, 0.1, 0.1), { working: true }),
     ],
   },
   {
-    id: "search", title: "Move search to SQLite", project: "atlas", archived: true, worker: false, sizes: sizes(0.6, 0, 0.1, 0.3),
+    id: "search", title: "Move search to SQLite", project: "atlas", archived: true, worker: false, gigabytes: gigabytes(0.6, 0, 0.1, 0.3),
     workers: [
-      worker("w4", "Rebuild the index", true, sizes(0.5, 3.6, 0.2, 0.1)),
-      worker("w5", "Compare the results", true, sizes(0.5, 3.3, 0.4, 0.1), { unmerged: true }),
+      worker("w4", "Rebuild the index", true, gigabytes(0.5, 3.6, 0.2, 0.1)),
+      worker("w5", "Compare the results", true, gigabytes(0.5, 3.3, 0.4, 0.1), { unmerged: true }),
     ],
   },
   {
-    id: "signin", title: "Sign-in redesign", project: "lantern", archived: false, worker: false, sizes: sizes(0.4, 0, 0, 0.2),
+    id: "signin", title: "Sign-in redesign", project: "lantern", archived: false, worker: false, gigabytes: gigabytes(0.4, 0, 0, 0.2),
     workers: [
-      worker("w6", "Add passkeys", false, sizes(0.4, 2.6, 0.1, 0.1), { unmerged: true }),
-      worker("w7", "Sign-in card mockup", false, sizes(0.4, 1.1, 0.6, 0.1)),
+      worker("w6", "Add passkeys", false, gigabytes(0.4, 2.6, 0.1, 0.1), { unmerged: true }),
+      worker("w7", "Sign-in card mockup", false, gigabytes(0.4, 1.1, 0.6, 0.1)),
     ],
   },
-  { id: "flaky", title: "Flaky checkout tests", project: "lantern", archived: true, worker: false, sizes: sizes(0.4, 0, 1.4, 0.2), workers: [] },
-  { id: "invoices", title: "Invoice emails in German", project: "atlas", archived: false, worker: false, sizes: sizes(0.3, 0.9, 0, 0.1), workers: [] },
+  { id: "flaky", title: "Flaky checkout tests", project: "lantern", archived: true, worker: false, gigabytes: gigabytes(0.4, 0, 1.4, 0.2), workers: [] },
+  { id: "invoices", title: "Invoice emails in German", project: "atlas", archived: false, worker: false, gigabytes: gigabytes(0.3, 0.9, 0, 0.1), workers: [] },
 ];
-const REST: Chat[] = [
-  { id: "rest-live", title: "", project: "", archived: false, worker: true, many: 26, sizes: sizes(3.1, 2.2, 0.9, 1.6), workers: [] },
-  { id: "rest-archived", title: "", project: "", archived: true, worker: true, many: 61, sizes: sizes(1.2, 0.8, 1.9, 2.2), workers: [] },
+const REST: (Fake & { many: number })[] = [
+  { id: "rest-live", title: "", project: null, archived: false, worker: true, many: 26, gigabytes: gigabytes(3.1, 2.2, 0.9, 1.6), workers: [] },
+  { id: "rest-archived", title: "", project: null, archived: true, worker: true, many: 61, gigabytes: gigabytes(1.2, 0.8, 1.9, 2.2), workers: [] },
 ];
-const BROWSER = 1.3;
+const GB = 1e9;
+/** Each chat past the listed ones, all alike. */
+const SMALLER: Fake[] = REST.flatMap(({ many, ...rest }) =>
+  Array.from({ length: many }, (_, n) => ({ ...rest, id: `${rest.id}-${n}`, gigabytes: Object.fromEntries(PER_CHAT.map((kind) => [kind, rest.gigabytes[kind] / many])) as Gigabytes })),
+);
+const ALL = [...CHATS, ...SMALLER];
+export const BROWSER = 1.3 * GB;
 /** What Brigadier uses and what is free, together. */
-const DISK = 324.7;
-export const MORE = REST.reduce((sum, chat) => sum + (chat.many ?? 0), 0);
+const DISK = 324.7 * GB;
 
-export const KINDS: { kind: Kind; label: string; line: string; fill: string }[] = [
-  { kind: "build", label: "Build files", line: "What builds and installs made, like target and node_modules", fill: "bg-tile-sky" },
-  { kind: "worktrees", label: "Worktrees", line: "Each session's and worker's own copy of the code", fill: "bg-tile-violet" },
-  { kind: "temp", label: "Temp files", line: "What agents wrote outside the code while they worked", fill: "bg-tile-sunflower" },
-  { kind: "history", label: "Chat history", line: "Every message, tool call and attachment", fill: "bg-tile-mint" },
-  { kind: "browser", label: "Browser data", line: "Cookies, site data and cache of Brigadier's browser", fill: "bg-tile-coral" },
-];
-export const PER_CHAT: readonly Exclude<Kind, "browser">[] = ["build", "worktrees", "temp", "history"];
-
-/** The two things Free up space takes: live chats' finished workers' build files, and archived chats' leftovers. */
-export type Group = "build" | "left";
-export const GROUPS: { group: Group; label: string; line: string }[] = [
-  { group: "build", label: "Finished workers' build files", line: "The next build makes them again. Their code stays." },
-  { group: "left", label: "Leftovers of archived chats", line: "Build files, temp files, and worktrees with nothing unmerged. Unarchive makes the worktree again." },
-];
-
-function goesWith(holder: Holder, kind: Kind): Group | null {
-  if (holder.working || kind === "browser" || kind === "history") return null;
-  if (holder.archived) return kind === "worktrees" && holder.unmerged ? null : "left";
-  return holder.worker && kind === "build" ? "build" : null;
+function goes({ archived, worker: isWorker, working, unmerged }: FakeHolder): Holder["goes"] {
+  if (working) return {};
+  if (archived) return { build: "left", temp: "left", ...(!unmerged && { worktrees: "left" }) };
+  return isWorker ? { build: "build" } : {};
 }
-const holdersOf = (chat: Chat): Holder[] => [chat, ...chat.workers];
-export const gb = (size: number) => (size >= 0.95 ? `${size.toFixed(1)} GB` : size < 0.05 ? "0 MB" : `${Math.round(size * 10) * 100} MB`);
-const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+const holder = ({ gigabytes: _, ...own }: FakeHolder): Holder => ({ working: false, unmerged: false, ...own, goes: goes(own as FakeHolder) });
+export const CHATS_SHOWN: Chat[] = ALL.map(({ project, workers, ...own }) => ({ ...holder(own), project, workers: workers.map(holder) }));
 
-export type Storage = ReturnType<typeof useStorage>;
+const holders = ALL.flatMap((chat): FakeHolder[] => [chat, ...chat.workers]);
+export const measure = (kind: Own): Record<string, number> => Object.fromEntries(holders.map((each) => [each.id, each.gigabytes[kind] * GB]));
+export const free = (sizes: Counted["sizes"]) => DISK - BROWSER - Object.values(sizes).flatMap((each) => Object.values(each)).reduce((total, size) => total + size, 0);
+const EVERY = Object.fromEntries(PER_CHAT.map((kind) => [kind, measure(kind)])) as Record<Own, Record<string, number>>;
+
+/** `sizes` without what `groups` take. */
+function without(sizes: Counted["sizes"], groups: readonly Group[]): Counted["sizes"] {
+  const shown = CHATS_SHOWN.flatMap((chat): Holder[] => [chat, ...chat.workers]);
+  return Object.fromEntries(PER_CHAT.map((kind) => [kind, Object.fromEntries(shown.map((each) => [each.id, each.goes[kind] && groups.includes(each.goes[kind]) ? 0 : (sizes[kind]?.[each.id] ?? 0)]))]));
+}
 
 /** `?state=counting` holds the count part way; `?state=freed` starts with everything freed. */
 export function useStorage() {
   const asked = new URLSearchParams(location.search).get("state");
-  const [counted, setCounted] = useState(0);
-  const [freed, setFreed] = useState<ReadonlySet<string>>(() => new Set(asked === "freed" ? GROUPS.flatMap(({ group }) => PER_CHAT.map((kind) => `${group}:${kind}`)) : []));
-  const [freeing, setFreeing] = useState<{ done: number; total: number } | null>(null);
+  const [arrived, setArrived] = useState(0);
+  const [sizes, setSizes] = useState<Counted["sizes"]>(() => (asked === "freed" ? without(EVERY, GROUPS.map(({ group }) => group)) : EVERY));
+  const [freeing, setFreeing] = useState<Counted["freeing"]>(null);
   const last = asked === "counting" ? 2 : KINDS.length;
   useEffect(() => {
-    if (counted >= last) return;
-    const timer = setTimeout(() => setCounted(counted + 1), 550);
+    if (arrived >= last) return;
+    const timer = setTimeout(() => setArrived(arrived + 1), 550);
     return () => clearTimeout(timer);
-  }, [counted, last]);
+  }, [arrived, last]);
 
-  const isFreed = (holder: Holder, kind: Kind) => {
-    const group = goesWith(holder, kind);
-    return group !== null && freed.has(`${group}:${kind}`);
+  const here = (kind: Kind) => KINDS.findIndex((each) => each.kind === kind) < arrived;
+  const counted: Counted = {
+    chats: CHATS_SHOWN,
+    free: free(sizes),
+    sizes: Object.fromEntries(PER_CHAT.filter(here).map((kind) => [kind, sizes[kind]])),
+    browser: here("browser") ? BROWSER : undefined,
+    freeing,
   };
-  const sizeOf = (holder: Holder, kind: Kind) => (kind === "browser" || isFreed(holder, kind) ? 0 : holder.sizes[kind]);
-  const chatSize = (chat: Chat, kind?: Kind) => sum(holdersOf(chat).flatMap((holder) => (kind ? [kind] : PER_CHAT).map((each) => sizeOf(holder, each))));
-  const holderSize = (holder: Holder) => sum(PER_CHAT.map((kind) => sizeOf(holder, kind)));
-  const everyone = [...CHATS, ...REST].flatMap(holdersOf);
-  const kindSize = (kind: Kind) => (kind === "browser" ? BROWSER : sum(everyone.map((holder) => sizeOf(holder, kind))));
-  const ready = (kind: Kind) => KINDS.findIndex((each) => each.kind === kind) < counted;
-
-  /** What Free up space would take now, of `group` and `kind` when given. */
-  const freeable = (group?: Group, kind?: Kind) =>
-    sum(everyone.flatMap((holder) => (kind ? [kind] : PER_CHAT).map((each) => (goesWith(holder, each) !== null && (!group || goesWith(holder, each) === group) ? sizeOf(holder, each) : 0))));
-  /** What it takes of one chat, or of each of its holders. */
-  const freeableOf = (holder: Holder, group?: Group) => sum(PER_CHAT.map((kind) => (goesWith(holder, kind) !== null && (!group || goesWith(holder, kind) === group) ? sizeOf(holder, kind) : 0)));
-
-  const free = (groups: readonly Group[], kinds: readonly Kind[] = PER_CHAT) => {
-    const size = sum(groups.flatMap((group) => kinds.map((kind) => freeable(group, kind))));
+  const take = (groups: readonly Group[]) => {
+    const size = groups.reduce((total, group) => total + storage.freeable(group), 0);
     let done = 0;
     setFreeing({ done, total: size });
     const tick = setInterval(() => {
       done += 1;
       if (done < 8) return setFreeing({ done: (size * done) / 8, total: size });
       clearInterval(tick);
-      setFreed((now) => new Set([...now, ...groups.flatMap((group) => kinds.map((kind) => `${group}:${kind}`))]));
+      setSizes((now) => without(now, groups));
       setFreeing(null);
       showToast(`Freed ${gb(size)}`);
     }, 220);
   };
-
-  return {
-    counting: counted < KINDS.length,
-    ready,
-    kindSize,
-    total: sum(KINDS.slice(0, counted).map(({ kind }) => kindSize(kind))),
-    chats: [...CHATS].sort((a, b) => chatSize(b) - chatSize(a)),
-    rest: sum(REST.map((chat) => chatSize(chat))),
-    all: [...CHATS, ...REST],
-    chatSize,
-    holderSize,
-    sizeOf,
-    freeable,
-    freeableOf,
-    freeing,
-    free,
-    /** The computer's free space: more once some is freed. */
-    left: `${Math.round(DISK - sum(KINDS.map(({ kind }) => kindSize(kind))))} GB`,
-    recount: () => setCounted(0),
-  };
+  const storage = storageOf(counted, { free: take, recount: () => setArrived(0) }, CHATS.length);
+  return storage;
 }

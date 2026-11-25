@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, Cursor, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle } from "../icons";
+import { Archive, Branch, Cursor, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle, Storage } from "../icons";
 import { BROWSER_ROWS, BrowserPage } from "./browser";
 import { BROWSER_IMPORT_ROWS, BrowserImportPage } from "./browser-import";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
@@ -12,6 +12,7 @@ import { GIT_ROWS, GitPage } from "./git";
 import { PLUGINS_ROWS, PluginsSettings } from "./plugins";
 import { ROUTING_ROWS, RoutingSettings } from "./routing";
 import { SHORTCUTS_ROWS, ShortcutsPage } from "./shortcuts";
+import { STORAGE_ROWS, StoragePage } from "./storage";
 
 /**
  * The pages of Settings, the old app's cut down [D2004, D2022], in the order the nav lists them. A page's rows
@@ -24,7 +25,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "Browser & Data" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "computerUse" | "browser" | "browserImport" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "computerUse" | "browser" | "browserImport" | "storage" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -57,6 +58,7 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   ...(window.brigadier?.platform === "darwin"
     ? [{ id: "browserImport", label: "Import Browser Data", icon: Download, group: "Browser & Data", component: BrowserImportPage, rows: Object.values(BROWSER_IMPORT_ROWS) } as const]
     : []),
+  { id: "storage", label: "Storage", icon: Storage, group: "Browser & Data", component: StoragePage, rows: Object.values(STORAGE_ROWS) },
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];
 

@@ -9,11 +9,6 @@
   min-height: calc(var(--spacing-command-list) * 1.4);
 }
 
-/* A part of a stacked bar, as wide as its share of the rest. */
-@utility mockup-share {
-  flex-grow: attr(data-share type(<number>), 0);
-}
-
 /* Settings' nav beside the page where the mockup is wide, not in a column of its tab. */
 @utility mockup-nav {
   display: none;
