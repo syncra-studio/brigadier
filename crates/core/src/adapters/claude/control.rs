@@ -181,9 +181,14 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     }
     // A worker's launch leaves the user's settings out, and their global rules file with them:
     // given here, as the plan says a worker has it [D89, D99].
-    let rules = super::super::cli_home(spec, ".claude", "CLAUDE.md");
-    let rules = (std::fs::read_to_string(rules).ok().filter(|_| spec.naked))
-        .map_or(String::new(), |r| format!("\n\n{}", r.trim()));
+    // An added account's home links it only if it was there when the account was made.
+    let files = [
+        super::super::cli_home(spec, ".claude", "CLAUDE.md"),
+        crate::adapters::home_path(".claude/CLAUDE.md"),
+    ];
+    let rules = files.iter().find_map(|f| std::fs::read_to_string(f).ok());
+    let rules =
+        (rules.filter(|_| spec.naked)).map_or(String::new(), |r| format!("\n\n{}", r.trim()));
     let mut args = vec![
         "--append-system-prompt".into(),
         crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" } + &rules,

@@ -115,18 +115,30 @@ fn library(spec: &Spec, open: &mut Value) -> Value {
         super::super::cli_home(spec, ".codex", ""),
         std::path::Path::new(&spec.cwd),
     );
-    // Its own servers the library holds off here (a plugin's goes only with its plugin).
-    let data = crate::data_of(spec);
-    for name in crate::library::own_off(&data, spec.project.as_deref(), &servers(&home, cwd)) {
-        if !name.starts_with("plugin:") {
-            config[format!("mcp_servers.{name}.enabled")] = false.into();
-        }
+    // Its own servers the library holds off here; a plugin's by its plugin's own switch for it
+    // (config reference, `plugins.<plugin>.mcp_servers.<server>`).
+    let (data, own) = (crate::data_of(spec), servers(&home, cwd));
+    let held = crate::library::own_off(&data, spec.project.as_deref(), &own);
+    for s in own
+        .iter()
+        .filter(|s| held.iter().any(|n| s["name"] == n.as_str()))
+    {
+        let name = s["name"].as_str().unwrap_or("");
+        let plugin = s["source"].as_str().and_then(|p| p.strip_prefix("plugin "));
+        let key = match (plugin, name.rsplit(':').next()) {
+            (Some(p), Some(server)) => format!("plugins.{p}.mcp_servers.{server}.enabled"),
+            _ => format!("mcp_servers.{name}.enabled"),
+        };
+        config[key] = false.into();
     }
-    let Some(kit) = crate::library::kit(spec, &[]) else {
+    let kit = crate::library::kit(spec, &[]);
+    let names = kit.as_ref().map_or(vec![], |k| k.names.clone());
+    skills_off(spec, open, &names, &home, cwd);
+    let Some(kit) = kit else {
         return config;
     };
     open["skillRoots"] = json!([kit.skills]);
-    let (given, off) = crate::library::split(&kit.servers, &servers(&home, cwd));
+    let (given, off) = crate::library::split(&kit.servers, &own);
     for s in &given {
         let name = crate::library::named(s["name"].as_str().unwrap_or(""));
         // A remote one at its `to`, with its headers (the proxy's bearer) [wave4 D2043].
@@ -144,20 +156,33 @@ fn library(spec: &Spec, open: &mut Value) -> Value {
     for name in off.iter().filter(|n| !n.starts_with("plugin:")) {
         config[format!("mcp_servers.{name}.enabled")] = false.into();
     }
-    // A skill only by its app-server's own launch flag: a thread's config doesn't reach its list.
+    config
+}
+
+/// Its own skills that go off for this thread: a library skill's namesake [D407], and one the
+/// library holds off here. Only by its app-server's own launch flag: a thread's config doesn't
+/// reach its list.
+fn skills_off(
+    spec: &Spec,
+    open: &mut Value,
+    names: &[String],
+    home: &std::path::Path,
+    cwd: &std::path::Path,
+) {
+    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
     let own = super::super::Adapter::fixed_commands(&super::Codex, Some(cwd), Some(spec));
     let off: Vec<String> = (own.iter())
-        .filter(|k| k["kind"] == "skill" && kit.names.iter().any(|n| k["name"] == **n))
+        .filter(|k| k["kind"] == "skill")
+        .filter(|k| names.iter().any(|n| k["name"] == **n) || hidden.has(k))
         .filter_map(|k| std::fs::canonicalize(k["path"].as_str()?).ok())
         .map(|p| format!("{{path = {}, enabled = false}}", json!(p)))
         .collect();
     if !off.is_empty() {
         // The flag replaces the user's own list, so theirs goes first.
-        let mut all = skills_config(&home, cwd);
+        let mut all = skills_config(home, cwd);
         all.extend(off);
         open["launch"] = json!(["-c", format!("skills.config=[{}]", all.join(", "))]);
     }
-    config
 }
 
 /// The user's own `[[skills.config]]` entries, the folder's then its home's, as inline tables.

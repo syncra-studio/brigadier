@@ -144,6 +144,13 @@ pub fn rules(spec: &Spec) -> Value {
     // The desktop app's synced computer-use skill, found by OpenCode in ~/.claude/skills, says
     // computer use is missing; here it's `brigadier computer` [D922].
     let folder = folder.chain([rule("skill", "computer-use", "deny")]);
+    // Its own skills the library holds off here (opencode.ai/docs/skills#permissions).
+    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
+    let own = super::commands::fixed(Some(std::path::Path::new(&spec.cwd)));
+    let off: Vec<Value> = (own.iter().filter(|k| hidden.has(k)))
+        .map(|k| rule("skill", k["name"].as_str().unwrap_or(""), "deny"))
+        .collect();
+    let folder = folder.chain(off);
     // osascript to System Events or an app, and cliclick, drive the user's apps in front of them;
     // `brigadier computer` stays behind (proposed) [D929]. OpenCode checks each part of a pipe:
     // a bare osascript reads its script from a pipe or a heredoc, unseen.

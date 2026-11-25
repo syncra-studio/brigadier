@@ -31,13 +31,12 @@ fn at(s: &Value) -> String {
             let plain = url.split(['?', '#']).next().unwrap_or("");
             // `https://user:key@host` too.
             match plain.split_once("://") {
-                Some((scheme, rest)) if rest.split('/').next().is_some_and(|a| a.contains('@')) => {
-                    format!(
-                        "{scheme}://{}",
-                        rest.split_once('@').map_or(rest, |(_, r)| r)
-                    )
+                Some((scheme, rest)) => {
+                    let (host, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+                    let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
+                    format!("{scheme}://{host}{path}")
                 }
-                _ => plain.into(),
+                None => plain.into(),
             }
         }
         None => str(&s["command"]).into(),

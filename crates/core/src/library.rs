@@ -129,13 +129,6 @@ impl Hidden {
     }
 }
 
-impl Hidden {
-    /// The skills' names, as the library takes them.
-    pub fn names(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
-    }
-}
-
 /// The names of an agent's own servers the library found and holds off for `project`: off, or
 /// not on there, as Settings › Plugins says (owner, 2026-11-25).
 pub fn own_off(data: &Path, project: Option<&str>, own: &[Value]) -> Vec<String> {

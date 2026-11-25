@@ -127,15 +127,31 @@ fn slack(cwd: &Path) -> Map<String, Value> {
 fn held(spec: &Spec, cwd: &Path) -> Map<String, Value> {
     let root = crate::projects::root(cwd).unwrap_or_else(|| cwd.into());
     let items = library::on_for(&crate::data_of(spec), spec.project.as_deref());
-    let ours = |s: &Value| (items.iter()).any(|i| i["sign_in"] == "cli" && library::same(s, i));
-    (mcp_servers(&root).into_iter().filter(ours))
-        .filter_map(|mut s| {
-            let o = s.as_object_mut()?;
+    let items: Vec<&Value> = items.iter().filter(|i| i["sign_in"] == "cli").collect();
+    let own = mcp_servers(&root);
+    let mut all = Map::new();
+    for mut s in own
+        .iter()
+        .filter(|s| items.iter().any(|i| library::same(s, i)))
+        .cloned()
+    {
+        let name = s["name"].as_str().unwrap_or("").to_string();
+        if let Some(o) = s.as_object_mut() {
             o.remove("source");
-            let name = o.remove("name")?.as_str()?.to_string();
-            Some((name, s))
-        })
-        .collect()
+            o.remove("name");
+        }
+        // The first of a name, the local one, as Claude takes it.
+        all.entry(name).or_insert(s);
+    }
+    // One only the library has, as its lead has it.
+    for i in items
+        .iter()
+        .filter(|i| !own.iter().any(|s| library::same(s, i)))
+    {
+        let name = library::named(i["name"].as_str().unwrap_or(""));
+        all.insert(name, json!({"type": "http", "url": i["url"]}));
+    }
+    all
 }
 
 /// A worker's launch is naked [D89]; any other gets the library.
@@ -149,8 +165,10 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
     off.extend(library::own_off(&data, project, &mcp_servers(cwd)));
     // Its own skills the library holds off here: `skillOverrides` (code.claude.com/docs/en/skills),
     // which a plugin's skill doesn't take.
-    let skills: Map<String, Value> = (library::hidden(&data, project).names())
-        .map(|n| (n.clone(), "off".into()))
+    let hidden = library::hidden(&data, project);
+    let skills: Map<String, Value> = (super::commands::fixed(Some(cwd), Some(spec)).iter())
+        .filter(|k| hidden.has(k))
+        .filter_map(|k| Some((k["name"].as_str()?.to_string(), "off".into())))
         .collect();
     // Claude Code drops its Slack plugin's server for a claude.ai Slack connector at the same
     // address, even one not signed in; the plugin is the Slack Brigadier uses [D586, D768].
