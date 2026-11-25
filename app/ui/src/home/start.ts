@@ -10,7 +10,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { carryHome, CHAT, closeTab, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsOf, tabsSettled, takeTabs } from "../shell/tab-store";
+import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
 import { placeOnOpen, sendFailed } from "../thread/follow";
@@ -43,8 +43,6 @@ export type HomeDraft = {
   overnight?: boolean;
   /** Bumped to put the cursor in the field. */
   focus: number;
-  /** A PR sent to the agent, while Home is in its project in a new worktree [D699]. */
-  pr?: PrStart;
   /** A chat's "New chat in this worktree": this draft only works in that worktree, the remembered `workIn` untouched [D152]. */
   once?: { project: string; worktree: string; name: string };
   /** A PR's review chat not started yet, on the Pull Requests page: its ref [D162]. */
@@ -117,8 +115,8 @@ export async function pickHomeProject(project: string | null): Promise<void> {
   if (draftKey() !== from || !theirs) return;
   if (isEmpty(theirs) && there.tabs.length === 0) {
     const now = draft.get();
-    // Its model and the like go along; a PR's branch or a chat's worktree is this project's only.
-    const own = { ...now, pr: undefined, once: undefined };
+    // Its model and the like go along; a chat's worktree is this project's only.
+    const own = { ...now, once: undefined };
     kept.set(to, own);
     moveWords(from, to);
     takeTabs(from, to, here.tabs.filter((tab) => anywhere(tab, now.project)).map((tab) => tab.id));
@@ -226,23 +224,17 @@ function runStart(entry: Starting): void {
 /** A new session's id, made here so its row and thread show before Rust has it [D30]. */
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-/** A PR's session: its new worktree on the PR's branch, named after it, its page in a browser tab [D674, D689, D699]. `tab`: its PR tab's target. */
-export type PrStart = { project: string; number: number; title: string; url: string; branch: string; base: string; fork: boolean; tab: string };
+/** Where a project's session works: `base` for a new worktree, `worktree` for an existing one. */
+export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; review?: string };
 
-/** Where a project's session works: `base` for a new worktree, `worktree` for an existing one, `pr` a PR's branch. */
-export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; pr?: PrStart; review?: string };
-
-const placeArgs = ({ workIn, base, worktree, pr }: Place): string[] =>
+const placeArgs = ({ workIn, base, worktree }: Place): string[] =>
   workIn === "local"
     ? ["--local"]
     : workIn === "existing"
       ? ["--local", "--cwd", worktree!]
-      : pr
-        ? ["--base", pr.base, "--pr", String(pr.number), "--head", pr.branch, ...(pr.fork ? ["--fork"] : []), "--title", prTitle(pr), "--url", pr.url]
-        : base
-          ? ["--base", base]
-          : [];
-const prTitle = (pr: PrStart) => `#${pr.number} ${pr.title}`;
+      : base
+        ? ["--base", base]
+        : [];
 
 /** Starts a session from the draft and opens it at once; the draft's text goes. With no project it's a chat in a folder of its own [D388]. */
 export function start(project: string | null, place: Place, model: ModelChoice, text: string, level?: string, parts?: string, brigade?: boolean, overnight?: boolean): void {
@@ -250,7 +242,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const cid = newId();
   const key = draftKey();
   const link = place.review && `\n\n${prUrl(place.review)}`;
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text + (link || ""), "--cid", cid, ...(place.pr || place.review ? [] : ["--carry-tabs"])];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text + (link || ""), "--cid", cid, ...(place.review ? [] : ["--carry-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
@@ -258,20 +250,15 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   if (overnight) args.push("--overnight");
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", link ? withLink(parts, link) : parts);
-  const entry: Starting = { id, cid, project, text, parts, title: place.pr ? prTitle(place.pr) : place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.pr?.base ?? place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
+  const entry: Starting = { id, cid, project, text, parts, title: place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
   starting.set(new Map(starting.get()).set(id, entry));
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
-  setHomeDraft({ level: undefined, brigade: undefined, overnight: undefined, pr: undefined, once: undefined, model });
-  // Its PR tab closes on Home: the session has the PR's page instead [D699].
-  const tab = place.pr && tabsOf(HOME).tabs.find((each) => each.kind === "pr" && each.target === place.pr!.tab);
-  if (tab) closeTab(HOME, tab.id);
+  setHomeDraft({ level: undefined, brigade: undefined, overnight: undefined, once: undefined, model });
   // Emptied, Rust drops the saved draft only; its files wait for the start to take them.
   keepDraft(daemonRun, key, EMPTY_DRAFT);
   window.location.hash = place.review ? prPageHash(place.review) : `#thread/${encodeURIComponent(id)}`;
-  // A PR's session has Chat and the PR's page only: Home's tabs stay on Home [D706].
-  if (place.pr) runStart(entry);
-  else carryHome(id, () => runStart(entry));
+  carryHome(id, () => runStart(entry));
 }
 
 export const reviewTitle = (ref: string) => `Reviewing ${prName(ref)}`;

@@ -407,7 +407,6 @@ fn build(
             shot.head.as_deref(),
             ask.title,
             None,
-            None,
         )?;
         write_shot(src, &shot, &cwd)?
     } else {

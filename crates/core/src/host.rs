@@ -127,8 +127,8 @@ fn slug(path: &str) -> bool {
     path.split_once('/').is_some_and(|(o, n)| ok(o) && ok(n))
 }
 
-/// The project whose repository is `owner/name` (its `origin`), for Bring to agent [D674]; None
-/// when none is: that PR's repository gets cloned first.
+/// The project whose repository is `owner/name` (its `origin`), for a PR's review chat [D198]; None
+/// when none is.
 pub fn project_of(data: &Path, path: &str) -> Option<String> {
     let projects = crate::projects::list(data).ok()?;
     projects.into_iter().find_map(|p| {

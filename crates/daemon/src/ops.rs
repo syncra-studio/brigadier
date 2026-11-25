@@ -253,6 +253,9 @@ pub(super) fn serve(
             "computer_reply" => brigadier::computer::reply(conn, req["reply"].clone()),
             "git_refresh" => {
                 git::refresh(conn);
+                if let Some(id) = req["session"].as_str().filter(|id| check_id(id).is_ok()) {
+                    super::prs::changed(data, id);
+                }
                 let _ = out.send(json!({"re": re, "ok": true}).to_string());
             }
             "term_ack" => {

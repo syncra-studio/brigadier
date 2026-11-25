@@ -9,8 +9,7 @@ import { daemonRun } from "../session/composer";
 const KEEP_AFTER_MS = 500;
 /** The composer's pasted text: the label that opens editable while it's still the draft's. */
 export const PASTE_LABEL = "Pasted text";
-/** A PR brought to the agent is a pasted text by its own name, its chip's and its tab's [D692, D696]. */
-/** A PR's composer chip [D171]: "PR owner/name#n", or its repair's, "Merge conflicts – PR #n", "2 failing checks · build +1 more". */
+/** A PR's composer chip, a pasted text by its own name [D171]: "PR owner/name#n", or its repair's, "Merge conflicts – PR #n", "2 failing checks · build +1 more". */
 export const PR_CHIP = /^PR \S*#\d+$|^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;
 /** A chip that asks to repair a PR: its sent message is a "PR fix" [D171]. */
 export const PR_FIX = /^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;

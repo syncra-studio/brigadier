@@ -17,7 +17,6 @@ import { daemonRun } from "../session/composer";
 import { usePanelMemory } from "../panel/memory";
 import { Plan, type Step } from "../panel/plan";
 import { openPr, openReview } from "../panel/open";
-import { openLink } from "../browser/links";
 import { useSource } from "../panel/source/view";
 import { useSettings } from "../settings/api";
 import { WorkersCard } from "../workers/live";
@@ -405,15 +404,7 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       ) : (
         <ChangesCard data={shown} project={project} ops={ops} nowMs={Date.now()} onReview={() => openReview(owner)} owner={owner} prs={prs} onViewPr={(pr) => openPr(owner, pr)} />
       )}
-      {/* shortcut: a folder chat's PR opens on its host, not the Pull requests tab; carry the repo target there when asked. */}
-      <PrsCard
-        owner={folderChat ? null : owner}
-        prs={prs}
-        kept={kept}
-        nowMs={Date.now()}
-        offline={shown.offline}
-        onPr={(pr) => (folderChat ? pr.url && openLink(pr.url) : openPr(owner, pr))}
-      />
+      <PrsCard owner={owner} prs={prs} kept={kept} nowMs={Date.now()} offline={shown.offline} />
       <WorkersCard owner={owner} />
       <SubagentsCard owner={owner} />
       <BackgroundCard owner={owner} />

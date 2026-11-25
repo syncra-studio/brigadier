@@ -45,6 +45,16 @@ pub(super) fn turned(ids: &[&str]) {
     poke();
 }
 
+/// A folder chat's PR was written to in its tab, which reads it by name, off this watch: its PRs
+/// and each claimed repo's are read now [D494].
+pub(super) fn changed(data: &Path, id: &str) {
+    let claims = brigadier_core::folder::claims(&session_dir(data, id));
+    turned(&[id]);
+    for (name, _) in claims {
+        turned(&[&format!("{id}@{name}")]);
+    }
+}
+
 /// These sessions' PRs are read now, first: their card opened, the window took focus, or their
 /// branch was pushed [D200].
 pub(super) fn shown(ids: &[&str]) {

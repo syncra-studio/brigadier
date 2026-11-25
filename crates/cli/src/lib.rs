@@ -51,7 +51,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--pr N --head BRANCH [--fork] [--title T] [--url U]]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -70,7 +70,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
        brigadier browser <session|-> profiles|imports <op> ... [--profile ID] [--json]
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name> | host <project> session <branch>
+       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name>
        brigadier host <id>|@ (@: the Code Review page; ref = host/owner/name#n; (in): text on stdin) view|files <ref> [kept] | search <query>... | users <ref> <text> | stack|generated <ref> | comment <ref> (in) | comment-edit <ref> <node> (in) | comment-delete <ref> <node> | react <ref> <node> <content> on|off | edit <ref> --title T | --body (in) | reply <ref> <thread> (in) | resolve|unresolve <ref> <thread> | viewed|unviewed <ref> <path> | pending <ref> <path> <line> LEFT|RIGHT [<start>] (in) | review <ref> approve|comment|changes (in) | review-discard <ref>
        brigadier host <id>|@ reviewers <ref> add|remove|rerequest <login|org/team>... | merge <ref> squash|merge|rebase --head <sha> | automerge <ref> on <method> | off | close|reopen|draft|ready <ref> | host <session> create [--branch NEW] [--commit] [--title T] [--message M] [--draft] [--base B] [--head H] | attach|detach <ref> | compare <base> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
@@ -230,12 +230,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
             if let Some(project) = project.filter(|_| worktree && own) {
                 let base = flag(args, "--base");
-                let on = host::pr_branch(data, args, &project, &spec)?;
                 let title = flag(args, "--text").map_or_else(
                     || title::from(&fs::read_to_string(spec.dir.join("title")).unwrap_or_default()),
                     title::from,
                 );
-                let made = core::folder::ensure(&spec, &project, base, &title, on.as_deref());
+                let made = core::folder::ensure(&spec, &project, base, &title);
                 // A fresh session it undid goes too, what it took back with its draft; on a retry it
                 // keeps its log and first message [D35].
                 if made.is_err() && fresh && !spec.dir.join(core::worktrees::RECORD).exists() {

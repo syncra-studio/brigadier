@@ -213,7 +213,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                                 count.0 += 1;
                                 format!("Image #{}", count.0)
                             }
-                            // One of a name of its own goes by it: a PR sent to the agent's "Pull request #7" [D699].
+                            // One of a name of its own goes by it: a PR's "Merge conflicts – PR #7" [D171].
                             Some("paste") => match file_in(&sent(&dir), id)
                                 .and_then(|f| Some(f.file_stem()?.to_string_lossy().into_owned()))
                                 .filter(|stem| stem != "Pasted text")

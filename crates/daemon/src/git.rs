@@ -6,7 +6,7 @@
 //! A read that fails pushes `{"git", "watch", "error"}` and retries on a backoff. One git watch per
 //! connection: a new request ends the last. Every connection on one checkout shares its watcher,
 //! which goes with the last of them. `{"id", "op": "git_refresh"}` reads it again now, as on window
-//! focus; a turn's start or end in a session does the same for its checkout.
+//! focus, with a `session` that session's PRs too; a turn's start or end in one does the same for its checkout.
 
 use brigadier_core::git::{self, Status, Target, watch::Watch};
 use serde_json::{Value, json};
