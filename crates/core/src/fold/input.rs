@@ -29,6 +29,11 @@ impl Fold {
         }
     }
 
+    /// What the child runs with now, confirmed between turns; none: it isn't known.
+    pub(super) fn retuned(&mut self, item: &Value) {
+        self.given = Some(item["setup"].clone()).filter(Value::is_object);
+    }
+
     /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
     /// turn, which drops a pick; another agent is picked, for the next message [D90].
     pub(super) fn setup(&mut self, item: &Value) {
