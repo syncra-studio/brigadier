@@ -13,6 +13,8 @@ use std::path::Path;
 pub(super) struct Files {
     pub pre: Option<Shot>,
     pub target: Option<String>,
+    /// The target's permissions, as its capture keeps them [D26].
+    pub modes: Option<String>,
     pub paths: BTreeSet<String>,
     pub repos: Vec<Part>,
     /// The claimed repos that stay as they are: a turn of theirs has no snapshot [D3105].
@@ -46,14 +48,22 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     let pre = store.capture().map_err(unread)?;
     let target = shots[0].0.clone();
     let (mut agent, mut gaps) = (BTreeSet::new(), BTreeSet::new());
+    // The same for permissions alone.
+    let (mut bits, mut since) = (BTreeSet::new(), BTreeSet::new());
     for (i, (before, end)) in shots.iter().enumerate() {
         agent.extend(store.diff(before, end).map_err(unread)?);
         let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
         gaps.extend(store.diff(end, next).map_err(unread)?);
+        bits.extend(store.modes_differ(before, end).map_err(unread)?);
+        since.extend(store.modes_differ(end, next).map_err(unread)?);
     }
+    let alone = bits.difference(&agent).filter(|p| since.contains(*p));
+    gaps.extend(alone.cloned());
+    agent.extend(bits);
     let all = shots.iter().flat_map(|(b, e)| [b, e]).chain([&pre]);
     let out: BTreeSet<String> = all.flat_map(|s| s.out.keys().cloned()).collect();
-    let moved = store.diff(&target, &pre).map_err(unread)?;
+    let mut moved = store.diff(&target, &pre).map_err(unread)?;
+    moved.extend(store.modes_differ(&target, &pre).map_err(unread)?);
     let mut hand: BTreeSet<String> = agent.intersection(&gaps).cloned().collect();
     let wanted: BTreeSet<String> = (agent.intersection(&moved))
         .filter(|p| !hand.contains(*p) && !out.contains(*p))
@@ -63,7 +73,10 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         .filter(|p| store.blocked(p, &wanted))
         .cloned()
         .collect();
-    let paths = wanted.difference(&blocked).cloned().collect();
+    let paths: BTreeSet<String> = wanted.difference(&blocked).cloned().collect();
+    // A file whose permissions alone were changed since goes back no more open than it is now.
+    let eased = paths.intersection(&since);
+    let modes = store.stricter(&target, eased).map_err(unread)?;
     hand.extend(blocked);
     let left_out: Vec<String> = (out.iter())
         .filter(|p| target.out.get(*p) != pre.out.get(*p))
@@ -82,6 +95,7 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     Ok(Files {
         commits: target.head != pre.head,
         target: Some(target.tree),
+        modes,
         pre: Some(pre),
         paths,
         hand: hand.into_iter().collect(),

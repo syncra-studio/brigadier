@@ -5,6 +5,7 @@
 
 mod active;
 pub mod fork;
+mod modes;
 mod night;
 mod plan;
 mod repos;
@@ -55,6 +56,8 @@ struct Op {
     /// The folder just before the rewind, the paths it changes, and where they go.
     pre: Option<Shot>,
     target: Option<String>,
+    #[serde(default)]
+    modes: Option<String>,
     paths: BTreeSet<String>,
     hand: Vec<String>,
     left_out: Vec<String>,
@@ -193,7 +196,7 @@ fn clear(spec: &Spec) -> io::Result<()> {
 /// left it: a path changed since keeps its edit, another session's in a shared folder [D1078].
 fn undo(spec: &Spec, op: &Op) -> io::Result<()> {
     if let (Some(pre), Some(target), Some(store)) = (&op.pre, &op.target, Store::of(spec)) {
-        undo::put_back(&store, &pre.tree, target, &op.paths)?;
+        undo::put_back(&store, pre, &Shot::at(target, &op.modes), &op.paths)?;
     }
     repos::put_back(spec, &op.repos).map(drop)
 }
@@ -394,6 +397,7 @@ fn run(
         dropped: turns.remove(0),
         pre: p.pre,
         target: p.target,
+        modes: p.modes,
         paths: p.paths,
         hand: p.hand,
         left_out: p.left_out,
@@ -408,7 +412,7 @@ fn run(
     if main.is_some() || !record.repos.is_empty() {
         write(spec, &mut record, "files")?;
         let wrote = (main.map_or(Ok(()), |(target, store)| {
-            store.write_back(&target, &record.paths)
+            store.write_back(&Shot::at(&target, &record.modes), &record.paths)
         }))
         .and_then(|()| repos::write_back(spec, &record.repos));
         if let Err(e) = wrote {

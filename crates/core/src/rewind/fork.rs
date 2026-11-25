@@ -38,12 +38,13 @@ pub fn write_shot(spec: &Spec, shot: &Shot, into: &Path) -> io::Result<Vec<Strin
 pub fn write_into(store: &Store, shot: &Shot, into: &Path) -> io::Result<Vec<String>> {
     let store = store.over(into)?;
     let now = store.capture()?;
-    let wanted: BTreeSet<String> = (store.diff(&now, shot)?.into_iter())
+    let modes = store.modes_differ(&now, shot)?;
+    let wanted: BTreeSet<String> = (store.diff(&now, shot)?.into_iter().chain(modes))
         .filter(|p| !shot.out.contains_key(p))
         .collect();
     let (blocked, paths): (BTreeSet<String>, BTreeSet<String>) =
         (wanted.iter().cloned()).partition(|p| store.blocked(p, &wanted));
-    store.write_back(&shot.tree, &paths)?;
+    store.write_back(shot, &paths)?;
     Ok(shot.out.keys().cloned().chain(blocked).collect())
 }
 

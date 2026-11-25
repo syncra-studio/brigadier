@@ -18,6 +18,8 @@ pub struct Part {
     pub name: String,
     pub pre: Shot,
     pub target: String,
+    #[serde(default)]
+    pub modes: Option<String>,
     pub paths: BTreeSet<String>,
 }
 
@@ -92,6 +94,7 @@ pub(super) fn plan_all(
                 name,
                 pre,
                 target,
+                modes: p.modes,
                 paths: p.paths,
             });
         }
@@ -117,7 +120,9 @@ fn by_name(spec: &Spec, name: &str) -> io::Result<Store> {
 
 /// Puts each repo's paths back as its target has them.
 pub(super) fn write_back(spec: &Spec, parts: &[Part]) -> io::Result<()> {
-    (parts.iter()).try_for_each(|p| by_name(spec, &p.name)?.write_back(&p.target, &p.paths))
+    (parts.iter()).try_for_each(|p| {
+        by_name(spec, &p.name)?.write_back(&Shot::at(&p.target, &p.modes), &p.paths)
+    })
 }
 
 /// Puts each repo's paths back as they were before the restore, where each is still as it left
@@ -126,7 +131,7 @@ pub(super) fn put_back(spec: &Spec, parts: &[Part]) -> io::Result<Vec<String>> {
     let mut kept = vec![];
     for p in parts {
         let store = by_name(spec, &p.name)?;
-        let left = super::undo::put_back(&store, &p.pre.tree, &p.target, &p.paths)?;
+        let left = super::undo::put_back(&store, &p.pre, &Shot::at(&p.target, &p.modes), &p.paths)?;
         kept.extend(left.into_iter().map(|k| format!("{}/{k}", p.name)));
     }
     Ok(kept)

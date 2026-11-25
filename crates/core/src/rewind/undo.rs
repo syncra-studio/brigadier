@@ -23,6 +23,8 @@ struct Restored {
     /// None for a folder chat's, whose own folder isn't a repo [D3105].
     pre: Option<Shot>,
     target: Option<String>,
+    #[serde(default)]
+    modes: Option<String>,
     paths: BTreeSet<String>,
     #[serde(default)]
     repos: Vec<Part>,
@@ -39,6 +41,7 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
                 op: op.op.clone(),
                 pre: op.pre.clone(),
                 target: op.target.clone(),
+                modes: op.modes.clone(),
                 paths: op.paths.clone(),
                 repos: op.repos.clone(),
             };
@@ -57,12 +60,13 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
 /// and is returned [D1078, D1192].
 pub(super) fn put_back(
     store: &Store,
-    pre: &str,
-    target: &str,
+    pre: &Shot,
+    target: &Shot,
     paths: &BTreeSet<String>,
 ) -> io::Result<Vec<String>> {
+    let modes = store.modes(target)?;
     let held: BTreeSet<String> = (paths.iter())
-        .filter(|p| store.holds(target, p))
+        .filter(|p| store.holds(&target.tree, modes.as_ref(), p))
         .cloned()
         .collect();
     let back: BTreeSet<String> = (held.iter())
@@ -124,7 +128,9 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
         ));
     }
     let mine = match (&store, &r.pre, &r.target) {
-        (Some(store), Some(pre), Some(target)) => put_back(store, &pre.tree, target, &r.paths),
+        (Some(store), Some(pre), Some(target)) => {
+            put_back(store, pre, &Shot::at(target, &r.modes), &r.paths)
+        }
         _ => Ok(vec![]),
     };
     let kept = (mine.and_then(|mut kept| {
