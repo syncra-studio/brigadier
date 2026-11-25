@@ -80,16 +80,6 @@ export const PeerSentRow: FC<{ keep?: string; text?: string; exchange: Exchange 
   );
 };
 
-/** A send refused before anything was recorded: "Couldn't send message to ‹name›", why in its tooltip. */
-export const PeerRefusedRow: FC<{ to: PeerRef | null; reason: string }> = ({ to, reason }) => (
-  <div data-slot="orchestrator-step" data-kind="message" data-state="refused" className={ROW} title={reason}>
-    <Chat aria-hidden className="size-4 shrink-0" />
-    <span data-slot="peer-words" className="min-w-0 truncate">
-      Couldn’t send message to {to && !to.gone ? <PeerLink peer={to} /> : <span className="text-row-object">{to?.title ?? UNKNOWN_SESSION}</span>}
-    </span>
-  </div>
-);
-
 /**
  * The thread's own `brigadier send` to another session: "Messaging Docs" while it runs, then "Messaged Docs: Can you
  * check the schema?", the message a step fainter and cut to the line, opening to the whole of it.
