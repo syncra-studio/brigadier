@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{Check, Failed, Limit, ModelInfo, Who, base_env, mark_superseded, versioned};
+use super::super::{Check, Failed, Limit, ModelInfo, Who, base_env, mark_superseded};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -103,7 +103,7 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
     // Its image tool is the provider's, so every model makes images or none does [D298].
     let draws = draws.and_then(|c| c["imageGeneration"].as_bool());
     models.iter_mut().for_each(|m| m.draws = draws);
-    mark_legacy(&mut models);
+    mark_superseded(&mut models);
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
     who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
     let usage = limits.as_ref().map(usage);
@@ -162,22 +162,6 @@ pub(super) fn usage(read: &Value) -> Vec<Limit> {
         }
     }
     Limit::ordered(found)
-}
-
-/// Marks legacy, beside what its list names an upgrade for, older namesakes and the models of an
-/// older generation than the newest: Codex versions its lineup together.
-fn mark_legacy(models: &mut [ModelInfo]) {
-    mark_superseded(models);
-    let generation = |m: &ModelInfo| versioned(&m.name).and_then(|(_, v)| v.first().copied());
-    let newest = models.iter().filter_map(generation).max();
-    for model in models.iter_mut() {
-        if generation(model)
-            .zip(newest)
-            .is_some_and(|(own, newest)| own < newest)
-        {
-            model.legacy = true;
-        }
-    }
 }
 
 /// Its fast service tier, as `model/list` names it.
@@ -277,9 +261,7 @@ fn info(m: &Value) -> ModelInfo {
             .map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
-        // Its list marks the default only: no top model [D2075].
         default: m["isDefault"] == true,
-        top: false,
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);

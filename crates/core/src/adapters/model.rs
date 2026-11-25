@@ -131,9 +131,7 @@ pub struct ModelInfo {
     pub legacy: bool,
     /// Its context window in tokens, where its CLI's list says [D113].
     pub window: Option<u64>,
-    /// Its CLI's top model and the one it runs unpicked, each only where its own list says so
-    /// [D2075, D388 Q12].
-    pub top: bool,
+    /// The one its CLI runs unpicked, where its own list says so [D2075, D388 Q12].
     pub default: bool,
 }
 
@@ -161,11 +159,14 @@ impl ModelInfo {
     }
 }
 
-/// Marks legacy each model with a newer namesake ("Opus 4.8" beside "Opus 5.5", "X-6-Sol" beside
-/// "X-6.1-Sol"); a name without a version is left alone. Then names apart models that share a
-/// name: the part of the id before its `/`, else the whole id, in brackets.
+/// Marks legacy each model with a newer namesake of its own provider ("Opus 4.8" beside "Opus 5.5",
+/// "X-6 Sol" beside "X-6.1-Sol"); a name without a version is left alone. Then names apart models
+/// that share a name: the part of the id before its `/`, else the whole id, in brackets.
 pub fn mark_superseded(models: &mut [ModelInfo]) {
-    let named: Vec<_> = models.iter().map(|m| versioned(&m.name)).collect();
+    let of = |m: &ModelInfo| m.id.split_once('/').map(|(p, _)| p.to_string());
+    let named: Vec<_> = (models.iter())
+        .map(|m| family(&m.name).map(|(f, v)| ((of(m), f), v)))
+        .collect();
     for (model, own) in models.iter_mut().zip(&named) {
         if let Some((family, version)) = own
             && (named.iter().flatten()).any(|(other, newer)| other == family && newer > version)
@@ -193,6 +194,13 @@ pub fn mark_superseded(models: &mut [ModelInfo]) {
         };
         model.name = format!("{} ({shown})", model.name);
     }
+}
+
+/// A name's family, its version cut and case, spaces and hyphens dropped, and its version:
+/// "GPT-6.2-Sol" → ("gptsol", [6, 2]).
+pub fn family(name: &str) -> Option<(String, Vec<u32>)> {
+    let (f, v) = versioned(name)?;
+    Some((f.to_lowercase().replace([' ', '-'], ""), v))
 }
 
 /// A model name's family (the name with its version cut out) and version: "Opus 5.5 (1M)" →

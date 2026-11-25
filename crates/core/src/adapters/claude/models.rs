@@ -114,11 +114,6 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
         }
     }
     let mut models: Vec<ModelInfo> = models.into_iter().map(|(m, _)| m).collect();
-    // Its `opus` alias, else its newest Opus: its top model.
-    let top = ModelInfo::of_family(&models, "opus").map(|m| m.id.clone());
-    for m in &mut models {
-        m.top = top.as_deref() == Some(m.id.as_str());
-    }
     mark_superseded(&mut models);
     Ok((models, usage))
 }

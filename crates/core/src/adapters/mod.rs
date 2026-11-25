@@ -14,7 +14,7 @@ mod shell;
 pub use classify::{classify, temporary};
 pub use files::repeat;
 pub use files::{change, counts, denied, drop_lines, encode, question, sha1, stopped, under, uuid};
-pub use model::{Check, Limit, ModelInfo, Subagents, Who, iso_ms, mark_superseded, versioned};
+pub use model::{Check, Limit, ModelInfo, Subagents, Who, family, iso_ms, mark_superseded};
 pub use rewind::{Cut, Failed, Fork, Forked, Landing, Rewound};
 pub use setup::{base_env, memory, probe, probe_as, version};
 pub use shell::{relay_call, shell_step, unwrap_shell};

@@ -50,13 +50,6 @@ fn label(agent: &str) -> &str {
     adapters::get(agent).map_or(agent, |a| a.short_label())
 }
 
-/// A name's family, its version cut and case, spaces and hyphens dropped, and its version:
-/// "GPT-6.2-Sol" → ("gptsol", [6, 2]).
-pub(super) fn family(name: &str) -> Option<(String, Vec<u32>)> {
-    let (f, v) = adapters::versioned(name)?;
-    Some((f.to_lowercase().replace([' ', '-'], ""), v))
-}
-
 /// "GPT-Sol" from "GPT-6.2-Sol": the name with its version token and one separator cut.
 fn family_words(name: &str) -> String {
     let token = name
@@ -88,7 +81,7 @@ fn beat(a: (u64, u64), b: (u64, u64)) -> bool {
 }
 
 /// New facts in one agent's list since the last read: (a) a newer model of a family a job holds,
-/// the alias notice, (c) a mark moved to a model no job holds. `moved` takes each alias's move.
+/// the alias notice, (c) the default moved to a model no job holds. `moved` takes each alias's move.
 fn found(
     groups: &[Value],
     agent: &str,
@@ -111,7 +104,7 @@ fn found(
         if !seen(id)
             && m["legacy"] != true
             && m["retiring"].is_null()
-            && let Some((fam, version)) = family(now_name)
+            && let Some((fam, version)) = adapters::family(now_name)
         {
             for j in jobs {
                 let older = (j["entries"].as_array().into_iter().flatten())
@@ -120,7 +113,7 @@ fn found(
                         let n = (models.iter())
                             .find(|x| x["id"] == e["model"])
                             .map_or("", |x| str_of(x, "name"));
-                        family(n).is_some_and(|(f, v)| f == fam && v < version)
+                        adapters::family(n).is_some_and(|(f, v)| f == fam && v < version)
                     });
                 if let Some(e) = older {
                     out.push(json!({"job": j["name"], "kind": "newer", "from": entry_key(e), "to": k, "at": now}));
@@ -133,8 +126,8 @@ fn found(
         let before = same.or_else(|| replaced.iter().find(|(x, _)| x == id));
         let (before, took) = (before.map(|(_, n)| *n), same.is_none());
         if let Some(was_name) = before.filter(|n| *n != now_name)
-            && family(was_name)
-                .zip(family(now_name))
+            && adapters::family(was_name)
+                .zip(adapters::family(now_name))
                 .is_some_and(|(a, b)| a.0 == b.0)
         {
             (!took).then(|| moved[id] = now.into());
@@ -146,18 +139,12 @@ fn found(
             }
         }
     }
-    // (c): the default or top mark now on a model no job holds.
-    for mark in ["default", "top"] {
-        let new = models
-            .iter()
-            .find(|m| m[mark] == true)
-            .map(|m| str_of(m, "id"));
-        let (Some(new), Some(old)) = (new, was[mark].as_str()) else {
-            continue;
-        };
+    // (c): the default now a model no job holds.
+    let new = (models.iter().find(|m| m["default"] == true)).map(|m| str_of(m, "id"));
+    if let (Some(new), Some(old)) = (new, was["default"].as_str()) {
         let (to, from) = (key(agent, new), key(agent, old));
         if new == old || jobs.iter().any(|j| holds(j, &to)) {
-            continue;
+            return out;
         }
         let mut on: Vec<Value> = (jobs.iter().filter(|j| holds(j, &from)))
             .map(|j| j["name"].clone())
@@ -166,7 +153,7 @@ fn found(
             on.push(Value::Null);
         }
         for job in on {
-            out.push(json!({"job": job, "kind": "mark", "mark": mark, "from": from, "to": to, "at": now}));
+            out.push(json!({"job": job, "kind": "mark", "mark": "default", "from": from, "to": to, "at": now}));
         }
     }
     out
@@ -245,10 +232,6 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
     let (old, new) = (name(groups, from), name(groups, to));
     let agent = label(split(to).0);
     let job = o["job"].as_str();
-    let mark = match o["mark"].as_str() {
-        Some("top") => "top model",
-        _ => "default",
-    };
     // Where it goes: the entry's own effort where the new model has it, else its default [P6].
     let keeps = || {
         let e = job.and_then(|j| jobs::named(jobs, j)).and_then(|j| {
@@ -282,14 +265,14 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
             )
         }
         ("mark", Some(j)) => (
-            format!("{agent}'s {mark} is now {new}. Use it in place of {old} in {j}?"),
+            format!("{agent}'s default is now {new}. Use it in place of {old} in {j}?"),
             format!(
-                "{agent} moved its {mark} from {old} to {new}, which none of your jobs holds. {}",
+                "{agent} moved its default from {old} to {new}, which none of your jobs holds. {}",
                 keeps()
             ),
         ),
         ("mark", None) => (
-            format!("{agent}'s {mark} is now {new}, which none of your jobs holds."),
+            format!("{agent}'s default is now {new}, which none of your jobs holds."),
             String::new(),
         ),
         _ if o["took"] == true => (
@@ -367,14 +350,9 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::R
         let mut names = was["names"].as_object().cloned().unwrap_or_default();
         names.extend((models.iter()).map(|m| (str_of(m, "id").to_string(), m["name"].clone())));
         let ids: Vec<&Value> = models.iter().map(|m| &m["id"]).collect();
-        let mark = |k: &str| {
-            models
-                .iter()
-                .find(|m| m[k] == true)
-                .map(|m| m["id"].clone())
-        };
-        saved["seen"][agent] = json!({"ids": ids, "names": names,
-            "default": mark("default"), "top": mark("top"), "moved": moved});
+        let default = (models.iter().find(|m| m["default"] == true)).map(|m| &m["id"]);
+        saved["seen"][agent] =
+            json!({"ids": ids, "names": names, "default": default, "moved": moved});
     }
     // Kept while it still fits: its job there and holding what it replaces, both models listed,
     // a mark's model still marked.

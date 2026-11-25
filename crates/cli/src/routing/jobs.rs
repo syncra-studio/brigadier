@@ -130,6 +130,21 @@ pub(super) fn of(saved: &Value, groups: &[Value]) -> Vec<Value> {
     jobs
 }
 
+/// The ids of `agent`'s models the user's jobs, images choice and Write with hold, as saved.
+pub(crate) fn picked(data: &Path, agent: &str) -> Vec<String> {
+    let saved = read(&data.join(FILE));
+    let jobs = all(&saved, &[]);
+    let mut ids: Vec<String> = (jobs.iter())
+        .flat_map(|j| j["entries"].as_array().into_iter().flatten())
+        .chain(saved.get("images"))
+        .filter(|e| e["agent"] == agent)
+        .map(|e| str_of(e, "model").to_string())
+        .collect();
+    let writer = core::writer::choice(data).ok().flatten();
+    ids.extend(writer.filter(|c| c.backend == agent).map(|c| c.model));
+    ids
+}
+
 /// A job by name, ignoring case.
 pub(super) fn named<'a>(jobs: &'a [Value], name: &str) -> Option<&'a Value> {
     (jobs.iter()).find(|j| str_of(j, "name").to_lowercase() == name.trim().to_lowercase())

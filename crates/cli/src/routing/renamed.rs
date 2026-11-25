@@ -15,10 +15,10 @@ pub(super) fn renamed(saved: &Value, groups: &[Value], agent: &str, id: &str) ->
         return None;
     }
     let was = saved["seen"][agent]["names"][id].as_str().unwrap_or(id);
-    let last = offers::family(was);
+    let last = adapters::family(was);
     let of = |id: &str| id.rsplit_once('/').map(|(p, _)| p.to_string());
     let family = |m: &&Value| {
-        offers::family(str_of(m, "name"))
+        adapters::family(str_of(m, "name"))
             .is_some_and(|f| f.0 == id || last.as_ref().is_some_and(|l| l.0 == f.0 && l.1 < f.1))
     };
     let here = || current().filter(|m| of(str_of(m, "id")) == of(id));

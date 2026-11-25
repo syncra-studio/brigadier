@@ -81,7 +81,7 @@ impl Adapter for Fake {
                     default_effort: Some(default.into()),
                     ..ModelInfo::plain("fake", true)
                 };
-                // Its default and its top model [D2075].
+                // Its default [D2075].
                 vec![
                     // Makes images (`image:<file>`), for the image routing's demo [D298].
                     ModelInfo {
@@ -96,7 +96,6 @@ impl Adapter for Fake {
                         retiring: Some(json!({"at": null, "to": "fake"})),
                         // Takes no images, for the held Send's demo [D2022 #14].
                         images: Some(false),
-                        top: true,
                         ..level(&["low", "medium", "high", "xhigh"], "high")
                     },
                 ]
