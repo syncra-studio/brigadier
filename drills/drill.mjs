@@ -1113,6 +1113,7 @@ async function peersDrill() {
   for (const t = now(); now() - t < 10000 && (await daemonList(2000))?.ids.length !== senders.length + receivers.length;) await sleep(200)
   // r0 to r2 take messages between turns; r3 and r4 are mostly in a turn, so theirs are steered in or held.
   for (const id of receivers.slice(3)) cli(['send', id, `${cid()} tool_sleep:8`])
+  const fileJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
   const sent = new Map() // token → { from, to, n, at }
   const events = []
   const down = new Set() // hosts this drill killed, to bring back as a user's Recover does
@@ -1157,7 +1158,15 @@ async function peersDrill() {
     await restart()
     return died.ok
   }
-  const back = async (id) => { await cliAsync(['up', id]); const st = status([id])[id]?.state; if (['interrupted', 'undelivered'].includes(st)) await cliAsync(['recover', id]) }
+  // A message its queue couldn't send waits for the user, and all behind it: the user's Resume, counted.
+  const waited = []
+  const settleQueue = async (id) => {
+    const q = fileJson(`${DATA}/sessions/${id}/queue.json`)
+    if (!q?.items?.[0]?.error) return
+    waited.push({ id, error: q.items[0].error, behind: q.items.length - 1 })
+    await cliAsync(['queue', id, 'resume'])
+  }
+  const back = async (id) => { await cliAsync(['up', id]); const st = status([id])[id]?.state; if (['interrupted', 'undelivered'].includes(st)) await cliAsync(['recover', id]); await settleQueue(id) }
   const hit = async (step) => {
     const r = receivers[Math.floor(Math.random() * receivers.length)], s = senders[Math.floor(Math.random() * senders.length)]
     const ev = { step, at: now(), id: step.startsWith('sender') ? s : step.startsWith('receiver') ? r : 'daemon' }
@@ -1187,6 +1196,9 @@ async function peersDrill() {
   const sending = Promise.all(senders.map(next)), busies = Promise.all(receivers.slice(3).map(busy))
   const doKills = (async () => {
     for (let k = 0; k < kills; k++) for (const step of PEER_STEPS.slice(1)) { await hit(step); await sleep(300) }
+    // A hook that never fired is tried again, so each step gets its kills.
+    const short = (step) => kills - events.filter((e) => e.step === step && e.fired !== false).length
+    for (let k = 0; k < 2 * kills; k++) for (const step of PEER_STEPS.filter((x) => x !== 'cli' && short(x) > 0)) await hit(step)
     killed = true
   })()
   await Promise.all([doKills, sending])
@@ -1198,6 +1210,7 @@ async function peersDrill() {
   const open = () => peerOuts(senders).filter((o) => !PEER_DONE.includes(o.state))
   let left = open().length
   for (const t = now(); left && now() - t < 180000; left = open().length) {
+    for (const id of receivers) await settleQueue(id)
     for (const id of receivers) if (['interrupted', 'undelivered'].includes(status([id])[id]?.state)) await back(id)
     await sleep(2000)
   }
@@ -1207,7 +1220,6 @@ async function peersDrill() {
   for (const m of fs.readFileSync(`${DATA}/ledger`, 'utf8').matchAll(/\bpm\d{5}x\b/g)) { read.set(m[0], (read.get(m[0]) ?? 0) + 1); order.push(m[0]) }
   const outs = peerOuts(senders), byToken = new Map(outs.map((o) => [o.text, o]))
   const near = (token) => events.filter((e) => e.token === token || Math.abs(e.at - sent.get(token).at) < 12000 && [sent.get(token).to, sent.get(token).from, 'daemon'].includes(e.id)).map((e) => e.step)
-  const fileJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
   const inRecord = (id, mid) => fileJson(`${DATA}/sessions/${id}/peers/in/${mid}.json`)
   const why = (token) => ({ token, ...sent.get(token), state: byToken.get(token)?.state ?? 'no record', mid: byToken.get(token)?.mid, read: read.get(token) ?? 0, near: near(token) })
   // What the sender's agent was told: "Sent to …" with no record of the message would be one lost.
@@ -1220,6 +1232,11 @@ async function peersDrill() {
       else if (i.kind === 'text' && token) { told.set(token, i.text.slice(0, 70)); token = null }
     }
   }
+  // What the receiver's log and the ledger have of it, for a message lost or doubled.
+  const seenIn = (token) => {
+    const mid = byToken.get(token)?.mid
+    return { ledger: fs.readFileSync(`${DATA}/ledger`, 'utf8').split('\n').filter((l) => l.includes(token)).slice(0, 4), log: mid ? cli(['read', sent.get(token).to]).all.filter((i) => JSON.stringify(i).includes(mid)).map((i) => ({ kind: i.kind, event: i.event, cid: i.cid, ts: i.ts, reason: i.reason, retry_of: i.retry_of })).slice(0, 10) : [] }
+  }
   const states = {}, noRecord = {}
   let sentAgain = 0
   const bad = { lost: [], doubled: [], open: [], wrong: [] }
@@ -1230,9 +1247,9 @@ async function peersDrill() {
     // A sender whose turn was recovered may run its `brigadier send` again: two messages, each read once.
     const records = outs.filter((o) => o.text === token).length
     if (records > 1) sentAgain++
-    if (times > Math.max(1, records)) bad.doubled.push(why(token))
+    if (times > Math.max(1, records)) bad.doubled.push({ ...why(token), ...seenIn(token) })
     if (state === 'no record') noRecord[told.get(token) ?? 'nothing'] = (noRecord[told.get(token) ?? 'nothing'] ?? 0) + 1
-    if ((state === 'delivered' || told.get(token)?.startsWith('Sent to') && state === 'no record') && !times) bad.lost.push(why(token))
+    if ((state === 'delivered' || told.get(token)?.startsWith('Sent to') && state === 'no record') && !times) bad.lost.push({ ...why(token), ...seenIn(token) })
     if (!PEER_DONE.includes(state) && state !== 'no record') bad.open.push({ ...why(token), receivers: inRecord(sent.get(token).to, byToken.get(token).mid), queue: fileJson(`${DATA}/sessions/${sent.get(token).to}/queue.json`) })
     if (['dropped', 'stopped', 'refused', 'no record'].includes(state) && times) bad.wrong.push(why(token))
     if (state === 'uncertain' && times) uncertain_read++
@@ -1244,12 +1261,14 @@ async function peersDrill() {
   for (const [pair, list] of Object.entries(pairs)) for (let i = 1; i < list.length; i++) if (list[i].at < list[i - 1].at) swapped.push({ pair, first: list[i - 1].text, then: list[i].text, near: near(list[i].text) })
   const fired = {}
   for (const e of events) { const f = (fired[e.step] ??= { kills: 0, fired: 0 }); f.kills++; if (e.fired !== false) f.fired++ }
-  const r = { drill: 'peers', sent: sent.size, recorded: outs.length, told_sent: [...told.values()].filter((t) => t.startsWith('Sent to')).length, no_record_told: noRecord, daemon_started_again: again, sending_s, states, uncertain: interval(states.uncertain ?? 0, sent.size), uncertain_read,
-    lost: interval(bad.lost.length, sent.size), doubled: interval(bad.doubled.length, sent.size), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
+  const r = { drill: 'peers', sent: sent.size, recorded: outs.length, told_sent: [...told.values()].filter((t) => t.startsWith('Sent to')).length, no_record_told: noRecord, daemon_started_again: again, queues_waiting_for_the_user: waited.length, queue_errors: [...new Set(waited.map((w) => w.error))], most_behind_one: Math.max(0, ...waited.map((w) => w.behind)), sending_s, states, uncertain: interval(states.uncertain ?? 0, sent.size), uncertain_read,
+    lost: interval(bad.lost.length, outs.length), doubled: interval(bad.doubled.length, outs.length), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
     examples: { lost: bad.lost.slice(0, 5), doubled: bad.doubled.slice(0, 5), swapped: swapped.slice(0, 5), open: bad.open.slice(0, 5), wrong: bad.wrong.slice(0, 5) } }
+  // Cleanup deletes the sessions: KEEP=1 keeps their logs first, to see why a message was lost.
+  if (process.env.KEEP === '1') fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
   r.leftovers = cleanup()
   log(r)
-  verdict('peers', { sent_all: sent.size >= want, none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, none_read_that_was_refused: !bad.wrong.length,
+  verdict('peers', { sent_all: sent.size >= want, none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
     each_step_killed: PEER_STEPS.every((s) => (fired[s]?.fired ?? 0) >= kills), no_leftovers: r.leftovers.length === 0 })
 }
 
