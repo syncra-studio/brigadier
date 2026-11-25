@@ -30,6 +30,7 @@ it, and gives an agent's connection only the commands meant for agents.
 Computer use is off until you turn it on. Once it's on, a session at Ask asks you before its first use of
 each app in a chat; Brigadier's daemon checks this, not the agent's CLI. A yes holds for that app in that
 chat, its workers included, until the chat is deleted, the daemon restarts or you turn computer use off.
+A no holds for that worker's current turn, even after a yes to another worker; its next turn may ask again.
 The running apps' names are listed without asking. An app you allowed can itself start another or hand it
 something (Finder, a link in Mail); acting in that other app needs its own yes. At Auto and Full access
 computer use doesn't ask. At every level it stays out of Brigadier itself and macOS's security prompts,
