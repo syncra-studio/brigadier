@@ -1338,16 +1338,23 @@ function randomOps(r, now_, mine, count) {
 
 // What a rewind or a fork should leave, compared with what it left: every path is as it should be, or stayed
 // as it was and the reply named it. A path whose bytes are right under a name that differs only by the case
-// of its letters (the Mac's disk takes both for one) is told apart from wrong bytes.
-function judge(expect, now_, after, named, skip) {
+// of its letters (the Mac's disk takes both for one) is told apart from wrong bytes, and so is any path renamed
+// like that at some moment (`snaps`), as long as its bytes are ones it had.
+const cased = (snaps) => {
+  const names = {}
+  for (const x of snaps) for (const p of Object.keys(x)) (names[p.toLowerCase()] ??= new Set()).add(p)
+  return new Set(Object.keys(names).filter((p) => names[p].size > 1))
+}
+function judge(expect, now_, after, named, skip, snaps = []) {
   const wrong = [], stayed = [], letters = []
   const fold = (o) => Object.fromEntries(Object.entries(o).map(([p, v]) => [p.toLowerCase(), v]))
-  const [e, a] = [fold(expect), fold(after)]
+  const [e, a, n] = [fold(expect), fold(after), fold(now_)]
+  const twice = cased([...snaps, expect, now_, after]), had = (p, v) => snaps.some((x) => fold(x)[p] === v)
   named = named.map((x) => x.toLowerCase())
   for (const path of differ(expect, after)) {
     const p = path.toLowerCase()
     if (skip(path)) continue
-    if (e[p] === a[p]) letters.push(path)
+    if (e[p] === a[p] || (twice.has(p) && (a[p] === undefined ? n[p] === undefined : had(p, a[p])))) letters.push(path)
     else if (after[path] === now_[path] && named.some((x) => p === x || p.startsWith(`${x}/`) || x.startsWith(`${p}/`))) stayed.push(path)
     else wrong.push({ path, expect: expect[path] ?? 'absent', was: now_[path] ?? 'absent', after: after[path] ?? 'absent' })
   }
@@ -1368,7 +1375,7 @@ async function rewindOne(k) {
   // A project must be in git when added, so the folder outside git lost its `.git` since.
   if (plain) fs.rmSync(`${repo}/.git`, { recursive: true })
   const started = await cliAsync(['start', id, '--backend', 'fake', '--project', proj.project?.id ?? '', ...(local || plain ? ['--local'] : []), ...fakeOpts()])
-  if (!started.ok) return { k, error: `start: ${JSON.stringify(started)}` }
+  if (!started.ok) return { k, error: `start: ${JSON.stringify(started)}`, added: proj }
   const dir = fs.realpathSync(local || plain ? repo : `${DATA}/sessions/${id}/worktree`)
   const turns = []
   const n = 2 + r.int(4)
@@ -1398,6 +1405,7 @@ async function rewindOne(k) {
   const inside = (set, p) => [...set].some((x) => p === x || p.startsWith(`${x}/`))
   // A fork at one answer: its folder is that answer's, the source untouched.
   const j = r.int(n), ft = turns[j], fid = `${id}f`
+  const snaps = [...turns.flatMap((t) => [t.before.files, t.end.files]), now_.files]
   const crash = r.next() < 0.2
   if (!plain) {
     let f
@@ -1409,7 +1417,7 @@ async function rewindOne(k) {
       const rec = JSON.parse(fs.readFileSync(`${DATA}/sessions/${fid}/forked.json`, 'utf8'))
       const tracked = new Set(spawnSync('git', ['ls-files', '-z'], { cwd: dir, encoding: 'utf8' }).stdout.split('\0'))
       const skip = (p) => (ignoredName(p) && !tracked.has(p)) || inside(want.out, p)
-      const v = judge(want.files, {}, got.files, rec.leftOut ?? [], skip)
+      const v = judge(want.files, {}, got.files, rec.leftOut ?? [], skip, snaps)
       for (const w of v.wrong) res.wrong.push({ what: 'fork', at: j, ...w })
       res.letters.push(...v.letters)
       for (const p of want.out) if (!(rec.leftOut ?? []).includes(p)) res.wrong.push({ what: 'fork left out unsaid', path: p })
@@ -1439,7 +1447,7 @@ async function rewindOne(k) {
       res.rewind_crash = r.of(['prepared', 'files', 'conversation', 'cut', 'landed'])
       await rewind(['--restore'], { BRIGADIER_CRASH_AT: `rewind:${res.rewind_crash}` })
       await cliAsync(['rewind', id, range[0].cid, '--preview'])
-      const mid = folderNow(dir), undone = same(mid, now_), done = judge(expect, now_.files, mid.files, [...gaps, ...agent].filter((p) => mid.files[p] === now_.files[p] && expect[p] !== now_.files[p] && gaps.has(p)), () => false).wrong.length === 0
+      const mid = folderNow(dir), undone = same(mid, now_), done = judge(expect, now_.files, mid.files, [...gaps, ...agent].filter((p) => mid.files[p] === now_.files[p] && expect[p] !== now_.files[p] && gaps.has(p)), () => false, snaps).wrong.length === 0
       if (!undone && !done) res.wrong.push({ what: `after a crash at ${res.rewind_crash}, neither put back nor finished`, paths: differ(expect, mid.files).slice(0, 5) })
     }
     const reply = await rewind(['--restore'])
@@ -1448,12 +1456,13 @@ async function rewindOne(k) {
     if (reply.ok !== true) res.wrong.push({ what: 'rewind refused', reply })
     // A finished one asked again answers `already`, with no list: what stayed is then not told here.
     const named = reply.already ? differ(now_.files, expect).filter((p) => after.files[p] === now_.files[p]) : [...(reply.hand ?? []), ...(reply.leftOut ?? [])]
-    const v = judge(expect, now_.files, after.files, named, (p) => ignoredName(p) && now_.files[p] === after.files[p])
+    const v = judge(expect, now_.files, after.files, named, (p) => ignoredName(p) && now_.files[p] === after.files[p], snaps)
     for (const w of v.wrong) res.wrong.push({ what: 'rewind', to: t, ...w })
     res.letters.push(...v.letters)
     res.stayed = v.stayed.length
     res.put_back = differ(now_.files, after.files).length
-    for (const p of [...gaps].filter((p) => after.files[p] !== now_.files[p])) res.user_lost.push(p)
+    const twice = cased([...snaps, after.files])
+    for (const p of [...gaps].filter((p) => after.files[p] !== now_.files[p] && !twice.has(p.toLowerCase()))) res.user_lost.push(p)
     for (const p of Object.keys(now_.files)) if (ignoredName(p) && !agent.has(p) && after.files[p] !== now_.files[p]) res.user_lost.push(p)
     if (after.git !== now_.git) res.wrong.push({ what: 'rewind changed HEAD, the index or the stash' })
     for (const p of differ(now_.files, after.files)) if (range[0].before.modes[p] !== undefined && after.modes[p] !== undefined && after.modes[p] !== range[0].before.modes[p]) res.modes.push({ path: p, before: range[0].before.modes[p].toString(8), after: after.modes[p].toString(8) })
@@ -1463,7 +1472,7 @@ async function rewindOne(k) {
       const undo = await rewind(['--undo'])
       const redone = folderNow(dir)
       res.redone = true
-      const v = judge(now_.files, after.files, redone.files, undo.kept ?? [], () => false)
+      const v = judge(now_.files, after.files, redone.files, undo.kept ?? [], () => false, snaps)
       for (const w of v.wrong) res.wrong.push({ what: 'redo', ...w })
       res.letters.push(...v.letters)
     }
