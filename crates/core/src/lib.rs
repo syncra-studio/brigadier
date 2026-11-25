@@ -89,12 +89,6 @@ pub struct Spec {
     /// it reaches them through `brigadier` [D89, D98].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub naked: bool,
-    /// A Brigade: each message of its user points its agent at `brigadier help brigade` [D185].
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub brigade: bool,
-    /// A Brigade's sub-session: a full lead whose asks and result go to this boss [D189].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub boss: Option<String>,
     #[serde(skip)]
     pub dir: PathBuf,
     /// The account it runs on now, as (the CLI's home variable, that home), from its log; None is

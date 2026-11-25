@@ -137,9 +137,7 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed. Says whether one waits on its background work.
 pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool> {
-    let Some(mut l) =
-        link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
-    else {
+    let Some(mut l) = link(data, wid) else {
         return Ok(false);
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
@@ -196,22 +194,12 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 false => review::holds(data, &mut l, wid, turn, how, &f),
             };
             let Some(how) = how else { break };
-            // A sub-session's last word is its last turn's, after its workers' results woke it
-            // [D189]; a turn's is its own, or its wake's, never one that came after this end.
-            let last = f.last.as_ref().filter(|_| l.session && !late);
-            let said = match last {
-                Some(l) if end.at < u64::MAX => (
-                    l["id"].as_str().unwrap_or_default().into(),
-                    l["ts"].as_u64().unwrap_or(u64::MAX),
-                ),
-                Some(l) => (l["id"].as_str().unwrap_or_default().into(), u64::MAX),
-                None => (end.id.clone(), end.at),
-            };
             let of = report::Of {
                 direct: *direct,
                 end: end.at,
                 late,
-                said: (end.at > 0).then_some(said),
+                // Its own last word, or its wake's, never one that came after this end.
+                said: (end.at > 0).then_some((end.id, end.at)),
             };
             report::write_as(data, &l, wid, turn, how, None, of)?;
         }

@@ -76,9 +76,9 @@ up after S seconds (60 by default, at most 600). Without --wait, its answer come
 A back-and-forth between sessions stops after 8 hops, and a session after 20 messages a minute; only
 the user can let a stopped message through. Batch what you have to say into one message.
 Your worker's permission prompt or question waits on you alone: --allow or --deny answers the
-prompt, and a message answers the question. A Brigade's --to-user passes its session's on to the user.",
+prompt, and a message answers the question.",
             &["--timeout", "--deny"],
-            &["--wait", "--allow", "--to-user"],
+            &["--wait", "--allow"],
         ),
         "wait" => (
             "brigadier wait [<id>] [--timeout S] [--json]\n\nWaits until the session stops working or needs its user, then prints its state and last message; with no id, the first of your workers to. Gives up after S seconds (60 by default, at most 600) and says it is still working. On your own workers it looks once and returns, since their results and questions come to you by themselves. Keep S under your own shell tool's time limit.",
@@ -88,7 +88,7 @@ prompt, and a message answers the question. A Brigade's --to-user passes its ses
         "start" => (
             include_str!("agent/start.txt"),
             &["--job", "--agent", "--model", "--effort", "--title", "--retry", "--reviewing"],
-            &["--session", "--images"],
+            &["--images"],
         ),
         "new" => (
             include_str!("agent/new.txt"),
@@ -214,7 +214,6 @@ pub fn run(
     };
     if call.has("--help") || call.cmd == "help" {
         let text = match call.id {
-            Some("brigade") => include_str!("agent/brigade.txt"),
             Some("reviews") => include_str!("agent/reviews.txt"),
             Some("browser") => crate::browser::HELP,
             Some("overnight") => crate::overnight::agent::HELP,
@@ -233,8 +232,7 @@ pub fn run(
             (call.value(name).map(String::from)).or_else(|| call.has(name).then(String::new))
         };
         let running = |id: &str| rows().iter().any(|r| r["id"] == id && r["running"] == true);
-        let session = call.has("--session");
-        let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running, session);
+        let reply = workers::start(data, me, call.id.unwrap_or(""), &flag, &running);
         return finish(&call, reply);
     }
     let value = |name: &str| call.value(name).map(String::from);
@@ -287,7 +285,6 @@ pub fn run(
                 .map(|s| wait::wait(data, me, &ids, s, rows, here))
         }),
         "stop" => Ok(workers::stop(data, me, id)),
-        "send" if call.has("--to-user") => Ok(workers::to_user(data, me, id)),
         "send" if crate::routing::held(data, id) => {
             Err(refuse(&workers::for_user(data, id).unwrap_or_default()))
         }

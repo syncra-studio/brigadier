@@ -180,7 +180,6 @@ fn real(links: &[workers::Link], seen: &Value, agent: &str, model: &str) -> Opti
 fn results(data: &Path, jobs: &[Value], seen: &Value, groups: &[Value], r: &Value) -> Vec<Value> {
     let links: Vec<workers::Link> = (core::ids(data).iter())
         .filter_map(|w| workers::link(data, w))
-        .filter(|l| !l.session)
         .collect();
     let mut out = vec![];
     for j in jobs {

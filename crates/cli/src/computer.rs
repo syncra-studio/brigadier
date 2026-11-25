@@ -391,7 +391,7 @@ pub fn agent(
     here: &dyn Fn() -> bool,
 ) -> Value {
     let help = args.get(1).is_none_or(|v| v == "help") || args.iter().any(|a| a == "--help");
-    let lead = !help && brigadier_core::load(data, me).is_ok_and(|s| !s.naked && s.boss.is_none());
+    let lead = !help && brigadier_core::load(data, me).is_ok_and(|s| !s.naked);
     match lead.then(|| crate::routing::computer_job(data)).flatten() {
         Some(job) => crate::agent::refuse(&format!(
             "Computer use runs in a worker: brigadier start --job \"{job}\" \"<brief>\""

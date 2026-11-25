@@ -101,7 +101,7 @@ pub(crate) fn plan(
             "`brigadier start --retry <id> \"<what failed>\"` needs what failed, in quotes.",
         ));
     }
-    let Some(l) = workers::link(data, id).filter(|l| l.parent == me && !l.session) else {
+    let Some(l) = workers::link(data, id).filter(|l| l.parent == me) else {
         return Err(refuse(&format!(
             "No worker {id:?} of yours: only the session that started a worker may retry it."
         )));

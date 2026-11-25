@@ -19,7 +19,7 @@ use brigadier_core::{self as core, adapters};
 use brigadier_frames::log;
 pub(crate) use first::begin;
 pub(crate) use held::{hand_all, written};
-pub(crate) use reply::{answer, asked, hand_back, open_question, question, waits};
+pub(crate) use reply::{answer, question};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};

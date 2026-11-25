@@ -108,7 +108,7 @@ fn over(data: &Path, wid: &str) -> io::Result<Option<(File, File)>> {
         return Ok(None);
     };
     let fence = core::worktrees::lock(&dir)?;
-    let Some(l) = link(data, wid).filter(|l| !l.session && !l.paused) else {
+    let Some(l) = link(data, wid).filter(|l| !l.paused) else {
         return Ok(None);
     };
     // Until the pick the user may still compare a mockup's variants.

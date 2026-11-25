@@ -122,7 +122,7 @@ pub(super) fn holds(
         after(data, l, wid, turn, how, None);
         return None;
     }
-    let on = how == "finished" && !l.session && routing::review_on(data);
+    let on = how == "finished" && routing::review_on(data);
     if l.review.is_null() && !on {
         return Some(how);
     }
@@ -252,7 +252,7 @@ fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
         TRIED => Some(past.clone()),
         _ => None,
     };
-    let reply = super::make::start(data, &a.parent, "", &flags, &running, false);
+    let reply = super::make::start(data, &a.parent, "", &flags, &running);
     if let Some(id) = reply["id"].as_str().filter(|_| reply["ok"] == true) {
         return Ok(id.to_string());
     }

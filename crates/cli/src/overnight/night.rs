@@ -226,9 +226,7 @@ fn answer(data: &Path, id: &str) -> io::Result<()> {
         choose(card, crate::relay::mockup::SKIP)?;
     }
     for (request, r) in turn.asks.iter().filter(|(_, r)| r["to"].is_null()) {
-        if request.starts_with("peer-") {
-            choose(request, AWAY)?;
-        } else if r["items"].is_array() {
+        if r["items"].is_array() {
             control::reply(data, id, AWAY, &Value::Null, None, Some("overnight"))?;
         } else if r["action"] == "plan" {
             // Asked in a turn from before its night, no review held it: its next turn's has one.

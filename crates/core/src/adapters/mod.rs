@@ -231,10 +231,7 @@ pub fn setup(spec: &Spec) -> Value {
     // [D131]. A plan reviewer's go to the user, as a session's: its author is held on that plan
     // while it lives, so it can't answer them [D395, D355].
     let reviewer = spec.opts.contains_key("plan_review");
-    let on = [
-        ("fast", spec.fast),
-        ("worker", (spec.naked || spec.boss.is_some()) && !reviewer),
-    ];
+    let on = [("fast", spec.fast), ("worker", spec.naked && !reviewer)];
     (on.iter().filter(|k| k.1)).for_each(|(k, _)| setup[*k] = true.into());
     // Its subagents' allowlist, launch-only, so a change restarts an idle child [D376].
     if let Some(models) = &spec.ruled.models {

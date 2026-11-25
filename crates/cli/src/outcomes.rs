@@ -135,7 +135,7 @@ pub(crate) fn results(data: &Path) -> Value {
         let f = f.unwrap_or_default();
         // Plan reviews, in any session's own fold [§6, §8].
         f.plans.done.iter().for_each(&mut add);
-        let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
+        let Some(l) = workers::link(data, &wid) else {
             continue;
         };
         let notes = f.outcomes;

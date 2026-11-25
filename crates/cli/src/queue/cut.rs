@@ -30,10 +30,10 @@ pub(super) fn link(dir: &Path) -> Option<workers::Link> {
     workers::read_json(&dir.join("worker.json"))
 }
 
-/// Whether `origin` is the session that started worker `dir`, which isn't a Brigade's sub-session.
+/// Whether `origin` is the session that started worker `dir`.
 pub(super) fn parents(dir: &Path, origin: Option<&str>) -> bool {
     let from = origin.and_then(|o| o.strip_prefix("peer:"));
-    from.is_some_and(|from| link(dir).is_some_and(|l| !l.session && l.parent == from))
+    from.is_some_and(|from| link(dir).is_some_and(|l| l.parent == from))
 }
 
 /// Whether its agent had announced a conversation to go on in: cut off before, a message alone
@@ -65,8 +65,7 @@ fn first(dir: &Path, q: &Queue) -> Option<usize> {
 
 /// Whether a Stop has a worker's cut-off run to log it on.
 pub(super) fn stoppable(data: &Path, id: &str) -> bool {
-    let worker = link(&core::session_dir(data, id)).is_some_and(|l| !l.session);
-    worker && off(data, id).unwrap_or(false)
+    link(&core::session_dir(data, id)).is_some() && off(data, id).unwrap_or(false)
 }
 
 /// Whether the cut-off run was stopped since.
@@ -78,10 +77,7 @@ pub(super) fn stopped(f: &Fold) -> bool {
 /// Whether a Resume carries a cut-off worker's stopped run on by itself: no message waits to.
 pub(super) fn resumes(dir: &Path, f: &Fold, state: &str, q: &Queue) -> bool {
     let waiting = first(dir, q).is_some() && begun(f);
-    state == "interrupted"
-        && stopped(f)
-        && !waiting
-        && link(dir).is_some_and(|l| !l.session && !l.paused)
+    state == "interrupted" && stopped(f) && !waiting && link(dir).is_some_and(|l| !l.paused)
 }
 
 /// Holds its queue for a Resume, once what a cut-off worker's parent has sent is in it, though it
@@ -89,7 +85,7 @@ pub(super) fn resumes(dir: &Path, f: &Fold, state: &str, q: &Queue) -> bool {
 pub(super) fn hold_all(data: &Path, id: &str) -> io::Result<(File, Vec<String>)> {
     let dir = core::session_dir(data, id);
     let lock = hold(&dir)?.0;
-    let Some(l) = link(&dir).filter(|l| !l.session) else {
+    let Some(l) = link(&dir) else {
         return Ok((lock, vec![]));
     };
     let sent = match off(data, id)? {

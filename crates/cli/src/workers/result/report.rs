@@ -163,8 +163,7 @@ pub(in crate::workers) fn write_as(
         "context" => "stopped: its context is full",
         _ => "failed",
     };
-    let what = if l.session { "Session" } else { "Worker" };
-    let mut text = format!("{what} {} ({wid}) {word}.\n", l.title);
+    let mut text = format!("Worker {} ({wid}) {word}.\n", l.title);
     if let Some(e) = error {
         text += &format!("It didn't start: {e}\n");
     }
@@ -322,7 +321,7 @@ pub(in crate::workers) fn write_as(
         text = compact(
             wid,
             &format!(
-                "{what} {} ({wid}) {word} the turn the user started in it.\n",
+                "Worker {} ({wid}) {word} the turn the user started in it.\n",
                 l.title
             ),
             &merge,

@@ -94,7 +94,7 @@ pub(crate) fn asked(data: &Path, wid: &str) -> io::Result<()> {
 /// Writes worker `wid`'s question `mid` (its `brigadier send` to its parent) for its parent, as its
 /// CLI's own questions are [D131].
 pub(crate) fn question(data: &Path, wid: &str, mid: &str, text: &str) -> io::Result<()> {
-    let Some(l) = link(data, wid).filter(|l| !super::brigade::third(data, wid, l)) else {
+    let Some(l) = link(data, wid) else {
         return Ok(());
     };
     let turn = core::fold(&core::session_dir(data, wid), true)?.fold;

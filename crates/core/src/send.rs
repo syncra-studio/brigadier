@@ -160,9 +160,6 @@ pub fn send(
     if !msg.parts.is_null() {
         base["parts"] = msg.parts.clone();
     }
-    if spec.brigade && origin == "user" {
-        base["brigade"] = true.into();
-    }
     if spec.review {
         base["review"] = true.into();
     }

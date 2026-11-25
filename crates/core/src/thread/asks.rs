@@ -29,7 +29,7 @@ impl Thread {
     }
 
     /// The request at row `at` waits on the user: a question stays out of the fold, and its turn
-    /// waits from `ts`. Also a sub-session's ask its boss passed to the user [D189].
+    /// waits from `ts`.
     pub(super) fn user_waits(&mut self, at: usize, ts: u64) {
         if let Some(r) = self.items[at].as_object_mut() {
             r.remove("to");
@@ -87,8 +87,8 @@ impl Thread {
         }
     }
 
-    /// A worker's routing hold [D2028, D342]: Rust's question card for the user, as a sub-session's
-    /// passed ask is, closed by the user's answer.
+    /// A worker's routing hold [D2028, D342]: Rust's question card for the user, closed by the
+    /// user's answer.
     pub(super) fn hold(&mut self, item: &Value, ts: u64) {
         // A mockup's one row in its lead's chat, out of the turn's fold; the app reads its moment
         // from the mockup [D560]. And each send of the user's notes: "You → mockup · 3 notes on A

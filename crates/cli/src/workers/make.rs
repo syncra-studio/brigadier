@@ -48,17 +48,8 @@ fn sh(s: &str) -> String {
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
 /// A reviewer's commits nothing: its count takes the merge sentence's place [D3026].
-fn fixed_line(
-    parent: &str,
-    pid: &str,
-    merge: Option<(&str, &str, &str)>,
-    session: bool,
-    review: bool,
-) -> String {
+fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, review: bool) -> String {
     let land = land_line(merge, review);
-    if session {
-        return super::brigade::line(parent, pid, &land);
-    }
     format!(
         "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills of its own, and no MCP servers but any only it can sign in to: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
@@ -76,7 +67,6 @@ pub fn start(
     brief: &str,
     flags: &dyn Fn(&str) -> Option<String>,
     running: &dyn Fn(&str) -> bool,
-    session: bool,
 ) -> Value {
     let (root, depth) = place(data, me);
     if depth >= DEEPEST {
@@ -109,9 +99,6 @@ pub fn start(
     let Ok(parent) = core::load(data, me) else {
         return refuse("Your session can't be read.");
     };
-    if let Some(no) = super::brigade::capped(data, me, &parent, session) {
-        return no;
-    }
     let f = match core::fold(&parent.dir, true) {
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
@@ -176,7 +163,7 @@ pub fn start(
             return Err(refuse(&format!("{:?} isn't an agent.", p.agent)));
         };
         // The parent's level carries over, Full access too, as the old app's; a held project's is
-        // Ask [D187, D313, D316]. A Brigade sub-session's the same, as D196 sets nothing else.
+        // Ask [D187, D313, D316].
         let level = (parent.level.as_deref())
             .filter(|l| (!held || *l == "ask") && a.can().levels.contains(l))
             .or_else(|| models::default_level(a, held, &settings::get(data, "default_level")))
@@ -199,7 +186,6 @@ pub fn start(
             account: p.account,
             project,
             base: base.clone(),
-            session,
             pick: p.ran,
             hold: p.hold,
             retry: retry.as_ref().map_or(Value::Null, |r| r.note.clone()),
@@ -232,21 +218,20 @@ pub fn start(
         Some(b) => format!("in its own worktree off {b}"),
         None => "in a folder of its own".into(),
     };
-    let what = if session { "session" } else { "worker" };
     let mut text = match r.hold["why"].as_str() {
         Some(why) if r.hold["retry"] == true => format!(
-            "Held {what} {} ({}): {why}, so the user decides on its card whether it retries on {} · {} or stops here. Go on with your work; its result comes to you if it runs.",
+            "Held worker {} ({}): {why}, so the user decides on its card whether it retries on {} · {} or stops here. Go on with your work; its result comes to you if it runs.",
             r.title,
             r.wid,
             backend,
             model.as_deref().unwrap_or("")
         ),
         Some(why) => format!(
-            "Held {what} {} ({}): {why}, so the user decides on its card whether it runs on a model from another job or waits. Go on with your work; its result comes to you when it runs.",
+            "Held worker {} ({}): {why}, so the user decides on its card whether it runs on a model from another job or waits. Go on with your work; its result comes to you when it runs.",
             r.title, r.wid
         ),
         None => format!(
-            "Started {what} {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn.",
+            "Started worker {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn.",
             r.title, r.wid
         ),
     };
@@ -266,8 +251,6 @@ pub(crate) fn full(data: &Path, root: &str, running: &dyn Fn(&str) -> bool) -> O
     // Ended, waiting on its review: its reviewer has its slot.
     let reviewed = |id: &str| super::link(data, id).is_some_and(|l| l.review["state"] == "running");
     let busy = (below(data, root).iter())
-        // A Brigade's sub-sessions head families of their own [D189].
-        .filter(|r| r.root == root)
         // Its own log, not only the row, which lags just after a launch.
         .filter(|r| {
             r.state == "starting"
@@ -350,8 +333,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                 effort: r.effort.clone(),
                 created: log::now_ms(),
                 starts_on: r.account.clone(),
-                naked: !r.session,
-                boss: r.session.then(|| pid.to_string()),
+                naked: true,
                 opts: (r.review["plan"]
                     .is_string()
                     .then(|| ("plan_review".into(), "1".into())))
@@ -389,7 +371,6 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
             asked: r.asked.clone(),
             last: Value::Null,
             paused: false,
-            session: r.session,
             review: r.review.clone(),
         };
         write_json(&dir.join("worker.json"), &l)?;
@@ -434,7 +415,6 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         &core::share::title(&parent),
         pid,
         merge,
-        r.session,
         !r.review.is_null(),
     );
     let text = format!("{}\n\n{line}", r.brief.trim_end());

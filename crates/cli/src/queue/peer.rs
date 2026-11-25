@@ -91,10 +91,10 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
             None => return "It was cut off mid-turn: your message carries it on.".into(),
             Some(i) => after(i),
         },
-        "interrupted" if link.as_ref().is_some_and(|l| !l.session) && !cut::begun(&f) => {
+        "interrupted" if link.is_some() && !cut::begun(&f) => {
             "it was cut off before its conversation began, so it waits for its user to message it"
         }
-        "interrupted" if link.is_some_and(|l| !l.session) => {
+        "interrupted" if link.is_some() => {
             "it was cut off mid-turn, so it waits for its user, or a message from the session that started it, to carry it on"
         }
         "interrupted" => "it was cut off mid-turn, so it waits for its user to carry it on",

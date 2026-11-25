@@ -117,10 +117,6 @@ pub fn answer(data: &Path, args: &[String]) -> io::Result<Value> {
         Some(given) => answers_of(data, &core::load(data, id)?, given)?,
         None => Answers::default(),
     };
-    // A question a Brigade's session sent its boss, passed to the user: back to its wait [D189].
-    if let Some(mid) = request.strip_prefix("peer-") {
-        return crate::workers::user_answer(data, id, mid, &given);
-    }
     // A worker's routing hold or a mockup offer: Rust's own question, the user's call [D2028, D2058].
     let choice = given.said.iter().find_map(Value::as_str);
     if request.starts_with("mockup-") {

@@ -102,29 +102,6 @@ impl Fold {
         }
     }
 
-    /// A `peer` note: a message to its own worker (`messaged`), or a sub-session's ask its boss
-    /// passed to the user [D189]: its own request now waits on the user, or the question it sent
-    /// its boss (`peer-<mid>`) is the user's to answer, till answered.
-    pub(super) fn passed_to_user(&mut self, item: &Value) {
-        let mid = item["mid"].as_str().map(|m| format!("peer-{m}"));
-        match (item["phase"].as_str(), mid) {
-            (Some("to_user"), Some(id)) => {
-                if let Some(t) = self.turns.first_mut() {
-                    t.question = item["text"].as_str().map(String::from);
-                    t.asks.insert(id, item["request"].clone());
-                }
-            }
-            (Some("to_user"), None) => {
-                let id = item["id"].as_str().unwrap_or("");
-                let r = self.turns.first_mut().and_then(|t| t.asks.get_mut(id));
-                r.and_then(Value::as_object_mut).map(|r| r.remove("to"));
-            }
-            (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
-            (Some("sent"), Some(_)) => self.messaged(item),
-            _ => {}
-        }
-    }
-
     /// Who answers a request instead of the user: Brigadier, an exact repeat of a command allowed
     /// for the session, as Codex's and OpenCode's helpers do [D389]; or a worker's parent agent.
     pub fn to(&self, item: &Value) -> Option<&'static str> {

@@ -89,9 +89,7 @@ fn start(
 ) -> Result<Value, Value> {
     let said = |e: io::Error| refuse(&e.to_string());
     if let Some(l) = workers::link(data, me) {
-        let role = if l.session {
-            "a session in a Brigade"
-        } else if l.review["of"].is_string() {
+        let role = if l.review["of"].is_string() {
             "a reviewer"
         } else {
             "a worker"
@@ -149,8 +147,7 @@ fn start(
     }
     if recent.len() >= MOST {
         return Err(refuse(&format!(
-            "{}: you started {MOST} sessions since their last message, the most allowed.",
-            workers::ASK_USER
+            "Ask the user before starting more: you started {MOST} sessions since their last message, the most allowed."
         )));
     }
     let r = reserve(data, &parent, &f, text, value, fork, branch, asked)?;

@@ -6,7 +6,6 @@
 //! The parent's agent merges a worker's branch with plain git; Brigadier has no merge [D3003].
 
 mod asks;
-mod brigade;
 mod busy;
 mod family;
 mod make;
@@ -16,8 +15,6 @@ mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
 pub(crate) use asks::{question, told_held};
-pub(crate) use brigade::ASK_USER;
-pub use brigade::{brigade_row, to_user, user_answer};
 pub(crate) use busy::at_work;
 use busy::busy_in;
 pub use busy::{busy, owes};
@@ -67,9 +64,6 @@ pub(crate) struct Record {
     pub project: Option<String>,
     /// The parent's branch it starts from; none for a chat with no project.
     pub base: Option<String>,
-    /// A Brigade's sub-session, not a worker [D189].
-    #[serde(default)]
-    pub session: bool,
     /// What its `ran` keeps beside agent, model, effort and account: its routing row, the
     /// account's name and quota at the start, the same-row note [D2037, D2041, D3018].
     #[serde(default)]
@@ -108,9 +102,6 @@ pub(crate) struct Link {
     /// The user paused it: its queue holds, and it reports nothing until Resume [D3041].
     #[serde(default)]
     pub paused: bool,
-    /// A Brigade's sub-session: a full lead, its own workers a family of their own [D189].
-    #[serde(default)]
-    pub session: bool,
     /// A reviewer's mark, or a reviewed worker's review (`review.rs`) [D3026].
     #[serde(default)]
     pub review: Value,
@@ -161,8 +152,7 @@ pub(crate) fn below(data: &Path, id: &str) -> Vec<Record> {
 
 /// The session the user started that `id` works under, and how deep `id` is (theirs is 0).
 pub(crate) fn place(data: &Path, id: &str) -> (String, u64) {
-    let l = link(data, id).filter(|l| !l.session);
-    l.map_or_else(|| (id.to_string(), 0), |l| (l.root, l.depth))
+    link(data, id).map_or_else(|| (id.to_string(), 0), |l| (l.root, l.depth))
 }
 
 /// Held while a family's count is read and a start reserved, so parallel starts can't pass the

@@ -485,7 +485,7 @@ impl Fold {
                 Some("switch_now") => self.picked.iter_mut().for_each(|p| p.now = true),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
-                Some("peer") => self.passed_to_user(item),
+                Some("peer") if item["phase"] == "sent" => self.messaged(item),
                 Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),
                 Some("mockup") => self.offered(item),
