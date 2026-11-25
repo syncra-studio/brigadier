@@ -315,9 +315,9 @@ function FastSwitch({ picker, value, row, className }: Props & { picker: Picker;
   );
 }
 
-/** What each account of the agent in hand has left. */
+/** What each account of the agent browsed has left; in Favorites and the search, of the row in hand. */
 function Usage({ picker, className }: { picker: Picker; className: string }) {
-  const group = picker.group?.unavailable ? picker.group : picker.inHand.group;
+  const group = (!picker.needle && picker.group) || picker.inHand.group;
   return (
     <div className={className}>
       {group.usage ? group.usage.map((account) => <Left key={account.account} account={account} />) : <p className="text-xs text-muted-foreground">{group.label} reports no limits</p>}
