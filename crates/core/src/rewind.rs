@@ -197,9 +197,9 @@ fn clear(spec: &Spec) -> io::Result<()> {
 /// left it: a path changed since keeps its edit, another session's in a shared folder [D1078].
 fn undo(spec: &Spec, op: &Op) -> io::Result<()> {
     if let (Some(pre), Some(target), Some(store)) = (&op.pre, &op.target, Store::of(spec)) {
-        undo::put_back(&store, pre, &Shot::at(target, &op.modes), &op.paths)?;
+        undo::put_back(&store, pre, &Shot::at(target, &op.modes), &op.paths, true)?;
     }
-    repos::put_back(spec, &op.repos).map(drop)
+    repos::put_back(spec, &op.repos, true).map(drop)
 }
 
 fn cut<'a>(op: &'a Op) -> Cut<'a> {

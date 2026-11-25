@@ -3,7 +3,7 @@
 //! hooks are untouched. Files the project ignores stay out, git's own data too (proposed).
 
 use super::GRACE_MS;
-use super::modes::{Modes, plain};
+use super::modes::{Modes, plain, same};
 use crate::adapters::setup;
 use crate::fold::Fold;
 use crate::{Spec, check_id, write_atomic};
@@ -403,8 +403,15 @@ impl Store {
     }
 
     /// Whether `path` is now exactly as `tree` has it, by type, mode and bytes; absent where it
-    /// has none. Anything that can't be read, or a nested repository, isn't. `modes`: the tree's.
-    pub(super) fn holds(&self, tree: &str, modes: Option<&Modes>, path: &str) -> bool {
+    /// has none. Anything that can't be read, or a nested repository, isn't. `modes`: the tree's;
+    /// `cut`: as `same` takes it.
+    pub(super) fn holds(
+        &self,
+        tree: &str,
+        modes: Option<&Modes>,
+        path: &str,
+        cut: Option<u32>,
+    ) -> bool {
         let index = self.git.join("index");
         let Ok(entry) = self.run(&index, &["ls-tree", "-z", tree, "--", path]) else {
             return false;
@@ -437,11 +444,8 @@ impl Store {
                 fs::read_link(self.cwd.join(path)).map(|l| l.into_os_string().into_encoded_bytes())
             }
             "100644" | "100755" if disk.is_file() => {
-                let same = match (modes, plain(mode)) {
-                    (Some(m), Some(plain)) => disk.mode() & 0o777 == *m.get(path).unwrap_or(&plain),
-                    _ => (disk.mode() & 0o100 != 0) == (mode == "100755"),
-                };
-                if !same {
+                let now = disk.mode() & 0o777;
+                if !plain(mode).is_some_and(|plain| same(modes, path, plain, now, cut)) {
                     return false;
                 }
                 fs::read(self.cwd.join(path))

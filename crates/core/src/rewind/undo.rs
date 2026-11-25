@@ -2,6 +2,7 @@
 //! the toast's Redo file changes puts back what it changed, only where each path is still exactly as
 //! the restore left it [D1192].
 
+use super::modes::made;
 use super::repos::Part;
 use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
@@ -57,16 +58,25 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
 
 /// Puts `paths` back as `pre` has them, each only where it's still exactly as `target` has it:
 /// one changed since, unreadable, kept out of snapshots or that a write would go through stays,
-/// and is returned [D1078, D1192].
+/// and is returned [D1078, D1192]. `cut`: a rollback, whose write-back may not have finished.
 pub(super) fn put_back(
     store: &Store,
     pre: &Shot,
     target: &Shot,
     paths: &BTreeSet<String>,
+    cut: bool,
 ) -> io::Result<Vec<String>> {
     let modes = store.modes(target)?;
+    let made = match cut {
+        true => Some(made(&store.git.join("index"))?),
+        false => None,
+    };
+    // A rollback cut short too has put some back, all but their permissions.
+    let before = store.modes(pre)?;
+    let is = |p: &str, made| store.holds(&pre.tree, before.as_ref(), p, made);
+    let half = |p: &str| made.is_some() && is(p, made) && !is(p, None);
     let held: BTreeSet<String> = (paths.iter())
-        .filter(|p| store.holds(&target.tree, modes.as_ref(), p))
+        .filter(|p| store.holds(&target.tree, modes.as_ref(), p, made) || half(p))
         .cloned()
         .collect();
     let back: BTreeSet<String> = (held.iter())
@@ -129,12 +139,12 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
     }
     let mine = match (&store, &r.pre, &r.target) {
         (Some(store), Some(pre), Some(target)) => {
-            put_back(store, pre, &Shot::at(target, &r.modes), &r.paths)
+            put_back(store, pre, &Shot::at(target, &r.modes), &r.paths, false)
         }
         _ => Ok(vec![]),
     };
     let kept = (mine.and_then(|mut kept| {
-        kept.extend(super::repos::put_back(spec, &r.repos)?);
+        kept.extend(super::repos::put_back(spec, &r.repos, false)?);
         Ok(kept)
     }))
     .map_err(|e| refused("failed", e.to_string()))?;

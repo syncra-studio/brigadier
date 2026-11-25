@@ -37,12 +37,34 @@ fn set(path: &Path, mode: u32) -> io::Result<()> {
     }
 }
 
+/// What a new file gets: git makes the index as it makes any.
+pub(super) fn made(index: &Path) -> io::Result<u32> {
+    Ok(fs::metadata(index)?.mode() & 0o666)
+}
+
 /// `mode` with its execute bits as its read ones where the file is an executable, none otherwise.
 fn run(mode: u32, plain: u32) -> u32 {
     match plain {
         0o755 => mode & 0o666 | (mode & 0o444) >> 2,
         _ => mode & 0o666,
     }
+}
+
+/// Whether a file with permissions `now` is as `modes` has it, its entry's own being `plain`. `cut`,
+/// what a new file gets: or as a write-back cut short leaves one it was still to set them on.
+pub(super) fn same(
+    modes: Option<&Modes>,
+    path: &str,
+    plain: u32,
+    now: u32,
+    cut: Option<u32>,
+) -> bool {
+    let Some(modes) = modes else {
+        return (now & 0o100 != 0) == (plain == 0o755);
+    };
+    let want = *modes.get(path).unwrap_or(&plain);
+    let unset = |made| want != run(made, plain) && now == run(0o600, plain);
+    now == want || cut.is_some_and(unset)
 }
 
 /// How a write-back leaves the permissions of what it writes.
@@ -149,8 +171,7 @@ impl Store {
         files: &[(&String, Option<u32>)],
     ) -> io::Result<Back> {
         let modes = self.modes(to)?;
-        // Git just made the index, as it makes any new file.
-        let made = fs::metadata(index)?.mode() & 0o666;
+        let made = made(index)?;
         let (mut want, mut homes) = (BTreeMap::new(), BTreeMap::new());
         for (path, plain) in files {
             let mode = plain.and_then(|plain| match &modes {

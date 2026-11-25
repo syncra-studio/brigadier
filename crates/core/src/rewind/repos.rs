@@ -127,11 +127,17 @@ pub(super) fn write_back(spec: &Spec, parts: &[Part]) -> io::Result<()> {
 
 /// Puts each repo's paths back as they were before the restore, where each is still as it left
 /// them; those that stayed, as `<repo>/<path>`.
-pub(super) fn put_back(spec: &Spec, parts: &[Part]) -> io::Result<Vec<String>> {
+pub(super) fn put_back(spec: &Spec, parts: &[Part], cut: bool) -> io::Result<Vec<String>> {
     let mut kept = vec![];
     for p in parts {
         let store = by_name(spec, &p.name)?;
-        let left = super::undo::put_back(&store, &p.pre, &Shot::at(&p.target, &p.modes), &p.paths)?;
+        let left = super::undo::put_back(
+            &store,
+            &p.pre,
+            &Shot::at(&p.target, &p.modes),
+            &p.paths,
+            cut,
+        )?;
         kept.extend(left.into_iter().map(|k| format!("{}/{k}", p.name)));
     }
     Ok(kept)
