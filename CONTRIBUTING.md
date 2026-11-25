@@ -23,6 +23,7 @@
 
 ## No litter
 
+- Never cut a rule to fit a limit: ask.
 - Never save to memory in this project unless the owner asks. If something is truly important, ask first.
 - Leave no plans, research, reports or stray files. Only the .md files `scripts/limits` allows.
 
