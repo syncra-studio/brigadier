@@ -413,6 +413,13 @@ async function killloop(minutes) {
   for (const [id] of real) fs.rmSync(`${ROOT}/repo-${id}`, { recursive: true, force: true })
   fs.rmSync(BIN + '.orig', { recursive: true, force: true })
   log(summary)
+  verdict('killloop', {
+    nothing_replaced: summary.agents_replaced_total === 0, no_duplicate_agents: summary.duplicate_agents_seen === 0, no_agent_restarts: restarts === 0,
+    no_tool_died: deadChildren === 0, no_orphans: summary.orphans_max === 0, none_lost: lost === 0 && summary.idle_lost === 0, none_doubled: doubled === 0 && summary.idle_doubled === 0,
+    status_right_within_2s: summary.correct_within_2s === events.length, same_list: summary.daemon_same_list === events.length,
+    history_same: Object.values(history).every((h) => h.mismatched === 0 && h.rehash_equal), idle_hosts_kept_their_pid: summary.idle_same_pid_min === idles.length,
+    no_leftovers: summary.leftovers.length === 0,
+  })
 }
 
 // Drill 2 ------------------------------------------------------------------------------------------
@@ -531,6 +538,16 @@ async function hang() {
   r.moved_host.tree_gone_ms = freed6.ok ? now() - k6 : null
   r.leftovers = cleanup()
   log({ drill: 'hang', ...r })
+  verdict('hang', {
+    stall_shown: r.stalled_shown_ms !== null, others_still_work: r.others_while_stalled.every((x) => x === 'working'), logs_past_a_frozen_reader: r.h3_still_logging_with_frozen_reader,
+    stop_ends_it: r.h1_after_stop === 'stopped' && r.h1_processes_left === 0, agent_killed: r.child_killed.state === 'interrupted' && r.child_killed.recover === 'continued' && r.child_killed.after === 'idle',
+    host_killed: r.owner_killed.interrupted_shown_ms !== null && r.owner_killed.agent_tree_gone_ms !== null && r.owner_killed.survivors_after_5s === 0 && r.owner_killed.recover === 'continued' && r.owner_killed.after_recover === 'idle',
+    host_frozen: r.owner_frozen.state === 'unresponsive' && r.owner_frozen.owners_running === 1 && r.owner_frozen.send.ms < 10000,
+    host_and_watchdog: r.host_and_watchdog_killed.swept_ms !== null && r.host_and_watchdog_killed.survivors === 0,
+    killed_at_spawn: r.killed_at_spawn.gone_ms !== null && r.killed_at_spawn.survivors === 0 && !r.killed_at_spawn.agent_got_it,
+    moved_host: r.moved_host.moved_ms !== null && r.moved_host.same_pid && r.moved_host.old_watchdog_gone && r.moved_host.watchdogs === 1 && r.moved_host.zombies === 0 && r.moved_host.tree_gone_ms !== null,
+    no_leftovers: r.leftovers.length === 0,
+  })
 }
 
 // Drill 3 ------------------------------------------------------------------------------------------
@@ -611,6 +628,17 @@ async function catalogue() {
   r.leftovers = cleanup()
   r.disk_full = await diskFull()
   log({ drill: 'catalogue', ...r })
+  const want = { noturn: 'no_turn_started', 'bg:20': 'idle', 'tool_sleep:20': 'working', 'hang:20': 'stalled', limit: 'limited', auth: 'sign_in', ask: 'waiting_answer' }
+  verdict('catalogue', {
+    race: r.race.owners === 1 && r.race.agents === 1 && r.race.recv.every((x) => x === 1),
+    concurrent: r.concurrent.distinct_received_once === r.concurrent.of && r.concurrent.same_cid_received === 1 && r.concurrent.dup_cids_in_log === 0,
+    crash_after_log: r.crash_after_log.state === 'undelivered' && r.crash_after_log.recover === 'resent' && r.crash_after_log.received === 1 && r.crash_after_log.after === 'idle',
+    states: Object.entries(want).every(([k, v]) => r.states[k] === v),
+    untrusted: r.untrusted.state === 'idle' && r.untrusted.unknown_count === 4 && r.untrusted.compactions === 1,
+    stops: Object.values(r.stops).every((x) => x.ok === x.of),
+    disk_full: r.disk_full.send_when_full === 'not_logged' && r.disk_full.status_when_full.disk_full === true && r.disk_full.send_after_space === 'delivered' && r.disk_full.log_readable === true && r.disk_full.leftovers.length === 0,
+    no_leftovers: r.leftovers.length === 0,
+  })
 }
 
 async function diskFull() {
@@ -723,6 +751,11 @@ async function scale() {
   r.leftovers = cleanup()
   if (process.env.KEEP_SCALE !== '1') fs.rmSync(shared, { recursive: true, force: true })
   log({ drill: 'scale', ...r })
+  // Whether it works at this size; its times are for reading, no bar is set on them here.
+  verdict('scale', {
+    opened: r.cold_open_tail200_ms > 0 && r.full_reread_ms > 0, index_rebuilt: r.index_rebuild_cold_out.ok === true && r.index_rebuild_warm?.ok === true,
+    commands_during_rebuild: r.latency_during_rebuild.n > 0, hosts_running: r.idle_owner_processes >= live, no_leftovers: r.leftovers.length === 0,
+  })
 }
 
 // Drill 5: prepared only. The owner runs it at an agreed moment; this prints the steps.
@@ -821,7 +854,9 @@ async function rebirthDrill() {
   r.queued = { order, received_once: ledger().recv.after === 1 }
   // The loop guard [D144]: fresh conversations that keep doing something are cut as often as they
   // fill; two in a row that do nothing new stop with the guard's line, and Continue carries on.
-  await fake('g1', `work reborn:5:shell:${DATA}/g1.txt+ctx:5+ctx:60+hang:8 ctx:5 ctx:60 hang:8`)
+  // An edit, then a step: the guard counts an edit or a run as progress, and a cut waits out the fake's
+  // words after a step [D479], so one with neither (the `shell` step) would never be cut.
+  await fake('g1', `work reborn:5:write:${DATA}/g1.txt+ctx:5+ctx:60+tool_sleep:1+hang:8 ctx:5 ctx:60 hang:8`)
   await settled('g1', 120000)
   r.progress = { rebirths: rebirths('g1').length, last: status(['g1']).g1?.last?.outcome }
   await fake('h1', 'work reborn:3:ctx:5+ctx:60+hang:8 ctx:5 ctx:60 hang:8')
@@ -832,6 +867,14 @@ async function rebirthDrill() {
   r.stall.after = { rebirths: rebirths('h1').length, lines: lines(), last: status(['h1']).h1?.last?.outcome }
   r.leftovers = cleanup()
   log({ drill: 'rebirth', ...r })
+  const once = (x, n = 1) => x.dividers.length === 1 && x.dividers[0] === 'done' && x.handoffs === 1 && (x.rebirths ?? x.inputs) === n
+  verdict('rebirth', {
+    next_input: once(r.next_input), mid_turn: r.mid_turn.settled && once(r.mid_turn), crash: once(r.crash, 2),
+    queued: r.queued.order.join() === 'work,cut,after' && r.queued.received_once,
+    progress: r.progress.rebirths === 6 && r.progress.last === 'done',
+    stall: r.stall.rebirths === 2 && r.stall.lines === 1 && r.stall.go_on === true && r.stall.after.rebirths === 4 && r.stall.after.last === 'done',
+    no_leftovers: r.leftovers.length === 0,
+  })
   for (const [, backend] of REAL) for (const todo of ['on', 'off']) log({ drill: 'rebirth-real', ...(await rebirthReal(backend, todo)) })
 }
 
