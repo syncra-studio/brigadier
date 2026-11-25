@@ -464,11 +464,11 @@ impl Adapter for Claude {
         cleanup::external(spec, resume)
     }
 
-    /// Its small model, by the alias its check lists [D1029].
+    /// Its small model, by its family's name [D1029].
     fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
         models
             .iter()
-            .find(|m| m.id == "haiku")
+            .find(|m| m.is_of("haiku"))
             .map(|m| m.id.clone())
     }
 

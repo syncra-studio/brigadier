@@ -24,8 +24,6 @@ use record::{diff, forget_thread, held, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
-const MODEL: &str = "gpt-5.6-luna";
-
 impl Adapter for Codex {
     fn name(&self) -> &'static str {
         "codex"
@@ -37,9 +35,9 @@ impl Adapter for Codex {
 
     fn seeds(&self) -> &'static [Seed] {
         &[
-            ("Write code", "gpt-6.1-sol", Some("high")),
-            ("Research the web", "gpt-6.1-terra", None),
-            ("Review", "gpt-6.1-sol", Some("high")),
+            ("Write code", "gptsol", Some("high")),
+            ("Research the web", "gptterra", None),
+            ("Review", "gptsol", Some("high")),
         ]
     }
 
@@ -127,10 +125,7 @@ impl Adapter for Codex {
             "signed in"
         };
         let listed = match signed_in {
-            true => models::list(spec, exe, cwd, 15).unwrap_or_else(|| Check {
-                models: vec![ModelInfo::plain(MODEL, false)],
-                ..Check::default()
-            }),
+            true => models::list(spec, exe, cwd, 15).unwrap_or_default(),
             false => Check::default(),
         };
         Ok(Check {

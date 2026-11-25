@@ -19,6 +19,7 @@ mod now;
 mod offers;
 mod pick;
 mod receipt;
+mod renamed;
 mod retry;
 mod rules;
 
@@ -115,7 +116,11 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
         .map(|mut g| {
             let off = settings::models_off(data, str_of(&g, "provider"));
             if let Some(ms) = g["models"].as_array_mut() {
-                ms.retain(|m| !off.iter().any(|o| m["id"] == o.as_str()));
+                let gone = ms.extract_if(.., |m| off.iter().any(|o| m["id"] == o.as_str()));
+                let gone: Vec<Value> = gone.map(|m| m["id"].clone()).collect();
+                let mut hidden = g["hidden"].as_array().cloned().unwrap_or_default();
+                hidden.extend(gone);
+                g["hidden"] = hidden.into();
             }
             g
         })
@@ -138,8 +143,8 @@ pub(crate) fn name_of(data: &Path, me: &str, agent: &str, id: &str) -> Option<St
 /// The table [C5]: the user's jobs (the seeds or carried rows until the first save), rules and
 /// review switch.
 fn table(data: &Path, groups: &[Value]) -> Value {
-    let saved = read(&data.join(FILE));
-    let rules = saved["rules"].as_array().cloned().unwrap_or_default();
+    let saved = renamed::settled(data, groups);
+    let rules = rules_of(&saved);
     json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true,
         "images": saved["images"]})
 }
@@ -310,8 +315,8 @@ fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value
     t
 }
 
-fn rules_of(data: &Path) -> Vec<Value> {
-    (read(&data.join(FILE))["rules"].as_array().cloned()).unwrap_or_default()
+fn rules_of(saved: &Value) -> Vec<Value> {
+    saved["rules"].as_array().cloned().unwrap_or_default()
 }
 
 /// Why a start ran on what it did, in a line, for its reply and start outcome [D2037]: the

@@ -442,8 +442,8 @@ pub trait Adapter: Sync {
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }
-    /// Its entries in the default jobs, as (job, model id, effort), in its order; routing keeps
-    /// the ones its list names [D392 P1].
+    /// Its entries in the default jobs, as (job, model id or versionless family, effort), in its
+    /// order; routing keeps the ones its list names [D392 P1].
     fn seeds(&self) -> &'static [Seed] {
         &[]
     }

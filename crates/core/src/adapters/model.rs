@@ -148,6 +148,12 @@ impl ModelInfo {
             ..Self::default()
         }
     }
+
+    /// Whether it's of the family `name` ("opus"), by its name ("Opus 5.5") or by its id, an alias.
+    pub fn is_of(&self, name: &str) -> bool {
+        let alias = self.id.split('[').next() == Some(name);
+        alias || versioned(&self.name).is_some_and(|f| f.0.trim().eq_ignore_ascii_case(name))
+    }
 }
 
 /// Marks legacy each model with a newer namesake ("Opus 4.8" beside "Opus 5.5", "X-6-Sol" beside

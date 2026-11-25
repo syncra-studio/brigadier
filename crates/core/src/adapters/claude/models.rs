@@ -22,12 +22,9 @@ pub const SEEDS: &[super::super::Seed] = &[
     ("Review", "opus", Some("high")),
 ];
 
-/// Its models and usage; where its list can't be read, its aliases by id.
+/// Its models and usage; none where its list can't be read.
 pub fn list(spec: &Spec, exe: &Path, cwd: &Path) -> Check {
-    let (models, usage) = listed(spec, exe, cwd).unwrap_or_else(|_| {
-        let aliases = ["sonnet", "opus", "haiku"].map(|m| ModelInfo::plain(m, false));
-        (aliases.into(), None)
-    });
+    let (models, usage) = listed(spec, exe, cwd).unwrap_or_default();
     Check {
         models,
         usage,
@@ -109,8 +106,7 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
         }
     }
     // Its `opus` alias, where its list names it: its top model.
-    if let Some((m, _)) = (models.iter_mut()).find(|(m, _)| m.id.split('[').next() == Some("opus"))
-    {
+    if let Some((m, _)) = (models.iter_mut()).find(|(m, _)| m.is_of("opus")) {
         m.top = true;
     }
     let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));

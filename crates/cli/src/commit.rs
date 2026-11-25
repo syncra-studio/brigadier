@@ -22,6 +22,7 @@ pub(crate) fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
     (found.into_iter().flatten())
         .map(|m| ModelInfo {
             id: m["id"].as_str().unwrap_or("").into(),
+            name: m["name"].as_str().unwrap_or("").into(),
             local: m["local"] == true,
             efforts: (m["efforts"].as_array().into_iter().flatten())
                 .filter_map(|e| e.as_str().map(String::from))
@@ -63,10 +64,13 @@ pub(crate) fn first(data: &Path) -> Option<writer::Choice> {
     let id = |m: &Value| m["id"].as_str().map(String::from);
     let default = (listed.iter().find(|m| m["default"] == true)).or(listed.first());
     let default = default.and_then(id)?;
-    let infos: Vec<ModelInfo> = (listed.iter().filter_map(id))
-        .map(|id| ModelInfo {
-            id,
-            ..ModelInfo::default()
+    let infos: Vec<ModelInfo> = (listed.iter())
+        .filter_map(|m| {
+            Some(ModelInfo {
+                id: id(m)?,
+                name: m["name"].as_str().unwrap_or("").into(),
+                ..ModelInfo::default()
+            })
         })
         .collect();
     let light = adapters::get(&backend)?.cheap(Some(&default), &infos);

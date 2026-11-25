@@ -61,6 +61,8 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
                 .flat_map(|a| a.seeds().iter().map(move |s| (a.name(), s)))
                 .filter(|(_, (job, ..))| job == name)
                 .filter_map(|(a, (_, id, effort))| {
+                    let now = renamed::renamed(&Value::Null, groups, a, id);
+                    let id = now.as_deref().unwrap_or(id);
                     let m = model_of(groups, a, id)?;
                     let has =
                         |e: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == e);
@@ -73,29 +75,6 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
             json!({"name": name, "for": line, "entries": entries})
         })
         .collect()
-}
-
-/// The id `agent` lists now for a model it no longer lists as `id`: the one listed under the name it
-/// last had, else, an id that is a family's own name ("fable"), that family's one listed model.
-pub(super) fn renamed(saved: &Value, groups: &[Value], agent: &str, id: &str) -> Option<String> {
-    let g = groups.iter().find(|g| g["provider"] == agent)?;
-    let current = || (g["models"].as_array().into_iter().flatten()).filter(|m| m["legacy"] != true);
-    if current().next().is_none() || model_of(groups, agent, id).is_some() {
-        return None;
-    }
-    let was = saved["seen"][agent]["names"][id].as_str();
-    let family = |m: &&Value| super::offers::family(str_of(m, "name")).is_some_and(|f| f.0 == id);
-    let mut found = match was {
-        Some(name) => current().filter(|m| m["name"] == name).collect::<Vec<_>>(),
-        None => vec![],
-    };
-    if found.is_empty() {
-        found = current().filter(family).collect();
-    }
-    match found[..] {
-        [one] => Some(str_of(one, "id").into()),
-        _ => None,
-    }
 }
 
 /// The jobs whole: the saved list, else the saved rows carried over and then the seeds, rebuilt on
@@ -114,7 +93,7 @@ pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
     for l in jobs.iter_mut().filter_map(|j| j["entries"].as_array_mut()) {
         for i in 0..l.len() {
             let agent = str_of(&l[i], "agent").to_string();
-            let Some(id) = renamed(saved, groups, &agent, str_of(&l[i], "model")) else {
+            let Some(id) = renamed::renamed(saved, groups, &agent, str_of(&l[i], "model")) else {
                 continue;
             };
             if l.iter()

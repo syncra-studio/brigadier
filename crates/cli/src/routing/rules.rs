@@ -13,7 +13,7 @@ pub(crate) fn launch(
     model: Option<&str>,
     effort: Option<&str>,
 ) -> Result<core::Ruled, String> {
-    let rules = rules_of(data);
+    let rules = rules_of(&read(&data.join(FILE)));
     let touched = (rules.iter())
         .any(|r| r["agent"] == agent || (r["never"] == "above" && r["agent"].is_null()));
     if !touched {
@@ -40,8 +40,13 @@ pub(crate) fn launch(
     // Unpicked, it runs its CLI's default model.
     let id = model
         .or_else(|| (listed.iter().find(|m| m["default"] == true)).and_then(|m| m["id"].as_str()));
-    let m = id.and_then(|id| listed.iter().find(|m| m["id"] == id));
-    if let Some(id) = id.filter(|id| barred(&rules, agent, id)) {
+    // A renamed model is barred and capped under either id.
+    let groups = [json!({"provider": agent, "models": listed})];
+    let saved = renamed::settled(data, &groups);
+    let rules = rules_of(&saved);
+    let now = id.and_then(|id| renamed::renamed(&saved, &groups, agent, id));
+    let m = (now.as_deref().or(id)).and_then(|id| listed.iter().find(|m| m["id"] == id));
+    if let Some(id) = (now.as_deref().or(id)).filter(|id| barred(&rules, agent, id)) {
         let name = m.and_then(|m| m["name"].as_str()).unwrap_or(id);
         return Err(format!("{name} is barred by your rule; pick another model"));
     }
@@ -68,7 +73,7 @@ pub(crate) fn launch(
 
 /// The pickers' models: none a rule bars, no effort above a cap [D376].
 pub(crate) fn picks(data: &Path, groups: &mut [Value]) {
-    let rules = rules_of(data);
+    let rules = rules_of(&renamed::settled(data, groups));
     for g in groups {
         let agent = str_of(g, "provider").to_string();
         let Some(ms) = g["models"].as_array_mut() else {

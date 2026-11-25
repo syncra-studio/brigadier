@@ -85,11 +85,14 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
     } else {
         Value::Null
     };
-    let models: Vec<Value> = (check["models"].as_array().into_iter().flatten())
-        .filter(|m| {
-            let id = format!("{}/{}", s(check, &["name"]), s(m, &["id"]));
-            !hidden.iter().any(|h| *h == id)
-        })
+    let hides = |m: &&Value| {
+        let id = format!("{}/{}", s(check, &["name"]), s(m, &["id"]));
+        hidden.iter().any(|h| *h == id)
+    };
+    let listed = || check["models"].as_array().into_iter().flatten();
+    let off: Vec<&Value> = listed().filter(hides).map(|m| &m["id"]).collect();
+    let models: Vec<Value> = listed()
+        .filter(|m| !hides(m))
         .map(|m| {
             json!({"id": m["id"], "name": m.get("name").unwrap_or(&m["id"]), "local": m["local"],
                 "efforts": m.get("efforts").cloned().unwrap_or_else(|| json!([])),
@@ -100,7 +103,7 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
         .collect();
     let (levels, level) = levels(&check["name"], held, chosen);
     json!({"provider": check["name"], "label": check["label"], "short": check["short"], "mark": check["mark"],
-        "unavailable": unavailable, "models": models, "error": check["error"],
+        "unavailable": unavailable, "models": models, "hidden": off, "error": check["error"],
         "levels": levels, "level": level, "held": held})
 }
 
