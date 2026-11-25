@@ -150,13 +150,34 @@ pub fn call(command: &str) -> bool {
         words = inner;
     }
     let program = words.first().map_or("", String::as_str);
-    // `mcp call` runs a server's tool, so it follows the session's level, never this grant [D3023].
+    // `mcp call` runs a server's tool and `mcp tools` starts the server, so they follow the
+    // session's level, never this grant [D3023].
     let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
-    let mcp_call = words.get(1).is_some_and(|w| w == "mcp")
-        && !action.is_some_and(|a| a == "list" || a == "tools");
+    let mcp_call = words.get(1).is_some_and(|w| w == "mcp") && !action.is_some_and(|a| a == "list");
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
         && !mcp_call
+}
+
+/// What a session allow of one plain `brigadier mcp tools <server>` or `mcp call <server> <tool>`
+/// covers: that server's list, or that tool with any arguments, as an MCP tool's own allow does;
+/// never another server's or tool's, as a CLI's suggested `brigadier mcp *` would [D3023].
+pub fn mcp_prefix(command: &str) -> Option<String> {
+    let words = past_cd(command.trim()).and_then(plain_words)?;
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let covers = match words.as_slice() {
+        ["brigadier", "mcp", "tools", _, ..] => &words[..4],
+        ["brigadier", "mcp", "call", _, _, ..] => &words[..5],
+        _ => return None,
+    };
+    let name = |w: &&str| {
+        w.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_-:.".contains(c))
+    };
+    (covers[3..]
+        .iter()
+        .all(|w| !w.is_empty() && !w.starts_with('-') && name(w)))
+    .then(|| covers.join(" "))
 }
 
 /// Whether `url`'s host is one a local development server answers on: localhost, *.localhost,

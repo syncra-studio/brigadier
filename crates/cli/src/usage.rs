@@ -69,8 +69,8 @@ pub(crate) fn usable(data: &Path, agent: &str, account: &str) -> Option<bool> {
     load(data)[key(agent, account)]["usable"].as_bool()
 }
 
-/// Keeps a sample read at `at`: each window replaces the one of its name unless that one is newer;
-/// `who` (signed in, email, usable) where a check said it. One writer at a time, across processes.
+/// Keeps a sample read at `at`: each window replaces the one of its name unless that one is newer, and
+/// a check's whole list all but newer ones; `who` (signed in, email, usable) where a check said it. One writer at a time, across processes.
 fn record(
     data: &Path,
     agent: &str,
@@ -95,7 +95,8 @@ fn record(
     }
     if let Some(limits) = limits {
         let mut kept = windows(entry);
-        kept.retain(|w| w.at > at || !limits.iter().any(|l| l.name == w.name));
+        let whole = who.is_some();
+        kept.retain(|w| w.at > at || (!whole && !limits.iter().any(|l| l.name == w.name)));
         let fresh: Vec<&Limit> = (limits.iter())
             .filter(|l| !kept.iter().any(|w| w.name == l.name))
             .collect();

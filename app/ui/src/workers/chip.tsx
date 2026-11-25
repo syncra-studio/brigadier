@@ -32,6 +32,8 @@ export type Worker = {
   brief?: string;
   /** What routing picked for it [D3018]. */
   receipt?: string;
+  /** What its review did, or why it didn't run. */
+  review?: string;
   /** What its parent asked for, where that isn't what ran [D2037]. */
   asked?: string;
   /** Why it runs on that, in a line [D2037]. */

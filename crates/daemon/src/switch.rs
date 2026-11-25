@@ -72,7 +72,9 @@ static RECONNECTS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 /// Resumes each turn the network cut, once its agent's API answers again [D339]: a wait that
 /// doubles each try (15 s, 30 s, 60 s), then a connect to its API's host (its DNS and a route)
-/// until one goes through, 5 s apart and doubling to a minute. Rust sends only the try still due,
+/// until one goes through, 5 s apart and doubling to a minute; a host that resolves but hasn't
+/// answered in 3 minutes may not be the one its CLI reaches (a proxy, a cloud's own API), so it's
+/// tried anyway. Rust sends only the try still due,
 /// under its own command id: a repeat finds it logged, a message sent meanwhile made it not due.
 pub fn reconnect(data: &Path, rows: &BTreeMap<String, Value>) {
     for (id, row) in rows.iter().filter(|(_, r)| r["reconnect"].is_object()) {
@@ -83,8 +85,14 @@ pub fn reconnect(data: &Path, rows: &BTreeMap<String, Value>) {
         thread::spawn(move || {
             let attempt = due["attempt"].as_u64().unwrap_or(1).clamp(1, 4);
             thread::sleep(Duration::from_secs(15 << (attempt - 1)));
-            let mut wait = 5;
-            while due["host"].as_str().is_some_and(|h| !reachable(h)) {
+            let (mut wait, mut named) = (5, 0);
+            while let Some(h) = due["host"].as_str().filter(|h| !reachable(h)) {
+                if h.to_socket_addrs().is_ok() {
+                    named += wait;
+                }
+                if named > 180 {
+                    break;
+                }
                 thread::sleep(Duration::from_secs(wait));
                 wait = (wait * 2).min(60);
             }

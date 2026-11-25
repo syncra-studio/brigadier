@@ -49,10 +49,6 @@ impl Adapter for Claude {
         super::Subagents::Barred
     }
 
-    fn runs(&self, spec: &Spec) -> Option<String> {
-        Some(control::model(spec))
-    }
-
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
         ("claude", &[".local/bin"])
     }
@@ -108,17 +104,24 @@ impl Adapter for Claude {
             "api_key" | "api_key_helper" => "API key",
             "oauth_token" => "token",
             "third_party" => "cloud provider",
+            other if signed_in => other,
             _ => "",
         };
+        let listed = match signed_in {
+            true => models::list(spec, exe, cwd),
+            false => Check::default(),
+        };
+        // Its plan as the CLI shows it, else by its short name.
+        let who = Who::read(&status, ["email", "subscriptionType", "orgName"]);
         Ok(Check {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
             how: how.into(),
-            who: Who::read(&status, ["email", "subscriptionType", "orgName"]),
-            ..match signed_in {
-                true => models::list(spec, exe, cwd),
-                false => Check::default(),
-            }
+            who: Who {
+                plan: listed.who.plan.clone().or(who.plan),
+                ..who
+            },
+            ..listed
         })
     }
 
@@ -158,7 +161,6 @@ impl Adapter for Claude {
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
-        let model = control::model(spec);
         let mut argv = vec![exe.display().to_string()];
         argv.extend(
             [
@@ -172,7 +174,9 @@ impl Adapter for Claude {
             ]
             .map(String::from),
         );
-        argv.extend(["--model".into(), model]);
+        if let Some(model) = &spec.model {
+            argv.extend(["--model".into(), model.clone()]);
+        }
         if let Some(effort) = &spec.effort {
             argv.extend(["--effort".into(), effort.clone()]);
         }
@@ -216,7 +220,7 @@ impl Adapter for Claude {
             }
         }
         let input = text.map(|t| control::user(t, &spec.images));
-        let mut env = base_env(spec, &exe, self.keys());
+        let mut env = base_env(spec, &exe, &self.keys());
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
         // The queue's judge has no tools (code.claude.com/docs/en/cli-reference) [D771].
@@ -464,12 +468,9 @@ impl Adapter for Claude {
         cleanup::external(spec, resume)
     }
 
-    /// Its small model, by the alias its check lists [D1029].
+    /// Its small model, by its family's name [D1029].
     fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
-        models
-            .iter()
-            .find(|m| m.id == "haiku")
-            .map(|m| m.id.clone())
+        ModelInfo::of_family(models, "haiku").map(|m| m.id.clone())
     }
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {

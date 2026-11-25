@@ -15,14 +15,16 @@ use std::path::Path;
 
 mod hold;
 mod jobs;
+mod now;
 mod offers;
 mod pick;
 mod receipt;
+mod renamed;
 mod retry;
 mod rules;
 
 pub(crate) use hold::{ask, due, real, set_ran, stopped, stops};
-pub(crate) use jobs::said;
+pub(crate) use jobs::{picked, said};
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::receipt;
 pub(crate) use retry::plan as retry;
@@ -62,6 +64,14 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
 /// Whether Settings › Routing's Adversarial review is on [D3026, C4].
 pub(crate) fn review_on(data: &Path) -> bool {
     read(&data.join(FILE))["review"] == true
+}
+
+/// An effort as the picker words it: "Extra high" for "xhigh", "High" for "high".
+fn level(effort: &str) -> String {
+    match effort {
+        "xhigh" => "Extra high".into(),
+        e => capital(e),
+    }
 }
 
 /// "High" for "high"; a row's title for one from before jobs.
@@ -114,7 +124,11 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
         .map(|mut g| {
             let off = settings::models_off(data, str_of(&g, "provider"));
             if let Some(ms) = g["models"].as_array_mut() {
-                ms.retain(|m| !off.iter().any(|o| m["id"] == o.as_str()));
+                let gone = ms.extract_if(.., |m| off.iter().any(|o| m["id"] == o.as_str()));
+                let gone: Vec<Value> = gone.map(|m| m["id"].clone()).collect();
+                let mut hidden = g["hidden"].as_array().cloned().unwrap_or_default();
+                hidden.extend(gone);
+                g["hidden"] = hidden.into();
             }
             g
         })
@@ -137,8 +151,8 @@ pub(crate) fn name_of(data: &Path, me: &str, agent: &str, id: &str) -> Option<St
 /// The table [C5]: the user's jobs (the seeds or carried rows until the first save), rules and
 /// review switch.
 fn table(data: &Path, groups: &[Value]) -> Value {
-    let saved = read(&data.join(FILE));
-    let rules = saved["rules"].as_array().cloned().unwrap_or_default();
+    let saved = renamed::settled(data, groups);
+    let rules = rules_of(&saved);
     json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] == true,
         "images": saved["images"]})
 }
@@ -302,6 +316,7 @@ fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value
     let mut t = table(data, groups);
     let offers = offers::open(data, groups, &t, r).unwrap_or_default();
     (t["offers"], t["notes"]) = (offers.into(), jobs::notes(groups));
+    t["now"] = now::now(data, groups, &t);
     t["ok"] = why.is_none().into();
     if let Some(why) = why {
         (t["error"], t["message"]) = ("invalid".into(), why.into());
@@ -309,8 +324,8 @@ fn shown(data: &Path, groups: &[Value], r: &Value, why: Option<String>) -> Value
     t
 }
 
-fn rules_of(data: &Path) -> Vec<Value> {
-    (read(&data.join(FILE))["rules"].as_array().cloned()).unwrap_or_default()
+fn rules_of(saved: &Value) -> Vec<Value> {
+    saved["rules"].as_array().cloned().unwrap_or_default()
 }
 
 /// Why a start ran on what it did, in a line, for its reply and start outcome [D2037]: the

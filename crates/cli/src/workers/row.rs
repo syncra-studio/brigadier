@@ -84,6 +84,11 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         // A folder chat's worker: the repos it claimed, for its row [D494].
         "repos": core::folder::claims(dir).into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "now": if kind == "working" { f.calls.last() } else { None },
+        // What its review did, or why it didn't run.
+        "review": match l.review["state"].as_str() {
+            Some("running" | "sending" | "sent") => json!("Being reviewed"),
+            _ => l.review["line"].clone(),
+        },
         // When its wait is over, for the daemon's pass.
         "due": waits.map(|h| h["resets"].as_u64().unwrap_or(0))})
 }

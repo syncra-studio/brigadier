@@ -37,11 +37,7 @@ pub fn refresh() -> Login {
     let mut command = Command::new(shell);
     // Interactive too: many users export PATH and keys only in .zshrc.
     command.args(["-l", "-i", "-c", &format!("printf {MARK}; /usr/bin/env -0")]);
-    let wanted: Vec<&str> = super::all()
-        .iter()
-        .flat_map(|a| a.keys())
-        .copied()
-        .collect();
+    let wanted: Vec<String> = super::all().iter().flat_map(|a| a.keys()).collect();
     let mut login = Login {
         path: SYSTEM_PATH.into(),
         vars: BTreeMap::new(),
@@ -52,7 +48,7 @@ pub fn refresh() -> Login {
         for (k, v) in env.split('\0').filter_map(|kv| kv.split_once('=')) {
             if k == "PATH" && !v.is_empty() {
                 login.path = v.into();
-            } else if wanted.contains(&k) && !v.is_empty() {
+            } else if wanted.iter().any(|w| w == k) && !v.is_empty() {
                 login.vars.insert(k.into(), v.into());
             }
         }
@@ -324,7 +320,7 @@ pub fn newer(latest: &str, current: &str) -> bool {
 
 /// The environment every child starts from, the same for a session, a status check and a sign-in:
 /// the basics, the login shell's PATH after the CLI's own folder, and the variables `keys` names.
-pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[&str]) -> Vec<(String, String)> {
+pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[String]) -> Vec<(String, String)> {
     let var = |k: &str| std::env::var(k).unwrap_or_default();
     let dir = exe
         .parent()
@@ -344,7 +340,7 @@ pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[&str]) -> Vec<(String, S
     ];
     env.extend(
         keys.iter()
-            .filter_map(|k| Some((k.to_string(), login.vars.get(*k)?.clone()))),
+            .filter_map(|k| Some((k.clone(), login.vars.get(k)?.clone()))),
     );
     if let Some((var, home)) = &spec.account {
         env.push((var.clone(), home.display().to_string()));
@@ -360,7 +356,7 @@ pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[&str]) -> Vec<(String, S
 pub fn probe(
     exe: &Path,
     cwd: &Path,
-    keys: &[&str],
+    keys: &[String],
     args: &[&str],
     secs: u64,
 ) -> Result<std::process::Output, String> {
@@ -372,7 +368,7 @@ pub fn probe_as(
     spec: &crate::Spec,
     exe: &Path,
     cwd: &Path,
-    keys: &[&str],
+    keys: &[String],
     args: &[&str],
     secs: u64,
 ) -> Result<std::process::Output, String> {

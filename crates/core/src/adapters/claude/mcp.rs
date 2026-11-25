@@ -1,7 +1,7 @@
 //! The user's own MCP servers in Claude Code's config, for the relay [D100], and the library at
 //! launch [D2043].
 
-use crate::adapters::{files, home_path};
+use crate::adapters::{cli_home, files, home_path};
 use crate::{Spec, library};
 use serde_json::{Map, Value, json};
 use std::io;
@@ -120,13 +120,78 @@ fn slack(cwd: &Path) -> Map<String, Value> {
         .collect()
 }
 
+/// A worker's servers that only Claude signs in to: its own, a plugin's or its settings', that the
+/// library holds as signed in by each agent and on for the worker's project, under their own
+/// names so Claude uses the sign-in it keeps. The relay can't reach these, so a worker has them
+/// from its CLI: Slack's rule [D586], for every such server (owner, 2026-11-25).
+fn held(spec: &Spec, cwd: &Path) -> Map<String, Value> {
+    let root = crate::projects::root(cwd).unwrap_or_else(|| cwd.into());
+    let items = library::on_for(&crate::data_of(spec), spec.project.as_deref());
+    let items: Vec<&Value> = items.iter().filter(|i| i["sign_in"] == "cli").collect();
+    let own = mcp_servers(&root);
+    let mut all = Map::new();
+    for mut s in own
+        .iter()
+        .filter(|s| items.iter().any(|i| library::same(s, i)))
+        .cloned()
+    {
+        let name = s["name"].as_str().unwrap_or("").to_string();
+        if let Some(o) = s.as_object_mut() {
+            o.remove("source");
+            o.remove("name");
+        }
+        // The first of a name, the local one, as Claude takes it.
+        all.entry(name).or_insert(s);
+    }
+    // One only the library has, as its lead has it.
+    for i in items
+        .iter()
+        .filter(|i| !own.iter().any(|s| library::same(s, i)))
+    {
+        let name = library::named(i["name"].as_str().unwrap_or(""));
+        all.insert(name, json!({"type": "http", "url": i["url"]}));
+    }
+    all
+}
+
 /// A worker's launch is naked [D89]; any other gets the library.
 pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String)>) {
     let cwd = Path::new(&spec.cwd);
     if spec.naked {
-        return super::control::naked(argv, slack(cwd));
+        // A worker's, not the message writer's (its own folder) or the queue's judge's (no tools).
+        let worker = spec.dir == crate::session_dir(&crate::data_of(spec), &spec.id)
+            && !spec.opts.contains_key("no_tools");
+        let servers = if worker { held(spec, cwd) } else { Map::new() };
+        super::control::naked(argv, servers);
+        // How it signs in stays, though the user's settings don't: their helper commands, never a value.
+        let user = read(&cli_home(spec, ".claude", "settings.json"));
+        let at = argv.iter().rposition(|a| a == "--settings");
+        if let Some(at) = at {
+            let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
+            for k in [
+                "apiKeyHelper",
+                "awsAuthRefresh",
+                "awsCredentialExport",
+                "gcpAuthRefresh",
+            ] {
+                if user[k].is_string() {
+                    settings[k] = user[k].clone();
+                }
+            }
+            argv[at + 1] = settings.to_string();
+        }
+        return;
     }
     let mut off = library(spec, cwd, argv, env);
+    let (data, project) = (crate::data_of(spec), spec.project.as_deref());
+    off.extend(library::own_off(&data, project, &mcp_servers(cwd)));
+    // Its own skills the library holds off here: `skillOverrides` (code.claude.com/docs/en/skills),
+    // which a plugin's skill doesn't take.
+    let hidden = library::hidden(&data, project);
+    let skills: Map<String, Value> = (super::commands::fixed(Some(cwd), Some(spec)).iter())
+        .filter(|k| hidden.has(k))
+        .filter_map(|k| Some((k["name"].as_str()?.to_string(), "off".into())))
+        .collect();
     // Claude Code drops its Slack plugin's server for a claude.ai Slack connector at the same
     // address, even one not signed in; the plugin is the Slack Brigadier uses [D586, D768].
     if !slack(cwd).is_empty() {
@@ -134,9 +199,14 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
     }
     let denied: Vec<Value> = (off.iter()).map(|n| json!({ "serverName": n })).collect();
     let at = argv.iter().rposition(|a| a == "--settings");
-    if let (false, Some(at)) = (denied.is_empty(), at) {
+    if let (false, Some(at)) = (denied.is_empty() && skills.is_empty(), at) {
         let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
-        settings["deniedMcpServers"] = denied.into();
+        if !denied.is_empty() {
+            settings["deniedMcpServers"] = denied.into();
+        }
+        if !skills.is_empty() {
+            settings["skillOverrides"] = skills.into();
+        }
         argv[at + 1] = settings.to_string();
     }
 }

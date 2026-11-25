@@ -371,7 +371,7 @@ fn remove(data: &Path, id: &str) -> io::Result<Value> {
         match (c["kept_apart"] == true, a.accounts(), a.exe()) {
             (true, Some(acc), Some(exe)) => {
                 let spec = on_account(a, data, &id, "");
-                let out = probe_as(&spec, &exe, &home, a.keys(), acc.sign_out, 30)
+                let out = probe_as(&spec, &exe, &home, &a.keys(), acc.sign_out, 30)
                     .map_err(io::Error::other)?;
                 if !out.status.success() {
                     let said = String::from_utf8_lossy(&out.stderr).trim().to_string();

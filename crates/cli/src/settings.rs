@@ -138,13 +138,15 @@ fn check_path(a: &dyn adapters::Adapter, path: &Path) -> io::Result<()> {
 
 /// An agent's older models (`<id>`s its check marks legacy) start hidden, each once, as the old
 /// app's did: the first check that lists one adds it to `models_off` and to `older_seen`, and the
-/// user's choice stands from then on.
+/// user's choice stands from then on. One a job, the images choice or Write with holds stays on.
 pub fn older_off(data: &Path, agent: &str, ids: &[&str]) -> io::Result<()> {
     let _one = SETTINGS.lock().unwrap();
     let mut saved = read(data);
     saved.as_object_mut().map(|o| o.remove("awake"));
     let seen = saved["older_seen"].as_array().cloned().unwrap_or_default();
-    let new: Vec<Value> = (ids.iter().map(|id| json!(format!("{agent}/{id}"))))
+    let picked = crate::routing::picked(data, agent);
+    let new: Vec<Value> = (ids.iter().filter(|id| !picked.iter().any(|p| p == *id)))
+        .map(|id| json!(format!("{agent}/{id}")))
         .filter(|m| !seen.contains(m))
         .collect();
     if new.is_empty() {

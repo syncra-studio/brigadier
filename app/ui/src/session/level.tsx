@@ -4,6 +4,7 @@ import { type PermissionLevel, PermissionPicker } from "../components/composer/p
 import { ErrorLine } from "../components/error-line";
 import type { Row } from "../daemon";
 import { errorText, run } from "../onboarding/api";
+import { levelsOf } from "./model";
 import { newId } from "./store";
 
 /**
@@ -34,6 +35,8 @@ type LevelRow = Row & {
   level?: PermissionLevel | null;
   level_refused?: string | null;
   held?: boolean;
+  /** The model its next turn runs. */
+  model?: string | null;
   /** The last level pick Rust took, by the app's op id [D30]. */
   level_op?: string | null;
 };
@@ -64,7 +67,7 @@ export function SessionLevel({ id, row }: { id: string; row: LevelRow | undefine
 
   return (
     <>
-      <LevelPicker levels={row?.levels ?? []} level={pending?.level ?? row?.level ?? null} held={row?.held === true} onChange={pick} />
+      <LevelPicker levels={levelsOf(row?.levels ?? [], row?.backend, row?.model)} level={pending?.level ?? row?.level ?? null} held={row?.held === true} onChange={pick} />
       <ErrorLine error={error ?? row?.level_refused ?? null} className="min-w-0 truncate" />
     </>
   );

@@ -481,6 +481,7 @@ impl Fold {
                 Some("go_on") => self.go_on = Some(str_of("turn")),
                 Some("level") => self.took("level", &item["level"]), // the running child confirmed it mid-turn [D166]
                 Some("setup") => self.setup(item),
+                Some("retuned") => self.retuned(item),
                 Some("switch_now") => self.picked.iter_mut().for_each(|p| p.now = true),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),

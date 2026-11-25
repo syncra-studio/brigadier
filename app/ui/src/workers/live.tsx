@@ -40,6 +40,7 @@ export type WorkerRow = {
   ended?: number | null;
   model: string;
   receipt: string;
+  review?: string | null;
   asked?: string | null;
   why?: string | null;
   added?: number | null;
@@ -72,6 +73,7 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
   model: row.worker.model,
   brief: row.worker.brief,
   receipt: row.worker.receipt,
+  review: row.worker.review ?? undefined,
   asked: row.worker.asked ?? undefined,
   why: row.worker.why ?? undefined,
   added: row.worker.added ?? undefined,

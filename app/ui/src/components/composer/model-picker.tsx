@@ -17,6 +17,8 @@ export type Model = {
   retiring?: { at: number | null; to: string | null } | null;
   /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
   images?: boolean | null;
+  /** Whether it runs at the Auto level; unknown counts as yes. */
+  auto?: boolean | null;
   /** Whether it makes and edits images with a tool of its own, where its CLI says [D298]. */
   draws?: boolean | null;
   /** What its fast tier offers, where it has one: the Fast switch's tip. */
@@ -46,8 +48,7 @@ export type ModelChoice = { provider: string; model: string; effort: string | nu
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
-  const known: Record<string, string> = { none: "None", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
-  return known[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
+  return effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
 }
 
 /** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */

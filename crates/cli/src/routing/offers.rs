@@ -50,13 +50,6 @@ fn label(agent: &str) -> &str {
     adapters::get(agent).map_or(agent, |a| a.short_label())
 }
 
-/// A name's family, its version cut and case, spaces and hyphens dropped, and its version:
-/// "GPT-6.2-Sol" → ("gptsol", [6, 2]).
-fn family(name: &str) -> Option<(String, Vec<u32>)> {
-    let (f, v) = adapters::versioned(name)?;
-    Some((f.to_lowercase().replace([' ', '-'], ""), v))
-}
-
 /// "GPT-Sol" from "GPT-6.2-Sol": the name with its version token and one separator cut.
 fn family_words(name: &str) -> String {
     let token = name
@@ -88,8 +81,9 @@ fn beat(a: (u64, u64), b: (u64, u64)) -> bool {
 }
 
 /// New facts in one agent's list since the last read: (a) a newer model of a family a job holds,
-/// the alias notice, (c) a mark moved to a model no job holds. `moved` takes each alias's move.
+/// the alias notice, (c) the default moved to a model no job holds. `moved` takes each alias's move.
 fn found(
+    groups: &[Value],
     agent: &str,
     models: &[Value],
     was: &Value,
@@ -101,6 +95,7 @@ fn found(
     let old_names: Vec<(String, &str)> = (was["names"].as_object().into_iter().flatten())
         .filter_map(|(id, n)| Some((id.clone(), n.as_str()?)))
         .collect();
+    let replaced = renamed::replaced(groups, agent, was);
     let seen = |id: &str| (was["ids"].as_array().into_iter().flatten()).any(|x| x == id);
     for m in models {
         let (id, now_name) = (str_of(m, "id"), str_of(m, "name"));
@@ -109,7 +104,7 @@ fn found(
         if !seen(id)
             && m["legacy"] != true
             && m["retiring"].is_null()
-            && let Some((fam, version)) = family(now_name)
+            && let Some((fam, version)) = adapters::family(now_name)
         {
             for j in jobs {
                 let older = (j["entries"].as_array().into_iter().flatten())
@@ -118,41 +113,38 @@ fn found(
                         let n = (models.iter())
                             .find(|x| x["id"] == e["model"])
                             .map_or("", |x| str_of(x, "name"));
-                        family(n).is_some_and(|(f, v)| f == fam && v < version)
+                        adapters::family(n).is_some_and(|(f, v)| f == fam && v < version)
                     });
                 if let Some(e) = older {
                     out.push(json!({"job": j["name"], "kind": "newer", "from": entry_key(e), "to": k, "at": now}));
                 }
             }
         }
-        // The alias notice [D388 Q15]: the same id now runs a new version of its family.
-        let before = old_names.iter().find(|(x, _)| x == id).map(|(_, n)| *n);
+        // The alias notice [D388 Q15], on the first job that holds it: the same id now runs a new
+        // version of its family, or it took the place of one gone.
+        let same = (old_names.iter()).find(|(x, n)| x == id && *n != now_name);
+        let before = same.or_else(|| replaced.iter().find(|(x, _)| x == id));
+        let (before, took) = (before.map(|(_, n)| *n), same.is_none());
         if let Some(was_name) = before.filter(|n| *n != now_name)
-            && family(was_name)
-                .zip(family(now_name))
+            && adapters::family(was_name)
+                .zip(adapters::family(now_name))
                 .is_some_and(|(a, b)| a.0 == b.0)
         {
-            moved[id] = now.into();
-            for j in jobs.iter().filter(|j| holds(j, &k)) {
+            (!took).then(|| moved[id] = now.into());
+            if let Some(j) = jobs.iter().find(|j| holds(j, &k)) {
                 out.push(
                     json!({"job": j["name"], "kind": "alias", "from": k, "to": k,
-                    "was": was_name, "now": now_name, "at": now}),
+                    "was": was_name, "now": now_name, "took": took, "at": now}),
                 );
             }
         }
     }
-    // (c): the default or top mark now on a model no job holds.
-    for mark in ["default", "top"] {
-        let new = models
-            .iter()
-            .find(|m| m[mark] == true)
-            .map(|m| str_of(m, "id"));
-        let (Some(new), Some(old)) = (new, was[mark].as_str()) else {
-            continue;
-        };
+    // (c): the default now a model no job holds.
+    let new = (models.iter().find(|m| m["default"] == true)).map(|m| str_of(m, "id"));
+    if let (Some(new), Some(old)) = (new, was["default"].as_str()) {
         let (to, from) = (key(agent, new), key(agent, old));
         if new == old || jobs.iter().any(|j| holds(j, &to)) {
-            continue;
+            return out;
         }
         let mut on: Vec<Value> = (jobs.iter().filter(|j| holds(j, &from)))
             .map(|j| j["name"].clone())
@@ -161,7 +153,7 @@ fn found(
             on.push(Value::Null);
         }
         for job in on {
-            out.push(json!({"job": job, "kind": "mark", "mark": mark, "from": from, "to": to, "at": now}));
+            out.push(json!({"job": job, "kind": "mark", "mark": "default", "from": from, "to": to, "at": now}));
         }
     }
     out
@@ -240,10 +232,6 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
     let (old, new) = (name(groups, from), name(groups, to));
     let agent = label(split(to).0);
     let job = o["job"].as_str();
-    let mark = match o["mark"].as_str() {
-        Some("top") => "top model",
-        _ => "default",
-    };
     // Where it goes: the entry's own effort where the new model has it, else its default [P6].
     let keeps = || {
         let e = job.and_then(|j| jobs::named(jobs, j)).and_then(|j| {
@@ -255,7 +243,7 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
                 .any(|x| Some(x.as_str().unwrap_or("")) == effort)
         });
         match (effort, has) {
-            (Some(e), true) => format!("It keeps the same place and effort ({}).", capital(e)),
+            (Some(e), true) => format!("It keeps the same place and effort ({}).", level(e)),
             _ => "It keeps the same place, at its own default effort.".into(),
         }
     };
@@ -277,14 +265,22 @@ fn words(groups: &[Value], jobs: &[Value], o: &Value, now: u64) -> Value {
             )
         }
         ("mark", Some(j)) => (
-            format!("{agent}'s {mark} is now {new}. Use it in place of {old} in {j}?"),
+            format!("{agent}'s default is now {new}. Use it in place of {old} in {j}?"),
             format!(
-                "{agent} moved its {mark} from {old} to {new}, which none of your jobs holds. {}",
+                "{agent} moved its default from {old} to {new}, which none of your jobs holds. {}",
                 keeps()
             ),
         ),
         ("mark", None) => (
-            format!("{agent}'s {mark} is now {new}, which none of your jobs holds."),
+            format!("{agent}'s default is now {new}, which none of your jobs holds."),
+            String::new(),
+        ),
+        _ if o["took"] == true => (
+            format!(
+                "{agent} replaced {} with {}",
+                str_of(o, "was"),
+                str_of(o, "now")
+            ),
             String::new(),
         ),
         _ => (
@@ -321,11 +317,9 @@ fn id_of(o: &Value) -> String {
 /// the routing lock. The very first read of an agent only fills its `seen`.
 pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::Result<Vec<Value>> {
     let path = data.join(FILE);
-    let mut saved = match read(&path) {
-        v @ Value::Object(_) => v,
-        _ => json!({}),
-    };
-    let before = saved.clone();
+    let object = |v: Value| if v.is_object() { v } else { json!({}) };
+    let before = object(read(&path));
+    let mut saved = object(renamed::settled(data, groups));
     let jobs = t["jobs"].as_array().cloned().unwrap_or_default();
     let now = log::now_ms();
     let mut kept = saved["offers"].as_array().cloned().unwrap_or_default();
@@ -341,7 +335,7 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::R
             _ => json!({}),
         };
         if was.is_object() {
-            for o in found(agent, &models, &was, &jobs, &mut moved, now) {
+            for o in found(groups, agent, &models, &was, &jobs, &mut moved, now) {
                 // (a) and (c) for one model in one job are one offer.
                 let same = |k: &Value| match o["kind"] == "alias" {
                     true => id_of(k) == id_of(&o),
@@ -352,17 +346,13 @@ pub(super) fn open(data: &Path, groups: &[Value], t: &Value, r: &Value) -> io::R
                 }
             }
         }
-        let names: serde_json::Map<String, Value> = (models.iter())
-            .map(|m| (str_of(m, "id").to_string(), m["name"].clone()))
-            .collect();
-        let mark = |k: &str| {
-            models
-                .iter()
-                .find(|m| m[k] == true)
-                .map(|m| m["id"].clone())
-        };
-        saved["seen"][agent] = json!({"ids": names.keys().collect::<Vec<_>>(), "names": names,
-            "default": mark("default"), "top": mark("top"), "moved": moved});
+        // A model gone from the list keeps the name it last had: its agent may list it under a new id.
+        let mut names = was["names"].as_object().cloned().unwrap_or_default();
+        names.extend((models.iter()).map(|m| (str_of(m, "id").to_string(), m["name"].clone())));
+        let ids: Vec<&Value> = models.iter().map(|m| &m["id"]).collect();
+        let default = (models.iter().find(|m| m["default"] == true)).map(|m| &m["id"]);
+        saved["seen"][agent] =
+            json!({"ids": ids, "names": names, "default": default, "moved": moved});
     }
     // Kept while it still fits: its job there and holding what it replaces, both models listed,
     // a mark's model still marked.

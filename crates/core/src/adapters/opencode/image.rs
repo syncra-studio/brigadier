@@ -61,9 +61,8 @@ pub(super) fn kept(p: &mut Value) {
 
 /// Whether a connected provider has an image model, by its server's answer to
 /// `GET` [`LIST`]; None where it couldn't be read.
-pub(super) fn any(listed: Result<String, String>) -> Option<bool> {
-    let t = listed.ok()?;
-    let v: Value = serde_json::from_str(&t[t.find('{')?..]).ok()?;
+pub(super) fn any(listed: Result<Value, String>) -> Option<bool> {
+    let v = listed.ok()?;
     Some(v["data"].as_array()?.iter().any(|m| m["enabled"] != false))
 }
 

@@ -58,7 +58,7 @@ export function WorkerHeader({ worker, details = false, onBack, onToggleDetails,
   );
 }
 
-/** Its details page, as the old WorkerDetails: its state since the header dropped it [D885], why this model, and the instructions it was started with. */
+/** Its details page, as the old WorkerDetails: its state since the header dropped it [D885], why this model, its review, and the instructions it was started with. */
 export function WorkerDetails({ worker }: { worker: Worker }) {
   return (
     <div data-slot="worker-details" className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-5 wrap-anywhere">
@@ -73,6 +73,9 @@ export function WorkerDetails({ worker }: { worker: Worker }) {
           {worker.receipt && <p className="text-xs text-muted-foreground">{worker.receipt}</p>}
           {worker.why && <p className="text-xs text-muted-foreground first-letter:uppercase">{worker.why}</p>}
           {worker.asked && <p className="text-xs text-muted-foreground">{worker.asked}</p>}
+        </Section>}
+        {worker.review && <Section title="Review">
+          <p className="text-sm">{worker.review}</p>
         </Section>}
         {worker.brief && <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Instructions</h3>

@@ -131,6 +131,7 @@ fn list(data: &Path) -> Value {
             own.extend(skills.filter(|k| k["kind"] == "skill").map(|k| (*a, k)));
         }
     }
+    let unreached = view::unreached(data);
     let shown: Vec<Value> = (items.iter())
         .map(|i| {
             let detail = match i["kind"] == "skill" {
@@ -161,16 +162,25 @@ fn list(data: &Path) -> Value {
             };
             let key = str(&i["key"]);
             let ours = i["sign_in"] == "brigadier";
+            // One the last session it was on in couldn't connect to shows Can't reach, whoever
+            // signs it in; the thread stays quiet about a connect [D761].
+            let name = library::named(str(&i["name"]));
+            let last = (unreached.iter().filter(|u| library::on(i, u.0.as_deref()))).max_by_key(|u| u.1);
+            let down = i["kind"] == "server" && last.is_some_and(|u| u.2.contains(&name));
             let status = match ours {
                 true if i["on"] != true => json!("off"),
-                true => crate::signin::status(data, key).into(),
+                true => match crate::signin::status(data, key) {
+                    "signed_in" if down => "cant_reach".into(),
+                    status => status.into(),
+                },
+                false if down && i["on"] == true => "cant_reach".into(),
                 false => Value::Null,
             };
             let signed_in = ours.then(|| crate::signin::signed_in(data, key));
             json!({"key": i["key"], "kind": i["kind"], "name": i["name"], "description": i["description"],
                 "detail": detail, "on": i["on"] == true, "scope": i["scope"], "status": status,
                 "sign_in": i.get("sign_in"), "signed_in": signed_in, "agents": agents.iter().map(|a| a.label()).collect::<Vec<_>>(),
-                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found"), "folders": own_folders})
+                "note": note, "catalog": catalog::id(i), "with": i.get("with"), "set": i.get("set"), "from": i.get("from"), "found": i.get("found"), "repo": found::repo(i), "folders": own_folders})
         })
         .collect();
     json!({"ok": true, "items": shown, "projects": projects, "catalog": catalog::page(&items)})

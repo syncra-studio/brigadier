@@ -56,7 +56,10 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         };
         (w["key"], w["kind"], w["name"]) = (key.into(), o["kind"].clone(), name.into());
         (w["found"], w["from"]) = (json!([o["place"]]), from(&o).into());
-        w["on"] = (o["enabled"] != false).into();
+        // One from a project's own file (`.mcp.json`) is the repo's word, not the user's: it
+        // starts off, and switching it on is their yes [D418].
+        w["on"] = (o["enabled"] != false && o["repo"] != true).into();
+        w["repo"] = (o["repo"] == true).then_some(true).into();
         want.push(w);
     }
     // Skills from one source are one skillset [D720]: two or more whose SKILL.md names the same
@@ -148,6 +151,13 @@ pub(super) fn ask(data: &Path) {
     let _ = library::save(data, &items);
 }
 
+/// Whether a server is from a project's own file; one found only in projects and saved before
+/// that was kept counts as one, till the next sync says.
+pub(super) fn repo(i: &Value) -> bool {
+    let projects_only = (i["found"].as_array()).is_some_and(|f| !f.contains(&json!("")));
+    i["repo"] == true || i["kind"] == "server" && i.get("repo").is_none() && projects_only
+}
+
 /// A SKILL.md's `metadata.author`, where its maker signs it: "github-spec-kit".
 fn author(text: &str) -> String {
     let front = text
@@ -234,6 +244,8 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
                 o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
                 o["project"] = p.map(|p| p.name.clone()).into();
                 (o["key"], o["agents"], o["place"]) = (key.into(), json!([a.label()]), id.into());
+                let inside = |f: &std::path::PathBuf| Path::new(str(&o["source"])).starts_with(f);
+                o["repo"] = (o["kind"] == "server" && folder.as_ref().is_some_and(inside)).into();
                 // Where each agent has it from: a server's file or plugin [D565].
                 o["sources"] = json!({ a.label(): o["source"] });
                 all.push(o);

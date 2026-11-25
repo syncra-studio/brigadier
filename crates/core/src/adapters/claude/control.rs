@@ -42,11 +42,6 @@ fn level_of(mode: &str) -> Option<&'static str> {
     }
 }
 
-/// The model a session runs, as launch and a retune name it.
-pub fn model(spec: &Spec) -> String {
-    spec.model.clone().unwrap_or_else(|| "haiku".into())
-}
-
 /// A user message on stdin, its images as Claude's own base64 blocks [D2008].
 pub fn user(text: &str, images: &[PathBuf]) -> String {
     let mut content = json!(text);
@@ -91,8 +86,10 @@ pub fn retune(last: &Spec, next: &Spec) -> Retune {
     if let Some(level) = next.level.as_deref().filter(|_| last.level != next.level) {
         changes.push(json!({"subtype": "set_permission_mode", "mode": mode(level)}));
     }
-    if model(last) != model(next) {
-        changes.push(json!({"subtype": "set_model", "model": model(next)}));
+    if last.model != next.model {
+        // With none picked, the alias of its own default.
+        let model = next.model.as_deref().unwrap_or("default");
+        changes.push(json!({"subtype": "set_model", "model": model}));
     }
     if changes.is_empty() {
         return Retune::InMessage;
@@ -179,9 +176,19 @@ pub fn standing(spec: &Spec) -> Vec<String> {
             allow.push("Bash(brigadier repo:*)".into());
         }
     }
+    // A worker's launch leaves the user's settings out, and their global rules file with them:
+    // given here, as the plan says a worker has it [D89, D99].
+    // An added account's home links it only if it was there when the account was made.
+    let files = [
+        super::super::cli_home(spec, ".claude", "CLAUDE.md"),
+        crate::adapters::home_path(".claude/CLAUDE.md"),
+    ];
+    let rules = files.iter().find_map(|f| std::fs::read_to_string(f).ok());
+    let rules =
+        (rules.filter(|_| spec.naked)).map_or(String::new(), |r| format!("\n\n{}", r.trim()));
     let mut args = vec![
         "--append-system-prompt".into(),
-        crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
+        crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" } + &rules,
         "--settings".into(),
         settings.to_string(),
         "--disallowedTools".into(),
@@ -216,11 +223,11 @@ fn widen(rule: &Value) -> Vec<Value> {
     if rule["toolName"] != "Bash" || !crate::agent::call(content) {
         return vec![rule.clone()];
     }
-    // `mcp call` follows the session's level, so its grant covers only what reads [D3023]; the
-    // browser asks on its own card [D533].
-    let prefixes = (crate::agent::COMMANDS.iter()).flat_map(|c| match *c {
-        "mcp" => vec!["mcp list".to_string(), "mcp tools".into()],
-        c => vec![c.to_string()],
+    // `mcp call` and `mcp tools` follow the session's level, so its grant covers only the list
+    // [D3023]; the browser asks on its own card [D533].
+    let prefixes = (crate::agent::COMMANDS.iter()).map(|c| match *c {
+        "mcp" => "mcp list".to_string(),
+        c => c.to_string(),
     });
     prefixes
         .map(|c| json!({"toolName": "Bash", "ruleContent": format!("brigadier {c}:*")}))
@@ -236,7 +243,12 @@ pub fn parse(v: &Value) -> Option<Vec<Event>> {
             "AskUserQuestion" => vec![question(&id(), r)],
             _ => vec![approval(&id(), r)],
         },
-        "control_request" => vec![Event::Unknown(v.to_string())],
+        // A request of a kind it adds: shown, and either choice tells it there's no answer, so its
+        // turn never waits on one unseen.
+        "control_request" => vec![Event::Approval(
+            json!({"id": id(), "action": "other", "reason": "Brigadier can't answer this request. Either choice turns it down.",
+            "input": s(r, &["subtype"]), "cli": {"unknown": true}}),
+        )],
         "control_cancel_request" => vec![Event::Resolved(id())],
         "control_response" => {
             let r = &v["response"];
@@ -305,7 +317,16 @@ fn approval(id: &str, r: &Value) -> Event {
             let rules = match agent {
                 true => vec![json!({"toolName": tool, "ruleContent": command})],
                 false if command.contains(['$', '`']) => vec![],
-                false => suggested,
+                false => match crate::agent::mcp_prefix(&command) {
+                    Some(p) => vec![json!({"toolName": tool, "ruleContent": format!("{p}:*")})],
+                    // Nor `brigadier mcp *` for one part of a longer command.
+                    None => (suggested.into_iter())
+                        .filter(|r| {
+                            let first = s(r, &["ruleContent"]).split([' ', ':']).next();
+                            !first.is_some_and(|w| w.rsplit('/').next() == Some("brigadier"))
+                        })
+                        .collect(),
+                },
             };
             let first = (rules.first()).map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
             let first = first.map(|p| p.trim_end_matches(":*").to_string());
@@ -388,6 +409,11 @@ pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
         }
         Some("answer") => {
             let r = &msg["request"];
+            if r["cli"]["unknown"] == true {
+                let error = "Brigadier doesn't handle this request.";
+                let line = json!({"type": "control_response", "response": {"subtype": "error", "request_id": r["id"], "error": error}});
+                return Ok(Delivery::Stdin(format!("{line}\n")));
+            }
             let response = if r["items"].is_array() {
                 answers(r, msg)
             } else {

@@ -86,17 +86,34 @@ pub fn locate(run: &Spec, list: &mut [Value]) {
     }
 }
 
-/// Before its first init line: the old app's builtin commands, then the commands and skills its
+/// Its own commands as its last check listed them, the same in every folder.
+fn kept() -> PathBuf {
+    crate::data_dir().join("agents/claude.commands")
+}
+
+/// Keeps the commands its `initialize` answer lists, for a session's menu before its first init line.
+pub fn keep(commands: &Value) {
+    if commands.as_array().is_none_or(|l| l.is_empty()) {
+        return;
+    }
+    let (path, text) = (kept(), commands.to_string());
+    if std::fs::read_to_string(&path).ok().as_ref() != Some(&text) {
+        let _ = std::fs::create_dir_all(path.parent().unwrap());
+        if let Err(e) = crate::write_atomic(&path, text.as_bytes()) {
+            eprintln!("Claude's commands weren't kept: {e}");
+        }
+    }
+}
+
+/// Before its first init line: its builtin commands as its last check listed them, then the commands and skills its
 /// folders hold, each by name once, as the old app scanned them [D2098].
 pub fn fixed(cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
-    let builtin = [
-        ("compact", "Compact this conversation"),
-        ("context", "Show context usage"),
-        ("cost", "Show session usage"),
-        ("help", "Show Claude Code help"),
-    ];
+    let builtin: Vec<Value> = (std::fs::read(kept()).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
     let mut list: Vec<Value> = (builtin.iter())
-        .map(|(name, description)| json!({"name": name, "description": description, "kind": "command", "path": null, "instant": false}))
+        .filter(|c| c["builtin"] != false)
+        .map(|c| json!({"name": c["name"], "description": c["description"], "kind": "command", "path": null, "instant": false}))
         .collect();
     let roots = roots(cwd, run);
     for (kind, folder) in [("command", "commands"), ("skill", "skills")] {

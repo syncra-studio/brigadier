@@ -29,6 +29,22 @@ impl Fold {
         }
     }
 
+    /// What the child runs with now, confirmed between turns, or that it isn't known.
+    pub(super) fn retuned(&mut self, item: &Value) {
+        self.gave(&item["setup"], false);
+    }
+
+    /// A setup the child runs with. A reused child said its real model once, at its start: kept
+    /// while it runs that model [D383].
+    fn gave(&mut self, setup: &Value, starts: bool) {
+        let real = (self.given.as_ref())
+            .filter(|g| !starts && g["model"] == setup["model"])
+            .map(|g| g["real"].clone())
+            .filter(|r| !r.is_null());
+        self.given = Some(setup.clone());
+        real.inspect(|r| self.took("real", r));
+    }
+
     /// The app's `set` [D129]: the conversation's agent takes the model and effort from its next
     /// turn, which drops a pick; another agent is picked, for the next message [D90].
     pub(super) fn setup(&mut self, item: &Value) {
@@ -79,13 +95,7 @@ impl Fold {
                 .push(json!({"cid": cid, "ts": ts, "text": text, "steer": item["steer"] == true}));
         }
         if item["setup"].is_object() {
-            // A reused child said its real model once, at its start: kept while it runs that model [D383].
-            let real = (self.given.as_ref())
-                .filter(|g| item["starts_child"] != true && g["model"] == item["setup"]["model"])
-                .map(|g| g["real"].clone())
-                .filter(|r| !r.is_null());
-            self.given = Some(item["setup"].clone());
-            real.inspect(|r| self.took("real", r));
+            self.gave(&item["setup"], item["starts_child"] == true);
             self.plans.on = item["review"] == true;
         }
         // An answer starts the agent's silence over: the wait on the user was none of its own [D327].

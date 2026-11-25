@@ -60,7 +60,7 @@ fn fixed_line(
         return super::brigade::line(parent, pid, &land);
     }
     format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills or MCP servers of its own: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
+        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills of its own, and no MCP servers but any only it can sign in to: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
 }
 

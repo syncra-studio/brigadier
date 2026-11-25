@@ -117,6 +117,8 @@ pub struct ModelInfo {
     pub local: bool,
     pub efforts: Vec<String>,
     pub default_effort: Option<String>,
+    /// Whether it runs at the Auto level, where its CLI's list says; None where nothing says.
+    pub auto: Option<bool>,
     /// Being retired, where its CLI's list says so [D487]: `{at, to}`, when (ms) and the model it
     /// suggests instead, each null where not said. None for a model nothing says of [D74].
     pub retiring: Option<Value>,
@@ -129,11 +131,11 @@ pub struct ModelInfo {
     pub fast: Option<String>,
     /// An older model its CLI still offers beside a newer one: pickers tuck it under Older models.
     pub legacy: bool,
+    /// What it costs, input and output added, where its CLI's list says; only to find the cheapest.
+    pub cost: Option<f64>,
     /// Its context window in tokens, where its CLI's list says [D113].
     pub window: Option<u64>,
-    /// Its CLI's top model and the one it runs unpicked, each only where its own list says so
-    /// [D2075, D388 Q12].
-    pub top: bool,
+    /// The one its CLI runs unpicked, where its own list says so [D2075, D388 Q12].
     pub default: bool,
 }
 
@@ -148,13 +150,27 @@ impl ModelInfo {
             ..Self::default()
         }
     }
+
+    /// The model of the family `name` ("opus") in `models`: the one its id, an alias, names, else the
+    /// newest by name ("Opus 5.5").
+    pub fn of_family<'a>(models: &'a [Self], name: &str) -> Option<&'a Self> {
+        let of = |m: &&Self| {
+            let (family, version) = versioned(&m.name)?;
+            (family.trim().eq_ignore_ascii_case(name)).then_some(version)
+        };
+        (models.iter().find(|m| m.id.split('[').next() == Some(name)))
+            .or_else(|| models.iter().filter(|m| of(m).is_some()).max_by_key(of))
+    }
 }
 
-/// Marks legacy each model with a newer namesake ("Opus 4.8" beside "Opus 5.5", "X-6-Sol" beside
-/// "X-6.1-Sol"); a name without a version is left alone. Then names apart models that share a
-/// name: the part of the id before its `/`, else the whole id, in brackets.
+/// Marks legacy each model with a newer namesake of its own provider ("Opus 4.8" beside "Opus 5.5",
+/// "X-6 Sol" beside "X-6.1-Sol"); a name without a version is left alone. Then names apart models
+/// that share a name: the part of the id before its `/`, else the whole id, in brackets.
 pub fn mark_superseded(models: &mut [ModelInfo]) {
-    let named: Vec<_> = models.iter().map(|m| versioned(&m.name)).collect();
+    let of = |m: &ModelInfo| m.id.split_once('/').map(|(p, _)| p.to_string());
+    let named: Vec<_> = (models.iter())
+        .map(|m| family(&m.name).map(|(f, v)| ((of(m), f), v)))
+        .collect();
     for (model, own) in models.iter_mut().zip(&named) {
         if let Some((family, version)) = own
             && (named.iter().flatten()).any(|(other, newer)| other == family && newer > version)
@@ -182,6 +198,13 @@ pub fn mark_superseded(models: &mut [ModelInfo]) {
         };
         model.name = format!("{} ({shown})", model.name);
     }
+}
+
+/// A name's family, its version cut and case, spaces and hyphens dropped, and its version:
+/// "GPT-6.2-Sol" → ("gptsol", [6, 2]).
+pub fn family(name: &str) -> Option<(String, Vec<u32>)> {
+    let (f, v) = versioned(name)?;
+    Some((f.to_lowercase().replace([' ', '-'], ""), v))
 }
 
 /// A model name's family (the name with its version cut out) and version: "Opus 5.5 (1M)" →

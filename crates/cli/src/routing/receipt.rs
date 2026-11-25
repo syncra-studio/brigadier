@@ -18,7 +18,7 @@ pub(crate) fn receipt(ran: &Value) -> Option<String> {
         (None, None) => model.to_string(),
     };
     if let Some(e) = ran["effort"].as_str() {
-        text += &format!(" · {}", capital(e));
+        text += &format!(" · {}", level(e));
     }
     if let Some(f) = ran["failed"].as_str() {
         text += &format!(" ({f})");

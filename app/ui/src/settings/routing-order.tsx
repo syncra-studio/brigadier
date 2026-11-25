@@ -10,7 +10,7 @@ import { named } from "../components/composer/model-keys";
 import { SelectTrigger } from "../components/select";
 import { Plus, X } from "../icons";
 import { DragDots } from "../icons/note";
-import type { Entry } from "./routing";
+import type { Entry, Now } from "./routing";
 
 /** A divider drawn inside the top edge, as the old design's strokes are: it adds no height. */
 const HAIRLINE_TOP = "relative before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-divider";
@@ -20,8 +20,8 @@ const NOTHING: ModelChoice = { provider: "", model: "", effort: null };
 const keyOf = (entry: Entry) => `${entry.agent}/${entry.model}`;
 const asEntry = (choice: ModelChoice): Entry => ({ agent: choice.provider, model: choice.model, effort: choice.effort });
 
-/** My order: each model dragged by its grip (or ↑ ↓), its model and effort in the shared picker [D19], Remove; then Add model. */
-export function OrderList({ title, order, groups, onSave }: { title: string; order: Entry[]; groups: ModelGroup[]; onSave: (order: Entry[]) => void }) {
+/** My order: each model dragged by its grip (or ↑ ↓), its model and effort in the shared picker [D19], its quota or why it can't run, Remove; then Add model. */
+export function OrderList({ title, order, states, groups, onSave }: { title: string; order: Entry[]; states?: Now[string]["entries"]; groups: ModelGroup[]; onSave: (order: Entry[]) => void }) {
   // What Add model has added while it is open: another pick there changes it, not adds one more.
   const [added, setAdded] = useState<string | null>(null);
   const addedEntry = order.find((entry) => keyOf(entry) === added) ?? null;
@@ -57,6 +57,7 @@ export function OrderList({ title, order, groups, onSave }: { title: string; ord
                 key={ids[index]}
                 id={ids[index]!}
                 entry={entry}
+                state={states?.[keyOf(entry)]}
                 index={index}
                 count={order.length}
                 groups={groups}
@@ -94,6 +95,7 @@ export function OrderList({ title, order, groups, onSave }: { title: string; ord
 function OrderPlace({
   id,
   entry,
+  state,
   index,
   count,
   groups,
@@ -103,6 +105,7 @@ function OrderPlace({
 }: {
   id: string;
   entry: Entry;
+  state?: Now[string]["entries"][string];
   index: number;
   count: number;
   groups: ModelGroup[];
@@ -135,7 +138,7 @@ function OrderPlace({
         <DragDots className="h-3.5 w-2.5" />
         <span className="w-2 font-mono text-xs">{index + 1}</span>
       </button>
-      <span className="min-w-0 flex-1">
+      <span className={cx("min-w-0 flex-1", state?.off && "opacity-disabled")}>
         <ModelPicker
           groups={groups}
           value={{ provider: entry.agent, model: entry.model, effort: entry.effort }}
@@ -149,6 +152,7 @@ function OrderPlace({
           )}
         />
       </span>
+      {state?.text && <span className="shrink-0 text-xs text-muted-foreground">{state.text}</span>}
       <TooltipIconButton tooltip="Remove" aria-label={`Remove ${name}`} onClick={onRemove} className="shrink-0 text-muted-foreground">
         <X />
       </TooltipIconButton>

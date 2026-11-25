@@ -19,7 +19,7 @@ import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { BrigadeToggle } from "../sessions/brigade";
 import { OvernightPill } from "../sessions/overnight-parts";
-import { asGroups } from "../session/model";
+import { asGroups, levelsOf } from "../session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
@@ -129,7 +129,9 @@ export function HomeDraft() {
   }, [model, draft.model]);
   // The model's agent's levels here; a pick it can't take, or any while held, falls back to Rust's start default [D166, D187, D239].
   const agent = groups?.find((group) => group.provider === model?.provider);
-  const pick = agent && !agent.held && agent.levels.includes(draft.level!) ? draft.level : undefined;
+  const levels = agent ? levelsOf(agent.levels, agent.provider, model?.model, groups) : [];
+  const other = agent?.level && !levels.includes(agent.level) ? levels[0] : undefined;
+  const pick = !agent || agent.held ? undefined : levels.includes(draft.level!) ? draft.level : other;
 
   return (
     <>
@@ -165,7 +167,7 @@ export function HomeDraft() {
         level={
           agent && (
             <>
-              <LevelPicker levels={agent.levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
+              <LevelPicker levels={levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
               <BrigadeToggle on={draft.brigade === true} onChange={(brigade) => setHomeDraft({ brigade })} />
               <OvernightPill on={draft.overnight === true} onChange={(overnight) => setHomeDraft({ overnight })} />
             </>

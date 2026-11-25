@@ -15,8 +15,8 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     config["experimental"] = json!({"todo": crate::rebirth::todo()});
     // Where a rule names OpenCode, its subagent-mode agents start on the session's model and
     // capped effort; its task tool can still name others [D376].
-    if spec.ruled.touched {
-        let mut agent = json!({"model": model(spec)});
+    if let Some(model) = spec.model.as_deref().filter(|_| spec.ruled.touched) {
+        let mut agent = json!({"model": model});
         if let Some(e) = &spec.effort {
             agent["variant"] = e.as_str().into();
         }
@@ -25,9 +25,19 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     if spec.naked {
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));
-        env.push(("OPENCODE_DISABLE_CLAUDE_CODE".into(), "1".into()));
-    } else if let Some(kit) = crate::library::kit(spec, &[]) {
-        library(&mut config, &kit, spec);
+        // Only its `.claude` skills: the user's global rules file stays [D99].
+        env.push(("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS".into(), "1".into()));
+    } else {
+        if let Some(kit) = crate::library::kit(spec, &[]) {
+            library(&mut config, &kit, spec);
+        }
+        // Its own servers the library holds off here, as stubs that never connect.
+        let own = super::commands::mcp_servers(std::path::Path::new(&spec.cwd));
+        let data = crate::data_of(spec);
+        for name in crate::library::own_off(&data, spec.project.as_deref(), &own) {
+            config["mcp"]["servers"][name] =
+                json!({"type": "local", "command": ["true"], "disabled": true});
+        }
     }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
     if !spec.naked {
@@ -86,24 +96,23 @@ pub fn model_info(m: &Value, local: &impl Fn(&str) -> bool, images: Option<bool>
         images: Some(input.is_none_or(|i| i.is_empty() || i.iter().any(|x| x == "image"))),
         window: m["limit"]["context"].as_u64(),
         draws: super::image::draws(m, images),
+        cost: (m["cost"][0]["input"]
+            .as_f64()
+            .zip(m["cost"][0]["output"].as_f64()))
+        .map(|(i, o)| i + o),
         ..ModelInfo::plain(&id, local(&id))
     }
 }
 
-/// The model a session runs; a free one OpenCode serves when none is picked.
-pub fn model(spec: &Spec) -> String {
-    (spec.model.clone()).unwrap_or_else(|| "opencode/deepseek-v4.1-flash-free".into())
-}
-
-/// The model as its server names it: `provider/model`, the effort as its variant.
-pub fn model_ref(spec: &Spec) -> Value {
-    let model = model(spec);
-    let (provider, id) = model.split_once('/').unwrap_or(("opencode", &model));
+/// The model picked, as its server names it: `provider/model`, the effort as its variant.
+pub fn model_ref(spec: &Spec) -> Option<Value> {
+    let model = spec.model.as_deref()?;
+    let (provider, id) = model.split_once('/').unwrap_or(("opencode", model));
     let mut r = json!({"id": id, "providerID": provider});
     if let Some(e) = &spec.effort {
         r["variant"] = e.as_str().into();
     }
-    r
+    Some(r)
 }
 
 /// Commands Auto still asks before: destructive ones and network installs [D130]. A plain curl
@@ -134,6 +143,13 @@ pub fn rules(spec: &Spec) -> Value {
     // The desktop app's synced computer-use skill, found by OpenCode in ~/.claude/skills, says
     // computer use is missing; here it's `brigadier computer` [D922].
     let folder = folder.chain([rule("skill", "computer-use", "deny")]);
+    // Its own skills the library holds off here (opencode.ai/docs/skills#permissions).
+    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
+    let own = super::commands::fixed(Some(std::path::Path::new(&spec.cwd)));
+    let off: Vec<Value> = (own.iter().filter(|k| hidden.has(k)))
+        .map(|k| rule("skill", k["name"].as_str().unwrap_or(""), "deny"))
+        .collect();
+    let folder = folder.chain(off);
     // osascript to System Events or an app, and cliclick, drive the user's apps in front of them;
     // `brigadier computer` stays behind (proposed) [D929]. OpenCode checks each part of a pipe:
     // a bare osascript reads its script from a pipe or a heredoc, unseen.

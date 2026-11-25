@@ -74,6 +74,10 @@ pub fn events(v: &Value) -> Vec<Event> {
         "item/autoApprovalReview/completed" if p["review"]["status"] == "denied" => {
             vec![Event::Denied]
         }
+        // Its reviewer gave no verdict in time: the turn asks instead [D455].
+        "item/autoApprovalReview/completed" if p["review"]["status"] == "timedOut" => {
+            vec![Event::Unchecked]
+        }
         "item/commandExecution/requestApproval" => vec![asked(p, command(v))],
         "item/fileChange/requestApproval" => vec![asked(p, edit(v))],
         "item/permissions/requestApproval" => vec![asked(p, permissions(v))],
@@ -129,7 +133,9 @@ fn completed(p: &Value) -> Vec<Event> {
     let mut events = vec![];
     if status == "failed" {
         let message = s(turn, &["error", "message"]);
-        events.push(if p["brigadier"]["credits"] == true {
+        // A key's, project's or organisation's spend limit: no credits left, whatever its words.
+        let spent = s(turn, &["error", "codexErrorInfo"]).ends_with("SpendLimitExceeded");
+        events.push(if spent || p["brigadier"]["credits"] == true {
             Event::OutOfCredits
         } else if !cause(turn).is_empty() {
             Event::Failed(cause(turn), message.into())
@@ -160,13 +166,17 @@ fn cause(turn: &Value) -> &'static str {
         .as_str()
         .or_else(|| info.as_object()?.keys().next().map(String::as_str));
     match kind.unwrap_or("") {
-        "serverOverloaded" | "internalServerError" => "capacity",
+        "contextWindowExceeded" => "context",
+        "serverOverloaded"
+        | "internalServerError"
+        | "flexUnavailable"
+        | "policyCapacityUnavailable" => "capacity",
         "httpConnectionFailed"
         | "responseStreamConnectionFailed"
         | "responseStreamDisconnected"
         | "responseTooManyFailedAttempts" => "connection",
         "modelNotFound" => "model",
-        "cyberPolicy" => "blocked",
+        "cyberPolicy" | "bioPolicy" => "blocked",
         "misalignmentPolicyViolation" => "ended",
         "tooManyDenials" => "review",
         _ => "",

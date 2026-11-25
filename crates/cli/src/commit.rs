@@ -22,7 +22,9 @@ pub(crate) fn models(data: &Path, name: &str) -> Vec<ModelInfo> {
     (found.into_iter().flatten())
         .map(|m| ModelInfo {
             id: m["id"].as_str().unwrap_or("").into(),
+            name: m["name"].as_str().unwrap_or("").into(),
             local: m["local"] == true,
+            cost: m["cost"].as_f64(),
             efforts: (m["efforts"].as_array().into_iter().flatten())
                 .filter_map(|e| e.as_str().map(String::from))
                 .collect(),
@@ -63,10 +65,14 @@ pub(crate) fn first(data: &Path) -> Option<writer::Choice> {
     let id = |m: &Value| m["id"].as_str().map(String::from);
     let default = (listed.iter().find(|m| m["default"] == true)).or(listed.first());
     let default = default.and_then(id)?;
-    let infos: Vec<ModelInfo> = (listed.iter().filter_map(id))
-        .map(|id| ModelInfo {
-            id,
-            ..ModelInfo::default()
+    let infos: Vec<ModelInfo> = (listed.iter())
+        .filter_map(|m| {
+            Some(ModelInfo {
+                id: id(m)?,
+                name: m["name"].as_str().unwrap_or("").into(),
+                cost: m["cost"].as_f64(),
+                ..ModelInfo::default()
+            })
         })
         .collect();
     let light = adapters::get(&backend)?.cheap(Some(&default), &infos);
@@ -77,7 +83,7 @@ pub(crate) fn first(data: &Path) -> Option<writer::Choice> {
 }
 
 /// One write of `prompt` (built from the session's own asks) on `chosen`, else its agent at its
-/// cheapest model; offline, on a local model any agent listed [D1029]; none a rule bars [D376].
+/// cheapest model, else its own model at its lowest effort; offline, on a local model any agent listed [D1029]; none a rule bars [D376].
 /// The reason why not, else.
 pub(crate) fn written_for(
     data: &Path,
@@ -112,7 +118,8 @@ pub(crate) fn written_for(
     };
     let model = chosen
         .map(|c| c.model.clone())
-        .or_else(|| cheap(&mut listed));
+        .or_else(|| cheap(&mut listed))
+        .or_else(|| run.model.clone());
     if let Some(model) = model {
         run.effort =
             (listed.iter().find(|m| m.id == model)).and_then(|m| m.efforts.first().cloned());
@@ -130,6 +137,8 @@ pub(crate) fn written_for(
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);
+        // It only writes a message: none of the user's skills, servers, plugins or hooks.
+        run.naked = true;
         run.level = a.can().levels.first().map(|l| l.to_string());
         run.grants = vec![];
     };

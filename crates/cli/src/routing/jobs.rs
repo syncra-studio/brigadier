@@ -61,6 +61,8 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
                 .flat_map(|a| a.seeds().iter().map(move |s| (a.name(), s)))
                 .filter(|(_, (job, ..))| job == name)
                 .filter_map(|(a, (_, id, effort))| {
+                    let now = renamed::renamed(&Value::Null, groups, a, id);
+                    let id = now.as_deref().unwrap_or(id);
                     let m = model_of(groups, a, id)?;
                     let has =
                         |e: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == e);
@@ -76,9 +78,9 @@ fn seeds(groups: &[Value]) -> Vec<Value> {
 }
 
 /// The jobs whole: the saved list, else the saved rows carried over and then the seeds, rebuilt on
-/// each read until the first save [D392 P3].
+/// each read until the first save [D392 P3]. A model its agent renamed stays, under its new id.
 pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
-    match saved["jobs"].as_array() {
+    let mut jobs: Vec<Value> = match saved["jobs"].as_array() {
         Some(l) => l.clone(),
         None => (CARRIED.iter())
             .filter_map(|(key, name, line)| {
@@ -87,7 +89,28 @@ pub(super) fn all(saved: &Value, groups: &[Value]) -> Vec<Value> {
             })
             .chain(seeds(groups))
             .collect(),
+    };
+    for l in jobs.iter_mut().filter_map(|j| j["entries"].as_array_mut()) {
+        for i in 0..l.len() {
+            let agent = str_of(&l[i], "agent").to_string();
+            let Some(id) = renamed::renamed(saved, groups, &agent, str_of(&l[i], "model")) else {
+                continue;
+            };
+            if l.iter()
+                .any(|e| e["agent"] == agent.as_str() && e["model"] == id.as_str())
+            {
+                continue;
+            }
+            let has = model_of(groups, &agent, &id).is_some_and(|m| {
+                (m["efforts"].as_array().into_iter().flatten()).any(|x| *x == l[i]["effort"])
+            });
+            l[i]["model"] = id.into();
+            if !has {
+                l[i]["effort"] = Value::Null;
+            }
+        }
     }
+    jobs
 }
 
 /// The jobs as they stand. An entry its agent no longer lists (gone, or hidden in Settings) is
@@ -105,6 +128,21 @@ pub(super) fn of(saved: &Value, groups: &[Value]) -> Vec<Value> {
         }
     }
     jobs
+}
+
+/// The ids of `agent`'s models the user's jobs, images choice and Write with hold, as saved.
+pub(crate) fn picked(data: &Path, agent: &str) -> Vec<String> {
+    let saved = read(&data.join(FILE));
+    let jobs = all(&saved, &[]);
+    let mut ids: Vec<String> = (jobs.iter())
+        .flat_map(|j| j["entries"].as_array().into_iter().flatten())
+        .chain(saved.get("images"))
+        .filter(|e| e["agent"] == agent)
+        .map(|e| str_of(e, "model").to_string())
+        .collect();
+    let writer = core::writer::choice(data).ok().flatten();
+    ids.extend(writer.filter(|c| c.backend == agent).map(|c| c.model));
+    ids
 }
 
 /// A job by name, ignoring case.

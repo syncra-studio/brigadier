@@ -5,6 +5,8 @@
 //! call; it closes after `IDLE` unused.
 
 mod http;
+mod list;
+use list::list;
 pub mod serve;
 
 use brigadier_core::{self as core, adapters, projects};
@@ -107,7 +109,10 @@ fn servers(data: &Path, me: &str) -> (Vec<Value>, PathBuf) {
     let id = spec.as_ref().and_then(|s| s.project.clone());
     let project = id.as_ref().and_then(|p| projects::get(data, p).ok());
     let cwd = PathBuf::from(spec.map(|s| s.cwd).unwrap_or_default());
-    let folder = project.map_or(cwd.clone(), |p| PathBuf::from(p.folder));
+    // A project's own files (`.mcp.json`, `.codex/config.toml`) name programs: read only once it's
+    // trusted, as Settings › Plugins reads them; else each agent's home alone.
+    let folder = (project.filter(|p| p.trusted == Some(true)))
+        .map_or_else(|| adapters::home_path(""), |p| PathBuf::from(p.folder));
     let mut all: Vec<Value> = (core::library::on_for(data, id.as_deref()).into_iter())
         .filter(|i| i["kind"] == "server")
         .map(|mut i| {
@@ -118,7 +123,11 @@ fn servers(data: &Path, me: &str) -> (Vec<Value>, PathBuf) {
     core::library::with_secrets(data, &mut all);
     let library = |x: &Value, s: &Value| x["key"].is_string() && core::library::same(s, x);
     for a in adapters::all() {
-        for mut s in a.mcp_servers(&folder) {
+        let own = a.mcp_servers(&folder);
+        // One the library found and holds off here stays out, as Settings › Plugins says.
+        let off = core::library::own_off(data, id.as_deref(), &own);
+        let held = |s: &Value| off.iter().any(|n| s["name"] == n.as_str());
+        for mut s in own.into_iter().filter(|s| !held(s)) {
             s["agent"] = a.label().into();
             // One found on this machine runs as the agent has it, with its env [D721].
             let found = |x: &Value| x["found"].is_array() && library(x, &s);
@@ -144,8 +153,8 @@ pub fn run(data: &Path, me: &str, words: &[&str]) -> Value {
     let find = |name: &str| all.iter().find(|s| s["name"] == name);
     match words {
         ["list"] => list(&all),
-        ["tools", name] => match find(name) {
-            Some(s) => tools(data, me, s, &cwd),
+        ["tools", name, only @ ..] if only.len() <= 1 => match find(name) {
+            Some(s) => tools(data, me, s, &cwd, only.first().copied()),
             None => refuse(&format!(
                 "No MCP server {name:?}. `brigadier mcp list` names them."
             )),
@@ -173,31 +182,13 @@ pub fn run(data: &Path, me: &str, words: &[&str]) -> Value {
     }
 }
 
-fn list(all: &[Value]) -> Value {
-    let list: Vec<Value> = (all.iter())
-        .map(|s| json!({"name": s["name"], "agent": s["agent"], "at": core::library::detail(s)}))
-        .collect();
-    let text: String = match list.is_empty() {
-        true => "No MCP servers.\n".into(),
-        false => (list.iter())
-            .map(|s| {
-                format!(
-                    "{}  {} · {}\n",
-                    str(&s["name"]),
-                    str(&s["agent"]),
-                    str(&s["at"])
-                )
-            })
-            .collect(),
-    };
-    json!({"ok": true, "servers": list, "text": text + "`brigadier mcp tools <server>` lists its tools."})
-}
-
 fn str(v: &Value) -> &str {
     v.as_str().unwrap_or("")
 }
 
-fn tools(data: &Path, me: &str, server: &Value, cwd: &Path) -> Value {
+/// A server's tools by name and first line; with `only`, that tool whole, its input schema too:
+/// every schema at once ran past the reply's cap.
+fn tools(data: &Path, me: &str, server: &Value, cwd: &Path, only: Option<&str>) -> Value {
     let mut all: Vec<Value> = vec![];
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
@@ -216,21 +207,36 @@ fn tools(data: &Path, me: &str, server: &Value, cwd: &Path) -> Value {
             Err(e) => return refuse(&e),
         }
     }
+    let name = str(&server["name"]);
+    if let Some(only) = only {
+        let Some(t) = all.iter().find(|t| t["name"] == only) else {
+            return refuse(&format!(
+                "{name} has no tool {only:?}. `brigadier mcp tools {name}` lists them."
+            ));
+        };
+        let text = format!(
+            "{only}  {}\n  input: {}\n",
+            str(&t["description"]),
+            t["inputSchema"]
+        );
+        return json!({"ok": true, "tools": [t], "text": text});
+    }
+    let line = |t: &Value| -> String {
+        (str(&t["description"])
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(200))
+        .collect()
+    };
     let text: String = (all.iter())
-        .map(|t| {
-            let about: String = str(&t["description"])
-                .lines()
-                .next()
-                .unwrap_or("")
-                .chars()
-                .take(200)
-                .collect();
-            format!(
-                "{}  {about}\n  input: {}\n",
-                str(&t["name"]),
-                t["inputSchema"]
-            )
-        })
+        .map(|t| format!("{}  {}\n", str(&t["name"]), line(t)))
+        .collect();
+    let text =
+        text + &format!("`brigadier mcp tools {name} <tool>` prints one tool's input schema.");
+    let all: Vec<Value> = (all.iter())
+        .map(|t| json!({"name": t["name"], "description": line(t)}))
         .collect();
     json!({"ok": true, "tools": all, "text": text})
 }

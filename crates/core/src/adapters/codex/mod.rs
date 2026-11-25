@@ -4,7 +4,7 @@ use super::Seed;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Event, Failed, Fork, Forked, Landing, Launch,
-    ModelInfo, Retune, Rewound, Timing, base_env, cli_home, home_path, probe_as, s, version,
+    Retune, Rewound, Timing, base_env, cli_home, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use crate::fold::Boundary;
@@ -24,8 +24,6 @@ use record::{diff, forget_thread, held, helpers, rollouts, thread_files};
 
 pub struct Codex;
 
-const MODEL: &str = "gpt-5.6-luna";
-
 impl Adapter for Codex {
     fn name(&self) -> &'static str {
         "codex"
@@ -37,9 +35,9 @@ impl Adapter for Codex {
 
     fn seeds(&self) -> &'static [Seed] {
         &[
-            ("Write code", "gpt-6.1-sol", Some("high")),
-            ("Research the web", "gpt-6.1-terra", None),
-            ("Review", "gpt-6.1-sol", Some("high")),
+            ("Write code", "gptsol", Some("high")),
+            ("Research the web", "gptterra", None),
+            ("Review", "gptsol", Some("high")),
         ]
     }
 
@@ -127,16 +125,17 @@ impl Adapter for Codex {
             "signed in"
         };
         let listed = match signed_in {
-            true => models::list(spec, exe, cwd, 15).unwrap_or_else(|| Check {
-                models: vec![ModelInfo::plain(MODEL, false)],
-                ..Check::default()
-            }),
+            true => models::list(spec, exe, cwd, 15).unwrap_or_default(),
             false => Check::default(),
         };
         Ok(Check {
             version: version(exe, cwd)?,
             signed_in: Some(signed_in),
-            how: how.into(),
+            // Its account's kind where it's read, else by its words.
+            how: match listed.how.as_str() {
+                "" => how.into(),
+                kind => kind.into(),
+            },
             ..listed
         })
     }
@@ -245,7 +244,7 @@ impl Adapter for Codex {
                 .into_iter()
                 .chain(flags)
                 .collect(),
-            env: base_env(spec, &exe, self.keys()),
+            env: base_env(spec, &exe, &self.keys()),
             keep_stdin: true,
             input: Some(lines.iter().flatten().map(|l| format!("{l}\n")).collect()),
         }
@@ -286,13 +285,6 @@ impl Adapter for Codex {
 
     /// The thread and the Auto reviewers that worked for it, each by its own id; the thread goes
     /// last, so a retry after a failure can still find them [D35].
-    /// Its small model: the first its `model/list` names a mini, in the list's order [D1029].
-    fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
-        (models.iter())
-            .find(|m| m.id.split(['-', '.']).any(|w| w == "mini"))
-            .map(|m| m.id.clone())
-    }
-
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
         let home = cli_home(spec, ".codex", "");
         let mut ids = helpers(&home, &spawned(self, spec, resume));

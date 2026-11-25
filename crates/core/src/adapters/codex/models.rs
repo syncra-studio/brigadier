@@ -1,7 +1,7 @@
 //! Requests to a short-lived app-server: Codex's own model list [D128, D129], `model/list` being its
 //! documented list, paged, with each model's efforts; and its thread delete [D35].
 
-use super::super::{Check, Failed, Limit, ModelInfo, Who, base_env, mark_superseded, versioned};
+use super::super::{Check, Failed, Limit, ModelInfo, Who, base_env, mark_superseded};
 use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -103,12 +103,18 @@ pub fn list(spec: &Spec, exe: &Path, cwd: &Path, secs: u64) -> Option<Check> {
     // Its image tool is the provider's, so every model makes images or none does [D298].
     let draws = draws.and_then(|c| c["imageGeneration"].as_bool());
     models.iter_mut().for_each(|m| m.draws = draws);
-    mark_legacy(&mut models);
+    mark_superseded(&mut models);
     let mut who = Who::read(&account, ["email", "planType", "workspaceName"]);
-    who.plan = who.plan.as_deref().and_then(plan_name).map(Into::into);
+    who.plan = who.plan.as_deref().and_then(plan_name);
     let usage = limits.as_ref().map(usage);
+    let how = match account["type"].as_str().unwrap_or("") {
+        "chatgpt" => "ChatGPT account",
+        "apiKey" => "API key",
+        other => other,
+    };
     Some(Check {
         models,
+        how: how.into(),
         who,
         usage,
         ..Check::default()
@@ -162,22 +168,6 @@ pub(super) fn usage(read: &Value) -> Vec<Limit> {
         }
     }
     Limit::ordered(found)
-}
-
-/// Marks legacy, beside what its list names an upgrade for, older namesakes and the models of an
-/// older generation than the newest: Codex versions its lineup together.
-fn mark_legacy(models: &mut [ModelInfo]) {
-    mark_superseded(models);
-    let generation = |m: &ModelInfo| versioned(&m.name).and_then(|(_, v)| v.first().copied());
-    let newest = models.iter().filter_map(generation).max();
-    for model in models.iter_mut() {
-        if generation(model)
-            .zip(newest)
-            .is_some_and(|(own, newest)| own < newest)
-        {
-            model.legacy = true;
-        }
-    }
 }
 
 /// Its fast service tier, as `model/list` names it.
@@ -268,6 +258,7 @@ fn info(m: &Value) -> ModelInfo {
         efforts: efforts
             .filter_map(|e| e["reasoningEffort"].as_str().map(String::from))
             .collect(),
+        auto: None,
         default_effort: m["defaultReasoningEffort"].as_str().map(String::from),
         images: (m["inputModalities"].as_array()).map(|i| i.iter().any(|m| m == "image")),
         // The provider's, set by `list`.
@@ -277,9 +268,8 @@ fn info(m: &Value) -> ModelInfo {
             .map(|t| t["description"].as_str().unwrap_or("").into()),
         legacy: !m["upgrade"].is_null(),
         window: None,
-        // Its list marks the default only: no top model [D2075].
+        cost: None,
         default: m["isDefault"] == true,
-        top: false,
         // Its upgrade info: a move it advises, with a retirement time where it has one [D487].
         retiring: m["upgradeInfo"].as_object().map(|u| {
             let at = u.get("retirementAt").and_then(Value::as_u64);
@@ -291,20 +281,17 @@ fn info(m: &Value) -> ModelInfo {
 }
 
 /// Its plan as the old app named it; None for one it can't name (`unknown`).
-fn plan_name(plan: &str) -> Option<&'static str> {
+fn plan_name(plan: &str) -> Option<String> {
     Some(match plan {
-        "free" => "Free",
-        "go" => "Go",
-        "plus" => "Plus",
-        "pro" => "Pro",
-        "prolite" => "Pro Lite",
-        "promax" => "Pro Max",
-        "team" => "Team",
-        p if p.contains("business") => "Business",
-        p if p.contains("ent") => "Enterprise",
-        "edu" => "Edu",
-        "edu_plus" => "Edu Plus",
-        "edu_pro" => "Edu Pro",
-        _ => return None,
+        "" | "unknown" => return None,
+        "prolite" => "Pro Lite".into(),
+        "promax" => "Pro Max".into(),
+        p if p.contains("business") => "Business".into(),
+        p if p.starts_with("ent") => "Enterprise".into(),
+        // "edu_plus", "sci": by its own words.
+        p => (p.split('_').filter(|w| w.is_ascii() && !w.is_empty()))
+            .map(|w| w[..1].to_ascii_uppercase() + &w[1..])
+            .collect::<Vec<_>>()
+            .join(" "),
     })
 }

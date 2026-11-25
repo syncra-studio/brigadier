@@ -10,11 +10,11 @@ import { Input } from "../components/input";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { Bolt, ChevronRight, Code, Globe, type IconProps, MagnifyingGlassSearch, Nodes, Pencil, Plus, ShieldExclamation, Sparkle, X } from "../icons";
 import { SettingsSection } from "./parts";
-import { type Entry, type Job, type Offer, ROUTING_ROWS } from "./routing";
+import { type Entry, type Job, type Now, type Offer, ROUTING_ROWS } from "./routing";
 import { OrderList } from "./routing-order";
 
 /** The job reviews run on: it can't be renamed or deleted (spec §2). */
-const REVIEW_JOB = "Review";
+export const REVIEW_JOB = "Review";
 
 /** An offer's answer (C5): Use it, Not now (7 days), Don't offer again. */
 export type Answer = "use" | "later" | "never";
@@ -39,6 +39,7 @@ const BLANK: Job = { name: "", for: "", entries: [] };
  */
 export function Jobs({
   jobs,
+  now,
   offers,
   groups,
   failed,
@@ -50,6 +51,7 @@ export function Jobs({
   onAnswer,
 }: {
   jobs: Job[];
+  now?: Now;
   offers: Offer[];
   groups: ModelGroup[];
   failed: string | null;
@@ -98,6 +100,7 @@ export function Jobs({
             <JobBlock
               key={job.name}
               job={job}
+              runs={now?.[job.name]?.runs}
               editing={open}
               onEdit={() => {
                 onDraft(null);
@@ -159,7 +162,7 @@ export function Jobs({
                   }
                 />
               )}
-              <OrderList title={job.name} order={job.entries} groups={groups} onSave={(entries) => void put(job.name, { ...job, entries })} />
+              <OrderList title={job.name} order={job.entries} states={now?.[job.name]?.entries} groups={groups} onSave={(entries) => void put(job.name, { ...job, entries })} />
             </JobBlock>
           );
         })}
@@ -200,13 +203,14 @@ export function Jobs({
   );
 }
 
-/** A job's header: its icon, name and line; with `open`, it folds the block's body and its chevron shows which way. */
-function JobHead({ job, open, children }: { job: Job; open?: boolean; children?: ReactNode }) {
+/** A job's header: its icon, name and line, and what it `runs` now; with `open`, it folds the block's body and its chevron shows which way. */
+function JobHead({ job, runs, open, children }: { job: Job; runs?: string; open?: boolean; children?: ReactNode }) {
   const Icon = ICONS[job.name] ?? Sparkle;
   const words = (
     <>
       <Icon aria-hidden className="size-4 shrink-0 text-quiet-foreground" />
       <RowText title={job.name || "New job"} line={job.for} />
+      {runs && <span className="max-w-1/2 text-end text-xs text-muted-foreground">{runs}</span>}
     </>
   );
   return (
@@ -225,7 +229,7 @@ function JobHead({ job, open, children }: { job: Job; open?: boolean; children?:
 }
 
 /** A job in the card: its header folds its editor and order; its offer stays in sight. An open editor keeps it unfolded; folding closes it [D425]. */
-function JobBlock({ job, editing, onEdit, offer, children }: { job: Job; editing: boolean; onEdit: () => void; offer: ReactNode; children: ReactNode }) {
+function JobBlock({ job, runs, editing, onEdit, offer, children }: { job: Job; runs?: string; editing: boolean; onEdit: () => void; offer: ReactNode; children: ReactNode }) {
   // A rename draws it afresh under its new name, still editing: it stays unfolded.
   const [shown, setShown] = useState(editing);
   const open = shown || editing;
@@ -235,7 +239,7 @@ function JobBlock({ job, editing, onEdit, offer, children }: { job: Job; editing
   };
   return (
     <Collapsible open={open} onOpenChange={fold} data-slot="job" className="flex flex-col">
-      <JobHead job={job} open={open}>
+      <JobHead job={job} runs={runs} open={open}>
         <TooltipIconButton
           tooltip="Edit job"
           aria-label={`Edit ${job.name}`}
@@ -309,7 +313,7 @@ function JobEditor({
       {/* A job's own editor saves as it's left, with no Save to draw: Enter needs a submit button to submit a form. */}
       {!onType && <button type="submit" hidden />}
       {actions && <div className="flex items-center gap-2 pt-2">{actions}</div>}
-      <p className="pt-4 text-label text-quiet-foreground">Models, tried in order · the next runs only when one is out of quota</p>
+      <p className="pt-4 text-label text-quiet-foreground">Models, tried in order · the next runs only when one is out of quota or can't run</p>
     </form>
   );
 }
