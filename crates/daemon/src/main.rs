@@ -3,10 +3,10 @@
 //! app's commands to the hosts. Killing it leaves every host working: they never depend on it.
 //!
 //! Its protocol is its own (the hosts keep theirs): the 4-byte version, a hello, then JSON frames.
-//! `{"id", "op": "subscribe"}` answers `{"re", "n", "rows", "projects"}`, the lists at N, and then
-//! pushes `{"n": N+1, "rows", "gone", "projects", "projects_gone"}`, `{"n": N+2, …}` in order, each
-//! naming what changed by id [D40, D71]. A client that sees a gap subscribes again for a fresh
-//! snapshot; a new connection always starts with one.
+//! `{"id", "op": "subscribe"}` answers `{"re", "n", "rows", "projects", "lid"}`, the lists at N, and
+//! then pushes `{"n": N+1, "rows", "gone", "projects", "projects_gone", "lid"}`, `{"n": N+2, …}` in
+//! order, each naming what changed by id [D40, D71]; `lid` comes whole (`Lid::shown`). A client that
+//! sees a gap subscribes again for a fresh snapshot; a new connection always starts with one.
 //!
 //! `{"id", "op": "thread", "session"}` answers `{"re", "ok", "n", "session"}`, the session's thread
 //! (`item.ts`) at N, and then pushes `{"thread", "n": N+1, "items", "turns", "work"}`, each replacing
@@ -89,6 +89,7 @@ struct State {
     ready: bool,
     rows: BTreeMap<String, Value>,
     projects: BTreeMap<String, Value>,
+    lid: Value,
     subs: HashMap<u64, Sub>,
 }
 
@@ -215,7 +216,7 @@ fn main() -> io::Result<()> {
                 for id in &gone {
                     ends.remove(id);
                 }
-                publish(&state, &data, rows, gone)
+                publish(&state, &data, rows, gone, Some(lid.shown(&data)))
             }
             Err(e) => eprintln!("brigadierd: {e}"),
         }
@@ -320,11 +321,11 @@ fn stop(data: &Path, pid: libc::pid_t) {
 }
 
 /// Applies one pass's changes, and the projects' (read under the lock, so two readers never send
-/// them out of order), as update N+1 and sends it, in order, to every subscriber. Requests that
-/// came before the first pass get their snapshot now.
+/// them out of order) and the lid's (none: as it was), as update N+1 and sends it, in order, to every
+/// subscriber. Requests that came before the first pass get their snapshot now.
 // shortcut: reads `projects.json` every pass, a small file (proposed); stat it first if many
 // projects ever make that show in a profile.
-fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
+fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>, lid: Option<Value>) {
     let mut s = state.lock().unwrap();
     let (mut projects, mut projects_gone) = (vec![], vec![]);
     match projects::list(data) {
@@ -380,8 +381,14 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         .filter(|id| s.rows.contains_key(*id))
         .collect();
     prs::turned(&seen);
-    let delta =
-        !rows.is_empty() || !gone.is_empty() || !projects.is_empty() || !projects_gone.is_empty();
+    let delta = !rows.is_empty()
+        || !gone.is_empty()
+        || !projects.is_empty()
+        || !projects_gone.is_empty()
+        || lid.as_ref().is_some_and(|lid| s.lid != *lid);
+    if let Some(lid) = lid {
+        s.lid = lid;
+    }
     for row in &rows {
         s.rows
             .insert(row["id"].as_str().unwrap_or("").into(), row.clone());
@@ -395,14 +402,18 @@ fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>) {
         n,
         rows: all,
         projects: all_projects,
+        lid,
         subs,
         ..
     } = &mut *s;
     let update = json!({"n": *n, "rows": rows, "gone": gone, "projects": projects,
-        "projects_gone": projects_gone});
+        "projects_gone": projects_gone, "lid": lid});
     let update = update.to_string();
     subs.retain(|_, sub| match sub.waiting.take() {
-        Some(re) => sub.out.send(snapshot(&re, *n, all, all_projects)).is_ok(),
+        Some(re) => sub
+            .out
+            .send(snapshot(&re, *n, all, all_projects, lid))
+            .is_ok(),
         None => !delta || sub.out.send(update.clone()).is_ok(),
     });
 }
@@ -412,8 +423,9 @@ fn snapshot(
     n: u64,
     rows: &BTreeMap<String, Value>,
     projects: &BTreeMap<String, Value>,
+    lid: &Value,
 ) -> String {
     let (rows, projects) = (rows.values(), projects.values());
-    json!({"re": re, "n": n, "rows": rows.collect::<Vec<_>>(), "projects": projects.collect::<Vec<_>>()})
+    json!({"re": re, "n": n, "rows": rows.collect::<Vec<_>>(), "projects": projects.collect::<Vec<_>>(), "lid": lid})
         .to_string()
 }

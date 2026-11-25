@@ -6,9 +6,15 @@
 //! a guard process restores sleep when the daemon dies, and a starting daemon restores what a
 //! crash or reboot left behind. Sleep another app disabled is that app's: never turned back on.
 //!
-//! `awake lid` says how it stands, `awake lid-setup` installs the rule. A debug build started with
+//! Before the battery is that low, the app warns once per discharge (`warned-low`, so a restart
+//! doesn't warn again); after a low battery slept the Mac, `slept-low` says when and at what charge
+//! until the user has seen it.
+//!
+//! `awake lid` says how it stands, `awake lid-setup` installs the rule, `awake lid-seen` clears the
+//! sleep the user has seen. A debug build started with
 //! `BRIGADIER_LID_DRY_RUN=1` runs neither sudo nor pmset: the marker alone stands for the setting.
 
+use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -21,6 +27,10 @@ const PMSET: &str = "/usr/bin/pmset";
 const RULE: &str = "/etc/sudoers.d/brigadier-lid-closed";
 /// On battery at or below this charge the lid sleeps the Mac again, as the old app and Vorssaint.
 const MIN_PERCENT: u32 = 10;
+/// On battery at or below this charge, above MIN_PERCENT, the app warns of it.
+const WARN_PERCENT: u32 = 15;
+/// On power or above WARN_PERCENT this long, the next discharge warns again: a moment's plug-in doesn't.
+const RECHARGED: Duration = Duration::from_secs(120);
 /// How often battery and another app's hold are looked at again while the lid is wanted.
 const CHECK_EVERY: Duration = Duration::from_secs(10);
 
@@ -34,6 +44,38 @@ fn marker(data: &Path) -> PathBuf {
     data.join("sleep-disabled")
 }
 
+/// This discharge's warning, `{at, percent}`: there until the battery has been charged.
+fn warned(data: &Path) -> PathBuf {
+    data.join("warned-low")
+}
+
+/// The last sleep a low battery had Brigadier ask for, `{at, percent}`, until the user has seen it.
+fn slept(data: &Path) -> PathBuf {
+    data.join("slept-low")
+}
+
+fn write_note(file: &Path, at: u64, percent: u32) {
+    let note = json!({"at": at, "percent": percent}).to_string();
+    if let Err(e) = crate::write_atomic(file, note.as_bytes()) {
+        eprintln!("brigadierd: {}: {e}", file.display());
+    }
+}
+
+fn read_note(file: &Path) -> Value {
+    fs::read(file)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+/// `awake lid-seen`: the user has seen that the Mac slept.
+pub fn seen(data: &Path) -> io::Result<Value> {
+    match fs::remove_file(slept(data)) {
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(json!({"ok": true})),
+    }
+}
+
 /// `awake lid`: `setup` (no rule lets sudo do it without a password), `low` (on battery at or below
 /// MIN_PERCENT), `on` (sleep is off now, by Brigadier or another app) or `ready`.
 pub fn status(data: &Path) -> io::Result<Value> {
@@ -41,7 +83,7 @@ pub fn status(data: &Path) -> io::Result<Value> {
         "on"
     } else if !authorized() {
         "setup"
-    } else if battery_low() {
+    } else if battery().is_some_and(|b| b.low()) {
         "low"
     } else {
         "ready"
@@ -166,16 +208,31 @@ fn pmset_disablesleep(on: bool) -> io::Result<()> {
     }
 }
 
-/// On battery at or below MIN_PERCENT, from `pmset -g batt`.
-fn battery_low() -> bool {
-    let Ok(out) = Command::new(PMSET).args(["-g", "batt"]).output() else {
-        return false;
-    };
+#[derive(Clone, Copy)]
+struct Battery {
+    percent: u32,
+    /// Running on it, not on power.
+    used: bool,
+}
+
+impl Battery {
+    /// On battery at or below MIN_PERCENT.
+    fn low(self) -> bool {
+        self.used && self.percent <= MIN_PERCENT
+    }
+}
+
+/// From `pmset -g batt`; none on a Mac with no battery.
+fn battery() -> Option<Battery> {
+    let out = Command::new(PMSET).args(["-g", "batt"]).output().ok()?;
     let report = String::from_utf8_lossy(&out.stdout);
     let percent = report
         .split_whitespace()
-        .find_map(|w| w.strip_suffix("%;")?.parse::<u32>().ok());
-    report.contains("'Battery Power'") && percent.is_some_and(|p| p <= MIN_PERCENT)
+        .find_map(|w| w.strip_suffix("%;")?.parse().ok())?;
+    Some(Battery {
+        percent,
+        used: report.contains("'Battery Power'"),
+    })
 }
 
 /// Whether keeping awake should hold with the lid closed too: Settings' `awake_lid`, off by default.
@@ -213,6 +270,10 @@ pub struct Lid {
     next: Option<Instant>,
     /// When a restore that failed is tried again.
     retry: Option<Instant>,
+    /// When the battery is next looked at with the lid not wanted, to see a warned one charged.
+    look: Option<Instant>,
+    /// Since when it has been on power or above WARN_PERCENT.
+    charged: Option<Instant>,
 }
 
 impl Lid {
@@ -220,16 +281,23 @@ impl Lid {
     /// CHECK_EVERY, and a failed hold tried again then.
     pub fn set(&mut self, data: &Path, want: bool) {
         if !want {
-            self.release(data);
+            self.release(data, None);
             self.next = None;
+            let due = self.look.is_none_or(|look| Instant::now() >= look);
+            if due && warned(data).exists() {
+                self.look = Some(Instant::now() + CHECK_EVERY);
+                self.warn(data, battery());
+            }
             return;
         }
         if self.next.is_some_and(|next| Instant::now() < next) {
             return;
         }
         self.next = Some(Instant::now() + CHECK_EVERY);
-        if battery_low() {
-            self.release(data);
+        let battery = battery();
+        self.warn(data, battery);
+        if let Some(low) = battery.filter(|b| b.low()) {
+            self.release(data, Some(low.percent));
             return;
         }
         // Borrowed from another app that has since let sleep back on: take it over.
@@ -243,10 +311,37 @@ impl Lid {
         }
     }
 
+    /// Warns once per discharge, while the lid is held by this daemon: another app's hold isn't let go.
+    fn warn(&mut self, data: &Path, battery: Option<Battery>) {
+        let Some(battery) = battery else {
+            return;
+        };
+        let file = warned(data);
+        if !battery.used || battery.percent > WARN_PERCENT {
+            let since = *self.charged.get_or_insert_with(Instant::now);
+            if since.elapsed() >= RECHARGED {
+                let _ = fs::remove_file(file);
+            }
+            return;
+        }
+        self.charged = None;
+        let held = self.held.as_ref().is_some_and(|h| h.owned);
+        if held && !battery.low() && !file.exists() {
+            write_note(&file, now_ms(), battery.percent);
+        }
+    }
+
+    /// What the app shows: whether the lid is held, this discharge's warning and the sleep not seen yet.
+    pub fn shown(&self, data: &Path) -> Value {
+        json!({"held": self.held.is_some(), "warned": read_note(&warned(data)),
+            "slept": read_note(&slept(data))})
+    }
+
     /// Restores sleep if this daemon disabled it, then sleeps now if the lid is shut and that
     /// sleeps the Mac: macOS looks at the lid only when it opens or closes. A failed restore keeps
-    /// the hold, its marker and guard, and is tried again after CHECK_EVERY.
-    fn release(&mut self, data: &Path) {
+    /// the hold, its marker and guard, and is tried again after CHECK_EVERY. Let go at a `low`
+    /// charge, the sleep it asked for is kept to tell the user.
+    fn release(&mut self, data: &Path, low: Option<u32>) {
         let Some(held) = &mut self.held else {
             return;
         };
@@ -265,7 +360,12 @@ impl Lid {
             }
             let _ = fs::remove_file(marker(data));
             if !dry_run() {
-                thread::spawn(sleep_if_lid_closed);
+                let slept = slept(data);
+                thread::spawn(move || {
+                    if let (Some(at), Some(percent)) = (sleep_if_lid_closed(), low) {
+                        write_note(&slept, at, percent);
+                    }
+                });
             }
         }
         self.held = None;
@@ -319,29 +419,30 @@ if [ "$(cat "$2" 2>/dev/null)" = "$1" ]; then {restore} && rm -f "$2"; fi"#
 }
 
 /// powerd takes a moment to apply sleep coming back on and refuses until then, so a few tries.
-fn sleep_if_lid_closed() {
+/// Says when it asked, once macOS took it.
+fn sleep_if_lid_closed() -> Option<u64> {
     for _ in 0..10 {
-        let Ok(out) = Command::new("/usr/sbin/ioreg")
+        let out = Command::new("/usr/sbin/ioreg")
             .args(["-r", "-k", "AppleClamshellState", "-d", "1"])
             .output()
-        else {
-            return;
-        };
+            .ok()?;
         let report = String::from_utf8_lossy(&out.stdout);
         // Open, or plugged in with an external display (the closed lid doesn't sleep it): leave it.
         if !report.contains("\"AppleClamshellState\" = Yes")
             || !report.contains("\"AppleClamshellCausesSleep\" = Yes")
         {
-            return;
+            return None;
         }
+        let at = now_ms();
         if Command::new(PMSET)
             .arg("sleepnow")
             .stdout(Stdio::null())
             .status()
             .is_ok_and(|s| s.success())
         {
-            return;
+            return Some(at);
         }
         thread::sleep(Duration::from_millis(500));
     }
+    None
 }

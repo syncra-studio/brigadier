@@ -175,11 +175,12 @@ pub fn get(data: &Path, key: &str) -> String {
 }
 
 /// `awake [off|work|always]`: the keep-awake mode alone, as the sidebar's bulb sets it [D88];
-/// `awake lid` and `awake lid-setup`, with the lid closed too [D333].
+/// `awake lid`, `awake lid-setup` and `awake lid-seen`, with the lid closed too [D333].
 pub fn awake(data: &Path, mode: Option<&String>) -> io::Result<Value> {
     match mode.map(String::as_str) {
         Some("lid") => return core::lid::status(data),
         Some("lid-setup") => return core::lid::set_up(data),
+        Some("lid-seen") => return core::lid::seen(data),
         _ => {}
     }
     if let Some(mode) = mode {

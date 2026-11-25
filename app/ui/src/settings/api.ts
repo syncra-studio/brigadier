@@ -83,6 +83,8 @@ async function saveShown(change: Partial<Settings>, args: string[]): Promise<voi
 
 /** How the lid stands, as Rust reads it: no rule yet, battery too low, sleep off now (Brigadier's or another app's), or ready [D333]. */
 export type LidState = "setup" | "low" | "on" | "ready";
+/** With the lid closed too, as the daemon pushes it: held now, this discharge's low-battery warning, and the sleep a low battery brought, until seen. */
+export type LidHold = { held: boolean; warned: { at: number; percent: number } | null; slept: { at: number; percent: number } | null };
 const lid = store<{ state?: LidState; settingUp?: boolean }>({});
 export const useLid = lid.use;
 
@@ -92,6 +94,11 @@ export function loadLid(): void {
     (reply) => lid.set({ ...lid.get(), state: reply.lid as LidState }),
     (cause: unknown) => console.error(cause),
   );
+}
+
+/** The user has seen that a low battery slept the computer: Rust's next list drops it. */
+export function seenSlept(): void {
+  run(["awake", "lid-seen"]).catch((cause: unknown) => console.error(cause));
 }
 
 let inSetup = false;

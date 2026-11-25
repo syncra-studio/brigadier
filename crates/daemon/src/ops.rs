@@ -145,7 +145,7 @@ pub(super) fn serve(
                 let mut s = state.lock().unwrap();
                 let ready = s.ready;
                 if ready {
-                    let _ = out.send(snapshot(&re, s.n, &s.rows, &s.projects));
+                    let _ = out.send(snapshot(&re, s.n, &s.rows, &s.projects, &s.lid));
                 }
                 let waiting = (!ready).then_some(re);
                 s.subs.insert(
@@ -350,7 +350,7 @@ pub(super) fn serve(
                     // leave as the reply lands [D30]. Before the first pass, that pass sends it.
                     let ready = state.lock().unwrap().ready;
                     if ready && args.first().is_some_and(|c| c == "projects") {
-                        publish(&state, &data, vec![], vec![]);
+                        publish(&state, &data, vec![], vec![], None);
                     }
                     reply["re"] = re;
                     let _ = out.send(reply.to_string());

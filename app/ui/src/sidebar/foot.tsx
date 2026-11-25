@@ -10,10 +10,11 @@ import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { spacingPx } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { lidHint, loadLid, setLid, setSetting, useLid, useSettings } from "../settings/api";
+import { lidHint, loadLid, seenSlept, setLid, setSetting, useLid, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
+import { hhmm } from "../thread/words";
 import { BarChart, ChevronRight, Lightbulb, Settings, ThumbMixed } from "../icons";
 import { openFeedback } from "../feedback/dialog";
 import { keysOf } from "../shortcuts";
@@ -41,7 +42,8 @@ export function useFootPlacement() {
  * with the lid closed too, as the old app's [D333].
  */
 function KeepAwakeMenu() {
-  const { rows } = useDaemon();
+  const { rows, lid: hold } = useDaemon();
+  const slept = hold?.slept;
   // The same values as Settings › General's rows [D2016].
   const settings = useSettings().value;
   const mode = settings?.awake;
@@ -51,9 +53,9 @@ function KeepAwakeMenu() {
   const option = KEEP_AWAKE.find((each) => each.value === mode);
   const { row, ...placement } = useFootPlacement();
   const on = mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
-  const text = on ? `Awake now${settings?.awake_lid && lid.state === "on" ? ", even with the lid closed" : ""}` : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
+  const text = on ? `Awake now${settings?.awake_lid && hold?.held ? ", even with the lid closed" : ""}` : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
   return (
-    <Popover onOpenChange={(open) => open && loadLid()}>
+    <Popover onOpenChange={(open) => (open ? loadLid() : slept && seenSlept())}>
       <PopoverTrigger
         render={<TooltipIconButton look="rail" side={placement.side} tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
       >
@@ -68,6 +70,11 @@ function KeepAwakeMenu() {
               <StateDot {...(on ? { color: "bg-foreground" } : { tone: "off" as const })} />
               {text}
             </span>
+            {slept && (
+              <span className="text-xs text-muted-foreground">
+                Slept at {hhmm(slept.at)}, battery at {slept.percent}%, lid closed
+              </span>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1.5">

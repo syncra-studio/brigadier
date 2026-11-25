@@ -70,7 +70,7 @@ export type View = {
   /** undefined until the first list; kept while disconnected, so it never flashes empty. */
   rows?: Row[];
   /** The same for the projects, which come with the rows [D40, D71]. */
-  projects?: Project[];
+  projects?: Project[]; /** Keep awake's lid, which comes with them. */ lid?: import("./settings/api").LidHold;
 };
 
 export let view: View = { daemon: undefined };
@@ -320,7 +320,7 @@ function onFrame(frame: Record<string, any>): void {
     rows = new Map(frame.rows.map((row: Row) => [row.id, row]));
     projects = new Map(frame.projects.map((project: Project) => [project.id, project]));
     n = frame.n;
-    set({ rows: [...rows.values()], projects: [...projects.values()] });
+    set({ rows: [...rows.values()], projects: [...projects.values()], lid: frame.lid });
   } else if (thread && frame.re === threadRe) {
     if (!frame.ok) return setThread({ id: thread.id, status: frame.error === "not_found" ? "missing" : "error", error: frame.error });
     const next: Session = frame.session;
@@ -347,7 +347,7 @@ function onFrame(frame: Record<string, any>): void {
     for (const id of frame.gone as string[]) rows.delete(id);
     for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
     for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
-    set({ rows: [...rows.values()], projects: [...projects.values()] });
+    set({ rows: [...rows.values()], projects: [...projects.values()], lid: frame.lid });
   }
 }
 
