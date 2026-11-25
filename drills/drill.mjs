@@ -128,8 +128,9 @@ function startDaemon(bin = BIN) {
   daemons.push(d)
 }
 function stopDaemon() {
-  for (const d of daemons) kill(d.pid)
+  const hit = daemons.map((d) => kill(d.pid)).includes(true)
   daemons = []
+  return hit
 }
 // The running daemon's first frame (hello or refusal): its pid and build number.
 function daemonHello(ms = 2000) {
@@ -1126,18 +1127,25 @@ async function peersDrill() {
   const events = []
   const down = new Set() // hosts this drill killed, to bring back as a user's Recover does
   let n = 0, stop = false, killed = false
+  // A cut `send` writes how it ended: 137 is killed while it ran. One that was already done is no kill.
+  const cutEnd = (token) => { try { return fs.readFileSync(`${DATA}/cut-${token}`, 'utf8') } catch { return '' } }
+  const cuts = () => events.filter((e) => e.step === 'cli' && e.fired !== false).length
   const next = async (from, i) => {
     const to = receivers[i % receivers.length]
-    for (let k = 0; n < want || !killed; k++) {
+    let missed = false
+    // Past N while a kill is owed, up to twice N.
+    for (let k = 0; n < want || !killed || (cuts() < kills && n < 2 * want); k++) {
       const t0 = now(), token = `pm${String(n++).padStart(5, '0')}x`
       sent.set(token, { from, to, at: t0 })
       // One in twenty: the agent's own `brigadier send` is killed at some moment of its way.
-      const cut = k % 20 === 7 && events.filter((e) => e.step === 'cli').length < kills * 2
-      if (cut) events.push({ step: 'cli', at: t0, id: from, token })
+      const cut = (missed || k % 20 === 7) && cuts() < kills * 2 ? { step: 'cli', at: t0, id: from, token } : null
+      if (cut) events.push(cut)
       const ms = (Math.random() * 0.12).toFixed(3)
-      const send = cut ? `brigadier:send+${to}+${token}&p=$!;sleep+${ms};kill+-9+$p` : `brigadier:send+${to}+${token}`
+      // `$$`, the shell's own pid: each run of the command is a message of its own, a recovered sender's second too.
+      const send = `brigadier:send+${to}+${token}.$$${cut ? `&p=$!;sleep+${ms};kill+-9+$p;wait+$p;echo+$?>>${DATA}/cut-${token}` : ''}`
       await cliAsync(['send', from, `${cid()} ${send}`])
       await sleep(Math.max(0, 3050 - (now() - t0)))
+      if (cut) missed = !(cut.fired = cutEnd(token).split('\n').includes('137'))
     }
   }
   const busy = async (id) => { while (!stop) { if (status([id])[id]?.state === 'idle') await cliAsync(['send', id, `${cid()} tool_sleep:8`]); await sleep(1500) } }
@@ -1162,9 +1170,9 @@ async function peersDrill() {
   }
   const hooked = async (at) => {
     const d = hook(at)
-    const died = await waitFor(() => d.exitCode !== null || d.signalCode !== null, 15000, 25)
+    await waitFor(() => d.exitCode !== null || d.signalCode !== null, 15000, 25)
     await restart()
-    return died.ok
+    return d.signalCode === 'SIGABRT' // the hook's own end: one that found the old one's lock just left
   }
   // A message its queue couldn't send waits for the user, and all behind it: the user's Resume, counted.
   const waited = []
@@ -1178,10 +1186,10 @@ async function peersDrill() {
   const hit = async (step) => {
     const r = receivers[Math.floor(Math.random() * receivers.length)], s = senders[Math.floor(Math.random() * senders.length)]
     const ev = { step, at: now(), id: step.startsWith('sender') ? s : step.startsWith('receiver') ? r : 'daemon' }
-    if (step === 'daemon') { stopDaemon(); await sleep(Math.random() * 400); await restart() }
+    if (step === 'daemon') { ev.fired = stopDaemon(); await sleep(Math.random() * 400); await restart() }
     else if (step.startsWith('peer:')) ev.fired = await hooked(step)
-    else if (step.endsWith('host')) { kill(ownerPid(ev.id)); await sleep(300 + Math.random() * 700); await back(ev.id) }
-    else if (step.endsWith('agent')) { for (const p of agentsOf(ev.id)) kill(p.pid); await sleep(500 + Math.random() * 500); await back(ev.id) }
+    else if (step.endsWith('host')) { ev.fired = kill(ownerPid(ev.id)); await sleep(300 + Math.random() * 700); await back(ev.id) }
+    else if (step.endsWith('agent')) { ev.fired = agentsOf(ev.id).map((p) => kill(p.pid)).includes(true); await sleep(500 + Math.random() * 500); await back(ev.id) }
     else {
       // The daemon and the CLI both carry the hook, so whichever brings the receiver's host back, it dies at
       // the next peer message; then the daemon comes back clean.
@@ -1223,53 +1231,57 @@ async function peersDrill() {
     await sleep(2000)
   }
   await sleep(2000)
-  // What each agent read, in order: a token's lines in the ledger, its own and a steer's.
+  // What each agent read, in order: the lines of a message's text in the ledger, its own and a steer's.
   const read = new Map(), order = []
-  for (const m of fs.readFileSync(`${DATA}/ledger`, 'utf8').matchAll(/\bpm\d{5}x\b/g)) { read.set(m[0], (read.get(m[0]) ?? 0) + 1); order.push(m[0]) }
-  const outs = peerOuts(senders), byToken = new Map(outs.map((o) => [o.text, o]))
+  for (const m of fs.readFileSync(`${DATA}/ledger`, 'utf8').matchAll(/\bpm\d{5}x\.\d+/g)) { read.set(m[0], (read.get(m[0]) ?? 0) + 1); order.push(m[0]) }
+  // Each run of a command has a text, so a record, of its own: a recovered sender's second run is told by its text,
+  // and what one was read is never counted for another. Records of one text are judged together.
+  const outs = peerOuts(senders), byText = Map.groupBy(outs, (o) => o.text), byToken = Map.groupBy(outs, (o) => o.text.split('.')[0])
   const near = (token) => events.filter((e) => e.token === token || Math.abs(e.at - sent.get(token).at) < 12000 && [sent.get(token).to, sent.get(token).from, 'daemon'].includes(e.id)).map((e) => e.step)
   const inRecord = (id, mid) => fileJson(`${DATA}/sessions/${id}/peers/in/${mid}.json`)
-  const why = (token) => ({ token, ...sent.get(token), state: byToken.get(token)?.state ?? 'no record', mid: byToken.get(token)?.mid, read: read.get(token) ?? 0, near: near(token) })
-  // What the sender's agent was told: "Sent to …" with no record of the message would be one lost.
+  const why = (text, list = []) => { const token = text.split('.')[0]; return { text, ...sent.get(token), states: list.map((o) => o.state), mids: list.map((o) => o.mid), read: read.get(text) ?? 0, near: near(token) } }
+  // What the sender's agent was told, each run: "Sent to …" with no record of the message would be one lost.
   const told = new Map()
   for (const id of senders) {
     let token = null
     for (const i of cli(['read', id]).all) {
       const m = i.kind === 'tool' && /\bpm\d{5}x\b/.exec(i.command ?? '')
       if (m) token = m[0]
-      else if (i.kind === 'text' && token) { told.set(token, i.text.slice(0, 70)); token = null }
+      else if (i.kind === 'text' && token) { told.set(token, [...(told.get(token) ?? []), i.text.slice(0, 70)]); token = null }
     }
   }
+  const toldSent = (token) => (told.get(token) ?? []).filter((t) => t.startsWith('Sent to')).length
   // What the receiver's log and the ledger have of it, for a message lost or doubled.
-  const seenIn = (token) => {
-    const mid = byToken.get(token)?.mid
-    return { ledger: fs.readFileSync(`${DATA}/ledger`, 'utf8').split('\n').filter((l) => l.includes(token)).slice(0, 4), log: mid ? cli(['read', sent.get(token).to]).all.filter((i) => JSON.stringify(i).includes(mid)).map((i) => ({ kind: i.kind, event: i.event, cid: i.cid, ts: i.ts, reason: i.reason, retry_of: i.retry_of })).slice(0, 10) : [] }
-  }
+  const seenIn = (text, list) => ({ ledger: fs.readFileSync(`${DATA}/ledger`, 'utf8').split('\n').filter((l) => l.includes(text)).slice(0, 4), log: list.length ? cli(['read', list[0].to]).all.filter((i) => list.some((o) => JSON.stringify(i).includes(o.mid))).map((i) => ({ kind: i.kind, event: i.event, cid: i.cid, ts: i.ts, reason: i.reason, retry_of: i.retry_of })).slice(0, 10) : [] })
   const states = {}, noRecord = {}
-  let sentAgain = 0
   const bad = { lost: [], doubled: [], open: [], wrong: [] }
   let uncertain_read = 0
-  for (const token of sent.keys()) {
-    const state = byToken.get(token)?.state ?? 'no record', times = read.get(token) ?? 0
-    states[state] = (states[state] ?? 0) + 1
-    // A sender whose turn was recovered may run its `brigadier send` again: two messages, each read once.
-    const records = outs.filter((o) => o.text === token).length
-    if (records > 1) sentAgain++
-    if (times > Math.max(1, records)) bad.doubled.push({ ...why(token), ...seenIn(token) })
-    if (state === 'no record') noRecord[told.get(token) ?? 'nothing'] = (noRecord[told.get(token) ?? 'nothing'] ?? 0) + 1
-    if ((state === 'delivered' || told.get(token)?.startsWith('Sent to') && state === 'no record') && !times) bad.lost.push({ ...why(token), ...seenIn(token) })
-    if (!PEER_DONE.includes(state) && state !== 'no record') bad.open.push({ ...why(token), receivers: inRecord(sent.get(token).to, byToken.get(token).mid), queue: fileJson(`${DATA}/sessions/${sent.get(token).to}/queue.json`) })
-    if (['dropped', 'stopped', 'refused', 'no record'].includes(state) && times) bad.wrong.push(why(token))
-    if (state === 'uncertain' && times) uncertain_read++
+  for (const o of outs) states[o.state] = (states[o.state] ?? 0) + 1
+  for (const [text, list] of byText) {
+    const times = read.get(text) ?? 0, count = (...of) => list.filter((o) => of.includes(o.state)).length
+    const delivered = count('delivered'), refused = count('dropped', 'stopped', 'refused')
+    // Each delivered is read once; an uncertain or open one, once or not; a refused one never.
+    if (times < delivered) bad.lost.push({ ...why(text, list), ...seenIn(text, list) })
+    if (times > list.length) bad.doubled.push({ ...why(text, list), ...seenIn(text, list) })
+    if (times > list.length - refused && refused) bad.wrong.push(why(text, list))
+    for (const o of list) if (!PEER_DONE.includes(o.state)) bad.open.push({ ...why(text, list), receivers: inRecord(o.to, o.mid), queue: fileJson(`${DATA}/sessions/${o.to}/queue.json`) })
+    uncertain_read += Math.min(count('uncertain'), Math.max(0, times - delivered))
   }
+  for (const text of read.keys()) if (!byText.has(text)) bad.wrong.push(why(text))
+  for (const token of sent.keys()) {
+    const records = byToken.get(token)?.length ?? 0
+    if (!records) { const t = told.get(token)?.[0] ?? 'nothing'; states['no record'] = (states['no record'] ?? 0) + 1; noRecord[t] = (noRecord[t] ?? 0) + 1 }
+    if (toldSent(token) > records) bad.lost.push({ ...why(token), told: told.get(token) })
+  }
+  const sentAgain = [...byToken.values()].filter((l) => l.length > 1).length
   // One sender's to one receiver: read in the order its records were written.
   const pairs = {}
-  for (const token of order) { const o = byToken.get(token); if (o) (pairs[`${o.from}>${o.to}`] ??= []).push(o) }
+  for (const text of order) { const o = byText.get(text)?.[0]; if (o) (pairs[`${o.from}>${o.to}`] ??= []).push(o) }
   const swapped = []
-  for (const [pair, list] of Object.entries(pairs)) for (let i = 1; i < list.length; i++) if (list[i].at < list[i - 1].at) swapped.push({ pair, first: list[i - 1].text, then: list[i].text, near: near(list[i].text) })
+  for (const [pair, list] of Object.entries(pairs)) for (let i = 1; i < list.length; i++) if (list[i].at < list[i - 1].at) swapped.push({ pair, first: list[i - 1].text, then: list[i].text, near: near(list[i].text.split('.')[0]) })
   const fired = {}
   for (const e of events) { const f = (fired[e.step] ??= { kills: 0, fired: 0 }); f.kills++; if (e.fired !== false) f.fired++ }
-  const r = { drill: 'peers', sent: sent.size, recorded: outs.length, told_sent: [...told.values()].filter((t) => t.startsWith('Sent to')).length, no_record_told: noRecord, daemon_started_again: again, queues_waiting_for_the_user: waited.length, queue_errors: [...new Set(waited.map((w) => w.error))], most_behind_one: Math.max(0, ...waited.map((w) => w.behind)), sending_s, states, uncertain: interval(states.uncertain ?? 0, sent.size), uncertain_read,
+  const r = { drill: 'peers', sent: sent.size, recorded: outs.length, told_sent: [...told.keys()].reduce((a, t) => a + toldSent(t), 0), no_record_told: noRecord, daemon_started_again: again, queues_waiting_for_the_user: waited.length, queue_errors: [...new Set(waited.map((w) => w.error))], most_behind_one: Math.max(0, ...waited.map((w) => w.behind)), sending_s, states, uncertain: interval(states.uncertain ?? 0, outs.length), uncertain_read,
     lost: interval(bad.lost.length, outs.length), doubled: interval(bad.doubled.length, outs.length), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
     examples: { lost: bad.lost.slice(0, 5), doubled: bad.doubled.slice(0, 5), swapped: swapped.slice(0, 5), open: bad.open.slice(0, 5), wrong: bad.wrong.slice(0, 5) } }
   // Cleanup deletes the sessions: KEEP=1 keeps their logs first, to see why a message was lost.
