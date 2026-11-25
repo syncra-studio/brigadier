@@ -3,6 +3,7 @@ name = "brigadier-browser-data"
 description = "Reads other browsers' profiles once for import."
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 publish = false
 
 [dependencies]

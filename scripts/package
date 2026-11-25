@@ -87,7 +87,7 @@ await packager({
   out: "out",
   overwrite: true,
   download: { checksums },
-  extraResource: ["target/bin", "target/Brigadier Computer Use.app", "THIRD_PARTY_NOTICES.md"],
+  extraResource: ["target/bin", "target/Brigadier Computer Use.app", "THIRD_PARTY_NOTICES.md", "LICENSE"],
   extendInfo: {
     NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task.",
     // Finder's Open With on a folder [D165, D2004].

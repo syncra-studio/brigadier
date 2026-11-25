@@ -8,4 +8,4 @@
 ## Theme
 
 - Add no token without picking it from the old theme or getting the owner's OK.
-- The UI/UX reference is the old app (`~/Development/brigadier-ai`, read-only).
+- The UI/UX reference is the old app (tag `legacy-final`).
