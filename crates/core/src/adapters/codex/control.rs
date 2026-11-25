@@ -171,9 +171,19 @@ fn skills_off(
 ) {
     let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
     let own = super::super::Adapter::fixed_commands(&super::Codex, Some(cwd), Some(spec));
+    // One found where it's kept is linked there itself: off, the library's would go with it.
+    let links = spec.dir.join("plugins/.claude/skills");
+    let given = |k: &Value| {
+        let link = links
+            .join(k["name"].as_str().unwrap_or(""))
+            .join("SKILL.md");
+        let own = std::fs::canonicalize(k["path"].as_str().unwrap_or(""));
+        own.is_ok_and(|o| std::fs::canonicalize(link).is_ok_and(|l| l == o))
+    };
     let off: Vec<String> = (own.iter())
         .filter(|k| k["kind"] == "skill")
         .filter(|k| names.iter().any(|n| k["name"] == **n) || hidden.has(k))
+        .filter(|k| hidden.has(k) || !given(k))
         .filter_map(|k| std::fs::canonicalize(k["path"].as_str()?).ok())
         .map(|p| format!("{{path = {}, enabled = false}}", json!(p)))
         .collect();
