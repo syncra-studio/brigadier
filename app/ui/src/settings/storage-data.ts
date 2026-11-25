@@ -155,7 +155,7 @@ async function free(groups: readonly Group[]): Promise<void> {
   list().then(patch, (cause: unknown) => console.error(cause));
 }
 
-/** Counted as the page first shows, and again on Count again. */
+/** Counted as the page first shows, and again on Refresh. */
 export function useStorage(): Storage {
   const online = Boolean(useDaemon().daemon);
   useEffect(() => {

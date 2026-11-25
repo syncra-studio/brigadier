@@ -43,7 +43,7 @@ export function Recount({ storage, online }: { storage: Storage; online: boolean
   return (
     <Button variant="soft" size="sm" disabled={storage.counting || storage.freeing !== null || !online} onClick={storage.recount}>
       <Reload aria-hidden className={storage.counting ? "animate-spin motion-reduce:animate-none" : undefined} />
-      Count again
+      Refresh
     </Button>
   );
 }
