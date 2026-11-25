@@ -56,7 +56,9 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         };
         (w["key"], w["kind"], w["name"]) = (key.into(), o["kind"].clone(), name.into());
         (w["found"], w["from"]) = (json!([o["place"]]), from(&o).into());
-        w["on"] = (o["enabled"] != false).into();
+        // One from a project's own file (`.mcp.json`) is the repo's word, not the user's: it
+        // starts off, and switching it on is their yes [D418].
+        w["on"] = (o["enabled"] != false && o["repo"] != true).into();
         want.push(w);
     }
     // Skills from one source are one skillset [D720]: two or more whose SKILL.md names the same
@@ -234,6 +236,8 @@ fn own(lib: &[Value], projects: &[projects::Project]) -> Vec<Value> {
                 o["in_library"] = (lib.iter().filter(held)).any(|i| same(&o, i)).into();
                 o["project"] = p.map(|p| p.name.clone()).into();
                 (o["key"], o["agents"], o["place"]) = (key.into(), json!([a.label()]), id.into());
+                let inside = |f: &std::path::PathBuf| Path::new(str(&o["source"])).starts_with(f);
+                o["repo"] = (o["kind"] == "server" && folder.as_ref().is_some_and(inside)).into();
                 // Where each agent has it from: a server's file or plugin [D565].
                 o["sources"] = json!({ a.label(): o["source"] });
                 all.push(o);
