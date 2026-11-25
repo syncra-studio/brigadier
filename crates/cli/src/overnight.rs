@@ -293,18 +293,39 @@ pub(crate) fn of(data: &Path, id: &str) -> Option<String> {
     None
 }
 
-/// What a row says of it: its own fields, and in the night only its morning as news.
-pub(crate) fn row(row: &mut Value, o: &Overnight, finished: u64) {
+/// What a row says of it: its own fields, and in the night only its morning as news, its workers' too.
+pub(crate) fn row(data: &Path, row: &mut Value, o: &Overnight, finished: u64) {
     row["overnight"] = o.row();
     row["overnight_op"] = json!(o.op);
     row["overnight_due"] = o.due().into();
-    if o.night() && row["notice"]["kind"] != "sign_in" {
+    // Only the user can sign in; what else asks, the night answers.
+    if row["notice"]["kind"] == "sign_in" {
+        return;
+    }
+    let asks = matches!(
+        row["notice"]["kind"].as_str(),
+        Some("question" | "approval")
+    );
+    let told = |o: &Overnight| !asks && o.morning.as_ref().is_some_and(|m| m.at >= finished);
+    if o.night() {
         row["notice"] = Value::Null;
-    } else if let Some(m) = (o.morning.as_ref()).filter(|m| m.at >= finished) {
+    } else if let Some(m) = o.morning.as_ref().filter(|_| told(o)) {
         let id = format!("overnight:{}", m.since);
         row["notice"] = (m.summary.as_ref()).map_or(
             Value::Null,
             |said| json!({"id": id, "kind": "done", "text": said}),
         );
+    } else if row["notice"].is_object() {
+        // A worker's, under a session in its night, or of what its morning told already.
+        let above = |id: &str| workers::link(data, id).map(|l| l.parent);
+        let mut lead = row["id"].as_str().and_then(above);
+        while let Some(id) = lead {
+            let o = load(&core::session_dir(data, &id));
+            if o.night() || told(&o) {
+                row["notice"] = Value::Null;
+                return;
+            }
+            lead = above(&id);
+        }
     }
 }

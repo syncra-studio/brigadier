@@ -1,11 +1,16 @@
 import { view } from "../daemon";
 import { pastedRef } from "../pull-requests/route";
-import { openTab } from "../shell/tab-store";
+import type { ReviewScope } from "../review/types";
+import { openTab, setTabScope, tabsOf } from "../shell/tab-store";
 
 /** What card rows, sidebar chips and thread rows open [D1013, D1022]. */
 
-/** A file's diff in `owner`'s Review tab, or every file's with no path [D1032, D1038]. */
-export const openReview = (owner: string, path?: string) => openTab(owner, "review", path);
+/** A file's diff in `owner`'s Review tab, or every file's with no path [D1032, D1038]; on `scope`, else the one it has. */
+export function openReview(owner: string, path?: string, scope?: ReviewScope): void {
+  openTab(owner, "review", path);
+  const tab = scope && tabsOf(owner).tabs.find((each) => each.kind === "review");
+  if (tab) setTabScope(owner, tab.id, scope);
+}
 
 type PrAt = { number: number; repo?: string | null; url?: string };
 

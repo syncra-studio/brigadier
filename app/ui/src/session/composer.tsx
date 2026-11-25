@@ -134,6 +134,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setOps(live);
   });
   const night = useOvernight(id, worker ? undefined : row);
+  // Its turn's last questions are in the thread already, waiting or answered.
+  const asked = useSyncExternalStore(source.subscribe, () => {
+    const thread = night?.state === "asking" ? source.get() : null;
+    const turn = thread?.id === id ? thread.turns.at(-1)?.id : undefined;
+    return turn !== undefined && thread!.items.some((item) => item.kind === "question" && item.turnId === turn);
+  });
   const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
   let paused = row?.queue?.paused === true;
   // A `!` command that ended shows only while its report can't go.
@@ -430,7 +436,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerField
         ref={field}
         initial={initial}
-        placeholder={toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night, busy) ?? placeholder)}
+        placeholder={toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night, busy, asked) ?? placeholder)}
         attachments={files.attachments}
         onAttach={files.attach}
         mentions={{ ...files.mentions, onDirect: setTo }}

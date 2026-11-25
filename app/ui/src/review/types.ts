@@ -5,8 +5,9 @@
 
 import type { FileStatus } from "../panel/status";
 
-/** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000). */
-export type ReviewScope = "last" | "uncommitted" | "staged" | "unstaged" | "branch";
+/** What a review compares (D1035); Last turn is the session's last turn, from rewind's captures (D1000), and a night,
+ * by when it began and ended (ms), its turns, from theirs. */
+export type ReviewScope = "last" | `night:${number}-${number}` | "uncommitted" | "staged" | "unstaged" | "branch";
 
 /** Why a file is worth a look first, as Rust classed it (D1188, D1213): a test file deleted or with lines removed, a
  * lock file, a dependency manifest, CI or build config, a migration. */
@@ -16,8 +17,11 @@ export type FileFlag = { kind: "test" | "lock" | "manifest" | "build" | "migrati
  * an edit to this checkout began after it ended, the run's own fact, the same in every scope (D1243), else unknown, never "no" (D1192). */
 export type LastRun = { command: string; exit: number | null; at: number; changed: boolean };
 
-/** Why Last turn has nothing to compare (D30). */
-export type NoTurn = "noProject" | "notGit" | "noTurn" | "midTurn" | "noSnapshot";
+/** A scope read between two captures of the folder. */
+export const captured = (scope: ReviewScope) => scope === "last" || scope.startsWith("night:");
+
+/** Why Last turn or a night has nothing to compare (D30). */
+export type NoTurn = "noNight" | "noProject" | "notGit" | "noTurn" | "midTurn" | "noSnapshot";
 
 export type ReviewFile = {
   path: string;
@@ -69,9 +73,9 @@ export type Review = {
   files: readonly ReviewFile[];
   insertions: number;
   deletions: number;
-  /** Last turn's two captures, which its files' contents are read between, and what they leave out (D1192). */
+  /** Last turn's or a night's two captures, which its files' contents are read between, and what they leave out (D1192). */
   turn?: { before: string; after: string; live: boolean; missed: boolean; excluded: readonly string[] };
-  /** Last turn with nothing to compare, and why. */
+  /** Last turn or a night with nothing to compare, and why. */
   none?: NoTurn;
   /** Another session works in this folder: its changes may be in the diff (D1078). */
   shared?: boolean;

@@ -6,7 +6,7 @@ import { sourceArgs, useGit } from "../panel/git";
 import { HOME, openFile, setTabScope } from "../shell/tab-store";
 import { PrSource, type SourcePr } from "./pr-source";
 import { ReviewTab } from "./review-tab";
-import type { FileContents, PatchContents, Review, ReviewFile, ReviewScope } from "./types";
+import { captured, type FileContents, type PatchContents, type Review, type ReviewFile, type ReviewScope } from "./types";
 
 /**
  * The Review tab on Rust's git [D1035, D1036]: the scope's files and counts first, then each file's patch, a large
@@ -23,7 +23,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   // A folder chat's repo has no captured turns: its work is on its branch [D494].
   const repo = git.target && "session" in git.target && git.target.session.includes("@") ? git.target.session : null;
   useEffect(() => {
-    if (repo) setScope((now) => (now === "last" ? "branch" : now));
+    if (repo) setScope((now) => (captured(now) ? "branch" : now));
   }, [repo]);
   const [review, setReview] = useState<Review | null>(null);
   const [contents, setContents] = useState<ReadonlyMap<string, FileContents | PatchContents | { error: string }>>(new Map());
@@ -47,9 +47,9 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
 
   const load = (file: ReviewFile, at: number, turn = review?.turn) => {
     if (!checkout) return;
-    // Last turn's files are read between the two captures its list was read from, not a fresh one each (D1192).
-    const where = scope === "last" ? (turn ? [turn.before, turn.after] : []) : [];
-    if (scope === "last" && !turn) return;
+    // Last turn's and a night's files are read between the two captures its list was read from, not a fresh one each (D1192).
+    const where = captured(scope) ? (turn ? [turn.before, turn.after] : []) : [];
+    if (captured(scope) && !turn) return;
     ask({ op: "run", args: sourceArgs(checkout, "review-file", scope, ...where, file.path, ...(file.from ? [file.from] : [])) }, (reply) => {
       if (read.current !== at) return;
       const got = reply.ok ? (reply.contents.error ? { error: String(reply.contents.error) } : reply.contents) : { error: String(reply.error) };
@@ -101,7 +101,7 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
   // Once the opened-on file is drawn (a large one folded, with no contents), it comes into view.
   useEffect(() => {
     const file = review?.files.find((each) => each.path === target);
-    if (target && !file && review?.scope === "last" && scrolled.current !== target && sought.current !== target) {
+    if (target && !file && review && captured(review.scope) && scrolled.current !== target && sought.current !== target) {
       sought.current = target;
       return show("uncommitted");
     }
@@ -109,6 +109,11 @@ export function ReviewView({ owner, target, tab, kept: keptScope }: { owner: str
     scrolled.current = target;
     panel.current?.querySelector(`[data-slot="review-file"][data-path="${CSS.escape(target)}"]`)?.scrollIntoView({ block: "start" });
   }, [review, contents, target]);
+
+  // Opened again on another scope: a morning card's night. A folder chat's repo shows its branch, as above.
+  useEffect(() => {
+    if (keptScope && keptScope !== scope && !repo) show(keptScope as ReviewScope);
+  }, [keptScope]);
 
   // Another scope's diff isn't shown under this one's loading or error.
   const show = (next: ReviewScope, picked: SourcePr | null = null) => {

@@ -1,8 +1,9 @@
-//! Review's Last turn [D1000, D1035, D1192]: what the session's last turn changed, read from the
-//! two captures rewind already takes of its folder, in the session's own `sessions/<id>/rewind.git`
-//! [D35]. A turn still running, or one whose end capture was missed, compares its start with the
-//! folder now and says so: that one capture is written to the store, under the session's fence.
-//! Nothing in the folder changes: no stage or revert, like Branch since base [D1001].
+//! Review's Last turn [D1000, D1035, D1192]: what the session's last turn changed, or all the turns
+//! of a night (Overnight), read from the captures rewind already takes of its folder, in the
+//! session's own `sessions/<id>/rewind.git` [D35]. A turn still running, or one whose end
+//! capture was missed, compares its start with the folder now and says so: that one capture is
+//! written to the store, under the session's fence. Nothing in the folder changes: no stage or
+//! revert, like Branch since base [D1001].
 
 use super::diff::{Patch, SIDE_MAX, binary, ids_in, shape, text};
 use super::listed::{listed, review_of};
@@ -15,12 +16,12 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::{fs, io};
 
-const NAME: &str = "last";
-
-/// The last turn's two moments, or why there are none: `noProject`, `noTurn`, `midTurn` (sent
-/// while another turn ran) or `noSnapshot` [D30]; or `busy`: the folder now couldn't be captured
+/// Two captures, the last turn's or a night's, or why there are none: `noProject`, `noTurn`, `midTurn` (sent
+/// while another turn ran), `noNight` or `noSnapshot` [D30]; or `busy`: the folder now couldn't be captured
 /// at once, so the app keeps what it drew and asks again.
 pub struct Last {
+    /// The scope it was asked as.
+    name: String,
     store: Store,
     before: Shot,
     after: Shot,
@@ -65,8 +66,52 @@ pub fn of(spec: &Spec, f: &Fold, checkout: &Checkout) -> Result<Last, &'static s
     };
     let prefix = prefix(&store, checkout);
     Ok(Last {
+        name: "last".into(),
         store,
         before: record.before,
+        after,
+        live,
+        missed,
+        prefix,
+    })
+}
+
+/// A night's, from its first turn's start to its last one's end: what was there before it, commits and
+/// uncommitted edits, and what came after it stay out.
+pub fn night(
+    spec: &Spec,
+    f: &Fold,
+    checkout: &Checkout,
+    name: &str,
+    (since, at): (u64, u64),
+) -> Result<Last, &'static str> {
+    let store = Store::of(spec).ok_or("noProject")?;
+    let all = store.records();
+    let ended = |i: usize| {
+        let end = all[i].end.as_ref().and_then(|e| e.at);
+        end.or(all.get(i + 1).and_then(|next| next.before.at))
+    };
+    // shortcut: a turn running at Start night counts from its own start; capture the folder there
+    // if what a turn does before it (it only asks) ever matters.
+    let mine = |i: &usize| {
+        all[*i].before.at.is_some_and(|b| b <= at) && ended(*i).is_none_or(|e| e >= since)
+    };
+    let mine: Vec<usize> = (0..all.len()).filter(mine).collect();
+    let (Some(&first), Some(&last)) = (mine.first(), mine.last()) else {
+        return Err("noNight");
+    };
+    let live = last + 1 == all.len() && !f.turns.is_empty() && all[last].end.is_none();
+    let before = all[first].before.clone();
+    let last = all[last].clone();
+    let (after, missed) = match last.end {
+        Some(end) => (end, false),
+        None => (now(spec, &store)?, !live),
+    };
+    let prefix = prefix(&store, checkout);
+    Ok(Last {
+        name: name.into(),
+        store,
+        before,
         after,
         live,
         missed,
@@ -134,7 +179,7 @@ impl Last {
                 (format!("{}{path}", self.prefix), file)
             })
             .collect();
-        let mut review = review_of(NAME, files);
+        let mut review = review_of(&self.name, files);
         let excluded: BTreeSet<String> = (self.before.out.keys().chain(self.after.out.keys()))
             .map(|p| format!("{}{p}", self.prefix))
             .collect();
@@ -190,7 +235,7 @@ pub fn file(
     args.extend(from_in.as_deref());
     args.push(&path_in);
     let patch = Patch::parse(&diff(&store, trees.0, trees.1, &args)?);
-    let ids = ids_in(NAME, path, &patch.hunks);
+    let ids = ids_in("last", path, &patch.hunks);
     let hunks: Vec<Value> = (patch.hunks.iter().zip(ids))
         .map(|(hunk, id)| shape(hunk, id, false))
         .collect();

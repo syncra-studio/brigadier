@@ -170,8 +170,8 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       group = { span: item.span, line };
       continue;
     }
-    // A send-as-new line or a `!` command follows the reply, so the reply's actions stay directly under it [D204, D316].
-    if (item.kind === "started" || item.kind === "forked" || item.kind === "shell") end();
+    // A send-as-new line, a `!` command or Overnight's moment follows the reply, so the reply's actions stay directly under it [D204, D316].
+    if (item.kind === "started" || item.kind === "forked" || item.kind === "shell" || item.kind === "overnight") end();
     // A turn's actions stay on its last reply, never under the divider that ended it; with no reply drawn, none [D171, D186].
     if (marks && item.kind === "line" && ["stopped", "interrupted", "paused", "review-ended", "stalled"].includes(item.reason)) {
       const reply = out.findLast((line) => line.type === "item" && line.item === marks!.item);

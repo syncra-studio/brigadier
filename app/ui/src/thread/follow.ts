@@ -3,11 +3,12 @@
  * the offset. A message sent here gets blank space under the end (⅔ of the view, or the view less 240px, whichever
  * is less) and glides there; the reply grows into that space, so nothing moves. While the turn works the view
  * stays put until the work outgrows it, then follows the work; an answer started that way is followed too, one
- * started in place grows into the space and on below. Within 24px of the end counts as there. Scrolling up by
- * hand stops following and gives the space up as far as it went; coming back down to the end follows again.
+ * started in place grows into the space and on below. A turn no send here began, at the end, is followed, and a row
+ * that comes there with no turn running is brought into view, its top first. Within 24px of the end counts as there.
+ * Scrolling up by hand stops following and gives the space up as far as it went; coming back down to the end follows again.
  */
 
-import { inner } from "./inner";
+import { inner, keyWay, touches, type Way } from "./inner";
 
 /** Within this of the end counts as at the end. */
 export const AT_END = 24;
@@ -20,8 +21,6 @@ const JUMP_MS = 260;
 /** The glide to a sent message's space: a spring with no bounce settling in this long (rate per second), as measured [D56]. */
 const PLACE_MS = 200;
 const PLACE_RATE = 46.25;
-/** A touch moves this far before it says which way. */
-const TOUCH_SLOP = 8;
 /** Rust's rows come in bursts that regroup a moment later: work is followed only if it still outgrows the view then. */
 const SETTLE_MS = 150;
 
@@ -32,19 +31,9 @@ const canSnap = () => CSS.supports("container-type", "scroll-state") && CSS.supp
 type Mode = "still" | "watch" | "workFollow" | "follow";
 /** The latest turn: done, at work (thinking, tools, notes), or answering. */
 export type Phase = "idle" | "work" | "answer";
-export type Way = "away" | "toward";
 
 /** The blank space (px) under the end, in its own store (onboarding/api's `store`) so only the spacer redraws. */
 export type Space = { get(): number; set(next: number): void; use(): number };
-
-/** Sessions just started from Home, by session id, with their first message's id: placed once the thread opens. */
-const toPlace = new Map<string, string>();
-export const placeOnOpen = (id: string, cid: string) => void toPlace.set(id, cid);
-export function takePlace(id: string): string | undefined {
-  const cid = toPlace.get(id);
-  toPlace.delete(id);
-  return cid;
-}
 
 /** The open threads, so a send that fails gives its space up (the space is cleared on a send's error). */
 const live = new Set<Follow>();
@@ -75,10 +64,11 @@ export class Follow {
   private settling: ReturnType<typeof setTimeout> | undefined;
   private jumping: (() => void) | null = null;
   private drag: { height: number; top: number } | null = null;
-  private touch: { id: number; x: number; y: number } | null = null;
   private decay = 0;
   private decaying = 0;
   private height = 0;
+  /** The row that came last with no turn running, kept in view until the user or a turn moves on. */
+  private arriving: string | null = null;
   /** A distance to bring back once the rows are drawn (a session opened again). */
   private restore: number | null = null;
 
@@ -208,6 +198,7 @@ export class Follow {
   }
   /** A wheel, touch, press or key on the thread stops the glide where it is. */
   stopPlacing = () => {
+    this.arriving = null;
     this.placing?.();
     this.placing = null;
   };
@@ -225,6 +216,7 @@ export class Follow {
 
   /** The jump button: follow again; while a turn runs, or the space is still there, at once, else a short glide. */
   jump(running: boolean) {
+    this.arriving = null;
     this.mode = "follow";
     this.intent = null;
     if (running || this.space.get() > AT_END) {
@@ -261,6 +253,27 @@ export class Follow {
     this.clear();
   }
 
+  /** The rows' end is in view, as last seen. */
+  private atEnd() {
+    return this.placing === null && this.pending === null && this.restore === null && this.last - this.space.get() <= AT_END;
+  }
+  /** Row `id` came under the rest. */
+  arrive(id: string) {
+    if (this.phase !== "idle" || this.intent?.way === "away" || !this.atEnd()) return;
+    this.hold();
+    this.arriving = id;
+  }
+  private bring() {
+    const el = this.el;
+    const row = this.arriving !== null && el?.querySelector(`[data-item="${CSS.escape(this.arriving)}"]`);
+    if (!el || !row) return;
+    const by = Math.min(this.distance() - this.space.get(), row.getBoundingClientRect().top - el.getBoundingClientRect().top);
+    if (by <= 0) return;
+    el.scrollTop += by;
+    this.last = this.distance();
+    this.top = el.scrollTop;
+  }
+
   /** The space's own: gone at once, or trimmed. */
   private clear() {
     this.reserve = 0;
@@ -287,9 +300,10 @@ export class Follow {
     const was = this.phase;
     if (was === next) return;
     this.phase = next;
+    if (next !== "idle") this.arriving = null;
     if (this.mode === "follow") return;
     const mode = this.mode;
-    if (was !== "work" && next === "work" && mode === "still") this.mode = "watch";
+    if (was !== "work" && next === "work" && mode === "still") this.mode = was === "idle" && this.atEnd() && this.space.get() === 0 ? "workFollow" : "watch";
     if (was === "work" && next === "answer") {
       this.mode = mode === "workFollow" ? "follow" : "still";
       if (mode === "workFollow") {
@@ -311,6 +325,7 @@ export class Follow {
     const el = this.el;
     if (!el) return;
     this.stopJump();
+    this.arriving = null;
     const more = way === "away" ? el.scrollTop > 0 : this.distance() > 0;
     if (way === "away" && more && strong && this.stick) this.hold();
     this.intent = more ? { way, at: performance.now() } : null;
@@ -328,10 +343,7 @@ export class Follow {
   key = (event: KeyboardEvent) => {
     const el = this.el;
     if (!el || event.defaultPrevented || event.repeat) return;
-    const target = event.target;
-    const space = event.key === " " || event.key === "Spacebar";
-    if (target instanceof HTMLElement && target !== el && (target.isContentEditable || target.closest("input, select, textarea") || (space && target.closest('button, [role="button"]')))) return;
-    const way: Way | null = ["ArrowUp", "Home", "PageUp"].includes(event.key) ? "away" : ["ArrowDown", "End", "PageDown"].includes(event.key) ? "toward" : space ? (event.shiftKey ? "away" : "toward") : null;
+    const way = keyWay(event, el);
     if (!way || (way === "away" && inner(event, el))) return;
     const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
     this.intend(way, (event.key === "PageUp" || event.key === "ArrowUp") && plain);
@@ -351,23 +363,10 @@ export class Follow {
     this.drag = null;
     this.snap();
   };
-  touchStart = (event: TouchEvent) => {
-    const touch = event.touches.length === 1 ? event.touches[0]! : null;
-    this.touch = touch && { id: touch.identifier, x: touch.clientX, y: touch.clientY };
-  };
-  touchMove = (event: TouchEvent) => {
-    const touch = event.touches.length === 1 ? event.touches[0]! : null;
-    const from = this.touch;
-    if (!from || !touch || touch.identifier !== from.id) return void (this.touch = null);
-    const x = touch.clientX - from.x;
-    const y = touch.clientY - from.y;
-    if (Math.max(Math.abs(x), Math.abs(y)) < TOUCH_SLOP) return;
-    this.touch = null;
-    if (Math.abs(y) > Math.abs(x)) this.intend(y > 0 ? "away" : "toward");
-  };
-  touchEnd = () => {
-    this.touch = null;
-  };
+  private touch = touches((way) => this.intend(way));
+  touchStart = this.touch.start;
+  touchMove = this.touch.move;
+  touchEnd = this.touch.end;
 
   /** The scroller scrolled, by anyone. */
   scroll() {
@@ -439,6 +438,7 @@ export class Follow {
       if (!gliding && end !== undefined && end <= top + was && end + pad > top + el.clientHeight) el.scrollTop += end + pad - top - el.clientHeight;
     }
     this.grew();
+    this.bring();
     // Snapped at the end, the browser keeps it there; a snap that missed is put right here.
     if (this.snapping() && this.distance() <= 1) return this.hooks.changed();
     const now = this.distance();
@@ -483,7 +483,7 @@ export class Follow {
     const end = el.querySelector("[data-end]");
     const room = end ? end.getBoundingClientRect().bottom - spacer.getBoundingClientRect().bottom : 0;
     const over = spaced ? spacer.getBoundingClientRect().top + room - el.getBoundingClientRect().bottom : el.scrollHeight - el.clientHeight;
-    if (!spaced && over > grown) return;
+    if (!spaced && this.last > AT_END) return;
     if (over <= 0 || this.settling) return;
     // Still outgrowing the view once the burst has settled, with the space used up: the work is followed from here [D45].
     this.settling = setTimeout(() => {

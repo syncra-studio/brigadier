@@ -1,6 +1,7 @@
 //! `brigadier source <id> review last` and `review-file last <before> <after> <path> [<from>]`:
-//! Review's Last turn [D1000, D1035, D1192]; and the brief every review carries, risky files and
-//! the session's last test or build run [D1188, D1213].
+//! Review's Last turn [D1000, D1035, D1192], or a night's turns with `night:<since>-<at>` for `last`;
+//! and the brief every review carries, risky files and the session's last test or build run
+//! [D1188, D1213].
 
 use super::arg;
 use brigadier_core::git::{self, Target, branch, last, risk};
@@ -9,15 +10,23 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-/// Last turn's two moves; None for every other.
+/// A night's scope, from when it began to when it ended (ms).
+pub(super) fn night(scope: &str) -> Option<(u64, u64)> {
+    let (since, at) = scope.strip_prefix("night:")?.split_once('-')?;
+    Some((since.parse().ok()?, at.parse().ok()?))
+}
+
+/// Last turn's two moves, a night's the same; None for every other.
 pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
     let (target, at) = super::git::target(args)?;
     let word = |i: usize| args.get(at + i).map(String::as_str);
-    if word(1) != Some("last") || !matches!(word(0), Some("review" | "review-file")) {
+    let scope = word(1).unwrap_or_default();
+    let span = night(scope);
+    if (scope != "last" && span.is_none()) || !matches!(word(0), Some("review" | "review-file")) {
         return Ok(None);
     }
     let none = |why: &str| {
-        let none = json!({"scope": "last", "base": null, "files": [], "insertions": 0,
+        let none = json!({"scope": scope, "base": null, "files": [], "insertions": 0,
                           "deletions": 0, "none": why});
         Ok(Some(json!({"ok": true, "review": none})))
     };
@@ -42,7 +51,11 @@ pub(super) fn route(data: &Path, args: &[String]) -> io::Result<Option<Value>> {
         return Ok(Some(json!({"ok": true, "contents": contents})));
     }
     let f = brigadier_core::fold(&spec.dir, true)?.fold;
-    let mut review = match last::of(&spec, &f, &checkout) {
+    let moments = match span {
+        Some(span) => last::night(&spec, &f, &checkout, scope, span),
+        None => last::of(&spec, &f, &checkout),
+    };
+    let mut review = match moments {
         Ok(turn) => turn.list()?,
         // The folder now couldn't be captured at once: the app keeps what it drew and asks again.
         Err("busy") => return Ok(Some(json!({"ok": false, "busy": true, "error": "busy"}))),
