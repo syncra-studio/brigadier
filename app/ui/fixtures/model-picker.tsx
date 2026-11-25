@@ -1,6 +1,6 @@
-// Mockup only: the model picker as a menu of three columns (agents · search and models · effort), opened from the composer's
+// Mockup only: the model picker as a menu of three columns (agents · search and models · effort, with Fast and what's left), opened from the composer's
 // model pill, no strip. Fake agents, models and limits over the real composer parts; live: search, stars, effort, Fast,
-// Switch's confirm, the keys. ?v=a|b|c is the variant. Not the app.
+// Switch's confirm, the keys. ?v=a|b is the variant. Not the app.
 import "../src/theme.css";
 import "./fixtures.css";
 
@@ -13,7 +13,7 @@ import { COLUMN, ComposerPill, ContextRing, PlusButton, SharedComposer } from ".
 import { fuzzyMatch, MatchedText } from "../src/components/composer/menus";
 import { effortLabel, type Model, type ModelChoice, type ModelGroup, ModelLabel, modelWords, ProviderMark } from "../src/components/composer/model-picker";
 import { type PermissionLevel, PermissionPicker } from "../src/components/composer/pickers";
-import { type Quota, QuotaLines } from "../src/components/composer/quota-lines";
+import type { Quota } from "../src/components/composer/quota-lines";
 import { SendButton } from "../src/components/composer/send-button";
 import { SwitchAgentDialog } from "../src/components/composer/switch-agent";
 import { cx } from "../src/components/cx";
@@ -244,76 +244,75 @@ function Rail({ picker, groups, bar }: Props & { picker: Picker; bar?: boolean }
   );
 }
 
-/** A: the compact layout. One rule across the top, levels as rows, and a footer with the speed and what's left. */
+/** The columns both variants share: the rail, search and models, and effort rows; `below` goes under the levels. */
+function Columns({ picker, height, below, ...props }: Props & { picker: Picker; height: string; below?: ReactNode }) {
+  return (
+    <div className={cx("flex min-h-0", height)}>
+      <Rail picker={picker} {...props} bar />
+      <div className="flex min-w-0 flex-1 flex-col border-s border-divider">
+        <Search picker={picker} className="mx-3 h-10 border-b border-divider" />
+        <Models picker={picker} marks="always" {...props} />
+      </div>
+      <div className={cx("flex shrink-0 flex-col border-s border-divider", below ? "w-52" : "w-44")}>
+        <div className="mx-3 flex h-10 shrink-0 items-center gap-2 border-b border-divider text-label">
+          <span className="text-muted-foreground">Effort</span>
+          <span className="ms-auto truncate text-xs text-placeholder">{picker.used.model.name}</span>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
+          <EffortRows picker={picker} {...props} />
+        </div>
+        {below}
+      </div>
+    </div>
+  );
+}
+
+/** Fast as a switch, greyed for a model without a fast tier. */
+function FastSwitch({ picker, value, onChange, className }: Props & { picker: Picker; className?: string }) {
+  const { model } = picker.used;
+  return (
+    <label title={model.fast ?? `${model.name} has no fast tier`} className={cx("flex items-center gap-1.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder", className)}>
+      <Bolt aria-hidden className={cx("size-icon-sm", value.fast && model.fast ? "text-glyph-5" : "text-placeholder")} />
+      <span className="flex-1">Fast</span>
+      <Switch aria-label="Fast" checked={Boolean(value.fast && model.fast)} disabled={!model.fast} onCheckedChange={(fast) => onChange({ ...value, fast })} />
+    </label>
+  );
+}
+
+/** What each account of the model's agent has left. */
+function Usage({ group, className }: { group: ModelGroup; className: string }) {
+  return <div className={className}>{group.usage ? group.usage.map((account) => <Left key={account.account} account={account} />) : <p className="text-xs text-muted-foreground">{group.label} reports no limits</p>}</div>;
+}
+
+/** A: Fast and the usage under the effort levels; no footer. */
 function VariantA(props: Props) {
   const picker = usePicker(props);
-  const { model, group } = picker.used;
-  const browsed = picker.group ?? group;
   return (
-    <Frame picker={picker} {...props} className="w-132">
-      <div className="flex h-66 min-h-0">
-        <Rail picker={picker} {...props} bar />
-        <div className="flex min-w-0 flex-1 flex-col border-s border-divider">
-          <Search picker={picker} className="mx-3 h-10 border-b border-divider" />
-          <Models picker={picker} marks="always" {...props} />
-        </div>
-        <div className="flex w-44 shrink-0 flex-col border-s border-divider">
-          <div className="mx-3 flex h-10 shrink-0 items-center gap-2 border-b border-divider text-label">
-            <span className="text-muted-foreground">Effort</span>
-            <span className="ms-auto truncate text-xs text-placeholder">{model.name}</span>
+    <Frame picker={picker} {...props} className="w-140">
+      <Columns
+        picker={picker}
+        {...props}
+        height="h-92"
+        below={
+          <div className="mx-3 shrink-0 border-t border-divider">
+            <FastSwitch picker={picker} {...props} className="py-2.5" />
+            <Usage group={picker.used.group} className="flex flex-col gap-2 border-t border-divider pt-2.5 pb-3" />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-1">
-            <EffortRows picker={picker} {...props} />
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-3 border-t border-divider bg-fill-faint px-3 py-2">
-        <div className="min-w-0 flex-1">{browsed.usage ? <QuotaLines usage={browsed.usage} /> : <p className="text-xs text-muted-foreground">{browsed.label} reports no limits</p>}</div>
-        <Segmented
-          label="Speed"
-          value={props.value.fast && model.fast ? "fast" : "standard"}
-          options={[
-            { value: "standard", label: "Standard" },
-            { value: "fast", label: <span className="flex items-center gap-1"><Bolt aria-hidden className={cx("size-icon-xs", props.value.fast && model.fast && "text-glyph-5")} />Fast</span>, tip: model.fast ?? undefined, reason: model.fast ? null : `${model.name} has no fast tier` },
-          ]}
-          onChange={(speed) => props.onChange({ ...props.value, fast: speed === "fast" })}
-          className="rounded-capsule bg-fill-subtle p-0.5"
-        />
-      </div>
+        }
+      />
     </Frame>
   );
 }
 
-/** B: the third column holds all about the model in use: its levels as today's scale, Fast as a switch, then what's left. No footer. */
+/** B: the same two in A's footer, the accounts side by side. */
 function VariantB(props: Props) {
   const picker = usePicker(props);
-  const { model, group } = picker.used;
-  const { value, onChange } = props;
   return (
-    <Frame picker={picker} {...props} className="w-140">
-      <div className="flex h-84 min-h-0">
-        <Rail picker={picker} {...props} />
-        <div className="flex min-w-0 flex-1 flex-col pt-1 pe-1">
-          <Search picker={picker} className="mx-1 h-control-md rounded-capsule bg-fill-faint px-2.5 focus-within:bg-fill-subtle" />
-          <Models picker={picker} marks="mixed" {...props} />
-        </div>
-        <div className="m-1 flex w-52 shrink-0 flex-col rounded-control bg-fill-faint p-3">
-          <div className="flex min-w-0 items-center gap-1.5 text-label font-medium">
-            <ProviderMark mark={group.mark} className="size-icon-md" />
-            <span className="truncate">{model.name}</span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pt-2 scroll-edge-fade edge-fade-group">
-            <EffortScale picker={picker} {...props} />
-          </div>
-          <label title={model.fast ?? `${model.name} has no fast tier`} className={cx("flex items-center gap-1.5 border-t border-divider py-2.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder")}>
-            <Bolt aria-hidden className={cx("size-icon-sm", value.fast && model.fast ? "text-glyph-5" : "text-placeholder")} />
-            <span className="flex-1">Fast</span>
-            <Switch aria-label="Fast" checked={Boolean(value.fast && model.fast)} disabled={!model.fast} onCheckedChange={(fast) => onChange({ ...value, fast })} />
-          </label>
-          <div className="flex flex-col gap-2 border-t border-divider pt-2.5">
-            {group.usage ? group.usage.map((account) => <Left key={account.account} account={account} />) : <p className="text-xs text-muted-foreground">{group.label} reports no limits</p>}
-          </div>
-        </div>
+    <Frame picker={picker} {...props} className="w-132">
+      <Columns picker={picker} {...props} height="h-66" />
+      <div className="flex items-center gap-4 border-t border-divider bg-fill-faint px-3 py-2.5">
+        <Usage group={picker.used.group} className="grid min-w-0 flex-1 auto-cols-fr grid-flow-col gap-4" />
+        <FastSwitch picker={picker} {...props} className="shrink-0 gap-2 border-s border-divider ps-4" />
       </div>
     </Frame>
   );
@@ -335,84 +334,6 @@ function Left({ account }: { account: Quota }) {
   );
 }
 
-/** Today's scale, highest on top, as the strip draws it. */
-function EffortScale({ picker, value, onChange }: Props & { picker: Picker }) {
-  const { model } = picker.used;
-  if (model.efforts.length === 0) return <p className="text-label text-muted-foreground">No effort levels</p>;
-  return (
-    <div data-part="effort" role="radiogroup" aria-label="Effort" onKeyDown={picker.columnKeys("ArrowLeft")} className="relative flex flex-col">
-      <span aria-hidden className="absolute inset-y-2.5 start-1.25 w-0.5 bg-control" />
-      {model.efforts.toReversed().map((level) => {
-        const on = value.effort === level;
-        return (
-          <button key={level} type="button" role="radio" data-item="" aria-checked={on} tabIndex={on ? 0 : -1} onClick={() => onChange({ ...value, effort: level })} className="group/step relative flex h-control-xs cursor-pointer items-center gap-2 rounded-sm text-start text-label text-muted-foreground hover:text-foreground focus-visible:focus-ring aria-checked:font-medium aria-checked:text-foreground">
-            <span className="grid w-3 shrink-0 place-items-center">
-              <span className="size-1 rounded-full bg-placeholder group-aria-checked/step:size-2.5 group-aria-checked/step:bg-foreground" />
-            </span>
-            <span className="flex-1">{effortLabel(level)}</span>
-            {level === model.defaultEffort && <span className="text-xs font-normal text-placeholder">Default</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** C: the agents by name, each with what it has left or its Set up; the effort column carries the Fast key. */
-function VariantC(props: Props) {
-  const picker = usePicker(props);
-  const { model } = picker.used;
-  const { groups, value, onChange } = props;
-  const fast = Boolean(value.fast && model.fast);
-  const on = (id: string) => !picker.needle && picker.tab === id;
-  const row = "flex min-h-control-lg w-full shrink-0 cursor-pointer items-center gap-2.5 rounded-menu-item px-2 py-1 text-start text-label hover:bg-fill focus-visible:focus-ring aria-pressed:bg-selection";
-  const under = "truncate text-xs text-muted-foreground tabular-nums";
-  return (
-    <Frame picker={picker} {...props} className="w-152">
-      <div className="flex h-70 min-h-0">
-        <div data-part="agents" role="toolbar" aria-label="Agents" aria-orientation="vertical" onKeyDown={picker.columnKeys("ArrowRight")} className="flex w-44 shrink-0 flex-col gap-0.5 overflow-y-auto p-1 scroll-edge-fade edge-fade-group">
-          <button type="button" data-item="" aria-pressed={on(FAVORITES)} tabIndex={on(FAVORITES) ? 0 : -1} onClick={() => picker.browse(FAVORITES)} className={row}>
-            <StarFilled aria-hidden className="size-icon-lg shrink-0 text-muted-foreground" />
-            <span className="flex-1">Favorites</span>
-            <span className="text-xs text-placeholder tabular-nums">{props.stars.size}</span>
-          </button>
-          <span aria-hidden className="mx-2 my-0.5 h-px shrink-0 bg-divider" />
-          {groups.map((group) => {
-            const accounts = (group.usage ?? []).flatMap((account) => { const now = left(account); return now ? [{ ...now, name: account.name }] : []; });
-            const button = (
-              <button key={group.provider} type="button" data-item="" aria-pressed={on(group.provider)} tabIndex={on(group.provider) ? 0 : -1} onClick={() => picker.browse(group.provider)} className={row}>
-                <ProviderMark mark={group.mark} className={cx("size-icon-lg", group.unavailable && "opacity-picker-dim")} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className={cx("truncate", group.unavailable && "text-muted-foreground")}>{group.label}</span>
-                  {group.unavailable ? <span className={under}>{group.unavailable === "install" ? "Not installed" : "Not signed in"}</span> : accounts.map((each) => <span key={each.name} className={under}>{each.name} {each.percent}% left</span>)}
-                </span>
-              </button>
-            );
-            return group.usage ? <Tip key={group.provider} tip={<QuotaLines usage={group.usage} />}>{button}</Tip> : button;
-          })}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col border-s border-divider">
-          <Search picker={picker} className="h-10 border-b border-divider px-3" />
-          <Models picker={picker} marks="mixed" {...props} />
-        </div>
-        <div className="flex w-38 shrink-0 flex-col border-s border-divider">
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-divider px-3 text-label"><span className="text-muted-foreground">Effort</span><span className="ms-auto truncate text-xs text-placeholder">{model.name}</span></div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-1">
-            <EffortRows picker={picker} {...props} />
-          </div>
-          <div className="border-t border-divider p-1">
-            <button type="button" role="switch" aria-checked={fast} disabled={!model.fast} title={model.fast ?? `${model.name} has no fast tier`} onClick={() => onChange({ ...value, fast: !fast })} className={cx(itemBase, "w-full pe-2 text-start hover:bg-fill focus-visible:focus-ring disabled:cursor-default disabled:opacity-picker-dim")}>
-              <Bolt aria-hidden className={cx(fast && "text-glyph-5")} />
-              <span className="flex-1">Fast</span>
-              <span className={cx("text-xs", fast ? "text-foreground" : "text-placeholder")}>{fast ? "On" : "Off"}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
 function Frame({ picker, groups, onChange, className, children }: Props & { picker: Picker; className: string; children: ReactNode }) {
   return (
     <div ref={picker.root} data-slot="model-picker" className={cx("flex max-w-available flex-col overflow-hidden rounded-surface", className)}>
@@ -429,8 +350,9 @@ function Frame({ picker, groups, onChange, className, children }: Props & { pick
   );
 }
 
-const VARIANTS: Record<string, (props: Props) => ReactNode> = { a: VariantA, b: VariantB, c: VariantC };
-const Variant = VARIANTS[new URLSearchParams(location.search).get("v") ?? "a"] ?? VariantA;
+const VARIANTS: Record<string, (props: Props) => ReactNode> = { a: VariantA, b: VariantB };
+const variant = new URLSearchParams(location.search).get("v") ?? "a";
+const Variant = VARIANTS[variant] ?? VariantA;
 
 function Page() {
   const [ready, setReady] = useState<Ready>("ready");
@@ -490,4 +412,4 @@ function Page() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Page />);
+createRoot(document.getElementById("root")!).render(VARIANTS[variant] ? <Page /> : <p className="p-4 text-label">This variant was dropped. Its round keeps its screenshot.</p>);
