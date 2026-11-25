@@ -14,7 +14,7 @@ export type PeerState = { type: "pending" | "delivered" | "seen" | "replied" | "
 
 export type PeerSend = PeerRef & { state: PeerState };
 
-export type Status = "inProgress" | "completed" | "failed";
+type Status = "inProgress" | "completed";
 
 /** What one row of messages and waits stands at: what it sent, its waits, whose replies they took, whom it still waits for. */
 export type Exchange = {
@@ -58,18 +58,16 @@ export function exchangeWords({ sends, waits, received, waitingOn, going = false
   if (declined.length > 0) clauses.push([`Didn’t send ${messages(declined)} to `, ...named(declined)]);
   const failed = sends.filter((send) => send.state.type === "refused" || send.state.type === "dropped");
   if (failed.length > 0) clauses.push([`Couldn’t send ${messages(failed)} to `, ...named(failed)]);
-  if (waits.length > 0) clauses.push(waited(sent, received, waits.at(-1) === "failed", sends.length === 0));
+  if (waits.length > 0) clauses.push(waited(sent, received));
   return { parts: clauses.flatMap((clause, index) => (index === 0 ? clause : [", ", ...lower(clause)])), status: "completed", waiting: false };
 }
 
 /** The clause of a row's waits once they are over. */
-function waited(sent: readonly PeerRef[], received: readonly PeerRef[], failed: boolean, alone: boolean): WordPart[] {
+function waited(sent: readonly PeerRef[], received: readonly PeerRef[]): WordPart[] {
   const sessions = (refs: readonly PeerRef[]) => new Set(refs.map((ref) => ref.session));
-  if (received.length === 0) return failed ? ["Couldn’t wait for a reply"] : ["Waited; no reply yet"];
+  if (received.length === 0) return ["Waited; no reply yet"];
   const all = sessions(received);
-  if (!alone && [...sessions(sent)].every((session) => all.has(session))) return [all.size === 1 ? "Waited for its reply" : "Waited for their replies"];
-  // A wait on its own (`brigadier wait` on another session) took the reply.
-  if (alone) return all.size === 1 ? ["Received a reply from ", ...named(received)] : ["Received replies from ", ...named(received)];
+  if ([...sessions(sent)].every((session) => all.has(session))) return [all.size === 1 ? "Waited for its reply" : "Waited for their replies"];
   return all.size === 1 ? ["Waited for a reply from ", ...named(received)] : ["Waited for replies from ", ...named(received)];
 }
 
