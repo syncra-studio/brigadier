@@ -85,6 +85,29 @@ for budget in "base $base 2140" "worker $((base - $(size "$S"/lead.txt) - 2)) 16
   [ $(($2 + 2 + $(size "$S"/repos.txt))) -gt $(($3 + 300)) ] && fail "a folder chat's standing text for $1 is over its limit of $(($3 + 300)) bytes"
 done
 
+# The product's name stays only where a user or a provider's CLI meets the product itself [D269, D276]. Each kept
+# mention goes once, by its file and words; what's left fails. [C] keeps these lines from matching themselves.
+found="$({ git grep --untracked -IniE '[c]hat[ _-]?gpt'; files; } | sed -E \
+  -e '\#^app/ui/gallery/onboarding\.tsx:#s#how: "[C]hatGPT account"##' \
+  -e '\#^crates/core/src/adapters/codex/control\.rs:#{
+s#// The [C]hatGPT app.s computer-use plugins##
+s#the [C]hatGPT app.s \(node_repl\)##
+s#"/[C]hatGPT\.app/"##
+}' \
+  -e '\#^crates/core/src/adapters/codex/mod\.rs:#{
+s#learn\.[c]hatgpt\.com/docs/codex/cli##
+s#https://[c]hatgpt\.com/codex/install\.sh##
+s#"[C]hatGPT$##
+s#said\.contains\("[C]hatGPT"\)##
+s#"[C]hatGPT account"##
+s#`node_repl`, the [C]hatGPT app.s MCP server##
+}' \
+  -e '\#^crates/core/src/adapters/codex/models\.rs:#s#"[c]hatgpt" => "[C]hatGPT account"##' |
+  grep -iE '[c]hat[ _-]?gpt')" && {
+  fail "a product's name outside the kept mentions: say what the behaviour or look is"
+  echo "$found"
+}
+
 found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)')" && {
   fail "commit with an attribution line"
   echo "$found"
