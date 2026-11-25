@@ -78,7 +78,7 @@ export function RailItem({
       onAnimationEnd={(event) => {
         if (shown || event.target !== event.currentTarget) return;
         setPresent(false);
-          }}
+      }}
       className={cx(
         "grid grid-rows-1 first:rounded-t-overlay",
         !shown ? "motion-safe:animate-rail-close" : opens && "motion-safe:animate-rail-open",

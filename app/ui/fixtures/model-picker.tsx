@@ -1,6 +1,6 @@
 // Mockup only: the model picker as a menu of three columns, "In the footer" (round 2's B, ?v=b), drawn by the app's own
 // parts since it was wired in (src/components/composer/model-columns.tsx), over fake agents, models and limits: in a
-// chat, a new chat, Settings, Fork and a side chat. Not the app.
+// chat, a new chat, Settings, Fork and a side chat. Not the app; ?v=real is the app itself on a fake daemon.
 import "../src/theme.css";
 import "./fixtures.css";
 
@@ -24,6 +24,7 @@ import { UserBubble } from "../src/components/thread/message";
 import { showToast, Toaster } from "../src/components/toast";
 import { BranchAlt } from "../src/icons";
 import { groups, type Ready } from "./model-picker-fake";
+import { openReal } from "./model-picker-real";
 
 if (favorites.get().length === 0) favorites.set(["claude/opus", "claude/sonnet", "codex/sol"]);
 
@@ -128,4 +129,5 @@ function Page() {
 }
 
 const variant = new URLSearchParams(location.search).get("v") ?? "b";
-createRoot(document.getElementById("root")!).render(variant === "b" ? <Page /> : <p className="p-4 text-label">This variant was dropped. Its round keeps its screenshot.</p>);
+if (variant === "real") void openReal();
+else createRoot(document.getElementById("root")!).render(variant === "b" ? <Page /> : <p className="p-4 text-label">This variant was dropped. Its round keeps its screenshot.</p>);

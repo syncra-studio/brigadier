@@ -1130,7 +1130,7 @@
 /* Base UI's popup measures: room left on screen, the trigger's width. */
 /* The model picker's columns: `data-rows` rows and the search over them, to the limit it scrolls past. */
 @utility min-h-picker-rows {
-  min-height: min(24rem, calc(attr(data-rows type(<number>), 0) * (var(--spacing-menu-item) + 1px) + 3rem));
+  min-height: min(24rem, calc(attr(data-rows type(<number>), 0) * (var(--spacing-menu-item) + 1px) + 2.5625rem));
 }
 @utility max-h-available {
   max-height: var(--available-height);
