@@ -132,10 +132,10 @@ pub fn call(command: &str) -> bool {
         words = inner;
     }
     let program = words.first().map_or("", String::as_str);
-    // `mcp call` runs a server's tool, so it follows the session's level, never this grant [D3023].
+    // `mcp call` runs a server's tool and `mcp tools` starts the server, so they follow the
+    // session's level, never this grant [D3023].
     let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
-    let mcp_call = words.get(1).is_some_and(|w| w == "mcp")
-        && !action.is_some_and(|a| a == "list" || a == "tools");
+    let mcp_call = words.get(1).is_some_and(|w| w == "mcp") && !action.is_some_and(|a| a == "list");
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
         && !mcp_call

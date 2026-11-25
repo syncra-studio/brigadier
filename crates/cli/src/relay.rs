@@ -40,11 +40,11 @@ that touched a file (words may then be left out). A newer message may revise an 
             &[],
         ),
         "mcp" => (
-            "brigadier mcp list | tools <server> | call <server> <tool> ['<json>'] [--json]
+            "brigadier mcp list | tools <server> [<tool>] | call <server> <tool> ['<json>'] [--json]
 
 The user's MCP servers: Brigadier's library for this project first, then every agent's own config,
-the same on every agent: `list` names them, `tools <server>` lists its tools with their input
-schemas, `call` runs one tool with the JSON object of its arguments (none: {}) and prints what it
+the same on every agent: `list` names them, `tools <server>` lists its tools, with a tool's name
+its input schema, `call` runs one tool with the JSON object of its arguments (none: {}) and prints what it
 answered. One connection per server is kept for you while you use it, so what a call opens stays
 good for your next call. A library server uses Brigadier's one sign-in; one whose sign-in ended says
 so, and the user signs in again in Brigadier (Settings › Plugins).",
@@ -114,8 +114,13 @@ pub fn worded(data: &Path, me: &str, args: &[String]) -> Value {
     if json {
         reply.as_object_mut().map(|o| o.remove("text"));
     } else if reply["ok"] == true {
-        reply =
-            json!({"ok": true, "text": crate::agent::cap(reply["text"].as_str().unwrap_or(""))});
+        // A server's answer is read from its start, as a skill is; a terminal's from its end.
+        let text = reply["text"].as_str().unwrap_or("");
+        let text = match args[0].as_str() {
+            "mcp" => head(text.into(), "ask for less"),
+            _ => crate::agent::cap(text),
+        };
+        reply = json!({"ok": true, "text": text});
     }
     reply
 }
@@ -238,6 +243,19 @@ pub(crate) fn described(text: &str) -> String {
     d.chars().take(200).collect()
 }
 
+/// `text` cut to 15 KB from its end, saying `rest`.
+fn head(mut text: String, rest: &str) -> String {
+    if text.len() > 15 << 10 {
+        let mut at = 15 << 10;
+        while !text.is_char_boundary(at) {
+            at -= 1;
+        }
+        text.truncate(at);
+        text += &format!("\n[cut; {rest}]");
+    }
+    text
+}
+
 /// `skill`: the list, or one whole.
 fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
     let (all, hidden) = skills(data, me);
@@ -261,7 +279,18 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         };
         return json!({"ok": true, "skills": list, "text": text + "`brigadier skill <name>` prints one."});
     };
-    let Some(k) = all.iter().find(|k| k["name"] == name) else {
+    // A plugin's skill by its own name too, when one plugin has it: `ponytail` is `ponytail:ponytail`.
+    let own = |k: &&Value| {
+        k["name"]
+            .as_str()
+            .is_some_and(|n| n.rsplit_once(':').is_some_and(|(_, s)| s == name))
+    };
+    let by_own = || {
+        Some(all.iter().filter(own))
+            .filter(|m| m.clone().count() == 1)?
+            .next()
+    };
+    let Some(k) = all.iter().find(|k| k["name"] == name).or_else(by_own) else {
         let error = match hidden.why(name) {
             Some(why) => format!("The skill {name:?} is {why} in Settings › Plugins."),
             None => format!("No skill {name:?}. `brigadier skill` lists them."),
@@ -273,16 +302,8 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         .parent()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
-    let mut text = read(k);
     // The reply's cap cuts from the start; a skill is read from its start.
-    if text.len() > 15 << 10 {
-        let mut at = 15 << 10;
-        while !text.is_char_boundary(at) {
-            at -= 1;
-        }
-        text.truncate(at);
-        text += &format!("\n[cut; the rest is in {path}]");
-    }
+    let text = head(read(k), &format!("the rest is in {path}"));
     json!({"ok": true, "name": name, "path": path, "folder": folder,
         "text": format!("{text}\n\n[Its folder: {folder}]")})
 }
