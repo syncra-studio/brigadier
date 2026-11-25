@@ -10,7 +10,7 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
-import { type Settings, lidHint, loadLid, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
+import { type Settings, lidHint, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
 import { ChatLayoutChoice } from "./chat-layout";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -237,7 +237,6 @@ function PowerSection({ settings }: { settings: Settings }) {
   const save = useSave();
   const lidSave = useSave();
   const lid = useLid();
-  useEffect(loadLid, []);
   return (
     <SettingsSection title="Power">
       <SettingsCard>

@@ -30,7 +30,7 @@ const MIN_PERCENT: u32 = 10;
 /// On battery at or below this charge, above MIN_PERCENT, the app warns of it.
 const WARN_PERCENT: u32 = 15;
 /// On power or above WARN_PERCENT this long, the next discharge warns again: a moment's plug-in doesn't.
-const RECHARGED: Duration = Duration::from_secs(120);
+const RECHARGED: Duration = Duration::from_secs(60);
 /// How often battery and another app's hold are looked at again while the lid is wanted.
 const CHECK_EVERY: Duration = Duration::from_secs(10);
 
@@ -68,8 +68,12 @@ fn read_note(file: &Path) -> Value {
         .unwrap_or_default()
 }
 
-/// `awake lid-seen`: the user has seen that the Mac slept.
-pub fn seen(data: &Path) -> io::Result<Value> {
+/// `awake lid-seen AT`: the user has seen that the Mac slept then; a later sleep stays.
+pub fn seen(data: &Path, at: Option<&String>) -> io::Result<Value> {
+    let at = at.and_then(|at| at.parse().ok());
+    if at.is_none() || read_note(&slept(data))["at"].as_u64() != at {
+        return Ok(json!({"ok": true}));
+    }
     match fs::remove_file(slept(data)) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(json!({"ok": true})),
@@ -220,6 +224,11 @@ impl Battery {
     fn low(self) -> bool {
         self.used && self.percent <= MIN_PERCENT
     }
+
+    /// Worth its warning: at or below WARN_PERCENT, not low yet.
+    fn near(self) -> bool {
+        self.used && self.percent <= WARN_PERCENT && !self.low()
+    }
 }
 
 /// From `pmset -g batt`; none on a Mac with no battery.
@@ -270,6 +279,8 @@ pub struct Lid {
     next: Option<Instant>,
     /// When a restore that failed is tried again.
     retry: Option<Instant>,
+    /// As last looked at.
+    battery: Option<Battery>,
     /// When the battery is next looked at with the lid not wanted, to see a warned one charged.
     look: Option<Instant>,
     /// Since when it has been on power or above WARN_PERCENT.
@@ -295,8 +306,8 @@ impl Lid {
         }
         self.next = Some(Instant::now() + CHECK_EVERY);
         let battery = battery();
-        self.warn(data, battery);
         if let Some(low) = battery.filter(|b| b.low()) {
+            self.warn(data, battery);
             self.release(data, Some(low.percent));
             return;
         }
@@ -309,10 +320,17 @@ impl Lid {
                 .inspect_err(|e| eprintln!("brigadierd: can't keep going with the lid closed: {e}"))
                 .ok();
         }
+        self.warn(data, battery);
     }
 
-    /// Warns once per discharge, while the lid is held by this daemon: another app's hold isn't let go.
+    /// Whether this daemon holds it: another app's hold isn't let go when the battery is low.
+    fn owned(&self) -> bool {
+        self.held.as_ref().is_some_and(|h| h.owned)
+    }
+
+    /// Warns once per discharge, while this daemon holds the lid.
     fn warn(&mut self, data: &Path, battery: Option<Battery>) {
+        self.battery = battery;
         let Some(battery) = battery else {
             return;
         };
@@ -325,16 +343,22 @@ impl Lid {
             return;
         }
         self.charged = None;
-        let held = self.held.as_ref().is_some_and(|h| h.owned);
-        if held && !battery.low() && !file.exists() {
+        if self.owned() && battery.near() && !file.exists() {
             write_note(&file, now_ms(), battery.percent);
         }
     }
 
-    /// What the app shows: whether the lid is held, this discharge's warning and the sleep not seen yet.
+    /// What the app shows: whether the lid is held, this discharge's warning at the charge now, only
+    /// while it's still true, and the sleep not seen yet.
     pub fn shown(&self, data: &Path) -> Value {
-        json!({"held": self.held.is_some(), "warned": read_note(&warned(data)),
-            "slept": read_note(&slept(data))})
+        let mut note = Value::Null;
+        if let Some(battery) = self.battery.filter(|b| b.near() && self.owned()) {
+            note = read_note(&warned(data));
+            if note.is_object() {
+                note["percent"] = battery.percent.into();
+            }
+        }
+        json!({"held": self.held.is_some(), "warned": note, "slept": read_note(&slept(data))})
     }
 
     /// Restores sleep if this daemon disabled it, then sleeps now if the lid is shut and that

@@ -75,7 +75,7 @@ pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | 
        brigadier host <id>|@ (@: the Code Review page; ref = host/owner/name#n; (in): text on stdin) view|files <ref> [kept] | search <query>... | users <ref> <text> | stack|generated <ref> | comment <ref> (in) | comment-edit <ref> <node> (in) | comment-delete <ref> <node> | react <ref> <node> <content> on|off | edit <ref> --title T | --body (in) | reply <ref> <thread> (in) | resolve|unresolve <ref> <thread> | viewed|unviewed <ref> <path> | pending <ref> <path> <line> LEFT|RIGHT [<start>] (in) | review <ref> approve|comment|changes (in) | review-discard <ref>
        brigadier host <id>|@ reviewers <ref> add|remove|rerequest <login|org/team>... | merge <ref> squash|merge|rebase --head <sha> | automerge <ref> on <method> | off | close|reopen|draft|ready <ref> | host <session> create [--branch NEW] [--commit] [--title T] [--message M] [--draft] [--base B] [--head H] | attach|detach <ref> | compare <base> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
-       brigadier awake [off|work|always|lid|lid-setup|lid-seen] | settings [KEY VALUE | agent NAME on|off]
+       brigadier awake [off|work|always|lid|lid-setup|lid-seen AT] | settings [KEY VALUE | agent NAME on|off]
        brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
        brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] (null: choose the first available writer again) | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: find a GitHub account again, save the default browser profile, or restore the default icon) | accounts I | reveal I | remove I]
        brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
@@ -425,7 +425,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "plugins" => plugins::run(data, args),
         "models" | "set" => models::run(data, args),
         "accounts" | "switching" | "switch" | "rebirth" | "reconnect" => accounts::run(data, args),
-        "awake" => settings::awake(data, args.get(1)),
+        "awake" => settings::awake(data, args),
         "transcript" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
