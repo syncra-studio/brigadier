@@ -201,11 +201,18 @@ fn asked(
     here: &dyn Fn() -> bool,
 ) -> Result<bool, Value> {
     let chat = crate::workers::place(data, me).0;
+    let (_, turn) = level(data, me);
+    // A no holds for its turn, whatever another worker of the chat was allowed since [D46].
+    let denied = || {
+        let no = lock(&ASKS).no.get(&(me.into(), app.into())).cloned();
+        no.filter(|(t, _)| Some(t) == turn.as_ref())
+            .map_or(Ok(()), |(_, why)| Err(refuse(&why)))
+    };
+    denied()?;
     if allowed(data, &chat, app) {
         return Ok(true);
     }
-    let (_, turn) = level(data, me);
-    let Some(turn) = turn else {
+    let Some(turn) = &turn else {
         return Err(refuse(
             "At Ask the user is asked first, which needs a running turn.",
         ));
@@ -215,12 +222,9 @@ fn asked(
     let call = Call::new(me, app);
     let start = Instant::now();
     let past = loop {
+        denied()?;
         if allowed(data, &chat, app) {
             break false;
-        }
-        let no = lock(&ASKS).no.get(&(me.into(), app.into())).cloned();
-        if let Some((_, why)) = no.filter(|(t, _)| *t == turn) {
-            return Err(refuse(&why));
         }
         if !super::super::on(data) {
             left(me, &|_| true, Some(app));
@@ -231,7 +235,7 @@ fn asked(
             left(me, &|_| true, Some(app));
             break true;
         }
-        if now.as_ref() != Some(&turn) {
+        if now.as_ref() != Some(turn) {
             left(me, &|t| t == turn, Some(app));
             return Err(refuse("Stopped."));
         }
@@ -241,7 +245,7 @@ fn asked(
                 name(app)
             )));
         }
-        join(data, me, &turn, &chat, app)?;
+        join(data, me, turn, &chat, app)?;
         thread::sleep(TICK);
     };
     drop(call);
