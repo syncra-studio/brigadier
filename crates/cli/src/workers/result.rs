@@ -207,6 +207,9 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 false => review::holds(data, &mut l, wid, turn, how, &f),
             };
             let Some(how) = how else { break };
+            if late && !direct && how == "finished" {
+                review::ran(data, &l, wid, turn, of.end);
+            }
             report::write_as(data, &l, wid, turn, how, None, of)?;
         }
     }

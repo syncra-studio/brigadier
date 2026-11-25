@@ -94,7 +94,7 @@ pub(super) fn lock_at(path: &Path) -> io::Result<fs::File> {
 /// w185's review note [D2038], into `into`'s log.
 fn note(data: &Path, into: &str, r: &Value, counts: [Option<u64>; 3], why: Option<&str>) {
     let [findings, fixed, rejected] = counts;
-    let n = json!({"event": "outcome", "phase": "review", "reviewer": r["reviewer"], "findings": findings,
+    let n = json!({"event": "outcome", "phase": "review", "id": r["id"], "reviewer": r["reviewer"], "findings": findings,
         "fixed": fixed, "rejected": rejected, "ran": why.is_none(), "why": why});
     if let Ok(spec) = core::load(data, into) {
         let _ = owner::ensure(data, &spec);
@@ -315,6 +315,30 @@ pub(super) fn found(text: &str) -> bool {
     count(text, "findings:").is_some()
 }
 
+/// The note of the review an agent started, by its reviewer's turn: `outcomes` counts the last, and
+/// one already noted isn't again.
+fn own(data: &Path, l: &Link, wid: &str, turn: &str, findings: Option<u64>, why: Option<&str>) {
+    let of = l.review["of"].as_str().unwrap_or("");
+    let into = if of == "session" { wid } else { of };
+    let r = json!({"id": format!("{wid}.{turn}"),
+        "reviewer": {"agent": l.ran["agent"], "model": l.ran["model"]}});
+    let same = |n: &Value| {
+        n["id"] == r["id"] && n["ran"] == why.is_none() && n["findings"] == json!(findings)
+    };
+    if !super::outcomes(data, into).iter().any(same) {
+        note(data, into, &r, [findings, None, None], why);
+    }
+}
+
+/// A reviewer heard again finished: its review ran after all. Noted before its result is written,
+/// so a kill between them never loses it.
+pub(super) fn ran(data: &Path, l: &Link, wid: &str, turn: &str, end: u64) {
+    if l.review["of"].is_string() {
+        let findings = last_by(data, wid, turn, end).and_then(|t| count(&t, "findings:"));
+        own(data, l, wid, turn, findings, None);
+    }
+}
+
 /// Under the lock, after a reviewer's result: its note; under the switch, its findings to its
 /// worker as one peer message, which starts the fix turn, the next reviewer after one that failed
 /// or met its limit, or the worker whose result goes now.
@@ -328,14 +352,12 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         plan::reviewed(data, l, how, said, findings);
         return None;
     }
-    let reviewer = json!({"agent": l.ran["agent"], "model": l.ran["model"]});
     let why = (how != "finished").then(|| format!("the reviewer {}", word(how)));
     if l.review["switch"] != true {
-        let into = if of == "session" { wid } else { of };
-        let r = json!({"reviewer": reviewer});
-        note(data, into, &r, [findings, None, None], why.as_deref());
+        own(data, l, wid, turn, findings, why.as_deref());
         return None;
     }
+    let reviewer = json!({"agent": l.ran["agent"], "model": l.ran["model"]});
     let mut a =
         link(data, of).filter(|a| a.review["by"] == wid && a.review["state"] == "running")?;
     {

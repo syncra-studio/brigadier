@@ -4,7 +4,8 @@
 //!
 //! The review note 4.10 writes into the reviewed worker's own log [D3026]:
 //! `{"event": "outcome", "phase": "review", "reviewer": {"agent", "model"}, "findings": n,
-//! "fixed": n, "rejected": n, "ran": bool, "why": "…" | null}` (`why`: why it didn't run).
+//! "fixed": n, "rejected": n, "ran": bool, "why": "…" | null}` (`why`: why it didn't run), with the
+//! `id` of the reviewer's turn where an agent started it: one heard again has several, the last counts.
 
 use crate::workers::{self, git};
 use brigadier_core as core;
@@ -152,8 +153,10 @@ pub(crate) fn results(data: &Path) -> Value {
             continue;
         }
         let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
-        for n in &notes {
+        for (i, n) in notes.iter().enumerate() {
+            let again = |m: &Value| m["phase"] == "review" && m["id"] == n["id"];
             match n["phase"] == "review" {
+                true if n["id"].is_string() && notes[i + 1..].iter().any(again) => {}
                 true if n["ran"] == true => add(n),
                 true => off += 1,
                 false => {}
