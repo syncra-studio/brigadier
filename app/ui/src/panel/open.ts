@@ -11,8 +11,8 @@ type PrAt = { number: number; repo?: string | null; url?: string };
 
 /**
  * What `owner`'s Pull requests tab names a PR by [D1017, D1113]: its number, `owner/name#n` for another repository's
- * [D213]. The full `host/owner/name#n` reads through the Pull Requests page, off the session's PR watch, so only in a
- * folder chat, which has no checkout to read through [D494]; null there for a PR with no url to name it by.
+ * [D213]. The full `host/owner/name#n` is read with no checkout, off the session's PR watch, so only in a folder
+ * chat, which has none to read through [D494]; null there for a PR with no url to name it by.
  */
 export function prTarget(owner: string, pr: PrAt): string | null {
   const project = view.rows?.find((row) => row.id === owner)?.project;

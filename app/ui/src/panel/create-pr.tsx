@@ -177,7 +177,7 @@ export function mergePr(host: string, target: string, ref: string | null) {
     .then((reply) => {
       const live = reply.pr as PullRequest;
       const why = mergeBlocked(live);
-      return why ? showToast(why, { tone: "error" }) : openPrDialog({ kind: "merge", pr: { ...live, ref: live.ref ?? ref ?? undefined } });
+      return why ? showToast(why, { tone: "error" }) : openPrDialog({ kind: "merge", pr: { ...live, owner: host, ref: live.ref ?? ref ?? undefined } });
     })
     .catch((cause) => showToast(errorText(cause), { tone: "error" }));
 }

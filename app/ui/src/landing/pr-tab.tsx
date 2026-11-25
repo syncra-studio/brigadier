@@ -95,7 +95,7 @@ export function PrTab({
   }
   const act = (verb: "close" | "reopen" | "draft" | "ready" | "automerge", ...rest: string[]) => {
     setBusy(true);
-    prAct(verb, pr.ref!, ...rest)
+    prAct(verb, pr, ...rest)
       .catch((cause: Error) => showToast(cause.message || "GitHub could not update this pull request", { tone: "error" }))
       .finally(() => (setBusy(false), sends.onChanged()));
   };

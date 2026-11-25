@@ -16,7 +16,7 @@ import { ArrowUpRight, ChevronRight, DotsHorizontal, Pencil } from "../icons";
 import { SimpleSmile } from "../icons/note";
 import { ArrowCurvedLeft, Chat, Trash } from "../icons/thread";
 import { Markdown } from "../thread/markdown";
-import { prAct, said } from "./pr-act";
+import { prAct, prArgs, said } from "./pr-act";
 import { Avatar, type Sends } from "./pr-parts";
 import { ago } from "./pr-words";
 import type { PrComment, PrReaction, PullRequest } from "./pull-requests";
@@ -94,7 +94,7 @@ export function Reactions({ pr, subject, reactions = [], onChanged }: { pr: Pull
       ? now.map((each) => (each.content === content ? { ...each, mine: !mine, count: each.count + (mine ? -1 : 1) } : each)).filter((each) => each.count > 0)
       : [...now, { content, count: 1, mine: true }];
     setShown(next);
-    prAct("react", pr.ref!, subject, content, mine ? "off" : "on")
+    prAct("react", pr, subject, content, mine ? "off" : "on")
       .catch((cause: Error) => (setShown(null), showToast(cause.message, { tone: "error" })))
       .finally(onChanged);
   };
@@ -161,7 +161,7 @@ export function Writer({
   /** A quote asked for: added to the words, once per ask. */
   quote?: { text: string; n: number };
   /** The PR whose people an `@` suggests [D165]. */
-  mentions?: string;
+  mentions?: PullRequest;
 }) {
   const [text, setText] = useState(initial);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -169,10 +169,10 @@ export function Writer({
   const [at, setAt] = useState<{ word: string; end: number } | null>(null);
   const [people, setPeople] = useState<{ login: string; name: string | null }[]>([]);
   useEffect(() => {
-    if (!mentions || !at) return setPeople([]);
-    const timer = setTimeout(() => ask({ op: "run", args: ["host", "@", "users", mentions, at.word] }, (reply) => setPeople(reply.ok ? (reply.users as typeof people).slice(0, 6) : [])), 250);
+    if (!mentions?.ref || !at) return setPeople([]);
+    const timer = setTimeout(() => ask({ op: "run", args: prArgs("users", mentions, at.word) }, (reply) => setPeople(reply.ok ? (reply.users as typeof people).slice(0, 6) : [])), 250);
     return () => clearTimeout(timer);
-  }, [mentions, at?.word]);
+  }, [mentions?.ref, at?.word]);
   const typed = (value: string, caret: number) => {
     setText(value);
     const word = /(?:^|\s)@([\w-]*)$/.exec(value.slice(0, caret));
@@ -274,7 +274,7 @@ export function CommentCard({
   const node = comment.node;
   const remove = () => {
     setBusy(true);
-    prAct("comment-delete", pr.ref!, node!)
+    prAct("comment-delete", pr, node!)
       .then(
         () => showToast("Comment deleted"),
         (cause: Error) => showToast(cause.message || "GitHub could not delete this comment", { tone: "error" }),
@@ -350,7 +350,7 @@ export function CommentCard({
             initial={comment.body}
             verb="Save"
             onCancel={() => setEditing(false)}
-            onSend={(text) => prAct("comment-edit", pr.ref!, node!, ...said(text)).then(() => (setEditing(false), sends.onChanged()))}
+            onSend={(text) => prAct("comment-edit", pr, node!, ...said(text)).then(() => (setEditing(false), sends.onChanged()))}
           />
         ) : (
           <div className={cx("min-w-0 text-sm", busy && "opacity-disabled")}>

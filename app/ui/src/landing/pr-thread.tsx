@@ -38,7 +38,7 @@ export function ThreadCard({
   const [busy, setBusy] = useState(false);
   const resolve = () => {
     setBusy(true);
-    prAct(thread.resolved ? "unresolve" : "resolve", pr.ref!, thread.id)
+    prAct(thread.resolved ? "unresolve" : "resolve", pr, thread.id)
       .catch((cause: Error) => showToast(`Could not update this review thread: ${cause.message}`, { tone: "error" }))
       .finally(() => (setBusy(false), sends.onChanged()));
   };
@@ -70,7 +70,7 @@ export function ThreadCard({
             rows={3}
             quote={quote}
             onCancel={() => setReplying(false)}
-            onSend={(text) => prAct("reply", pr.ref!, thread.id, ...said(text)).then(() => (setReplying(false), sends.onChanged()))}
+            onSend={(text) => prAct("reply", pr, thread.id, ...said(text)).then(() => (setReplying(false), sends.onChanged()))}
           />
         ) : (
           <div className="flex gap-2">

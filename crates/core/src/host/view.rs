@@ -51,6 +51,7 @@ pub fn kept_files(dir: &Path, other: Option<&str>, number: u64) -> Value {
 }
 
 /// The open PRs whose tab the session has open (`tabs.json`): the watch reads their pages too [D207].
+/// Not one named whole, which its tab reads itself.
 pub fn tabbed(dir: &Path) -> Vec<(Option<String>, u64)> {
     let tabs: Value = (fs::read(dir.join("tabs.json")).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
@@ -58,6 +59,7 @@ pub fn tabbed(dir: &Path) -> Vec<(Option<String>, u64)> {
     (tabs["tabs"].as_array().into_iter().flatten())
         .filter(|t| t["kind"] == "pr")
         .filter_map(|t| super::pr_ref(t["target"].as_str()?))
+        .filter(|(other, _)| !other.as_deref().is_some_and(super::hosted_slug))
         .filter(|(other, n)| {
             !matches!(
                 kept_view(dir, other.as_deref(), *n)["state"].as_str(),

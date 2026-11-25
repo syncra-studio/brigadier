@@ -16,7 +16,7 @@ import { Comment } from "../icons/sidebar";
 import { Line } from "../panel/source/rows";
 import { openPrPage } from "../pull-requests/route";
 import { Clock, PullRequestOpen, XCircle } from "./icons";
-import { prAct } from "./pr-act";
+import { prAct, prArgs } from "./pr-act";
 import { Avatar, type Sends } from "./pr-parts";
 import type { PrCheck, PullRequest } from "./pull-requests";
 
@@ -88,14 +88,14 @@ function RequestReviewers({ pr, open, onOpenChange, onDone }: { pr: PullRequest;
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    const timer = setTimeout(() => ask({ op: "run", args: ["host", "@", "users", pr.ref!, text] }, (reply) => setFound(reply.ok ? reply.users : [])), 250);
+    const timer = setTimeout(() => ask({ op: "run", args: prArgs("users", pr, text) }, (reply) => setFound(reply.ok ? reply.users : [])), 250);
     return () => clearTimeout(timer);
   }, [open, text]);
   const asked = new Set(pr.reviewers.map((r) => r.login));
   const send = () => {
     setBusy(true);
     setError(null);
-    prAct("reviewers", pr.ref!, "add", ...picked)
+    prAct("reviewers", pr, "add", ...picked)
       .then(() => (setPicked([]), onOpenChange(false)), (cause: Error) => setError(cause.message))
       .finally(() => (setBusy(false), onDone()));
   };
@@ -141,7 +141,7 @@ function useStack(pr: PullRequest): { ref: string; number: number; title: string
   const [stack, setStack] = useState<{ ref: string; number: number; title: string; state: string }[]>([]);
   useEffect(() => {
     if (!daemon || !pr.ref) return;
-    ask({ op: "run", args: ["host", "@", "stack", pr.ref] }, (reply) => reply.ok && setStack([...reply.stack.below, ...reply.stack.above]));
+    ask({ op: "run", args: prArgs("stack", pr) }, (reply) => reply.ok && setStack([...reply.stack.below, ...reply.stack.above]));
   }, [daemon, pr.ref, pr.head]);
   return stack;
 }
@@ -156,7 +156,7 @@ export function PrAside({ pr, sends, onFix }: { pr: PullRequest; sends: Sends; o
   const [resolvedShown, setResolvedShown] = useState(false);
   const stack = useStack(pr);
   const reviewers = (verb: "remove" | "rerequest", login: string) =>
-    prAct("reviewers", pr.ref!, verb, login)
+    prAct("reviewers", pr, verb, login)
       .catch((cause: Error) => showToast(cause.message, { tone: "error" }))
       .finally(sends.onChanged);
   const failed = pr.checks.filter((check) => check.state === "failed");

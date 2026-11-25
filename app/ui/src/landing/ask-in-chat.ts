@@ -39,13 +39,17 @@ function chipName(pr: PullRequest, focus: Focus): string {
   return `PR ${pr.repo ?? ""}#${pr.number}`;
 }
 
+const UUID = 36;
+
 /** The PR in `owner`'s composer, once, as an inline chip named by `chipName` whose text is `prText` [D692]: the composer's own pasted-text chip, so a click opens that text in its tab. */
 async function withChip(owner: string, pr: PullRequest, key: string, focus: Focus): Promise<Draft> {
   const name = chipName(pr, focus);
+  // Two PRs' chips may share a name ("1 failing check · build"): the id says whose it is.
+  const tag = `${(pr.node ?? pr.ref ?? "pr").replace(/\W/g, "_").slice(0, 80)}-`;
   await loadDraft(run, key);
   const draft = draftOf(key) ?? EMPTY_DRAFT;
-  if (draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name)) return draft;
-  const id = crypto.randomUUID();
+  if (draft.parts.some((part) => typeof part !== "string" && part.kind === "paste" && part.preview === name && part.attachmentId.slice(0, -UUID) === tag)) return draft;
+  const id = tag + crypto.randomUUID();
   await run(["attach", owner, "add", id, `${name}.txt`, "--data", base64(new TextEncoder().encode(prText(pr, focus)).buffer)]);
   stored(owner, id, `${name}.txt`);
   const chip: Chip = { kind: "paste", attachmentId: id, preview: name };

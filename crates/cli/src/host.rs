@@ -10,7 +10,8 @@
 //! whose repository that is, or null, for a PR's review chat [D198].
 //! `<id>` may be `@`, the Code Review page, with no session or project: its PRs are named
 //! `host/owner/name#n` and its search has no repository scope [D159]. The PR page's writes and the
-//! reads behind them (`users`, `stack`, `generated`) take that name only [D161, D164–D166]; a
+//! reads behind them (`users`, `stack`, `generated`) take that name only [D161, D164–D166], a
+//! session's going as its project's account, with no checkout, as its reads of one named so; a
 //! session's `create`, `attach`/`detach` and `compare` are its branch row's [D168, D169].
 
 use super::arg;
@@ -90,7 +91,10 @@ fn pr_run(data: &Path, args: &[String]) -> io::Result<Value> {
             _ => return Err(io::Error::other(super::USAGE)),
         });
     }
-    let pr = host::pr(data, id)?;
+    let pr = match args.get(3).and_then(|target| host::qualified(target)) {
+        Some((at, _)) => host::named(data, id, &at)?,
+        None => host::pr(data, id)?,
+    };
     Ok(match arg(args, 2)? {
         "view" => {
             let (other, n) = number(args)?;
@@ -168,7 +172,7 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
                 return Ok(None);
             };
             let (at, n) = named(args)?;
-            let pr = host::pr(data, id)?;
+            let pr = host::named(data, id, &at)?;
             match *write {
                 "users" => return Ok(Some(json!({"ok": true, "users": pr.users(&at, word(4)?)?}))),
                 "stack" => return Ok(Some(json!({"ok": true, "stack": pr.stack(&at, n)?}))),

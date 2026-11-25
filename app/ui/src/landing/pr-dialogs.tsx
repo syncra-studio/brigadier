@@ -29,7 +29,7 @@ export function MergeDialog({ pr, open, onOpenChange, onDone }: { pr: PullReques
   const merge = () => {
     setBusy(true);
     setError(null);
-    prAct("merge", pr.ref!, method, "--head", pr.head)
+    prAct("merge", pr, method, "--head", pr.head)
       .then(() => onOpenChange(false), (cause: Error) => setError(cause.message))
       .finally(() => {
         setBusy(false);
@@ -90,14 +90,14 @@ export function SubmitReviewDialog({ pr, open, onOpenChange, onDone }: { pr: Pul
   const submit = () => {
     setBusy(true);
     setError(null);
-    prAct("review", pr.ref!, decision, ...said(text)).then(
+    prAct("review", pr, decision, ...said(text)).then(
       () => done(true),
       (cause: Error) => (setError(cause.message), done(false)),
     );
   };
   const discard = () => {
     setBusy(true);
-    prAct("review-discard", pr.ref!).then(
+    prAct("review-discard", pr).then(
       () => (setDiscarding(false), done(true)),
       (cause: Error) => (setDiscarding(false), setError(cause.message), done(false)),
     );

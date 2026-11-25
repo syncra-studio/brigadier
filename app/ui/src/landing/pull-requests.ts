@@ -59,6 +59,8 @@ export type PullRequest = {
   onBranch: boolean;
   /** For the PR page's writes [D164]: its name `host/owner/name#n`, its node, who reads it and what they may do. */
   ref?: string;
+  /** The chat whose tab read it, which its writes go as [D631]; none on the Pull Requests page. */
+  owner?: string;
   node?: string;
   viewer?: string | null;
   canEdit?: boolean;

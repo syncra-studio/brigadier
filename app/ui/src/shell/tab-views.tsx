@@ -169,8 +169,8 @@ export function TabbedMain({ owner, archived, children }: { owner: string; archi
             inert={tab.id !== active}
             className={cx("absolute inset-0 flex flex-col bg-background", tab.id !== active && "invisible")}
           >
-            {/* A PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
-            <HostOf.Provider key={host} value={tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
+            {/* On Home a PR named in full (`host/owner/name#n`) is read by the Pull Requests page's own owner, needing no checkout [D159]. */}
+            <HostOf.Provider key={host} value={owner === HOME && tab.kind === "pr" && isRef(tab.target) ? REVIEW : host}>
               {tab.kind === "pr" && tab.target === "list" ? (
                 <PrListTab owner={owner} tab={tab} />
               ) : owner === HOME && !host && (tab.kind === "actions" || (tab.kind === "pr" && !isRef(tab.target))) ? (

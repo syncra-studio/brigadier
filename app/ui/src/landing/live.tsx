@@ -22,20 +22,21 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
   const host = useHost(owner);
   // `n`, or `owner/name#n` for another repository's PR [D213].
   const hash = target.lastIndexOf("#");
-  // A full name's host goes: rows name their repository `owner/name`.
-  const repo = hash < 0 ? null : target.slice(0, hash).split("/").slice(-2).join("/");
+  // Rows name their repository `owner/name`, or with its host too.
+  const full = hash < 0 ? null : target.slice(0, hash);
+  const repo = full?.split("/").slice(-2).join("/") ?? null;
   const number = Number(target.slice(hash + 1));
-  // In a chat's own tab it's read as on the Pull Requests page, but the chat doesn't know which PR that is.
+  // In a chat's own tab, needing no checkout; unlike a review chat's, the chat doesn't know which PR that is.
   const named = isRef(target) && owner !== HOME && owner !== liveReviewChat(target);
   const { daemon, rows } = useDaemon();
-  const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && (each.repo ?? null) === repo);
+  const row = rows?.find((each) => each.id === owner)?.prs?.prs.find((each) => each.number === number && [repo, full].includes(each.repo ?? null));
   const [pr, setPr] = useState<PullRequest>();
   const [error, setError] = useState<string>();
   const [checking, setChecking] = useState(false);
   const latest = useRef<PullRequest>(undefined);
   latest.current = pr;
   // A newer read never gives way to an older one.
-  const land = (next: PullRequest) => setPr((now) => (now && (now.checkedAtMs ?? 0) > (next.checkedAtMs ?? 0) ? now : next));
+  const land = (next: PullRequest) => setPr((now) => (now && (now.checkedAtMs ?? 0) > (next.checkedAtMs ?? 0) ? now : { ...next, owner: host }));
   // One read at a time: one asked while another is out runs once that answers, so an action's is never lost.
   const reading = useRef(false);
   const again = useRef(false);
@@ -68,7 +69,15 @@ export function LivePrTab({ owner, target }: { owner: string; target: string }) 
       latest.current = reply.ok && reply.pr && (!latest.current || reply.pr.checkedAtMs > (latest.current.checkedAtMs ?? 0)) ? reply.pr : latest.current;
       if (stale()) read();
     });
-  }, [daemon, host, target, row?.viewedAtMs, row?.updatedAtMs, row?.health]);
+  }, [daemon, host, target, row?.viewedAtMs]);
+  // The watch reads a named PR's row only, not its page: the page is read again as its row changes.
+  const said = named && row && JSON.stringify({ ...row, viewedAtMs: 0 });
+  const heard = useRef(said);
+  useEffect(() => {
+    const was = heard.current;
+    heard.current = said;
+    if (daemon && was && said && was !== said) read();
+  }, [daemon, said]);
   useEffect(() => {
     if (!daemon) return;
     const focus = () => stale() && read();

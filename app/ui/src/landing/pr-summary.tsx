@@ -66,7 +66,7 @@ function StatePill({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const move = (to: (typeof MOVES)[number]["to"]) => {
     const verb = to === "draft" ? "draft" : to === "closed" ? "close" : pr.state === "draft" ? "ready" : "reopen";
     setBusy(true);
-    prAct(verb, pr.ref!)
+    prAct(verb, pr)
       .catch((cause: Error) => showToast(cause.message || "GitHub could not update this pull request", { tone: "error" }))
       .finally(() => (setBusy(false), sends.onChanged()));
   };
@@ -98,7 +98,7 @@ function Title({ pr, sends }: { pr: PullRequest; sends: Sends }) {
     if (!editing?.trim() || editing.trim() === pr.title) return setEditing(null);
     setBusy(true);
     setError(null);
-    prAct("edit", pr.ref!, "--title", editing.trim())
+    prAct("edit", pr, "--title", editing.trim())
       .then(() => setEditing(null), (cause: Error) => setError(cause.message))
       .finally(() => (setBusy(false), sends.onChanged()));
   };
@@ -201,7 +201,7 @@ function Description({ pr, sends }: { pr: PullRequest; sends: Sends }) {
   const save = () => {
     setBusy(true);
     setError(null);
-    prAct("edit", pr.ref!, "--body", ...said(editing ?? ""))
+    prAct("edit", pr, "--body", ...said(editing ?? ""))
       .then(() => setEditing(null), (cause: Error) => setError(cause.message))
       .finally(() => (setBusy(false), sends.onChanged()));
   };
@@ -406,7 +406,7 @@ function Activity({ pr, sends, onAddToChat }: { pr: PullRequest; sends: Sends; o
           </EventLine>
         )}
       </div>
-      <Writer label="Leave a comment" placeholder="Leave a comment" verb="Comment" mentions={pr.ref} onSend={(text) => prAct("comment", pr.ref!, ...said(text)).finally(sends.onChanged)} />
+      <Writer label="Leave a comment" placeholder="Leave a comment" verb="Comment" mentions={pr} onSend={(text) => prAct("comment", pr, ...said(text)).finally(sends.onChanged)} />
     </section>
   );
 }

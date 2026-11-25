@@ -19,7 +19,7 @@ import { FileSection } from "../review/file-section";
 import type { DiffComment } from "../review/types";
 import { SearchField } from "../settings/archived-toolbar";
 import { useHost } from "./host";
-import { prAct, said } from "./pr-act";
+import { prAct, prArgs, said } from "./pr-act";
 import type { Sends } from "./pr-parts";
 import { ThreadCard } from "./pr-thread";
 import type { PrComment, PrFiles as Files, PrThread, PullRequest } from "./pull-requests";
@@ -148,7 +148,7 @@ export function PrFiles({
   const [generated, setGenerated] = useState<RegExp[]>([]);
   useEffect(() => {
     if (!daemon || !pr.ref) return;
-    ask({ op: "run", args: ["host", "@", "generated", pr.ref] }, (reply) => reply.ok && setGenerated((reply.paths as string[]).map(globTest)));
+    ask({ op: "run", args: prArgs("generated", pr) }, (reply) => reply.ok && setGenerated((reply.paths as string[]).map(globTest)));
   }, [daemon, pr.ref, pr.head]);
   const shownFiles = (files?.files ?? []).filter((file) => look.generated || !generated.some((test) => test.test(file.path)));
   // Viewed as pressed, until the next read says what GitHub kept.
@@ -157,7 +157,7 @@ export function PrFiles({
   const markViewed = (path: string, on: boolean) => {
     setViewed((now) => ({ ...now, [path]: on }));
     if (on) setOpened((now) => new Set([...now].filter((each) => each !== path)));
-    prAct(on ? "viewed" : "unviewed", pr.ref!, path).catch((cause: Error) => {
+    prAct(on ? "viewed" : "unviewed", pr, path).catch((cause: Error) => {
       setViewed((now) => ({ ...now, [path]: !on }));
       showToast(cause.message, { tone: "error" });
     });
@@ -220,7 +220,7 @@ export function PrFiles({
                       )}
                     </span>
                   }
-                  onComment={pr.ref && pr.state !== "merged" && pr.state !== "closed" ? (c) => prAct("pending", pr.ref!, c.path, String(c.end), c.side === "additions" ? "RIGHT" : "LEFT", ...(c.start !== c.end ? [String(c.start)] : []), ...said(c.text)).then(sends.onChanged, (cause: Error) => (showToast(cause.message || "GitHub could not post this comment", { tone: "error" }), Promise.reject(cause))) : undefined}
+                  onComment={pr.ref && pr.state !== "merged" && pr.state !== "closed" ? (c) => prAct("pending", pr, c.path, String(c.end), c.side === "additions" ? "RIGHT" : "LEFT", ...(c.start !== c.end ? [String(c.start)] : []), ...said(c.text)).then(sends.onChanged, (cause: Error) => (showToast(cause.message || "GitHub could not post this comment", { tone: "error" }), Promise.reject(cause))) : undefined}
                 />
               );
             })

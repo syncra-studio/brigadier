@@ -2,10 +2,12 @@
 //! D164–D166]: each on a PR named `host/owner/name#n` [D159], never a bare number. GitHub's refusal
 //! is the error, word for word; nothing is kept here, so the page's next read shows what landed.
 
-use super::{GH_SECS, Gh, Pr, Repo, err, failed, pr_ref, setup};
-use crate::git::Checkout;
+use super::{GH_SECS, Gh, Pr, Repo, err, failed, github, pr_ref, setup};
+use crate::git::{self, Checkout, Target};
+use crate::projects::Project;
 use serde_json::Value;
 use std::io;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 /// The Code Review page's owner [D159]: no session, project or checkout, PRs named whole.
@@ -21,7 +23,7 @@ pub fn qualified(target: &str) -> Option<(String, u64)> {
 /// The Code Review page's Pr: no session, project or checkout.
 // shortcut: its folder stands in as its checkout, which nothing it runs (named reads and writes,
 // search) reads as git.
-pub(super) fn page(data: &std::path::Path) -> Pr {
+pub(super) fn page(data: &Path) -> Pr {
     let dir = super::dir(data, REVIEW);
     Pr {
         id: REVIEW.into(),
@@ -60,6 +62,59 @@ pub enum Verdict {
     Approve,
     Comment,
     Changes,
+}
+
+/// A PR in `at` (`host/owner/name`) as `id`'s own tab names it whole, needing no checkout: read
+/// and written as its project's account where `at` is the project's, or its card lists a PR of
+/// it [D631]; else, as on the page, as any that can read it.
+pub fn named(data: &Path, id: &str, at: &str) -> io::Result<Pr> {
+    let page = page(data);
+    if id == REVIEW {
+        return Ok(page);
+    }
+    let dir = super::dir(data, id);
+    let project = match crate::projects::get(data, id) {
+        Ok(p) => Some(p),
+        Err(_) => {
+            let (Target::Session(sid) | Target::Repo(sid, _) | Target::Project(sid)) =
+                Target::session(id);
+            let project = crate::load(data, sid)?.project;
+            project.and_then(|p| crate::projects::get(data, &p).ok())
+        }
+    };
+    let account = project.and_then(|p| account(data, &p, &dir, at));
+    Ok(Pr {
+        id: id.into(),
+        dir,
+        account,
+        ..page
+    })
+}
+
+fn account(data: &Path, p: &Project, dir: &Path, at: &str) -> Option<String> {
+    p.github_account.as_ref()?;
+    let repo = super::repo(&format!("https://{at}"))?;
+    let same = |r: &Repo| r.host == repo.host && r.path.eq_ignore_ascii_case(&repo.path);
+    let homes: Vec<Repo> = match p.kind == crate::folder::KIND {
+        true => github::homes(data, p).into_iter().map(|(_, r)| r).collect(),
+        false => (git::checkout(data, &Target::Project(&p.id)).ok())
+            .and_then(github::hosted)
+            .map(|(_, r)| r)
+            .into_iter()
+            .collect(),
+    };
+    let listed = || {
+        let (prs, start) = (super::listed(dir), format!("https://{at}/pull/"));
+        (prs["prs"].as_array().into_iter().flatten()).any(|row| {
+            let url = row["url"].as_str().unwrap_or("");
+            (url.get(..start.len())).is_some_and(|u| u.eq_ignore_ascii_case(&start))
+        })
+    };
+    (homes.iter().any(same) || listed())
+        .then(|| github::picked(data, &p.id, Some(&repo)))
+        .flatten()
+        // A picked account is one server's: never another's token.
+        .filter(|_| homes.iter().any(|r| r.host == repo.host))
 }
 
 impl Pr {

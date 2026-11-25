@@ -239,16 +239,15 @@ impl Pr {
     /// so the card and the list never show older facts than its tab. Only the branch's own is added:
     /// another the tab lists opens without joining the card [D283].
     pub(super) fn keep_row(&self, pr: &Value, mine: bool) {
+        // A PR named whole has no repository to tell this folder's rows by.
+        let Some(repo) = &self.repo else { return };
         let one = self.one();
         let _held = one.lock().unwrap_or_else(|e| e.into_inner());
         let mut next = kept(&self.dir);
         let Some(rows) = next["prs"].as_array_mut() else {
             return;
         };
-        let mut fresh = row(pr);
-        if let Some(repo) = &self.repo {
-            fresh = mark(fresh, repo);
-        }
+        let mut fresh = mark(row(pr), repo);
         fresh["viewedAtMs"] = now_ms().into();
         match rows.iter_mut().find(|p| key(p) == key(&fresh)) {
             Some(was) => {
