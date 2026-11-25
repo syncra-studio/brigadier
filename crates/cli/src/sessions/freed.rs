@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 /// The archived session above worker `wid` that is nearest, and the family's topmost; None for one
 /// under none, or a Brigade's session.
@@ -175,9 +177,19 @@ fn again(data: &Path, id: &str) {
 /// The daemon's start, off its way: what archives and restores cut short, or from before workers
 /// went with them, left.
 pub fn sweep(data: &Path) {
-    session::archives(data, |id| match lead(data, id) {
-        Some(_) => stop_idle(data, id),
-        None => stop(data, id, "archive"),
+    let cut = || {
+        session::cut(data, |id| match lead(data, id) {
+            Some(_) => stop_idle(data, id),
+            None => stop(data, id, "archive"),
+        })
+    };
+    // The git a daemon that died left running ends in a while; what still can't waits for the next start.
+    let _ = [2, 4, 8, 16, 32].iter().any(|wait| {
+        let done = !cut();
+        if !done {
+            thread::sleep(Duration::from_secs(*wait));
+        }
+        done
     });
     for id in core::ids(data) {
         let dir = core::session_dir(data, &id);

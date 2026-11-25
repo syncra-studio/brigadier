@@ -468,7 +468,7 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
 }
 
 /// At the daemon's start: undoes each create that failed and couldn't undo itself, and removes
-/// its session once it has; then each archive, restore or delete cut short.
+/// its session once it has; then each delete cut short.
 pub fn sweep(data: &Path) {
     let undone = |dir: &Path| matches!(read(dir), Ok(Some(o)) if o.failed && undo(&o).is_ok());
     for id in ids(data) {
@@ -480,7 +480,7 @@ pub fn sweep(data: &Path) {
             let _ = fs::remove_dir_all(&dir);
         }
     }
-    // Archives, restores and deletes cut short finish or roll back [D35, D180].
+    // Deletes cut short run again; archives and restores, off the start [D35, D180].
     crate::session::sweep(data);
     crate::projects::sweep(data);
 }
