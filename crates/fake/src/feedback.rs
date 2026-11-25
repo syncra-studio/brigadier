@@ -9,7 +9,7 @@ const WRITE: &str = "You turn a note a user wrote about Brigadier";
 const JUDGE: &str = "You decide whether new reports about Brigadier";
 /// The queue's judge (cli's `queue/judge`): a message that says "fits" does, one that says "late"
 /// answers only after the judge's patience has run out.
-const FITS: &str = "You decide whether a new message from the user fits";
+const FITS: &str = "An agent is in the middle of one piece of work.";
 
 /// Whether `text` is one of Send feedback's prompts, or the queue judge's.
 pub fn asked(text: &str) -> bool {
@@ -19,7 +19,9 @@ pub fn asked(text: &str) -> bool {
 pub fn reply(text: &str) -> String {
     if text.starts_with(FITS) {
         let said = text.split_once("New message from the user:\n");
-        let words = said.map_or("", |(_, w)| w.split("\n\nFITS when").next().unwrap_or(""));
+        let words = said.map_or("", |(_, w)| {
+            w.split("\n\nDecide whether").next().unwrap_or("")
+        });
         if words.contains("late") {
             std::thread::sleep(std::time::Duration::from_secs(8));
         }
