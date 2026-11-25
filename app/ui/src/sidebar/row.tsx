@@ -1,14 +1,14 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
-import { type MouseEvent, type ReactNode, useEffect, useState } from "react";
+import { type MouseEvent, type ReactNode, useState } from "react";
 
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../components/context-menu";
 import { cx } from "../components/cx";
-import { NavFold, NavList, NavRow } from "../components/nav";
+import { NavRow } from "../components/nav";
 import { RowAction, RowActionsSlot } from "../components/row-action";
 import { StateDot } from "../components/state-dot";
 import { spacingPx, Tooltip, TooltipTrigger } from "../components/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/menu";
-import { Chat, ChevronRight, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking } from "../icons";
+import { Chat, Comment, DotsHorizontal, SidebarError, SidebarQuestion, SidebarSpinner, SidebarWorking } from "../icons";
 import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { RowMenuItems } from "./menu";
@@ -118,9 +118,6 @@ export function ProjectBadge({ id, name, icon, size = "size-icon-md text-badge" 
   );
 }
 
-/** Marks by how much they need the user, a folded Brigade's first [D189 D308]. */
-const URGENT: Mark[] = ["needs", "amber", "working", "unread", "background", null];
-
 /** How long a pointer rests on a row before its card shows; on to the next row it shows at once. */
 export const CARD_DELAY_MS = 300;
 const CARD_LINE = "flex min-h-6 min-w-0 items-center gap-2 text-label text-strip-foreground";
@@ -157,9 +154,7 @@ const ROOM_FOR_THREAD = "group-hover/row:pe-16 group-has-focus-visible/row:pe-16
  * badge View's menu shows; `indent`, under its project, at the project name's x; then its title and its mark. Resting on
  * it, or focusing it, opens a card beside the sidebar with the title, the mark in plain words and the project. The row you
  * are looking at (`active`) draws its thread's mark (`useMark`). Hovered, keyboard-focused or with its menu open, "…" (its
- * actions, as a right-click) then Archive show over its end, in place of the mark [D185, D302]. A Brigade
- * with sessions (`fold`) leads with a chevron that folds them, ← and → too; folded, its mark is the most pressing of theirs
- * and its own. One of them (`sub`) sits a step in, a guide line curving into it [D308].
+ * actions, as a right-click) then Archive show over its end, in place of the mark [D185, D302].
  */
 export function SessionRowItem({
   row,
@@ -168,8 +163,6 @@ export function SessionRowItem({
   badged = false,
   canPin = true,
   indent = false,
-  fold,
-  sub,
   offline = false,
   picked = false,
   menu,
@@ -184,10 +177,6 @@ export function SessionRowItem({
   canPin?: boolean;
   /** Under its project's row. */
   indent?: boolean;
-  /** A Brigade with sessions, folding them under it. */
-  fold?: { open: boolean; toggle: () => void; marks: Mark[] } | undefined;
-  /** A Brigade's session in its tree: `last`, the tree's last, where its guide line ends. */
-  sub?: "mid" | "last" | undefined;
   /** The daemon is gone: the mark is its last known one, dimmed. */
   offline?: boolean;
   onOpen: (id: string) => void;
@@ -199,11 +188,8 @@ export function SessionRowItem({
   /** A click with its keys, in place of opening it. */
   onClick?: (event: MouseEvent) => void;
 }) {
-  const own = useMark(row, active);
-  const mark = fold && !fold.open ? [own, ...fold.marks].toSorted((a, b) => URGENT.indexOf(a) - URGENT.indexOf(b))[0]! : own;
+  const mark = useMark(row, active);
   const words = useStatusWords(row);
-  // Folded, a mark of its sessions' says so.
-  const label = mark === own ? (words ?? "") : mark === "working" ? "A session in it is working" : "A session in it needs your attention";
   const title = row.title || "New session";
   // Archived rows bring their own menu (Restore, Delete), and no Pin or Archive.
   const live = !menu && !row.archived;
@@ -218,28 +204,20 @@ export function SessionRowItem({
               <NavRow
                 aria-current={active ? "page" : undefined}
                 data-picked={picked || undefined}
-                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live && ROOM_FOR_THREAD, indent && (sub ? "ps-14" : "ps-8"), !indent && sub && "ps-8")}
-                aria-expanded={fold?.open}
-                onKeyDown={(event) => fold && (event.key === "ArrowRight") !== fold.open && ["ArrowRight", "ArrowLeft"].includes(event.key) && fold.toggle()}
+                className={cx("pe-1.5 data-picked:bg-picked data-picked:group-hover/row:bg-picked data-picked:group-has-data-popup-open/row:bg-picked data-picked:text-foreground", live && ROOM_FOR_THREAD, indent && "ps-8")}
                 onClick={(event) => {
-                  if (fold && (event.target as Element).closest('[data-slot="row-fold"]')) return fold.toggle();
                   if (onClick) onClick(event);
                   else onOpen(row.id);
                 }}
               />
             }
           >
-            {fold && (
-              <span data-slot="row-fold" title={fold.open ? "Hide its sessions" : "Show its sessions"} className="-m-0.5 flex size-5 shrink-0 items-center justify-center rounded-xs text-muted-foreground hover:bg-fill hover:text-foreground">
-                <ChevronRight className={cx("size-icon-sm transition-transform motion-reduce:transition-none", fold.open && "rotate-90")} />
-              </span>
-            )}
             {/* A chat with no project: the OpenAI SDK Chat icon, as its tab [D218 D214]. */}
             {badged && (project ? <ProjectBadge id={project.id} name={project.name} icon={project.icon} /> : <Chat aria-hidden className="size-icon-md shrink-0" />)}
             <span className={cx("min-w-0 flex-1 truncate", Boolean(row.archived) && "text-marker-foreground")}>{title}</span>
             {/* On Archive's square, so the actions take the mark's place [D302]. */}
             <span className={cx("flex shrink-0 empty:hidden", live && cx("me-0.5", HIDE_ON_HOVER), offline && "opacity-disabled")}>
-              <SidebarMark mark={mark} label={label} />
+              <SidebarMark mark={mark} label={words ?? ""} />
             </span>
           </TooltipTrigger>
           <BaseTooltip.Portal>
@@ -271,13 +249,6 @@ export function SessionRowItem({
             </BaseTooltip.Positioner>
           </BaseTooltip.Portal>
         </Tooltip>
-        {/* The guide down from its Brigade's chevron, curving into this row and on to the next [D308]. */}
-        {sub && (
-          <span aria-hidden className={cx("pointer-events-none absolute inset-y-0", indent ? "start-10" : "start-4")}>
-            <span className="absolute -top-px start-0 h-1/2 w-3 rounded-es-sm border-s border-b border-marker" />
-            {sub === "mid" && <span className="absolute -top-px -bottom-px start-0 border-s border-marker" />}
-          </span>
-        )}
         {live && (
           <RowActionsSlot thread>
             <DropdownMenu modal={false}>
@@ -292,25 +263,5 @@ export function SessionRowItem({
       </ContextMenuTrigger>
       <ContextMenuContent>{items}</ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-/**
- * A Brigade's tree [D308]: its row (`head`), then its sessions (`children`) folding under it. It opens as one of them
- * starts working, and otherwise stays as the user left it.
- */
-export function BrigadeTree({ head, open, working, onOpen, children }: { head: ReactNode; open: boolean; working: boolean; onOpen: () => void; children: ReactNode }) {
-  useEffect(() => {
-    if (working) onOpen();
-  }, [working]);
-  return (
-    <>
-      {head}
-      <li>
-        <NavFold open={open}>
-          <NavList>{children}</NavList>
-        </NavFold>
-      </li>
-    </>
   );
 }

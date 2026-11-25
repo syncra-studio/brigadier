@@ -82,7 +82,7 @@ export function useNotices(open: string | null): void {
   const count = rows?.filter((row) => !row.archived && (row.mark === "needs" || row.mark === "amber")).length ?? 0;
   useEffect(() => window.brigadier?.badge(count), [count]);
   // The menu bar item's Running list, as the old app's: sessions an agent works in now, not workers or archived ones.
-  const running = JSON.stringify(rows?.filter((row) => row.works && !row.archived && (!row.worker || row.boss)).map((row) => ({ id: row.id, title: titleOf(row) })) ?? []);
+  const running = JSON.stringify(rows?.filter((row) => row.works && !row.archived && !row.worker).map((row) => ({ id: row.id, title: titleOf(row) })) ?? []);
   useEffect(() => window.brigadier?.running(JSON.parse(running)), [running]);
   // Who uses the computer now, named by the chat it's in (a worker's lead chat), for the menu bar item [D957].
   const holder = all?.find((row) => row.computer);

@@ -24,9 +24,9 @@ import { pin, rename, useShown } from "./actions";
 import { ArchivedFlyout, attentionOf, ChatsFlyout, NoProjects, ProjectSquare, SessionSquare } from "./flyout";
 import { RenameDialog } from "./menu";
 import { ProjectAsk, ProjectRow } from "./project-row";
-import { BrigadeTree, SessionRowItem, SidebarMark } from "./row";
+import { SessionRowItem, SidebarMark } from "./row";
 import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "./view";
-import type { Mark, SessionRow } from "./words";
+import type { SessionRow } from "./words";
 
 /*
  * The app's sidebar [D22–D33 D59–D66]: its name with View and ⌘K's search, New chat, then what View's Organize
@@ -54,10 +54,6 @@ export function useStored<T>(key: string, initial: T): [T, (next: T) => void] {
 }
 
 const byLastSend = (a: SessionRow, b: SessionRow) => b.sent - a.sent || b.id.localeCompare(a.id);
-// A Brigade's sessions sit under it, oldest first, where it is in the same list; the rest are its top rows [D308].
-const subsOf = (list: SessionRow[], id: string) => list.filter((each) => each.boss === id).toSorted((a, b) => (a.created ?? 0) - (b.created ?? 0));
-const topsOf = (list: SessionRow[]) => list.filter((each) => !(each.boss && list.some((boss) => boss.id === each.boss)));
-const treed = (list: SessionRow[]) => topsOf(list).flatMap((each) => [each, ...subsOf(list, each.id)]);
 const LIST = "scroll-edge-fade edge-fade-sidebar scroll-gutter flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ps-2 pb-2";
 
 export function AppSidebar({
@@ -106,8 +102,8 @@ export function AppSidebar({
   const isOpen = (key: string) => !folded.includes(key);
   const setOpen = (key: string, open: boolean) => setFolded(open ? folded.filter((each) => each !== key) : [...folded, key]);
   // Archived rows dock below the list; the rest are the live ones [D198].
-  // A worker is its parent's, in its Workers tab, not a row of its own [D3012]; a Brigade's session is a row in its tree [D308].
-  const sessions = useMemo(() => rows?.filter((row) => !((row as { worker?: unknown }).worker && !row.boss) && !(row as { noteChat?: boolean }).noteChat), [rows]);
+  // A worker is its parent's, in its Workers tab, not a row of its own [D3012].
+  const sessions = useMemo(() => rows?.filter((row) => !(row as { worker?: unknown }).worker && !(row as { noteChat?: boolean }).noteChat), [rows]);
   const { live: shown, archived } = useArchiveSplit(useShown(sessions));
   const show = useShowFilter(projects);
   const kept = shown?.filter(show.keeps);
@@ -117,14 +113,13 @@ export function AppSidebar({
   const bySort = sort === "activity" ? (a: SessionRow, b: SessionRow) => (b.updated ?? b.sent) - (a.updated ?? a.sent) || byLastSend(a, b) : byLastSend;
   // By projects pins projects, not sessions [D808].
   const pinsSessions = grouping === "none";
-  const pinned = treed((pinsSessions && kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || bySort(a, b))) || []);
-  const sorted = kept?.filter((each) => !(pinsSessions && each.pinned)).toSorted(bySort);
-  const rest = sorted && treed(sorted);
-  const homeless = treed(rest?.filter(show.homeless) ?? []);
+  const pinned = (pinsSessions && kept?.filter((each) => each.pinned).toSorted((a, b) => b.pinned! - a.pinned! || bySort(a, b))) || [];
+  const rest = kept?.filter((each) => !(pinsSessions && each.pinned)).toSorted(bySort);
+  const homeless = rest?.filter(show.homeless) ?? [];
   const byName = projects.filter((project) => !show.hiddenProjects.has(project.id)).toSorted((a, b) => a.name.localeCompare(b.name));
   const pinnedProjects = byName.filter((project) => project.pinned).toSorted((a, b) => b.pinned! - a.pinned!);
   const unpinnedProjects = byName.filter((project) => !project.pinned);
-  const chatsIn = (project: string) => treed(rest?.filter((each) => each.project === project) ?? []);
+  const chatsIn = (project: string) => rest?.filter((each) => each.project === project) ?? [];
   // From every live session in it.
   const attentionIn = (project: string) => attentionOf(chatsIn(project), active);
   // Each section's rows top to bottom, keyed by what folds them: the order a picked range and ⌥⌘A go by.
@@ -146,8 +141,7 @@ export function AppSidebar({
 
   // Unfolds what holds a row, then brings it into view.
   const reveal = (id: string) => {
-    const boss = order.find((row) => row.id === id)?.boss;
-    const keys = [...(sections.find(([, each]) => each.some((row) => row.id === id))?.[0] ?? []), ...(boss ? [`brigade:${boss}`] : [])];
+    const keys = sections.find(([, each]) => each.some((row) => row.id === id))?.[0] ?? [];
     if (keys.some((key) => !isOpen(key))) setFolded(folded.filter((key) => !keys.includes(key)));
     requestAnimationFrame(() => list.current?.querySelector(`[data-row-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
   };
@@ -179,8 +173,7 @@ export function AppSidebar({
     return () => removeEventListener("keydown", onKeyDown);
   });
 
-  type Layout = { badged?: boolean; indent?: boolean; fold?: { open: boolean; toggle: () => void; marks: Mark[] }; sub?: "mid" | "last" };
-  const row = (each: SessionRow, layout: Layout) => (
+  const row = (each: SessionRow, layout?: { badged?: boolean; indent?: boolean }) => (
     <SessionRowItem
       key={each.id}
       row={each}
@@ -195,26 +188,13 @@ export function AppSidebar({
       {...layout}
     />
   );
-  // A list's rows, each Brigade with its sessions as a tree [D308].
-  const rowsOf = (list: SessionRow[], layout: Layout) =>
-    topsOf(list).map((each) => {
-      const subs = subsOf(list, each.id);
-      if (subs.length === 0) return row(each, layout);
-      const key = `brigade:${each.id}`;
-      const open = isOpen(key);
-      return (
-        <BrigadeTree key={each.id} open={open} working={subs.some((sub) => sub.mark === "working")} onOpen={() => setOpen(key, true)} head={row(each, { ...layout, fold: { open, toggle: () => setOpen(key, !open), marks: subs.map((sub) => sub.mark) } })}>
-          {subs.map((sub, at) => row(sub, { ...layout, sub: at === subs.length - 1 ? "last" : "mid" }))}
-        </BrigadeTree>
-      );
-    });
   const listed = { active, offline, onOpen, onRename: setRenaming };
   const projectRow = (project: Project) => {
     const key = `project:${project.id}`;
     const chats = chatsIn(project.id);
     return (
       <ProjectRow key={project.id} project={project} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
-        {rowsOf(chats, { indent: true })}
+        {chats.map((each) => row(each, { indent: true }))}
       </ProjectRow>
     );
   };
@@ -302,7 +282,7 @@ export function AppSidebar({
               <>
                 {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
                   <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
-                    <NavList>{pinsSessions ? rowsOf(pinned, { badged: true }) : pinnedProjects.map(projectRow)}</NavList>
+                    <NavList>{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
                   </NavSection>
                 )}
                 {grouping === "none" ? (
@@ -313,7 +293,7 @@ export function AppSidebar({
                     steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label="A session needs your attention" />}
                   >
                     <NavList>
-                      {rowsOf(rest, { badged: true })}
+                      {rest.map((each) => row(each, { badged: true }))}
                       {pinned.length === 0 && rest.length === 0 && (!show.all || archived?.length === 0) && <EmptyState as="li" title={show.all ? "Sessions you start appear here." : "Nothing here with this view."} />}
                     </NavList>
                   </NavSection>
@@ -353,7 +333,7 @@ export function AppSidebar({
                     }
                   >
                     <NavList>
-                      {rowsOf(homeless, {})}
+                      {homeless.map((each) => row(each))}
                       {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
                     </NavList>
                   </NavSection>

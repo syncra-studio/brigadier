@@ -13,11 +13,11 @@ import { type Overnight, overnight } from "./overnight";
 /** The composer's look while Overnight is on. */
 export const nightLook = (on: boolean) => (on ? "night-sky" : undefined);
 
-/** The Overnight pill, after Brigade's on New chat and after the permission pill (`divider`) in a session. */
-export function OvernightPill({ on, tip, divider = false, onChange }: { on: boolean; tip?: string; divider?: boolean; onChange: (on: boolean) => void }) {
+/** The Overnight pill, after the permission pill. */
+export function OvernightPill({ on, tip, onChange }: { on: boolean; tip?: string; onChange: (on: boolean) => void }) {
   return (
     <>
-      {divider && <PillDivider />}
+      <PillDivider />
       <Tooltip>
         <TooltipTrigger render={<ComposerPill aria-pressed={on} data-slot="overnight-pill" className={cx("aria-pressed:bg-picked-row", on && "moonlit")} onClick={() => onChange(!on)} />}>
           <Moon />
@@ -31,7 +31,7 @@ export function OvernightPill({ on, tip, divider = false, onChange }: { on: bool
 
 /** A session's pill: clicked in the night, the user is back. */
 export function SessionOvernight({ id, now }: { id: string; now: Overnight | null }) {
-  return <OvernightPill divider on={now !== null} tip={now?.state === "night" ? "I’m back: end the night" : undefined} onChange={(on) => overnight(id, on ? "on" : "off")} />;
+  return <OvernightPill on={now !== null} tip={now?.state === "night" ? "I’m back: end the night" : undefined} onChange={(on) => overnight(id, on ? "on" : "off")} />;
 }
 
 /** Start night, under what is asked before the user goes, whose answers go first (`finish`). */

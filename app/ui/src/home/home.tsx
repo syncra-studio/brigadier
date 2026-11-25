@@ -17,7 +17,6 @@ import { daemonRun } from "../session/composer";
 import type { Draft } from "../components/composer/draft";
 import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
-import { BrigadeToggle } from "../sessions/brigade";
 import { OvernightPill } from "../sessions/overnight-parts";
 import { asGroups, levelsOf } from "../session/model";
 import { readRouting } from "../settings/routing";
@@ -168,7 +167,6 @@ export function HomeDraft() {
           agent && (
             <>
               <LevelPicker levels={levels} level={pick ?? agent.level} held={agent.held} onChange={(level) => setHomeDraft({ level })} />
-              <BrigadeToggle on={draft.brigade === true} onChange={(brigade) => setHomeDraft({ brigade })} />
               <OvernightPill on={draft.overnight === true} onChange={(overnight) => setHomeDraft({ overnight })} />
             </>
           )
@@ -182,7 +180,7 @@ export function HomeDraft() {
         onDraft={(text) => keepDraft(daemonRun, key, text)}
         loadDraft={() => loadDraft(daemonRun, key)}
         focus={draft.focus}
-        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.brigade, draft.overnight)}
+        onSend={(text, parts) => model && start(id ?? null, { workIn, base: base ?? repo.info?.current ?? null, worktree, review: draft.review }, model, text, pick ?? agent?.level ?? undefined, parts, draft.overnight)}
       />
       <SetUpAgentDialog
         name={setUp}
