@@ -213,7 +213,12 @@ pub fn send(
                 },
                 ..run.clone()
             };
-            match a.retune(&last, &run) {
+            // Not known what it runs with: started again, never taken as the default.
+            let change = match g["unknown"] == true {
+                true => Retune::Restart,
+                false => a.retune(&last, &run),
+            };
+            match change {
                 Retune::InMessage => {}
                 Retune::Send(Delivery::Stdin(pre)) => bytes = pre,
                 Retune::Confirm(Delivery::Stdin(pre), ids) => {

@@ -27,7 +27,7 @@ pub(super) fn retuned(
     // The jobs it was last told: confirming a model tells it none.
     let mut now = base["setup"].clone();
     now["jobs"] = (f.given.as_ref()).map_or(Value::Null, |g| g["jobs"].clone());
-    let now = took.as_ref().map_or(Value::Null, |_| now);
+    let now = took.as_ref().map_or(json!({"unknown": true}), |_| now);
     let noted = call(json!({"op": "note", "data": {"event": "retuned", "setup": now}}));
     took?;
     noted.map_err(|e| json!({"ok": false, "error": e.to_string()}))?;
