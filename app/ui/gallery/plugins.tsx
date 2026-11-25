@@ -185,6 +185,7 @@ const DIALOGS: [string, Open | null, { detail: string; signing: SignInStart }?][
   ["A search result's install", { type: "add", remote: true, first: { form: { kind: "skill", from: { source: "vercel-labs/agent-skills", skill: "reverse-engineer-anything" } }, step: "install" } }],
   ["Before 4.13: no remote servers", { type: "add", remote: false }],
   ["Remove", { type: "remove", key: "postgres" }],
+  ["Switch on a project's own server", { type: "start", key: "server:postgres-freelogo" }],
   ["View a skillset", { type: "view", key: "skillset:notion", title: "Notion", kind: "skill", at: "notion-research-documentation" }],
   ["View a server's settings", { type: "view", key: "datadog", title: "datadog", kind: "server" }],
   ["Install Slack: your own app first", { type: "catalog", entry: SLACK }],

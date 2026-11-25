@@ -151,6 +151,13 @@ pub(super) fn ask(data: &Path) {
     let _ = library::save(data, &items);
 }
 
+/// Whether a server is from a project's own file; one found only in projects and saved before
+/// that was kept counts as one, till the next sync says.
+pub(super) fn repo(i: &Value) -> bool {
+    let projects_only = (i["found"].as_array()).is_some_and(|f| !f.contains(&json!("")));
+    i["repo"] == true || i["kind"] == "server" && i.get("repo").is_none() && projects_only
+}
+
 /// A SKILL.md's `metadata.author`, where its maker signs it: "github-spec-kit".
 fn author(text: &str) -> String {
     let front = text

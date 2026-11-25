@@ -1,7 +1,7 @@
 //! The user's own MCP servers in Claude Code's config, for the relay [D100], and the library at
 //! launch [D2043].
 
-use crate::adapters::{files, home_path};
+use crate::adapters::{cli_home, files, home_path};
 use crate::{Spec, library};
 use serde_json::{Map, Value, json};
 use std::io;
@@ -162,7 +162,25 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
         let worker = spec.dir == crate::session_dir(&crate::data_of(spec), &spec.id)
             && !spec.opts.contains_key("no_tools");
         let servers = if worker { held(spec, cwd) } else { Map::new() };
-        return super::control::naked(argv, servers);
+        super::control::naked(argv, servers);
+        // How it signs in stays, though the user's settings don't: their helper commands, never a value.
+        let user = read(&cli_home(spec, ".claude", "settings.json"));
+        let at = argv.iter().rposition(|a| a == "--settings");
+        if let Some(at) = at {
+            let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
+            for k in [
+                "apiKeyHelper",
+                "awsAuthRefresh",
+                "awsCredentialExport",
+                "gcpAuthRefresh",
+            ] {
+                if user[k].is_string() {
+                    settings[k] = user[k].clone();
+                }
+            }
+            argv[at + 1] = settings.to_string();
+        }
+        return;
     }
     let mut off = library(spec, cwd, argv, env);
     let (data, project) = (crate::data_of(spec), spec.project.as_deref());
