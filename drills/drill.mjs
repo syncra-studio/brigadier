@@ -1184,14 +1184,14 @@ async function peersDrill() {
     log({ drill: 'peers', ...ev, sent: n })
   }
   const t0 = now()
-  const work = Promise.all([...senders.map(next), ...receivers.slice(3).map(busy)])
+  const sending = Promise.all(senders.map(next)), busies = Promise.all(receivers.slice(3).map(busy))
   const doKills = (async () => {
     for (let k = 0; k < kills; k++) for (const step of PEER_STEPS.slice(1)) { await hit(step); await sleep(300) }
     killed = true
   })()
-  await doKills
+  await Promise.all([doKills, sending])
   stop = true
-  await work
+  await busies
   const sending_s = Math.round((now() - t0) / 1000)
   // Everyone back up, then time for the daemon's pass to settle what was cut short.
   for (const id of [...senders, ...receivers]) await back(id)
@@ -1221,12 +1221,16 @@ async function peersDrill() {
     }
   }
   const states = {}, noRecord = {}
+  let sentAgain = 0
   const bad = { lost: [], doubled: [], open: [], wrong: [] }
   let uncertain_read = 0
   for (const token of sent.keys()) {
     const state = byToken.get(token)?.state ?? 'no record', times = read.get(token) ?? 0
     states[state] = (states[state] ?? 0) + 1
-    if (times > 1) bad.doubled.push(why(token))
+    // A sender whose turn was recovered may run its `brigadier send` again: two messages, each read once.
+    const records = outs.filter((o) => o.text === token).length
+    if (records > 1) sentAgain++
+    if (times > Math.max(1, records)) bad.doubled.push(why(token))
     if (state === 'no record') noRecord[told.get(token) ?? 'nothing'] = (noRecord[told.get(token) ?? 'nothing'] ?? 0) + 1
     if ((state === 'delivered' || told.get(token)?.startsWith('Sent to') && state === 'no record') && !times) bad.lost.push(why(token))
     if (!PEER_DONE.includes(state) && state !== 'no record') bad.open.push({ ...why(token), receivers: inRecord(sent.get(token).to, byToken.get(token).mid), queue: fileJson(`${DATA}/sessions/${sent.get(token).to}/queue.json`) })
@@ -1241,7 +1245,7 @@ async function peersDrill() {
   const fired = {}
   for (const e of events) { const f = (fired[e.step] ??= { kills: 0, fired: 0 }); f.kills++; if (e.fired !== false) f.fired++ }
   const r = { drill: 'peers', sent: sent.size, recorded: outs.length, told_sent: [...told.values()].filter((t) => t.startsWith('Sent to')).length, no_record_told: noRecord, daemon_started_again: again, sending_s, states, uncertain: interval(states.uncertain ?? 0, sent.size), uncertain_read,
-    lost: interval(bad.lost.length, sent.size), doubled: interval(bad.doubled.length, sent.size), out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
+    lost: interval(bad.lost.length, sent.size), doubled: interval(bad.doubled.length, sent.size), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
     examples: { lost: bad.lost.slice(0, 5), doubled: bad.doubled.slice(0, 5), swapped: swapped.slice(0, 5), open: bad.open.slice(0, 5), wrong: bad.wrong.slice(0, 5) } }
   r.leftovers = cleanup()
   log(r)
