@@ -1265,7 +1265,7 @@ async function peersDrill() {
     lost: interval(bad.lost.length, outs.length), doubled: interval(bad.doubled.length, outs.length), sent_again_by_a_recovered_sender: sentAgain, out_of_order: swapped.length, still_open: bad.open.length, at_end: bad.open.length ? Object.fromEntries(receivers.map((id) => [id, status([id])[id]?.state])) : undefined, wrongly_read: bad.wrong.length, kills: fired,
     examples: { lost: bad.lost.slice(0, 5), doubled: bad.doubled.slice(0, 5), swapped: swapped.slice(0, 5), open: bad.open.slice(0, 5), wrong: bad.wrong.slice(0, 5) } }
   // Cleanup deletes the sessions: KEEP=1 keeps their logs first, to see why a message was lost.
-  if (process.env.KEEP === '1') fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
+  if (process.env.KEEP === '1') fs.rmSync(`${DATA}-kept`, { recursive: true, force: true }), fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
   r.leftovers = cleanup()
   log(r)
   verdict('peers', { sent_all: sent.size >= want, none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
