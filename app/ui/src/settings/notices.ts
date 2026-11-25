@@ -2,14 +2,14 @@ import { useEffect } from "react";
 
 import { type Row, useDaemon } from "../daemon";
 import { errorText, run } from "../onboarding/api";
-import { getSettings, setSetting } from "./api";
+import { getSettings, setSetting, useSettings } from "./api";
 
 /*
  * macOS notices and the Dock badge, mounted for the app's lifetime [D200, D2004, D2012]. Rust says what is worth a
  * notice: each row's `notice`, one id per occasion. The page only delivers it, by the user's settings, and skips
  * the session on screen while the window has focus. Ids already there when the app opens, or seen before a
  * reconnect, are never sent again. The low battery's, with the lid closed too, isn't a session's: it comes beside the
- * rows and goes as one that needs you.
+ * rows, goes as one that needs you, and is sent once per discharge even when the app opens after it.
  */
 
 type Notice = { id: string; kind: "question" | "approval" | "sign_in" | "done" | "failed"; text: string | null };
@@ -57,6 +57,7 @@ function deliver(row: Row, notice: Notice, open: string | null): void {
 export function useNotices(open: string | null): void {
   const { rows: all, lid } = useDaemon();
   const warned = lid?.warned;
+  const settings = useSettings().value;
   const rows = all?.filter((row) => !row.noteChat);
   useEffect(() => {
     if (!rows) return;
@@ -69,14 +70,15 @@ export function useNotices(open: string | null): void {
       // What was already there when the app opened was told before, or happened while it was shut.
       if (started) deliver(row, notice, open);
     }
-    if (warned && !seen.has(`lid ${warned.at}`)) {
-      seen.add(`lid ${warned.at}`);
-      if (started && getSettings()?.notify_needs_you) {
-        sendNotice({ title: "Plug in, or Brigadier sleeps at 10%", body: `The battery is at ${warned.percent}%. At 10%, the computer sleeps with the lid closed.` }).catch((error: unknown) => console.error(error));
-      }
-    }
     started = true;
-  }, [rows, open, warned]);
+  }, [rows, open]);
+  // The one told is kept across launches: Rust says it only while it's true, so one the app was shut for still goes.
+  useEffect(() => {
+    if (!warned || !settings || localStorage.getItem("lidWarned") === String(warned.at)) return;
+    localStorage.setItem("lidWarned", String(warned.at));
+    if (!settings.notify_needs_you) return;
+    sendNotice({ title: "Plug in, or Brigadier sleeps at 10%", body: `The battery is at ${warned.percent}%. At 10%, the computer sleeps with the lid closed.` }).catch((error: unknown) => console.error(error));
+  }, [warned, settings]);
   const count = rows?.filter((row) => !row.archived && (row.mark === "needs" || row.mark === "amber")).length ?? 0;
   useEffect(() => window.brigadier?.badge(count), [count]);
   // The menu bar item's Running list, as the old app's: sessions an agent works in now, not workers or archived ones.

@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+
+import { useDaemon } from "../daemon";
 import { errorText, run, store } from "../onboarding/api";
 
 /** The app's settings as Rust keeps them, each with Rust's default [D71, D2004]. */
@@ -86,7 +89,14 @@ export type LidState = "setup" | "low" | "on" | "ready";
 /** With the lid closed too, as the daemon pushes it: held now, this discharge's low-battery warning, and the sleep a low battery brought, until seen. */
 export type LidHold = { held: boolean; warned: { at: number; percent: number } | null; slept: { at: number; percent: number } | null };
 const lid = store<{ state?: LidState; settingUp?: boolean }>({});
-export const useLid = lid.use;
+/** Asked again as the daemon takes the lid's hold or lets it go, so a hint on screen stays true. */
+export function useLid() {
+  const held = useDaemon().lid?.held;
+  useEffect(() => {
+    if (held !== undefined) loadLid();
+  }, [held]);
+  return lid.use();
+}
 
 /** Asked as the Power row or the Keep awake menu shows; a failure keeps what was shown. */
 export function loadLid(): void {
@@ -97,8 +107,8 @@ export function loadLid(): void {
 }
 
 /** The user has seen that a low battery slept the computer: Rust's next list drops it. */
-export function seenSlept(): void {
-  run(["awake", "lid-seen"]).catch((cause: unknown) => console.error(cause));
+export function seenSlept(at: number): void {
+  run(["awake", "lid-seen", String(at)]).catch((cause: unknown) => console.error(cause));
 }
 
 let inSetup = false;

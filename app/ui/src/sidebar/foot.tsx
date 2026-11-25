@@ -55,7 +55,7 @@ function KeepAwakeMenu() {
   const on = mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
   const text = on ? `Awake now${settings?.awake_lid && hold?.held ? ", even with the lid closed" : ""}` : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
   return (
-    <Popover onOpenChange={(open) => (open ? loadLid() : slept && seenSlept())}>
+    <Popover onOpenChange={(open) => (open ? loadLid() : slept && seenSlept(slept.at))}>
       <PopoverTrigger
         render={<TooltipIconButton look="rail" side={placement.side} tooltip={`Keep awake: ${option?.label ?? ""} · ${text}`} dot={on ? "bg-foreground" : undefined} />}
       >
