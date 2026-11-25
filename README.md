@@ -18,6 +18,10 @@
   <a href="SECURITY.md">Security</a>
 </p>
 
+<p align="center">
+  <img src=".github/assets/screenshot.png" width="800" alt="Brigadier on made-up data: a chat mid-task that started two workers, one already merged with its review's result, the other still running.">
+</p>
+
 Brigadier runs the coding agents you already use, Claude Code, Codex and OpenCode, each one's own
 command-line tool, unmodified and signed in by you, and shows their work as a chat. There is no
 Brigadier account. You start a **session** for each task. A session can start **workers**: sessions of
