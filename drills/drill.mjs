@@ -1370,7 +1370,9 @@ async function rewindOne(k) {
   fs.chmodSync(`${repo}/secret.env`, 0o600)
   spawnSync('sh', ['-c', 'git init -q -b main && git add -A && git add -f kept.log && git commit -qm init'], { cwd: repo })
   fs.writeFileSync(`${repo}/untracked.txt`, 'the user\'s own, never added\n')
-  const proj = await cliAsync(['projects', 'add', repo])
+  // An id is the clock's millisecond, so a folder added at another's is refused: asked again.
+  let proj = {}
+  for (let i = 0; i < 5 && !proj.ok; i++) proj = await cliAsync(['projects', 'add', repo])
   await cliAsync(['projects', 'set', proj.project?.id ?? '', '--trusted', 'true'])
   // A project must be in git when added, so the folder outside git lost its `.git` since.
   if (plain) fs.rmSync(`${repo}/.git`, { recursive: true })
