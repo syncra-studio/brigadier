@@ -6,7 +6,7 @@
 mod active;
 mod edits;
 pub mod fork;
-mod modes;
+pub(crate) mod modes;
 mod names;
 mod night;
 mod plan;

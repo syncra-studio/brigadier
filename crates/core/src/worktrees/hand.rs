@@ -29,6 +29,7 @@ pub fn handover(from: &Path, to: &Path) -> io::Result<()> {
         "setup.exit",
         "setup.log",
         "worktree-setup.json",
+        super::modes::FILE,
     ] {
         if from.join(name).exists() && !to.join(name).exists() {
             fs::copy(from.join(name), to.join(name))?;

@@ -24,6 +24,7 @@ pub use kept::kept;
 pub(crate) mod landing;
 pub mod lost;
 mod missing;
+mod modes;
 use missing::{live, registration};
 pub mod names;
 use copy::include;
@@ -367,6 +368,7 @@ pub fn free(dir: &Path) -> io::Result<()> {
                 ],
             )?;
         }
+        modes::keep(dir, path)?;
     }
     unregister(&owned)
 }
@@ -427,6 +429,7 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
             "Its branch {branch} is gone, so its work can't come back."
         ));
     }
+    modes::begin(dir)?;
     crate::worktree_setup::begin(dir, &branch, &owned.base)?;
     if let Err(e) = git(&repo, &["worktree", "add", "--quiet", &path, &branch]) {
         // A folder may have reappeared since the check: a failed add owns nothing to remove.
@@ -438,7 +441,9 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
         &["rev-parse", "--path-format=absolute", "--git-dir"],
     )
     .ok();
-    let made = write(dir, &owned).and_then(|()| include(&repo, Path::new(&path), picks));
+    let made = write(dir, &owned)
+        .and_then(|()| include(&repo, Path::new(&path), picks))
+        .and_then(|()| modes::put(dir, Path::new(&path)));
     if let Err(e) = made {
         let step = crate::worktree_setup::finish(dir, Some(e.to_string()));
         unregister(&owned).map_err(|r| io::Error::other(format!("{e}; rollback failed: {r}")))?;

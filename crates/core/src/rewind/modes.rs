@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 /// The permissions that aren't 644, or 755 for an executable or a folder, by path; a folder's ends
 /// in `/`.
-pub(super) type Modes = BTreeMap<String, u32>;
+pub(crate) type Modes = BTreeMap<String, u32>;
 
 /// What a tree's entry stands for on its own; None for a link or a nested repository.
 pub(super) fn plain(entry: &str) -> Option<u32> {
@@ -67,6 +67,54 @@ pub(super) fn same(
     now == want || cut.is_some_and(unset)
 }
 
+/// The permissions that stand out in folder `root`, for an index's `entries` of it.
+pub(crate) fn stand_out(root: &Path, entries: &[String]) -> Modes {
+    let (mut all, mut dirs) = (Modes::new(), BTreeSet::new());
+    for (meta, path) in entries.iter().filter_map(|e| e.split_once('\t')) {
+        let mode = of(&root.join(path), false);
+        if let Some((mode, plain)) = mode.zip(plain(meta.split(' ').next().unwrap_or("")))
+            && mode != plain
+        {
+            all.insert(path.into(), mode);
+        }
+        let mut rest = path;
+        while let Some((dir, _)) = rest.rsplit_once('/').filter(|(d, _)| dirs.insert(*d)) {
+            if let Some(mode) = of(&root.join(dir), true).filter(|m| *m != 0o755) {
+                all.insert(format!("{dir}/"), mode);
+            }
+            rest = dir;
+        }
+    }
+    all
+}
+
+/// Every folder above `path`.
+fn above(path: &str) -> impl Iterator<Item = &str> {
+    path.match_indices('/').map(|(i, _)| &path[..i])
+}
+
+/// Sets `all` on folder `root`, where its `entries` still have each; a file that has become an
+/// executable since, or is none any more, stays that.
+pub(crate) fn again(root: &Path, entries: &[String], all: &Modes) -> io::Result<()> {
+    for (meta, path) in entries.iter().filter_map(|e| e.split_once('\t')) {
+        let there = of(&root.join(path), false).and(plain(meta.split(' ').next().unwrap_or("")));
+        if let Some((plain, mode)) = there.zip(all.get(path)) {
+            let same = (mode & 0o100 != 0) == (plain == 0o755);
+            let mode = if same { *mode } else { run(*mode, plain) };
+            set(&root.join(path), mode)?;
+        }
+    }
+    let paths = entries.iter().filter_map(|e| e.split_once('\t'));
+    let dirs: BTreeSet<&str> = paths.flat_map(|(_, path)| above(path)).collect();
+    // Inner folders first: an outer one may close the way.
+    for dir in dirs.iter().rev() {
+        if let Some(mode) = all.get(&format!("{dir}/")) {
+            set(&root.join(dir), *mode)?;
+        }
+    }
+    Ok(())
+}
+
 /// How a write-back leaves the permissions of what it writes.
 pub(super) struct Back {
     files: BTreeMap<String, u32>,
@@ -86,23 +134,7 @@ impl Back {
 impl Store {
     /// The folder's permissions now, for the index's `entries`, as a blob; empty where none stands out.
     pub(super) fn keep_modes(&self, entries: &[String]) -> io::Result<String> {
-        let (mut all, mut dirs) = (Modes::new(), BTreeSet::new());
-        for (meta, path) in entries.iter().filter_map(|e| e.split_once('\t')) {
-            let mode = of(&self.cwd().join(path), false);
-            if let Some((mode, plain)) = mode.zip(plain(meta.split(' ').next().unwrap_or("")))
-                && mode != plain
-            {
-                all.insert(path.into(), mode);
-            }
-            let mut rest = path;
-            while let Some((dir, _)) = rest.rsplit_once('/').filter(|(d, _)| dirs.insert(*d)) {
-                if let Some(mode) = of(&self.cwd().join(dir), true).filter(|m| *m != 0o755) {
-                    all.insert(format!("{dir}/"), mode);
-                }
-                rest = dir;
-            }
-        }
-        self.save_modes(&all)
+        self.save_modes(&stand_out(self.cwd(), entries))
     }
 
     pub(super) fn save_modes(&self, all: &Modes) -> io::Result<String> {
