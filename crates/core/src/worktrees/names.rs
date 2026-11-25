@@ -52,7 +52,8 @@ fn slug(title: &str) -> String {
     }
 }
 
-/// A remote ref is compared after its remote name, even when that name contains a slash.
+/// A remote ref is compared after its remote name, even when that name contains a slash. An
+/// archived session's dropped branch is still its name.
 fn branches(repo: &Path) -> io::Result<Vec<String>> {
     let refs = git(
         repo,
@@ -61,13 +62,15 @@ fn branches(repo: &Path) -> io::Result<Vec<String>> {
             "--format=%(refname)",
             "refs/heads",
             "refs/remotes",
+            super::freed::REFS,
         ],
     )?;
     let remotes = git(repo, &["remote"])?;
     Ok(refs
         .lines()
         .filter_map(|r| {
-            r.strip_prefix("refs/heads/").or_else(|| {
+            let ours = r.strip_prefix(super::freed::REFS);
+            r.strip_prefix("refs/heads/").or(ours).or_else(|| {
                 remotes
                     .lines()
                     .find_map(|remote| r.strip_prefix(&format!("refs/remotes/{remote}/")))

@@ -253,14 +253,17 @@ fn plain_words(c: &str) -> Option<Vec<String>> {
 pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
     spec.dir.parent()?.ends_with("sessions").then_some(())?;
     let token = grant(spec)?;
-    // The standing line's folder; without it an agent makes its own.
-    let _ = std::fs::create_dir_all(crate::background::tmp(&spec.dir));
     let me = std::env::current_exe().ok()?;
     let data = crate::data_of(spec).display().to_string();
     let mut vars = vec![
         (SESSION.into(), spec.dir.display().to_string()),
         (GRANT.into(), token),
         ("BRIGADIER_DATA".into(), data),
+        // The standing line's folder; without it an agent makes its own.
+        (
+            "TMPDIR".into(),
+            crate::background::temp(&spec.dir).display().to_string(),
+        ),
     ];
     vars.extend(browser_shim().map(|shim| ("BROWSER".into(), shim)));
     Some((me.parent()?.display().to_string(), vars))

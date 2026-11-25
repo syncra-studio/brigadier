@@ -480,6 +480,7 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<Strin
         if !row["worker"].is_null() {
             result::written(data, id, row);
             crate::relay::mockup::retry(data, id);
+            crate::sessions::freed::pass(data, id, row);
         }
         asks::pass(data, id, row);
         if row["worker"]["kind"] == "doneNotMerged" {

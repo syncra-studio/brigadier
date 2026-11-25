@@ -1,7 +1,7 @@
 //! What a finished worker left running is ended by itself, once its parent has its result and
 //! nothing holds it; a mockup's only after the pick. What can't be ended stays on its lead's card.
 //! Its agent's process is closed once nothing has run in it for a while: the next message starts it
-//! again on the same conversation.
+//! again on the same conversation. Its worktree's build output goes at once.
 
 use crate::owner;
 use crate::relay::mockup;
@@ -11,11 +11,13 @@ use brigadier_core as core;
 use brigadier_frames::{log, procs, take_lock};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 /// `left.json` in the worker's folder.
 #[derive(Serialize, Deserialize, Default)]
@@ -64,6 +66,9 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
     }
     let quiet = log::now_ms().saturating_sub(row["updated"].as_u64().unwrap_or(u64::MAX));
     let running = row["background"].as_array().is_some_and(|l| !l.is_empty());
+    if finished && !running && row["archived"].is_null() {
+        unbuild(data, wid, &row["items"]);
+    }
     let idle = finished && row["child"] == true && !running && row["queue"].is_null();
     if idle && quiet >= IDLE.as_millis() as u64 {
         let (data, wid) = (data.to_path_buf(), wid.to_string());
@@ -76,6 +81,69 @@ pub(super) fn pass(data: &Path, wid: &str, row: &Value) {
             }
         });
     }
+}
+
+/// Takes a finished worker's build output, one worker at a time: once as its log stands, and again
+/// in a while as long as something still holds it.
+fn unbuild(data: &Path, wid: &str, items: &Value) {
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    /// When it was looked at, by its log's length then; None: done.
+    type Looked = HashMap<String, (Value, Option<Instant>)>;
+    static LOOKED: Mutex<Option<Looked>> = Mutex::new(None);
+    const AGAIN: Duration = Duration::from_secs(10);
+    let mut looked = LOOKED.lock().unwrap();
+    let looked = looked.get_or_insert_default();
+    let again = match looked.get(wid) {
+        Some((i, at)) => i != items || at.is_some_and(|at| at.elapsed() >= AGAIN),
+        None => true,
+    };
+    if !again || BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    looked.insert(wid.into(), (items.clone(), Some(Instant::now())));
+    let (data, wid, items) = (data.to_path_buf(), wid.to_string(), items.clone());
+    std::thread::spawn(move || {
+        match unbuilt(&data, &wid) {
+            Ok(false) => {}
+            done => {
+                if let Err(e) = done {
+                    eprintln!("brigadierd: worker {wid}'s build output: {e}");
+                }
+                let mut looked = LOOKED.lock().unwrap();
+                looked.get_or_insert_default().insert(wid, (items, None));
+            }
+        }
+        BUSY.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Whether nothing is left to take: it's gone, or the worker has none.
+fn unbuilt(data: &Path, wid: &str) -> io::Result<bool> {
+    let Some(held) = over(data, wid)? else {
+        return Ok(false);
+    };
+    let spec = core::load(data, wid)?;
+    if !matches!(core::session::lifecycle(&spec.dir), (None, Value::Null)) {
+        return Ok(true);
+    }
+    let f = core::fold(&spec.dir, true)?.fold;
+    let live = core::fold::live(&f, owner::state(data, wid), &spec.dir, &procs::all());
+    if (live.jobs, live.left.len(), f.turns.len()) != (0, 0, 0) || busy(data, wid) {
+        return Ok(false);
+    }
+    let built = core::session::built(data, &spec)?;
+    if !built.is_empty() {
+        // Setup runs as an agent starts: the next message must start it.
+        if live.child.is_some() && spec.dir.join("setup.exit").exists() {
+            if f.pending.wakes() || !f.agents.is_empty() {
+                return Ok(false);
+            }
+            owner::call(data, wid, json!({"op": "stop", "by": "idle"}))?;
+        }
+        core::session::unbuild(&spec, &built)?;
+    }
+    drop(held);
+    core::session::unbuilt(&spec.dir).map(|()| true)
 }
 
 /// Closes a finished worker's idle agent, its host kept: nothing runs in it or will wake it.
