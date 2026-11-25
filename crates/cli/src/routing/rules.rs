@@ -145,6 +145,31 @@ pub(super) fn allowed<'a>(
     Ok(m)
 }
 
+/// Why an entry was passed by, after its model's name and for one or several.
+pub(super) const FULL: &str = "had no account with room";
+
+/// An entry `allowed` refuses, by its name, and why.
+pub(super) fn unusable(
+    data: &Path,
+    groups: &[Value],
+    rules: &[Value],
+    agent: &str,
+    id: &str,
+) -> (String, &'static str) {
+    let name = model_of(groups, agent, id).and_then(|m| m["name"].as_str());
+    let why = match () {
+        _ if !groups.iter().any(|g| g["provider"] == agent) => {
+            "can't run (its agent is off or not set up)"
+        }
+        _ if settings::models_off(data, agent).iter().any(|m| m == id) => {
+            "can't run (hidden in Settings)"
+        }
+        _ if barred(rules, agent, id) => "can't run (barred by your rule)",
+        _ => "can't run (its agent doesn't list it now)",
+    };
+    (name.unwrap_or(id).into(), why)
+}
+
 /// The effort an entry runs at: its own (or `--effort`), else the model's default; one above a
 /// rule runs at the highest the rule allows, with a note, or is refused when asked for outright
 /// (`strict`) [D338] (proposed).

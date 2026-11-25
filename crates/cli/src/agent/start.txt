@@ -10,13 +10,14 @@ last message, its branch and commits. So end your turn.
 Its permission prompts and questions come to you the same way, never to the user: judge each and
 answer with `brigadier send <id> --allow`, `--deny "<reason>"` or your answer as the message.
 Every start names a job, or a model. A job runs on the user's list for it (Settings › Routing): the
-first model with an account that has room; the next only when one is out of quota, and the worker's
-thread says so. Pick the job whose line fits; `brigadier models` lists them. --model runs that model
+first model with an account that has room; the next only when one is out of quota or can't run, and the
+worker's thread says so. Pick the job whose line fits; `brigadier models` lists them. --model runs that model
 where the user's rules allow it, never replaced; --agent keeps to one agent. A job whose models are
 all out of quota holds the worker for the user.
---retry starts a fresh worker on your failed worker's first brief, on its job: the same model one effort
-up, then the job's next model, at most two steps, then the user decides; after a temporary failure it
-runs on the same pick again.
+--retry is for wrong work: a fresh worker on the failed one's first brief, on its job: the same model one
+effort up, or once more where it has no more, then the job's next model, at most two steps, then the user
+decides. One blocked or cut off isn't wrong: once it can go on, `brigadier send <id>` carries it on. After
+a passing failure or a cut, --retry runs on the same pick again.
 --reviewing starts an adversarial review on the user's Review job, on another agent than the author's,
 that tries to break the work and commits nothing. <id> reviews your worker's commits against its brief; session
 your own plan or merged work, given in the brief. `brigadier help reviews` says when.

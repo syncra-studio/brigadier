@@ -26,7 +26,7 @@ pub(crate) use jobs::said;
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::receipt;
 pub(crate) use retry::plan as retry;
-use rules::{allowed, barred, cap, effort_of};
+use rules::{FULL, allowed, barred, cap, effort_of, unusable};
 pub(crate) use rules::{launch, picks};
 
 const FILE: &str = "routing.json";
@@ -317,8 +317,9 @@ fn rules_of(data: &Path) -> Vec<Value> {
 pub(crate) fn why(asked: &Value, ran: &Value, retry: &Value) -> String {
     let step = match retry["step"].as_str() {
         Some("effort") => Some("a retry: the same model one effort up"),
+        Some("again") => Some("a retry: the same model once more"),
         Some("next") => Some("a retry: the job's next model"),
-        Some("same") => Some("a retry on the same pick, as its last end was temporary"),
+        Some("same") => Some("a retry on the same pick, as its last end wasn't its work"),
         _ => None,
     };
     let named = match (asked["model"].is_string(), ran["job"].as_str()) {

@@ -1,6 +1,7 @@
 //! The resolver: a worker's model and account from its job, by quota where the user lets it
 //! [D2037, D2040, D2041, D51, D375, D387].
 
+use super::receipt::label;
 use super::*;
 
 /// The account work on `agent` takes by D2040: the parent's own on the parent's agent, else that
@@ -17,22 +18,6 @@ pub(super) fn account_for(data: &Path, parent: &Spec, f: &Fold, agent: &str) -> 
         }
     }
     .unwrap_or_default()
-}
-
-/// An account as Providers names it, for the receipt [D24]: its name, else which login it is.
-pub(super) fn label(v: &Value, agent: &str, id: &str) -> String {
-    if adapters::get(agent).is_none_or(|a| a.accounts().is_none()) {
-        return String::new();
-    }
-    let name = (accounts_of(v, agent).into_iter())
-        .find(|(x, _)| x == id)
-        .map(|(_, n)| n)
-        .unwrap_or_default();
-    match (name.is_empty(), id.is_empty()) {
-        (false, _) => name,
-        (true, true) => "This computer's login".into(),
-        (true, false) => "Another account".into(),
-    }
 }
 
 /// Reservations go when their worker ends, a newer sample of their account arrives, or after
@@ -186,7 +171,7 @@ pub(crate) struct Pick {
 /// refused with the user's jobs. `--agent` takes the job's entries on it, else its
 /// default model; `--effort` applies to the entry taken [D392 P4]. Runs under the data dir's lock,
 /// so the reservation it makes is seen by the next. A review's (`review`: its authors' agents) is
-/// the Review job's first entry on another agent, at high where the model has it; it never holds:
+/// the Review job's first entry on another agent, at its effort, high where it names none; it never holds:
 /// none placed, it doesn't run [D385, D3026].
 /// Where the agent finds the models that make images.
 const DRAWING: &str = "`brigadier models` marks the ones that make images.";
@@ -208,7 +193,7 @@ pub(crate) fn resolve(
     let groups = groups(data, Some(me));
     let t = table(data, &groups);
     let rules = t["rules"].as_array().cloned().unwrap_or_default();
-    let all = t["jobs"].as_array().cloned().unwrap_or_default();
+    let all = jobs::all(&read(&data.join(FILE)), &groups);
     let asked = if review.is_some() {
         Some(jobs::REVIEW.into())
     } else {
@@ -279,12 +264,17 @@ pub(crate) fn resolve(
     };
     let v = accounts::load(data);
     let (mut first, mut out, mut soonest) = (None, vec![], None::<u64>);
+    // Every entry passed by, and why: never skipped in silence [D375].
+    let mut by_why: Vec<(String, &str)> = vec![];
     for e in &list {
         let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
         let m = match allowed(data, &groups, &rules, a, id) {
             Ok(m) => m,
             Err(why) if model.is_some() => return Err(refuse(&why)),
-            Err(_) => continue,
+            Err(_) => {
+                by_why.push(unusable(data, &groups, &rules, a, id));
+                continue;
+            }
         };
         if images && m["draws"] != true {
             if model.is_some() {
@@ -293,11 +283,7 @@ pub(crate) fn resolve(
             continue;
         }
         let high = (m["efforts"].as_array().into_iter().flatten()).any(|x| x == "high");
-        let want = if review.is_some() && high {
-            Some("high")
-        } else {
-            e["effort"].as_str()
-        };
+        let want = (e["effort"].as_str()).or((review.is_some() && high).then_some("high"));
         let (runs_at, capped) =
             effort_of(&rules, a, m, want, effort.is_some()).map_err(|w| refuse(&w))?;
         let Some(adapter) = adapters::get(a) else {
@@ -326,17 +312,15 @@ pub(crate) fn resolve(
                 pick.account = Some(account).filter(|x| !x.is_empty());
                 (pick.ran["label"], pick.ran["quota"]) =
                     (kept["label"].clone(), kept["quota"].clone());
-                if let Some(job) = name.as_ref().filter(|_| !out.is_empty()) {
-                    pick.ran["note"] = format!(
-                        "{} had no account with room, so the next in {job} ran",
-                        jobs::and(&out)
-                    )
-                    .into();
+                if let Some(job) = name.as_ref().filter(|_| !by_why.is_empty()) {
+                    pick.ran["note"] =
+                        format!("{}, so the next in {job} ran", jobs::reasons(&by_why)).into();
                 }
                 return Ok(pick);
             }
             Err(at) => {
                 out.push(shown.as_str().unwrap_or(id).to_string());
+                by_why.push((shown.as_str().unwrap_or(id).into(), FULL));
                 soonest = at.map_or(soonest, |at| Some(soonest.map_or(at, |s| s.min(at))));
                 first.get_or_insert(pick);
             }
@@ -355,8 +339,12 @@ pub(crate) fn resolve(
                 "No model you may use makes images. {DRAWING}"
             )));
         }
+        let why = match by_why.is_empty() {
+            true => String::new(),
+            false => format!(" {}.", jobs::reasons(&by_why)),
+        };
         return Err(refuse(&format!(
-            "No model in your {} job is one you may use: Settings › Routing sets it.",
+            "No model in your {} job is one you may use: Settings › Routing sets it.{why}",
             name.unwrap_or_default()
         )));
     };
@@ -399,7 +387,7 @@ pub(crate) fn next(
         .cloned()
         .or(spec.model.clone())
         .unwrap_or_default();
-    let all = t["jobs"].as_array().cloned().unwrap_or_default();
+    let all = jobs::all(&read(&data.join(FILE)), &groups);
     let job = (l.ran["job"].as_str()).and_then(|j| jobs::named(&all, j));
     let images = l.ran["images"] == true;
     let list = match job {
@@ -414,6 +402,7 @@ pub(crate) fn next(
     let same = json!({"agent": backend, "model": now, "effort": l.ran["effort"]});
     let v = accounts::load(data);
     let mut out = vec![str_of(&l.ran, "name").to_string()];
+    let mut by_why = vec![(out[0].clone(), FULL)];
     let mut soonest = None::<u64>;
     let mut tries: Vec<(Value, bool)> = vec![(same, true)];
     tries.extend(
@@ -425,6 +414,9 @@ pub(crate) fn next(
     for (e, same) in tries {
         let (a, id) = (str_of(&e, "agent"), str_of(&e, "model"));
         let Ok(m) = allowed(data, &groups, &rules, a, id) else {
+            if !same {
+                by_why.push(unusable(data, &groups, &rules, a, id));
+            }
             continue;
         };
         let Some(adapter) = adapters::get(a).filter(|_| !images || m["draws"] == true) else {
@@ -452,8 +444,8 @@ pub(crate) fn next(
                         jobs::and(&out)
                     ),
                     false => format!(
-                        "{} had no account with room, so the next in {} ran",
-                        jobs::and(&out),
+                        "{}, so the next in {} ran",
+                        jobs::reasons(&by_why),
                         job.as_deref().unwrap_or("")
                     ),
                 };
@@ -468,13 +460,9 @@ pub(crate) fn next(
             }
             Err(r) => {
                 if !same && out.last().is_none_or(|x| x != id) {
-                    out.push(
-                        m.get("name")
-                            .unwrap_or(&m["id"])
-                            .as_str()
-                            .unwrap_or(id)
-                            .to_string(),
-                    );
+                    let name = m.get("name").unwrap_or(&m["id"]).as_str().unwrap_or(id);
+                    out.push(name.into());
+                    by_why.push((name.into(), FULL));
                 }
                 soonest = r.map_or(soonest, |r| Some(soonest.map_or(r, |s| s.min(r))));
             }

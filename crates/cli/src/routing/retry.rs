@@ -1,13 +1,38 @@
 //! `start --retry <id> "<what failed>"` [D2037, D342]: a fresh worker, never the failed one's
 //! transcript, from its chain's first brief and a note, one step up the ladder: more effort on
-//! the same model, then its job's next entry after the one that ran, at most two steps; past
-//! them, the user's call on its card [D2028, D350-D353]. A worker with no job (a `--model` one,
+//! the same model, or where it has no more, that once more; then its job's next entry after the one
+//! that ran, at most two steps; past them, the user's call on its card [D2028, D350-D353]. A worker with no job (a `--model` one,
 //! one from before jobs, or its job since deleted or renamed) has no next entry [D392 P5]. The
 //! chain's steps are read from its workers' records, kept under the family lock when each is
 //! reserved, so a restart, or one held and never launched, keeps them [D350].
 
 use super::pick::Pick;
 use super::*;
+
+/// The steps of a chain's ladder, one of each.
+const LADDER: [&str; 3] = ["effort", "again", "next"];
+
+/// What the failed try left for the next: its commits where they are, its edits never committed.
+fn left(data: &Path, l: &workers::Link, id: &str) -> String {
+    let dir = core::session_dir(data, id);
+    let cwd = core::load(data, id).map_or(String::new(), |s| s.cwd);
+    let lands = core::worktrees::lands(&dir).ok().flatten();
+    let commits = l.last["commits"].as_u64().unwrap_or(0);
+    let mut said = match (l.last["merged"] == true, commits, lands) {
+        (true, ..) => "Its commits are already on your branch.".to_string(),
+        (_, 0, _) => "It left no commits.".into(),
+        (_, _, Some(x)) => format!(
+            "Its commits are not on your branch: read `git log -p {}..{}`, and take what is right.",
+            x.base_commit,
+            x.branch.unwrap_or_default()
+        ),
+        _ => "Its commits are in its own repositories' branches, not on yours.".into(),
+    };
+    if workers::git(&cwd, &["status", "--porcelain"]).is_some_and(|s| !s.is_empty()) {
+        said += &format!(" Edits it never committed are in {cwd}.");
+    }
+    said
+}
 
 /// A retry's plan: its brief and title, the flags its pick takes, and what it keeps.
 pub(crate) struct Retry {
@@ -33,7 +58,7 @@ impl Retry {
     /// since this plan was read: two never take one [D350].
     pub(crate) fn taken(&self, data: &Path, me: &str) -> Option<Value> {
         let (chain, step) = (&self.note["chain"], &self.note["step"]);
-        let rung = step == "effort" || step == "next";
+        let rung = LADDER.iter().any(|l| step == l);
         let took = |r: &workers::Record| r.retry["chain"] == *chain && r.retry["step"] == *step;
         (rung && workers::records(data, me).iter().any(took)).then(|| {
             workers::refuse("Another retry of it just took that step. Retry it again to go on.")
@@ -55,8 +80,8 @@ impl Retry {
 }
 
 /// The plan for `me`'s retry of its worker `id`. Only its parent may; the ladder picks, so
-/// `--job`, `--agent`, `--model` and `--effort` are refused. One whose last end was temporary
-/// runs again on the same pick, no ladder step [D340] (proposed).
+/// `--job`, `--agent`, `--model` and `--effort` are refused. One whose last end wasn't its model's
+/// doing (a cut, a passing failure, a limit, a sign-in) runs again on the same pick, no ladder step [D340] (proposed).
 pub(crate) fn plan(
     data: &Path,
     me: &str,
@@ -106,17 +131,18 @@ pub(crate) fn plan(
     let rung = if taken("next") {
         2
     } else {
-        taken("effort") as usize
+        (taken("effort") || taken("again")) as usize
     };
-    let ladder = steps
-        .iter()
-        .filter(|s| *s == "effort" || *s == "next")
+    let ladder = (steps.iter())
+        .filter(|s| LADDER.iter().any(|l| *s == l))
         .count()
         + 1;
     let n = steps.len() + 1;
-    let temporary = (workers::outcomes(data, id).iter().rev())
-        .find(|o| o["phase"] == "end")
-        .is_some_and(|o| o["temporary"] == true);
+    // Nothing its model did wrong ended it: no step up.
+    let temporary = matches!(
+        workers::cause(&l, &workers::outcomes(data, id)),
+        "infrastructure" | "environment" | "quota"
+    );
 
     let ran = &l.ran;
     let (agent, model) = (str_of(ran, "agent"), str_of(ran, "model"));
@@ -166,6 +192,10 @@ pub(crate) fn plan(
         ("same", same(e), format!("Retry {n} on the same pick"), None)
     } else if let Some(e) = more().filter(|_| rung == 0) {
         ("effort", same(Some(e)), label, None)
+    } else if rung == 0 {
+        // No more effort for it: once more as it was, with what the last try left.
+        let e = ran["effort"].as_str().map(String::from);
+        ("again", same(e), label, None)
     } else if let Some(j) = job.clone().filter(|_| next && rung < 2) {
         let after = json!({"agent": agent, "model": model}).to_string();
         ("next", vec![j, ("job-after", after)], label, None)
@@ -186,7 +216,8 @@ pub(crate) fn plan(
     };
     let over = json!({"retry": label, "failed": failed});
     let note = format!(
-        "The last try ({id}) failed: {failed}. Its commits, if any, are already on your branch."
+        "The last try ({id}) failed: {failed}. {}",
+        left(data, &l, id)
     );
     // Numbered among all its parent's retries of that title: two chains whose heads share a
     // title never draw the same one.
