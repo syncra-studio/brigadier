@@ -8,6 +8,9 @@
 //   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
+// Every child runs in a home of its own, never the owner's (home.mjs). Real CLIs (REAL, AGENTS) must be signed in
+// in it: HOME=<scratch, outside the owner's>.
+//
 // Results print as JSON lines; the last line is the summary. Scratch lives under $DRILL_ROOT
 // (default /tmp/brigadier-drill) and is removed at the end unless KEEP=1.
 
@@ -16,6 +19,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
+import { isolate } from './home.mjs'
 
 const BIN = process.env.BIN
 const ROOT = process.env.DRILL_ROOT ?? '/tmp/brigadier-drill'
@@ -25,6 +29,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const now = () => Date.now()
 const log = (o) => console.log(JSON.stringify(o))
 let DATA = ''
+// Codex's rollouts, for `standing`: where AGENT_PATHS's wrapper keeps them.
+const ROLLOUTS = process.env.CODEX_HOME ?? ''
+isolate(ROOT)
 
 function cli(args, env = {}, timeout = 30000) {
   const t = performance.now()
@@ -54,7 +61,8 @@ function ps() {
   }).filter(Boolean)
 }
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
-const kill = (pid, sig = 'SIGKILL') => { try { process.kill(pid, sig) } catch {} }
+// Whether there was one to kill.
+const kill = (pid, sig = 'SIGKILL') => { try { return process.kill(pid, sig) } catch { return false } }
 const ownerPid = (id) => cli(['owner', id]).out.pid
 // Only processes of this run: its own data folder or its own binaries, never a shell or this script.
 const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsWith(DATA) || p.cmd.startsWith(`${BIN}/`)) && !/drill\.mjs|^\S*(zsh|bash|node)\b/.test(p.cmd))
@@ -1840,7 +1848,7 @@ function given(sd, id, agent, seen) {
   if (agent === 'opencode') { try { return fs.readFileSync(`${sd.data}/sessions/${id}/commit-style.md`, 'utf8') } catch { return '' } }
   if (agent === 'claude') return seen.join('\n')
   const resume = sd.cli(['read', id]).all.filter((i) => i.kind === 'resume_id').at(-1)?.id ?? '-'
-  const r = spawnSync('grep', ['-rl', resume, `${process.env.CODEX_HOME ?? ''}/sessions`], { encoding: 'utf8' })
+  const r = spawnSync('grep', ['-rl', resume, `${ROLLOUTS}/sessions`], { encoding: 'utf8' })
   return (r.stdout ?? '').trim().split('\n').filter(Boolean).map((f) => fs.readFileSync(f, 'utf8')).join('\n')
 }
 

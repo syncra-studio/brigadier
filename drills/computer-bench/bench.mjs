@@ -10,6 +10,9 @@
 //   browser     `brigadier browser`, in the app running on BRIGADIER_DATA, for BRIGADIER_SESSION.
 //   playwright  Playwright MCP, headless and isolated: the baseline.
 //
+// Every child but Chrome (a changed HOME has no keychain for it) runs in a home of its own, never the owner's (drills/home.mjs), so Claude's sign-in comes
+// with CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, or from the .credentials.json of a scratch HOME.
+//
 // BIN=<dir with the brigadier to test> (else the one on PATH), with BRIGADIER_DATA/SESSION/GRANT.
 // MODEL (default claude-haiku-5-5) and EFFORT (default medium) are the same for every tool. Each
 // run appends a JSON line to $OUT/<tool>.jsonl (default /tmp/computer-bench) and keeps everything
@@ -22,6 +25,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { OWNER, isolate } from '../home.mjs'
 import { serve } from './server.mjs'
 
 const tool = process.argv[2]
@@ -30,14 +34,16 @@ const ONLY = process.argv[4]?.split(',')
 const MODEL = process.env.MODEL ?? 'claude-haiku-5-5'
 const EFFORT = process.env.EFFORT ?? 'medium'
 const OUT = process.env.OUT ?? '/tmp/computer-bench'
-const CHROME = process.env.CHROME ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+const CHROME = process.env.CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
 const PROFILE = process.env.CHROME_PROFILE ?? '/tmp/bcu/chrome'
 const CHROME_PID = `${PROFILE}.pid`
 const BRIGADIER = process.env.BIN ? path.join(process.env.BIN, 'brigadier') : spawnSync('which', ['brigadier'], { encoding: 'utf8' }).stdout.trim()
 const PW_MCP = process.env.PW_MCP // path to @playwright/mcp's cli.js
 // Chrome's headless shell, so the baseline never shows as a second Chrome for Testing to computer use.
-const PW_CHROME = process.env.PW_CHROME ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
+const PW_CHROME = process.env.PW_CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 const LIMIT = 6 * 60_000
+isolate(OUT)
+if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY && !fs.existsSync(`${process.env.CLAUDE_CONFIG_DIR}/.credentials.json`)) { console.error('Claude is not signed in here: set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY'); process.exit(2) }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // A recorded pid's command now, empty once it's gone: checked before a kill, as a pid may be reused.
 const commandOf = (pid) => spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim()
@@ -124,7 +130,7 @@ const ARM = {
       fs.rmSync(path.join(PROFILE, 'Default', 'Sessions'), { recursive: true, force: true })
     },
     async setup(url) {
-      const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore' })
+      const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: OWNER } })
       chrome.unref()
       fs.writeFileSync(CHROME_PID, String(chrome.pid))
       await sleep(4000)
