@@ -105,10 +105,6 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
             models.remove(at);
         }
     }
-    // Its `opus` alias, where its list names it: its top model.
-    if let Some((m, _)) = (models.iter_mut()).find(|(m, _)| m.is_of("opus")) {
-        m.top = true;
-    }
     let usage = said_usage.map(|v| usage(&v["response"]["response"], &models));
     // Two rows under one name: the long-context one says so.
     let names: Vec<String> = models.iter().map(|(m, _)| m.name.clone()).collect();
@@ -118,6 +114,11 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Listed, String> {
         }
     }
     let mut models: Vec<ModelInfo> = models.into_iter().map(|(m, _)| m).collect();
+    // Its `opus` alias, else its newest Opus: its top model.
+    let top = ModelInfo::of_family(&models, "opus").map(|m| m.id.clone());
+    for m in &mut models {
+        m.top = top.as_deref() == Some(m.id.as_str());
+    }
     mark_superseded(&mut models);
     Ok((models, usage))
 }

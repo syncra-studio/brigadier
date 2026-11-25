@@ -149,10 +149,15 @@ impl ModelInfo {
         }
     }
 
-    /// Whether it's of the family `name` ("opus"), by its name ("Opus 5.5") or by its id, an alias.
-    pub fn is_of(&self, name: &str) -> bool {
-        let alias = self.id.split('[').next() == Some(name);
-        alias || versioned(&self.name).is_some_and(|f| f.0.trim().eq_ignore_ascii_case(name))
+    /// The model of the family `name` ("opus") in `models`: the one its id, an alias, names, else the
+    /// newest by name ("Opus 5.5").
+    pub fn of_family<'a>(models: &'a [Self], name: &str) -> Option<&'a Self> {
+        let of = |m: &&Self| {
+            let (family, version) = versioned(&m.name)?;
+            (family.trim().eq_ignore_ascii_case(name)).then_some(version)
+        };
+        (models.iter().find(|m| m.id.split('[').next() == Some(name)))
+            .or_else(|| models.iter().filter(|m| of(m).is_some()).max_by_key(of))
     }
 }
 

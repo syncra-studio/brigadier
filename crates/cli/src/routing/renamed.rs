@@ -32,6 +32,23 @@ pub(super) fn renamed(saved: &Value, groups: &[Value], agent: &str, id: &str) ->
     }
 }
 
+/// Each model of `agent`'s last read it no longer lists, by the id that took its place: that id and
+/// the name it last had.
+pub(super) fn replaced<'a>(
+    groups: &[Value],
+    agent: &str,
+    was: &'a Value,
+) -> Vec<(String, &'a str)> {
+    let saved = json!({"seen": {agent: was}});
+    (was["ids"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .filter_map(|x| {
+            let name = was["names"][x].as_str()?;
+            Some((renamed(&saved, groups, agent, x)?, name))
+        })
+        .collect()
+}
+
 /// What's saved, each renamed model under its new id: what every check and the page read.
 pub(super) fn settled(data: &Path, groups: &[Value]) -> Value {
     let was = read(&data.join(FILE));

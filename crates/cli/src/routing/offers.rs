@@ -102,7 +102,7 @@ fn found(
     let old_names: Vec<(String, &str)> = (was["names"].as_object().into_iter().flatten())
         .filter_map(|(id, n)| Some((id.clone(), n.as_str()?)))
         .collect();
-    let saved = json!({"seen": {agent: was}});
+    let replaced = renamed::replaced(groups, agent, was);
     let seen = |id: &str| (was["ids"].as_array().into_iter().flatten()).any(|x| x == id);
     for m in models {
         let (id, now_name) = (str_of(m, "id"), str_of(m, "name"));
@@ -127,21 +127,18 @@ fn found(
                 }
             }
         }
-        // The alias notice [D388 Q15]: the same id now runs a new version of its family, or a new id
-        // took the place of one gone.
-        let took = |x: &str| {
-            seen(x) && renamed::renamed(&saved, groups, agent, x).is_some_and(|n| n == id)
-        };
-        let same = old_names.iter().find(|(x, _)| x == id);
-        let before = same.or_else(|| old_names.iter().find(|(x, _)| took(x)));
+        // The alias notice [D388 Q15], on the first job that holds it: the same id now runs a new
+        // version of its family, or it took the place of one gone.
+        let same = (old_names.iter()).find(|(x, n)| x == id && *n != now_name);
+        let before = same.or_else(|| replaced.iter().find(|(x, _)| x == id));
         let (before, took) = (before.map(|(_, n)| *n), same.is_none());
         if let Some(was_name) = before.filter(|n| *n != now_name)
             && family(was_name)
                 .zip(family(now_name))
                 .is_some_and(|(a, b)| a.0 == b.0)
         {
-            moved[id] = now.into();
-            for j in jobs.iter().filter(|j| holds(j, &k)) {
+            (!took).then(|| moved[id] = now.into());
+            if let Some(j) = jobs.iter().find(|j| holds(j, &k)) {
                 out.push(
                     json!({"job": j["name"], "kind": "alias", "from": k, "to": k,
                     "was": was_name, "now": now_name, "took": took, "at": now}),

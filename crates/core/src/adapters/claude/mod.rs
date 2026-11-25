@@ -466,10 +466,7 @@ impl Adapter for Claude {
 
     /// Its small model, by its family's name [D1029].
     fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
-        models
-            .iter()
-            .find(|m| m.is_of("haiku"))
-            .map(|m| m.id.clone())
+        ModelInfo::of_family(models, "haiku").map(|m| m.id.clone())
     }
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {
