@@ -7,6 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Child {
+    pub pid: i32,
+    pub start_us: u64,
+    pub backend: String,
+    pub exited: bool,
+}
+
 pub struct Live {
     pub owner: Owner,
     pub child: Option<procs::Proc>,

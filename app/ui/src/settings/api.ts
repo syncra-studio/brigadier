@@ -21,6 +21,8 @@ export type Settings = {
   local_links_in: "brigadier" | "system";
   /** An agent cursor shows where computer use acts; on unless turned off [D956]. */
   computer_cursor: boolean;
+  /** Computer use leaves a browser's web pages to Brigadier's browser, unless the user names theirs; on unless turned off [D2032]. */
+  computer_web: boolean;
   /** The thread's column centred or the pane's full width, and its messages in bubbles or stacked [D914, D915]. */
   thread_width: "centered" | "full";
   message_layout: "bubbles" | "stacked";

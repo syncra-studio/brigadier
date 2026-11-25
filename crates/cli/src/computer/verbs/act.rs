@@ -1,8 +1,9 @@
 //! An action: it waits while the user is in its app [D910], runs once, and says how it went and
 //! what changed.
 
-use super::open::front;
-use super::window::{NO_CHANGE, changes, ours};
+use super::diff::{Seen, baseline, changes};
+use super::open::{front, own};
+use super::window::ours;
 use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -21,6 +22,12 @@ pub(super) fn act(
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
+    if !s.batch {
+        baseline(data, s, here);
+    }
+    // The control pressed, by its number in the last read.
+    let target =
+        (args["element_token"].as_str()).and_then(|t| t.rsplit(':').next()?.parse::<u64>().ok());
     let mut args = args;
     // A run's step reads nothing after it, so it needn't wait for a window to show.
     if s.batch && name != "drag" {
@@ -46,14 +53,15 @@ pub(super) fn act(
             )));
         }
         Ok(Err(why)) if why.contains("-25204") => {
-            let diff = changes(data, me, s, here);
+            let (_, diff) = changes(data, me, s, here);
             return Ok(format!(
                 "{line}: outcome unknown, the app didn't answer.\n{diff}"
             ));
         }
         Ok(Err(why)) if why.contains("-25206") => {
+            let over = target.map_or(String::new(), |n| covered(data, s, n, here));
             return Err(refuse(&format!(
-                "{line}: failed, it takes no press. A field takes `type`; a row or cell, its parent's number or `click N --double`."
+                "{line}: failed, it takes no press.{over} A field takes `type`; a row or cell, its parent's number or `click N --double`."
             )));
         }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
@@ -68,16 +76,68 @@ pub(super) fn act(
         }
         Ok(Ok(done)) => done,
     };
-    let diff = changes(data, me, s, here);
+    let (seen, diff) = changes(data, me, s, here);
     let how = match done["effect"].as_str() {
-        Some("refused") => format!("refused.{}", ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))),
-        _ if diff == NO_CHANGE => {
-            "no change seen. Try another way: a key, a menu item, `click N --double`, or read again.".into()
-        }
+        Some("refused") => format!(
+            "refused.{}",
+            ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))
+        ),
+        _ if seen == Seen::No => format!(
+            "no change seen.{} Try another way: a key, a menu item, `click N --double`, or read again.",
+            target.map_or(String::new(), |n| covered(data, s, n, here))
+        ),
         Some("partial") => "partly done.".into(),
+        _ if seen == Seen::Unsure => "sent; I can't tell what it changed.".into(),
         _ => "change observed.".into(),
     };
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
+}
+
+/// Cua's background keys aren't proved in Chromium, and no app is brought to the front for them
+/// [D909 D2032].
+pub(super) fn no_keys(s: &Sess, what: &str) -> Value {
+    refuse(&format!(
+        "{what}: {} is built on Chromium or Electron, where background keys aren't proved, and no app is brought to the front for one. Pick its menu item instead (`brigadier computer menu \"File > …\"`, read --menus lists them), click a button, or, in a browser, `brigadier computer open {} <url>`.",
+        s.app, s.app
+    ))
+}
+
+/// What sits on control [n]'s centre when it isn't [n] itself: a dialog or a banner over it.
+fn covered(data: &Path, s: &Sess, n: u64, here: &dyn Fn() -> bool) -> String {
+    // An overlay accessibility doesn't show leaves no answer: said so, never taken as uncovered.
+    let unseen = format!(
+        " I couldn't tell what's on [{n}]'s centre: something outside what I can read may cover it, as a consent banner can. `screenshot` shows it."
+    );
+    let Some(f) = s.frames.get(&n) else {
+        return unseen;
+    };
+    let at = json!({"pid": s.pid, "x": f[0] + f[2] / 2.0, "y": f[1] + f[3] / 2.0});
+    let Ok(hit) = own(data, "hit", at, here) else {
+        return unseen;
+    };
+    let chain = hit["chain"].as_array().cloned().unwrap_or_default();
+    let near = |a: &Value| (0..4).all(|i| (a[i].as_f64().unwrap_or(f64::MAX) - f[i]).abs() <= 1.0);
+    if chain.is_empty() {
+        return unseen;
+    }
+    // The point is [n], or inside it: nothing covers it.
+    if chain.iter().any(|e| near(&e["frame"])) {
+        return String::new();
+    }
+    let named = |e: &&Value| e["name"].as_str().is_some_and(|n| !n.is_empty());
+    let dialog = |e: &&Value| e["subrole"].as_str().is_some_and(|r| r.contains("Dialog"));
+    let Some(top) = (chain.iter().find(|e| dialog(e) && named(e))).or_else(|| {
+        chain
+            .iter()
+            .find(|e| named(e) && e["role"] != "AXWebArea" && e["role"] != "AXWindow")
+    }) else {
+        return String::new();
+    };
+    format!(
+        " The point is covered by {} \"{}\": close or answer it first.",
+        top["role"].as_str().unwrap_or("?"),
+        top["name"].as_str().unwrap_or("")
+    )
 }
 
 /// Seconds since the user last gave input of `kind` (`ANY`: moved the mouse, clicked or typed;

@@ -7,32 +7,45 @@ import { webContents, type WebContents } from "electron";
 
 import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
-import { forgetSecrets, pictureForAgent, runScript, sweptAndScrubbed } from "./browserAgentSecrets";
+import { AGENT_WORLD, forgetSecrets, keepAwake, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
-import { answerDialogs, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
+import { answerDialogs, dialogsCount, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
+import { shownTitle, shownUrl } from "./browserShownUrl";
 import { stopOf } from "./browserSignIn";
+import { stopForAddress } from "./browserSignInRules";
+import { openerTab } from "./guestPopups";
 
 export { watchNetwork };
 
+type AgentEvent = "devtools-opened" | "devtools-closed" | "detached" | "used";
+type Send = (method: string, params: object) => Promise<unknown>;
+/** A control's middle in its page, and how many elements up from what is there the control is. */
+type Look = { x: number; y: number; depth: number };
 type Held = {
   /** Calls run in order: a let-go waits for a click under way, so no button stays pressed. */
   queue: Promise<unknown>;
 };
 const held = new Map<number, Held>();
 
+/** The one press or key of an agent's that is on its way into a page, not heard there yet (watchUserInput). */
+const sending = new Map<number, "mouseDown" | "keyDown">();
+
 /** Tabs with DevTools open. `isDevToolsOpened` answers false for DevTools in a view of ours (browserDevtools.ts). */
 const opened = new Set<number>();
 export const devToolsOpen = (guest: WebContents): boolean => opened.has(guest.id) || guest.isDevToolsOpened();
 
-/** The guest of a call from `sender`, which must be the page hosting it. */
+/** The guest of a call from `sender`, which must be the page hosting it, or the tab whose window it is. */
 function guestFor(sender: WebContents, id: unknown): WebContents {
   const guest = typeof id === "number" ? webContents.fromId(id) : undefined;
-  if (!guest || guest.isDestroyed() || guest.getType() !== "webview" || guest.hostWebContents !== sender) throw new Error("That page is gone.");
+  const tab = guest && (openerTab(guest) ?? guest);
+  if (!guest || !tab || guest.isDestroyed() || tab.isDestroyed() || tab.getType() !== "webview" || tab.hostWebContents !== sender) throw new Error("That page is gone.");
   return guest;
 }
 
-function tellHost(guest: WebContents, event: "devtools-opened" | "devtools-closed" | "detached"): void {
-  guest.hostWebContents?.send("brigadier:agent-event", { from: guest.id, event });
+/** Tells the page hosting the tab; of a window, the tab it's of. */
+function tellHost(guest: WebContents, event: AgentEvent): void {
+  const tab = openerTab(guest) ?? guest;
+  if (!tab.isDestroyed()) tab.hostWebContents?.send("brigadier:agent-event", { from: tab.id, event });
 }
 
 async function attach(guest: WebContents): Promise<void> {
@@ -61,7 +74,7 @@ async function release(guest: WebContents): Promise<void> {
  * Runs `input` in the tab's order; an answer the user's take-over overtook is `paused`. It answers what the page asked
  * in a box meanwhile; `confirm` answers OK to a confirm box, for this input only.
  */
-async function acting(guest: WebContents, input: (send: (method: string, params: object) => Promise<unknown>) => Promise<void>, confirm = false): Promise<unknown> {
+async function acting(guest: WebContents, input: (send: Send) => Promise<void>, confirm = false): Promise<unknown> {
   if (devToolsOpen(guest)) return { paused: "devtools" };
   await attach(guest);
   const hold = held.get(guest.id);
@@ -69,10 +82,12 @@ async function acting(guest: WebContents, input: (send: (method: string, params:
   const run = hold.queue.then(async () => {
     const stillHeld = () => held.get(guest.id) === hold;
     if (!stillHeld()) return { paused: devToolsOpen(guest) ? "devtools" : "user" };
+    keepAwake(guest);
     if (confirm) await setConfirm(guest, true);
     try {
       await input((method, params) => guest.debugger.sendCommand(method, params));
     } finally {
+      sending.delete(guest.id);
       if (confirm) await setConfirm(guest, false);
     }
     // A box's words may quote a field's value: password values come out as any page text's do.
@@ -95,6 +110,35 @@ const FOCUSED_SECRET = `(() => {
   if (!at || !at.getAttribute) return false;
   return at.type === "password" || /\\b(current|new)-password\\b/i.test(at.getAttribute("autocomplete") || "") || (getComputedStyle(at).webkitTextSecurity || "none") !== "none";
 })()`;
+
+/** The elements under a point of the page, the one a click there reaches first, up to `depth` of them, through open shadow roots. */
+const UNDER = ({ x, y, depth }: Look) => `((x, y, depth) => {
+  let at = document.elementFromPoint(x, y);
+  while (at?.shadowRoot) {
+    const inner = at.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === at) break;
+    at = inner;
+  }
+  const found = [];
+  for (; at && found.length < depth; at = at.parentElement || at.getRootNode().host) found.push(at);
+  return found;
+})(${Number(x)}, ${Number(y)}, ${Number(depth)})`;
+
+/** Whether a click at a point of the page goes into a closed shadow root, which no script sees into: only the debugger tells. */
+async function intoClosedRoot(send: Send, look: Look): Promise<boolean> {
+  const { frameTree } = await send("Page.getFrameTree", {}) as { frameTree: { frame: { id: string } } };
+  // A world of its own, as the agent's script has: the page can't stand in for what it calls.
+  const { executionContextId } = await send("Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: "brigadier-look" }) as { executionContextId: number };
+  const { result: list } = await send("Runtime.evaluate", { expression: UNDER(look), contextId: executionContextId }) as { result: { objectId?: string } };
+  if (!list.objectId) return false;
+  const { result: members } = await send("Runtime.getProperties", { objectId: list.objectId, ownProperties: true }) as { result: { value?: { objectId?: string } }[] };
+  for (const { value } of members) {
+    if (!value?.objectId) continue;
+    const { node } = await send("DOM.describeNode", { objectId: value.objectId, depth: 0 }) as { node: { shadowRoots?: { shadowRootType?: string }[] } };
+    if (node.shadowRoots?.some((root) => root.shadowRootType === "closed")) return true;
+  }
+  return false;
+}
 
 const mouse = (type: string, x: number, y: number, buttons: number) => ({
   type,
@@ -138,7 +182,8 @@ function watchDevTools(guest: WebContents): void {
     // Ours forgets the hold first, so a hold still here was ended from outside: nothing resumes by itself.
     if (!held.delete(guest.id) || guest.isDestroyed()) return;
     void showDialogs(guest);
-    tellHost(guest, devToolsOpen(guest) ? "devtools-opened" : "detached");
+    // A window that closes ends its debugger as one ended from outside does, so only its tab's own says so.
+    if (devToolsOpen(guest) || !openerTab(guest)) tellHost(guest, devToolsOpen(guest) ? "devtools-opened" : "detached");
   });
 }
 
@@ -158,6 +203,37 @@ export function devToolsEnded(guest: WebContents): void {
   if (!guest.isDestroyed()) tellHost(guest, "devtools-closed");
 }
 
+/** Waits for the next text the user composes with an input method, which reaches the page with no key; an agent composes none. */
+const COMPOSED = `new Promise((told) => addEventListener("compositionstart", function heard({ isTrusted }) {
+  if (!isTrusted) return;
+  removeEventListener("compositionstart", heard, true);
+  told(true);
+}, true))`;
+
+/**
+ * The user's click, key or composed text in a window a tab's page opened takes the tab over: no shield lies over it, as
+ * one does over a tab's page. An agent's press or key is one event here, so one more than it sent is the user's.
+ * shortcut: a click or composed text in a cross-site frame of the window, and text with no key or composition (the
+ * emoji picker, a drop, the menu's Paste), may not be heard; watch the frames' own input if that matters.
+ */
+export function watchUserInput(window: WebContents): void {
+  const used = (type?: "mouseDown" | "keyDown") => {
+    if (type && sending.get(window.id) === type) sending.delete(window.id);
+    else tellHost(window, "used");
+  };
+  window.on("before-mouse-event", (_event, mouse) => {
+    if (mouse.type === "mouseDown") used(mouse.type);
+  });
+  window.on("before-input-event", (_event, input) => {
+    // A modifier alone may be ⌘Tab on its way to another app.
+    if (input.type === "keyDown" && !["Meta", "Shift", "Control", "Alt"].includes(input.key)) used(input.type);
+  });
+  window.on("dom-ready", async () => {
+    // Ends with its document, when nothing answers any more.
+    while (await window.executeJavaScriptInIsolatedWorld(AGENT_WORLD, [{ code: COMPOSED }]).catch(() => false)) used();
+  });
+}
+
 /** Every tab's guest, from when it is made. */
 export function watchGuest(guest: WebContents): void {
   const id = guest.id;
@@ -165,28 +241,43 @@ export function watchGuest(guest: WebContents): void {
   watchDevTools(guest);
   guest.once("destroyed", () => {
     held.delete(id);
-    opened.delete(id);
+    sending.delete(id);
+    // A window that closed with its DevTools open says so, or its tab would wait for them.
+    if (opened.delete(id) && openerTab(guest)) tellHost(guest, "devtools-closed");
     forgetActivity(id);
     forgetSecrets(id);
   });
 }
 
 type Call =
+  | { call: "shown"; guest?: number; url: string; title: string; query: boolean }
   | { call: "script"; guest: number; op: Record<string, unknown> }
   | { call: "attach"; guest: number }
   | { call: "release"; guest: number }
-  | { call: "click"; guest: number; x: number; y: number; confirm?: boolean }
+  | { call: "click"; guest: number; x: number; y: number; look: Look; confirm?: boolean }
   | { call: "enter"; guest: number }
   | { call: "key"; guest: number; key: string; modifiers: string[] }
   | { call: "hover"; guest: number; x: number; y: number }
   | { call: "scroll"; guest: number; x: number; y: number; deltaY: number }
   | { call: "wheel"; guest: number; x: number; y: number; deltaX: number; deltaY: number }
+  | { call: "dialogs"; guest: number }
+  | { call: "dialogsCount"; guest: number }
   | { call: "events"; guest: number; since: number; kinds: string[] }
   | { call: "capture"; guest: number }
   | { call: "signInStop"; guest: number };
 
+/** The script's kinds that tell what can be clicked. */
+const SEES_HANDLERS = new Set<unknown>(["read", "click", "place", "hover"]);
+
 export function installBrowserAgent(): void {
   handleFromApp("brigadier:agent", async (event, call: Call) => {
+    // A page's address and title for its agent. An ordinary page's query stays, as the agent may have to open it again;
+    // `query` hides a popup's and a paused tab's, and a sign-in page's is hidden here.
+    if (call.call === "shown") {
+      const page = call.guest === undefined ? undefined : webContents.fromId(call.guest);
+      const query = call.query || stopForAddress(call.url) !== null || (page !== undefined && (await stopOf(page)) !== null);
+      return { url: shownUrl(call.url, query), title: shownTitle(call.title, call.url) };
+    }
     const guest = guestFor(event.sender, call.guest);
     switch (call.call) {
       case "script":
@@ -194,20 +285,29 @@ export function installBrowserAgent(): void {
         if (call.op.kind === "sweep") throw new Error("Unknown agent call");
         // The one way code from outside reaches a page: the user read it on a card and said yes (agentBrowser.ts).
         if (call.op.kind === "eval") return evalOnPage(guest, String(call.op.script));
-        return sweptAndScrubbed(guest, () => runScript(guest, call.op));
+        keepAwake(guest);
+        return sweptAndScrubbed(guest, () => (SEES_HANDLERS.has(call.op.kind) ? runSeeingHandlers : runScript)(guest, call.op));
       case "attach":
         return attach(guest);
       case "release":
+        // Its windows go with it.
+        for (const id of held.keys()) {
+          const window = webContents.fromId(id);
+          if (window && openerTab(window) === guest) void release(window);
+        }
         return release(guest);
       case "click":
+        // The pointer is there already, put there before the last look (hands.ts): another move could change the page again.
         return acting(guest, async (send) => {
-          await send("Input.dispatchMouseEvent", mouse("mouseMoved", call.x, call.y, 0));
+          if (await intoClosedRoot(send, call.look)) throw new Error("That control's middle is inside a closed shadow root, which agents can't see into, so nothing was clicked: use another control, or ask the user.");
+          sending.set(guest.id, "mouseDown");
           await send("Input.dispatchMouseEvent", mouse("mousePressed", call.x, call.y, 1));
           await send("Input.dispatchMouseEvent", mouse("mouseReleased", call.x, call.y, 0));
         }, call.confirm === true);
       case "enter":
         // Widget events, not the debugger's keys, which follow the window's focus (as Orca found, its #20595).
         return acting(guest, async () => {
+          sending.set(guest.id, "keyDown");
           guest.sendInputEvent({ type: "keyDown", keyCode: "Return" });
           guest.sendInputEvent({ type: "char", keyCode: "Return" });
           guest.sendInputEvent({ type: "keyUp", keyCode: "Return" });
@@ -217,9 +317,11 @@ export function installBrowserAgent(): void {
         // Widget events, as Enter's. The page gets its focus first, so a focus handler that makes the field a
         // password field has run, and then the last look: keys never go into one [D518 D725].
         return acting(guest, async (send) => {
-          guest.focus();
+          // A window's would come to the front of the user's screen; its page has the emulated focus already.
+          if (!openerTab(guest)) guest.focus();
           const looked = await send("Runtime.evaluate", { expression: FOCUSED_SECRET, returnByValue: true }) as { result?: { value?: unknown } };
           if (looked.result?.value !== false) throw new Error("That is a password field, and only the user fills those in, so no key was sent. Ask them to sign in in this tab, and go on when they say so.");
+          sending.set(guest.id, "keyDown");
           for (const each of events) guest.sendInputEvent(each);
         });
       }
@@ -236,6 +338,10 @@ export function installBrowserAgent(): void {
         // The user's own scroll, which the shield over a driven tab passes on: no debugger, and it pauses nothing.
         guest.sendInputEvent({ type: "mouseWheel", x: Math.round(call.x), y: Math.round(call.y), deltaX: -call.deltaX, deltaY: -call.deltaY });
         return null;
+      case "dialogs":
+        return sweptAndScrubbed(guest, () => dialogsSaid(guest));
+      case "dialogsCount":
+        return dialogsCount(guest);
       case "events":
         return sweptAndScrubbed(guest, () => activityOf(guest.id, call.since, call.kinds));
       case "capture":

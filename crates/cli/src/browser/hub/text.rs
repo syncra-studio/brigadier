@@ -36,8 +36,9 @@ pub(crate) const HELP: &str = "brigadier browser <command> [--tab T] [--json]: B
   close                        closes your tab
 
 Every command works on the tab you used last; --tab picks another, as `tabs` or an answer named it. The user's own
-tabs are yours to read only. An action answers what changed on the page since your last read; after a new page, the
-whole page. Refs hold within one page load: read again after the page changes.
+tabs are yours to read only. A window a page opened has an id too: work in it with --tab. An action answers what
+changed on the page since your last read; after a new page, the whole page. Refs hold within one page load: read
+again after the page changes.
 --asks pay|send|sign-in says the action pays, sends something in the user's name or signs in: the user is asked first.
 Password fields are never typed into: at a sign-in, `ask` the user to sign in in the tab. When the user takes your
 tab over, you pause until they hand it back; your calls wait, then say it's still paused.
@@ -128,7 +129,16 @@ fn tabs_text(data: &Path, me: &str, r: &Value) -> String {
                 _ => "",
             };
             let front = if t["front"] == true { ", in front" } else { "" };
-            format!("{} · {title} — {} · {whose}{now}{front}", s("id"), s("url"))
+            let window = if t["window"] == true {
+                ", a window its page opened"
+            } else {
+                ""
+            };
+            format!(
+                "{} · {title} — {} · {whose}{now}{front}{window}",
+                s("id"),
+                s("url")
+            )
         })
         .collect();
     lines.join("\n")

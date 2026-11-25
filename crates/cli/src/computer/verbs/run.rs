@@ -1,7 +1,8 @@
 //! `run` (proposed): a few actions in one call, one round trip. It stops at the first that fails
 //! and answers each step's line, then one diff for the whole run.
 
-use super::window::{NO_CHANGE, changes, shows};
+use super::diff::{Seen, baseline, changes};
+use super::window::shows;
 use super::{SESSIONS, Words, lock, refuse, verb, words};
 use serde_json::Value;
 use std::path::Path;
@@ -32,6 +33,11 @@ pub(super) fn run(
             "A run has one type step, its text on stdin, and no --submit: add 'key return' as a step.",
         ));
     }
+    let mut s = lock(&SESSIONS).get(me).cloned().unwrap_or_default();
+    if s.window != 0 && !s.snapshot.is_empty() {
+        baseline(data, &mut s, here);
+        lock(&SESSIONS).insert(me.to_string(), s);
+    }
     batch(me, true);
     let (mut lines, mut typed) = (vec![], None);
     for (i, step) in steps.iter().enumerate() {
@@ -59,10 +65,11 @@ pub(super) fn run(
     if s.window == 0 || s.snapshot.is_empty() {
         return Ok(lines.join("\n"));
     }
-    let diff = changes(data, me, &mut s, here);
+    let (seen, diff) = changes(data, me, &mut s, here);
     let verdict = match typed {
         Some((n, text)) if shows(&s, n, text) => format!("Done: [{n}] reads the text back."),
-        _ if diff == NO_CHANGE => "No change seen. Read again, or try another way.".into(),
+        _ if seen == Seen::No => "No change seen. Read again, or try another way.".into(),
+        _ if seen == Seen::Unsure => "Sent; I can't tell what it changed.".into(),
         _ => "Change observed.".into(),
     };
     lock(&SESSIONS).insert(me.to_string(), s);

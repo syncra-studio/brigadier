@@ -57,6 +57,6 @@ export function stoppedWords(stop: SignInStop, tab: string): string {
   if (stop.kind === "ask") return `Asked the user: ${stop.what ?? ""}. ${after}`;
   if (stop.kind === "rejected") return `Stopped: Google refused this sign-in for this browser (${stop.site}). Agents can't help with that: only the user can decide what to do next. ${after}`;
   if (stop.kind === "captcha") return `Stopped: ${stop.site} shows a captcha. Agents never answer these, and only the user can. ${after}`;
-  if (stop.window) return `Stopped: this page opened a separate sign-in window at ${stop.site}. You can't see or use that window, and agents don't sign in. ${after}`;
+  if (stop.window) return `Stopped: this page opened a separate sign-in window at ${stop.site}. Only the user signs in there. ${after}`;
   return `Stopped: ${stop.site} is asking for a sign-in. Agents don't sign in: only the user does. ${after}`;
 }

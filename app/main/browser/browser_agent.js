@@ -4,21 +4,27 @@
 // calls. The test page (fixtures/agent-browser.html) runs this same file.
 //
 // Ops: { kind: "read", max } -> { url, title, text }
+//        (a control with no role reads as "clickable"; `handled`: where the page's own click handlers are, from the shell)
 //      { kind: "click", target, declared, approved } -> { done } | { ask, url } | { error }
 //      { kind: "type", target, text, submit, declared, approved } -> the same
 // A password field, seen by its type, its autocomplete, its computed text security or its names, shows only as a line
 // with no ref and nothing goes into it, yes or no: only the user fills those in. An action that pays, sends or signs in
-// (declared by the agent), a click on a button or link named Buy, Pay, Send, Delete and the like, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
+// (declared by the agent), a click on a button or link named or showing Buy, Pay, Send, Delete and the like, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
 // returns `ask` and does nothing unless the user said yes to it on this page (`approved`: the address the yes was given at, which the app
-// passes only while the tab is still on the page it was given on).
+// passes only while the tab is still on the page it was given on; `approvedFor`: what the control asked for then, none for any).
 //
 // With `trusted: true` (the Electron shell, in an isolated world) a click or typing isn't done here:
 // it answers { point: { x, y } } for the shell to do with real input, or an error if something covers
-// the control. { kind: "place", target, typing } answers where the control is now, without scrolling, and for typing
-// refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
+// the control. { kind: "place", ...the click's or typing's own, typing } answers where the control is now, without scrolling, or an
+// error or `ask` as the click or typing would, and for typing refuses a field that lost the focus. With `isolated: true` it runs in a world of its own: refs are kept there, not
 // in the page's DOM, where the page could see or forge them. { kind: "void" } forgets them.
 // { kind: "sweep" } answers every password field's place and value, for the shell's own use: it never reaches an agent.
-(op) => {
+// `waits: true` (a click, typing, hover, or press with a target, the first look and place) answers { error, waits, modals, page } instead
+// where waiting may change it, with nothing done: `waits` is what for, `modals` the dialogs over the page, `page` the document. With
+// `still: true` it does nothing at all: a promise of such a refusal, any other, or { still: true, modals, page } where a click or a hover's
+// control isn't moving over two frames, and typing's or a press's may go on, with the dialogs there were `before`. With `page` it answers only in that document.
+// `shownUrl`: an address as an agent sees it, from the shell.
+(op, shownUrl = (url) => url) => {
   const REF = "data-brigadier-ref";
   const NEXT = "data-brigadier-next-ref";
   const clean = (text) => (text || "").replace(/\s+/g, " ").trim();
@@ -61,6 +67,27 @@
         return element.isContentEditable && !element.parentElement?.isContentEditable ? "textbox" : null;
     }
   };
+
+  const pointer = (element) => element && getComputedStyle(element).cursor === "pointer";
+  const around = (element) => element.parentElement || element.getRootNode().host || null;
+  /**
+   * A control with no role of its own, as a card that opens a page: it takes the hand cursor, not from what holds it, or
+   * has a click handler the page set on it. The page's handlers are out of this world's sight, so the shell looks for
+   * them in the page's and hands over where they are (`op.handled`, places in document order), kept until it does again.
+   */
+  if (op.handled) {
+    const all = document.getElementsByTagName("*");
+    window.__brigadierHandled = new WeakSet(op.handled.map((at) => all[at]).filter(Boolean));
+  }
+  const handled = () => (window.__brigadierHandled ??= new WeakSet());
+  const isClickable = (element) => {
+    if (roleOf(element) || element === document.body || element === document.documentElement) return false;
+    // A label's click is its control's, which has a ref.
+    if (element.localName === "label" && element.control) return false;
+    return element.hasAttribute("onclick") || handled().has(element) || (pointer(element) && !pointer(around(element)));
+  };
+  /** The role a control answers to: its own, or that it can only be clicked. */
+  const controlOf = (element) => roleOf(element) || (isClickable(element) ? "clickable" : null);
 
   const labelled = (element) => {
     const ids = (element.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
@@ -122,6 +149,66 @@
     /\b(buy|pay|purchase|checkout|check out|place order|order now|subscribe)\b/i.test(name) ? "pay"
       : /\bsend\b/i.test(name) ? "send"
       : /\b(delete|remove|erase|destroy)\b/i.test(name) ? "delete" : null;
+
+  /** The most of what a control draws that counts as its words, as of a name shown: a card's paragraph doesn't. */
+  const MOST_WORDS = 80;
+
+  /**
+   * The words a control draws, whatever its label says: its text, whole, and each picture's, button's and tooltip's. Its
+   * text is read as its name's is, hidden by opacity or for screen readers too, and without that, so such text can't
+   * make what's seen too long. Never what another control in it draws, unless that takes the control's own click.
+   */
+  const drawnIn = (control) => {
+    const texts = [];
+    const marks = [];
+    let size = 0;
+    const box = control.getBoundingClientRect();
+    const another = (element) => {
+      const role = roleOf(element);
+      if (!role && !element.hasAttribute("onclick") && !handled().has(element)) return false;
+      const own = element.getBoundingClientRect();
+      const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+      const middle = own.left <= x && x <= own.right && own.top <= y && y <= own.bottom;
+      return !middle || (role && getComputedStyle(element).pointerEvents !== "none");
+    };
+    const walk = (element, outer) => {
+      if (element !== control && another(element)) return;
+      if (element.localName === "title") marks.push(element.textContent);
+      const style = getComputedStyle(element);
+      if (!element.checkVisibility() && style.display !== "contents") return;
+      const drawn = style.visibility === "visible";
+      const rect = element.getBoundingClientRect();
+      const clipped = style.overflow !== "visible" && style.display !== "contents" && (rect.width <= 1 || rect.height <= 1);
+      const seen = outer && style.opacity !== "0" && !clipped;
+      if (drawn) {
+        marks.push(element.getAttribute("alt"), element.getAttribute("title"));
+        if (element.localName === "input" && ["button", "submit", "reset"].includes(element.type)) marks.push(element.value);
+        if (element.localName === "svg" || element.getAttribute("role") === "img") marks.push(element.getAttribute("aria-label"));
+      }
+      const slotted = element.localName === "slot" ? element.assignedNodes({ flatten: true }) : [];
+      for (const child of slotted.length ? slotted : (element.shadowRoot ?? element).childNodes) {
+        if (child.nodeType === Node.ELEMENT_NODE) walk(child, seen);
+        else if (child.nodeType === Node.TEXT_NODE && drawn) {
+          texts.push({ text: child.data, seen });
+          if (seen) size += clean(child.data).length;
+        }
+        if (size > MOST_WORDS) return;
+      }
+    };
+    walk(control, true);
+    if (size > MOST_WORDS) return [];
+    // Words split over elements read as one where the page draws them so.
+    const whole = [texts.filter((each) => each.seen), texts].flatMap((some) => [" ", ""].map((by) => some.map((each) => each.text).join(by)));
+    return [...whole, ...marks].map(clean).filter((words) => words && words.length <= MOST_WORDS);
+  };
+
+  /** What a control's name and the words it draws say it does, paying first, and those words where its name doesn't say it. */
+  const saidBy = (element) => {
+    const named = namedKind(nameOf(element));
+    const drawn = drawnIn(element).map((words) => ({ kind: namedKind(words), words })).filter(({ kind }) => kind && kind !== named);
+    const kinds = ["pay", "send", "delete"].filter((kind) => kind === named || drawn.some((each) => each.kind === kind));
+    return { kinds, words: drawn.find((each) => each.kind === kinds.find((kind) => kind !== named))?.words };
+  };
 
   const isPassword = (element) => fieldKind(element) === "credentials";
   const HANDS_OFF = "That is a password field, and only the user fills those in, so nothing was done. Ask them to sign in in this tab, and go on when they say so.";
@@ -214,7 +301,7 @@
       }
       if (role === "link") {
         const href = element.getAttribute("href") || "";
-        if (href && !href.startsWith("javascript:")) text += ` -> ${cut(element.href || href, 100)}`;
+        if (href && !href.startsWith("javascript:")) text += ` -> ${cut(shownUrl(URL.parse(href, document.baseURI)?.href ?? href), 100)}`;
       }
       if (element.disabled || element.getAttribute("aria-disabled") === "true") text += " (disabled)";
       const kind = fieldKind(element);
@@ -244,6 +331,11 @@
         }
         const block = BLOCK.test(tag);
         if (block) flush();
+        // What it holds is read too: a card's own buttons are controls of theirs.
+        if (!labelling && isClickable(child)) {
+          flush();
+          lines.push(describe(child, "clickable"));
+        }
         const heading = /^h[1-6]$/.test(tag) && !child.querySelector("a, button, input");
         if (heading) {
           lines.push(`${"#".repeat(Number(tag[1]))} ${clean(child.innerText)}`);
@@ -280,15 +372,99 @@
     return { element };
   };
 
-  /** Asks the user first: why, and the control as the page names it. */
-  const ask = (sensitive, element) => {
-    // The yes was for this page, at this address; one for the session covers no paying, card, password, code or sign-in.
-    const covers = !op.covered || ["action", "delete", "send", "script"].includes(sensitive);
-    if (op.approved && op.approved === location.href && covers) return null;
-    return { ask: { sensitive, what: `${roleOf(element) || element.localName} ${quoted(nameOf(element))}` }, url: location.href };
+  /** The dialogs over the page. */
+  const modals = () => [...document.querySelectorAll("dialog:modal, [aria-modal='true']")].filter(boxed).map(refOf);
+  /** Which document this is: a ref means nothing in another, which may have its own of that name. */
+  const page = performance.timeOrigin;
+  /** A refusal that waiting may change. */
+  const later = (error, waits) => (op.waits ? { error, waits, modals: modals(), page } : { error });
+  /** Takes no input, by its own attribute, its fieldset's, or an aria-disabled on it or around it. */
+  const disabled = (element) => {
+    for (let at = element; at; at = around(at)) if (at.getAttribute("aria-disabled") === "true") return true;
+    return Boolean(element.disabled) || element.matches(":disabled");
+  };
+  /** What keeps a control from being used that may pass: it doesn't show, or it's disabled. */
+  const unready = (element, words = `${op.target} is disabled.`) =>
+    !shown(element) ? later(`${op.target} doesn't show now.`, "it to show")
+      : disabled(element) ? later(words, "it to be enabled") : null;
+
+  /** The next frame; nothing where none comes within `most` ms. */
+  const frame = (most) => new Promise((next) => {
+    requestAnimationFrame(next);
+    setTimeout(next, most);
+  });
+  /** Whether it, or what it's in, has an animation that never ends: its box never will be the same. */
+  const endless = (element) => {
+    for (let at = element; at; at = around(at)) if (at.getAnimations().some((each) => each.effect?.getComputedTiming().iterations === Infinity)) return true;
+    return false;
+  };
+  /** Whether the control's box changes. One that pulses for ever about its middle is where its click goes all along. */
+  const moves = async (element) => {
+    // Nothing moves by frames on a page that's hidden, and its timers are held back; the pointer's own look is after it paints.
+    if (document.hidden) return false;
+    for (let from = element.getBoundingClientRect(), frames = 0; frames < 2; frames++) {
+      // None in two frames' time: the page doesn't paint, so nothing moves. Once it does, a late frame is waited for.
+      if (!(await frame(frames ? 100 : 33))) return false;
+      const to = element.getBoundingClientRect();
+      const changed = (side) => Math.abs(to[side] - from[side]) > 0.5;
+      if (["left", "top", "right", "bottom"].some(changed)) {
+        const off = Math.abs(to.left + to.right - from.left - from.right) > 1 || Math.abs(to.top + to.bottom - from.top - from.bottom) > 1;
+        if (off || Math.min(from.width, from.height, to.width, to.height) < 1 || !endless(element)) return true;
+      }
+      from = to;
+    }
+    return false;
+  };
+  const refused = (error) => ({ error: `The page refused it: ${error && error.message ? error.message : String(error)}` });
+  /** What `verb` does, or, for the look before it, whether what `stop` has nothing against is still. */
+  const still = (verb, ...stops) => {
+    if (!op.still) return verb();
+    const before = modals();
+    const look = async () => {
+      const found = target();
+      if (found.error) return found;
+      const answers = stops.map((stop) => stop(found.element)).filter((answer) => answer && !answer.point);
+      // What no waiting changes is said at once, whatever else it would wait for.
+      const stopped = answers.find((answer) => !answer.waits) ?? answers[0];
+      if (stopped) return stopped;
+      // Keys go in wherever a field is.
+      const placed = op.kind === "click" || op.kind === "hover";
+      if (placed && (await moves(found.element))) return later(op.kind === "click" ? `${op.target} keeps moving, so it wasn't clicked. Try again in a moment.` : `${op.target} keeps moving, so nothing was done.`, "it to stop moving");
+      return { still: true, modals: modals(), page };
+    };
+    return look().catch(refused).then((answer) => ({ ...answer, before }));
   };
 
-  const pointer = (element, type) => {
+  /** Asks the user first, unless their yes covers every one of `reasons`: why, and the control as the page names it, with the `words` it draws that ask. */
+  const ask = (reasons, element, words) => {
+    const needed = reasons.filter(Boolean);
+    // The yes was for this page, at this address, and for what the control was then: not for what it became. One for the
+    // session covers no paying, card, password, code or sign-in.
+    const yes = op.approved && op.approved === location.href;
+    const covers = (each) => (op.covered ? ["action", "delete", "send", "script"].includes(each) : each === "action" || !op.approvedFor || op.approvedFor.includes(each));
+    const sensitive = needed.find((each) => !yes || !covers(each));
+    if (!sensitive) return null;
+    const what = `${controlOf(element) || element.localName} ${quoted(nameOf(element))}${words ? `, which shows ${quoted(words)}` : ""}`;
+    return { ask: { sensitive, reasons: needed, what }, url: location.href };
+  };
+
+  /** What a click on the control is refused or asked for, as it is now. */
+  const clickStop = (element) => {
+    if (isPassword(element)) return { error: HANDS_OFF };
+    // A control with no role acts as a button does, whatever it's made of, so it asks as one.
+    const role = controlOf(element) || "clickable";
+    const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
+    const said = role === "button" || role === "link" || role === "clickable" ? saidBy(element) : null;
+    return ask([op.declared, kind, ...(said?.kinds ?? []), op.always && "action"], element, said?.words) ?? unready(element);
+  };
+
+  /** What typing in the field asks for, as it is now: a card or code field as what it is, whatever the agent declared, so the card never shows the secret typed into it. */
+  const typeAsk = (element) => {
+    const own = fieldKind(element);
+    return ask([own, op.declared, own || (op.submit ? filledKind(scopeOf(element), element) : null), op.always && "action"], element);
+  };
+
+  const point = (element, type) => {
     const rect = element.getBoundingClientRect();
     const init = {
       bubbles: true, cancelable: true, composed: true, view: window, button: 0,
@@ -313,6 +489,7 @@
     return false;
   };
 
+  const FRAMES = new Set(["iframe", "frame", "fencedframe", "object", "embed"]);
   /** Where real input reaches the control, or what is over it; null when it has no place to click. */
   const placeOf = (element) => {
     const rects = element.getClientRects();
@@ -324,23 +501,37 @@
     const hit = deepest(x, y);
     const label = hit?.closest?.("label");
     if (hit && !within(element, hit) && !within(hit, element) && !label?.contains(element) && label?.control !== element) {
-      const role = roleOf(hit);
-      return { error: `${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.` };
+      const role = controlOf(hit);
+      return later(`${op.target} is covered by ${role || hit.localName} ${quoted(nameOf(hit) || hit.innerText || "")}: deal with that first.`, "what covers it to go");
     }
-    return { point: { x, y } };
+    const hovering = op.kind === "hover";
+    // What a frame holds can't be seen here, and the click would be its.
+    if (!hovering && hit && hit !== element && FRAMES.has(hit.localName)) {
+      return { error: `${op.target}'s middle is a frame, which agents can't see into, so nothing was clicked: use another control, or ask the user.` };
+    }
+    const roled = roleOf(element);
+    let depth = 1;
+    if (!roled || within(element, hit)) {
+      // A card's middle may be a control it holds, whose click is another. One with a role is read with no refs for what it holds, so there it asks.
+      for (let at = hit; at && at !== element; at = around(at), depth++) {
+        const role = controlOf(at);
+        if (role && !roled) return { error: `${op.target}'s middle is its ${role} ${quoted(nameOf(at))}, so clicking it would click that: use that one's own ref.` };
+        // A handler set with addEventListener can't be seen: what is named as a sensitive control may be one, so it asks.
+        const said = !hovering && (role || !roled) && within(element, at) ? saidBy(at) : null;
+        const asked = said && ask(said.kinds, at, said.words);
+        if (asked) return asked;
+      }
+    }
+    // `depth`: how many elements up from the middle the control is, for the shell's look for closed shadow roots.
+    return { point: { x, y, depth: within(element, hit) ? depth : 1 } };
   };
 
   const click = () => {
     const found = target();
     if (found.error) return found;
     const { element } = found;
-    if (isPassword(element)) return { error: HANDS_OFF };
-    if (element.disabled) return { error: `${op.target} is disabled.` };
-    const role = roleOf(element);
-    const kind = role === "button" ? filledKind(scopeOf(element)) : null;
-    const named = (role === "button" || role === "link") && namedKind(nameOf(element));
-    const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (named && ask(named, element)) || (op.always && ask("action", element));
-    if (asked) return asked;
+    const stop = clickStop(element);
+    if (stop) return stop;
     if (op.trusted) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
       // With no box it only takes the page's own click below.
@@ -348,19 +539,41 @@
       if (place) return place;
     }
     element.scrollIntoView({ block: "center", inline: "center" });
-    pointer(element, "pointerdown");
-    pointer(element, "mousedown");
+    point(element, "pointerdown");
+    point(element, "mousedown");
     element.focus?.({ preventScroll: true });
-    pointer(element, "pointerup");
-    pointer(element, "mouseup");
+    point(element, "pointerup");
+    point(element, "mouseup");
     element.click();
     return { done: true };
   };
 
+  const NO_KEYBOARD = `${op.target} can't take the keyboard: click it, or press without --ref.`;
+
   /**
    * Where a press's key goes, looked at first: never a password field or a frame we can't see into, and Enter or
-   * Space on a sensitive control asks as its click or submit would. With a ref, that control takes the focus.
+   * Space on a sensitive control asks as its click or submit would.
    */
+  const pressStop = (element) => {
+    if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
+    if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
+    const role = element === document.body ? null : controlOf(element);
+    const activates = op.key === "Enter" || op.key === "Space";
+    let kind = null;
+    let said = null;
+    if (activates && (role === "button" || role === "link" || role === "clickable")) {
+      kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
+      said = saidBy(element);
+    } else if (op.key === "Enter" && element !== document.body) {
+      kind = fieldKind(element) || filledKind(scopeOf(element), element);
+    } else if (op.key !== "Tab" && op.key !== "Escape") {
+      // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
+      kind = fieldKind(element);
+    }
+    return ask([op.declared, kind, ...(said?.kinds ?? []), op.always && "action"], element, said?.words) ?? (op.target ? unready(element, NO_KEYBOARD) : null);
+  };
+
+  /** With a ref, that control takes the focus. */
   const press = () => {
     let element;
     if (op.target) {
@@ -368,28 +581,13 @@
       if (found.error) return found;
       element = found.element;
     } else element = deepFocused() || document.body;
-    if (isPassword(element) || isPassword(deepFocused())) return { error: HANDS_OFF };
-    if (element.localName === "iframe" || element.localName === "frame") return { error: "The focus is inside a frame, which agents can't see into, so no key was sent." };
-    const role = roleOf(element);
-    const activates = op.key === "Enter" || op.key === "Space";
-    let kind = null;
-    let named = null;
-    if (activates && (role === "button" || role === "link")) {
-      kind = role === "button" ? filledKind(scopeOf(element)) : null;
-      named = namedKind(nameOf(element));
-    } else if (op.key === "Enter" && element !== document.body) {
-      kind = fieldKind(element) || filledKind(scopeOf(element), element);
-    } else if (op.key !== "Tab" && op.key !== "Escape") {
-      // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
-      kind = fieldKind(element);
-    }
-    const asked = (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (named && ask(named, element)) || (op.always && ask("action", element));
-    if (asked) return asked;
+    const stop = pressStop(element);
+    if (stop) return stop;
     if (op.target) {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
       element.focus?.({ preventScroll: true });
       const focused = deepFocused();
-      if (!focused || !within(element, focused)) return { error: `${op.target} can't take the keyboard: click it, or press without --ref.` };
+      if (!focused || !within(element, focused)) return { error: NO_KEYBOARD };
       // Its focus handler may have made it a password field meanwhile.
       if (isPassword(element) || isPassword(focused)) return { error: HANDS_OFF };
     }
@@ -408,23 +606,25 @@
       key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true,
     }));
 
-  const type = () => {
-    const found = target();
-    if (found.error) return found;
-    const { element } = found;
+  const typeStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
     const role = roleOf(element);
     if (!["textbox", "searchbox", "combobox", "spinbutton"].includes(role)) {
       return { error: `${op.target} isn't a field to type in (it is a ${role || element.localName}).` };
     }
-    if (element.disabled || element.readOnly) return { error: `${op.target} can't be typed in now.` };
-    // A card or code field asks as what it is, whatever the agent declared, so the card never
-    // shows the secret typed into it.
-    const own = fieldKind(element);
-    const kind = own || (op.submit ? filledKind(scopeOf(element), element) : null);
-    const asked = (own && ask(own, element)) || (op.declared && ask(op.declared, element)) || (kind && ask(kind, element)) || (op.always && ask("action", element));
+    const asked = typeAsk(element);
     if (asked) return asked;
-    element.scrollIntoView({ block: "center", inline: "center" });
+    if (disabled(element) || element.readOnly || element.getAttribute("aria-readonly") === "true") return later(`${op.target} can't be typed in now.`, "it to be editable");
+    return unready(element);
+  };
+
+  const type = () => {
+    const found = target();
+    if (found.error) return found;
+    const { element } = found;
+    const stop = typeStop(element);
+    if (stop) return stop;
+    element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
     element.focus({ preventScroll: true });
     if (element.localName === "select") {
       const wanted = clean(op.text).toLowerCase();
@@ -453,6 +653,13 @@
       if (going && form && element.localName !== "textarea") form.requestSubmit();
     }
     return { done: true };
+  };
+
+  const hover = () => {
+    const found = target();
+    if (found.error) return found;
+    found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+    return placeOf(found.element) ?? later(`${op.target} has no place to hover now.`, "it to show");
   };
 
   /** What an agent's script gave, as text: JSON where it can be, never a field's live value unless the script read one. */
@@ -519,10 +726,11 @@
   };
 
   try {
+    if (op.page && op.page !== page) return { error: "The page went to another before its control was ready, so nothing was done. Read it again." };
     switch (op.kind) {
       case "read": return read(op.max || 20000);
-      case "click": return click();
-      case "type": return type();
+      case "click": return still(click, clickStop, placeOf);
+      case "type": return still(type, typeStop);
       case "sweep": {
         const answer = { fields: [], values: [], width: innerWidth, frames: [] };
         const plain = (rect) => ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
@@ -541,13 +749,8 @@
         }
         return answer;
       }
-      case "press": return press();
-      case "hover": {
-        const found = target();
-        if (found.error) return found;
-        found.element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
-        return placeOf(found.element) ?? { error: `${op.target} has no place to hover now.` };
-      }
+      case "press": return still(press, pressStop);
+      case "hover": return still(hover);
       case "scroll": {
         if (op.target) {
           const found = target();
@@ -587,13 +790,14 @@
           const focused = deepFocused();
           if (isPassword(found.element) || isPassword(focused)) return { error: HANDS_OFF };
           if (!focused || !within(found.element, focused)) return { error: `The page moved the focus away from ${op.target}, so nothing was typed. Read it again.` };
-          return { done: true };
+          return typeAsk(found.element) ?? { done: true };
         }
-        return placeOf(found.element) ?? { error: `${op.target} has no place to click now.` };
+        // The control may have become another under the pointer: it's asked about again, as it is now.
+        return clickStop(found.element) ?? placeOf(found.element) ?? later(`${op.target} has no place to click now.`, "it to show");
       }
       default: return { error: `unknown op ${op.kind}` };
     }
   } catch (error) {
-    return { error: `The page refused it: ${error && error.message ? error.message : String(error)}` };
+    return refused(error);
   }
 }

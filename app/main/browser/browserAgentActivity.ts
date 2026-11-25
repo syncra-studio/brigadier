@@ -4,6 +4,7 @@
 import type { Session, WebContents } from "electron";
 
 import { sweepNow, sweepSoon } from "./browserAgentSecrets";
+import { shownUrl } from "./browserShownUrl";
 
 type Kind = "navigation" | "network" | "console" | "error";
 type Line = { at: number; kind: Kind; text: string };
@@ -14,7 +15,6 @@ type Tab = { lines: Line[]; next: number };
 const KEPT = 500;
 const ANSWER_MOST = 200;
 const TEXT_MOST = 1000;
-const URL_MOST = 300;
 
 const tabs = new Map<number, Tab>();
 /** Requests on their way, by Chromium's id. A page's own load ends with no webContentsId, so the guest is kept here. */
@@ -33,27 +33,6 @@ function add(guest: number, kind: Kind, text: string): void {
   const tab = tabOf(guest);
   tab.lines.push({ at: tab.next++, kind, text: `${new Date().toTimeString().slice(0, 8)} ${text.slice(0, TEXT_MOST)}` });
   if (tab.lines.length > KEPT) tab.lines.shift();
-}
-
-const SECRET_NAME = /pass|pwd|token|secret|auth|session|sid|code|key|otp/i;
-
-/** An address as a line shows it: what a query's sensitive names hold stays out. */
-export function shownUrl(url: string): string {
-  let shown = url;
-  try {
-    const parsed = new URL(url);
-    if (parsed.username || parsed.password) {
-      parsed.username = "";
-      parsed.password = "";
-    }
-    for (const name of Array.from(parsed.searchParams.keys())) {
-      if (SECRET_NAME.test(name)) parsed.searchParams.set(name, "(hidden)");
-    }
-    shown = parsed.toString();
-  } catch {
-    // Not an address to take apart: shown as it came, cut.
-  }
-  return shown.length > URL_MOST ? `${shown.slice(0, URL_MOST)}…` : shown;
 }
 
 /** The session's requests, by the guest each came from. Observers only: they can't hold up or change a request. */

@@ -12,6 +12,7 @@ use brigadier_core as core;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Condvar, LazyLock, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -19,8 +20,9 @@ use std::time::{Duration, Instant};
 pub(crate) use asks::answered;
 pub(crate) use text::HELP;
 
-/// How long the app may take over a call: a page load it waits for, at most.
-const CALL_WAIT: Duration = Duration::from_secs(45);
+/// How long the app may take over a call: the page loads before and after it and its wait for the
+/// control (hands.ts), at most.
+const CALL_WAIT: Duration = Duration::from_secs(50);
 /// How long a call on a tab the user took over waits for their Continue before the agent hears
 /// it is still paused.
 const PAUSE_WAIT: Duration = Duration::from_secs(50);
@@ -36,6 +38,8 @@ struct Hub {
     /// The tabs the user took over, with the agents whose calls wait on each for Continue.
     paused: Mutex<HashMap<String, Vec<String>>>,
     pause_changed: Condvar,
+    /// How many times a tab was let go on, changed with `paused`.
+    let_go: AtomicU64,
     /// The user's yes to one call until it goes through, by agent, tab and the call itself. In
     /// memory only, so nothing typed is ever written down.
     grants: Mutex<HashMap<(String, String, String), Value>>,
@@ -105,7 +109,10 @@ fn set_paused(tab: &str, paused: bool) -> Vec<String> {
             !set.contains_key(tab),
             set.entry(tab.to_string()).or_default().clone(),
         ),
-        false => set.remove(tab).map_or((false, vec![]), |w| (true, w)),
+        false => {
+            HUB.let_go.fetch_add(1, Ordering::Relaxed);
+            set.remove(tab).map_or((false, vec![]), |w| (true, w))
+        }
     };
     if changed {
         HUB.pause_changed.notify_all();
@@ -284,7 +291,7 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
                 }
             }
             Some("needsApproval") => {
-                match asks::ask(data, me, &op, &result, key.clone(), here) {
+                match asks::ask(data, me, &op, &result, key.clone(), granted, here) {
                     Ok(yes) => next = yes,
                     Err(reply) => return reply,
                 }
@@ -303,16 +310,27 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
 /// the pause's wait at most, then hears `paused`. A call whose agent went never reaches the tab.
 fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool) -> Value {
     let until = Instant::now() + PAUSE_WAIT;
-    let tab = op["tab"].as_str().unwrap_or("");
+    // A window's id is its tab's and its own (windows.ts): the user takes over the tab.
+    let tab_of = |id: &str| id.split('/').next().unwrap_or(id).to_string();
+    let on = op["tab"].as_str().unwrap_or("");
+    let tab = &tab_of(on);
     lock(&HUB.owners).insert(me.to_string(), owner.to_string());
     loop {
         if !tab.is_empty() && !unpaused(tab, me, until, here) {
-            return json!({"result": "paused", "tab": tab});
+            // The window it is on stays its target, as any answer's does.
+            lock(&HUB.tabs).insert(me.to_string(), on.to_string());
+            return json!({"result": "paused", "tab": on});
         }
+        let let_go = HUB.let_go.load(Ordering::Relaxed);
         let result = call(owner, me, label, op, here);
         // The user took the tab over as the call reached it: wait as for any pause.
         if result["result"] == "paused" && Instant::now() < until && here() {
-            set_paused(result["tab"].as_str().unwrap_or(tab), true);
+            let mut set = lock(&HUB.paused);
+            // A Continue since the call went may be newer than this answer: the page is asked again.
+            if HUB.let_go.load(Ordering::Relaxed) == let_go {
+                set.entry(tab_of(result["tab"].as_str().unwrap_or(tab)))
+                    .or_default();
+            }
             continue;
         }
         if let Some(t) = result["tab"]

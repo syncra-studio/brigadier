@@ -45,6 +45,12 @@ export async function setConfirm(guest: WebContents, yes: boolean): Promise<void
   await send(guest, "Runtime.evaluate", { expression: `window.__brigadierDialogs && (window.__brigadierDialogs.yes = ${yes})` }).catch(() => {});
 }
 
+/** How many boxes the page asked in since the last look, left for it. */
+export async function dialogsCount(guest: WebContents): Promise<number> {
+  const answer = await send(guest, "Runtime.evaluate", { expression: "window.__brigadierDialogs?.said.length ?? 0", returnByValue: true }).catch(() => null) as { result?: { value?: unknown } } | null;
+  return Number(answer?.result?.value ?? 0);
+}
+
 /** What the page asked since the last look. */
 export async function dialogsSaid(guest: WebContents): Promise<Said[]> {
   const answer = await send(guest, "Runtime.evaluate", { expression: "window.__brigadierDialogs ? window.__brigadierDialogs.said.splice(0) : []", returnByValue: true }).catch(() => null) as { result?: { value?: unknown } } | null;

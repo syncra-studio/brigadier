@@ -15,6 +15,7 @@ import { agentShields, dropOverlay, installAgentOverlays, placeOverlay } from ".
 import { devToolsChanged, userUsed } from "./pause";
 import { type SignInSeen, signInSeen } from "./sign-in";
 import { recordDates, trustLocalCert } from "./profiles";
+import { isWindow, type WindowSeen, windowOf, windowSeen } from "./windows";
 
 declare global {
   interface Window {
@@ -23,6 +24,7 @@ declare global {
       profilePartition(profileId: string): Promise<string>;
       guestFavicon(id: number, href: string): Promise<string | null>;
       onGuestPopup(listener: (details: { from: number; url: string }) => void): void;
+      onGuestWindow(listener: (details: WindowSeen) => void): void;
       onGuestPermission(listener: (details: { from: number; request: number; origin: string; camera: boolean; microphone: boolean; location: boolean }) => void): void;
       onGuestPermissionRefused(listener: (details: { from: number; origin: string; refused: string[] }) => void): void;
       onGuestEscape(listener: (details: { from: number }) => void): void;
@@ -41,7 +43,7 @@ declare global {
       onBrowserDates(listener: (details: { profile: string; cookies: unknown[]; sites: unknown[] }) => void): void;
       /** A local dev site's untrusted certificate opened anyway (main's browser/localCerts.ts), for Rust to keep. */
       onLocalCert(listener: (details: { profile: string; host: string }) => void): void;
-      onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" }) => void): void;
+      onAgentEvent(listener: (details: { from: number; event: "devtools-opened" | "devtools-closed" | "detached" | "used" }) => void): void;
       /** An agent's verbs on a guest (main's browser/browserAgent.ts). */
       agent(call: Record<string, unknown>): Promise<unknown>;
       /** What a tab's page, or a window it opened, shows that only the user goes through (main's browser/browserSignIn.ts). */
@@ -190,6 +192,10 @@ export function installTabLayer(): void {
   window.addEventListener("blur", release);
 
   window.brigadierShell.onGuestPopup(({ from, url }) => pageOf(from)?.emit({ type: "popup", id: crypto.randomUUID(), url }));
+  window.brigadierShell.onGuestWindow((seen) => {
+    const page = pageOf(seen.from);
+    if (page) windowSeen(page.id, seen);
+  });
   window.brigadierShell.onGuestPermission(({ from, ...question }) => pageOf(from)?.emit({ type: "permission", ...question }));
   window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused }));
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
@@ -204,8 +210,9 @@ export function installTabLayer(): void {
   window.brigadierShell.onAgentEvent(({ from, event }) => {
     const page = pageOf(from);
     if (!page) return;
-    // Nothing resumes by itself: DevTools closing, or a debugger ended from outside, leaves the tab with the user.
-    if (event === "detached") userUsed(page.id);
+    // Nothing resumes by itself: DevTools closing, a debugger ended from outside, or the user's click or key in a window
+    // the page opened, leaves the tab with the user.
+    if (event === "detached" || event === "used") userUsed(page.id);
     else devToolsChanged(page.id, event === "devtools-opened");
   });
 }
@@ -343,11 +350,16 @@ export function loadPage(id: string, url: string): void {
   load(need(id), url);
 }
 
-/** The tab's guest, for an agent's call; the element's methods work only from its first dom-ready. */
-export function agentPage(id: string): { guest: number; element: Webview; generation: number } {
+/** The guest of a tab or of a window its page opened, for an agent's call; the element's methods work only from its first dom-ready. */
+export function agentPage(id: string): { guest: number; element: Webview | null; generation: number; zoom: number } {
+  if (isWindow(id)) {
+    const opened = windowOf(id);
+    if (!opened) throw new Error(`The window ${id} closed.`);
+    return { guest: opened.guest, element: null, generation: opened.generation, zoom: opened.zoom };
+  }
   const page = need(id);
   if (!page.ready) throw new Error(`The page of tab ${id} isn't ready yet.`);
-  return { guest: page.element.getWebContentsId(), element: page.element, generation: page.generation };
+  return { guest: page.element.getWebContentsId(), element: page.element, generation: page.generation, zoom: page.element.getZoomFactor() };
 }
 
 /**
@@ -355,6 +367,7 @@ export function agentPage(id: string): { guest: number; element: Webview; genera
  * layer lies under the app, which covers it where it cuts no hole, so the page can show for this long with nothing seen.
  */
 export async function whilePainting<T>(id: string, take: () => Promise<T>): Promise<T> {
+  if (isWindow(id)) return take();
   const { element, shown } = need(id);
   if (shown) return take();
   element.toggleAttribute("data-painting", true);

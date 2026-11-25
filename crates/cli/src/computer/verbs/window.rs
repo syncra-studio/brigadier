@@ -1,35 +1,68 @@
 //! One window as the agent reads it: its rows with password fields hidden, what changed since the
 //! last read (Cua's own `since`), and a picture of it.
 
-use super::open::{menu_bar, own, windows};
+use super::apps::{menu_bar, menus};
+use super::diff::{controls, live};
+use super::open::{own, windows};
 use super::{FULL, ROWS, SECURE, Sess, Words, call, lock, refuse};
-use brigadier_core as core;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{fs, thread};
 
-/// Below this many elements a window reads as thin: Chromium and Electron keep their tree off
-/// until a client asks, and Cua asks only apps on its list (#7751), so Dia read empty.
+/// Below this many elements a window reads as thin.
 const THIN: u64 = 12;
-/// How long the first thin read waits for the tree to fill (Chromium builds it ~2 s after asked).
+/// How long the first thin read waits for the tree to fill.
 const THIN_WAIT: Duration = Duration::from_secs(3);
-/// The apps asked to turn their tree on already, by pid: each is asked, and waited on, once.
+/// The native apps waited on already, by pid: each once.
 static ASKED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
 
-/// Chromium and Electron take AXManualAccessibility, native apps refuse it (-25205): asked once
-/// per pid, which also turns their tree on.
+/// Whether an app is built on Chromium or Electron, by pid.
 static CHROMIUM: LazyLock<Mutex<HashMap<i64, bool>>> = LazyLock::new(Mutex::default);
+/// Chrome turns its page tree on 2 s after the last ask, and Cua asks again on each read until the
+/// tree is there (Chrome answers -25208, which Cua doesn't count): reads closer together than this
+/// put it off for good, so a read that lacks the page waits this long for its second one [D2032].
+const PAGE_WAIT: Duration = Duration::from_millis(2600);
+/// The Chromium apps whose page has been read once, by pid: their tree stays on.
+static PAGED: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(Mutex::default);
 
+/// By the app's own files: AXManualAccessibility is Electron's alone, Chrome and Dia refuse it as
+/// a native app does (-25205) [D2032]. Their tree is asked on once.
 pub(super) fn chromium(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> bool {
     if let Some(&c) = lock(&CHROMIUM).get(&pid) {
         return c;
     }
-    let c = own(data, "enable", json!({"pid": pid}), here).is_ok_and(|r| r["manual"] == 0);
-    lock(&CHROMIUM).insert(pid, c);
-    c
+    let exe = std::process::Command::new("ps")
+        .args(["-ww", "-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let files = built_on_chromium(Path::new(&exe));
+    let asked = match files {
+        true => own(data, "enable", json!({"pid": pid}), here).is_ok(),
+        false => true,
+    };
+    if asked && !exe.is_empty() {
+        lock(&CHROMIUM).insert(pid, files);
+    }
+    files
+}
+
+/// Chromium's ICU data sits in the app's one framework; a web app Chrome installed is its loader.
+fn built_on_chromium(exe: &Path) -> bool {
+    if exe.file_name().is_some_and(|n| n == "app_mode_loader") {
+        return true;
+    }
+    let Some(contents) = exe.parent().and_then(Path::parent) else {
+        return false;
+    };
+    std::fs::read_dir(contents.join("Frameworks")).is_ok_and(|frameworks| {
+        frameworks
+            .flatten()
+            .any(|f| f.path().join("Resources/icudtl.dat").exists())
+    })
 }
 
 /// The tree's row number: `[N]` at the start of its row.
@@ -67,19 +100,27 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
             true => drop(s.secure.insert(n)),
             false => drop(s.secure.remove(&n)),
         }
-        match e["value"].as_str() {
+        match value(e) {
             Some(v) => drop(s.values.insert(n, v.to_string())),
             None => drop(s.values.remove(&n)),
         }
         match (e["role"].as_str(), e["label"].as_str()) {
             (Some("AXMenuItem"), Some(name)) => drop(s.items.insert(n, name.to_string())),
+            // shortcut: Chromium's and Safari's English names; add others as an agent meets them.
+            (Some("AXTextField"), Some(name))
+                if name.to_lowercase().starts_with("address and search") =>
+            {
+                s.address = Some(n);
+                drop(s.items.remove(&n))
+            }
             _ => drop(s.items.remove(&n)),
         }
         if let Some(f) = e["frame"].as_object() {
-            s.frames.insert(
-                n,
-                ["x", "y", "w", "h"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0)),
-            );
+            let f = ["x", "y", "w", "h"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0));
+            if e["role"] == "AXWebArea" {
+                s.web = Some(f);
+            }
+            s.frames.insert(n, f);
         }
     }
     if let Some(id) = found["snapshot_id"].as_str() {
@@ -87,13 +128,67 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
     }
 }
 
+/// A control's value: the driver gives an empty field's placeholder as one.
+pub(super) fn value(e: &Value) -> Option<&str> {
+    e["value"].as_str().filter(|v| e["placeholder"] != *v)
+}
+
+/// Always the whole window: a --query is ours to filter, so the driver's last snapshot, which an
+/// action's diff starts from, never holds only part of it [D2032]. A query reads the larger budget.
 pub(super) fn state_args(s: &Sess, me: &str) -> Value {
-    let (rows, depth) = if s.full { FULL } else { ROWS };
-    let mut args = json!({"pid": s.pid, "window_id": s.window, "session": me, "tree_format": "both", "include_screenshot": false, "max_elements": rows, "max_depth": depth});
-    if let Some(q) = &s.query {
-        args["query"] = q.as_str().into();
+    let (rows, depth) = if s.full || s.query.is_some() {
+        FULL
+    } else {
+        ROWS
+    };
+    json!({"pid": s.pid, "window_id": s.window, "session": me, "tree_format": "both", "include_screenshot": false, "max_elements": rows, "max_depth": depth})
+}
+
+/// The window's rows less its menu bar's: a search for a page's word met History and Log Out.
+fn content(md: &str) -> String {
+    let mut bar: Option<usize> = None;
+    let rows = md.lines().filter(|line| {
+        let depth = line.len() - line.trim_start().len();
+        if bar.is_some_and(|d| depth > d) {
+            return false;
+        }
+        bar = (line.contains("] AXMenuBar ") || line.trim_start().starts_with("- AXMenuBar "))
+            .then_some(depth);
+        bar.is_none()
+    });
+    rows.collect::<Vec<_>>().join("\n")
+}
+
+/// The rows holding any of `query`'s `a|b` words, each under its ancestors, as Cua's own
+/// `filter_tree` (MIT) gives them.
+fn filter(md: &str, query: &str) -> String {
+    let words: Vec<String> = (query.to_lowercase().split('|'))
+        .map(|w| w.trim().to_string())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let (mut ancestors, mut shown, mut out): (Vec<&str>, Vec<Option<&str>>, Vec<&str>) =
+        Default::default();
+    for line in md.lines() {
+        let depth = line.chars().take_while(|c| *c == ' ').count() / 2;
+        while ancestors.len() <= depth {
+            ancestors.push("");
+            shown.push(None);
+        }
+        shown[depth + 1..].fill(None);
+        ancestors[depth] = line;
+        let low = line.to_lowercase();
+        if words.iter().any(|w| low.contains(w.as_str())) {
+            for d in 0..depth {
+                if !ancestors[d].is_empty() && shown[d] != Some(ancestors[d]) {
+                    shown[d] = Some(ancestors[d]);
+                    out.push(ancestors[d]);
+                }
+            }
+            shown[depth] = Some(line);
+            out.push(line);
+        }
     }
-    args
+    out.join("\n")
 }
 
 /// One window, whole: its title, then its rows [D902].
@@ -104,25 +199,42 @@ pub(super) fn read(
     w: &Words,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
-    let all = windows(data, s.pid, here)?;
+    let all = live(data, s, here)?;
     if all.is_empty() {
         (s.window, s.snapshot, s.secure, s.frames) = Default::default();
-        return menu_bar(data, s, here);
+        // A query searches a window's content; the menu bar only when asked, as with a window.
+        return match (w.values.get("--query"), w.flags.contains("--menus")) {
+            (None, _) => menu_bar(data, s, here),
+            (Some(q), true) => Ok(menus(data, s, Some(q), here)?.join("\n")),
+            (Some(_), false) => Ok(format!(
+                "{} has no window open, so it has no content to search: --menus searches its menu bar.",
+                s.app
+            )),
+        };
     }
-    let asked: Option<usize> = (w.values.get("--window")).and_then(|n| n.parse().ok());
-    if asked.is_some_and(|n| n == 0 || n > all.len()) {
-        return Err(refuse(&format!(
-            "{} has {} windows: --window 1 to {}.",
-            s.app,
-            all.len(),
-            all.len()
-        )));
-    }
+    let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
+    // By the window's own id, which stays while it's open: a position moves as others come and go.
+    let asked = match w.values.get("--window") {
+        None => None,
+        Some(n) => match all.iter().position(|w| n.parse() == Ok(id(w))) {
+            Some(i) => Some(i + 1),
+            None => {
+                let list: Vec<String> = (all.iter())
+                    .map(|w| format!("{} \"{}\"", id(w), w["title"].as_str().unwrap_or("")))
+                    .collect();
+                return Err(refuse(&format!(
+                    "{} has no window {n}; its windows by id: {}.",
+                    s.app,
+                    list.join(", ")
+                )));
+            }
+        },
+    };
     (s.query, s.full) = (
         w.values.get("--query").map(|q| q.to_string()),
         w.flags.contains("--full"),
     );
-    // Unasked, the first window accessibility knows: list_windows keeps closed ones a while (Cua
+    // Unasked, the window last read or acted on, else the first accessibility knows: list_windows keeps closed ones a while (Cua
     // #4038), and those read as nothing.
     // The window the session is in comes first.
     let order: Vec<usize> = match asked {
@@ -159,8 +271,16 @@ pub(super) fn read(
         return menu_bar(data, s, here);
     }
     let window = &all[nth - 1];
-    if thin(&found) && lock(&ASKED).insert(s.pid) {
-        chromium(data, s.pid, here);
+    // Chromium's page, waited for in one sleep: a poll would put it off.
+    if chromium(data, s.pid, here) {
+        if page_missing(&found) && !lock(&PAGED).contains(&s.pid) {
+            thread::sleep(PAGE_WAIT);
+            found = call(data, "get_window_state", state_args(s, me), here)?;
+        }
+        if paged(&found) {
+            lock(&PAGED).insert(s.pid);
+        }
+    } else if thin(&found) && lock(&ASKED).insert(s.pid) {
         let start = Instant::now();
         let mut last = 0;
         while start.elapsed() < THIN_WAIT {
@@ -173,8 +293,10 @@ pub(super) fn read(
             last = n;
         }
     }
-    (s.secure, s.frames, s.values, s.moved) = Default::default();
+    let pageless = page_missing(&found) && chromium(data, s.pid, here);
+    (s.secure, s.frames, s.values, s.moved, s.address) = Default::default();
     learn(s, &found);
+    s.controls = controls(&found);
     let tree = found["tree_markdown"].as_str().unwrap_or("");
     // The window's own title, as accessibility gives it: the listed one is often empty.
     let named = (tree.split("AXWindow \"").nth(1)).and_then(|t| t.split('"').next());
@@ -183,11 +305,37 @@ pub(super) fn read(
         .or(named)
         .unwrap_or("untitled");
     let total = found["total_element_count"].as_u64().unwrap_or(0);
+    // The window's content only: the menu bar's items drowned a page's rows [D2032].
+    let menus_too = w.flags.contains("--menus");
+    let mut shown = match &s.query {
+        Some(q) => match filter(
+            &if menus_too {
+                tree.to_string()
+            } else {
+                content(tree)
+            },
+            q,
+        ) {
+            rows if rows.is_empty() => format!(
+                "No row holds \"{q}\": try a shorter or another word (\"a|b\" finds either), --menus to search the menu bar too, or read without --query."
+            ),
+            rows => rows,
+        },
+        None => tree.to_string(),
+    };
+    if menus_too {
+        let items = menus(data, s, s.query.as_deref(), here)?;
+        shown.push_str(&match items.is_empty() {
+            true => "\nNo menu item holds it.".to_string(),
+            false => format!("\nThe menu bar:\n{}", items.join("\n")),
+        });
+    }
     let mut text = format!(
-        "{} · \"{title}\" · window {nth} of {} · {total} elements\n{}",
+        "{} · \"{title}\" · --window {} ({nth} of {}) · {total} elements\n{}",
         s.app,
+        s.window,
         all.len(),
-        tidy(&mask(tree, &s.secure))
+        tidy(&mask(&shown, &s.secure))
     );
     if found["truncated"] == true {
         text.push_str(&format!(
@@ -195,14 +343,63 @@ pub(super) fn read(
             state_args(s, me)["max_elements"]
         ));
     }
-    if thin(&found) {
+    if pageless {
+        text.push_str(&format!("\n(No page in this read. {})", no_page(&s.app)));
+    } else if thin(&found) && !dialog(&found) {
         text.push_str(&format!("\n{}'s window shows little to accessibility yet: read again in a few seconds, or `brigadier computer screenshot` to look at it.", s.app));
     }
     Ok(text)
 }
 
-fn unresolved(found: &Value) -> bool {
+pub(super) fn unresolved(found: &Value) -> bool {
     (found["degraded_reason"].as_str()).is_some_and(|r| r.starts_with("ax_window_unresolved"))
+}
+
+/// The read's rows as the driver gives them, numbered or not: a tree's text may hold what reads as
+/// a row. The one it leaves out is a window's or a sheet's with no name.
+fn rows_of(found: &Value) -> impl Iterator<Item = &Value> {
+    let all = |k: &str| found[k].as_array().into_iter().flatten();
+    all("elements").chain(all("observations"))
+}
+
+/// Whether the read holds a page: its web area, or something in one.
+pub(super) fn paged(found: &Value) -> bool {
+    rows_of(found).any(|e| e["role"] == "AXWebArea" || e["in_web_content"] == true)
+}
+
+/// Whether a Chromium window lacks the page it should hold.
+pub(super) fn page_missing(found: &Value) -> bool {
+    !paged(found) && !dialog(found)
+}
+
+/// A window drawn by the app itself, with no page by design: a dialog or a sheet, with a button
+/// beside its title bar's.
+/// shortcut: an app's own window that isn't a dialog reads as a page that can't be read; a dialog
+/// with its own buttons round an unread page, or a sheet over one, reads as whole. Nothing in a read
+/// tells them apart; a sheet is answered before the page under it can be used.
+fn dialog(found: &Value) -> bool {
+    const BAR: [&str; 4] = [
+        "AXCloseButton",
+        "AXMinimizeButton",
+        "AXZoomButton",
+        "AXFullScreenButton",
+    ];
+    let has = |role: &str, like: &dyn Fn(&str) -> bool| {
+        rows_of(found).any(|e| e["role"] == role && like(e["subrole"].as_str().unwrap_or("")))
+    };
+    let sheet = || {
+        let tree = found["tree_markdown"].as_str().unwrap_or("");
+        has("AXSheet", &|_| true) || tree.lines().any(|l| l.trim_start() == "- AXSheet")
+    };
+    (has("AXWindow", &|s| s == "AXDialog" || s == "AXSystemDialog") || sheet())
+        && has("AXButton", &|s| !BAR.contains(&s))
+}
+
+/// Why a Chromium window may hold no page, and what to do instead [D2032].
+pub(super) fn no_page(app: &str) -> String {
+    format!(
+        "A page that loads, or is first read, while its window is covered or on another Space can't be read: open a web page with `brigadier browser open <url>` instead. If {app}'s window is on screen, wait 3 seconds, then read again: reads closer together put its page off."
+    )
 }
 
 fn thin(found: &Value) -> bool {
@@ -233,203 +430,16 @@ pub(super) fn tidy(md: &str) -> String {
     md.lines().map(tidy_row).collect::<Vec<_>>().join("\n")
 }
 
-pub(super) const NO_CHANGE: &str = "No change in the window.";
-
 /// Whether control [n]'s whole value, as last read, holds all of `text` (its ends' spaces aside).
 pub(super) fn shows(s: &Sess, n: u64, text: &str) -> bool {
     s.values.get(&n).is_some_and(|v| v.contains(text.trim()))
-}
-
-/// What changed in the window since the last read, from Cua's own `since` read.
-pub(super) fn changes(data: &Path, me: &str, s: &mut Sess, here: &dyn Fn() -> bool) -> String {
-    let mut args = state_args(s, me);
-    args["since"] = "latest".into();
-    let Ok(found) = call(data, "get_window_state", args, here) else {
-        // The window went (a panel closed, a document replaced it): read what the app shows now.
-        let again = Words {
-            verb: "read",
-            rest: vec![],
-            values: Default::default(),
-            flags: Default::default(),
-        };
-        return match read(data, me, s, &again, here) {
-            Ok(text) => format!("The window changed:\n{text}"),
-            Err(_) => format!(
-                "Couldn't read {} after it: `brigadier computer read {}`.",
-                s.app, s.app
-            ),
-        };
-    };
-    learn(s, &found);
-    match found["since_status"].as_str() {
-        Some("no_change") => NO_CHANGE.into(),
-        Some("diff") => {
-            let diff = found["tree_diff"].as_str().unwrap_or("");
-            s.moved |= diff.contains("\nreindexed:");
-            let body: Vec<&str> = diff.lines().skip(1).collect();
-            let moved = if s.moved {
-                "\nThe numbers moved: read again before using them."
-            } else {
-                ""
-            };
-            format!(
-                "Changed:\n{}{moved}",
-                tidy(&mask(&body.join("\n"), &s.secure))
-            )
-        }
-        _ => {
-            (s.secure, s.values, s.moved) = Default::default();
-            learn(s, &found);
-            format!(
-                "The window changed:\n{}",
-                tidy(&mask(
-                    found["tree_markdown"].as_str().unwrap_or(""),
-                    &s.secure
-                ))
-            )
-        }
-    }
-}
-
-/// A drag between two controls' centres, in the window's picture pixels: one picture (it needs
-/// Screen Recording) gives the window's place and scale, and is deleted at once (proposed).
-pub(super) fn drag(
-    data: &Path,
-    me: &str,
-    s: &Sess,
-    from: u64,
-    to: u64,
-    here: &dyn Fn() -> bool,
-) -> Result<Value, Value> {
-    let frame = |n: u64| {
-        s.frames.get(&n).copied().ok_or_else(|| {
-            refuse(&format!(
-                "[{n}] has no place on screen in your last read: read again."
-            ))
-        })
-    };
-    let (a, b) = (frame(from)?, frame(to)?);
-    let file = std::env::temp_dir().join(format!("brigadier-drag-{}.png", std::process::id()));
-    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file});
-    let found = call(data, "get_window_state", shot, here);
-    let _ = fs::remove_file(&file);
-    let found = found?;
-    let bounds = &found["window_bounds"];
-    let (Some(x), Some(y), Some(scale)) = (
-        bounds["x"].as_f64(),
-        bounds["y"].as_f64(),
-        found["screenshot_scale"].as_f64(),
-    ) else {
-        return Err(not_captured(&found));
-    };
-    let at = |f: [f64; 4]| {
-        (
-            (f[0] + f[2] / 2.0 - x) * scale,
-            (f[1] + f[3] / 2.0 - y) * scale,
-        )
-    };
-    let ((fx, fy), (tx, ty)) = (at(a), at(b));
-    Ok(
-        json!({"pid": s.pid, "window_id": s.window, "from_x": fx, "from_y": fy, "to_x": tx, "to_y": ty, "session": me}),
-    )
-}
-
-/// The window as a picture in the session's folder, gone with it [D35]; only its path comes back.
-pub(super) fn screenshot(
-    data: &Path,
-    me: &str,
-    s: &Sess,
-    region: Option<&str>,
-    here: &dyn Fn() -> bool,
-) -> Result<String, Value> {
-    if s.window == 0 {
-        return Err(refuse(
-            "Read a window first: brigadier computer read <app>.",
-        ));
-    }
-    let dir = core::session_dir(data, me).join("computer");
-    fs::create_dir_all(&dir).map_err(|e| refuse(&e.to_string()))?;
-    let n = fs::read_dir(&dir).map_or(0, |d| d.count()) + 1;
-    let file = dir.join(format!("{n}.jpg"));
-    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file, "screenshot_format": "jpeg", "max_dimension": 1280});
-    let found = call(data, "get_window_state", shot, here)?;
-    if found["screenshot_file_path"].is_null() {
-        return Err(not_captured(&found));
-    }
-    let full = (
-        found["screenshot_width"].as_u64(),
-        found["screenshot_height"].as_u64(),
-    );
-    let size = match full {
-        (Some(w), Some(h)) => format!(" ({w}×{h})"),
-        _ => String::new(),
-    };
-    let Some(r) = region else {
-        return Ok(format!(
-            "Saved: {}{size}. `click --at X,Y` clicks a point of it.",
-            file.display()
-        ));
-    };
-    // A part of the picture, cut in place (proposed).
-    let n: Vec<u64> = (r.split(','))
-        .filter_map(|v| v.trim().parse().ok())
-        .collect();
-    let [x, y, w, h] = n[..] else {
-        return Err(refuse(
-            "--region takes X,Y,W,H in the picture's pixels: --region 0,0,640,400",
-        ));
-    };
-    // sips pads past an edge with black and still succeeds [D930].
-    let out = |at: u64, len: u64, of: Option<u64>| {
-        len == 0 || of.is_some_and(|of| at.saturating_add(len) > of)
-    };
-    if out(x, w, full.0) || out(y, h, full.1) {
-        return Err(refuse(&format!(
-            "Couldn't cut that region: it must lie inside the picture{size}."
-        )));
-    }
-    let sips = |args: &str| {
-        let cut = std::process::Command::new("sips")
-            .args(args.split(' '))
-            .arg(&file)
-            .output();
-        cut.is_ok_and(|o| o.status.success())
-    };
-    let crop = |y: u64, x: u64| format!("--cropToHeightWidth {h} {w} --cropOffset {y} {x}");
-    // sips reads a `0 0` offset as none and cuts the centre, and `0.0` as -1 [D930, D936]: the
-    // top-left corner is cut as the bottom-right one of the picture turned round.
-    let cut = match (x, y, full) {
-        (0, 0, (Some(fw), Some(fh))) if (fw, fh) == (w, h) => true,
-        (0, 0, (Some(fw), Some(fh))) => {
-            sips(&format!("-r 180 {}", crop(fh - h, fw - w))) && sips("-r 180")
-        }
-        (0, 0, _) => false,
-        _ => sips(&crop(y, x)),
-    };
-    if !cut {
-        return Err(refuse("Couldn't cut that region."));
-    }
-    Ok(format!(
-        "Saved: {} ({w}×{h}), the part at {x},{y} of the window's picture{size}. `click --at X,Y` takes the whole picture's pixels: add {x},{y}.",
-        file.display()
-    ))
-}
-
-/// A capture the driver couldn't make or place, in its own words.
-fn not_captured(found: &Value) -> Value {
-    let why = found["screenshot_error"]["code"]
-        .as_str()
-        .unwrap_or("no picture came back");
-    refuse(&format!(
-        "Couldn't capture the window: {why}. Read it again."
-    ))
 }
 
 /// The driver's words for its own tools, said as this command's: an agent can't call those.
 pub(super) fn ours(text: &str) -> String {
     [
         ("take a fresh get_window_state snapshot and re-address it", "read again"),
-        ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS finds one)"),
+        ("(menus collapsed: run an item with invoke_menu path, or pass query to search menu items)", "(menus: `menu \"File > …\"` picks an item, --query WORDS --menus finds one)"),
         ("retry with a larger max_elements or narrow with query / max_depth", "read with --full, or narrow it with --query WORDS"),
         ("the max_elements node budget", "the row budget"),
         ("get_window_state", "read"),

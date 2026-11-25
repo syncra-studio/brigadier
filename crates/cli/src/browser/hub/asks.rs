@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 const ANSWER_WAIT: Duration = Duration::from_secs(300);
 /// The most of a script a card shows whole.
 const SCRIPT_MOST: usize = 16 * 1024;
+/// What a yes for the session lets through on its site.
+const COVERED: [&str; 4] = ["script", "action", "delete", "send"];
 
 /// A card waiting on the user: its session, the call it lets through, and who waits for it.
 struct Card {
@@ -351,6 +353,7 @@ pub(super) fn ask(
     op: &Value,
     asked: &Value,
     key: Option<(String, String, String)>,
+    before: Option<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<Option<Value>, Value> {
     let (url, what) = (
@@ -358,22 +361,42 @@ pub(super) fn ask(
         asked["what"].as_str().unwrap_or(""),
     );
     let sensitive = asked["sensitive"].as_str().unwrap_or("script");
-    let approved = json!({"generation": asked["generation"], "url": url});
+    let of = |v: &Value, k: &str| v[k].as_array().cloned().unwrap_or_default();
+    let before = before.filter(|b| b["url"] == url && b["generation"] == asked["generation"]);
     // A yes for the session covers scripts, clicks, typing, keys, delete and send on its site;
     // never money or identity (pay, card, password, code, sign-in).
-    let site = matches!(sensitive, "script" | "action" | "delete" | "send").then(|| site(url));
+    let site = COVERED.contains(&sensitive).then(|| site(url));
     let granted = site.and_then(|s| lock(&HUB.grants).get(&site_key(me, s)).cloned());
     if granted.is_some_and(|b| !b.is_null() && b == born(data, me)) {
-        // `covered`: the page lets it through for these kinds only, should it turn out to pay.
-        return Ok(Some(
-            json!({"generation": asked["generation"], "url": url, "covered": true}),
-        ));
+        // `covered`: the page lets it through for these kinds only, should it turn out to pay. This
+        // call's own yes before it on this page keeps what it was for, still this call's alone.
+        let mut yes = json!({"generation": asked["generation"], "url": url});
+        match before.filter(|b| b["for"].is_array()) {
+            Some(b) => {
+                yes["for"] = [of(&b, "for"), COVERED.map(Value::from).into()]
+                    .concat()
+                    .into()
+            }
+            None => yes["covered"] = true.into(),
+        }
+        return Ok(Some(yes));
     }
     let question = question(op, sensitive, what, url);
     let id = format!("browser-{}", &core_uuid()[..8]);
     let grant = site.map(|s| json!({"scope": "site", "pattern": s}));
     let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url), "grant": grant});
     let (to, answer) = mpsc::channel();
+    // What the yes is for: all the control asked for, and what this call's yes before it on this page was.
+    let mut approved = json!({"generation": asked["generation"], "url": url});
+    let mut reasons = of(asked, "reasons");
+    if let Some(b) = before {
+        reasons.extend(of(&b, "for"));
+        // One for the session before it was for these, and lets nothing more through.
+        if b["covered"] == true {
+            reasons.extend(COVERED.map(Value::from));
+        }
+    }
+    approved["for"] = Value::Array(reasons);
     lock(&CARDS).insert(
         id.clone(),
         Card {

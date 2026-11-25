@@ -3,8 +3,11 @@
 //! the helper's own calls (Cua's need a window, #8055).
 
 use super::act::{CLICK, MODIFIER, act, idle, wait_for_user};
-use super::window::{NO_CHANGE, changes, read};
-use super::{Fail, SESSIONS, Sess, Words, blocked, call, lock, refuse, said};
+use super::apps::blocked;
+use super::apps::{find, named, running};
+use super::diff::{Seen, baseline, changes};
+use super::window::read;
+use super::{Fail, SESSIONS, Sess, Words, call, lock, refuse, said};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
@@ -71,6 +74,25 @@ pub(super) fn open(
     let listed = named(installed["apps"].as_array().map_or(&[][..], |a| a), &name);
     let bundle = listed.and_then(|a| a["bundle_id"].as_str()).unwrap_or("");
     blocked(&name, bundle)?;
+    let page = target.as_ref().is_some_and(|t| t.starts_with("http"));
+    let app_name = listed.and_then(|a| a["name"].as_str()).unwrap_or(&name);
+    if let Some(no) = page
+        .then(|| super::web_page(data, me, app_name, false))
+        .flatten()
+    {
+        return Err(refuse(&no));
+    }
+    let titled = |pid: i64| -> Vec<(Value, Value)> {
+        (windows(data, pid, here).unwrap_or_default().iter())
+            .map(|w| (w["window_id"].clone(), w["title"].clone()))
+            .collect()
+    };
+    // A running app's windows as they were, to find the one the url or path lands in: Chrome
+    // puts a url in its last normal window, not a popup in front of it [D2032].
+    let was = listed
+        .filter(|a| a["running"] == true)
+        .and_then(|a| a["pid"].as_i64());
+    let before = was.map(titled).unwrap_or_default();
     let mut launch = std::process::Command::new("open");
     let app_path = listed.and_then(|a| a["launch_path"].as_str());
     launch.args(["-g", "-a", app_path.unwrap_or(&name)]);
@@ -100,11 +122,24 @@ pub(super) fn open(
             found => break found?,
         }
     };
+    let window = match s.pid == pid {
+        true => s.window,
+        false => 0,
+    };
     *s = Sess {
         pid,
         app,
+        window,
         ..Sess::default()
     };
+    let start = Instant::now();
+    while target.is_some() && !before.is_empty() && start.elapsed() < WINDOW_WAIT {
+        if let Some((id, _)) = titled(pid).into_iter().find(|w| !before.contains(w)) {
+            s.window = id.as_u64().unwrap_or(0);
+            break;
+        }
+        thread::sleep(Duration::from_millis(300));
+    }
     // The watch, where there is one, tells what finally happened.
     let watch = user.zip(user_window).filter(|(user, _)| *user != pid);
     if let Some((user, window)) = watch.clone() {
@@ -232,37 +267,6 @@ pub(super) fn windows(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> Result<
     Ok(all)
 }
 
-/// An app with no window: its menus, which work by pid.
-pub(super) fn menu_bar(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<String, Value> {
-    let found = own(data, "menus", json!({"pid": s.pid}), here)?;
-    let menus: Vec<String> = (found["menus"].as_array().into_iter().flatten())
-        .map(|m| {
-            let items: Vec<String> = (m["items"].as_array().into_iter().flatten())
-                .take(30)
-                .map(|i| {
-                    let key = i["key"].as_str().unwrap_or("");
-                    let title = i["title"].as_str().unwrap_or("");
-                    if key.is_empty() {
-                        title.to_string()
-                    } else {
-                        format!("{title} {key}")
-                    }
-                })
-                .collect();
-            format!(
-                "{}: {}",
-                m["title"].as_str().unwrap_or("?"),
-                items.join(" · ")
-            )
-        })
-        .collect();
-    Ok(format!(
-        "{} has no window open. Its menus work without one: brigadier computer menu \"File > New\", or a key such as cmd+n.\n{}",
-        s.app,
-        menus.join("\n")
-    ))
-}
-
 /// Presses a menu item by its path or its key equivalent, by pid; where the app has no such item
 /// and has a window, `cua` (the driver's own route) runs instead. A window it opens or closes is
 /// read; else what changed.
@@ -277,6 +281,9 @@ pub(super) fn press(
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     wait_for_user(data, s, here)?;
+    if s.window != 0 && !s.batch {
+        baseline(data, s, here);
+    }
     let id = |w: &Value| w["window_id"].as_u64().unwrap_or(0);
     let listed = windows(data, s.pid, here)?;
     let before: Vec<u64> = listed.iter().map(id).collect();
@@ -324,10 +331,7 @@ pub(super) fn press(
         // Refused, so no second try through Cua's menu [D903].
         Ok(Err(why)) if why.ends_with("no pasting: ask the user.") => return Err(refuse(&why)),
         Ok(Err(_)) if !cua.0.is_empty() && s.window != 0 && !s.snapshot.is_empty() => {
-            let line = match cua.0 {
-                "hotkey" => format!("Pressed {}", w.rest.join(" ")),
-                _ => format!("Chose {}", w.rest.join(" ")),
-            };
+            let line = format!("Chose {}", w.rest.join(" "));
             return act(data, me, s, &line, cua.0, cua.1, here);
         }
         Ok(Err(why)) => return Err(refuse(&format!("{why} {read_again}"))),
@@ -382,67 +386,14 @@ pub(super) fn press(
         ));
     }
     match changes(data, me, s, here) {
-        diff if diff == NO_CHANGE => Ok(format!(
+        (Seen::No, _) => Ok(format!(
             "Chose {chose}: no change seen in the window. Read again, or try another way."
         )),
-        diff => Ok(format!("Chose {chose}: change observed.\n{diff}")),
+        (Seen::Unsure, diff) => Ok(format!(
+            "Chose {chose}: I can't tell what it changed.\n{diff}"
+        )),
+        (Seen::Yes, diff) => Ok(format!("Chose {chose}: change observed.\n{diff}")),
     }
-}
-
-pub(super) fn running(data: &Path, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
-    let found = call(data, "list_apps", json!({}), here)?;
-    Ok((found["apps"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter())
-    .filter(|a| a["running"] != false)
-    .collect())
-}
-
-pub(super) fn apps(data: &Path, here: &dyn Fn() -> bool) -> Result<String, Value> {
-    let front = front(data, here);
-    let lines: Vec<String> = (running(data, here)?.iter())
-        .filter(|a| {
-            blocked(
-                a["name"].as_str().unwrap_or(""),
-                a["bundle_id"].as_str().unwrap_or(""),
-            )
-            .is_ok()
-        })
-        .map(|a| {
-            format!(
-                "{}{}",
-                a["name"].as_str().unwrap_or("?"),
-                if a["pid"].as_i64() == front {
-                    " (front)"
-                } else {
-                    ""
-                }
-            )
-        })
-        .collect();
-    Ok(format!("Running apps:\n{}", lines.join("\n")))
-}
-
-/// A running app by its name: exact first, else the one it starts.
-pub(super) fn find(
-    data: &Path,
-    name: &str,
-    here: &dyn Fn() -> bool,
-) -> Result<(i64, String), Value> {
-    let all = running(data, here)?;
-    let app = named(&all, name).ok_or_else(|| refuse(&format!("No running app is named {name}. `brigadier computer apps` lists them; `open` starts one.")))?;
-    let found = app["name"].as_str().unwrap_or(name).to_string();
-    blocked(&found, app["bundle_id"].as_str().unwrap_or(""))?;
-    Ok((app["pid"].as_i64().unwrap_or(0), found))
-}
-
-/// An app by its name in `list_apps`: exact first, else the one it starts.
-fn named<'a>(all: &'a [Value], name: &str) -> Option<&'a Value> {
-    let lower = name.to_lowercase();
-    let of = |a: &&Value| a["name"].as_str().unwrap_or("").to_lowercase();
-    (all.iter().find(|a| of(a) == lower)).or_else(|| all.iter().find(|a| of(a).starts_with(&lower)))
 }
 
 /// Launch arguments that start an app's saved windows out of full screen, for this launch only
@@ -477,18 +428,4 @@ fn windowed(bundle: &str) -> Vec<String> {
         })
         .flatten()
         .collect()
-}
-
-/// A menu's path from `menu "File > Save As…"`.
-pub(super) fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
-    let path: Vec<String> = (w.rest.join(" ").split('>'))
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect();
-    match path.len() {
-        0 => Err(refuse(
-            "Give the menu's path: brigadier computer menu \"File > Save As…\"",
-        )),
-        _ => Ok(path),
-    }
 }

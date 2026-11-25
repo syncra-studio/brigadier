@@ -21,7 +21,7 @@ mod receipt;
 mod retry;
 mod rules;
 
-pub(crate) use hold::{ask, real, resume, set_ran, stopped, stops};
+pub(crate) use hold::{ask, due, real, set_ran, stopped, stops};
 pub(crate) use jobs::said;
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::receipt;

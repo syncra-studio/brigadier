@@ -3,6 +3,7 @@
 // postMessage, and anything else (target=_blank, window.open with no features) is a tab of the opener, with none.
 import { BrowserWindow, type HandlerDetails, type WebContents } from "electron";
 
+import { watchGuest, watchUserInput } from "./browserAgent";
 import { watchSiteActivity } from "./browserClearData";
 import { watchSignIn } from "./browserSignIn";
 import { installFailedLoad } from "./guestFailedLoad";
@@ -11,6 +12,9 @@ import { installGuestMenu } from "./guestMenu";
 
 /** Which tab's guest a popup came from, however many popups deep: a tab it opens goes beside that one. */
 const tabGuest = new WeakMap<WebContents, WebContents>();
+
+/** The tab's guest a window came from; none for a tab's own. */
+export const openerTab = (contents: WebContents): WebContents | undefined => tabGuest.get(contents);
 
 export const webOrBlank = (url: string) => /^https?:/.test(url) || url === "about:blank" || url === "";
 
@@ -60,8 +64,12 @@ export function installGuest(contents: WebContents): void {
 
 function adopt(window: BrowserWindow, opener: WebContents): void {
   const page = window.webContents;
-  tabGuest.set(page, tabGuest.get(opener) ?? opener);
+  const tab = tabGuest.get(opener) ?? opener;
+  tabGuest.set(page, tab);
   installGuest(page);
+  watchGuest(page);
+  watchUserInput(page);
+  tellWindow(window, tab);
   // A popup has no address bar: its title always says whose page this is, which a sign-in needs.
   const title = (text: string) => {
     let site = "";
@@ -75,4 +83,26 @@ function adopt(window: BrowserWindow, opener: WebContents): void {
     title(text);
   });
   page.on("did-navigate", () => title(page.getTitle()));
+}
+
+/** Tells the page hosting the tab of its window, so the tab's agent can work in it (the UI's windows.ts). */
+function tellWindow(window: BrowserWindow, tab: WebContents): void {
+  const page = window.webContents;
+  const guest = page.id;
+  let generation = 0;
+  const tell = (closed = false) => {
+    if (tab.isDestroyed()) return;
+    const seen = closed || page.isDestroyed() ? { url: "", title: "", loading: false, zoom: 1 } : { url: page.getURL(), title: page.getTitle(), loading: page.isLoading(), zoom: page.getZoomFactor() };
+    tab.hostWebContents?.send("brigadier:guest-window", { from: tab.id, guest, generation, closed, ...seen });
+  };
+  page.on("did-start-loading", () => tell());
+  page.on("did-stop-loading", () => tell());
+  page.on("page-title-updated", () => tell());
+  page.on("did-navigate-in-page", () => tell());
+  page.on("did-navigate", () => {
+    generation += 1;
+    tell();
+  });
+  page.once("destroyed", () => tell(true));
+  tell();
 }
