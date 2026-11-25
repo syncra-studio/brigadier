@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+mod answers;
 mod asks;
 mod changes;
 mod drafts;
@@ -48,6 +49,9 @@ struct Open {
     waited: u64,
     /// `n` of its question rows: they stay out of its work fold, like the user's own messages [D99].
     kept: Vec<u64>,
+    /// The user's own messages it took and their answers, which stay out of that fold too [D57].
+    #[serde(default)]
+    answers: answers::Answers,
     /// Actions the CLI's own rule or reviewer turned down in it, with nobody asked [D487].
     denied: usize,
     /// Who asked it to stop ("user", "pause" for a worker's Pause, "rebirth" for Brigadier's cut),
@@ -317,7 +321,7 @@ impl Thread {
         }
         self.end_wait(ts);
         self.break_group();
-        let Some(o) = self.open.take() else {
+        let Some(mut o) = self.open.take() else {
             return;
         };
         self.switch_ended(o.cut());
@@ -359,13 +363,14 @@ impl Thread {
             self.items[at]["final"] = true.into();
             self.changed_items.insert(at);
         }
+        o.answered(status == "done");
         let mut work = Value::Null;
         // "Worked for" folds a done turn's work up to its answer, and leaves its waits out [D77]. Its
         // questions, with the user's answers, stay visible inside it [D99].
         if let (true, true, Some(first), Some(answer)) =
             (status == "done", o.input, o.first, o.answer)
         {
-            let kept: Vec<u64> = o.kept.iter().copied().filter(|&n| n < answer).collect();
+            let kept = o.kept_till(answer);
             if first + (kept.len() as u64) < answer {
                 work = json!({"turnId": o.id, "folded": [first, answer - 1], "kept": kept, "denied": denied});
             }
@@ -462,6 +467,7 @@ impl Thread {
         if let Some(o) = self.open.as_mut().filter(|o| o.input && o.first.is_none()) {
             o.first = Some(n);
         }
+        self.asked(&row, n);
         self.quiet_row(&mut row);
         self.items.push(row);
         self.changed_items.insert(at);

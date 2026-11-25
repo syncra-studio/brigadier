@@ -138,6 +138,7 @@ impl Thread {
             wait: None,
             waited: 0,
             kept: vec![],
+            answers: Default::default(),
             denied: 0,
             stop: (None, false),
             quiet: t.quiet,

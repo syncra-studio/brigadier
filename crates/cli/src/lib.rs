@@ -401,10 +401,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "thread" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
-            let mut thread = core::thread::Thread::default();
+            let mut saved = core::thread::Saved::default();
             // A visible setup marker guarantees SPAWNED is logged before this read starts.
             let setup = core::worktrees::setup_state(&spec.dir, true);
-            core::rewind::read_active(&spec.dir, |item| thread.push(item))?;
+            saved.advance(&spec.dir, false)?;
+            let mut thread = saved.thread;
             let f = thread.status_fold();
             let live = fold::live(f, owner::state(data, id), &spec.dir, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {
