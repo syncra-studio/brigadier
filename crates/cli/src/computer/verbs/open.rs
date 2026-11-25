@@ -60,14 +60,6 @@ pub(super) fn open(
         ));
     }
     blocked(&name, "")?;
-    // What the user has in front, to keep there [D909].
-    let user = front(data, here);
-    let user_window = match user {
-        Some(pid) => windows(data, pid, here)?
-            .first()
-            .map(|w| w["window_id"].clone()),
-        None => None,
-    };
     // Through LaunchServices in the background, a cold start too: Cua's launch_app brought a cold
     // Calculator to the front, and macOS left the user's full-screen Space for it; `open -g`
     // didn't (D946). Cua's handoff timed out on a Finder folder and took 8 s to give Dia a url.
@@ -95,6 +87,14 @@ pub(super) fn open(
         .filter(|a| a["running"] == true)
         .and_then(|a| a["pid"].as_i64());
     let before = was.map(titled).unwrap_or_default();
+    // What the user has in front, to keep there [D909], read after any wait for their yes.
+    let user = front(data, here);
+    let user_window = match user {
+        Some(pid) => windows(data, pid, here)?
+            .first()
+            .map(|w| w["window_id"].clone()),
+        None => None,
+    };
     let mut launch = std::process::Command::new("open");
     let app_path = listed.and_then(|a| a["launch_path"].as_str());
     // At Ask, the very app its card named.
