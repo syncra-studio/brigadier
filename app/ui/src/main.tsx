@@ -1,5 +1,5 @@
 import { PrDialogHost } from "./panel/create-pr";
-import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
 import { loadAccounts } from "./accounts/api";
@@ -78,6 +78,8 @@ window.addEventListener("hashchange", () => window.location.hash.startsWith("#se
 function App() {
   const { daemon, refused, projects, rows: saved } = useDaemon();
   const hash = useHash();
+  // Where it started: a page entered while it loads is told from one it launched on.
+  const [launched] = useState(hash);
   const open = hash.startsWith("#thread/") ? decodeURIComponent(hash.slice("#thread/".length)) : null;
   // Rust's rows, with the sessions Home is still starting [D30].
   const rows = useStartingRows(open);
@@ -121,7 +123,7 @@ function App() {
   const settings = settingsPageOf(hash);
   if (settings !== null) {
     return (
-      <Shell hash={hash} active={null} rows={rows} settings={settings}>
+      <Shell hash={hash} launched={launched} active={null} rows={rows} settings={settings}>
         <SettingsView page={settings} />
       </Shell>
     );
@@ -133,7 +135,7 @@ function App() {
     // Before the rows are read it's taken as live, so a send in that moment can't start a second review chat.
     const live = chat && (rows ? rows.some((row) => row.id === chat && !row.archived) : true) ? chat : undefined;
     return (
-      <Shell hash={hash} active={live ?? null} rows={rows} prs={prs}>
+      <Shell hash={hash} launched={launched} active={live ?? null} rows={rows} prs={prs}>
         {prs ? (
           <PrPage key={prs} target={prs} chat={live}>
             {live ? <SessionThread id={live} rows={rows} offline={daemon === null} docked /> : <ReviewDraft review={prs} />}
@@ -146,13 +148,13 @@ function App() {
   }
   if (open !== null) {
     return (
-      <Shell hash={hash} active={open} rows={rows}>
+      <Shell hash={hash} launched={launched} active={open} rows={rows}>
         <SessionThread id={open} rows={rows} offline={daemon === null} />
       </Shell>
     );
   }
   return (
-    <Shell hash={hash} active={null} rows={rows}>
+    <Shell hash={hash} launched={launched} active={null} rows={rows}>
       <Home>
         <HomeDraft />
       </Home>
@@ -163,7 +165,7 @@ function App() {
 // The strip and sidebar beside every screen after onboarding [D173, D174]; shown and its width kept across launches. The
 // shell [D69]: no frame, the strip and sidebar flush at the window's start and the main area from its edge to the window's
 // end, the titlebar row across both. Settings keeps the sidebar shown with its nav in place of the sessions [D2004].
-function Shell({ hash, active, rows, settings, prs, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; prs?: string; children: ReactNode }) {
+function Shell({ hash, launched, active, rows, settings, prs, children }: { hash: string; launched: string; active: string | null; rows: Row[] | undefined; settings?: string; prs?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
   const projects = useProjects();
@@ -177,7 +179,7 @@ function Shell({ hash, active, rows, settings, prs, children }: { hash: string; 
   const pulls = hash.startsWith("#pull-requests");
   const home = active === null && settings === undefined && prs === undefined;
   const rail = (squares?: ReactNode) => (
-    <Strip pulls={pulls} settings={settings}>
+    <Strip hash={hash} launched={launched} pulls={pulls} settings={settings}>
       {squares}
     </Strip>
   );
