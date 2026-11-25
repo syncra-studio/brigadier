@@ -16,7 +16,7 @@ mod reply;
 
 use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::log;
+use brigadier_frames::{log, take_lock};
 pub(crate) use first::begin;
 pub(crate) use held::{hand_all, written};
 pub(crate) use reply::{answer, question};
@@ -432,10 +432,18 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
         open = true;
         let to = out.to.clone();
         let dir = core::session_dir(data, &to);
-        let rec: Option<In> = workers::read_json(&path(data, &to, "in", &out.mid));
+        let at = path(data, &to, "in", &out.mid);
+        let mut rec: Option<In> = workers::read_json(&at);
         if core::load(data, &to).is_err() {
             settle_out(data, from, &mut out, "dropped", Some("deleted"));
             continue;
+        }
+        // What comes of a steer is saved under its receiver's queue lock: held, it's still on its way.
+        if rec.as_ref().is_some_and(|r| r.state == "steering") {
+            let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
+                continue;
+            };
+            rec = workers::read_json(&at);
         }
         // Cut short before its receiver had it, or while it was being queued: once now, under
         // the receiver's lock, which drops a repeat. A live send gets a moment first.
@@ -444,7 +452,8 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
             None => out.at + 10_000 < now,
             Some(r) => {
                 matches!(r.state.as_str(), "adding" | "held")
-                    || (r.state == "steering" && r.at + 10_000 < now)
+                    || (r.state == "steering"
+                        && !core::fold(&dir, true)?.fold.cids.contains_key(&out.mid))
             }
         };
         if cut {
