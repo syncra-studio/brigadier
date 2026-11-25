@@ -158,7 +158,7 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
             models.remove(at);
         }
     }
-    let usage = usage.map(|v| self::usage(&v, &models));
+    let usage = usage.and_then(|v| self::usage(&v, &models));
     // Two rows under one name: the long-context one says so.
     let names: Vec<String> = models.iter().map(|(m, _)| m.name.clone()).collect();
     for (m, _) in &mut models {
@@ -183,11 +183,14 @@ fn listed(spec: &Spec, exe: &Path, cwd: &Path) -> Result<Check, String> {
 
 /// Its `get_usage` answer's limits, the old app's reading: its `limits` list where it gives one (the
 /// session, the week and a week scoped to one model), else the named windows `five_hour`,
-/// `seven_day` and `seven_day_<family>`; nothing where it says limits aren't available.
-fn usage(answer: &Value, list: &[(ModelInfo, String)]) -> Vec<Limit> {
+/// `seven_day` and `seven_day_<family>`; none where it says limits aren't available, None unread.
+fn usage(answer: &Value, list: &[(ModelInfo, String)]) -> Option<Vec<Limit>> {
     let rates = &answer["rate_limits"];
-    if answer["rate_limits_available"] == false || rates.is_null() {
-        return vec![];
+    if answer["rate_limits_available"] == false {
+        return Some(vec![]);
+    }
+    if rates.is_null() {
+        return None;
     }
     let at = |r: &Value| r.as_str().and_then(iso_ms);
     let found = match rates["limits"].as_array() {
@@ -205,7 +208,7 @@ fn usage(answer: &Value, list: &[(ModelInfo, String)]) -> Vec<Limit> {
             })
             .collect(),
     };
-    Limit::ordered(found)
+    Some(Limit::ordered(found))
 }
 
 /// The windows a `rate_limit_event` names, its `unifiedWindows` (a share of 1, resets in seconds)
@@ -236,7 +239,7 @@ fn family(name: &str) -> Option<String> {
         .map(str::to_ascii_lowercase)
 }
 
-/// One entry of the `limits` list, if it's a window work waits on.
+/// One entry of the `limits` list.
 fn listed_limit(limit: &Value, list: &[(ModelInfo, String)]) -> Option<Limit> {
     let (used, resets, scope) = (
         limit["percent"].as_f64()?,
@@ -252,7 +255,27 @@ fn listed_limit(limit: &Value, list: &[(ModelInfo, String)]) -> Option<Limit> {
             let family = family(model["display_name"].as_str().or(model["id"].as_str())?)?;
             window(&format!("seven_day_{family}"), used, resets, list)
         }
+        kind => Some(other(kind, used, resets, scope)),
+    }
+}
+
+/// A limit of a kind not known here, by its own words ("monthly_all" → "Monthly"): for every model,
+/// or, scoped to something else (a surface), only shown.
+fn other(kind: &str, used: f64, resets: Option<u64>, scope: &Value) -> Limit {
+    let words = kind.split('_').filter(|w| !matches!(*w, "all" | "scoped"));
+    let mut name = words.collect::<Vec<_>>().join(" ");
+    if let Some(first) = name.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    let minutes = match kind.split('_').next() {
+        Some("daily") => Some(24 * 60),
+        Some("weekly") => Some(7 * 24 * 60),
+        Some("monthly") => Some(30 * 24 * 60),
         _ => None,
+    };
+    Limit {
+        models: (!scope.is_null()).then(Vec::new),
+        ..Limit::new(name, used, resets, minutes, !scope.is_null())
     }
 }
 
