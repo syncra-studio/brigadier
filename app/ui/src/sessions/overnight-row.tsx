@@ -72,8 +72,8 @@ function List({ title, count, children }: { title: string; count?: number; child
 
 /** The morning: what is done and how it's known, what isn't, and each decision taken for the user and each question waiting, to follow up on. */
 function Morning({ item, session }: { item: Report; session: string | undefined }) {
-  // Into the composer, never sent: the user says more or sends it.
-  const follow = (words: string) => session && putBack(session, words, true);
+  // Into the composer, never sent: the user says more or sends it. A change of mind takes the place of the words it had put there.
+  const follow = (words: string, swap?: { was: string; now: string }) => session && putBack(session, words, true, null, swap);
   // shortcut: picks show while the card is mounted; keep them on the item once Rust acts on one.
   const [changed, setChanged] = useState<readonly number[]>([]);
   const [answers, setAnswers] = useState<Readonly<Record<number, number>>>({});
@@ -114,7 +114,10 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
               const other = changed.includes(at);
               const toggle = () => {
                 setChanged(other ? changed.filter((one) => one !== at) : [...changed, at]);
-                follow(other ? `Keep “${each.title}” as you decided it.` : `You decided “${each.title}”. Change it to: ${each.other}`);
+                const change = `You decided “${each.title}”. Change it to: ${each.other}`;
+                const keep = `Keep “${each.title}” as you decided it.`;
+                if (other) follow(keep, { was: change, now: "" });
+                else follow(change, { was: keep, now: change });
               };
               return <ActionPart key={at} keep={`${item.id}:decided:${at}`} mark={<Shuffle className={cx(MARK, "text-muted-foreground")} />} title={each.title} line={other ? `Changing to: ${each.other}` : each.why} action={each.other && (other ? "Keep" : each.other)} onAction={toggle} />;
             })}
@@ -144,9 +147,11 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
                       highlighted={answers[at] === index}
                       chosen={answers[at] === index}
                       onClick={() => {
-                        if (answers[at] === index) return;
+                        const was = answers[at];
+                        if (was === index) return;
                         setAnswers({ ...answers, [at]: index });
-                        follow(`${each.text} ${option}`);
+                        const now = `${each.text} ${option}`;
+                        follow(now, was === undefined ? undefined : { was: `${each.text} ${each.options[was]}`, now });
                       }}
                     />
                   ))}

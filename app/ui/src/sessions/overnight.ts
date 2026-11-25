@@ -34,11 +34,18 @@ function put(id: string, entry: { op: string; act: Act; at: number } | null): vo
   asked.set(next);
 }
 
-/** Turns it on or off, or starts the night; shown at once, Rust's refusal in a toast [D30]. */
-export function overnight(id: string, act: Act): void {
+/** Turns it on or off, or starts the night; shown at once, Rust's refusal in a toast [D30]. `first`: what goes before it; refused, this isn't asked. */
+export function overnight(id: string, act: Act, first: Promise<boolean> = Promise.resolve(true)): void {
   const op = newId();
   put(id, { op, act, at: Date.now() });
-  run(["overnight", id, act, "--op", op]).catch((cause) => {
+  const ask = async () => {
+    const went = await first;
+    // Another act took its place meanwhile.
+    if (asked.get().get(id)?.op !== op) return;
+    if (went) return run(["overnight", id, act, "--op", op]);
+    put(id, null);
+  };
+  ask().catch((cause) => {
     if (asked.get().get(id)?.op !== op) return;
     put(id, null);
     showToast(errorText(cause), { tone: "error" });

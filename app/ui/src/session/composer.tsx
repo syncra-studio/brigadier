@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { SharedComposer } from "../components/composer/composer";
-import { type Draft, isEmpty, plainText, sendMode } from "../components/composer/draft";
+import { type Draft, isEmpty, plainText, sendMode, swapWords } from "../components/composer/draft";
 import { asShell, asWords, commandOf, isShell } from "../components/composer/shell";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
@@ -249,7 +249,13 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const parts = body(rest, tiles, chips);
     going(chips, made.cid, (pulled) => sendAsNew(id, text, pulled?.qid, made, parts), made.id);
   };
-  usePutBack(id, (message, above, draft) => {
+  usePutBack(id, (message, above, draft, swap) => {
+    const swapped = swap && swapWords(field.current?.parts() ?? [], swap.was, swap.now);
+    if (swapped) {
+      field.current?.set(asWords(swapped));
+      setEmpty(isEmpty({ parts: swapped, attachmentIds: files.tiles() }));
+      return field.current?.focus();
+    }
     // A rewound message goes above what's already being typed, never over it [D363]; its files come back with it.
     const typed = above ? (field.current?.parts() ?? []) : [];
     const back = draft?.parts ?? asWords([message]);
@@ -358,7 +364,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" && <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" />} />
+          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" ? (round) => <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" {...round} /> : undefined} />
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}
