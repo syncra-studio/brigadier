@@ -42,8 +42,7 @@ pub fn write_into(store: &Store, shot: &Shot, into: &Path) -> io::Result<Vec<Str
     let wanted: BTreeSet<String> = (store.diff(&now, shot)?.into_iter().chain(modes))
         .filter(|p| !shot.out.contains_key(p))
         .collect();
-    let (blocked, paths): (BTreeSet<String>, BTreeSet<String>) =
-        (wanted.iter().cloned()).partition(|p| store.blocked(p, &wanted));
+    let (paths, blocked) = store.open(&wanted);
     store.write_back(shot, &paths)?;
     Ok(shot.out.keys().cloned().chain(blocked).collect())
 }

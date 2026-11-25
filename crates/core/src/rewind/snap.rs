@@ -146,7 +146,7 @@ impl Store {
     }
 
     /// Git on the project's own repository, read only.
-    fn source(&self, args: &[&str]) -> io::Result<Vec<u8>> {
+    pub(super) fn source(&self, args: &[&str]) -> io::Result<Vec<u8>> {
         let mut command = Command::new("git");
         command
             .args([

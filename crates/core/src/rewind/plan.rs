@@ -72,11 +72,7 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         .filter(|p| !hand.contains(*p) && !out.contains(*p))
         .cloned()
         .collect();
-    let blocked: BTreeSet<String> = (wanted.iter())
-        .filter(|p| store.blocked(p, &wanted))
-        .cloned()
-        .collect();
-    let paths: BTreeSet<String> = wanted.difference(&blocked).cloned().collect();
+    let (paths, blocked) = store.open(&wanted);
     // A file whose permissions alone were changed since goes back no more open than it is now.
     let eased = paths.intersection(&since);
     let modes = store.stricter(&target, eased).map_err(unread)?;

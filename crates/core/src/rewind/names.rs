@@ -69,4 +69,63 @@ impl Store {
         }
         Ok(())
     }
+
+    /// What of `wanted` can be written, and what stays: what's blocked, and what would take files
+    /// `wanted` doesn't name along as its folder gets its own letter case back.
+    pub(super) fn open(&self, wanted: &BTreeSet<String>) -> (BTreeSet<String>, BTreeSet<String>) {
+        let (mut paths, mut held) = (wanted.clone(), BTreeMap::new());
+        loop {
+            let mut stay: BTreeSet<String> = (paths.iter())
+                .filter(|p| self.blocked(p, &paths) || self.moves(p, &paths, &mut held))
+                .cloned()
+                .collect();
+            if stay.is_empty() {
+                return (paths.clone(), wanted.difference(&paths).cloned().collect());
+            }
+            // What's there under another letter case is its file, which stays too.
+            let cased: Vec<String> = stay.iter().filter_map(|p| self.spelled(p)).collect();
+            stay.extend(cased);
+            paths.retain(|p| !stay.contains(p));
+        }
+    }
+
+    /// Whether `spell` would rename a folder that holds a file `paths` doesn't name; one the project
+    /// ignores goes with its folder. `held`: what each such folder holds.
+    fn moves(
+        &self,
+        path: &str,
+        paths: &BTreeSet<String>,
+        held: &mut BTreeMap<String, Option<Vec<String>>>,
+    ) -> bool {
+        let Some((dir, name)) = path.rsplit_once('/') else {
+            return false;
+        };
+        let Some(home) = self.spelled(dir).filter(|home| home != dir) else {
+            return false;
+        };
+        let there = self.spelled(path).unwrap_or(format!("{home}/{name}"));
+        if !paths.contains(&there) {
+            return false;
+        }
+        let same = (home.split('/').zip(dir.split('/'))).take_while(|(is, named)| is == named);
+        let top: Vec<&str> = home.split('/').take(same.count() + 1).collect();
+        let top = top.join("/");
+        let all = held
+            .entry(top)
+            .or_insert_with_key(|top| self.holding(top).ok());
+        let Some(all) = all else {
+            return true;
+        };
+        all.iter().any(|p| !paths.contains(p))
+    }
+
+    /// The files in `dir` that the project doesn't ignore, as the disk spells them.
+    fn holding(&self, dir: &str) -> io::Result<Vec<String>> {
+        let list = ["ls-files", "-c", "-o", "--exclude-standard", "-z", "--"];
+        let dir = format!(":(literal){dir}");
+        let args = [&["-c", "core.ignorecase=false"], &list[..], &[&dir]].concat();
+        let mut all = split(self.source(&args)?)?;
+        all.retain(|p| self.spelled(p).as_ref() == Some(p));
+        Ok(all)
+    }
 }

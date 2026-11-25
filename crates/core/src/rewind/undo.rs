@@ -79,10 +79,7 @@ pub(super) fn put_back(
         .filter(|p| store.holds(&target.tree, modes.as_ref(), p, made) || half(p))
         .cloned()
         .collect();
-    let back: BTreeSet<String> = (held.iter())
-        .filter(|p| !store.blocked(p, &held))
-        .cloned()
-        .collect();
+    let (back, _) = store.open(&held);
     store.write_back(pre, &back)?;
     Ok(paths.difference(&back).cloned().collect())
 }
