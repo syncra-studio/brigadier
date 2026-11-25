@@ -3,7 +3,7 @@ import { type ReactNode, useId, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { CheckCircle, ChevronDown, Dot, Spinner, Tasks, X } from "../icons";
-import { Line, ROW, ROW_HOVER } from "./source/rows";
+import { Line, ROW } from "./source/rows";
 
 export type Step = { text: string; status: string };
 const ENDED = new Set(["completed", "cancelled"]);
@@ -67,18 +67,18 @@ export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) 
   const current = left.find((step) => step.status === "in_progress") ?? left[0];
   return (
     <Collapsible open={open} onOpenChange={(next) => change({ open: next })} className="flex min-h-0 flex-col">
-      <CollapsibleTrigger className={cx(ROW, ROW_HOVER, "shrink-0 cursor-pointer")}>
+      <CollapsibleTrigger className={cx(ROW, "shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring")}>
         <span aria-hidden className="flex min-w-5 shrink-0 items-center justify-center svg:size-4">
           {over ? <CheckCircle className="text-success" /> : open ? <Tasks /> : (MARK[current?.status ?? ""] ?? <Dot />)}
         </span>
         <span className="min-w-0 flex-1 truncate">{over ? "Plan done" : open ? "Plan" : current?.text}</span>
-        <span className="shrink-0 text-muted-foreground tabular-nums">{done > FINISHED && !over ? `${left.length} left` : `${done}/${total}`}</span>
-        <ChevronDown aria-hidden className={cx("size-icon-xs shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
+        <span className="shrink-0 tabular-nums">{done > FINISHED && !over ? `${left.length} left` : `${done}/${total}`}</span>
+        <ChevronDown aria-hidden className={cx("size-icon-xs shrink-0 transition motion-reduce:transition-none", open && "rotate-180")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex min-h-0 flex-col data-starting-style:*:shrink-0">
         <div className="-me-2.5 flex max-h-60 min-h-0 flex-col overflow-y-auto pt-1 scroll-gutter">
           {ended.length > 0 && !over && (
-            <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => change({ earlier: !earlier })} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground hover:bg-summary-row-hover focus-visible:focus-ring">
+            <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => change({ earlier: !earlier })} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring">
               <span aria-hidden className="flex min-w-5 justify-center svg:size-4"><CheckCircle /></span>
               {[done && `${done} done`, ended.length > done && `${ended.length - done} cancelled`].filter(Boolean).join(", ")}
               <ChevronDown aria-hidden className={cx("size-icon-xs transition motion-reduce:transition-none", !earlier && "-rotate-90")} />
