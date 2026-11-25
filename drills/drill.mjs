@@ -1288,7 +1288,7 @@ async function peersDrill() {
   if (process.env.KEEP === '1') fs.rmSync(`${DATA}-kept`, { recursive: true, force: true }), fs.cpSync(DATA, `${DATA}-kept`, { recursive: true, filter: (f) => !fs.lstatSync(f).isSocket() })
   r.leftovers = cleanup()
   log(r)
-  verdict('peers', { sent_all: sent.size >= want, none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
+  verdict('peers', { sent_all: sent.size >= want && (kills > 0 || !states['no record']), none_lost: !bad.lost.length, none_doubled: !bad.doubled.length, in_order: !swapped.length, all_settled: !bad.open.length, no_queue_waits_for_the_user: !waited.length, none_read_that_was_refused: !bad.wrong.length,
     each_step_killed: PEER_STEPS.every((s) => (fired[s]?.fired ?? 0) >= kills), no_leftovers: r.leftovers.length === 0 })
 }
 
