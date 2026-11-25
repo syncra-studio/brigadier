@@ -40,9 +40,14 @@ fn fork(dir: &str, base: &str) -> String {
 }
 
 /// The commits a worktree's own HEAD made since `start`, oldest last, by its reflog: what it merged,
-/// rebased onto or checked out of others' isn't its work. None where there's no reflog to ask.
+/// rebased onto or checked out of others' isn't its work. None where its reflog doesn't go back to
+/// `start`: none, or a worktree made again, whose log starts after commits it had made.
 pub(in crate::workers) fn own(dir: &str, start: &str) -> Option<Vec<String>> {
-    let log = git(dir, &["log", "-g", "--format=%H %gs", "HEAD"]).filter(|l| !l.is_empty())?;
+    let log = git(dir, &["log", "-g", "--format=%H %gs", "HEAD"])?;
+    let first = log.lines().last()?.split(' ').next()?;
+    if first != start {
+        return None;
+    }
     let made = |why: &str| {
         let picked = |w: &str| why.starts_with(w) && why.contains("(pick)");
         (why.starts_with("commit") || why.starts_with("cherry-pick") || why.starts_with("revert"))
@@ -284,9 +289,13 @@ pub(in crate::workers) fn write_as(
         (end.map_or(turn, |e| &e.id).into(), u64::MAX)
     });
     let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
-    // Its host died in it, whether it or the log said so.
-    let logged = (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == of.end);
-    let cut = of.end == u64::MAX || logged.is_some_and(|e| e.how == "interrupted");
+    // Its host died in it: the log says so, or left the turn open. A reviewer's end isn't named.
+    let logged = match of.end {
+        0 => f.end(turn),
+        at => (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == at),
+    };
+    let unended = of.end == u64::MAX || (of.end == 0 && f.turns.iter().any(|t| t.id == turn));
+    let cut = unended || logged.is_some_and(|e| e.how == "interrupted");
     let ended = f.last;
     text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
