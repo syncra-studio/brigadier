@@ -185,7 +185,7 @@ export function DeleteForm({ rows, first, onClose }: { rows: Deleted[]; first: C
     }
   };
   const called = (id: string) => [...rows, ...(all ?? [])].find((each) => each.id === id)?.title || "another session";
-  const whose = (ids: string[]) => (one ? "" : `${ids.map((id) => `“${called(id)}”`).join(", ")}: `);
+  const whose = (ids: string[]) => (one && ids.every((id) => id === one.id) ? "" : `${ids.map((id) => `“${called(id)}”`).join(", ")}: `);
   return (
     <ConfirmForm
       title={one ? "Delete session?" : `Delete ${many}?`}

@@ -161,7 +161,7 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
   const byId = (id: string) => rows.find((row) => row.id === id) ?? all?.find((row) => row.id === id);
   const more = withCount(check);
   const lone = one && more === 0;
-  const whose = (ids: string[]) => (lone ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
+  const whose = (ids: string[]) => (lone && ids.every((id) => id === rows[0]!.id) ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
   return (
     <ConfirmForm
       title={one ? "Archive session?" : `Archive ${rows.length} sessions?`}
