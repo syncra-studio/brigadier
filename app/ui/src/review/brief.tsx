@@ -4,7 +4,7 @@ import { sentAt } from "../components/thread/message";
 import { cx } from "../components/cx";
 import { baseName, plural, type Tone } from "../panel/words";
 import { Counts } from "./hunks";
-import type { FileFlag, LastRun, NoTurn, Review, ReviewFile } from "./types";
+import { captured, type FileFlag, type LastRun, type NoTurn, type Review, type ReviewFile } from "./types";
 
 /**
  * Review's brief (D1188): what changed, which files want a look first, and the session's last test or build run, as
@@ -53,9 +53,10 @@ export function runWords(run: LastRun | null, now = Date.now()): BriefLine {
   return { text: `last run \`${run.command}\`, ${result}, ran ${sentAt(run.at, now)} · ${since}`, tone: run.exit || run.changed ? "warn" : "quiet" };
 }
 
-/** Last turn with nothing to compare: Rust's reason in words (D30). */
+/** Last turn or a night with nothing to compare: Rust's reason in words (D30). */
 export function noTurnWords(why: NoTurn): string {
   return {
+    noNight: "No turn of this night was captured, so there's nothing to compare.",
     noProject: "This chat has no project folder, so there's no turn's files to show.",
     notGit: "This folder isn't a git checkout, so Review can't show the last turn.",
     noTurn: "No turn yet. What the next one changes shows here.",
@@ -64,12 +65,13 @@ export function noTurnWords(why: NoTurn): string {
   }[why];
 }
 
-/** What Last turn's diff doesn't cover, and how it was taken (D1192). */
+/** What Last turn's or a night's diff doesn't cover, and how it was taken (D1192). */
 export function turnWords(review: Review): BriefLine[] {
   const lines: BriefLine[] = [];
   const turn = review.turn;
-  if (turn?.live) lines.push({ text: "The turn is still running: its start against now", tone: "quiet" });
-  if (turn?.missed) lines.push({ text: "The turn's end wasn't captured: its start against now", tone: "warn" });
+  const night = review.scope !== "last";
+  if (turn?.live) lines.push({ text: `The turn is still running: ${night ? "the night's" : "its"} start against now`, tone: "quiet" });
+  if (turn?.missed) lines.push({ text: `The ${night ? "night" : "turn"}'s end wasn't captured: its start against now`, tone: "warn" });
   if (review.shared) lines.push({ text: "Another session works in this folder: its changes may be in this diff", tone: "warn" });
   if (turn) {
     const out = turn.excluded.slice(0, 3).map((path) => `\`${baseName(path)}\``);
@@ -99,7 +101,7 @@ export function BriefStrip({ review }: { review: Review }) {
       {children}
     </span>
   );
-  const facts = [...flagWords(review.files), ...(review.run === undefined ? [] : [runWords(review.run)]), ...(review.scope === "last" ? turnWords(review) : [])];
+  const facts = [...flagWords(review.files), ...(review.run === undefined ? [] : [runWords(review.run)]), ...(captured(review.scope) ? turnWords(review) : [])];
   return (
     <div data-slot="review-brief" className="flex shrink-0 flex-col gap-1 border-b border-divider bg-fill-faint px-3 py-2.5 text-xs text-muted-foreground">
       {line(

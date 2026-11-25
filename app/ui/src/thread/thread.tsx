@@ -7,7 +7,8 @@ import { MessageRail } from "./rail";
 import { LineRow } from "./rows";
 import { COLUMN } from "../components/composer/composer";
 import { Find } from "./find";
-import { Follow, OLDER, takePlace, type Phase, type Space } from "./follow";
+import { Follow, OLDER, type Phase, type Space } from "./follow";
+import { takePlace } from "./place";
 import { store, useAgentLabel } from "../onboarding/api";
 import { cx } from "../components/cx";
 import { Skeleton } from "../components/skeleton";
@@ -336,6 +337,12 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   });
   // New rows: placed, followed or taken from the space before the paint.
   useLayoutEffect(() => {
+    if (phase === "idle" && after === null && drawnData.current !== data) {
+      const had = new Set(drawnData.current.map((line) => line.id));
+      const last = data.findLastIndex((line) => had.has(line.id));
+      const came = last < 0 ? undefined : data[last + 1];
+      if (came) follow.arrive(came.id);
+    }
     drawnData.current = data;
     follow.resized();
     fill();

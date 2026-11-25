@@ -88,7 +88,9 @@ export function ReviewTab(props: ReviewTabProps) {
     if (loading || !connected) return;
     for (const file of files) if (file.large && !isCollapsed(file) && !contents.has(file.path)) props.onLoad(file.path);
   }, [review, contents, loading, connected, opened, folded, props.draft?.path]);
-  const label = props.picked ?? SCOPES.find((entry) => entry.value === scope)?.label(review?.base ?? null);
+  // A night is offered where its morning card opened it.
+  const scopes = scope.startsWith("night:") ? [{ value: scope, label: () => "Overnight" }, ...SCOPES] : SCOPES;
+  const label = props.picked ?? scopes.find((entry) => entry.value === scope)?.label(review?.base ?? null);
 
   return (
     <div data-slot="review-tab" className="flex min-h-0 flex-1 flex-col bg-background">
@@ -101,7 +103,7 @@ export function ReviewTab(props: ReviewTabProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup value={props.picked ? null : scope} onValueChange={(value: ReviewScope) => props.onScope?.(value)}>
-                {SCOPES.map((entry) => (
+                {scopes.map((entry) => (
                   <DropdownMenuRadioItem key={entry.value} value={entry.value}>
                     {entry.label(review?.base ?? null)}
                   </DropdownMenuRadioItem>

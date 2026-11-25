@@ -13,7 +13,8 @@ import { newId } from "../session/store";
 import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
-import { placeOnOpen, sendFailed } from "../thread/follow";
+import { sendFailed } from "../thread/follow";
+import { placeOnOpen } from "../thread/place";
 
 /*
  * Home's draft and the sessions it starts [D30, D161]. Its project and model live in memory; its words are kept by

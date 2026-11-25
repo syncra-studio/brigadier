@@ -35,7 +35,7 @@ pub struct Shot {
 }
 
 /// One turn's two edges. A missing end means no restore across it.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Record {
     pub before: Shot,
     pub end: Option<Shot>,

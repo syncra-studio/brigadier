@@ -83,5 +83,6 @@ export function OvernightStrip({ id, now }: { id: string; now: Overnight | null 
   );
 }
 
-export const nightPlaceholder = (now: Overnight | null, busy: boolean) =>
-  now === null ? undefined : now.state === "night" ? "Working until you’re back" : now.state === "asking" && busy ? "It asks its last questions next" : "Anything else before you go?";
+/** `asked`: its turn's questions are there already, waiting or answered. */
+export const nightPlaceholder = (now: Overnight | null, busy: boolean, asked: boolean) =>
+  now === null ? undefined : now.state === "night" ? "Working until you’re back" : now.state === "asking" && busy && !asked ? "It asks its last questions next" : "Anything else before you go?";

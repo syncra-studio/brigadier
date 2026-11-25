@@ -87,7 +87,7 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
             <p className="text-sm text-timeline-title">{item.summary}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {session && <Button size="sm" onClick={() => openReview(session)}>Review changes</Button>}
+            {session && <Button size="sm" onClick={() => openReview(session, undefined, `night:${item.at - item.ms}-${item.at}`)}>Review changes</Button>}
             {item.url && (
               <Button size="sm" variant="outline" nativeButton={false} render={<a href={item.url} target="_blank" rel="noreferrer" />}>
                 Try it
