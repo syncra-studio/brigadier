@@ -30,6 +30,8 @@ import { newId } from "./store";
 import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
 import { deliver, type Sent, setSent, useOnItsWay } from "./sent";
 import { useTurn } from "./turn";
+import { OVERNIGHT, overnight, useOvernight } from "../sessions/overnight";
+import { NightReady, nightLook, nightPlaceholder, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
@@ -131,6 +133,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     ops.filter((op) => !live.includes(op)).forEach((op) => op.done?.());
     setOps(live);
   });
+  const night = useOvernight(id, worker ? undefined : row);
   const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
   let paused = row?.queue?.paused === true;
   // A `!` command that ended shows only while its report can't go.
@@ -224,7 +227,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
 
   // Send as new, from a project session only: ⌥⌘⏎, ⌘-click on Send, or the /new chip in the text [D183, D204].
   const inProject = Boolean(row?.project) && !worker;
-  const extras = useComposerCommands({ owner: id, run, field, extra: inProject ? [NEW_SESSION] : [], fresh: running, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
+  const extras = useComposerCommands({ owner: id, run, field, extra: worker ? [] : [...(inProject ? [NEW_SESSION] : []), { ...OVERNIGHT, run: () => overnight(id, night ? "off" : "on") }], fresh: running, onFiles: (picked) => picked.forEach((file) => files.attach(crypto.randomUUID(), file, false)) });
   /** Empties the field for a message that's going, and answers the queued message it was edited from. */
   const take = () => {
     const pulled = editing.current;
@@ -338,6 +341,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       rail={
         <>
           <SessionWorkersStrip id={id} />
+          {!worker && <OvernightStrip id={id} now={night} />}
+          {!worker && <NightReady id={id} now={night} />}
           <SessionNotices id={id} offline={offline} source={source} run={run} />
           <QueueCard
             items={items}
@@ -353,13 +358,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} />{model.strip}
+          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" && <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" />} />{model.strip}
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}
       // Kept while an approval has its place, so the draft and its caret stay.
       hidden={approval}
       shell={shell && !toWorker}
+      look={nightLook(night !== null)}
       onDragOver={files.onDragOver}
       onDrop={files.onDrop}
       tiles={
@@ -382,6 +388,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       level={
         <>
           {!worker && <SessionLevel id={id} row={row} />}
+          {!worker && <SessionOvernight id={id} now={night} />}
           {toWorker && <ToWorkerChip worker={toWorker} sending={toSending} onClear={() => setTo(null)} />}
         </>
       }
@@ -417,7 +424,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerField
         ref={field}
         initial={initial}
-        placeholder={toWorker ? `Message ${toWorker.name}` : placeholder}
+        placeholder={toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night, busy) ?? placeholder)}
         attachments={files.attachments}
         onAttach={files.attach}
         mentions={{ ...files.mentions, onDirect: setTo }}

@@ -299,6 +299,23 @@ export type Item = Base &
         why: string | null;
         waited?: "replied" | "timeout";
       }
+    /** Overnight in the thread: the night's start, and the report it ends with. */
+    | { kind: "overnight"; moment: "started"; at: number }
+    | {
+        kind: "overnight";
+        moment: "report";
+        at: number;
+        ms: number;
+        summary: string;
+        /** The facts under the summary, each in a few words: the diff, the research, the usage spent. */
+        facts: string[];
+        /** Where the work can be tried. */
+        url?: string | null;
+        done: { title: string; proof: string; more?: string | null }[];
+        left: { title: string; why: string; next?: string | null }[];
+        decided: { title: string; why: string; /** What it could be instead. */ other?: string | null }[];
+        waiting: { text: string; options: string[]; recommended?: number | null }[];
+      }
     /** An event the UI can't draw yet, kept as it came. */
     | { kind: "unknown"; raw: unknown }
   );

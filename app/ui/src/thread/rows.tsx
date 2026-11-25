@@ -14,6 +14,7 @@ import { SetupRow } from "../components/thread/setup";
 import { DrawBoundary } from "../components/thread/error-state";
 import { ImageRow } from "../components/thread/image";
 import { PeerRow } from "../peers/live";
+import { OvernightRow } from "../sessions/overnight-row";
 import { TeamRow } from "../workers/live";
 import { SubagentRow } from "../workers/subagents";
 import { LiveMockupRow } from "../mockup/live";
@@ -54,6 +55,8 @@ export const LineRow = memo(function LineRow(props: LineProps) {
         <SubagentRow items={props.batch ?? [props.item]} />
       ) : props.item.kind === "mockup" ? (
         <LiveMockupRow {...props.item} />
+      ) : props.item.kind === "overnight" ? (
+        <OvernightRow item={props.item} />
       ) : props.item.kind === "peer" ? (
         <PeerRow item={props.item} />
       ) : props.item.kind === "shell" ? (

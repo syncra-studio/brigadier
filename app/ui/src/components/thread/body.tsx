@@ -248,6 +248,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
     case "team_step":
     case "team_still":
     case "mockup":
+    case "overnight":
     case "peer":
       return null;
   }

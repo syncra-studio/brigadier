@@ -113,11 +113,12 @@ export function SharedComposer({
   send,
   after,
   shell,
+  look,
   children,
   ...card
-}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean; /** A shell command is typed: nothing attached, no permission or model pick. */ shell?: boolean }) {
+}: Pick<ComponentProps<"div">, "onDragOver" | "onDrop" | "children"> & Partial<Record<"rail" | "above" | "tiles" | "plus" | "level" | "status" | "ring" | "model" | "send" | "after", ReactNode>> & { hidden?: boolean; /** A shell command is typed: nothing attached, no permission or model pick. */ shell?: boolean; /** A class the whole composer wears, but as a shell command. */ look?: string }) {
   return (
-    <Composer>
+    <Composer className={shell ? undefined : look}>
       <ComposerRail>{rail}</ComposerRail>
       {above}
       <ComposerCard className={cx(hidden && "hidden", shell && "ring-1 ring-link")} {...card} {...(shell && { onDragOver: undefined, onDrop: undefined })}>
