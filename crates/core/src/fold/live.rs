@@ -105,10 +105,28 @@ const SLACK_MS: u64 = 1000;
 const SETTLE_MS: u64 = 2000;
 const SHELLS: [&str; 5] = ["sh", "bash", "zsh", "dash", "fish"];
 
+/// The CLI's server, when the agent is Brigadier's helper that holds it: the helper starts nothing
+/// else. With it what it handed the helper's own pipes to, as a launcher does to the CLI it runs;
+/// a tool or an MCP server gets its own.
+fn server(all: &[procs::Proc], child: i32) -> BTreeSet<i32> {
+    let argv = procs::args(child).map(|a| a.0).unwrap_or_default();
+    let helper =
+        matches!(&argv[..], [exe, word, ..] if exe.ends_with("/brigadier") && word == "helper");
+    let mut found = BTreeSet::new();
+    for p in all.iter().filter(|p| helper && p.ppid == child) {
+        found.insert(p.pid);
+        if let Some(pipes) = procs::stdio(p.pid) {
+            let below = procs::descendants(all, p.pid).into_iter().map(|p| p.pid);
+            found.extend(below.filter(|&b| procs::stdio(b) == Some(pipes)));
+        }
+    }
+    found
+}
+
 /// Each topmost process proven the session's and born in one of its ended turns' tool windows, still
 /// alive, whatever became of its agent. The agent's own helpers (MCP servers) start with it, before
-/// any tool, so none count; those its CLI starts later it names, and they're never a job, though
-/// what runs under one can be.
+/// any tool, so none count; its CLI's server and the helpers it starts later, which it names, are
+/// never a job, though what runs under one can be.
 fn left_running(
     fold: &Fold,
     all: &[procs::Proc],
@@ -128,6 +146,7 @@ fn left_running(
         let name = argv.first().and_then(|a| a.rsplit('/').next());
         name.is_some_and(|n| helpers.contains(&n))
     };
+    let server = child.map(|c| server(all, c)).unwrap_or_default();
     // In the running turn, one its CLI said it sent to the background counts at once, not at its end;
     // a turn whose agent is gone is over.
     let since = child.map_or(0, |_| fold.child.as_ref().map_or(0, |c| c.start_us / 1000));
@@ -144,6 +163,7 @@ fn left_running(
     let born = |p: &procs::Proc| {
         !p.zombie
             && Some(p.pid) != child
+            && !server.contains(&p.pid)
             && now.saturating_sub(p.start_us / 1000) >= SETTLE_MS
             && (out(p)
                 || (below.contains(&p.pid)
