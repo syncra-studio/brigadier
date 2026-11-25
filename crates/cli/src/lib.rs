@@ -138,7 +138,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "status" | "up" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
-        | "panel" | "routing" | "plugins" | "browser" | "computer" | "terminal" => &[][..],
+        | "panel" | "routing" | "plugins" | "browser" | "computer" | "terminal" | "storage" => {
+            &[][..]
+        }
         _ => &args[1.min(args.len())..2.min(args.len())],
     };
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");

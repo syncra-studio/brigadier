@@ -8,7 +8,7 @@ use crate::{arg, owner, workers};
 use brigadier_core::{self as core, Spec, background, fold, projects, session, share, worktrees};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
@@ -21,17 +21,33 @@ const AT_ONCE: usize = 8;
 /// Live chats' finished workers' build files, and what archived chats left.
 const BUILD: &str = "build";
 const LEFT: &str = "left";
+const BROWSER: [&str; 2] = ["browser", "chromium"];
+/// In a kind's total but no session's, which can't be ids: the rest of the data folder, and files
+/// with a name elsewhere too, which freeing one session wouldn't give back.
+const REST: &str = "@rest";
+const SHARED: &str = "@shared";
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args.get(1).map(String::as_str) {
         None => list(data),
         Some("free") => free(data, arg(args, 2)?, arg(args, 3)?),
         Some("browser") => {
-            let size = ["browser", "chromium"].map(|d| size(&data.join(d), &[]));
-            Ok(json!({"ok": true, "total": size.iter().sum::<u64>()}))
+            let size = size(&BROWSER.map(|d| data.join(d)), &[]);
+            Ok(json!({"ok": true, "total": size.own + size.shared.values().sum::<u64>()}))
         }
         Some(kind @ ("build" | "worktrees" | "temp" | "history")) => {
-            let sizes = each(&specs(data), |spec| measure(data, spec, kind));
+            let specs = specs(data);
+            let mut all = each(&specs, |spec| measure(data, spec, kind));
+            if kind == "history" {
+                all.insert(REST.into(), size(&rest(data, &specs), &[]));
+            }
+            let mut sizes: BTreeMap<&str, u64> = BTreeMap::new();
+            let mut shared: HashMap<(u64, u64), u64> = HashMap::new();
+            for (id, size) in &all {
+                sizes.insert(id, size.own);
+                shared.extend(&size.shared);
+            }
+            sizes.insert(SHARED, shared.values().copied().sum());
             Ok(json!({"ok": true, "sizes": sizes}))
         }
         Some(_) => Err(io::Error::other(crate::USAGE)),
@@ -85,34 +101,63 @@ fn code(spec: &Spec) -> Vec<PathBuf> {
     all
 }
 
-fn built(data: &Path, spec: &Spec) -> Vec<PathBuf> {
+/// What the data folder holds besides the sessions and the browser: Home's draft, the search index,
+/// and what deleted sessions left.
+fn rest(data: &Path, specs: &[Spec]) -> Vec<PathBuf> {
+    let inside = |dir: &Path| fs::read_dir(dir).into_iter().flatten().flatten();
+    let (sessions, known) = (data.join("sessions"), |p: &PathBuf| {
+        specs.iter().any(|s| s.dir == *p)
+    });
+    let top = inside(data).map(|e| e.path());
+    let top = top.filter(|p| *p != sessions && !BROWSER.iter().any(|b| *p == data.join(b)));
+    let gone = inside(&sessions).map(|e| e.path()).filter(|p| !known(p));
+    top.chain(gone).collect()
+}
+
+/// Each worktree it made, with the project's include rules; a folder chat's claims have none.
+fn picked(data: &Path, spec: &Spec) -> Vec<(PathBuf, Vec<String>)> {
     let project = spec.project.as_deref();
     let picks = (project.and_then(|p| projects::get(data, p).ok()))
         .map(|p| p.include)
         .unwrap_or_default();
-    (records(spec).iter())
-        .flat_map(|rec| {
-            // A folder chat's claims have no picks of their own.
-            let picks = if *rec == spec.dir { &picks[..] } else { &[] };
-            worktrees::lost::rebuilt(rec, picks).unwrap_or_default()
+    (records(spec).into_iter())
+        .map(|rec| match rec == spec.dir {
+            true => (rec, picks.clone()),
+            false => (rec, vec![]),
         })
         .collect()
 }
 
-fn measure(data: &Path, spec: &Spec, kind: &str) -> u64 {
-    let sum = |paths: &[PathBuf], skip: &[PathBuf]| paths.iter().map(|p| size(p, skip)).sum();
+fn built(data: &Path, spec: &Spec) -> Vec<PathBuf> {
+    (picked(data, spec).iter())
+        .flat_map(|(rec, picks)| worktrees::lost::rebuilt(rec, picks).unwrap_or_default())
+        .collect()
+}
+
+fn measure(data: &Path, spec: &Spec, kind: &str) -> Size {
     let tmp = background::tmp(&spec.dir);
     match kind {
-        "build" => sum(&built(data, spec), &[]),
-        "worktrees" => sum(&code(spec), &built(data, spec)),
-        "temp" => size(&tmp, &[]),
-        _ => size(&spec.dir, &[code(spec), vec![tmp]].concat()),
+        "build" => size(&built(data, spec), &[]),
+        "worktrees" => size(&code(spec), &built(data, spec)),
+        "temp" => size(&[tmp], &[]),
+        _ => size(
+            std::slice::from_ref(&spec.dir),
+            &[code(spec), vec![tmp]].concat(),
+        ),
     }
 }
 
-/// Bytes a folder takes on disk, its links not followed, a file with several names counted once.
-fn size(path: &Path, skip: &[PathBuf]) -> u64 {
-    let (mut stack, mut seen, mut total) = (vec![path.to_path_buf()], HashSet::new(), 0);
+/// Bytes on disk: those that go with the folders, and by file those with a name outside them too.
+struct Size {
+    own: u64,
+    shared: HashMap<(u64, u64), u64>,
+}
+
+/// What folders take together, their links not followed, a file with several names counted once.
+/// shortcut: a file cloned by APFS counts whole; tell them apart if sizes read far too high.
+fn size(paths: &[PathBuf], skip: &[PathBuf]) -> Size {
+    let (mut stack, mut total) = (paths.to_vec(), 0);
+    let mut names: HashMap<(u64, u64), (u64, u64, u64)> = HashMap::new();
     while let Some(next) = stack.pop() {
         if skip.contains(&next) {
             continue;
@@ -120,16 +165,26 @@ fn size(path: &Path, skip: &[PathBuf]) -> u64 {
         let Ok(meta) = fs::symlink_metadata(&next) else {
             continue;
         };
-        if !meta.is_dir() && meta.nlink() > 1 && !seen.insert((meta.dev(), meta.ino())) {
+        let bytes = meta.blocks() * 512;
+        if !meta.is_dir() && meta.nlink() > 1 {
+            let new = (0, meta.nlink(), bytes);
+            names.entry((meta.dev(), meta.ino())).or_insert(new).0 += 1;
             continue;
         }
-        total += meta.blocks() * 512;
+        total += bytes;
         if meta.is_dir() {
             let inside = fs::read_dir(&next).into_iter().flatten().flatten();
             stack.extend(inside.map(|e| e.path()));
         }
     }
-    total
+    let mut shared = HashMap::new();
+    for (file, (here, all, bytes)) in names {
+        match here < all {
+            true => drop(shared.insert(file, bytes)),
+            false => total += bytes,
+        }
+    }
+    Size { own: total, shared }
 }
 
 /// What the page says of a session and what could go of it: kind by kind, the group it goes with.
@@ -160,18 +215,24 @@ fn state(data: &Path, spec: &Spec, all: &[procs::Proc]) -> State {
     match (working || moving, archived) {
         (true, _) => {}
         (_, true) => {
-            goes.insert("temp", LEFT);
+            // A repository in there may hold work of its own.
+            if !worktrees::lost::repo_inside(&background::tmp(&spec.dir), &[]) {
+                goes.insert("temp", LEFT);
+            }
             if !made.is_empty() && !shared() {
                 goes.insert("build", LEFT);
-                let lost = || worktrees::lost::losses(data, std::slice::from_ref(id));
-                // An ignored file restore wouldn't bring back is as good as unmerged.
-                if !unmerged && lost().is_empty() {
+                // A file restore wouldn't bring back is as good as unmerged.
+                let lossless = || {
+                    (picked(data, spec).iter())
+                        .all(|(rec, picks)| worktrees::lost::lossless(rec, picks).unwrap_or(false))
+                };
+                if !unmerged && lossless() {
                     goes.insert("worktrees", LEFT);
                 }
             }
         }
-        // A worker's result says it has finished: one waiting for an answer or a pick hasn't.
-        _ if link.is_some_and(|l| !l.last.is_null()) && !made.is_empty() && !shared() => {
+        // Its result says so: one stopped, failed or waiting for an answer may go on.
+        _ if link.is_some_and(|l| l.last["how"] == "finished") && !made.is_empty() && !shared() => {
             goes.insert("build", BUILD);
         }
         _ => {}
@@ -242,6 +303,7 @@ fn disk_free(data: &Path) -> Option<u64> {
 /// Frees `id`'s part of `group`, if it still goes: the kinds that went. Under the session's lock, so
 /// no turn starts meanwhile, and with its idle host ended, so its next message sets up again.
 fn free(data: &Path, group: &str, id: &str) -> io::Result<Value> {
+    core::check_id(id)?;
     let spec = core::load(data, id)?;
     let _one = worktrees::lock(&spec.dir)?;
     let goes = state(data, &spec, &procs::all()).goes;
