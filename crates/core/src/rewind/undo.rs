@@ -3,7 +3,7 @@
 //! the restore left it [D1192].
 
 use super::modes::made;
-use super::repos::Part;
+use super::repos::{Part, named};
 use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
 use super::{Op, checkout_lock, folded, refused};
@@ -29,6 +29,9 @@ struct Restored {
     paths: BTreeSet<String>,
     #[serde(default)]
     repos: Vec<Part>,
+    /// The user's own files it brought back: Redo never removes them [D26].
+    #[serde(default)]
+    theirs: Vec<String>,
 }
 
 /// A rewind that landed: a restore's record replaces the last one, any other rewind removes it, so
@@ -38,14 +41,24 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
     let main = op.pre.is_some() && op.target.is_some() && !op.paths.is_empty();
     match main || !op.repos.is_empty() {
         true => {
-            let r = Restored {
+            let mut r = Restored {
                 op: op.op.clone(),
                 pre: op.pre.clone(),
                 target: op.target.clone(),
                 modes: op.modes.clone(),
                 paths: op.paths.clone(),
                 repos: op.repos.clone(),
+                theirs: op.hand.clone(),
             };
+            let all = r.paths.iter().cloned().chain(named(&r.repos));
+            let all: BTreeSet<String> = all.collect();
+            // What's named as the user's is only written where it was gone.
+            r.theirs.retain(|p| all.contains(p));
+            r.paths.retain(|p| !r.theirs.contains(p));
+            for part in &mut r.repos {
+                let name = &part.name;
+                (part.paths).retain(|p| !r.theirs.contains(&format!("{name}/{p}")));
+            }
             write_atomic(&path, &serde_json::to_vec(&r)?)
         }
         _ => match fs::remove_file(&path) {
@@ -140,13 +153,14 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
         }
         _ => Ok(vec![]),
     };
-    let kept = (mine.and_then(|mut kept| {
+    let mut kept = (mine.and_then(|mut kept| {
         kept.extend(super::repos::put_back(spec, &r.repos, false)?);
         Ok(kept)
     }))
     .map_err(|e| refused("failed", e.to_string()))?;
     // One deep: gone once used. Left behind, a second Undo finds every path changed and keeps it.
     let _ = fs::remove_file(&path);
-    let all = r.paths.len() + super::repos::named(&r.repos).len();
-    Ok(json!({"ok": true, "undone": all - kept.len(), "kept": kept}))
+    let undone = r.paths.len() + named(&r.repos).len() - kept.len();
+    kept.extend(r.theirs);
+    Ok(json!({"ok": true, "undone": undone, "kept": kept}))
 }

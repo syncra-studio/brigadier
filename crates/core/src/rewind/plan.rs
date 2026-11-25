@@ -5,7 +5,7 @@ use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
 use crate::Spec;
 use crate::fold::{Boundary, Fold};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// What a restore would do: in the session's folder, and in each repo a folder chat claimed.
@@ -46,22 +46,30 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     };
     let shots = shots.filter(|s| !s.is_empty()).ok_or_else(missing)?;
     let pre = store.capture().map_err(unread)?;
-    let target = shots[0].0.clone();
-    let (mut agent, mut gaps) = (BTreeSet::new(), BTreeSet::new());
+    // Between the turns, where what changed is the user's: how each path was then last left.
+    let (mut agent, mut theirs) = (BTreeSet::new(), BTreeMap::new());
     // The same for permissions alone.
     let (mut bits, mut since) = (BTreeSet::new(), BTreeSet::new());
     for (i, (before, end)) in shots.iter().enumerate() {
         agent.extend(store.diff(before, end).map_err(unread)?);
         let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
-        gaps.extend(store.diff(end, next).map_err(unread)?);
+        let gap = store.diff(end, next).map_err(unread)?;
+        theirs.extend(gap.into_iter().map(|p| (p, next)));
         bits.extend(store.modes_differ(before, end).map_err(unread)?);
         since.extend(store.modes_differ(end, next).map_err(unread)?);
     }
+    let mut gaps: BTreeSet<String> = theirs.keys().cloned().collect();
     let alone = bits.difference(&agent).filter(|p| since.contains(*p));
     gaps.extend(alone.cloned());
     agent.extend(bits);
     let all = shots.iter().flat_map(|(b, e)| [b, e]).chain([&pre]);
     let out: BTreeSet<String> = all.flat_map(|s| s.out.keys().cloned()).collect();
+    // One the agent took away since goes back as the user left it.
+    let gone = (theirs.iter())
+        .filter(|(p, _)| agent.contains(*p) && !out.contains(*p) && store.absent(p))
+        .map(|(p, shot)| (p, *shot))
+        .collect();
+    let (target, put) = store.with(&shots[0].0, &gone).map_err(unread)?;
     let mut moved = store.diff(&target, &pre).map_err(unread)?;
     moved.extend(store.modes_differ(&target, &pre).map_err(unread)?);
     let mut hand: BTreeSet<String> = agent.intersection(&gaps).cloned().collect();
@@ -69,10 +77,14 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     let cased: Vec<String> = hand.iter().filter_map(|p| store.spelled(p)).collect();
     hand.extend(cased);
     let wanted: BTreeSet<String> = (agent.intersection(&moved))
-        .filter(|p| !hand.contains(*p) && !out.contains(*p))
+        .filter(|p| put.contains(*p) || (!hand.contains(*p) && !out.contains(*p)))
         .cloned()
         .collect();
     let (paths, blocked) = store.open(&wanted);
+    // The agent's copy must not go without it.
+    if !put.is_disjoint(&blocked) {
+        return Err("unreadable");
+    }
     // A file whose permissions alone were changed since goes back no more open than it is now.
     let eased = paths.intersection(&since);
     let modes = store.stricter(&target, eased).map_err(unread)?;

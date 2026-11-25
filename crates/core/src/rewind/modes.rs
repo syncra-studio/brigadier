@@ -105,7 +105,7 @@ impl Store {
         self.save_modes(&all)
     }
 
-    fn save_modes(&self, all: &Modes) -> io::Result<String> {
+    pub(super) fn save_modes(&self, all: &Modes) -> io::Result<String> {
         if all.is_empty() {
             return Ok(String::new());
         }

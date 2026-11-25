@@ -4,6 +4,7 @@
 //! proof before anything else runs [D54, D300].
 
 mod active;
+mod edits;
 pub mod fork;
 mod modes;
 mod names;

@@ -135,7 +135,7 @@ impl Store {
         self.source(&["cat-file", "-e", &rev]).is_ok()
     }
 
-    fn lock(&self) -> io::Result<File> {
+    pub(super) fn lock(&self) -> io::Result<File> {
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
