@@ -179,9 +179,14 @@ pub fn standing(spec: &Spec) -> Vec<String> {
             allow.push("Bash(brigadier repo:*)".into());
         }
     }
+    // A worker's launch leaves the user's settings out, and their global rules file with them:
+    // given here, as the plan says a worker has it [D89, D99].
+    let rules = super::super::cli_home(spec, ".claude", "CLAUDE.md");
+    let rules = (std::fs::read_to_string(rules).ok().filter(|_| spec.naked))
+        .map_or(String::new(), |r| format!("\n\n{}", r.trim()));
     let mut args = vec![
         "--append-system-prompt".into(),
-        crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" },
+        crate::agent::standing(spec) + if crate::rebirth::todo() { load } else { "" } + &rules,
         "--settings".into(),
         settings.to_string(),
         "--disallowedTools".into(),

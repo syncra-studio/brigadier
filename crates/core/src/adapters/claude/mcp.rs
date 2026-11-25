@@ -135,6 +135,13 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
         return super::control::naked(argv, servers);
     }
     let mut off = library(spec, cwd, argv, env);
+    let (data, project) = (crate::data_of(spec), spec.project.as_deref());
+    off.extend(library::own_off(&data, project, &mcp_servers(cwd)));
+    // Its own skills the library holds off here: `skillOverrides` (code.claude.com/docs/en/skills),
+    // which a plugin's skill doesn't take.
+    let skills: Map<String, Value> = (library::hidden(&data, project).names())
+        .map(|n| (n.clone(), "off".into()))
+        .collect();
     // Claude Code drops its Slack plugin's server for a claude.ai Slack connector at the same
     // address, even one not signed in; the plugin is the Slack Brigadier uses [D586, D768].
     if !slack(cwd).is_empty() {
@@ -142,9 +149,14 @@ pub fn launch(spec: &Spec, argv: &mut Vec<String>, env: &mut Vec<(String, String
     }
     let denied: Vec<Value> = (off.iter()).map(|n| json!({ "serverName": n })).collect();
     let at = argv.iter().rposition(|a| a == "--settings");
-    if let (false, Some(at)) = (denied.is_empty(), at) {
+    if let (false, Some(at)) = (denied.is_empty() && skills.is_empty(), at) {
         let mut settings: Value = serde_json::from_str(&argv[at + 1]).unwrap_or_default();
-        settings["deniedMcpServers"] = denied.into();
+        if !denied.is_empty() {
+            settings["deniedMcpServers"] = denied.into();
+        }
+        if !skills.is_empty() {
+            settings["skillOverrides"] = skills.into();
+        }
         argv[at + 1] = settings.to_string();
     }
 }

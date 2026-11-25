@@ -25,9 +25,19 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     if spec.naked {
         let deny = |action| json!({"action": action, "resource": "*", "effect": "deny"});
         config["policies"] = json!(["mcp.use", "skill.use", "plugin.use"].map(deny));
-        env.push(("OPENCODE_DISABLE_CLAUDE_CODE".into(), "1".into()));
-    } else if let Some(kit) = crate::library::kit(spec, &[]) {
-        library(&mut config, &kit, spec);
+        // Only its `.claude` skills: the user's global rules file stays [D99].
+        env.push(("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS".into(), "1".into()));
+    } else {
+        if let Some(kit) = crate::library::kit(spec, &[]) {
+            library(&mut config, &kit, spec);
+        }
+        // Its own servers the library holds off here, as stubs that never connect.
+        let own = super::commands::mcp_servers(std::path::Path::new(&spec.cwd));
+        let data = crate::data_of(spec);
+        for name in crate::library::own_off(&data, spec.project.as_deref(), &own) {
+            config["mcp"]["servers"][name] =
+                json!({"type": "local", "command": ["true"], "disabled": true});
+        }
     }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
     if !spec.naked {

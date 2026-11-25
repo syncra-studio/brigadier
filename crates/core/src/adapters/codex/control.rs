@@ -111,14 +111,21 @@ fn naked(spec: &Spec) -> Value {
 /// server by name and a skill by its file, off for this thread [D407].
 fn library(spec: &Spec, open: &mut Value) -> Value {
     let mut config = json!({});
-    let Some(kit) = crate::library::kit(spec, &[]) else {
-        return config;
-    };
-    open["skillRoots"] = json!([kit.skills]);
     let (home, cwd) = (
         super::super::cli_home(spec, ".codex", ""),
         std::path::Path::new(&spec.cwd),
     );
+    // Its own servers the library holds off here (a plugin's goes only with its plugin).
+    let data = crate::data_of(spec);
+    for name in crate::library::own_off(&data, spec.project.as_deref(), &servers(&home, cwd)) {
+        if !name.starts_with("plugin:") {
+            config[format!("mcp_servers.{name}.enabled")] = false.into();
+        }
+    }
+    let Some(kit) = crate::library::kit(spec, &[]) else {
+        return config;
+    };
+    open["skillRoots"] = json!([kit.skills]);
     let (given, off) = crate::library::split(&kit.servers, &servers(&home, cwd));
     for s in &given {
         let name = crate::library::named(s["name"].as_str().unwrap_or(""));

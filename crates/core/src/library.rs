@@ -129,6 +129,24 @@ impl Hidden {
     }
 }
 
+impl Hidden {
+    /// The skills' names, as the library takes them.
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.0.keys()
+    }
+}
+
+/// The names of an agent's own servers the library found and holds off for `project`: off, or
+/// not on there, as Settings › Plugins says (owner, 2026-11-25).
+pub fn own_off(data: &Path, project: Option<&str>, own: &[Value]) -> Vec<String> {
+    let held: Vec<Value> = (items(data).into_iter())
+        .filter(|i| i["kind"] == "server" && i["found"].is_array() && !on(i, project))
+        .collect();
+    (own.iter().filter(|o| held.iter().any(|i| same(o, i))))
+        .filter_map(|o| o["name"].as_str().map(String::from))
+        .collect()
+}
+
 /// A server's URL, else its command line.
 pub fn detail(s: &Value) -> String {
     s["url"].as_str().map(String::from).unwrap_or_else(|| {
