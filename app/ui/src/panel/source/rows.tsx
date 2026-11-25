@@ -56,7 +56,7 @@ export function Line({ icon, end, onClick, action, title, className, children }:
 
 /**
  * The list: the first 5, then "Show N more", 5 at a time [D139]. `fold`: the first that many, then all the rest
- * and "Show less" back to them, the one row taking turns, so it keeps the focus and stays in view.
+ * and "Show less" back to them, the one row taking turns, so it keeps the focus.
  */
 export function Rows<T>({ items, fold, children }: { items: readonly T[]; fold?: number; children: (item: T, index: number) => ReactNode }) {
   const first = fold ?? 5;
@@ -67,9 +67,10 @@ export function Rows<T>({ items, fold, children }: { items: readonly T[]; fold?:
       {items.slice(0, shown).map(children)}
       {(less || items.length > shown) && (
         <Line
-          onClick={({ currentTarget }) => {
+          onClick={({ currentTarget, detail }) => {
             flushSync(() => setShown(less ? first : fold ? Infinity : shown + 5));
-            if (less) currentTarget.scrollIntoView({ block: "nearest" });
+            // A key (detail 0) keeps its focus in view; a click on more keeps the new rows under the pointer.
+            if (less || detail === 0) currentTarget.scrollIntoView({ block: "nearest" });
           }}
           className="text-muted-foreground"
         >
