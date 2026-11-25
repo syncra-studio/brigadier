@@ -1,4 +1,4 @@
-// A project's GitHub account in its page's Settings tab [D631, D780], on Fake records: shown on press.
+// A project's GitHub account in its settings [D631, D780], on Fake records: shown on press.
 import { useState } from "react";
 
 import { Button } from "../src/components/button";

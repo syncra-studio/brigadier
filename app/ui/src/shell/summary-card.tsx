@@ -23,7 +23,7 @@ import { useSettings } from "../settings/api";
 import { WorkersCard } from "../workers/live";
 import { SubagentsCard } from "../workers/subagents";
 import { useHasPanel } from "./right-panel";
-import { CHAT, HOME, openAttachment, useTabs } from "./tab-store";
+import { CHAT, HOME, openAttachment, tabsOf, useTabs } from "./tab-store";
 
 /*
  * The summary card [D132–D137]: pinned at the thread pane's top end, 8 from its edges.
@@ -103,10 +103,12 @@ export function useCardToggle(owner: string) {
   return { shown: visible(useCard(owner)), toggle: () => toggle(owner) };
 }
 
-/** ⌘K's and the app menu's Toggle summary [D133]: for the session in front. */
+/** ⌘K's and the app menu's Toggle summary [D133]: for the session in front, its chat in front too, as the toggle's. */
 export function toggleSummary() {
   const { hash } = window.location;
-  if (hash.startsWith("#thread/")) toggle(decodeURIComponent(hash.slice("#thread/".length)));
+  if (!hash.startsWith("#thread/")) return;
+  const owner = decodeURIComponent(hash.slice("#thread/".length));
+  if (tabsOf(owner).active === CHAT) toggle(owner);
 }
 window.brigadier?.onMenu((command) => command === "toggle-summary" && toggleSummary());
 

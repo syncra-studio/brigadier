@@ -20,7 +20,7 @@ export function AddProjectDialog({ source, offline }: { source: Source; offline:
   const { open, path, opening } = useAddProject();
   return (
     <Dialog open={open} onOpenChange={(next) => !next && closeAddProject()}>
-      <DialogContent frame="project-dialog max-w-add-project gap-0 p-0">{open && <AddProject key={opening} source={source} offline={offline} initialPath={path} />}</DialogContent>
+      <DialogContent frame="project-dialog max-w-wide-dialog gap-0 p-0">{open && <AddProject key={opening} source={source} offline={offline} initialPath={path} />}</DialogContent>
     </Dialog>
   );
 }

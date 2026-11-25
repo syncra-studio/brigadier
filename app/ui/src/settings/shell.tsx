@@ -20,8 +20,8 @@ import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageId, type SettingsSear
 const PREFIX = "#settings/";
 export const settingsPageOf = (hash: string): string | null => (hash.startsWith(PREFIX) ? hash.slice(PREFIX.length) : hash === "#settings" ? "general" : null);
 
-// Where Esc goes back to: the last screen that wasn't Settings; Back to app's, the last that was a chat, New chat or a
-// project's, neither Settings nor Pull Requests [D296].
+// Where Esc goes back to: the last screen that wasn't Settings; Back to app's, the last that was a chat or New
+// chat, neither Settings nor Pull Requests [D296].
 const inApp = (hash: string) => !hash.startsWith("#settings") && prPageOf(hash) === null;
 let back = window.location.hash.startsWith("#settings") ? "" : window.location.hash;
 let app = inApp(window.location.hash) ? window.location.hash : "";
@@ -43,7 +43,7 @@ export function closeSettings(): void {
 
 /**
  * "Back to app", the last row of Settings' and Pull Requests' sidebars, where the app sidebar's foot sits [D296]:
- * back to the chat, New chat or project page it was opened from; New chat once that chat is gone.
+ * back to the chat or New chat it was opened from; New chat once that chat is gone.
  */
 export function BackToApp() {
   const goBack = () => {

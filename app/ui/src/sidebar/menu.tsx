@@ -14,7 +14,7 @@ import {
   DropdownMenuSubTrigger,
 } from "../components/menu";
 import { Copy, FolderOpen, Pencil, Pin, Settings, Spinner, Unpin } from "../icons";
-import { openProject } from "../projects/page";
+import { openProject } from "../projects/store";
 import { ArchiveMenuItem } from "../sessions/archive";
 import { DeleteMenuItem } from "../sessions/archived";
 import { ForkMenuItem } from "../session/fork";

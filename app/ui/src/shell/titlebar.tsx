@@ -4,9 +4,9 @@ import { guestPage } from "../browser/layer";
 import { TooltipIconButton } from "../components/icon-button";
 import { useSidebar } from "../components/sidebar";
 import { TitlebarTips } from "../components/tooltip";
-import { newChat } from "../home/start";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ComposeEditSquare, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, MagnifyingGlassSearch, Minus, Sidebar, SidebarFloatingLeft, X } from "../icons";
 import { store } from "../onboarding/api";
+import { openSearch } from "../palette/palette";
 import { prPageOf } from "../pull-requests/route";
 import { settingsPageOf } from "../settings/shell";
 import { keysOf, matches } from "../shortcuts";
@@ -64,7 +64,7 @@ const LIGHTS_X = 16;
 
 /**
  * Back and Forward right after the traffic lights by their buttons, keys, mouse buttons and menu items, then the sidebar
- * toggle, on every page with the sidebar shown or hidden, and New chat after them while it's hidden; the pair walks the
+ * toggle, on every page with the sidebar shown or hidden, and Search after them while it's hidden; the pair walks the
  * app's, Settings' or Pull Requests' own history [D926 D265 D296 D297]. The toggle shows or hides the sidebar [D67].
  */
 export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] | undefined }) {
@@ -77,7 +77,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   // A section's next page, else what Back left; opened at launch, it has no walk and Back goes to New chat.
   const next = walk?.pages[walk.at + 1];
   const forward = next ?? later;
-  const up = section ? (walk && walk.at > 0 ? walk.pages[walk.at - 1]! : (walk?.from ?? "")) : hash.startsWith("#thread/") || hash.startsWith("#project/") ? "" : null;
+  const up = section ? (walk && walk.at > 0 ? walk.pages[walk.at - 1]! : (walk?.from ?? "")) : hash.startsWith("#thread/") ? "" : null;
   // A session deleted since shows Home instead.
   const go = (place: string) => {
     const gone = place.startsWith("#thread/") && rows && !rows.some((row) => row.id === decodeURIComponent(place.slice("#thread/".length)));
@@ -175,7 +175,7 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
       removeEventListener("mouseup", onMouse);
     };
   });
-  // Back and Forward (our arrows [D217]), then the toggle, Settings too [D254 D265]; hidden, New chat as the strip's look [D297].
+  // Back and Forward (our arrows [D217]), then the toggle, Settings too [D254 D265]; hidden, Search in the strip's look [D297].
   return (
     <>
       {chip && (
@@ -196,8 +196,8 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
             {open ? <Sidebar /> : <SidebarFloatingLeft />}
           </TooltipIconButton>
           {!open && (
-            <TooltipIconButton look="strip" tooltip="New chat" onClick={newChat}>
-              <ComposeEditSquare />
+            <TooltipIconButton look="strip" tooltip="Search" shortcut={keysOf("search")[0]} onClick={openSearch}>
+              <MagnifyingGlassSearch />
             </TooltipIconButton>
           )}
         </TitlebarTips>

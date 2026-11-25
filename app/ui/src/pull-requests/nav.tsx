@@ -49,12 +49,14 @@ const last = new Map<string, Read>();
 
 /**
  * The sections' rows: the kept read at once, then GitHub's; again on focus once stale, and on `again`. `flags` go with each
- * read (`--as <login>`); a reply to queries or flags since changed is dropped.
+ * read (`--as <login>`); a reply to queries or flags since changed is dropped. `reading`: this view's is on its way.
  */
-export function useSections(queries: string[], flags: string[] = []): { read: Read | null; again: () => void } {
+export function useSections(queries: string[], flags: string[] = []): { read: Read | null; reading: boolean; again: () => void } {
   const { daemon } = useDaemon();
   const key = [...queries, "", ...flags].join("\n");
   const [read, setRead] = useState<Read | null>(() => last.get(key) ?? null);
+  // Each view's reads on their way.
+  const [reads, setReads] = useState<Record<string, number>>({});
   const at = useRef(0);
   const asking = useRef(key);
   asking.current = key;
@@ -77,7 +79,12 @@ export function useSections(queries: string[], flags: string[] = []): { read: Re
   const again = () => {
     if (!queries.length) return;
     at.current = Date.now();
-    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags] }, (reply) => reply.error !== "disconnected" && land(key, reply, false));
+    const count = (by: number) => setReads((all) => ({ ...all, [key]: (all[key] ?? 0) + by }));
+    count(1);
+    ask({ op: "run", args: ["host", "@", "search", ...queries, ...flags] }, (reply) => {
+      count(-1);
+      if (reply.error !== "disconnected") land(key, reply, false);
+    });
   };
   useEffect(() => {
     if (!daemon || !queries.length) return;
@@ -87,7 +94,7 @@ export function useSections(queries: string[], flags: string[] = []): { read: Re
     addEventListener("focus", focus);
     return () => removeEventListener("focus", focus);
   }, [daemon, key]);
-  return { read, again };
+  return { read, reading: (reads[key] ?? 0) > 0, again };
 }
 
 export function PullRequestsNav({ current }: { current: string }) {

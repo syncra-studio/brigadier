@@ -18,7 +18,7 @@ import { type Project, useProjects } from "./projects";
 /*
  * Remove project… [D172, D179, D181]: Rust's preview of what goes, refused while a session works. Each
  * session goes through 1v's delete; branches with work that never landed are kept, then the summary offers
- * to delete them at once, with Undo. The repository itself stays. Mounted beside the sidebar in main.tsx, opened from Settings on the project page.
+ * to delete them at once, with Undo. The repository itself stays. Mounted beside the sidebar in main.tsx, opened from the project's menu and settings.
  */
 
 /** `projects remove <id> --check`'s answer (PROPOSED shape). */
@@ -52,7 +52,7 @@ export const readRemoval = (id: string) => void (early = { id, look: read(id) })
 export const openRemoveProject = (id: string) => {
   const look = early?.id === id ? early.look : read(id);
   early = null;
-  void look.then((look) => opened.set({ id, look }));
+  return look.then((look) => opened.set({ id, look }));
 };
 
 export function RemoveProjectHost() {

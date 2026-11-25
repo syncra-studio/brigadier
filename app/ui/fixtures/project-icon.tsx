@@ -1,6 +1,6 @@
 // Mockup only: Project settings' Name row, its icon a button that opens a picker (variant A): the folder's logo or
 // initials as now, initials on a colour, an emoji, or an image you choose. Fake project, kept in memory. ?v=real is the
-// real Project settings page on a fake project kept in memory (an image needs the app, which copies it in). Not the app.
+// real Project settings on a fake project kept in memory (an image needs the app, which copies it in). Not the app.
 import "../src/theme.css";
 import "../src/note/page.css";
 import "./fixtures.css";
@@ -141,7 +141,7 @@ function VariantA() {
   );
 }
 
-/** The real Project settings page, saving to a fake project in memory as Rust would keep it. */
+/** The real Project settings, saving to a fake project in memory as Rust would keep it. */
 function Real() {
   const [project, setProject] = useState<Project>({ id: "p1", name: "billing", folder: "/Users/sam/Development/work/billing", trusted: true, setup: "pnpm install", include: [".env.local"], added: 0, branch_prefix: "brigadier/" });
   const source: SettingsSource = {

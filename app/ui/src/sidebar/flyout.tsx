@@ -11,7 +11,7 @@ import { useSidebar } from "../components/sidebar";
 import { spacingPx } from "../components/tooltip";
 import { newSession } from "../home/start";
 import { Archive, ArrowUpRight, Chats, ComposeEditSquare, Settings } from "../icons";
-import { openProject } from "../projects/page";
+import { openProject } from "../projects/store";
 import type { Project } from "../projects/projects";
 import { readRemoval } from "../projects/remove";
 import { useMark } from "../session/turn";
@@ -79,14 +79,14 @@ function Section({ heading, actions, children }: { heading: ReactNode; actions?:
 }
 
 /** A strip icon and its list, with a blue dot while anything in it needs you, failed or has a new reply. It closes on a pick (`pick` runs the choice and closes it), on Esc and on a click outside. */
-function Flyout({ label, icon, lit = false, pressed, align = "start", menu, onMenu, children }: { label: string; icon: ReactNode; lit?: boolean; pressed?: boolean; align?: "start" | "end"; menu?: ReactNode; onMenu?: () => void; children: (pick: Choose) => ReactNode }) {
+function Flyout({ label, icon, lit = false, align = "start", menu, onMenu, children }: { label: string; icon: ReactNode; lit?: boolean; align?: "start" | "end"; menu?: ReactNode; onMenu?: () => void; children: (pick: Choose) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const pick: Choose = (choice) => {
     setOpen(false);
     choice();
   };
-  const square = <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} pressed={pressed} dot={lit ? "bg-link" : undefined} className={LIT} />}>{icon}</PopoverTrigger>;
+  const square = <PopoverTrigger render={<TooltipIconButton look="rail" side="right" tooltip={label} dot={lit ? "bg-link" : undefined} className={LIT} />}>{icon}</PopoverTrigger>;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       {menu ? (
@@ -157,10 +157,10 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
 export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
 
 /** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its list,
- *  styled as Chats': New chat in it, its chats, then its settings page [D278 D176]; a right-click its row's menu. */
-export function ProjectSquare({ project, current, attention, chats, ...rows }: Rows & { project: Project; current: boolean; attention: boolean; chats: SessionRow[] }) {
+ *  styled as Chats': New chat in it, its chats, then its settings [D278 D176]; a right-click its row's menu. */
+export function ProjectSquare({ project, attention, chats, ...rows }: Rows & { project: Project; attention: boolean; chats: SessionRow[] }) {
   return (
-    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} pressed={current} menu={<ProjectMenuItems project={project} chats={chats} />} onMenu={() => readRemoval(project.id)}>
+    <Flyout label={project.name} icon={<ProjectBadge id={project.id} name={project.name} icon={project.icon} size="size-6 text-2xs" />} lit={attention} menu={<ProjectMenuItems project={project} chats={chats} />} onMenu={() => readRemoval(project.id)}>
       {(pick) => (
         <div className="flex min-h-0 flex-col gap-3">
           <NavList>

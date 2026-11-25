@@ -27,9 +27,9 @@ import { AddProjectHost } from "./projects/add-project";
 import { listenToMenu } from "./projects/store";
 import { FeedbackDialog } from "./feedback/dialog";
 import { FolderDrop } from "./shell/folder-drop";
-import { ProjectPage, projectPageOf } from "./projects/page";
 import { useProjects } from "./projects/projects";
 import { RemoveProjectHost } from "./projects/remove";
+import { ProjectSettingsHost } from "./projects/settings";
 import { TrustHost } from "./projects/trust";
 import { ArchivedPage } from "./sessions/archived";
 import { Demo } from "./session/Demo";
@@ -70,6 +70,8 @@ const useHash = (): string => useSyncExternalStore(onHash, () => window.location
 // The screen that was open comes back when the app reopens; Accounts is Settings › Providers now [D2004, D2054].
 if (!window.location.hash) window.location.hash = localStorage.getItem("route") ?? "";
 if (window.location.hash === "#accounts" || window.location.hash === "#settings/accounts") window.location.hash = "#settings/providers";
+// A project's settings were a page; they're a dialog now.
+if (window.location.hash.startsWith("#project/")) window.location.hash = "";
 // Settings isn't kept: it reopens on what it was opened from, as the old app's lastSelection had it.
 window.addEventListener("hashchange", () => window.location.hash.startsWith("#settings") || localStorage.setItem("route", window.location.hash));
 
@@ -124,15 +126,6 @@ function App() {
       </Shell>
     );
   }
-  const page = projectPageOf(hash);
-  if (page !== null) {
-    // Its settings, with no tab bar, as Settings' [D176 D179].
-    return (
-      <Shell hash={hash} active={null} rows={rows} page={page}>
-        <ProjectPage id={page} />
-      </Shell>
-    );
-  }
   const prs = prPageOf(hash);
   if (prs !== null) {
     // A PR fills the page with its review chat floating over it [D237]; no PR, its inbox [D243].
@@ -170,19 +163,19 @@ function App() {
 // The strip and sidebar beside every screen after onboarding [D173, D174]; shown and its width kept across launches. The
 // shell [D69]: no frame, the strip and sidebar flush at the window's start and the main area from its edge to the window's
 // end, the titlebar row across both. Settings keeps the sidebar shown with its nav in place of the sessions [D2004].
-function Shell({ hash, active, rows, settings, page, prs, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; page?: string; prs?: string; children: ReactNode }) {
+function Shell({ hash, active, rows, settings, prs, children }: { hash: string; active: string | null; rows: Row[] | undefined; settings?: string; prs?: string; children: ReactNode }) {
   const { daemon } = useDaemon();
   // With this window's unanswered changes on top, so a pin shows at once [D30, D808].
   const projects = useProjects();
   const [open, setOpen] = useStored("sidebar.open", true);
   const [width, setWidth] = useStored<number | null>("sidebar.width", null);
   useSeen(rows?.find((row) => row.id === active));
-  // One tab bar for every page but Settings and a project's, kept as the page changes so its tabs change smoothly: the
+  // One tab bar for every page but Settings, kept as the page changes so its tabs change smoothly: the
   // old ones shrink out, the new grow in [D836 D854 D179]. It shows a rename or an archive at once [D30].
   const titled = useShown(rows)?.find((each) => each.id === active);
   // The Pull Requests page lights its strip button [D194].
   const pulls = hash.startsWith("#pull-requests");
-  const home = active === null && page === undefined && settings === undefined && prs === undefined;
+  const home = active === null && settings === undefined && prs === undefined;
   const rail = (squares?: ReactNode) => (
     <Strip pulls={pulls} settings={settings}>
       {squares}
@@ -202,7 +195,6 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
           rows={rows}
           projects={projects ?? []}
           active={active}
-          page={page}
           offline={daemon === null}
           onOpen={(id) => (window.location.hash = `#thread/${encodeURIComponent(id)}`)}
           // Archived, its project's draft, or Chats'; deleted, its project no longer known, the draft last open [D184].
@@ -218,12 +210,13 @@ function Shell({ hash, active, rows, settings, page, prs, children }: { hash: st
         {/* Settings' page is the main area too. */}
         <div className="main-surface flex min-w-0 flex-1 flex-col overflow-clip pt-tab-bar">{children}</div>
         {/* None on the Pull Requests page: a PR fills it, its review chat floating over it [D237]. */}
-        {settings === undefined && page === undefined && prs === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} />}
+        {settings === undefined && prs === undefined && <TabBar owner={active ?? HOME} row={active ? titled : undefined} offline={daemon === null} />}
         <TitlebarNav hash={hash} rows={rows} />
         <FakeCaption />
       </SidebarProvider>
       {/* Past onboarding only, so it never asks there [D167]. */}
       <TrustHost active={active} />
+      <ProjectSettingsHost />
       <RemoveProjectHost />
       <FeedbackDialog />
       <FolderDrop />

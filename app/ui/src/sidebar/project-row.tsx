@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Archive, ComposeEditSquare, DotsHorizontal, FolderOpen, Pencil, Pin, Settings, Unpin, X } from "../icons";
 import { newSession } from "../home/start";
 import { errorText, run, store } from "../onboarding/api";
-import { openProject } from "../projects/page";
+import { openProject } from "../projects/store";
 import { pinProject, setProject, type Project } from "../projects/projects";
 import { openRemoveProject, readRemoval } from "../projects/remove";
 import { archiveRows } from "../sessions/archive";
@@ -31,10 +31,8 @@ const asking = store<{ project: Project; archive?: SessionRow[] } | null>(null);
  * at the name's x), five rows tall at most and scrolling past that [D282], "No chats" when it has none. Hovered, "…"
  * (its actions, as a right-click) and New session [D62]. Folded, a dot says a session in it has something new or needs you.
  */
-export function ProjectRow({ project, current, open, onToggle, attention, chats, children }: {
+export function ProjectRow({ project, open, onToggle, attention, chats, children }: {
   project: Project;
-  /** Its page shows. */
-  current: boolean;
   open: boolean;
   onToggle: () => void;
   attention: boolean;
@@ -47,7 +45,7 @@ export function ProjectRow({ project, current, open, onToggle, attention, chats,
     <li data-project-id={project.id}>
       <ContextMenu onOpenChange={(next) => next && readRemoval(project.id)}>
         <ContextMenuTrigger render={<div className="group/row relative" />}>
-          <NavRow aria-expanded={open} aria-current={current ? "page" : undefined} className={cx("ps-8 pe-1.5", ROOM_FOR_TWO)} onClick={onToggle}>
+          <NavRow aria-expanded={open} className={cx("ps-8 pe-1.5", ROOM_FOR_TWO)} onClick={onToggle}>
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
             <span className={cx("flex shrink-0 empty:hidden", HIDE_ON_HOVER)}>{!open && attention && <SidebarMark mark="unread" label="A session needs your attention" />}</span>
           </NavRow>

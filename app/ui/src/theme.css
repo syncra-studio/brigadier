@@ -406,14 +406,14 @@
   --spacing-menu-item: 1.8125rem;
   --spacing-select: 24rem;
   --container-dialog: 24rem;
-  /* Add project: its card, and the list's room for five rows (the old app's). */
-  --container-add-project: 47.5rem;
+  /* Add project and Project settings: 65% of the window, at least 47.5rem (the old app's), inside its margins. */
+  --container-wide-dialog: min(max(47.5rem, 65vw), calc(100vw - 2rem));
   /* Add project's tabs, their lists scrolling inside [D668]. */
   --spacing-add-project-body: 30rem;
   /* Plugins › View: the size of a file tab (the old app's Open). */
   --container-plugin-file: min(96rem, calc(100vw - 4rem));
   --spacing-plugin-file-height: min(64rem, calc(100dvh - 6rem));
-  /* Trust this folder? and Project settings (the old app's). */
+  /* Trust this folder? and Remove project (the old app's). */
   --container-trust: 26.25rem;
   --container-project-dialog: 35rem;
   /* A plugin's install dialog: a step wider, Feedback's width, so its choices' lines don't crowd [D658]. */
@@ -430,7 +430,7 @@
   --spacing-nav-row: 1.875rem;
   /* A sidebar section's title row [D27]. */
   --spacing-section-title: 1.5625rem;
-  /* Every panel's top bar, its bottom edge included: the project page's, Files', a worker's, the browser's toolbar, a
+  /* Every panel's top bar, its bottom edge included: Files', a worker's, the browser's toolbar, a
      file's and Review's, so side by side their bottom edges are one line [D839 D842]. */
   --spacing-panel-header: 3rem;
   /* Settings: its search. */
@@ -1558,7 +1558,7 @@
   transition-timing-function: var(--ease-sidebar);
   /* How wide the sidebar or strip shows beside the content: what a right panel leaves it. */
   --sidebar-shown: var(--spacing-rail);
-  /* The titlebar's Back, Forward, toggle and, hidden, New chat (2px apart), and 8px past them; hidden,
+  /* The titlebar's Back, Forward, toggle and, hidden, Search (2px apart), and 8px past them; hidden,
      the rule's 1px (session-tab-bar) and 8px past that [D265 D297 D934]. */
   --toggle-room: calc(var(--spacing) * 37.5);
   &[data-state="expanded"] {
@@ -1685,7 +1685,7 @@
   --spacing-toggle-start: var(--spacing-window-inset);
 }
 
-/* Back, Forward and the sidebar toggle right after the traffic lights on the titlebar's middle line, New chat after them while it's hidden [D34 D265 D297]. */
+/* Back, Forward and the sidebar toggle right after the traffic lights on the titlebar's middle line, Search after them while it's hidden [D34 D265 D297]. */
 @utility titlebar-nav {
   /* Back and Forward dim further than other disabled buttons while there's nowhere to go (the old app's). */
   --opacity-disabled: var(--opacity-titlebar-nowhere);

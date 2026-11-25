@@ -51,6 +51,15 @@ export function closeAddProject(): void {
   dialog.set({ ...dialog.get(), open: false });
 }
 
+/** Project settings: open, on which project; its own id stays while it closes. */
+const settings = store({ open: false, id: "" });
+export const useProjectSettings = settings.use;
+
+/** Opens a project's settings over the page in front. */
+export const openProject = (id: string) => settings.set({ open: true, id });
+/** Closes them; with `id`, only that project's. */
+export const closeProject = (id = settings.get().id) => id === settings.get().id && settings.set({ ...settings.get(), open: false });
+
 // The sidebar reveals added projects; search expands one without changing the chosen grouping [D289].
 let show: (id: string, group: boolean) => void = () => {};
 export const showProject = (id: string, group = true) => show(id, group);

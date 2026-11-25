@@ -64,7 +64,6 @@ export function AppSidebar({
   rows,
   projects,
   active,
-  page = null,
   offline,
   onOpen,
   onNewSession,
@@ -79,8 +78,6 @@ export function AppSidebar({
   projects: Project[];
   /** The open session's id. */
   active: string | null;
-  /** The project whose page shows [D780]. */
-  page?: string | null;
   offline: boolean;
   onOpen: (id: string) => void;
   onNewSession: () => void;
@@ -219,7 +216,7 @@ export function AppSidebar({
     const key = `project:${project.id}`;
     const chats = chatsIn(project.id);
     return (
-      <ProjectRow key={project.id} project={project} current={page === project.id} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
+      <ProjectRow key={project.id} project={project} open={isOpen(key)} onToggle={() => setOpen(key, !isOpen(key))} attention={attentionIn(project.id)} chats={chats}>
         {rowsOf(chats, { indent: true })}
       </ProjectRow>
     );
@@ -253,7 +250,7 @@ export function AppSidebar({
                     />
                   ))
                 : [...pinnedProjects, ...unpinnedProjects].map((project) => (
-                    <ProjectSquare key={project.id} project={project} current={page === project.id} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
+                    <ProjectSquare key={project.id} project={project} attention={attentionIn(project.id)} chats={chatsIn(project.id)} {...listed} />
                   ))}
               {!pinsSessions && !show.hideChats && <ChatsFlyout chats={homeless} {...listed} />}
             </>,

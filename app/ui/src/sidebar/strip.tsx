@@ -5,16 +5,14 @@ import { TooltipIconButton } from "../components/icon-button";
 import { ScrollFade } from "../components/scroll-fade";
 import { useSidebar } from "../components/sidebar";
 import { newChat } from "../home/start";
-import { MagnifyingGlassSearch, Plugin, PullRequestOpen } from "../icons";
+import { ComposeEditSquare, Plugin, PullRequestOpen } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { openSearch } from "../palette/palette";
 import { openSettings } from "../settings/shell";
-import { keysOf } from "../shortcuts";
 import { StripFoot } from "./foot";
 
 /**
- * The strip, the rail, the sidebar folded [D11 D226]: the logo (Home), Search (⌘K), Plugins and Pull Requests (New
- * chat is in the titlebar [D297]); then
+ * The strip, the sidebar folded [D11 D226]: the logo (Home), New chat, Plugins and Pull Requests (Search
+ * is in the titlebar [D297]); then
  * a rule, the squares and their lists (`children`) [D189 D194 D55 D58]. Only the squares scroll, under a fade at
  * either end while there is more that way, and the foot's rule shows while they do [D191 D284]; the foot at the bottom,
  * its last button 4 from the window's foot [D56]. The top's buttons stand as close as the foot's, 2 apart [D280].
@@ -44,8 +42,8 @@ export function Strip({ pulls, settings, children }: {
       {/* The actions stay put; only the squares between them and the foot scroll, faded at an end while there is more [D284]. */}
       <div className="flex w-full shrink-0 flex-col items-center gap-0.5 pt-1.25">
         <HomeMark rail />
-        <TooltipIconButton look="rail" side="right" tooltip="Search" shortcut={keysOf("search")[0]} onClick={openSearch}>
-          <MagnifyingGlassSearch />
+        <TooltipIconButton look="rail" side="right" tooltip="New chat" onClick={newChat}>
+          <ComposeEditSquare />
         </TooltipIconButton>
         <TooltipIconButton look="rail" side="right" tooltip="Plugins" pressed={settings === "plugins"} onClick={() => openSettings("plugins")}>
           <Plugin />

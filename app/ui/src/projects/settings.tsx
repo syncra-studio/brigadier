@@ -1,9 +1,11 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "../components/button";
 import { CodeEditor } from "../components/code-editor";
 import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
+import { Dialog, DialogContent, DialogTitle } from "../components/dialog";
+import { EmptyState } from "../components/empty-state";
 import { ErrorLine } from "../components/error-line";
 import { TooltipIconButton } from "../components/icon-button";
 import { Input } from "../components/input";
@@ -13,22 +15,22 @@ import { showToast } from "../components/toast";
 import { ProfileDisc } from "../browser/profile-mark";
 import { useDefaultProfile, useProfiles } from "../browser/profiles";
 import { useDaemon } from "../daemon";
-import { Copy, FolderOpen, Plus, Trash } from "../icons";
+import { Copy, Folder, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
 import { shortPath } from "./add-project";
 import { IconPicker } from "./icon-picker";
-import { type Project, setProject } from "./projects";
+import { type Project, setProject, useProjects } from "./projects";
 import { openRemoveProject, plural } from "./remove";
-import { daemonSource, type FolderCheck } from "./store";
+import { closeProject, daemonSource, type FolderCheck, useProjectSettings } from "./store";
 
 /*
- * A project's page, its settings [D176 D780 D782]: everything set for one project in one list, no Plugins (Settings › Plugins, D185),
+ * A project's settings, a dialog over the page in front [D176 D780 D782]: everything set for one project in one list, no Plugins (Settings › Plugins, D185),
  * no search or Open on GitHub [D259]. Each row saves as it changes [D30], Rust's record holding it (nothing written into the repo, D211); a refusal shows its reason
  * under its row. Remove project is last, apart.
  */
 
-/** Where the tab's data comes from: the daemon, or the gallery's Fake. */
+/** Where its data comes from: the daemon, or the gallery's Fake. */
 export type SettingsSource = {
   pick(at?: string): Promise<string | null>;
   check(path: string): Promise<FolderCheck>;
@@ -48,7 +50,7 @@ export const daemonSettings: SettingsSource = {
   repos: async (folder) => ((await run(["projects", "inspect", folder])).check?.repos ?? []) as string[],
 };
 
-/** One setting, as the page's rows: its name over one plain line, its control at the end, or under it when `wide`. */
+/** One setting, as the dialog's rows: its name over one plain line, its control at the end, or under it when `wide`. */
 function Row({ label, line, error, wide = false, children }: { label: string; line: ReactNode; error?: string | null; wide?: boolean; children: ReactNode }) {
   return (
     <li className="border-b border-divider">
@@ -77,9 +79,41 @@ function SavedInput({ value, onSave, ...props }: { value: string; onSave: (value
       onBlur={() => typed !== value && onSave(typed)}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") setTyped(value);
+        escape(event, typed !== value, () => setTyped(value));
       }}
     />
+  );
+}
+
+/** Esc puts a changed field's saved text back; the dialog closes on the next one. */
+function escape(event: KeyboardEvent, changed: boolean, back: () => void) {
+  if (event.key !== "Escape" || event.nativeEvent.isComposing || !changed) return;
+  event.stopPropagation();
+  back();
+}
+
+/** Mounted once beside the sidebar; opened by `openProject` from anywhere. */
+export function ProjectSettingsHost() {
+  const { open, id } = useProjectSettings();
+  const projects = useProjects();
+  const project = projects?.find((each) => each.id === id && !each.pending);
+  // Going to another page leaves it, as ⌘, and ⌘K's picks do.
+  useEffect(() => {
+    const leave = () => closeProject();
+    addEventListener("hashchange", leave);
+    return () => removeEventListener("hashchange", leave);
+  }, []);
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && closeProject()}>
+      <DialogContent frame="project-dialog max-w-wide-dialog gap-0 p-0">
+        <DialogTitle className="shrink-0 truncate ps-6 pe-12 pt-6 pb-5 leading-tight">{project ? `${project.name} settings` : "Project settings"}</DialogTitle>
+        {project ? (
+          <ProjectSettings key={id} project={project} source={daemonSettings} />
+        ) : (
+          projects && <EmptyState variant="centered" icon={Folder} title="This project isn’t available" detail="Brigadier has no project by this name. Pick another in the sidebar." className="m-auto py-16" />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -126,10 +160,26 @@ export function ProjectSettings({ project, source }: { project: Project; source:
     };
   }, [project.id, project.folder, folderKind, daemon]);
 
+  // Clicking outside both saves a field and closes the dialog: what Rust refused is then said in a toast.
+  const refused = useRef<Record<string, string>>({});
+  const here = useRef(true);
+  const say = (why: string) => showToast(`Couldn't save ${project.name}'s settings: ${why}`, { tone: "error" });
+  useEffect(() => {
+    here.current = true;
+    return () => {
+      here.current = false;
+      Object.values(refused.current).forEach(say);
+    };
+  }, []);
   /** Saves one field at once; Rust's refusal shows under its row and the record stays as it was. */
   const save = (field: string, change: Partial<Project>, args: string[]) => {
     setErrors((now) => ({ ...now, [field]: null }));
-    source.save(project, change, args).catch((cause) => setErrors((now) => ({ ...now, [field]: errorText(cause) })));
+    delete refused.current[field];
+    source.save(project, change, args).catch((cause) => {
+      if (!here.current) return say(errorText(cause));
+      refused.current[field] = errorText(cause);
+      setErrors((now) => ({ ...now, [field]: errorText(cause) }));
+    });
   };
   const saveFiles = (next: string[]) => {
     setFiles(next);
@@ -183,13 +233,9 @@ export function ProjectSettings({ project, source }: { project: Project; source:
   );
 
   return (
-    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto px-6 pt-tab-bar pb-6">
-      {/* The Pull Requests page's title, at its spacing. */}
-      <header className="flex items-center gap-4 pt-8 pb-5">
-        <h1 className="min-w-0 flex-1 text-page-title font-medium">Settings</h1>
-      </header>
+    <div className="scroll-gutter min-h-0 flex-1 overflow-y-auto border-t border-divider ps-6 pe-3.5 pb-6">
       <ul aria-label="General">
-        <Row label="Name" line={project.icon ? "What the sidebar and this page call it; click its icon to change it" : "What the sidebar and this page call it; its icon is the folder's logo, else these initials — click it to pick another"} error={errors.name ?? errors.icon}>
+        <Row label="Name" line={project.icon ? "What the sidebar calls it; click its icon to change it" : "What the sidebar calls it; its icon is the folder's logo, else these initials — click it to pick another"} error={errors.name ?? errors.icon}>
           {/* An image shows once Rust has copied it in; a colour or emoji at once [D30]. */}
           <IconPicker id={project.id} name={project.name} icon={project.icon} onChange={(icon) => save("icon", icon.startsWith("image:") ? {} : { icon: icon || null }, ["--icon", icon])} />
           <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : setErrors((now) => ({ ...now, name: "Name can't be empty." })))} />
@@ -243,6 +289,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
                   className="font-mono"
                   onChange={(event) => setFiles(files.map((each, at) => (at === index ? event.target.value : each)))}
                   onBlur={() => saveFiles(files)}
+                  onKeyDown={(event) => escape(event, files.join("\n") !== project.include.join("\n"), () => setFiles(project.include))}
                 />
                 <TooltipIconButton tooltip={`Remove ${file || "this file"}`} size="icon-md" onClick={() => saveFiles(files.filter((_, at) => at !== index))}>
                   <Trash />
@@ -256,7 +303,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
           </div>
         </Row>
         <Row wide label="Setup script" line="Runs in each new worktree before its first turn, only while the folder is trusted; saved when you click away" error={errors.setup}>
-          <div className="w-full" onBlur={() => setup !== project.setup && save("setup", { setup }, ["--setup", setup])}>
+          <div className="w-full" onBlur={() => setup !== project.setup && save("setup", { setup }, ["--setup", setup])} onKeyDown={(event) => escape(event, setup !== project.setup, () => setSetup(project.setup))}>
             <CodeEditor value={setup} onChange={setSetup} language="bash" label="Setup script" placeholder="pnpm install" className="h-29 rounded-control bg-fill" />
           </div>
         </Row>
@@ -270,7 +317,7 @@ export function ProjectSettings({ project, source }: { project: Project; source:
               <span className="font-medium text-foreground">Remove project</span>
               <span className="text-xs text-muted-foreground">Takes it and its sessions out of Brigadier; the folder{folderKind ? " and its repositories stay" : " stays"}, with branches that hold unmerged work asked about first</span>
             </div>
-            <Button variant="soft-destructive" size="sm" onClick={() => openRemoveProject(project.id)}>
+            <Button variant="soft-destructive" size="sm" onClick={() => void openRemoveProject(project.id).then(() => closeProject(project.id))}>
               <Trash />
               Remove project…
             </Button>

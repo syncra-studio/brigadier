@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import { Button } from "../components/button";
 import { cx } from "../components/cx";
 import { EmptyState } from "../components/empty-state";
+import { TooltipIconButton } from "../components/icon-button";
 import { ScrollFade } from "../components/scroll-fade";
 import { Segmented } from "../components/segmented";
 import { Select } from "../components/select";
 import { Skeleton } from "../components/skeleton";
 import { ask, useDaemon } from "../daemon";
-import { MagnifyingGlassSearch, XCircleFilled } from "../icons";
+import { MagnifyingGlassSearch, Reload, XCircleFilled } from "../icons";
 import { Avatar, StateIcon } from "../landing/pr-parts";
 import { useStored } from "../sidebar/sidebar";
 import { useSections } from "./nav";
@@ -58,7 +59,9 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
   const repos = project ? project.repos.map((repo) => `repo:${repo}`).join(" ") : "";
   const scoped = !project || project.repos.length > 0;
   const queries = scopes && scoped ? SECTIONS.map((each) => [STATES[filters.state], each.query, repos, words].filter(Boolean).join(" ")) : [];
-  const { read, again } = useSections(queries, account === ALL ? [] : ["--as", account]);
+  const { daemon } = useDaemon();
+  const { read, reading, again } = useSections(queries, account === ALL ? [] : ["--as", account]);
+  const busy = reading || (Boolean(daemon) && !scopes);
   // A PR that's in an earlier section isn't listed again (two accounts: authored by one, asked of the other).
   const seen = new Set<string>();
   const sections = SECTIONS.map((each, i) => {
@@ -89,6 +92,10 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
                 { value: "closed", label: "Closed" },
               ]}
             />
+            {/* Spins over every read, the menus' first too; a press during one does nothing. */}
+            <TooltipIconButton tooltip={busy ? "Refreshing…" : "Refresh"} size="icon-sm" disabled={!daemon || !queries.length} aria-busy={busy} onClick={() => busy || again()}>
+              <Reload className={cx(busy && "animate-spin motion-reduce:animate-none")} />
+            </TooltipIconButton>
           </header>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex h-nav-search min-w-0 flex-1 basis-64 items-center gap-2 rounded-capsule border border-fill-active bg-fill px-3 has-focus-visible:focus-ring">
@@ -146,7 +153,7 @@ export function PrInbox({ tab }: { tab?: InboxTab }) {
           ) : failed ? (
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <EmptyState variant="centered" title="Unable to load pull requests" detail={failed} />
-              <Button variant="outline" size="sm" onClick={again}>
+              <Button variant="outline" size="sm" onClick={() => busy || again()}>
                 Try again
               </Button>
             </div>
