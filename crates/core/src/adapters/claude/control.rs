@@ -161,6 +161,7 @@ pub fn standing(spec: &Spec) -> Vec<String> {
             {"matcher": "Bash", "hooks": [{"type": "command", "command": drive}]},
             {"matcher": "Skill", "hooks": [{"type": "command", "command": skill}]}]},
         "permissions": {"allow": ["mcp__brigadier__show_draft"]}});
+    super::veto::add(spec, &mut settings, &me);
     // A worker's last words go to its lead as its result, a question included.
     if !spec.naked {
         settings["hooks"]["Stop"] = json!([{"hooks": [{"type": "command", "command": stop}]}]);

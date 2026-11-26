@@ -45,15 +45,20 @@ pub fn headings() -> impl Iterator<Item = &'static str> {
 }
 
 /// Whether `backend`'s CLI is proved to refuse every tool call before it runs, under the flag
-/// [D92]. The others renew without a summary. shortcut: names only, the fake's, until step 8
-/// wires Claude's PreToolUse hook; an adapter method once a second agent passes.
-pub fn vetoes(backend: &str) -> bool {
-    backend == "fake"
+/// [D92]: Claude from the version its proof held on, and the fake. Codex and OpenCode failed the
+/// proof, so they renew without a summary. shortcut: a match while one real agent passes; an
+/// adapter method once a second does.
+pub fn vetoes(spec: &crate::Spec, backend: &str) -> bool {
+    match backend {
+        "fake" => true,
+        "claude" => crate::adapters::claude::veto::vetoes(spec),
+        _ => false,
+    }
 }
 
 /// Whether this session's renewals write a summary first.
 pub fn applies(spec: &crate::Spec, f: &crate::fold::Fold) -> bool {
-    on() && vetoes(crate::rebirth::backend(spec, f))
+    on() && vetoes(spec, crate::rebirth::backend(spec, f))
 }
 
 /// Whether the old conversation can still write one after `last`: not at a usage limit, a sign-in

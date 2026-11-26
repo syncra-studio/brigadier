@@ -11,6 +11,7 @@ mod tools;
 mod trust;
 mod turn;
 mod updates;
+pub mod veto;
 
 use super::setup::{first_field, newest};
 use super::{
