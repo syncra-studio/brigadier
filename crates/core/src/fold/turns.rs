@@ -130,6 +130,9 @@ pub struct End {
     /// Why it failed (`Turn::why`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
+    /// Who stopped it, for one that was stopped: "user", "pause", "stall", "overnight"…
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 /// The paths a FileChange list names.
@@ -332,6 +335,9 @@ impl Fold {
                 id: turn.id.clone(),
                 began: turn.ts,
                 why: turn.why.clone(),
+                by: (outcome == "stopped")
+                    .then(|| reason.as_str().map(String::from))
+                    .flatten(),
             };
             let ends = self.ends.entry(turn.report().into()).or_default();
             ends.push(end);

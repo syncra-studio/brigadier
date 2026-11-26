@@ -170,12 +170,20 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             {
                 break;
             }
-            let how = match end.how.as_str() {
-                "done" => "finished",
-                "stopped" => "stopped",
-                "limited" => "limit",
+            // Brigadier's own stop isn't the user's: it reports, and wakes the parent, as any end.
+            // A fold cached before ends kept who stopped them has it only on its last end.
+            let by = (end.by.clone()).or_else(|| {
+                let reason = last.and_then(|l| l["reason"].as_str().map(String::from));
+                reason.filter(|_| end.how == "stopped")
+            });
+            let how = match (end.how.as_str(), by.as_deref()) {
+                ("done", _) => "finished",
+                ("stopped", Some("stall")) => "context",
+                ("stopped", None | Some("user" | "agent" | "pause" | "rewind")) => "stopped",
+                ("stopped", _) => "failed",
+                ("limited", _) => "limit",
                 _ if last.is_some_and(|l| l["why"] == "context") => "context",
-                "failed" if end.why.as_deref() == Some("blocked") => "refused",
+                ("failed", _) if end.why.as_deref() == Some("blocked") => "refused",
                 _ => "failed",
             };
             // A late wake's end reports at once, whatever else still runs.
@@ -197,6 +205,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 late,
                 // Its own last word, or its wake's, never one that came after this end.
                 said: (end.at > 0).then_some((end.id, end.at)),
+                by,
             };
             let how = match late || *direct {
                 true => Some(how),
@@ -236,7 +245,7 @@ pub(super) fn unsaid(
             how: "cut".into(),
             id: ends.last().map_or(turn.into(), |e| e.id.clone()),
             began: f.turns.first().map_or(0, |t| t.ts),
-            why: None,
+            ..Default::default()
         });
     }
     // An input no turn of its own ended for, as one that joined another's.
