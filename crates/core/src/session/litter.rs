@@ -152,9 +152,15 @@ pub fn built_in(data: &Path, spec: &Spec, recs: &[PathBuf]) -> io::Result<Vec<Pa
     Ok(all)
 }
 
-/// Where that waits for its removal: an archive or a delete takes it too.
-fn trash(dir: &Path) -> PathBuf {
-    crate::background::tmp(dir).join(".built")
+/// Where that waits for its removal: an archive or a delete takes it too. Never through a link the
+/// agent put in its place, which would take the removal out of the session.
+fn trash(dir: &Path) -> io::Result<PathBuf> {
+    let tmp = crate::background::tmp(dir);
+    let to = tmp.join(".built");
+    match tmp.is_symlink() || to.is_symlink() {
+        true => Err(io::Error::other(format!("{} is a link", tmp.display()))),
+        false => Ok(to),
+    }
 }
 
 /// Takes it out of the way, so its removal holds nothing up, and has setup run again before the next
@@ -163,7 +169,7 @@ pub fn unbuild(spec: &Spec, built: &[PathBuf]) -> io::Result<()> {
     for name in SETUP {
         clear(&spec.dir, name)?;
     }
-    let to = trash(&spec.dir);
+    let to = trash(&spec.dir)?;
     fs::create_dir_all(&to)?;
     let named = super::now_ms();
     for (i, path) in built.iter().enumerate() {
@@ -174,7 +180,7 @@ pub fn unbuild(spec: &Spec, built: &[PathBuf]) -> io::Result<()> {
 
 /// Removes what it took out, one cut short too.
 pub fn unbuilt(dir: &Path) -> io::Result<()> {
-    match fs::remove_dir_all(trash(dir)) {
+    match fs::remove_dir_all(trash(dir)?) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
     }

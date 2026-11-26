@@ -92,8 +92,11 @@ pub(super) fn live(owned: &Owned) -> Option<&Path> {
     (path.join(link.strip_prefix("gitdir:")?.trim()).exists()).then_some(path)
 }
 
+/// The mark in the record's folder that a free set the worktree's folder aside: only such goes.
+const FREEING: &str = "worktree-freeing";
+
 /// Runs `f` on where a free sets the worktree's folder aside, `<folder>~freeing`; none there is done.
-pub(super) fn aside(owned: &Owned, f: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<()> {
+fn aside(owned: &Owned, f: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<()> {
     let Some(path) = owned.path.as_deref() else {
         return Ok(());
     };
@@ -101,4 +104,25 @@ pub(super) fn aside(owned: &Owned, f: impl FnOnce(&Path) -> io::Result<()>) -> i
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         done => done,
     }
+}
+
+/// Sets `path`, the worktree's folder, aside whole, marked first; one already there stops it.
+pub(super) fn set_aside(dir: &Path, owned: &Owned, path: &Path) -> io::Result<()> {
+    aside(owned, |a| {
+        a.symlink_metadata()
+            .and_then(|_| err(format!("{} is in the way; move it first.", a.display())))
+    })?;
+    fs::write(dir.join(FREEING), "")?;
+    aside(owned, |a| fs::rename(path, a)).inspect_err(|_| {
+        let _ = fs::remove_file(dir.join(FREEING));
+    })
+}
+
+/// Removes what a free set aside, if it did.
+pub(super) fn drop_aside(dir: &Path, owned: &Owned) -> io::Result<()> {
+    if dir.join(FREEING).exists() {
+        aside(owned, |a| fs::remove_dir_all(a))?;
+        fs::remove_file(dir.join(FREEING))?;
+    }
+    Ok(())
 }

@@ -16,6 +16,7 @@ mod copy;
 use branch::has_branch;
 pub use branch::rename_held;
 mod branches;
+mod checkpoint;
 mod freed;
 pub use branches::{drop_branches, put_branches};
 pub use freed::shed;
@@ -28,7 +29,7 @@ pub(crate) mod landing;
 pub mod lost;
 mod missing;
 mod modes;
-use missing::{aside, live, registration};
+use missing::{drop_aside, live, registration, set_aside};
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
@@ -356,37 +357,24 @@ pub fn free(dir: &Path) -> io::Result<()> {
         return Ok(());
     };
     // One a free cut short set aside, before a restore made the worktree again.
-    aside(&owned, |a| fs::remove_dir_all(a))?;
+    drop_aside(dir, &owned)?;
     if let Some(path) = live(&owned) {
-        let branch = branch::at(path)?;
-        if Some(&branch) != owned.branch.as_ref() {
-            return err("The worktree is on another branch; switch back first.".into());
-        }
-        let held = inner::held(path)?;
-        let add = ["add", "-A", "--"].into_iter();
-        git(
-            path,
-            &add.chain(held.iter().map(String::as_str))
-                .collect::<Vec<_>>(),
-        )?;
-        if !git(path, &["diff", "--cached", "--name-only", "-z"])?.is_empty() {
-            git(
-                path,
-                &[
-                    "commit",
-                    "--quiet",
-                    "--no-verify",
-                    "-m",
-                    "Brigadier checkpoint",
-                ],
-            )?;
-        }
+        checkpoint::commit(&owned, path)?;
         modes::keep(dir, path)?;
         // Whole, in one step: a free cut short then never checkpoints a folder half removed.
-        aside(&owned, |a| fs::rename(path, a))?;
+        set_aside(dir, &owned, path)?;
     }
     unregister(&owned)?;
-    aside(&owned, |a| fs::remove_dir_all(a))
+    drop_aside(dir, &owned)
+}
+
+/// What a free does first: the worktree's changes committed to its branch, or why they couldn't be.
+/// For several freed together, so none goes before all are kept. Under `lock`.
+pub fn checkpoint(dir: &Path) -> io::Result<()> {
+    match read(dir)? {
+        Some(owned) => live(&owned).map_or(Ok(()), |path| checkpoint::commit(&owned, path)),
+        None => Ok(()),
+    }
 }
 
 /// Whether the session's worktree is in place.
@@ -439,6 +427,8 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
     let Some(path) = owned.path.clone() else {
         return Ok(());
     };
+    // What a free cut short set aside: its work is on the branch.
+    drop_aside(dir, &owned)?;
     if Path::new(&path).exists() {
         return Ok(());
     }

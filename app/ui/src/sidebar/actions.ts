@@ -65,7 +65,8 @@ export const label = (row: SessionRow, name: string, on: boolean) =>
   run(row.id, ["label", row.id, name, ...(on ? [] : ["--off"])], { label: { name, on } }, on ? `Couldn't add the label “${name}”` : `Couldn't remove the label “${name}”`);
 
 const named = (row: SessionRow) => `“${row.title || "New session"}”`;
-export const archive = (row: SessionRow) => run(row.id, ["archive", row.id], { archived: Date.now() }, `Couldn't archive ${named(row)}`);
+export const archive = (row: SessionRow, workers: string[] = []) =>
+  run(row.id, ["archive", row.id, `--named=${workers.join(",")}`], { archived: Date.now() }, `Couldn't archive ${named(row)}`);
 export const restore = (row: SessionRow) => run(row.id, ["restore", row.id], { archived: null }, `Couldn't bring back ${named(row)}`);
 
 export const rename = (row: SessionRow, title: string, branch?: string) => run(row.id, ["rename", row.id, title, ...(branch === undefined ? [] : ["--branch", branch])], { title }, "Couldn't rename");

@@ -8,8 +8,9 @@ use brigadier_core::{self as core, session, session::Guard};
 use brigadier_frames::procs;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -40,19 +41,36 @@ pub(super) fn finished(data: &Path, id: &str, all: &[procs::Proc]) -> Vec<String
         .collect()
 }
 
+/// Where `id`'s archive keeps the workers whose losses its confirm named, till they are archived:
+/// a daemon cut short before them still frees them as asked.
+fn named_at(data: &Path, id: &str) -> PathBuf {
+    core::session_dir(data, id).join("archive-named.json")
+}
+
+/// Records whose losses `id`'s archive confirm named; none given (no confirm), those done now.
+pub(super) fn name(data: &Path, id: &str, named: Option<Vec<String>>) -> io::Result<()> {
+    let named = named.unwrap_or_else(|| finished(data, id, &procs::all()));
+    fs::write(named_at(data, id), serde_json::to_vec(&named)?)
+}
+
 /// Archives `id`'s finished workers, then drops what they kept of it. Those that failed, with why.
 /// The caller holds `id`'s family lock.
 pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
     let mut stayed = vec![];
-    // Its confirm named what theirs lose; later nobody is asked.
-    let guard = match new {
-        true => Guard::Named,
-        false => Guard::Lossless,
-    };
+    let record = named_at(data, id);
+    // A torn record names none: each then keeps what it would lose.
+    let named: Vec<String> = (fs::read(&record).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
     let all = procs::all();
     let gone = finished(data, id, &all);
     // Each before the one its folder is based on the branch of.
     for wid in gone.iter().rev() {
+        // Its confirm named what it loses; one done since, or later, was never asked about.
+        let guard = match named.contains(wid) {
+            true => Guard::Named,
+            false => Guard::Lossless,
+        };
         if let Err(e) = one(data, wid, guard) {
             let dir = core::session_dir(data, wid);
             let title =
@@ -75,6 +93,7 @@ pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
             eprintln!("brigadierd: archived {at}: {e}");
         }
     }
+    let _ = fs::remove_file(&record);
     stayed
 }
 

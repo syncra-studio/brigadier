@@ -171,12 +171,22 @@ fn finish_archive(spec: &Spec) -> io::Result<()> {
     // restore couldn't bring it back [D1080].
     let data = data_of(spec);
     let mut went = false;
+    let claims = crate::folder::claims(dir);
+    let ours = |rec: &Path| !shared_claim(&data, spec, rec) && may(rec);
+    // Every claim's work kept first: one that can't be leaves all in place.
+    let kept = || {
+        (claims.iter().filter(|(_, rec)| ours(rec))).try_for_each(|(_, rec)| {
+            let _one = worktrees::lock(rec)?;
+            worktrees::checkpoint(rec)
+        })
+    };
     let freed = crate::background::end_left(dir)
+        .and_then(|()| kept())
         .and_then(|()| holder.as_deref().map_or(Ok(()), worktrees::free))
         .and_then(|()| {
-            crate::folder::claims(dir).iter().try_for_each(|(_, rec)| {
+            claims.iter().try_for_each(|(_, rec)| {
                 let _one = worktrees::lock(rec)?;
-                if shared_claim(&data, spec, rec) || !may(rec) {
+                if !ours(rec) {
                     return Ok(());
                 }
                 let was = worktrees::present(rec);

@@ -44,9 +44,16 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let specs: Vec<_> = ids
                 .map(|id| core::load(data, id).map(|s| (id, s)))
                 .collect::<io::Result<_>>()?;
+            // The workers whose losses its confirm named (`--named=<id>,…`).
+            let named = (args.iter().find_map(|a| a.strip_prefix("--named="))).map(|n| {
+                n.split(',')
+                    .filter(|w| !w.is_empty())
+                    .map(String::from)
+                    .collect()
+            });
             let mut stayed = vec![];
             for (id, spec) in specs {
-                stayed.extend(archive(data, id, &spec, false)?);
+                stayed.extend(archive(data, id, &spec, false, named.clone())?);
             }
             // All are archived; a worker that couldn't go with them is named.
             if !stayed.is_empty() {
@@ -158,12 +165,16 @@ fn check(data: &Path, ids: &[String], delete: bool) -> Value {
         .collect();
     // Their finished workers' folders go too.
     let mut gone = ids.clone();
+    let mut named = vec![];
     for w in ids.iter().flat_map(|id| freed::finished(data, id, &all)) {
         if !gone.contains(&w) {
-            gone.push(w);
+            gone.push(w.clone());
+            named.push(w);
         }
     }
-    json!({"ok": true, "running": running, "lost": core::worktrees::lost::losses(data, &gone, delete)})
+    let lost = core::worktrees::lost::losses(data, &gone, delete);
+    // Archive gets `named` back: only their losses were asked about.
+    json!({"ok": true, "running": running, "lost": lost, "named": named})
 }
 
 /// Those an archive takes with their chat: ones that exist, not archived, with no archive,
@@ -175,9 +186,16 @@ fn unarchived(dir: &Path) -> bool {
 /// One session's archive: what a rewind or Replace all cut short settles first, its host stops,
 /// then core archives it. `with`: a chat's worker going with it. Archived, its workers that
 /// couldn't go with it.
-fn archive(data: &Path, id: &str, spec: &core::Spec, with: bool) -> io::Result<Vec<String>> {
+fn archive(
+    data: &Path,
+    id: &str,
+    spec: &core::Spec,
+    with: bool,
+    named: Option<Vec<String>>,
+) -> io::Result<Vec<String>> {
     crate::overnight::archived(data, id)?;
     let _family = workers::family_lock(data, id)?;
+    freed::name(data, id, named)?;
     crate::agent::new::settle(data, id)?;
     crate::rewind::settled(data, spec)
         .and_then(|()| core::git::recover::settled(data, id))

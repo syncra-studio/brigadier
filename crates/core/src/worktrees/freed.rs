@@ -40,6 +40,15 @@ fn based(dir: &Path, owned: &Owned, branch: &str) -> bool {
     kept::others(dir).any(|o| o.repo == owned.repo && o.base == branch && live(&o).is_some())
 }
 
+/// Whether the session's kept PRs (`prs.json`) have an open one from `branch`, as its last read saw.
+fn open_pr(dir: &Path, branch: &str) -> bool {
+    let session = (dir.ancestors().find(|d| d.join("session.json").exists())).unwrap_or(dir);
+    (crate::host::kept(session)["prs"].as_array()).is_some_and(|prs| {
+        prs.iter()
+            .any(|p| p["branch"] == branch && p["repo"].is_null() && p["state"] == "open")
+    })
+}
+
 /// Drops a freed worktree's branch when its base holds all of it; one with work not merged, a PR's
 /// or another session's stays, or one another works from [D181, D703]. Recorded before it goes, so one cut short runs again.
 /// The caller holds `lock`.
@@ -53,6 +62,7 @@ pub fn shed(dir: &Path) -> io::Result<()> {
     let repo = Path::new(&owned.repo).to_path_buf();
     if has_branch(&repo, &branch) {
         if kept::keeps(dir, &owned, &branch).is_some()
+            || open_pr(dir, &branch)
             || based(dir, &owned, &branch)
             || !landing::in_base(&repo, &owned.base, &branch, owned.landing.as_ref())
         {

@@ -58,7 +58,7 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
  * Rust's check before archiving [D1197]: whose agent is working, and per folder the batch frees, the ignored files
  * it deletes for good (or why they couldn't be listed).
  */
-export type ArchiveCheck = { running: string[]; lost: Lost[] };
+export type ArchiveCheck = { running: string[]; lost: Lost[]; named?: string[] };
 /** `repos`: a delete's, the repositories in what it takes. */
 export type Lost = { ids: string[]; files?: string[]; repos?: string[]; error?: string };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
@@ -93,8 +93,8 @@ export function archiveRows(chosen: SessionRow[]) {
   run(["archive", ...rows.map((row) => row.id), "--check"])
     .then(
       (reply) => {
-        const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
-        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus);
+        const check = { running: reply.running ?? [], lost: reply.lost ?? [], named: reply.named ?? [] };
+        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus, check.named);
         ask({ rows, focus, check });
         asked = true;
       },
@@ -103,12 +103,13 @@ export function archiveRows(chosen: SessionRow[]) {
     .finally(() => !asked && hold(rows, false));
 }
 
-function archiveNow(rows: SessionRow[], focus: Element | null) {
+/** `named`: the workers whose losses the check listed; only those lose them [D1197]. */
+function archiveNow(rows: SessionRow[], focus: Element | null, named: string[]) {
   const { active, onHome } = view;
   undoFocus = focus;
   typedSinceArchive = false;
   clearPicked();
-  for (const row of rows) archive(row);
+  for (const row of rows) archive(row, named);
   if (rows.some((row) => row.id === active)) onHome();
   const back = () => {
     undo = null;
@@ -194,7 +195,7 @@ export function ArchiveAsk() {
             check={now.check}
             error={now.error}
             onConfirm={() => {
-              archiveNow(now.rows, now.focus);
+              archiveNow(now.rows, now.focus, now.check?.named ?? []);
               close();
             }}
             onCancel={close}
