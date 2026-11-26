@@ -43,7 +43,6 @@ export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?:
   );
 }
 
-/** Rust's `line` row in words: what changed, and the rest on its ⓘ. `action`: the app's, where the line offers one. */
 /** A worker another session ended: that session by its title, or none once it's gone. PROPOSED words [C76]. */
 function StoppedBy({ from, ms }: { from: string | null; ms: number | null }) {
   const row = useDaemon().rows?.find((each) => each.id === from);
@@ -51,6 +50,7 @@ function StoppedBy({ from, ms }: { from: string | null; ms: number | null }) {
   return <ThreadLine icon={Stop}>{ms === null ? who : `${who} after ${duration(ms)}`}</ThreadLine>;
 }
 
+/** Rust's `line` row in words: what changed, and the rest on its ⓘ. `action`: the app's, where the line offers one. */
 export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line" }>; action?: ReactNode }) {
   switch (item.reason) {
     case "limit-reset":
