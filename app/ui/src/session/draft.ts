@@ -1,7 +1,7 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
 import { type Chip, chipsBack } from "../panel/chips";
 import type { Runner } from "./composer";
-import { dropUncertain } from "./uncertain";
+import { dropUncertain, removingOf } from "./uncertain";
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -134,7 +134,13 @@ export function loadDraft(run: Runner, id: string): Promise<Draft | null> {
 }
 
 async function readDraft(run: Runner, id: string): Promise<Draft | null> {
-  const reply = await run(["draft", id]);
+  // An add deleted where it waited: what Rust gave back for it is taken, never shown [D363].
+  for (const qid of removingOf(id)) {
+    setOf(took, id).add(qid);
+    setOf(applied, id).add(qid);
+  }
+  const gone = id.startsWith(HOME_DRAFT) ? [] : [...setOf(took, id)];
+  const reply = await run(["draft", id, ...(gone.length > 0 ? ["--took", gone.join(",")] : [])]);
   if (!reply.ok || drafts.has(id)) return null;
   // What Rust gave back since the last save is in the draft it read already.
   if (typeof reply.rev === "number") revs.set(id, reply.rev);

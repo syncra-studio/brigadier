@@ -59,7 +59,7 @@ pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
-       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R --took <cid,…>]] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
+       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R]] [--took <cid,…>] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
        brigadier attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) [--in IDS] | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path> | back <session> <parts JSON|null> [--carry-tabs] (back: @home only)
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] [--draft JSON --draft-rev R] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <@home|@home:P|id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | profile <tab> <profile> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> | keep <tab> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen | take <@home…> <tab>…] [--behind]

@@ -47,6 +47,8 @@ export function addUncertain(session: string, entry: Uncertain, daemon: unknown)
   put(session, [...of(session).filter((each) => each.qid !== entry.qid), entry]);
 }
 export const dropUncertain = (session: string, qid: string) => of(session).some((each) => each.qid === qid) && put(session, of(session).filter((each) => each.qid !== qid));
+/** The adds deleted in session `session` that Rust hasn't answered about yet. */
+export const removingOf = (session: string) => of(session).filter((each) => each.removing).map((each) => each.qid);
 const mark = (session: string, qid: string, change: Partial<Uncertain>) => put(session, of(session).map((each) => (each.qid === qid ? { ...each, ...change } : each)));
 
 const subscribe = (listener: () => void) => {

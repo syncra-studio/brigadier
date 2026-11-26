@@ -115,10 +115,13 @@ fn read(path: &Path) -> Book {
     }
 }
 
-/// The draft as the composer shows it: what was given back, newest first, above the UI's own.
-fn shown(book: &Book) -> Words {
+/// The draft as the composer shows it: what was given back, newest first, above the UI's own;
+/// none of `hid`, deleted where they waited.
+fn shown(book: &Book, hid: &[&str]) -> Words {
     let mut out = Words::default();
-    let all = book.given.iter().rev().map(|g| &g.words);
+    let all = (book.given.iter().rev())
+        .filter(|g| !hid.contains(&g.cid.as_str()))
+        .map(|g| &g.words);
     for w in all.chain([&book.ui.words]).filter(|w| !w.blank()) {
         if !out.parts.is_empty() && !w.parts.is_empty() {
             out.parts.push("\n\n".into());
@@ -166,7 +169,7 @@ fn change<T>(
     replay(dir, &mut book, reading)?;
     let out = f(&mut book)?;
     if serde_json::to_vec(&book)? != was {
-        let mut file = serde_json::to_value(shown(&book))?;
+        let mut file = serde_json::to_value(shown(&book, &[]))?;
         file["book"] = serde_json::to_value(&book)?;
         core::write_atomic(&path, &serde_json::to_vec(&file)?)?;
     }
@@ -278,15 +281,22 @@ fn crash_at(point: &str) {
     }
 }
 
-/// `draft <id>`: the shown draft, its revision and the ids given back into it since the UI last
-/// saved, which a reloaded UI holds already. `draft <id> <json|""> --base R --took <cid,…>`: the
-/// UI's save, taken only from a UI that saw revision R and every message given back since; else
-/// nothing is written, and the reply is stale with what it missed. Without `--base`, as before.
+/// `draft <id> [--took <cid,…>]`: the shown draft, its revision and the ids given back into it
+/// since the UI last saved, which a reloaded UI holds already; those it took, deleted where they
+/// waited, aren't in it. `draft <id> <json|""> --base R --took <cid,…>`: the UI's save, taken only
+/// from a UI that saw revision R and every message given back since; else nothing is written, and
+/// the reply is stale with what it missed. Without `--base`, as before.
 pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
-    let Some(text) = args.get(2) else {
+    let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
+    let Some(text) = args.get(2).filter(|a| *a != "--took") else {
         return change(dir, true, |book| {
-            let cids: Vec<&String> = book.given.iter().map(|g| &g.cid).collect();
-            let draft = serde_json::to_string(&shown(book))?;
+            let hid = |g: &Given| took.contains(&g.cid.as_str());
+            book.given.retain(|g| !(g.done && hid(g)));
+            let cids: Vec<&String> = (book.given.iter())
+                .filter(|g| !hid(g))
+                .map(|g| &g.cid)
+                .collect();
+            let draft = serde_json::to_string(&shown(book, &took))?;
             Ok(json!({"ok": true, "draft": draft, "rev": book.rev, "cids": cids}))
         });
     };
@@ -296,7 +306,6 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
     };
     let base = flag(args, "--base").map(|b| b.parse::<u64>().map_err(io::Error::other));
     let base = base.transpose()?;
-    let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
     change(dir, false, |book| {
         let missed: Vec<&Given> = (book.given.iter())
             // One still bringing its files and chips back is offered once it has.
