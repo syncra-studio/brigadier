@@ -7,6 +7,45 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use std::{env, fs, io, process, thread};
 
+/// The directives that call a tool, each first put to Brigadier's tool hook as a real CLI's
+/// PreToolUse is [repo-merge D92].
+const TOOLS: &[&str] = &[
+    "draft",
+    "write",
+    "shell",
+    "brigadier",
+    "out",
+    "test",
+    "tree",
+    "serve",
+    "server",
+    "agent",
+    "bgagent",
+    "tool_sleep",
+    "approve",
+    "cargo",
+    "image",
+    "ask",
+    "bg",
+    "escape",
+];
+
+/// The tool hook's refusal, as `brigadier hook tool` gives it; none while no summary flag is there.
+fn vetoed() -> Option<String> {
+    let dir = env::var_os("BRIGADIER_SESSION")?;
+    fs::exists(std::path::Path::new(&dir).join("summarizing"))
+        .ok()?
+        .then_some(())?;
+    let out = Command::new("brigadier")
+        .args(["hook", "tool"])
+        .stdin(Stdio::null())
+        .output();
+    // A hook that can't run refuses, as Claude's `onFailure: "block"` does.
+    out.map_or(Some("the tool hook didn't run".into()), |o| {
+        (o.status.code() != Some(0)).then(|| String::from_utf8_lossy(&o.stderr).trim().into())
+    })
+}
+
 impl Agent {
     /// A summary turn's words with the directives a `summary` mark in its home holds (`slow:N`, a
     /// tool's, `exit:1`): Brigadier's own prompt has none of its own [repo-merge D92].
@@ -19,6 +58,12 @@ impl Agent {
     /// Acts out one directive. False when the turn ended inside it.
     pub(super) fn directive(&mut self, name: &str, n: u64, word: &str, done_before: u64) -> bool {
         let left = n.saturating_sub(done_before);
+        if TOOLS.contains(&name)
+            && let Some(why) = vetoed()
+        {
+            self.say(&format!("tool {word} refused: {why}"));
+            return true;
+        }
         match name {
             "say" => (0..n).for_each(|i| self.say(&format!("line {i}"))),
             // `draft`: Brigadier's own `show_draft` for Lucia; `draft:1` the same as a fence [D529].
