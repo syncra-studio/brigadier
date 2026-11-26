@@ -228,7 +228,7 @@ fn settle(data: &Path, id: &str) -> io::Result<()> {
     }
     if o.stop {
         if !core::fold(&spec.dir, true)?.fold.turns.is_empty() {
-            queue::stop(data, id, "user")?;
+            queue::stop(data, id, "user", None)?;
         }
         workers::end_all(data, id)?;
         change(&spec.dir, |o| {

@@ -240,6 +240,7 @@ impl Thread {
             && let Some(o) = self.open.as_mut()
         {
             o.stop.0 = Some(c["by"].as_str().unwrap_or("user").into());
+            o.stop_from = c["from"].as_str().map(String::from);
         }
         if c["kind"] != "answer" {
             return;

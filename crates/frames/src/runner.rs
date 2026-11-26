@@ -173,6 +173,7 @@ impl Runner {
             "resize" => self.resize(req),
             "stop" => self.stop(
                 req["by"].as_str().unwrap_or("user"),
+                req["from"].as_str(),
                 req["grace_ms"].as_u64().unwrap_or(2000),
             ),
             "note" => self.noted(req),

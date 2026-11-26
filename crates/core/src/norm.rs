@@ -115,7 +115,13 @@ impl Norm {
                 }
                 emit(self, v);
             }
-            log::STOPPED => emit(self, json!({"kind": "stopped", "by": control()["by"]})),
+            log::STOPPED => {
+                let c = control();
+                emit(
+                    self,
+                    json!({"kind": "stopped", "by": c["by"], "from": c["from"]}),
+                );
+            }
             log::NOTE => {
                 let mut v = control();
                 if !v.is_object() {

@@ -33,10 +33,15 @@ impl Runner {
 
     /// Stops every process group this session started: TERM (and CONT, so a stopped one can act on
     /// it), then KILL after `grace_ms`. Never waits on the input lock, so a stuck write can't block it.
-    pub fn stop(&self, by: &str, grace_ms: u64) -> Value {
+    /// `from`: the session whose stop it is, when not the user's (a lead's) [C76].
+    pub fn stop(&self, by: &str, from: Option<&str>, grace_ms: u64) -> Value {
         let started = Instant::now();
         self.stops.fetch_add(1, Ordering::SeqCst);
-        let _ = self.append(log::STOPPED, json!({"by": by}).to_string().as_bytes(), true);
+        let mut note = json!({"by": by});
+        if let Some(from) = from {
+            note["from"] = from.into();
+        }
+        let _ = self.append(log::STOPPED, note.to_string().as_bytes(), true);
         let groups = self.groups();
         let live = |groups: &Groups| {
             let all = procs::all();

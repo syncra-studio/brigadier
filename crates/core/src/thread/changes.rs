@@ -94,3 +94,21 @@ pub(super) fn stop_line(by: Option<&str>) -> Option<&'static str> {
         _ => Some("stopped"),
     }
 }
+
+impl super::Open {
+    /// Who stopped it, the first to say so, and the session whose stop it was (a lead's) [C76].
+    pub(super) fn stopped_by(&mut self, by: &str, from: Option<&str>) {
+        if self.stop.0.is_none() {
+            (self.stop.0, self.stop_from) = (Some(by.into()), from.map(String::from));
+        }
+    }
+}
+
+/// A stop's line: a lead's names the session that ended it, not the user [C76].
+pub(super) fn stop_row(reason: &str, ms: u64, o: &super::Open) -> Value {
+    let mut row = json!({"kind": "line", "reason": reason, "ms": ms});
+    if o.stop.0.as_deref() == Some("lead") {
+        (row["by"], row["from"]) = ("lead".into(), o.stop_from.clone().into());
+    }
+    row
+}

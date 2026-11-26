@@ -142,6 +142,7 @@ impl Thread {
             answers: Default::default(),
             denied: 0,
             stop: (None, false),
+            stop_from: None,
             quiet: t.quiet,
             joins: None,
             after: None,

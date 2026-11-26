@@ -262,32 +262,32 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
     };
     let kept = branch
         .filter(|_| made().is_some_and(|n| n != "0"))
-        .map_or(String::new(), |b| {
-            format!(" Its branch {b} keeps its commits.")
-        });
+        .map(|b| format!(" Its branch {b} keeps its commits."))
+        .unwrap_or_default();
     json!({"ok": true, "text": format!("Stopped {} ({id}).{kept}", r.title)})
 }
 
 /// Stops worker `wid` below `top`. One being made, or held on its card (by Stop, not Pause), is
-/// marked so its brief never goes, then stopped once made; its card goes. `by`: "user"/"pause".
+/// marked so its brief never goes, then stopped once made; its card goes. `by`: user/pause/lead.
 fn halt(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
+    let route = if by == "lead" { "user" } else { by }; // a lead's stop settles the card as Stop
     if let Some(pid) = parent_of(data, top, wid) {
         let _family = family_lock(data, &place(data, &pid).0)?;
-        if let Some(mut r) = record(data, &pid, wid).filter(|r| crate::routing::stops(r, by)) {
+        if let Some(mut r) = record(data, &pid, wid).filter(|r| crate::routing::stops(r, route)) {
             r.state = "stopped".into();
             save(data, &pid, &r)?;
         }
         // Its card settled under the lock, so a redraw of it can't come between the read and this.
-        crate::routing::stopped(data, wid, by);
+        crate::routing::stopped(data, wid, route);
     } else {
-        crate::routing::stopped(data, wid, by);
+        crate::routing::stopped(data, wid, route);
     }
     let started = Instant::now();
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));
     }
     if core::session_dir(data, wid).join("session.json").exists()
-        && queue::stop(data, wid, by)?["ok"] == false
+        && queue::stop(data, wid, by, (by == "lead").then_some(top))?["ok"] == false
     {
         return Err(io::Error::other("Couldn't stop the worker"));
     }
@@ -308,8 +308,8 @@ fn end(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
         l.last = json!({"how": "stopped", "at": brigadier_frames::log::now_ms(), "by": by});
         write_json(&core::session_dir(data, wid).join("worker.json"), &l)?;
     }
-    halt(data, top, wid, "user")?;
-    review::stop(data, top, wid);
+    halt(data, top, wid, if by == "agent" { "lead" } else { "user" })?; // its line names it [C76]
+    review::stop(data, top, wid, by);
     let mine: Vec<String> = (records(data, wid).into_iter())
         .filter(|r| {
             r.state == "starting"

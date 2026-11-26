@@ -191,7 +191,9 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             let how = match (end.how.as_str(), by.as_deref()) {
                 ("done", _) => "finished",
                 ("stopped", Some("stall")) => "context",
-                ("stopped", None | Some("user" | "agent" | "pause" | "rewind")) => "stopped",
+                ("stopped", None | Some("user" | "agent" | "pause" | "rewind" | "lead")) => {
+                    "stopped"
+                }
                 ("stopped", _) => "failed",
                 ("limited", _) => "limit",
                 _ if last.is_some_and(|l| l["why"] == "context") => "context",

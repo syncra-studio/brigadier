@@ -54,10 +54,10 @@ struct Open {
     answers: answers::Answers,
     /// Actions the CLI's own rule or reviewer turned down in it, with nobody asked [D487].
     denied: usize,
-    /// Who asked it to stop ("user", "pause" for a worker's Pause, "rebirth" for Brigadier's cut),
-    /// and whether its line is drawn.
+    /// Who stopped it ("user", "pause", "rebirth", "lead" [C76]), and whether its line is drawn.
     #[serde(default)]
     stop: (Option<String>, bool),
+    stop_from: Option<String>, // a lead's stop: the session its line names (serde: None if missing)
     /// Its parent's turn woken by a worker's ask: its rows are hidden, the user never sees it [D119].
     #[serde(default)]
     quiet: bool,

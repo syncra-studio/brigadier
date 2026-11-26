@@ -175,7 +175,8 @@ impl Thread {
                 || (row["kind"] == "group" && row["steps"].as_array().is_some_and(Vec::is_empty))
         };
         // Not a model picked mid-turn: its carry-on starts under the divider, where it was picked [D124, D362].
-        let cut = (o.cut() && !self.fold.switched) || o.stop.0.as_deref() == Some("user");
+        let cut = (o.cut() && !self.fold.switched)
+            || matches!(o.stop.0.as_deref(), Some("user" | "lead"));
         o.joins = (o.answer)
             .filter(|&a| cut && (a + 1..=self.items.len() as u64).all(mid))
             .map(|a| {

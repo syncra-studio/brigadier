@@ -33,10 +33,11 @@ impl Thread {
             return;
         };
         let ms = ts.saturating_sub(o.started);
+        let row = super::changes::stop_row(reason, ms, o);
         if let Some(o) = self.open.as_mut().filter(|_| self.cutting.is_some()) {
             o.quiet = false;
         }
-        self.kept_row(json!({"kind": "line", "reason": reason, "ms": ms}));
+        self.kept_row(row);
     }
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
@@ -238,10 +239,10 @@ impl Thread {
                 self.end_children("cancelled", ts);
                 // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
                 self.settle_held(item["by"] != "handoff");
-                let stops = ["user", "pause", "rebirth", "stall", "overnight", "summary"];
+                let stops = ["user", "pause", "lead", "rebirth", "stall", "overnight", "summary"];
                 if let Some(by) = item["by"].as_str().filter(|b| stops.contains(b)) {
                     match self.open.as_mut() {
-                        Some(o) => _ = o.stop.0.get_or_insert(by.into()),
+                        Some(o) => o.stopped_by(by, item["from"].as_str()),
                         // A worker paused between turns stops only its background jobs: its line, untimed.
                         None if by == "pause" => {
                             self.kept_row(json!({"kind": "line", "reason": "paused", "ms": null}));

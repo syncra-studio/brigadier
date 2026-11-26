@@ -37,7 +37,7 @@ impl Runner {
             .map(|c| c.pid);
         let stops = self.stops.load(Ordering::SeqCst) + replace.is_some() as u64;
         if replace.is_some() {
-            self.stop("handoff", 2000);
+            self.stop("handoff", None, 2000);
         }
         if !self.wait_free(replace.is_some()) {
             return fail("busy");

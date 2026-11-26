@@ -421,7 +421,7 @@ pub fn ended(data: &Path, id: &str, cmd: &str, kept: &Value) -> io::Result<()> {
         q.items.insert(slot, item);
         let (f, state) = cut::now(data, id)?;
         let halted = (f.last.as_ref().filter(|_| fold::resumable(&f, &state))).is_some_and(|l| {
-            matches!(l["reason"].as_str(), Some("user" | "pause"))
+            matches!(l["reason"].as_str(), Some("user" | "pause" | "lead"))
                 && kept["from"].as_u64().unwrap_or(u64::MAX) < l["ts"].as_u64().unwrap_or(0)
         });
         q.paused |= q.stopping || halted;

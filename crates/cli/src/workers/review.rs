@@ -431,7 +431,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
 
 /// A stop of a worker waiting on its review stops its reviewer too, and its own result goes on,
 /// quietly as any stop's [D330].
-pub(super) fn stop(data: &Path, top: &str, wid: &str) {
+pub(super) fn stop(data: &Path, top: &str, wid: &str, ended: &str) {
     let by = {
         let Ok(_one) = lock(data) else { return };
         let Some(mut a) = link(data, wid).filter(|a| a.review["state"] == "running") else {
@@ -441,7 +441,8 @@ pub(super) fn stop(data: &Path, top: &str, wid: &str) {
         let _ = save(data, wid, &a);
         a.review["by"].as_str().unwrap_or("").to_string()
     };
-    let _ = super::end(data, top, &by, "user");
+    // Its reviewer ends as it did, by the same hand [C76].
+    let _ = super::end(data, top, &by, ended);
     let _ = result::write_ended(data, wid, false);
 }
 

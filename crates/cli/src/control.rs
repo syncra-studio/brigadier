@@ -225,7 +225,7 @@ pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
         }
         let (data, id, by) = (data.to_path_buf(), id.clone(), by.to_string());
         thread::spawn(move || {
-            if let Err(e) = crate::queue::stop(&data, &id, &by) {
+            if let Err(e) = crate::queue::stop(&data, &id, &by, None) {
                 eprintln!("brigadierd: hush {id}: {e}");
             }
             HUSHING.lock().unwrap().remove(&id);
@@ -367,6 +367,16 @@ fn end_commands(dir: &Path, since: u64) -> io::Result<()> {
 /// command it left. None when it can't or the turn didn't end in time: the caller kills instead,
 /// and the next message resumes [D159, D222]. `by`: "user", or "pause" for a worker's Pause.
 pub fn interrupt(data: &Path, id: &str, by: &str) -> io::Result<Option<Value>> {
+    interrupt_from(data, id, by, None)
+}
+
+/// The same, `from` naming the session whose stop it is (a lead's) [C76].
+pub fn interrupt_from(
+    data: &Path,
+    id: &str,
+    by: &str,
+    from: Option<&str>,
+) -> io::Result<Option<Value>> {
     let dir = core::session_dir(data, id);
     let turn = core::fold(&dir, true)?.fold.turns.into_iter().next();
     // From its open tool, not the turn: a helper's own server can start after the turn's input.
@@ -375,7 +385,7 @@ pub fn interrupt(data: &Path, id: &str, by: &str) -> io::Result<Option<Value>> {
     let tool_since = turn
         .filter(|t| !t.tools.is_empty())
         .map(|t| t.tools_since.saturating_sub(1000));
-    let req = json!({"cid": new_cid(), "control": {"kind": "interrupt", "by": by}});
+    let req = json!({"cid": new_cid(), "control": {"kind": "interrupt", "by": by, "from": from}});
     let reply = deliver(data, id, req, false, |f| {
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().stop);
         match !f.turns.is_empty() && can {

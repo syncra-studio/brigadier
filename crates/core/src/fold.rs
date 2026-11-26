@@ -454,8 +454,8 @@ impl Fold {
             }
             "limited" | "sign_in" | "unresumable" => self.limited(kind, item, ts),
             "stopped" => {
-                // The user's Stop or Pause ends the limit; a handoff's stop keeps it [D51].
-                if matches!(item["by"].as_str(), Some("user" | "pause")) {
+                // The user's Stop, a Pause or a lead's ends the limit; a handoff's stop keeps it [D51].
+                if matches!(item["by"].as_str(), Some("user" | "pause" | "lead")) {
                     (self.limit, self.resets, self.refused) = (None, None, None);
                     // A Stop during a summary turn stops the renewal too: nothing carries on (D95).
                     self.renewing = None;

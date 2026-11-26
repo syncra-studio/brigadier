@@ -392,9 +392,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             Ok(Value::Null)
         }
-        "stop" => {
-            queue::stop(data, arg(args, 1)?, "user").inspect(|_| workers::still(data, &args[1]))
-        }
+        "stop" => queue::stop(data, arg(args, 1)?, "user", None)
+            .inspect(|_| workers::still(data, &args[1])),
         "workers" => workers::run(data, args),
         "peers" => peers::run(data, args),
         "rewind" => rewind::run(data, args),

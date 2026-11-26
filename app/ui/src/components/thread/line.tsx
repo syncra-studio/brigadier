@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 
 import { ArrowRotateCw, type IconProps, PauseCircle, ShieldExclamation, Sparkle, Stop } from "../../icons";
+import { useDaemon } from "../../daemon";
 import type { Item } from "../../thread/item";
 import { duration, hhmm } from "../../thread/words";
 import { cx } from "../cx";
@@ -43,6 +44,13 @@ export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?:
 }
 
 /** Rust's `line` row in words: what changed, and the rest on its ⓘ. `action`: the app's, where the line offers one. */
+/** A worker another session ended: that session by its title, or none once it's gone. PROPOSED words [C76]. */
+function StoppedBy({ from, ms }: { from: string | null; ms: number | null }) {
+  const row = useDaemon().rows?.find((each) => each.id === from);
+  const who = row ? `${row.title || "New session"} stopped it` : "Stopped";
+  return <ThreadLine icon={Stop}>{ms === null ? who : `${who} after ${duration(ms)}`}</ThreadLine>;
+}
+
 export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line" }>; action?: ReactNode }) {
   switch (item.reason) {
     case "limit-reset":
@@ -60,6 +68,7 @@ export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line
         </ThreadLine>
       );
     case "stopped":
+      if (item.by === "lead") return <StoppedBy from={item.from ?? null} ms={item.ms} />;
       return <ThreadLine icon={Stop}>{item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</ThreadLine>;
     // A worker's Pause, in its own thread: Resume carries it on [D90].
     case "paused":
