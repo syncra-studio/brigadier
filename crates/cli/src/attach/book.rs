@@ -72,8 +72,8 @@ struct Going {
     /// message can only be discarded or edited.
     #[serde(default)]
     op: Vec<String>,
-    /// An attempt may have reached a host; false only for one adopted from the app's copy. Before
-    /// it was kept, any may have.
+    /// An attempt may have reached a host; false for one adopted from the app's copy, or refused
+    /// for sure with its session staying. Before it was kept, any may have.
     #[serde(default = "yes")]
     reached: bool,
     /// Why a start refused on its first try stays: its session took work, kept until Discard.
@@ -440,6 +440,10 @@ fn attempt(
         // Why it stays, or why a try that proves nothing failed: shown again after a reload.
         if stays || (how == How::Unknown && !error.is_null()) {
             list[i].error = error.clone();
+        }
+        // Refused for sure, its session staying: it reached no host, so it can be discarded [C75].
+        if stays {
+            list[i].reached = false;
         }
         if how == How::Unknown || stays {
             return Ok(None);
