@@ -3,7 +3,7 @@
 //! with the start of the answer its turn gave and a reference to everything else that turn said.
 
 use super::estimate::tokens;
-use super::{Past, SHELL, head, item, numbered, tail};
+use super::{Past, SHELL, head, tail};
 use crate::archive::Entry;
 
 /// The most of a line, and of the user's first message, in estimated tokens; of an answer's start.
@@ -38,6 +38,14 @@ pub(super) fn begin(
         });
         *running = true;
     }
+}
+
+/// The running turn ends `how`.
+pub(super) fn end(turns: &mut [Turn], running: &mut bool, how: &'static str) {
+    if let Some(t) = turns.last_mut().filter(|_| *running) {
+        t.end = how;
+    }
+    *running = false;
 }
 
 /// A message the running turn takes, steered in, or else the next turn.
@@ -105,6 +113,21 @@ fn answered_by(by: &str) -> &'static str {
         "brigadier" => "answered by Brigadier, not the user",
         _ => "the user's answer to your question",
     }
+}
+
+/// A numbered list item's line: `1.` or `1)` first.
+fn numbered(l: &str) -> bool {
+    let l = l.trim_start();
+    let n = l.bytes().take_while(u8::is_ascii_digit).count();
+    n > 0 && matches!(l.as_bytes().get(n), Some(b'.' | b')'))
+}
+
+/// A list item's line, numbered or bulleted.
+fn item(l: &str) -> bool {
+    numbered(l)
+        || ["- ", "* ", "• "]
+            .iter()
+            .any(|m| l.trim_start().starts_with(m))
 }
 
 /// A short answer reads with what it answered [bugfix-1112 D221]: the agent's message just before

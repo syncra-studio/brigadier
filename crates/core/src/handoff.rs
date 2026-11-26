@@ -41,21 +41,6 @@ fn tail(s: &str, max: usize) -> &str {
     &s[at..]
 }
 
-/// A numbered list item's line: `1.` or `1)` first.
-fn numbered(l: &str) -> bool {
-    let l = l.trim_start();
-    let n = l.bytes().take_while(u8::is_ascii_digit).count();
-    n > 0 && matches!(l.as_bytes().get(n), Some(b'.' | b')'))
-}
-
-/// A list item's line, numbered or bulleted.
-fn item(l: &str) -> bool {
-    numbered(l)
-        || ["- ", "* ", "• "]
-            .iter()
-            .any(|m| l.trim_start().starts_with(m))
-}
-
 /// Lines added while they fit `max`; a last line says how many didn't.
 fn fill(lines: impl IntoIterator<Item = String>, max: usize, more: &str) -> String {
     let (mut out, mut left) = (String::new(), 0);
@@ -107,6 +92,8 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     let mut given = std::collections::HashMap::<String, (String, String, String, bool)>::new();
     // The messages the next turn takes, and whether one runs.
     let (mut waiting, mut running) = (vec![], false);
+    // The agent's process, by pid and backend.
+    let mut agent = (None, String::new());
     // Inside a stop (Brigadier's own: a rebirth, a picked model or level, the guard; or the
     // user's): a step it ended may read as refused in its CLI's words; nobody refused it.
     let mut cutting = String::new();
@@ -160,15 +147,34 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             // A turn a stop cut is the carry-on's to answer; the user's Stop or Pause stopped it.
             Some("turn_end") if running || !waiting.is_empty() => {
                 records::begin(&mut p.turns, &mut waiting, &mut running, false);
-                if let Some(t) = p.turns.last_mut() {
-                    t.end = match cutting.as_str() {
-                        "user" | "pause" => "stopped",
-                        "" if item["ok"] == false => "failed",
-                        "" => "done",
-                        _ => "cut",
-                    };
-                }
-                running = false;
+                let how = match cutting.as_str() {
+                    "user" | "pause" => "stopped",
+                    "" if item["ok"] == false => "failed",
+                    "" => "done",
+                    _ => "cut",
+                };
+                records::end(&mut p.turns, &mut running, how);
+            }
+            // One its CLI never ended: a stop, or the agent's process gone, ends it, as the fold
+            // does; done only where a process a turn exits cleanly.
+            Some("spawned") => agent = (item["pid"].as_i64(), cid("backend")),
+            Some("stopped") if running => {
+                let by = item["by"].as_str().unwrap_or("");
+                let how = if matches!(by, "" | "user" | "pause") {
+                    "stopped"
+                } else {
+                    "cut"
+                };
+                records::end(&mut p.turns, &mut running, how);
+            }
+            Some("exited") if running && item["pid"].as_i64() == agent.0 => {
+                let per_turn = crate::adapters::get(&agent.1).is_some_and(|a| a.per_turn());
+                let how = if per_turn && item["code"] == 0 {
+                    "done"
+                } else {
+                    "failed"
+                };
+                records::end(&mut p.turns, &mut running, how);
             }
             // A step's output stays in the log: the hand-off gives its size, end and reference.
             Some("tool_done") if item["ok"] != false => {
