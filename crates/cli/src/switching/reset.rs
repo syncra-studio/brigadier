@@ -73,9 +73,14 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     // spawn after it is guarded too.
     let call = |mut req: Value| {
         let writes = matches!(req["op"].as_str(), Some("input" | "spawn"));
-        // Turned off meanwhile (a setup's confirm can wait): nothing goes. The log can't say so.
-        if writes && crate::settings::get(data, "carry_on") != "true" {
-            return Ok(json!({"ok": false, "error": "off", "message": "Carry on was turned off."}));
+        // Still due right before it goes: a setup's confirm or restart can wait, and its newer
+        // log length would take in a Stop meanwhile; the setting turned off leaves no mark there.
+        if writes {
+            let now = core::fold(&spec.dir, true)?.fold;
+            let still = row(data, &spec, &now, worker).is_some_and(|d| d["cid"] == cid);
+            if !still || now.cids.contains_key(cid) {
+                return Ok(json!({"ok": false, "error": "changed"}));
+            }
         }
         let guard = req["if_len"].is_null() && writes && first.get();
         if guard {
