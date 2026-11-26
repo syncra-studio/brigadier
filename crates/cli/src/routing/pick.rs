@@ -346,7 +346,11 @@ pub(crate) fn resolve(
     }
     if review.is_some() {
         // Full ones, or none there at all (or none left after those that failed).
-        let room = if out.is_empty() { "is left" } else { "has room" };
+        let room = if out.is_empty() {
+            "is left"
+        } else {
+            "has room"
+        };
         return Err(refuse(&format!(
             "Review didn't run: no model in your {} job on another agent than {} {room}.",
             jobs::REVIEW,

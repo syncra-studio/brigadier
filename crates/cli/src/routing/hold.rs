@@ -246,8 +246,7 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                 .unwrap_or_default();
             // The card's effort within the user's rules, as any pick's [D338].
             let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
-            let (effort, capped) = match effort_of(rules, &backend, &m, e["effort"].as_str())
-            {
+            let (effort, capped) = match effort_of(rules, &backend, &m, e["effort"].as_str()) {
                 Ok(x) => x,
                 Err(why) => return Ok(json!({"ok": false, "error": "invalid", "message": why})),
             };

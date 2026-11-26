@@ -58,7 +58,9 @@ pub(crate) fn of(data: &Path, agent: &str, account: &str) -> Vec<Window> {
     let now = now_ms();
     let mut found = windows(&load(data)[key(agent, account)]);
     for w in &mut found {
-        if w.resets.map_or(now.saturating_sub(w.at) > STALE_MS, |r| r <= now) {
+        if w.resets
+            .map_or(now.saturating_sub(w.at) > STALE_MS, |r| r <= now)
+        {
             w.used = None;
         }
     }
