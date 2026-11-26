@@ -70,14 +70,15 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
     // Room for the heading and the next page's line.
     let page = CAP - 512;
     let (mut text, mut list, mut next) = (String::new(), vec![], None);
-    for e in all
-        .iter()
-        .filter(within)
+    let picked: Vec<&Entry> = (all.iter().filter(within))
         .filter(|e| !user || e.from == "user")
-    {
-        let mut one = shown(id, e);
+        .collect();
+    // Whole references only: entries sharing one frame page together, or `next` would point back.
+    for group in picked.chunk_by(|x, y| x.at == y.at) {
+        let at = &group[0].at;
+        let mut one: String = group.iter().map(|e| shown(id, e)).collect();
         if !text.is_empty() && text.len() + one.len() > page {
-            next = Some(e.at.clone());
+            next = Some(at.clone());
             break;
         }
         if one.len() > page {
@@ -86,13 +87,12 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
                 end -= 1;
             }
             one = format!(
-                "{}…\n[cut: brigadier read {id}#{} --raw writes it whole]\n\n",
-                &one[..end],
-                e.at
+                "{}…\n[cut: brigadier read {id}#{at} --raw writes it whole]\n\n",
+                &one[..end]
             );
         }
         text += &one;
-        list.push(json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}));
+        list.extend(group.iter().map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files})));
     }
     if text.is_empty() {
         text = "[nothing in this range]\n".into();
