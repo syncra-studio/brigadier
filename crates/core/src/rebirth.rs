@@ -1,4 +1,4 @@
-//! Rebirth [D88, D108, D113]: no CLI compacts on its own, so once a conversation's context passes
+//! Rebirth [D88, D108, D113; repo-merge D86, D88]: no CLI compacts on its own, so once a conversation's context passes
 //! its threshold Brigadier carries the session on in a fresh conversation of the same agent,
 //! account, model and effort, started from the hand-off. A turn that ended past it rebirths with
 //! the next input; a running one is stopped once no tool runs, and one whose window filled
@@ -14,7 +14,8 @@ pub fn todo() -> bool {
     std::env::var_os("BRIGADIER_NO_TODO").is_none()
 }
 
-/// The context a conversation is reborn at: 200k tokens, or 75% of a smaller window [D113].
+/// The context a conversation is reborn at: 250k tokens, or 75% of a smaller window, whichever comes
+/// first [D113; repo-merge D86, D88].
 /// `BRIGADIER_REBIRTH_AT` sets it for the drill.
 pub fn threshold(window: Option<u64>) -> u64 {
     if let Some(at) = std::env::var("BRIGADIER_REBIRTH_AT")
@@ -23,7 +24,7 @@ pub fn threshold(window: Option<u64>) -> u64 {
     {
         return at;
     }
-    window.map_or(200_000, |w| (w / 4 * 3).min(200_000))
+    window.map_or(250_000, |w| (w / 4 * 3).min(250_000))
 }
 
 /// The backend the session runs on now.
