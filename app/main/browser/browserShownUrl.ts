@@ -2,7 +2,7 @@
 
 /**
  * An address as an agent sees it: what a query's or a fragment's sensitive names hold stays out. `query` false keeps
- * the query, and the address whole, for a page the agent may have to open again.
+ * the address whole, not cut, for a page the agent may have to open again.
  * Its source goes to the agent's script too (browserAgentSecrets.ts), so it names nothing outside itself.
  */
 export function shownUrl(url: string, query = true): string {
@@ -32,7 +32,7 @@ export function shownUrl(url: string, query = true): string {
       parsed.username = "";
       parsed.password = "";
     }
-    for (const name of query ? Array.from(parsed.searchParams.keys()) : []) {
+    for (const name of Array.from(parsed.searchParams.keys())) {
       if (sensitive(name)) parsed.searchParams.set(name, "(hidden)");
     }
     // A sign-in's answer (#access_token=…), or a route with a query of its own (#/callback?code=…).

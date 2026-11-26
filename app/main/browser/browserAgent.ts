@@ -271,8 +271,8 @@ const SEES_HANDLERS = new Set<unknown>(["read", "click", "place", "hover"]);
 
 export function installBrowserAgent(): void {
   handleFromApp("brigadier:agent", async (event, call: Call) => {
-    // A page's address and title for its agent. An ordinary page's query stays, as the agent may have to open it again;
-    // `query` hides a popup's and a paused tab's, and a sign-in page's is hidden here.
+    // A page's address and title for its agent. Sensitive names are always hidden; an ordinary page's address stays whole,
+    // as the agent may have to open it again; `query` cuts a popup's and a paused tab's, and a sign-in page's here.
     if (call.call === "shown") {
       const page = call.guest === undefined ? undefined : webContents.fromId(call.guest);
       const query = call.query || stopForAddress(call.url) !== null || (page !== undefined && (await stopOf(page)) !== null);
