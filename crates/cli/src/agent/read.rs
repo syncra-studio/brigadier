@@ -73,26 +73,39 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
     let picked: Vec<&Entry> = (all.iter().filter(within))
         .filter(|e| !user || e.from == "user")
         .collect();
+    let msg = |e: &Entry, words: &str| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": words, "files": e.files});
+    // The JSON's bytes so far: `--json` gives it in place of the text, so it pages the same.
+    let mut sent = 0;
     // Whole references only: entries sharing one frame page together, or `next` would point back.
     for group in picked.chunk_by(|x, y| x.at == y.at) {
         let at = &group[0].at;
         let mut one: String = group.iter().map(|e| shown(id, e)).collect();
-        if !text.is_empty() && text.len() + one.len() > page {
+        let whole: Vec<Value> = group.iter().map(|e| msg(e, &e.text)).collect();
+        let bytes: usize = whole.iter().map(|m| m.to_string().len() + 1).sum();
+        if !text.is_empty() && (text.len() + one.len() > page || sent + bytes > page) {
             next = Some(at.clone());
             break;
         }
-        if one.len() > page {
-            let mut end = page;
-            while !one.is_char_boundary(end) {
-                end -= 1;
-            }
-            one = format!(
-                "{}…\n[cut: brigadier read {id}#{at} --raw writes it whole]\n\n",
-                &one[..end]
-            );
+        // Too big for a page: cut, the JSON's texts too, with the command that writes it whole.
+        if one.len() <= page && bytes <= page {
+            (text, sent) = (text + &one, sent + bytes);
+            list.extend(whole);
+            continue;
         }
+        let raw = format!("brigadier read {id}#{at} --raw");
+        one = format!("{}…\n[cut: {raw} writes it whole]\n\n", start(&one, page));
         text += &one;
-        list.extend(group.iter().map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files})));
+        let mut left = page;
+        for e in group {
+            // shortcut: 160 bytes a message for its fields and escapes; measure each if texts run past it.
+            let words = start(&e.text, left.saturating_sub(160));
+            left = left.saturating_sub(words.len() + 160);
+            let mut m = msg(e, words);
+            if words.len() < e.text.len() {
+                m["cut"] = raw.as_str().into();
+            }
+            list.push(m);
+        }
     }
     if text.is_empty() {
         text = "[nothing in this range]\n".into();
@@ -103,6 +116,15 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
     let mut reply = opened(data, id, row, text, list, 0);
     reply["next"] = next.map(|n| format!("{id}#{n}")).into();
     reply
+}
+
+/// The first `max` bytes of `s`, on a character boundary.
+fn start(s: &str, max: usize) -> &str {
+    let mut end = max.min(s.len());
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
 }
 
 /// The items under a reference, whole and uncapped, written to the reader's own `tmp/`.
