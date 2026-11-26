@@ -204,12 +204,15 @@ fn main() -> io::Result<()> {
                 }
                 for row in &rows {
                     let id = row["id"].as_str().unwrap_or("");
-                    if ends.insert(id.into(), row["finished"].clone()).as_ref()
-                        != Some(&row["finished"])
-                    {
+                    let was = ends.insert(id.into(), row["finished"].clone());
+                    if was.as_ref() != Some(&row["finished"]) {
                         let _ = ended.send(id.into());
-                        brigadier::browser::turn_ended(id);
-                        brigadier::computer::turn_ended(id);
+                        // Not on a running row's first sight: a new worker may already hold the
+                        // computer or a tab [D907].
+                        if was.is_some() || row["running"] != true {
+                            brigadier::browser::turn_ended(id);
+                            brigadier::computer::turn_ended(id);
+                        }
                         check::turn_ended(&data, id);
                     }
                 }
