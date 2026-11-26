@@ -50,12 +50,7 @@ pub(super) fn type_into(
         o.lines().next().is_some_and(|l| l.contains(": refused"))
     });
     if refused && !old.is_empty() {
-        let back = match still::undo(|| put_back(data, me, s, &field, &old, here)) {
-            Ok(()) => " Its old text is put back.".to_string(),
-            Err(why) => cap(&format!(
-                " Its old text isn't put back: {why}. Read it; it was \"{old}\"."
-            )),
-        };
+        let back = restore(data, me, s, &field, &old, here);
         return match done {
             Ok(out) => Ok(out.replacen('\n', &format!("{back}\n"), 1)),
             Err(e) => Err(refuse(&format!(
@@ -80,6 +75,11 @@ pub(super) fn type_into(
         (true, true) => format!(
             "{line}: [{n}] holds its old text too: \"{}\". Read it before going on.",
             s.values[&n]
+        ),
+        // Partly done, no answer in time, or not read back: the user's text it cleared goes back.
+        (false, _) if !old.is_empty() => format!(
+            "{line}: [{n}] doesn't read it back.{} Read it before going on.",
+            restore(data, me, s, &field, &old, here)
         ),
         (false, _) => {
             format!("{line}: [{n}] doesn't read it back. Read it before going on.")
@@ -151,6 +151,23 @@ impl Field {
         };
         let mut rows = (found["elements"].as_array()?.iter()).filter(here);
         rows.next().filter(|_| rows.next().is_none())
+    }
+}
+
+/// Puts back the text this cleared, as a sentence for the agent.
+fn restore(
+    data: &Path,
+    me: &str,
+    s: &mut Sess,
+    field: &Field,
+    old: &str,
+    here: &dyn Fn() -> bool,
+) -> String {
+    match still::undo(|| put_back(data, me, s, field, old, here)) {
+        Ok(()) => " Its old text is put back.".to_string(),
+        Err(why) => cap(&format!(
+            " Its old text isn't put back: {why}. Read it; it was \"{old}\"."
+        )),
     }
 }
 
