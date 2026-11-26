@@ -365,6 +365,7 @@ fn undo(owned: &Owned) -> io::Result<()> {
         let log = [
             "reflog",
             "show",
+            "--no-show-signature",
             "--format=%gs",
             &format!("refs/heads/{branch}"),
         ];
