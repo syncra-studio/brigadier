@@ -2,11 +2,10 @@
 //! its host is asked to take the message is marked so (`unsent`), so a new chat Home's book keeps
 //! (`--home`) and refused that way is given back [C65].
 
+// Its options as the book reads them: words that look like one (`--cid`) stay `--text`'s [C65].
+use crate::attach::book::{has_opt as has, opt as flag};
 use crate::attach::{self, book::unsent};
-use crate::{
-    accounts, arg, control, flag, has, models, overnight, owner, parts, plugins, settings, tabs,
-    title,
-};
+use crate::{accounts, arg, control, models, overnight, owner, plugins, settings, tabs, title};
 use brigadier_core::{self as core, Spec, adapters};
 use brigadier_frames::log;
 use serde_json::{Value, json};
@@ -109,7 +108,7 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
     if fresh && has(args, "--overnight") {
         overnight::on(data, &spec, None)?;
     }
-    let parts = parts(args)?;
+    let parts = flag(args, "--parts").map_or(Ok(Value::Null), serde_json::from_str)?;
     core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
     // The tabs are extras: a failure here never stops the session from starting.
     if fresh && has(args, "--carry-tabs") {

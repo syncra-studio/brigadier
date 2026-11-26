@@ -24,12 +24,12 @@ fn at(o: &[String], name: &str) -> Option<usize> {
 }
 
 /// `name`'s value among options `o`.
-pub(super) fn opt<'a>(o: &'a [String], name: &str) -> Option<&'a str> {
+pub(crate) fn opt<'a>(o: &'a [String], name: &str) -> Option<&'a str> {
     at(o, name).and_then(|i| o.get(i + 1)).map(String::as_str)
 }
 
 /// Whether switch `name` is among options `o`.
-pub(super) fn has_opt(o: &[String], name: &str) -> bool {
+pub(crate) fn has_opt(o: &[String], name: &str) -> bool {
     at(o, name).is_some()
 }
 

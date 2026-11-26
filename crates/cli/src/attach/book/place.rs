@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 pub enum Place {
@@ -88,13 +89,60 @@ impl Place {
 }
 
 pub(super) fn hold(path: &Path) -> io::Result<File> {
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(path)?;
-    lock.lock()?;
-    Ok(lock)
+    loop {
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)?;
+        lock.lock()?;
+        // One removed while this waited (`CidLock`) is made again: every holder locks the same.
+        if same(path, &lock) {
+            return Ok(lock);
+        }
+    }
+}
+
+fn same(path: &Path, lock: &File) -> bool {
+    let ino = |m: io::Result<fs::Metadata>| m.map(|m| m.ino()).ok();
+    ino(fs::metadata(path)).is_some_and(|at| ino(lock.metadata()) == Some(at))
+}
+
+/// Message `cid`'s lock, held till it's dropped. Home's then goes with its file once the message
+/// is settled, so the data folder keeps none; a session's folder takes its own [C65].
+pub(super) struct CidLock {
+    path: PathBuf,
+    book: Option<(PathBuf, String)>,
+    _file: File,
+}
+
+impl Drop for CidLock {
+    fn drop(&mut self) {
+        let Some((file, cid)) = &self.book else {
+            return;
+        };
+        let b = read(file);
+        let on_its_way = b.inflight.iter().chain(&b.adding).any(|g| &g.cid == cid);
+        if !on_its_way && !b.given.iter().any(|g| &g.cid == cid && !g.done) {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// Holds message `cid`'s lock, waiting for it.
+pub(super) fn hold_cid(place: &Place, cid: &str) -> io::Result<CidLock> {
+    let path = place.cid_lock(cid);
+    let file = hold(&path)?;
+    Ok(cid_lock(place, cid, path, file))
+}
+
+fn cid_lock(place: &Place, cid: &str, path: PathBuf, file: File) -> CidLock {
+    let book = place.home().map(|_| (place.file(), cid.to_string()));
+    CidLock {
+        path,
+        book,
+        _file: file,
+    }
 }
 
 /// A start's undo, as far as it got.
@@ -259,7 +307,12 @@ pub(super) fn resume(place: &Place) -> io::Result<()> {
             .write(true)
             .open(place.cid_lock(&cid))?;
         match lock.try_lock() {
-            Ok(()) => drop(undo(place, &cid, true)?),
+            // Removed meanwhile, its message is settled.
+            Ok(()) if !same(&place.cid_lock(&cid), &lock) => {}
+            Ok(()) => {
+                let _held = cid_lock(place, &cid, place.cid_lock(&cid), lock);
+                drop(undo(place, &cid, true)?);
+            }
             Err(TryLockError::WouldBlock) => {}
             Err(TryLockError::Error(e)) => return Err(e),
         }

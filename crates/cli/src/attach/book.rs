@@ -14,8 +14,8 @@ mod place;
 mod unsent;
 mod verdict;
 
-pub(super) use args::opts;
-use args::{bare, opt};
+use args::bare;
+pub(crate) use args::{has_opt, opt, opts};
 pub use ops::ops;
 pub use place::Place;
 use place::{Undo, crash_at, finish, hold};
@@ -365,7 +365,7 @@ pub fn going(
         error: Value::Null,
     };
     place::resume(place)?;
-    let _held = hold(&place.cid_lock(cid))?;
+    let _held = place::hold_cid(place, cid)?;
     attempt(place, queue, g, run)
 }
 
@@ -437,7 +437,8 @@ fn attempt(
         let Some(i) = list.iter().position(|each| each.cid == cid) else {
             return Ok(None);
         };
-        if stays {
+        // Why it stays, or why a try that proves nothing failed: shown again after a reload.
+        if stays || (how == How::Unknown && !error.is_null()) {
             list[i].error = error.clone();
         }
         if how == How::Unknown || stays {

@@ -176,7 +176,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     match cmd {
         // A new chat from Home's draft (`--home`) is kept in its book until it settles [C65].
-        "start" => match flag(args, "--home") {
+        "start" => match attach::book::opt(args, "--home") {
             Some(key) if key == HOME_DRAFT || key.starts_with("@home:") => {
                 attach::book::going(&attach::place(data, key)?, args, |a| start(data, a))
             }

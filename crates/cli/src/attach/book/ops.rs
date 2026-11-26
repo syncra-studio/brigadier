@@ -4,9 +4,7 @@
 
 use super::args::{has_opt, opt};
 use super::verdict::there;
-use super::{
-    Going, How, Place, Words, attempt, change, files_of, hold, opts, place, present, settle,
-};
+use super::{Going, How, Place, Words, attempt, change, files_of, opts, place, present, settle};
 use crate::{USAGE, arg, flag, has};
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -26,7 +24,7 @@ pub fn ops(
     let (id, cid) = (arg(args, 1)?, arg(args, 3)?);
     core::check_id(cid)?;
     place::resume(place)?;
-    let _held = hold(&place.cid_lock(cid))?;
+    let _held = place::hold_cid(place, cid)?;
     match (arg(args, 2)?, place) {
         ("retry", _) => retry(place, id, cid, run),
         ("adopt", _) => adopt(place, args, id, cid),
