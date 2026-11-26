@@ -44,6 +44,21 @@ fn valid(op: &[String], id: &str, cid: &str, queue: bool) -> bool {
     mine && at(1) == Some(id) && !banned.iter().any(|b| has(op, b))
 }
 
+impl super::Book {
+    /// Whether the UI's saved words are message `g`'s: no save since it went, or those very words.
+    pub(super) fn holds(&self, g: &Going) -> bool {
+        g.rev
+            .is_some_and(|r| self.ui.rev <= r || self.ui.words == g.words)
+    }
+
+    /// The UI's saved words go with message `g` when they're its own.
+    pub(super) fn release(&mut self, g: &Going) {
+        if self.holds(g) {
+            self.ui.words = Words::default();
+        }
+    }
+}
+
 fn retry(
     dir: &Path,
     id: &str,
@@ -76,6 +91,11 @@ fn retry(
         let error = "This message can't be tried again here: discard or edit it.";
         return Ok(json!({"ok": false, "unsettled": true, "cid": cid, "error": error}));
     }
+    // Tried again it's no longer the field's words: a save of them, none since, goes with it.
+    change(dir, |book| {
+        book.release(&g);
+        Ok(())
+    })?;
     attempt(dir, queue, Going { rev: None, ..g }, run)
 }
 
@@ -136,6 +156,10 @@ fn discard(dir: &Path, cid: &str) -> io::Result<Value> {
         );
     }
     change(dir, |book| {
+        // A save of its words, none since it went, goes with it.
+        if let Some((_, g)) = book.find(cid).map(|(q, g)| (q, g.clone())) {
+            book.release(&g);
+        }
         for queue in [false, true] {
             book.list(queue).retain(|each| each.cid != cid);
         }

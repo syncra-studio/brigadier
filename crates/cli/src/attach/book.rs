@@ -152,11 +152,12 @@ fn read(path: &Path) -> Book {
 fn shown(book: &Book, read: bool) -> Words {
     let mut out = Words::default();
     let given = book.given.iter().rev().filter(|g| g.done || !read);
-    let mine = |g: &Going| {
-        g.rev
-            .is_some_and(|r| book.ui.rev <= r || book.ui.words == g.words)
-    };
-    let held = read && book.inflight.iter().chain(&book.adding).any(mine);
+    let held = read
+        && book
+            .inflight
+            .iter()
+            .chain(&book.adding)
+            .any(|g| book.holds(g));
     let all = given
         .map(|g| &g.words)
         .chain((!held).then_some(&book.ui.words));
@@ -246,9 +247,8 @@ pub(crate) fn holding(dir: &Path) -> Vec<String> {
 /// No save of the UI's since it was sent, what the UI holds is that message, or an older save of
 /// it: it goes either way. A save of those very words is it too, its reply not back when it went.
 fn settle(book: &mut Book, g: Going, how: How, error: Value) -> Option<Given> {
-    let mine = |rev: u64| book.ui.rev <= rev || book.ui.words == g.words;
-    if how != How::Unknown && g.rev.is_some_and(mine) {
-        book.ui.words = Words::default();
+    if how != How::Unknown {
+        book.release(&g);
     }
     if how != How::Refused {
         return None;

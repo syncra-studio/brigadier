@@ -74,8 +74,11 @@ const subscribe = (listener: () => void) => {
 };
 export const useGoingOf = (session: string) => useSyncExternalStore(subscribe, () => of(session));
 
-/** The value after `name` in a message's command. */
-export const flagOf = (op: readonly string[], name: string) => (op.includes(name) ? op[op.indexOf(name) + 1] : undefined);
+/** The value after `name` in a message's command, among its options: after `send <id> <text>` or `queue <id> add <text>`, so its words are never read as one. */
+export function flagOf(op: readonly string[], name: string): string | undefined {
+  const opts = op.slice(op[0] === "queue" ? 4 : 3);
+  return opts.includes(name) ? opts[opts.indexOf(name) + 1] : undefined;
+}
 
 /** The chips messages on their way here carry: a read of Rust's doesn't show them waiting meanwhile. */
 export const heldChips = (session: string) => new Set(of(session).flatMap((each) => flagOf(each.op, "--chips")?.split(",") ?? []));
