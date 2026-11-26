@@ -181,19 +181,20 @@ pub fn settle(
         let h = h.to_lowercase();
         (reply.lines()).any(|l| l.trim().trim_start_matches('#').trim().to_lowercase() == h)
     };
-    let failed = match last {
-        None => Some("unfinished"),
-        Some(l) if l["outcome"] != "done" => {
-            // Its outcome (limited, stopped at its minutes), or a failure's own why.
-            let why = ["outcome", "why"].map(|k| l[k].as_str());
-            let why = why[0].filter(|o| *o != "failed").or(why[1]);
-            Some(why.unwrap_or("failed"))
-        }
-        _ => None,
-    }
-    .or(tools.then_some("tool"))
-    .or(reply.trim().is_empty().then_some("empty"))
-    .or((!headings().all(has)).then_some("headings"));
+    // A tool first: a stop it caused reads as stopped.
+    let failed = (tools.then_some("tool"))
+        .or(match last {
+            None => Some("unfinished"),
+            Some(l) if l["outcome"] != "done" => {
+                // Its outcome (limited, stopped at its minutes), or a failure's own why.
+                let why = ["outcome", "why"].map(|k| l[k].as_str());
+                let why = why[0].filter(|o| *o != "failed").or(why[1]);
+                Some(why.unwrap_or("failed"))
+            }
+            _ => None,
+        })
+        .or(reply.trim().is_empty().then_some("empty"))
+        .or((!headings().all(has)).then_some("headings"));
     let data = match failed {
         Some(why) => serde_json::json!({"event": "summary", "turn": turn, "failed": why}),
         None => {

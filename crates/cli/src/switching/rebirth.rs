@@ -45,7 +45,8 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
     };
-    // A summary turn past its minutes is stopped; its renewal goes ahead without it [rev 3 §4].
+    // A summary turn past its minutes, or one that called a tool, is stopped; its renewal goes
+    // ahead without it [rev 3 §4].
     if why == "late" {
         if crate::control::interrupt(data, id, "summary")?.is_none() {
             owner::call(data, id, json!({"op": "stop", "by": "summary"}))?;
