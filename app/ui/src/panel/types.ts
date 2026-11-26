@@ -72,3 +72,8 @@ export type Pr = {
  * why the last read didn't (null when it did), and each PR's last known facts.
  */
 export type KeptPrs = { okAt: number | null; error: string | null; branch?: string; prs: Pr[] };
+
+/** A process tree: its topmost process, checked by its start time (μs), its command or app's name, and the TCP ports it listens on. */
+type Tree = { pid: number; start_us: number; label: string; ports: number[] };
+/** One process tree a turn left running, and the open apps in it. */
+export type Job = Tree & { apps: Tree[] };

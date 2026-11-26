@@ -96,7 +96,9 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
         // Its Use pick unusable: on the login while Providers shows it, else not at all [C36].
         if let Err(why) = accounts::fell_back(data, &spec, c.as_ref(), "chat").map(|why| told = why)
         {
-            return Ok(Err(json!({"ok": false, "error": "sign_in", "message": why})));
+            return Ok(Err(
+                json!({"ok": false, "error": "sign_in", "message": why}),
+            ));
         }
         plugins::sync(data);
         core::share::one_local(data, project.as_ref(), &spec)?;

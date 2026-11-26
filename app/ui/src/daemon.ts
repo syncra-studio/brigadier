@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { KeptPrs } from "./panel/types";
+import type { Job, KeptPrs } from "./panel/types";
 import type { Mark, Reset } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import { pruneUncertain } from "./session/uncertain";
@@ -58,11 +58,6 @@ export type Row = {
   /** A worker's facts, Rust's, for 4.2's parts; absent for a session that isn't one [D3012]. */
   worker?: import("./workers/live").WorkerRow | null;
 };
-
-/** A process tree: its topmost process, checked by its start time (μs), its command or app's name, and the TCP ports it listens on. */
-type Tree = { pid: number; start_us: number; label: string; ports: number[] };
-/** One process tree a turn left running, and the open apps in it. */
-export type Job = Tree & { apps: Tree[] };
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { TooltipIconButton } from "../components/icon-button";
 import { showToast } from "../components/toast";
-import { type Job, useDaemon } from "../daemon";
+import { useDaemon } from "../daemon";
 import { StopCircle, Terminal, Warning } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Clock } from "../landing/icons";
@@ -13,6 +13,7 @@ import { useFamily } from "../workers/live";
 import { CardSection } from "./card";
 import { openBackgroundHistory } from "./open";
 import { Line, Rows } from "./source/rows";
+import type { Job } from "./types";
 
 /** A process on the card: the session it's left by, and its worker, null for the card's own session. */
 type Process = Job & { session: string; owner: Worker | null };
