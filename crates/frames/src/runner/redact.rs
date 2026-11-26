@@ -107,6 +107,7 @@ fn text(word: &str, depth: usize) -> String {
         return word.into();
     }
     if let Some((key, _)) = word.split_once(':')
+        && !key.contains('=')
         && secret(key)
     {
         return format!("{key}: {HIDDEN}");
