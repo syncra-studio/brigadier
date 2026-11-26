@@ -65,7 +65,13 @@ pub(super) fn screenshot(
     }
     let dir = core::session_dir(data, me).join("computer");
     fs::create_dir_all(&dir).map_err(|e| refuse(&e.to_string()))?;
-    let n = fs::read_dir(&dir).map_or(0, |d| d.count()) + 1;
+    // After the highest number taken: the folder holds the calls log too, and a name is never reused.
+    let n = fs::read_dir(&dir).map_or(0, |d| {
+        (d.flatten())
+            .filter_map(|e| e.path().file_stem()?.to_str()?.parse::<u64>().ok())
+            .max()
+            .unwrap_or(0)
+    }) + 1;
     let file = dir.join(format!("{n}.jpg"));
     let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file, "screenshot_format": "jpeg", "max_dimension": 1280});
     let found = call(data, "get_window_state", shot, here)?;
