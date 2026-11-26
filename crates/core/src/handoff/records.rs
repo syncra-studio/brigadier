@@ -294,6 +294,8 @@ pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -
     let fits = fit(
         &mut units,
         budget.map(|(whole, half)| (less(whole), less(half))),
+        id,
+        key,
     );
     // The first message's line says what the ceiling shortened (rev 2 §4.1, step 5).
     if units.iter().any(|u| u.mode != WHOLE)

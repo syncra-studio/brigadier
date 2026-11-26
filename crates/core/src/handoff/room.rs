@@ -6,9 +6,6 @@
 use super::estimate::tokens;
 use crate::{Spec, fold::Fold};
 
-/// A range line's cost, in estimated tokens, for the fit's sums.
-const RANGE: usize = 40;
-
 /// The room, in estimated tokens.
 pub(super) fn room(spec: &Spec, f: &Fold, to: &str, model: Option<&str>, pending: &str) -> usize {
     let line = crate::rebirth::line_to(spec, f, to, model);
@@ -120,7 +117,12 @@ impl Unit {
 /// their start; then the oldest runs into range lines, and last the oldest pairs' contexts to their
 /// question's reference. False when even that doesn't fit. With no budget, every line but the first
 /// and newest merges: the small hand-off's.
-pub(super) fn fit(units: &mut [Unit], budget: Option<(usize, usize)>) -> bool {
+pub(super) fn fit(
+    units: &mut [Unit],
+    budget: Option<(usize, usize)>,
+    id: &str,
+    key: impl Fn(&str) -> (u8, u64),
+) -> bool {
     let Some((whole, half)) = budget else {
         for u in units
             .iter_mut()
@@ -146,18 +148,26 @@ pub(super) fn fit(units: &mut [Unit], budget: Option<(usize, usize)>) -> bool {
         SHORT,
     );
     // The oldest runs, the first message's line kept, each a range line until a kept line ends it.
-    let mut open = false;
+    // The open run: its first and last reference, entries, the user's, and its line's cost.
+    let mut run: Option<(String, String, usize, usize, usize)> = None;
     for u in units.iter_mut() {
         if total <= whole {
             return true;
         }
         if u.keep != Keep::No {
-            open = false;
+            run = None;
             continue;
         }
-        total = total - u.cost() + if open { 0 } else { RANGE };
+        let (a, b, n, k, was) = run
+            .take()
+            .unwrap_or_else(|| (u.refs.0.clone(), u.refs.1.clone(), 0, 0, 0));
+        let a = std::cmp::min_by_key(a, u.refs.0.clone(), |r| key(r));
+        let b = std::cmp::max_by_key(b, u.refs.1.clone(), |r| key(r));
+        let (n, k) = (n + u.entries, k + usize::from(u.user));
+        let now = tokens(&range(id, &a, &b, n, k));
+        total = total - u.cost() - was + now;
         u.mode = MERGED;
-        open = true;
+        run = Some((a, b, n, k, now));
     }
     shape(units, &mut total, whole, |u| u.keep == Keep::Pair, BARE);
     total <= whole
@@ -206,14 +216,19 @@ pub(super) fn render(id: &str, units: &[Unit], key: impl Fn(&str) -> (u8, u64)) 
             .unwrap_or_default();
         let n: usize = run.iter().map(|u| u.entries).sum();
         let k = run.iter().filter(|u| u.user).count();
-        out += &match (a == b, n) {
-            (true, 1) => format!("- {id}#{a}: 1 entry: `brigadier read {id}#{a} --around 0`\n"),
-            (true, _) => format!("- {id}#{a}: {n} entries: `brigadier read {id}#{a} --around 0`\n"),
-            _ => format!(
-                "- {id}#{a}–{b}: {n} entries ({k} of the user's): `brigadier read {id}#{a} --to {b}`\n"
-            ),
-        };
+        out += &range(id, &a, &b, n, k);
         i += run.len();
     }
     out
+}
+
+/// A merged run's line: its references, `n` entries, `k` of them the user's.
+fn range(id: &str, a: &str, b: &str, n: usize, k: usize) -> String {
+    match (a == b, n) {
+        (true, 1) => format!("- {id}#{a}: 1 entry: `brigadier read {id}#{a} --around 0`\n"),
+        (true, _) => format!("- {id}#{a}: {n} entries: `brigadier read {id}#{a} --around 0`\n"),
+        _ => format!(
+            "- {id}#{a}–{b}: {n} entries ({k} of the user's): `brigadier read {id}#{a} --to {b}`\n"
+        ),
+    }
 }
