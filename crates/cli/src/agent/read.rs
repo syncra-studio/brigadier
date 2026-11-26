@@ -65,7 +65,10 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
     if b < a {
         return refuse(&format!("#{to} comes before #{at}."));
     }
-    let all = archive(data, id, true);
+    // With the answers given for the user, which aren't entries, in their place by reference (O50).
+    let mut all = archive(data, id, true);
+    all.extend(core::archive::answers_by(&core::session_dir(data, id)));
+    all.sort_by_key(|e| key(&e.at));
     let within = |e: &&Entry| key(&e.at).is_some_and(|k| (a..=b).contains(&k));
     let flag = if user { " --user" } else { "" };
     // Room for the heading and the next page's line.

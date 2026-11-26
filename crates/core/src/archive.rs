@@ -178,29 +178,43 @@ pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
     let mut found = None;
     // A fork's inherited answers too, under their `i<line>` references.
     each(dir, |item, here| {
-        if here == at
-            && let Some(text) = answer(item)
-        {
-            found = Some(Entry {
-                at: at.into(),
-                // Only the user's own is theirs: Overnight's, a reviewer's or a parent's says so (O50).
-                from: if item["control"]["by"].is_null() {
-                    "user"
-                } else {
-                    "answer"
-                },
-                who: item["control"]["by"].as_str().unwrap_or("").into(),
-                text,
-                files: vec![],
-                ts: item["ts"].as_u64().unwrap_or(0),
-                sent: vec![],
-                out: String::new(),
-                answer: true,
-            });
+        if here == at {
+            found = found.take().or_else(|| answer_entry(item, here));
         }
     })
     .ok()?;
     found
+}
+
+/// Every answer Overnight, a reviewer or a parent gave for the user, which `read` leaves out of its
+/// entries, under its reference, inherited ones too.
+pub fn answers_by(dir: &Path) -> Vec<Entry> {
+    let mut all = vec![];
+    let _ = each(dir, |item, here| {
+        if !item["control"]["by"].is_null() {
+            all.extend(answer_entry(item, here));
+        }
+    });
+    all
+}
+
+fn answer_entry(item: &Value, at: String) -> Option<Entry> {
+    Some(Entry {
+        at,
+        // Only the user's own is theirs: Overnight's, a reviewer's or a parent's says so (O50).
+        from: if item["control"]["by"].is_null() {
+            "user"
+        } else {
+            "answer"
+        },
+        who: item["control"]["by"].as_str().unwrap_or("").into(),
+        text: answer(item)?,
+        files: vec![],
+        ts: item["ts"].as_u64().unwrap_or(0),
+        sent: vec![],
+        out: String::new(),
+        answer: true,
+    })
 }
 
 /// A fork's inherited copy as entries, by line; none for any other session.
