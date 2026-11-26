@@ -241,7 +241,8 @@
     }
   };
 
-  const refs = () => (window.__brigadierRefs ??= { next: 1, byRef: new Map(), of: new WeakMap() });
+  /** `seen`: each ref's control as the last read said it, which a page reusing the node for another mustn't pass for. */
+  const refs = () => (window.__brigadierRefs ??= { next: 1, byRef: new Map(), of: new WeakMap(), seen: new Map() });
 
   const find = (ref) => {
     if (op.isolated) return refs().byRef.get(ref)?.deref() ?? null;
@@ -282,7 +283,10 @@
       line = "";
     };
     const describe = (element, role) => {
-      let text = `[${refOf(element)}] ${role} ${quoted(nameOf(element))}`;
+      const ref = refOf(element);
+      const said = `${role} ${quoted(nameOf(element))}`;
+      if (op.isolated) refs().seen.set(ref, said);
+      let text = `[${ref}] ${said}`;
       if (role === "textbox" || role === "searchbox" || role === "combobox" || role === "slider" || role === "spinbutton") {
         const value = element.isContentEditable ? element.innerText
           : element.localName === "select" ? element.selectedOptions?.[0]?.text : element.value;
@@ -368,6 +372,9 @@
     if (!element || !element.isConnected) {
       return { error: `There is no ${op.target} on the page now: read it again for its controls' refs.` };
     }
+    const was = op.isolated && refs().seen.get(op.target);
+    const now = `${controlOf(element) || element.localName} ${quoted(nameOf(element))}`;
+    if (was && was !== now) return { error: `${op.target} is now ${now}, not ${was}, so nothing was done: read it again for its controls' refs.` };
     return { element };
   };
 
