@@ -2,7 +2,7 @@
 
 use super::{Open, Thread};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -68,6 +68,21 @@ impl Thread {
             }
             if let (Some(answer), false) = (o.answer, work.is_null()) {
                 work["kept"] = o.kept_till(answer).into();
+            }
+        }
+    }
+
+    /// A running or held block's rows its fold would leave out, on its turn as they change: shut by
+    /// the user, it hides only its work, as once it folds [D63].
+    pub(super) fn show_kept(&mut self) {
+        let blocks = self.open.iter().chain(self.held.values().map(|(o, _)| o));
+        let lists: Vec<_> = blocks
+            .map(|o| (o.at, json!(o.kept_till(u64::MAX))))
+            .collect();
+        for (at, kept) in lists {
+            if self.turns[at]["kept"] != kept {
+                self.turns[at]["kept"] = kept;
+                self.changed_turns.insert(at);
             }
         }
     }
