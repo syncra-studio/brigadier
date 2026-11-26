@@ -8,6 +8,14 @@ use std::time::Duration;
 use std::{env, fs, io, process, thread};
 
 impl Agent {
+    /// A summary turn's words with the directives a `summary` mark in its home holds (`slow:N`, a
+    /// tool's, `exit:1`): Brigadier's own prompt has none of its own [repo-merge D92].
+    pub(super) fn summary_mark(&self, text: &str) -> Option<String> {
+        let summary = text.starts_with("Brigadier renews this conversation next.");
+        let mark = fs::read_to_string(self.home.join("summary")).ok()?;
+        summary.then(|| format!("{text} {mark}"))
+    }
+
     /// Acts out one directive. False when the turn ended inside it.
     pub(super) fn directive(&mut self, name: &str, n: u64, word: &str, done_before: u64) -> bool {
         let left = n.saturating_sub(done_before);

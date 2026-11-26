@@ -175,10 +175,9 @@ impl Agent {
         let body = if about_worker { "" } else { body };
         // A hand-off is prose: only the message after its Next step acts [D88], or what the task's
         // `reborn:N:a+b` asks of its first N fresh conversations: `a b` again [D144].
-        let again = text
-            .contains("\n## Next\n")
-            .then(|| self.reborn(text))
-            .flatten();
+        let again = (text.contains("\n## Next\n").then(|| self.reborn(text)))
+            .flatten()
+            .or_else(|| self.summary_mark(text));
         let body = match text.split_once("\n## Next\n") {
             _ if again.is_some() => again.as_deref().unwrap_or(""),
             Some((_, next)) => next.split_once('\n').map_or("", |n| n.1).trim(),
