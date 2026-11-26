@@ -7,13 +7,13 @@ export type Quota = { account: string; name: string; limits: { name: string; use
 
 /**
  * What an account has left, as a bar of its tightest limit [D337, D2039]: only the window's name once its reset has
- * passed [D379], "Not reported yet" while every window is unknown.
+ * passed [D379], "No recent reading" while every window is unknown (never read, or read over an hour ago).
  */
 export function QuotaLeft({ account: { name, limits } }: { account: Quota }) {
   const now = Date.now();
   const over = (limit: Quota["limits"][number]) => limit.resets !== null && limit.resets <= now;
   const top = tightest(limits.filter((limit): limit is Limit => limit.used !== null && !over(limit)));
-  if (!top) return <p className="text-xs text-muted-foreground">{name} · {limits.find(over)?.name ?? "Not reported yet"}</p>;
+  if (!top) return <p className="text-xs text-muted-foreground">{name} · {limits.find(over)?.name ?? "No recent reading"}</p>;
   const left = 100 - top.used;
   const resets = top.resets === null ? null : countdown(top.resets, now);
   return (

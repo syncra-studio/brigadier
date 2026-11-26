@@ -99,12 +99,12 @@ export function useFamily(id: string): { worker: Worker; row: Row }[] {
   return workers.filter((row) => under.has(row.id)).map((row) => ({ worker: asWorker(row), row })).toSorted((a, b) => a.worker.startedAt - b.worker.startedAt);
 }
 
-/** Workers named by id, a gone one as "a worker". */
+/** Workers named by id, a gone one as "a worker" that ended: how it went is gone with it. */
 function useNamed(ids: readonly string[]): Worker[] {
   const rows = useDaemon().rows ?? [];
   return ids.map((id) => {
     const row = rows.find((each) => each.id === id);
-    return row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : { id, name: "a worker", kind: "done", word: "Done", startedAt: 0 };
+    return row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : { id, name: "a worker", kind: "stopped", word: "Ended", startedAt: 0 };
   });
 }
 

@@ -127,7 +127,7 @@ function WorkHeader({ worker, turns }: { worker: Worker; turns: readonly Turn[] 
   if (turns.length === 0 && waiting(worker)) return null;
   return (
     <div data-slot="worker-work-header" className="text-sm text-faint-foreground tabular-nums">
-      {worker.kind === "stopped" ? `Ended after ${took}` : done ? `Worked for ${took}` : `Working for ${took}`}
+      {worker.kind === "stopped" ? `Ended after ${took}` : worker.kind === "paused" ? `Paused · worked for ${took}` : done ? `Worked for ${took}` : `Working for ${took}`}
     </div>
   );
 }
