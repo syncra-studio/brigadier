@@ -22,7 +22,8 @@ The night: you decide everything, and nothing asks them.
    brigadier start --reviewing session "<the part, and how to run it>"
    Fix what it finds and have it reviewed again.
 6. brigadier overnight proven <n> --by <reviewer id> --proof "<what it ran and saw>"
-   Taken only from your own finished reviewer that began at the commit your branch is at now.
+   Taken only from your own finished reviewer that began at the commit your branch is at now
+   and found nothing (`Findings: 0`); one that found problems: fix them, have it reviewed again.
    What can't be done: brigadier overnight left <n> --why "<why>" [--next "<what would>"]
    Built but not reviewed isn't left: start its reviewer, also when the user wanted the work done
    by you alone.

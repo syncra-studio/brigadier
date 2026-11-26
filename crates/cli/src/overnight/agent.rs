@@ -195,11 +195,47 @@ fn reviewer(data: &Path, me: &str, by: &str) -> io::Result<String> {
             "That reviewer saw another commit than your branch is at now: have what it is now reviewed.",
         ));
     }
+    // Proven only by a review that found nothing (C43): its count as the switch's record of the
+    // worker it reviewed keeps it, else as its outcome note.
+    let of = l.review["of"].as_str().unwrap_or("");
+    let said = if l.review["switch"] == true {
+        (workers::link(data, of).filter(|a| a.review["by"] == by))
+            .and_then(|a| a.review["findings"].as_u64())
+    } else {
+        let into = if of == "session" { by } else { of };
+        let mine = format!("{by}.");
+        (workers::outcomes(data, into).into_iter().rev())
+            .find(|n| {
+                n["phase"] == "review" && n["id"].as_str().is_some_and(|i| i.starts_with(&mine))
+            })
+            .and_then(|n| n["findings"].as_u64())
+    };
+    match said {
+        Some(0) => {}
+        Some(n) => {
+            let n = if n == 1 {
+                "1 problem".into()
+            } else {
+                format!("{n} problems")
+            };
+            return Err(no(&format!(
+                "That reviewer found {n}: fix them and have it reviewed again."
+            )));
+        }
+        None => {
+            return Err(no(
+                "That reviewer didn't say how many problems it found: have it reviewed again.",
+            ));
+        }
+    }
     let ran = |k: &str| l.ran[k].as_str().unwrap_or("").to_string();
     let name = [ran("name"), ran("model"), ran("agent")]
         .into_iter()
         .find(|n| !n.is_empty());
-    Ok(format!("Reviewed by {}", name.unwrap_or_else(|| by.into())))
+    Ok(format!(
+        "Reviewed by {} · found nothing",
+        name.unwrap_or_else(|| by.into())
+    ))
 }
 
 fn left(dir: &Path, call: &Call) -> io::Result<String> {
