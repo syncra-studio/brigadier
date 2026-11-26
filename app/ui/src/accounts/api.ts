@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
+import type { Row } from "../daemon";
 import type { Run } from "../onboarding/agents";
 import { errorText, run } from "../onboarding/api";
 
@@ -73,6 +74,51 @@ export function loadAccounts(): Promise<void> {
     (reply) => land({ agents: reply.agents, switchAgents: reply.switch_agents, error: undefined }),
     (cause) => land({ error: errorText(cause) }),
   );
+}
+
+// One automatic read at a time, and one more after it when a turn ended meanwhile: a read probes every account.
+let reading = false;
+let again = false;
+function refresh(): void {
+  if (reading) {
+    again = true;
+    return;
+  }
+  reading = true;
+  void loadAccounts().finally(() => {
+    reading = false;
+    if (!again) return;
+    again = false;
+    refresh();
+  });
+}
+
+/**
+ * Usage read again when a turn ends (its run reported what it used) and once a shown limit resets (Rust then calls it
+ * unknown), so the rail's dot isn't an old read hours later [D28, D41].
+ */
+export function useFreshAccounts(rows: Row[] | undefined): void {
+  // Each row's last turn end: a newer one anywhere means a run reported, whatever else still runs.
+  const ended = rows ? rows.reduce((latest, row) => Math.max(latest, row.finished), 0) : null;
+  const before = useRef<number | null>(null);
+  useEffect(() => {
+    if (ended === null) return;
+    if (before.current !== null && ended > before.current) refresh();
+    before.current = ended;
+  }, [ended]);
+  // The soonest reset not yet read again; kept until its read runs, so a render in between doesn't drop it.
+  const read = useRef(0);
+  const resets = (useAccounts().agents ?? []).flatMap((agent) => agent.accounts?.list ?? []).flatMap((account) => account.check.usage ?? []);
+  const next = Math.min(...resets.map((limit) => limit.resets ?? Infinity).filter((at) => at > read.current));
+  useEffect(() => {
+    // shortcut: setTimeout holds at most 2^31 ms (24 days), so a reset further off waits for a later load to arm it.
+    if (!Number.isFinite(next) || next - Date.now() > 2 ** 31 - 2000) return;
+    const timer = setTimeout(() => {
+      read.current = next;
+      refresh();
+    }, Math.max(0, next - Date.now() + 1000));
+    return () => clearTimeout(timer);
+  }, [next]);
 }
 
 /** A setting of the accounts: shown at once, then the list again; on failure it goes back and throws [D30]. */

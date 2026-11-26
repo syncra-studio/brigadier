@@ -2,7 +2,7 @@ import { PrDialogHost } from "./panel/create-pr";
 import { lazy, type ReactNode, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 
-import { loadAccounts } from "./accounts/api";
+import { loadAccounts, useFreshAccounts } from "./accounts/api";
 import { SessionOfThread } from "./accounts/limit";
 import { SidebarProvider } from "./components/sidebar";
 import { WorkingLine } from "./components/thread/work";
@@ -104,6 +104,7 @@ function App() {
       preloadRouting();
     }
   }, [daemon]);
+  useFreshAccounts(saved);
   // Notices and the Dock badge for the app's lifetime [D200, D2012].
   useNotices(open);
   // A window held clear for the first launch's intro (main's intro.ts) shows at once when there's none.
