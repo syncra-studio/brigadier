@@ -47,8 +47,10 @@ impl Pr {
         if head.is_empty() || head == base {
             return err("Name a new branch for this pull request.");
         }
-        // A base no one could name may be the branch checked out: none of it goes onto that one.
-        let stays = c.branch.is_none_or(|name| name == self.branch);
+        // A base no one could name may be the branch checked out: none of it goes onto that one,
+        // unless an earlier try made it for this PR.
+        let stays = c.branch.is_none_or(|name| name == self.branch)
+            && !branch::marked(&self.checkout, &self.branch);
         if base.is_empty() && stays && (c.commit.is_some() || head == on) {
             return err(UNLEARNED);
         }
@@ -57,6 +59,7 @@ impl Pr {
             && name != self.branch
         {
             branch::create(&self.checkout, name, None, &stop)?;
+            branch::mark(&self.checkout, name, &stop)?;
         }
         let committed = match c.commit {
             Some(message) => branch::commit_all(&self.checkout, message, &stop)?,

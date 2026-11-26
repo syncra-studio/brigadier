@@ -96,6 +96,25 @@ fn git(checkout: &Checkout, args: &[&str], stop: &AtomicBool) -> io::Result<()> 
     }
 }
 
+/// Marks `name` as a branch Create PR made, so a retry knows it isn't the base [D168]. Git drops it
+/// with the branch.
+pub fn mark(checkout: &Checkout, name: &str, stop: &AtomicBool) -> io::Result<()> {
+    let key = format!("branch.{name}.brigadier-pr");
+    git(checkout, &["config", "--local", &key, "true"], stop)
+}
+
+/// Whether Create PR made `name` (`mark`).
+pub fn marked(checkout: &Checkout, name: &str) -> bool {
+    let key = format!("branch.{name}.brigadier-pr");
+    let never = AtomicBool::new(false);
+    let out = crate::git::read(
+        &checkout.root,
+        &["config", "--local", "--get", &key],
+        &never,
+    );
+    out.is_ok_and(|o| String::from_utf8_lossy(&o).trim() == "true")
+}
+
 fn check_name(checkout: &Checkout, name: &str) -> io::Result<()> {
     let ok = read(
         &checkout.root,
