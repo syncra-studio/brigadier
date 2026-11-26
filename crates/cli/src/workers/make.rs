@@ -110,6 +110,7 @@ pub fn start(
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
     };
+    routing::check_unchecked(data, &parent.cwd);
     let held = models::held(data, parent.project.as_deref());
     let project = parent
         .project

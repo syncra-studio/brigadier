@@ -112,6 +112,12 @@ fn start(
     if fork && branch {
         return Err(refuse("A fork already has your files: leave out --branch."));
     }
+    // A named model is picked as a worker's is, so a never-checked instance checks first [C66].
+    if (value("--model").is_some() || value("--effort").is_some())
+        && let Ok(p) = core::load(data, me)
+    {
+        routing::check_unchecked(data, &p.cwd);
+    }
     let family = workers::family_lock(data, me).map_err(said)?;
     if workers::closing(data, me) {
         return Err(refuse("This session is being deleted."));

@@ -230,6 +230,17 @@ pub(crate) fn resolve(
                 "No model you may use makes images. {DRAWING}"
             )));
         }
+        // Proposed: no agent listed any model, so Routing has nothing to set: a check is missing [C66].
+        let none = |g: &Value, k: &str| g[k].as_array().is_none_or(|m| m.is_empty());
+        if let Some(j) = &name
+            && groups
+                .iter()
+                .all(|g| none(g, "models") && none(g, "hidden"))
+        {
+            return Err(refuse(&format!(
+                "No agent listed a model when it was last checked, so your {j} job has none: Providers › Check again checks them."
+            )));
+        }
         let why = match by_why.is_empty() {
             true => String::new(),
             false => format!(" {}.", jobs::reasons(&by_why)),
