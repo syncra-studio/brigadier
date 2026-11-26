@@ -29,7 +29,10 @@ pub fn list(
     let archived: Vec<Value> = rows
         .values()
         // A worker that went with its chat comes back with it.
-        .filter(|r| r["worker"].is_null() || !r["boss"].is_null() || r["archivedWith"] != true)
+        .filter(|r| {
+            let dir = core::session_dir(data, r["id"].as_str().unwrap_or(""));
+            r["worker"].is_null() || !core::session::went_with(&dir)
+        })
         .filter(|r| r["archived"].as_u64().is_some())
         .map(|r| {
             let id = r["id"].as_str().unwrap_or("");

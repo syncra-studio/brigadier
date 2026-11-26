@@ -91,3 +91,14 @@ pub(super) fn live(owned: &Owned) -> Option<&Path> {
     let link = fs::read_to_string(path.join(".git")).ok()?;
     (path.join(link.strip_prefix("gitdir:")?.trim()).exists()).then_some(path)
 }
+
+/// Runs `f` on where a free sets the worktree's folder aside, `<folder>~freeing`; none there is done.
+pub(super) fn aside(owned: &Owned, f: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<()> {
+    let Some(path) = owned.path.as_deref() else {
+        return Ok(());
+    };
+    match f(Path::new(&format!("{path}~freeing"))) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        done => done,
+    }
+}

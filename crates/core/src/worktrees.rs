@@ -28,7 +28,7 @@ pub(crate) mod landing;
 pub mod lost;
 mod missing;
 mod modes;
-use missing::{live, registration};
+use missing::{aside, live, registration};
 pub mod names;
 use copy::include;
 pub use hand::{RETAINED, folder, handover};
@@ -350,12 +350,13 @@ fn undo(owned: &Owned) -> io::Result<()> {
 
 /// Frees the session's worktree [D180]: its changes are committed to its branch as a checkpoint
 /// first, and if that fails nothing is removed and the error says why. Then the worktree and its
-/// registration go; the branch and this record stay, for a restore or a delete. The caller holds
-/// `lock`.
+/// registration go; the branch and this record stay, for a restore or a delete. Under `lock`.
 pub fn free(dir: &Path) -> io::Result<()> {
     let Some(owned) = read(dir)? else {
         return Ok(());
     };
+    // One a free cut short set aside, before a restore made the worktree again.
+    aside(&owned, |a| fs::remove_dir_all(a))?;
     if let Some(path) = live(&owned) {
         let branch = branch::at(path)?;
         if Some(&branch) != owned.branch.as_ref() {
@@ -381,8 +382,11 @@ pub fn free(dir: &Path) -> io::Result<()> {
             )?;
         }
         modes::keep(dir, path)?;
+        // Whole, in one step: a free cut short then never checkpoints a folder half removed.
+        aside(&owned, |a| fs::rename(path, a))?;
     }
-    unregister(&owned)
+    unregister(&owned)?;
+    aside(&owned, |a| fs::remove_dir_all(a))
 }
 
 /// Whether the session's worktree is in place.
