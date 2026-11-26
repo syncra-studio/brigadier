@@ -86,8 +86,11 @@ pub(super) fn place(
     let mut room = vec![];
     for id in ids {
         let key = format!("{name}/{id}");
+        // Not its own: an answer tried again, or a move, replaces it below.
         let n = if auto {
-            held[&key].as_array().map_or(0, Vec::len)
+            (held[&key].as_array().into_iter().flatten())
+                .filter(|r| r["wid"] != wid)
+                .count()
         } else {
             0
         } as u32;

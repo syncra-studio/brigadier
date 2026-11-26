@@ -112,6 +112,18 @@ impl Thread {
                 self.kept_row(row);
                 return;
             }
+            // A card drawn again (its offered model filled) takes its old one's row, by its id.
+            let old = item["replaces"].as_str();
+            let was = (self.pending.iter())
+                .find(|&&at| old.is_some_and(|o| self.items[at]["request"]["id"] == o));
+            if let Some(&at) = was {
+                for k in ["question", "options", "request"] {
+                    self.items[at][k] = row[k].clone();
+                }
+                self.changed_items.insert(at);
+                self.pending_changed = true;
+                return;
+            }
             let at = self.add(row);
             self.pending.push(at);
             self.pending_changed = true;

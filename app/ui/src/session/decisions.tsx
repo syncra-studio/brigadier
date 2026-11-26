@@ -146,7 +146,11 @@ function send(run: Runner, session: string, answer: Answer): Promise<void> {
   return run(["answer", session, request.id, ...args]).then((reply) => {
     if (reply.ok) return setAnswer(session, request.id, { ...answer, state: reply.result === "delivered" ? "delivered" : "logged" });
     const error = refusal(reply);
-    setAnswer(session, request.id, { ...answer, error });
+    // A held worker's card drawn again (its model filled): the refusal shows on the new card, the old id gone [C22].
+    if (typeof reply.request === "string" && reply.request !== request.id) {
+      setAnswer(session, request.id, undefined);
+      setAnswer(session, reply.request, { ...answer, request: { ...request, id: reply.request }, error });
+    } else setAnswer(session, request.id, { ...answer, error });
     throw new Error(error);
   });
 }

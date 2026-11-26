@@ -277,8 +277,11 @@ fn halt(data: &Path, top: &str, wid: &str, by: &str) -> io::Result<()> {
             r.state = "stopped".into();
             save(data, &pid, &r)?;
         }
+        // Its card settled under the lock, so a redraw of it can't come between the read and this.
+        crate::routing::stopped(data, wid, by);
+    } else {
+        crate::routing::stopped(data, wid, by);
     }
-    crate::routing::stopped(data, wid, by);
     let started = Instant::now();
     while make::making(&[wid.to_string()]) && started.elapsed().as_secs() < 30 {
         std::thread::sleep(Duration::from_millis(100));

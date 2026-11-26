@@ -65,9 +65,17 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     {
         return Ok(());
     }
+    let (id, told) = draw(data, wid, hold)?;
+    workers::told_held(data, wid, &id, &told)
+}
+
+/// Writes a hold's card, replacing any standing one in the same note (the fold keeps the last),
+/// so no moment has none: its id, and the words its parent is told.
+fn draw(data: &Path, wid: &str, hold: &Value) -> io::Result<(String, String)> {
     let id = format!("hold-{}", &adapters::uuid()[..8]);
-    let known = hold["resets"].as_u64();
-    let until = known.unwrap_or(log::now_ms() + SKIP_MS);
+    // A card drawn again keeps its first one's word on whether the reset was known.
+    let known = hold["resets"].as_u64().filter(|_| hold["guessed"] != true);
+    let until = hold["resets"].as_u64().unwrap_or(log::now_ms() + SKIP_MS);
     let when = clock(until);
     let to = &hold["use"];
     let why = str_of(hold, "why");
@@ -86,7 +94,7 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
         let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "retry": true,
             "use": to, "job": job, "request": request});
         owner::call(data, wid, json!({"op": "note", "data": note}))?;
-        return workers::told_held(data, wid, &id, why);
+        return Ok((id, why.into()));
     }
     let mut options = vec![
         json!({"label": format!("Wait until {when}"), "description": "Then it starts as picked"}),
@@ -113,13 +121,15 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     // `held`: its card offers only these answers, no words of the user's and no Skip.
     let request = json!({"id": id, "title": "Out of quota", "items": [item], "held": true});
     let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "resets": until,
-        "use": to, "job": job, "request": request});
+        "use": to, "job": job, "out": hold["out"], "replaces": hold["id"], "guessed": known.is_none(),
+        // The id its parent was told under, kept through redraws, so that word still stands.
+        "told": hold.get("told").filter(|t| t.is_string()).unwrap_or(&hold["id"]), "request": request});
     owner::call(data, wid, json!({"op": "note", "data": note}))?;
     let resets = match known {
         Some(_) => format!("resets {when}"),
         None => format!("no reset time is known (if the user picks Wait, it starts at {when})"),
     };
-    workers::told_held(data, wid, &id, &format!("{why}, {resets}"))
+    Ok((id, format!("{why}, {resets}")))
 }
 
 /// The user's answer on a hold's card: "Use …" runs its model now, "Wait …" waits for
@@ -149,7 +159,8 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
     };
     if hold["retry"] == true {
         let reply = match choice.starts_with("Retry on ") {
-            true => go(data, wid, Some(to))?,
+            // shortcut: a retry's model that filled since runs anyway; a fresh retry card would need a new ladder rule (C22).
+            true => go(data, wid, Some(to), None)?,
             false => {
                 let pid = workers::link(data, wid)
                     .map(|l| l.parent)
@@ -163,12 +174,27 @@ pub(super) fn answer(data: &Path, wid: &str, request: &str, choice: &str) -> io:
     let used = choice.starts_with("Use ") && to.is_object();
     let phase = if used { "answered" } else { "waiting" };
     let note = json!({"event": "hold", "phase": phase, "id": request, "choice": choice,
-        "resets": hold["resets"], "use": to, "job": hold["job"]});
-    let reply = match used {
-        true => go(data, wid, Some(to))?,
-        false => json!({"ok": true}),
-    };
-    taken(data, wid, reply, note)
+        "resets": hold["resets"], "use": to, "job": hold["job"], "told": hold["told"]});
+    if used {
+        let reply = go(data, wid, Some(to), Some(&hold))?;
+        return taken(data, wid, reply, note);
+    }
+    // Under the redraw's lock: a Use refused meanwhile has drawn another card, so this one's gone.
+    let _family = crate::workers::family_lock(data, &crate::workers::place(data, wid).0)?;
+    if !waits_on(data, wid, request)? {
+        return Ok(not_waiting());
+    }
+    taken(data, wid, json!({"ok": true}), note)
+}
+
+/// Whether card `request` still stands unanswered on worker `wid`.
+fn waits_on(data: &Path, wid: &str, request: &str) -> io::Result<bool> {
+    let f = core::fold(&core::session_dir(data, wid), true)?.fold;
+    Ok(core::fold::held(&f) && f.hold.as_ref().is_some_and(|h| h["id"] == request))
+}
+
+fn not_waiting() -> Value {
+    json!({"ok": false, "error": "not_waiting", "message": "This isn't waiting on you."})
 }
 
 /// A hold's answer taken: its note settles the card.
@@ -229,13 +255,15 @@ pub(super) fn resume(data: &Path, wid: &str) -> io::Result<Value> {
     };
     let note =
         json!({"event": "hold", "phase": "answered", "id": hold["id"], "choice": hold["choice"]});
-    let reply = go(data, wid, None)?;
+    let reply = go(data, wid, None, None)?;
     taken(data, wid, reply, note)
 }
 
 /// Goes on after a hold: on `entry` (the card's), else as picked. One never started is made
-/// now; one that ran is moved through the switch path, behind its divider [D241, D245].
-fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
+/// now; one that ran is moved through the switch path, behind its divider [D241, D245]. With
+/// `card`, the hold whose "Use" picked `entry`: an entry with no room now is refused and the card
+/// drawn again with what has room [C22].
+fn go(data: &Path, wid: &str, entry: Option<&Value>, card: Option<&Value>) -> io::Result<Value> {
     let l = workers::link(data, wid).ok_or_else(|| io::Error::other("not a worker"))?;
     let spec = core::load(data, wid)?;
     let f = core::fold(&spec.dir, true)?.fold;
@@ -265,7 +293,7 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                 Err(why) => return Ok(json!({"ok": false, "error": "invalid", "message": why})),
             };
             let base = account_for(data, &parent, &pf, &backend);
-            let (account, kept) = place(
+            let placed = place(
                 data,
                 a,
                 str_of(e, "model"),
@@ -274,8 +302,28 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                 wid,
                 "\0",
                 true,
-            )
-            .unwrap_or_else(|_| {
+            );
+            if let (Err(at), Some(card)) = (&placed, card) {
+                let t = table(data, &groups);
+                let job = card["job"].as_str();
+                let mut hold = card.clone();
+                hold["use"] = super::hold::other(data, &groups, &t, job, &parent, &pf);
+                drop(_one);
+                // Under Stop's lock, and only while the same card still waits: a Stop meanwhile wins.
+                let root = crate::workers::place(data, wid).0;
+                let _family = crate::workers::family_lock(data, &root)?;
+                let stopped = crate::workers::record(data, &l.parent, wid)
+                    .is_some_and(|r| r.state == "stopped");
+                if stopped || !waits_on(data, wid, str_of(card, "id"))? {
+                    return Ok(not_waiting());
+                }
+                let (id, _) = draw(data, wid, &hold)?;
+                let when = at.map_or("now".into(), |at| format!("until {}", clock(at)));
+                let name = m.get("name").unwrap_or(&e["model"]).as_str().unwrap_or("");
+                return Ok(json!({"ok": false, "error": "full", "request": id,
+                    "message": format!("{name} has no room {when}. The card shows what does.")}));
+            }
+            let (account, kept) = placed.unwrap_or_else(|_| {
                 (
                     base.clone(),
                     json!({"label": label(&accounts::load(data), &backend, &base)}),

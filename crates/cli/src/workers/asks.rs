@@ -32,7 +32,7 @@ pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
         || crate::peers::question(data, wid).is_some_and(|mid| mid == id)
         || (core::fold(&core::session_dir(data, wid), true).ok())
             .and_then(|f| f.fold.hold)
-            .is_some_and(|h| h["id"] == id)
+            .is_some_and(|h| h["id"] == id || h["told"] == id)
 }
 
 /// The daemon's pass for a session whose turn waits on Brigadier's side: a worker's ask written
