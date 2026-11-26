@@ -15,6 +15,8 @@ use std::path::Path;
 /// The row's words once it goes, and once the agent took it.
 const GOING: &str = "A worker's result that was waiting is on its way.";
 const TOOK: &str = "A worker's result that was waiting is delivered.";
+/// `going` of one a Resume carried whose row didn't take its on-its-way words yet.
+pub(super) const RESUMED: &str = "resumed";
 
 /// Send's own routing check on the parent's next launch, and that launch's agent.
 fn ruled(spec: &Spec, f: &fold::Fold) -> (Option<String>, &'static str) {
@@ -50,7 +52,8 @@ pub(super) fn after(
     if f.cids.contains_key(&r.id) {
         r.state = "sent".into();
         if !r.refused.is_empty() {
-            on_way(data, pid, &r);
+            // Unsaid, its delivery's row says it once proven.
+            let _ = on_way(data, pid, &r);
         }
         return write_json(path, &r);
     }
@@ -76,8 +79,8 @@ pub(super) fn after(
 }
 
 /// One that waited went with a message: its row says it's on its way, or delivered, once proven.
-pub(super) fn on_way(data: &Path, pid: &str, r: &Res) {
-    let _ = note(data, pid, r, "info", GOING);
+pub(super) fn on_way(data: &Path, pid: &str, r: &Res) -> io::Result<()> {
+    note(data, pid, r, "info", GOING)
 }
 
 /// Each that waited and went since: its row says delivered once the parent's log proves the agent
@@ -90,6 +93,7 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
         .filter(|(_, r)| !r.refused.is_empty())
     {
         let proof = match r.state.as_str() {
+            "taken" if r.going == RESUMED => Some("going"),
             "taken" if r.going.is_empty() => Some("delivered"),
             "taken" => settled(f, &r.going, state),
             "delivered" => Some("delivered"),
@@ -101,7 +105,12 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
             continue;
         };
         // Not shown (its host not back yet): it stays to say, next pass.
-        if proof == "delivered" && note(data, pid, &r, "info", TOOK).is_err() {
+        let words = match proof {
+            "delivered" => TOOK,
+            "going" => GOING,
+            _ => "",
+        };
+        if !words.is_empty() && note(data, pid, &r, "info", words).is_err() {
             more = true;
             continue;
         }

@@ -97,10 +97,12 @@ pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
     {
         r.state = "taken".into();
         if !r.refused.is_empty() {
-            unsent::on_way(data, pid, &r);
-            // A Resume's input is unknown here: on its way is all its row says.
-            if r.going.is_empty() {
-                r.refused.clear();
+            // A Resume's input is unknown here: on its way is all its row says, said again next
+            // pass if its host didn't take the note.
+            match (unsent::on_way(data, pid, &r).is_ok(), r.going.is_empty()) {
+                (true, true) => r.refused.clear(),
+                (false, true) => r.going = unsent::RESUMED.into(),
+                _ => {}
             }
         }
         let _ = write_json(&path, &r);

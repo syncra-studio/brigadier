@@ -95,7 +95,11 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
     // Only held ones: kept open, not folded, while the parent idles.
     let any = |s: &str| results.iter().any(|(_, r)| r.state == s);
     let held = any("held");
-    if held && !any("written") && !any("sent") {
+    // One that waited and went, its delivery still to say, is settled below too.
+    let to_say = (results.iter()).any(|(_, r)| {
+        !r.refused.is_empty() && !["written", "held", "sent"].contains(&r.state.as_str())
+    });
+    if held && !any("written") && !any("sent") && !to_say {
         return Ok(());
     }
     let dir = core::session_dir(data, pid);
