@@ -78,6 +78,8 @@ export function watchActivity(guest: WebContents): void {
     add(id, "navigation", `opened a separate window at ${shownUrl(url)}. Only the user can see and use it, not you: ask them if it needs them.`);
     window.once("closed", () => { if (!guest.isDestroyed()) add(id, "navigation", "that separate window closed"); });
   });
+  // agent.ts tells a navigate whose page stayed by this line.
+  guest.on("will-prevent-unload", () => add(id, "navigation", "the page asked to stay (unsaved changes), so it didn't leave"));
   guest.on("render-process-gone", (_event, { reason }) => add(id, "error", `the page's process ended: ${reason}`));
   guest.on("console-message", ({ level, message, sourceId, lineNumber }) => {
     sweepSoon(guest);

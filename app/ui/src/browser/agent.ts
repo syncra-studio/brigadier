@@ -279,14 +279,21 @@ async function act(tab: string, op: Op, owner: string, label: string, driver: st
       return { result: "events", tab, lines, next, dropped };
     }
     case "navigate":
-      loadStarts(tab);
-      agentLoad(tab, op.url);
-      await loaded(tab);
-      return page(tab, owner, driver);
-    case "go":
-      go(tab, op.action);
-      await settled(tab);
-      return page(tab, owner, driver);
+    case "go": {
+      // A page's beforeunload may keep it (main's browserAgentActivity.ts tells so among its navigations).
+      const since = Number((await agentEvents(tab, Number.MAX_SAFE_INTEGER, []) as { next?: unknown }).next);
+      if (op.op === "navigate") {
+        loadStarts(tab);
+        agentLoad(tab, op.url);
+        await loaded(tab);
+      } else {
+        go(tab, op.action);
+        await settled(tab);
+      }
+      const { lines } = await agentEvents(tab, since, ["navigation"]) as { lines?: string[] };
+      const stayed = lines?.some((line) => line.endsWith("the page asked to stay (unsaved changes), so it didn't leave"));
+      return stayed ? failed("The page asked to stay (unsaved changes); nothing was done.") : page(tab, owner, driver);
+    }
     case "read":
       return page(tab, owner, driver);
     case "wait":
