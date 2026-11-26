@@ -449,6 +449,7 @@ pub fn build(
             format!("{cause}; nobody refused anything.{cut} Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked. A step above that returned output gives its size and reference: take what you need from it, or for a file read only the lines you need, rather than running it again.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
+        _ if last["outcome"] == "done" => "Your last turn was done. Say only that you're ready for the next message.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),
         _ => "The last message wasn't worked on yet. Do it now.".into(),
     };
