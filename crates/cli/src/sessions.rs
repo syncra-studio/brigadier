@@ -44,12 +44,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             for (id, spec) in specs {
                 running.extend(archive(data, id, &spec)?);
             }
-            // All are archived; a worker's process that wouldn't stop is named.
+            // All are archived, so it answers ok; a worker's process that wouldn't stop is named.
             if !running.is_empty() {
                 let running = running.join("; ");
-                return Err(io::Error::other(format!(
-                    "archived, but its workers' processes still run: {running}"
-                )));
+                return Ok(json!({"ok": true, "at": index::touched(&spec.dir),
+                    "warning": format!("Archived, but its workers' processes still run: {running}")}));
             }
         }
         "restore" => session::restore(data, &spec)?,
