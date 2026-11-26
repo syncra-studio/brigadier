@@ -333,12 +333,11 @@ pub fn build(
     let steps = (p.entries.get(at).zip(p.entries.last())).map_or(String::new(), |(a, b)| {
         format!("`brigadier read {id}#{} --to {}`", a.at, b.at)
     });
+    // Kept in the small hand-off too: its 2,000 bytes are the only record of what still runs.
     let open = open::items(spec, &p.entries);
-    let start = out.len();
     if !open.is_empty() {
         out += &format!("\n## Open\n{open}");
     }
-    span(&out, start, String::new());
 
     // The work's state: branch, uncommitted files, last commits, files this conversation touched.
     let cwd = spec.cwd.as_str();
