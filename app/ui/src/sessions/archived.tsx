@@ -97,9 +97,8 @@ export function ClosedMenuItems({ row }: { row: SessionRow }) {
   );
 }
 
-const deleting = store<{ rows: Deleted[]; check: Check } | null>(null);
-/** Opens delete's confirm once Rust's check is in, so it opens whole [D463]. */
-const askDelete = (row: Deleted) => void readDelete([row]).then((check) => deleting.set({ rows: [row], check }));
+const deleting = store<Deleted[] | null>(null);
+const askDelete = (row: Deleted) => deleting.set([row]);
 
 export function DeleteMenuItem({ row }: { row: SessionRow }) {
   return (
@@ -115,14 +114,14 @@ export function DeleteAsk() {
   const asking = deleting.use();
   return (
     <Dialog open={asking !== null} onOpenChange={(next) => !next && deleting.set(null)}>
-      <DialogContent showCloseButton={false}>{asking && <DeleteForm key={asking.rows[0]!.id} rows={asking.rows} first={asking.check} onClose={() => deleting.set(null)} />}</DialogContent>
+      <DialogContent showCloseButton={false}>{asking && <DeleteForm key={asking[0]!.id} rows={asking} onClose={() => deleting.set(null)} />}</DialogContent>
     </Dialog>
   );
 }
 
 type Deleted = { id: string; title: string };
 /** `running`, `lost`: as archive's, its workers' too [D1197, D3017]. `repo`: a folder chat's claim's, else "". */
-export type Check =
+type Check =
   | { state: "checking" }
   | ({
       state: "done";
@@ -136,8 +135,8 @@ export type Check =
   | { state: "failed"; error: string };
 type Ahead = { id: string; title: string; repo: string; branch: string };
 
-/** Rust's delete check, read before its confirm opens, so the confirm opens whole and never grows after [D463]. */
-export const readDelete = (rows: Deleted[]): Promise<Check> =>
+/** Rust's delete check, read as its confirm opens: the confirm shows at once, Delete waiting for it. */
+const readDelete = (rows: Deleted[]): Promise<Check> =>
   run(["delete", ...rows.map((row) => row.id), "--check"]).then(
     (reply) => ({ state: "done", branches: reply.branches, kept: reply.kept, stays: reply.stays, running: reply.running, lost: reply.lost }),
     (cause) => ({ state: "failed", error: errorText(cause) }),
@@ -148,14 +147,13 @@ export const readDelete = (rows: Deleted[]): Promise<Check> =>
  * unless asked, a folder chat's by repo [D494]. Delete waits for Rust's check; Rust checks again as it runs. Each
  * row leaves at once and comes back if it fails.
  */
-export function DeleteForm({ rows, first, onClose }: { rows: Deleted[]; first: Check; onClose: () => void }) {
-  const [check, setCheck] = useState<Check>(first);
+export function DeleteForm({ rows, onClose }: { rows: Deleted[]; onClose: () => void }) {
+  const [check, setCheck] = useState<Check>({ state: "checking" });
   const all = useDaemon().rows;
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
   const [attempt, setAttempt] = useState(0);
-  // Read again on Retry; the first read came with it.
+  // Read as it opens, and again on Retry.
   useEffect(() => {
-    if (!attempt) return;
     let live = true;
     setCheck({ state: "checking" });
     void readDelete(rows).then((next) => live && setCheck(next));

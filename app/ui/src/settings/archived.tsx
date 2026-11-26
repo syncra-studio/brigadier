@@ -13,7 +13,7 @@ import { ask, useDaemon } from "../daemon";
 import { Branch, Chats, Folder, Trash, Unarchive } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useArchiveSplit } from "../sessions/archive";
-import { type Check, DeleteForm, readDelete } from "../sessions/archived";
+import { DeleteForm } from "../sessions/archived";
 import { type ArchivedFilter, KindMenu, MoreMenu, ProjectMenu, SearchField } from "./archived-toolbar";
 import { SettingsPage } from "./parts";
 
@@ -53,7 +53,7 @@ export function ArchivedPage() {
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
   const [picked, setPicked] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
-  const [asking, setAsking] = useState<{ rows: ArchivedRow[]; check: Check } | null>(null);
+  const [asking, setAsking] = useState<ArchivedRow[] | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setFilter((now) => (now.query === typed ? now : { ...now, query: typed })), TYPING_MS);
@@ -123,8 +123,7 @@ export function ArchivedPage() {
   };
   const askDelete = (targets: ArchivedRow[]) => {
     setPicked([]);
-    // The check read first: the confirm opens whole [D463]. A later click's answer replaces it, keyed, so no choice carries over.
-    void readDelete(targets).then((check) => setAsking({ rows: targets, check }));
+    setAsking(targets);
   };
   const project = reply?.projects.some((choice) => choice.value === filter.project) ? filter.project : "all";
   const retry = () => setAttempt(attempt + 1);
@@ -218,7 +217,7 @@ export function ArchivedPage() {
       </div>
       <Dialog open={asking !== null} onOpenChange={(next) => !next && setAsking(null)}>
         <DialogContent showCloseButton={false}>
-          {asking && asking.rows.length > 0 && <DeleteForm key={asking.rows.map((row) => row.id).join()} rows={asking.rows} first={asking.check} onClose={() => setAsking(null)} />}
+          {asking && asking.length > 0 && <DeleteForm key={asking.map((row) => row.id).join()} rows={asking} onClose={() => setAsking(null)} />}
         </DialogContent>
       </Dialog>
     </SettingsPage>
