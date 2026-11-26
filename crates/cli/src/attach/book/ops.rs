@@ -25,6 +25,11 @@ pub fn ops(
     core::check_id(cid)?;
     place::resume(place)?;
     let _held = place::hold_cid(place, cid)?;
+    if arg(args, 2)? == "drop" && may_have_reached(place, cid)? {
+        // PROPOSED words.
+        let error = "It may have reached the agent, so it can't be discarded. Try again sends it under the same id.";
+        return Ok(json!({"ok": false, "maybe": true, "cid": cid, "error": error}));
+    }
     match (arg(args, 2)?, place) {
         ("retry", _) => retry(place, id, cid, run),
         ("adopt", _) => adopt(place, args, id, cid),
@@ -32,6 +37,14 @@ pub fn ops(
         ("drop", _) => place::discard(place, cid),
         _ => Err(io::Error::other(USAGE)),
     }
+}
+
+/// Whether send or start `cid` is on its way and a try of it may have reached a host: then it's
+/// never discarded, only tried again under its id, which the host's dedupe holds [C75, D66].
+fn may_have_reached(place: &Place, cid: &str) -> io::Result<bool> {
+    change(place, |book| {
+        Ok(book.find(cid).is_some_and(|(queue, g)| !queue && g.reached))
+    })
 }
 
 /// Whether `op` is a command a retry may run for message `cid` of session `id`, or of Home's

@@ -204,6 +204,8 @@ export function StartingBubble({ id }: { id: string }) {
   const inThread = Boolean(entry && session?.items.length && session.turns.some((turn) => turn.id === entry.cid));
   // In the thread, Rust's row is the message: only a logged-but-not-delivered start says more.
   if (!entry || (inThread && entry.outcome !== "logged")) return null;
+  // One that may have reached its agent, or is in its log, is only tried again [C75]; one whose session stays after a refusal can go.
+  const droppable = entry.left || (!entry.maybe && entry.outcome !== "logged");
   const again = !entry.asking && (
     <>
       <Button variant="link-blue" size={null} onClick={() => retry(id)}>
@@ -233,9 +235,11 @@ export function StartingBubble({ id }: { id: string }) {
                   Try again
                 </Button>
               )}
-              <Button variant="link-blue" size={null} onClick={() => discard(id)}>
-                Discard
-              </Button>
+              {droppable && (
+                <Button variant="link-blue" size={null} onClick={() => discard(id)}>
+                  Discard
+                </Button>
+              )}
             </>
           )
         }
@@ -259,7 +263,7 @@ export function StartingBubble({ id }: { id: string }) {
       signIn={entry.signIn}
       maybe={entry.maybe}
       onRetry={entry.asking || entry.left ? undefined : () => retry(id)}
-      onDiscard={entry.asking ? undefined : () => discard(id)}
+      onDiscard={entry.asking || !droppable ? undefined : () => discard(id)}
     />
   );
 }

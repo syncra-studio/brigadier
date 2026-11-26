@@ -122,6 +122,8 @@ export function tellDrops(run: Runner, id: string): Promise<unknown> {
       telling.delete(each.cid);
       // In the log already, the thread shows it.
       if (reply.ok || reply.logged) forget(id, each.cid);
+      // It may have reached its agent: it stays, with Try again only [C75].
+      if (reply.maybe) markGoing(id, each.cid, { removing: false, reached: true });
       // Back already (a drop whose reply was lost), Rust names none: the ones a chip read held back for it show.
       if (reply.ok) keptChipsBack(id, each, reply.chips);
     });

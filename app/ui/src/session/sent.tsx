@@ -144,8 +144,9 @@ export function SentBubbles({ id, source = threadSource, run = daemonRun, hover 
             failed={each.stuck}
             maybe={each.reached !== false}
             onRetry={each.op.length > 0 ? () => void again(run, id, each) : undefined}
-            onDiscard={() => discard(run, id, each)}
-            rewind={each.stuck === undefined ? undefined : { open: () => discard(run, id, each, true) }}
+            // One that may have reached its agent is only tried again, under its id [C75].
+            onDiscard={each.reached !== false ? undefined : () => discard(run, id, each)}
+            rewind={each.stuck === undefined || each.reached !== false ? undefined : { open: () => discard(run, id, each, true) }}
           />
         );
       })}
