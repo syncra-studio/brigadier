@@ -174,7 +174,8 @@ pub fn send(
         Err(e) => return json!({"ok": false, "result": "refused", "error": e}),
     };
     let ruled = run.ruled.clone();
-    let setup = adapters::setup(&run);
+    let mut setup = adapters::setup(&run);
+    crate::summary::stamp(&run, &b, &mut setup);
     let mut base = json!({"cid": cid, "origin": origin, "text": msg.text, "backend": b, "retry_of": retry_of, "setup": setup, "direct": (retry_of.is_none() && crate::message::direct(&spec.dir, cid, origin)).then_some(true)});
     if !msg.parts.is_null() {
         base["parts"] = msg.parts.clone();
@@ -223,8 +224,9 @@ pub fn send(
                 },
                 ..run.clone()
             };
-            // Not known what it runs with: started again, never taken as the default.
-            let change = match g["unknown"] == true {
+            // Not known what it runs with, or not launched with the summary's veto it needs now:
+            // started again, never taken as the default.
+            let change = match g["unknown"] == true || g["veto"] != setup["veto"] {
                 true => Retune::Restart,
                 false => a.retune(&last, &run),
             };

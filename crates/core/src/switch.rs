@@ -147,6 +147,7 @@ pub fn switch(
         Err(e) => return json!({"ok": false, "error": e.clone(), "message": e}),
     };
     let mut setup = adapters::setup(&run);
+    crate::summary::stamp(&run, to.backend, &mut setup);
     if held {
         setup["held"] = true.into();
     }

@@ -57,9 +57,20 @@ pub fn vetoes(spec: &crate::Spec, backend: &str) -> bool {
     }
 }
 
-/// Whether this session's renewals write a summary first.
+/// Whether this session's renewals write a summary first: its agent vetoes, and a child running
+/// now was launched with the veto, not one from before an upgrade gave it [D92].
 pub fn applies(spec: &crate::Spec, f: &crate::fold::Fold) -> bool {
-    on() && vetoes(spec, crate::rebirth::backend(spec, f))
+    let live = f.child.as_ref().is_some_and(|c| !c.exited);
+    let given = f.given.as_ref().is_some_and(|g| g["veto"] == true);
+    on() && vetoes(spec, crate::rebirth::backend(spec, f)) && (!live || given)
+}
+
+/// Marks a launch's setup as carrying the veto, launch-only: a child without it is started again
+/// for a turn that has it, so the setup it's known by never claims a hook it lacks.
+pub fn stamp(run: &crate::Spec, backend: &str, setup: &mut serde_json::Value) {
+    if on() && vetoes(run, backend) {
+        setup["veto"] = true.into();
+    }
 }
 
 /// Whether the old conversation can still write one after `last`: not at a usage limit, a sign-in
