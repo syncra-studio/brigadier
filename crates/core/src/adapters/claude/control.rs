@@ -333,10 +333,14 @@ fn approval(id: &str, r: &Value) -> Event {
                         .collect(),
                 },
             };
-            let first = (rules.first()).map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
-            let first = first.map(|p| p.trim_end_matches(":*").to_string());
+            // The card names every rule a yes for the session adds, not only the first.
+            let each = rules
+                .iter()
+                .map(|r| s(r, &["ruleContent"]).trim_end_matches(" *"));
+            let each: Vec<&str> = each.map(|p| p.trim_end_matches(":*")).collect();
+            let named = (!each.is_empty()).then(|| each.join(" or "));
             let pattern = (agent.then(|| "brigadier".into()))
-                .or(first)
+                .or(named)
                 .unwrap_or(command.clone());
             if !command.is_empty() {
                 grant("command", &pattern, rules);
