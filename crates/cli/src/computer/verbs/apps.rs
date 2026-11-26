@@ -198,6 +198,26 @@ pub(super) fn past_app(w: &Words, s: &Sess) -> bool {
     }
 }
 
+/// An app given by its path, as the path leads: a link or a renamed copy of a blocked app is
+/// still that app [D903].
+pub(super) fn blocked_path(path: &Path) -> Result<(), Value> {
+    let real = path.canonicalize().unwrap_or(path.into());
+    if !real
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("app"))
+    {
+        return Ok(());
+    }
+    let id = std::process::Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleIdentifier", "raw", "-o", "-"])
+        .arg(real.join("Contents/Info.plist"))
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    blocked(&real.to_string_lossy(), id.as_deref().unwrap_or(""))
+}
+
 /// Brigadier itself and the system's security prompts are closed at every level [D903].
 pub(super) fn blocked(name: &str, bundle: &str) -> Result<(), Value> {
     // `open` takes an app's path too: …/Brigadier.app is Brigadier.

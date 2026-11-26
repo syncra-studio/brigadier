@@ -3,7 +3,7 @@
 //! the helper's own calls (Cua's need a window, #8055).
 
 use super::act::{CLICK, MODIFIER, act, idle, wait_for_user};
-use super::apps::blocked;
+use super::apps::{blocked, blocked_path};
 use super::apps::{find, named, running};
 use super::diff::{Seen, baseline, changes};
 use super::window::read;
@@ -60,6 +60,14 @@ pub(super) fn open(
         ));
     }
     blocked(&name, "")?;
+    for path in [Some(name.as_str()), target.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if path.starts_with('/') {
+            blocked_path(Path::new(path))?;
+        }
+    }
     // Through LaunchServices in the background, a cold start too: Cua's launch_app brought a cold
     // Calculator to the front, and macOS left the user's full-screen Space for it; `open -g`
     // didn't (D946). Cua's handoff timed out on a Finder folder and took 8 s to give Dia a url.
