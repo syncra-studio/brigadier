@@ -165,8 +165,10 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             // turn, at a limit too: only they drop a renewal before it starts (D95).
             let off = (f.last.as_ref())
                 .filter(|l| l["origin"] == "summary" && f.renewing.is_none() && f.turns.is_empty());
+            // Its own end says it ended done, where a summary turn since is the fold's last.
             let on = f.cut.as_deref() == Some(turn)
                 && !last.is_some_and(|l| l["outcome"] == "done")
+                && end.how != "done"
                 && off.is_none();
             if (newest && on)
                 || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
