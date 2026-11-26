@@ -105,7 +105,13 @@ impl Thread {
                         self.items[at]["text"] = row["text"].clone();
                         self.changed_items.insert(at);
                     }
-                    None => drop(self.kept_as(row, Some(id))),
+                    None => {
+                        let at = self.kept_as(row, Some(id)) as u64 + 1;
+                        // Out of the block its workers hold too, which its result carries on [D59].
+                        if self.open.is_none() {
+                            self.held.values_mut().for_each(|(o, _)| o.kept.push(at));
+                        }
+                    }
                 }
             }
             // A worker waits on the user, at Ask: its block waits with it, that time waited [D551].
