@@ -470,6 +470,16 @@ pub fn held(data: &Path, spec: &Spec) -> bool {
         .any(|p| Some(&p.id) == id.as_ref() && p.trusted != Some(true))
 }
 
+/// Whether a session's project is trusted by an answer on record; one unanswered, unmatched or
+/// unreadable isn't, unlike `held`'s session in no project [D166, D211].
+pub fn trusted(data: &Path, spec: &Spec) -> bool {
+    let Ok(projects) = list(data) else {
+        return false;
+    };
+    let id = of(spec, &projects, &mut Roots::default());
+    (projects.iter()).any(|p| Some(&p.id) == id.as_ref() && p.trusted == Some(true))
+}
+
 /// Whether the session's project is being removed: no new work starts in it then [D172]. A note's
 /// side chat is in it by its notes folder, which no project's root holds [D913 D922].
 pub fn removing(data: &Path, spec: &Spec) -> bool {

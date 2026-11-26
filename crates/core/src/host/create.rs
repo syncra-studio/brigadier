@@ -29,6 +29,8 @@ pub struct Create<'a> {
     pub base: Option<&'a str>,
     /// Its head on the host; the checked-out branch when None.
     pub head: Option<&'a str>,
+    /// The push runs the repository's own hooks: its project is trusted on record [D166, D211].
+    pub hooks: bool,
 }
 
 impl Pr {
@@ -69,7 +71,7 @@ impl Pr {
         let pushed = match head == on {
             true => {
                 let remote = crate::git::push::remote(&self.checkout, on)?;
-                branch::push(&self.checkout, &remote, on, &stop)?
+                branch::push(&self.checkout, &remote, on, c.hooks, &stop)?
             }
             false => false,
         };

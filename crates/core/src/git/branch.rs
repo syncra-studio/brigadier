@@ -85,8 +85,16 @@ fn folder_only(checkout: &Checkout) -> io::Result<()> {
 }
 
 fn git(checkout: &Checkout, args: &[&str], stop: &AtomicBool) -> io::Result<()> {
+    run(checkout, worktrees::command(&checkout.root), args, stop)
+}
+
+fn run(
+    checkout: &Checkout,
+    mut command: std::process::Command,
+    args: &[&str],
+    stop: &AtomicBool,
+) -> io::Result<()> {
     let _held = lock(checkout, true, stop)?;
-    let mut command = worktrees::command(&checkout.root);
     command.args(args);
     let out =
         crate::adapters::setup::run_until(&mut command, 60, stop).map_err(io::Error::other)?;
@@ -152,11 +160,13 @@ pub fn commit_all(checkout: &Checkout, message: &str, stop: &AtomicBool) -> io::
 }
 
 /// Pushes `branch` to `remote` when it has no upstream or is ahead of it, setting it as the
-/// upstream [D168]; false when there was nothing to push.
+/// upstream [D168]; false when there was nothing to push. With `hooks` (a trusted project's,
+/// proposed) the repository's pre-push hooks run and may refuse it, Git LFS's upload among them.
 pub fn push(
     checkout: &Checkout,
     remote: &str,
     branch: &str,
+    hooks: bool,
     stop: &AtomicBool,
 ) -> io::Result<bool> {
     check_name(checkout, branch)?;
@@ -169,7 +179,10 @@ pub fn push(
     if remote.starts_with('-') {
         return err(format!("No remote {remote}."));
     }
-    git(checkout, &["push", "--quiet", "-u", remote, branch], stop)?;
+    // Login PATH for git-lfs. A hook has no timeout of its own: one that hangs is ended only by
+    // the push's 60 s deadline, and holds up only this dialog, not the branch fence.
+    let args = ["push", "--quiet", "-u", remote, branch];
+    run(checkout, super::sync::net(checkout, hooks), &args, stop)?;
     Ok(true)
 }
 

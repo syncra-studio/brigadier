@@ -372,6 +372,8 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
             draft: super::has(args, "--draft"),
             base,
             head: super::flag(args, "--head"),
+            // Commit hooks stay off: they'd run under the fence and could change what's described [D1029].
+            hooks: core::load(data, id).is_ok_and(|spec| core::projects::trusted(data, &spec)),
         },
         fence,
     )
