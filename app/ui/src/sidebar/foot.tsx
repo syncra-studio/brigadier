@@ -52,7 +52,9 @@ function KeepAwakeMenu() {
   const [error, setError] = useState<string | null>(null);
   const option = KEEP_AWAKE.find((each) => each.value === mode);
   const { row, ...placement } = useFootPlacement();
-  const on = mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
+  // A night holds it whatever the setting, as the daemon does.
+  const night = Boolean(rows?.some((row) => row.overnight?.state === "night"));
+  const on = night || mode === "always" || (mode !== "off" && Boolean(rows?.some((row) => row.works)));
   const text = on ? `Awake now${settings?.awake_lid && hold?.held ? ", even with the lid closed" : ""}` : mode === "off" ? "The computer sleeps as it normally would" : "No agent is working";
   return (
     <Popover onOpenChange={(open) => (open ? loadLid() : slept && seenSlept(slept.at))}>
