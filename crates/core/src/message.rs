@@ -94,7 +94,8 @@ pub fn ids(parts: &Value) -> Vec<String> {
 
 /// Takes the files `parts` names into session `dir`'s `attachments/`: its own draft's and Home's
 /// are moved, `from`'s (a message sent as new from there) copied, so deleting that session leaves
-/// this one whole [D35, D204, D2022 #18]. A file never stored (a failed attach) is skipped.
+/// this one whole [D35, D204, D2022 #18]. A file never stored (a failed attach) is skipped. A step
+/// that fails undoes the ones before it, so a refused message keeps all its files where they were.
 pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::Result<()> {
     let ids = ids(parts);
     if ids.len() > MAX_FILES {
@@ -102,26 +103,68 @@ pub fn take(data: &Path, dir: &Path, parts: &Value, from: Option<&str>) -> io::R
             "at most {MAX_FILES} attachments per message"
         )));
     }
+    // Each file taken, with the folder it was moved from, or None for a copy.
+    let mut done: Vec<(String, Option<PathBuf>)> = vec![];
+    let crash = std::env::var("BRIGADIER_CRASH_AT").unwrap_or_default();
     // What a message handed on keeps of its notes goes with it.
     for id in ids.into_iter().chain(notes::kept(parts)) {
         if file_in(&sent(dir), &id).is_some() {
             continue;
         }
         let to = sent(dir).join(&id);
-        if let Some(file) = file_in(&draft(dir), &id).or_else(|| file_in(&home(data), &id)) {
-            fs::create_dir_all(sent(dir))?;
-            fs::rename(file.parent().unwrap(), &to)?;
+        let own = file_in(&draft(dir), &id).or_else(|| file_in(&home(data), &id));
+        let step = if let Some(file) = own {
+            let at = file.parent().unwrap().to_path_buf();
+            fs::create_dir_all(sent(dir))
+                .and_then(|()| fs::rename(&at, &to))
+                .map(|()| Some(at.parent().unwrap().to_path_buf()))
         } else if let Some(file) = from.and_then(|s| {
             let at = session_dir(data, s);
             file_in(&sent(&at), &id).or_else(|| file_in(&draft(&at), &id))
         }) {
-            fs::create_dir_all(&to)?;
-            fs::copy(&file, to.join(file.file_name().unwrap()))?;
+            fs::create_dir_all(&to)
+                .and_then(|()| fs::copy(&file, to.join(file.file_name().unwrap())))
+                .map(|_| None)
+        } else {
+            continue;
+        };
+        match step {
+            Ok(was) => done.push((id, was)),
+            Err(e) => return Err(undo(dir, done, e)),
         }
+        // Drill hook: a failure after the n-th file.
+        if crash == format!("take:{}", done.len()) {
+            return Err(undo(dir, done, io::Error::other("take failed (drill)")));
+        }
+    }
+    // Drill hook: a send that dies once its files are taken.
+    if crash == "send:take" {
+        std::process::abort();
     }
     // Home's other draft shares its folder, so what this send left there waits for cli attach.rs
     // `sweep_home` (a day old, named by no Home draft); the UI empties the sent draft's words [D863].
     Ok(())
+}
+
+/// Puts back what a failed `take` did, last first. A file that can't go back stays in
+/// `attachments/`, where `attach list` still finds it, and the error names it.
+fn undo(dir: &Path, done: Vec<(String, Option<PathBuf>)>, e: io::Error) -> io::Error {
+    let mut stuck = vec![];
+    for (id, was) in done.into_iter().rev() {
+        let at = sent(dir).join(&id);
+        let back = match was {
+            Some(folder) => fs::rename(&at, folder.join(&id)),
+            None => fs::remove_dir_all(&at),
+        };
+        if let Err(why) = back {
+            eprintln!("take: {id} stays in attachments: {why}");
+            stuck.push(id);
+        }
+    }
+    match stuck.is_empty() {
+        true => e,
+        false => io::Error::new(e.kind(), format!("{e} ({} stays sent)", stuck.join(", "))),
+    }
 }
 
 /// The message as its agent reads it, its files already taken into `spec`'s session: a long
