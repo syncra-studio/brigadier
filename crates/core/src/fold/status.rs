@@ -168,7 +168,9 @@ pub const RECONNECTS: u64 = 3;
 /// the turn it carries on. `now`: the user's Try again, past the tries or a Stop.
 pub fn reconnect(fold: &Fold, now: bool) -> Option<Value> {
     let last = fold.last.as_ref().filter(|_| fold.turns.is_empty())?;
+    // A summary turn's failure isn't carried on: its renewal goes ahead without it [rev 3 §4].
     if last["outcome"] != "failed"
+        || last["origin"] == "summary"
         || !adapters::temporary(last["why"].as_str()?)
         || (last["halted"] == true && !now)
     {
@@ -260,6 +262,8 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             .as_ref()
             .and_then(|l| l["outcome"].as_str())
             .unwrap_or("");
+        // A failed summary is no failure of the session's: nothing to try again [rev 3 §4].
+        let summary = fold.last.as_ref().is_some_and(|l| l["origin"] == "summary");
         return match () {
             _ if live.owner == Owner::Frozen => ("unresponsive", Value::Null),
             _ if held(fold) => (
@@ -284,7 +288,7 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
                 ("reconnecting", reconnect(fold, false).unwrap_or_default())
             }
             // A failed turn says so though a job it left runs: its notice, mark and Try again.
-            _ if outcome == "failed" => ("failed", Value::Null),
+            _ if outcome == "failed" && !summary => ("failed", Value::Null),
             _ if live.jobs > 0 => ("idle_jobs", live.jobs.into()),
             _ if outcome == "stopped" => ("stopped", Value::Null),
             _ if fold.items == 0 => ("new", Value::Null),
