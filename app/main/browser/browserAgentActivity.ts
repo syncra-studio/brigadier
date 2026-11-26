@@ -57,6 +57,22 @@ export function watchNetwork(session: Session): void {
   });
 }
 
+/**
+ * The page's next uncaught errors, waited for: they reach no `console-message` here. Heard in the page's own world, as
+ * another world's listeners don't get its error events, with nothing left on its window. What it says is data like its
+ * console. shortcut: one thrown before its document's dom-ready, or between two looks, isn't heard; hear them from the
+ * debugger if it matters.
+ */
+const UNCAUGHT = `new Promise((told) => {
+  const said = [];
+  const heard = (event) => {
+    if (!(event instanceof ErrorEvent)) return;
+    if (!said.length) setTimeout(() => { removeEventListener("error", heard, true); told(said); }, 100);
+    said.push({ message: String(event.message), source: String(event.filename), line: Number(event.lineno) });
+  };
+  addEventListener("error", heard, true);
+})`;
+
 /** A tab's pages and console. */
 export function watchActivity(guest: WebContents): void {
   const id = guest.id;
@@ -81,6 +97,16 @@ export function watchActivity(guest: WebContents): void {
   // agent.ts tells a navigate whose page stayed by this line.
   guest.on("will-prevent-unload", () => add(id, "navigation", "the page asked to stay (unsaved changes), so it didn't leave"));
   guest.on("render-process-gone", (_event, { reason }) => add(id, "error", `the page's process ended: ${reason}`));
+  guest.on("dom-ready", async () => {
+    // Ends with its document, when nothing answers any more.
+    for (;;) {
+      const said: unknown = await guest.executeJavaScript(UNCAUGHT).catch(() => null);
+      if (!Array.isArray(said)) return;
+      sweepSoon(guest);
+      // The page's own answer: whatever it holds is only ever made text.
+      for (const each of said) add(id, "error", `uncaught: ${String(each?.message)} (${shownUrl(String(each?.source))}:${Number(each?.line)})`);
+    }
+  });
   guest.on("console-message", ({ level, message, sourceId, lineNumber }) => {
     sweepSoon(guest);
     add(id, "console", `console ${level}: ${message} (${shownUrl(sourceId)}:${lineNumber})`);
