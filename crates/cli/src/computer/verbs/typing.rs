@@ -68,6 +68,13 @@ pub(super) fn type_into(
         return Ok(out);
     }
     let landed = window::shows(s, n, text);
+    // What the app said of the typing, kept beside the read-back: unknown or partly done.
+    let first = out.lines().next().unwrap_or("");
+    let said = match () {
+        _ if first.contains("the outcome is unknown") => " sent, but no answer came in time, and",
+        _ if first.ends_with("partly done.") => " partly done, and",
+        _ => "",
+    };
     // The old text still there beside the new: it went in at the caret, not over it.
     let kept = !old.is_empty() && !text.contains(old.trim()) && window::shows(s, n, &old);
     let typed = match (landed, kept) {
@@ -78,11 +85,11 @@ pub(super) fn type_into(
         ),
         // Partly done, no answer in time, or not read back: the user's text it cleared goes back.
         (false, _) if !old.is_empty() => format!(
-            "{line}: [{n}] doesn't read it back.{} Read it before going on.",
+            "{line}:{said} [{n}] doesn't read it back.{} Read it before going on.",
             restore(data, me, s, &field, &old, here)
         ),
         (false, _) => {
-            format!("{line}: [{n}] doesn't read it back. Read it before going on.")
+            format!("{line}:{said} [{n}] doesn't read it back. Read it before going on.")
         }
     };
     let landed = landed && !kept;
