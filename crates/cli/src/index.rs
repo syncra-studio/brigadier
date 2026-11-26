@@ -347,6 +347,10 @@ impl Index {
                 r["host"] = json!(a.and_then(|a| a.api_host()));
                 r
             }));
+            // A chat at its usage limit carries on by itself at the reset, or says why not [C34, C54].
+            row["reset"] = json!((e.spec.as_ref()).and_then(|s| {
+                crate::switching::reset::row(&self.data, s, &f.fold, !row["worker"].is_null())
+            }));
             // Being stopped for one, or its fresh conversation not yet under way: the composer says so [D112].
             // A cut for a model picked mid-turn is no rebirth [D124].
             let cut = f.fold.cut.as_deref().filter(|_| !f.fold.switched);

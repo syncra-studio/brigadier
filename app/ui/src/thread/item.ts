@@ -270,7 +270,7 @@ export type Item = Base &
      * automatic reviewer ended; a failed turn's message sent again in its place (D492); a run that stopped before its
      * turn ended (D92).
      */
-    | { kind: "line"; reason: "limit-reset"; at: number }
+    | { kind: "line"; reason: "limit-reset"; at: number; carried?: boolean }
     /** `op`: the app's pick it came from, to take its pending line's place [D76]; `live` till the new model draws a row [D241]. */
     | { kind: "line"; reason: "model"; why: "changed" | "rerouted"; from: string | null; to: string; op?: string; live?: boolean }
     | { kind: "line"; reason: "stopped"; ms: number | null }

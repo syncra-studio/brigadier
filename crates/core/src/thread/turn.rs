@@ -374,7 +374,11 @@ impl Thread {
             self.end_limit();
             if let Some(at) = self.reset_at.filter(|&at| at <= ts) {
                 self.reset_at = None;
-                self.add(json!({"kind": "line", "reason": "limit-reset", "at": at}));
+                // Brigadier's own carry-on at the reset says so on that line [C34, C54].
+                let carried = t.origin == "system";
+                self.add(
+                    json!({"kind": "line", "reason": "limit-reset", "at": at, "carried": carried}),
+                );
             }
         }
         // Brigadier's words carrying on a cut or stopped turn are no row: its steps flow on in that block [D124, D693].

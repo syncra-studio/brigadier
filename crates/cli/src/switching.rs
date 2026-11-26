@@ -4,6 +4,7 @@
 
 pub mod rebirth;
 pub mod reconnect;
+pub mod reset;
 
 use crate::accounts::{STORE, accounts_of, agent, agents, check, listed, load, save};
 use crate::owner;

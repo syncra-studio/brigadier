@@ -29,6 +29,10 @@ export const OVERVIEW_ROWS = {
     label: "Switch accounts automatically",
     description: "At a usage limit, work moves on to the next signed-in account of the agent with room. Off, you pick each time.",
   },
+  carryOn: {
+    label: "Carry on when a limit resets",
+    description: "A chat stopped at a usage limit carries on by itself a minute after the limit resets. Off, it waits for you.",
+  },
   notSetUp: "Agents Brigadier can run that aren't installed yet",
 } as const;
 

@@ -215,3 +215,34 @@ pub fn forked(spec: &Spec, f: &Fold, text: &str) -> std::io::Result<String> {
     let seed = crate::handoff::build(spec, f, "forked", &last, from)?;
     Ok(format!("{seed}\n\n{text}"))
 }
+
+/// Brigadier's words carrying a chat on once its usage limit has reset [C34]; proposed.
+pub const LIMIT_RESET: &str = "[Your usage limit has reset. Carry on from where you stopped. Don't redo anything you already did.]";
+
+/// A chat's carry-on at its usage limit's reset [C34, C54], worked out from its last turn alone:
+/// `{cid, due, of, backend}`, its cid `lr<limited end's ms>` (never parsed), due a minute after the
+/// reset; or `{held}` where it won't go on by itself: `unknown` (no reset was given), `stuck` (a
+/// carry-on that said nothing and whose limit kept its reset), `unconfirmed` (the limited turn's
+/// receipt wasn't confirmed: `accepted` asks its CLI, as Recover does [D66, D80]). None at no limit.
+pub fn reset_due(f: &Fold, accepted: impl FnOnce(&Value) -> bool) -> Option<Value> {
+    let last = f
+        .last
+        .as_ref()
+        .filter(|_| f.turns.is_empty() && f.limit.is_some() && !f.credits)?;
+    let Some(resets) = f.resets else {
+        return Some(json!({"held": "unknown"}));
+    };
+    let began = last["began_at"].as_u64().unwrap_or(0);
+    let again = last["origin"] == "system" && last["text"] == LIMIT_RESET && last["said"] != true;
+    if again && resets <= began {
+        return Some(json!({"held": "stuck"}));
+    }
+    if last["delivered"] != true && !accepted(last) {
+        return Some(json!({"held": "unconfirmed"}));
+    }
+    let ended = last["ts"].as_u64().unwrap_or(0);
+    Some(
+        json!({"cid": format!("lr{ended}"), "due": resets.max(ended) + 60_000,
+        "of": last["cid"].as_str().or(last["id"].as_str()), "backend": last["backend"]}),
+    )
+}

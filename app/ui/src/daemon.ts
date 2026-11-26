@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { KeptPrs } from "./panel/types";
-import type { Mark } from "./sidebar/words";
+import type { Mark, Reset } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import { asStopped, markStop } from "./thread/stopping";
 import type { Source } from "./thread/thread";
@@ -17,6 +17,7 @@ export type Row = {
   reason: unknown;
   mark: Mark;
   resets: number | null;
+  reset?: Reset | null; // its carry-on at the limit's reset, or why it won't go by itself [C34, C54]
   sent: number;
   finished: number;
   /** The daemon's own switch of its limit is due or under way: it stays working meanwhile [C6, D51] (proposed). */

@@ -15,6 +15,8 @@ export type Settings = {
   awake: "off" | "work" | "always";
   /** Keeping awake holds with the lid closed too [D333]. */
   awake_lid: boolean;
+  /** A chat at its usage limit carries on by itself at the reset, outside a night; on unless turned off [C34, C54]. */
+  carry_on: boolean;
   /** How many workers a family runs at once: a number, as Rust keeps it [D3001, D3007]. */
   workers: string;
   /** Each agent's own memory in sessions, off unless turned on; workers never [D2049]. */

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { type Row, useDaemon } from "../daemon";
 import { errorText, run } from "../onboarding/api";
 import { getSettings, setSetting, useSettings } from "./api";
+import { resetWords } from "../sidebar/words";
 
 /*
  * macOS notices and the Dock badge, mounted for the app's lifetime [D200, D2004, D2012]. Rust says what is worth a
@@ -31,6 +32,8 @@ function words(row: Row, notice: Notice): { title: string; body: string } {
     case "done":
       return { title: titleOf(row), body: notice.text || "Done" };
     case "failed":
+      // At a limit Brigadier carries on by itself, it says when, not an error to act on [C34, C54].
+      if (row.state === "limited" && row.reset?.due) return { title: titleOf(row), body: `Usage limit · ${resetWords(row.reset)}` };
       return { title: titleOf(row), body: notice.text ? `Stopped with an error: ${notice.text}` : "Stopped with an error" };
   }
 }

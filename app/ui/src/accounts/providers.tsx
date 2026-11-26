@@ -14,6 +14,7 @@ import { useDaemon } from "../daemon";
 import { ChevronRight, Plus } from "../icons";
 import { stateOf, useAgentSetup } from "../onboarding/agents";
 import { type Agent, checkAll, setEnabled, useAgents } from "../onboarding/api";
+import { setSetting, useSettings } from "../settings/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
 import { type Account, type SwitchAgent, accountChats, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
@@ -23,6 +24,7 @@ import { UsageMeter, tightest } from "./usage";
 /** The page's rows, for Settings search. */
 export const PROVIDERS_ROWS = {
   switch: OVERVIEW_ROWS.switch,
+  carryOn: OVERVIEW_ROWS.carryOn,
   agents: { label: "Agents", description: "The coding agents Brigadier runs: how each stands, and its switch" },
   notSetUp: { label: "Not set up", description: `${OVERVIEW_ROWS.notSetUp}, with Set up` },
   addAgent: { label: "Add another agent", description: "Set up another agent Brigadier can run" },
@@ -183,6 +185,7 @@ function Overview({
   setup: Setup;
 }) {
   const accounts = useAccounts().agents;
+  const carryOn = useSettings().value?.carry_on ?? true;
   const installed = (list ?? []).filter((agent) => stateOf(agent) !== "install");
   const missing = (list ?? []).filter((agent) => stateOf(agent) === "install");
   const settingUp = (agent: Agent) => Boolean(setup.starting[agent.name]) || Boolean(agent.setup?.running);
@@ -192,6 +195,9 @@ function Overview({
         <SettingsCard>
           <SettingsRow label={OVERVIEW_ROWS.switch.label} description={OVERVIEW_ROWS.switch.description} error={failed.agents}>
             <Switch checked={switchAgents} disabled={!online} aria-label={OVERVIEW_ROWS.switch.label} onCheckedChange={onSwitchAgents} />
+          </SettingsRow>
+          <SettingsRow label={OVERVIEW_ROWS.carryOn.label} description={OVERVIEW_ROWS.carryOn.description} error={failed.carry_on}>
+            <Switch checked={carryOn} disabled={!online} aria-label={OVERVIEW_ROWS.carryOn.label} onCheckedChange={(on) => void act("carry_on", () => setSetting("carry_on", on))} />
           </SettingsRow>
         </SettingsCard>
       </SettingsSection>

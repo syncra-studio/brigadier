@@ -8,6 +8,7 @@ import { openAttachment } from "../../shell/tab-store";
 import { SentAttachments } from "../composer/attachments";
 import type { PendingQuestion, QuestionItem } from "../composer/question";
 import { hhmm } from "../../thread/words";
+import { type Reset, resetWords } from "../../sidebar/words";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
@@ -219,12 +220,14 @@ type Switch = Extract<Item, { kind: "switch" }>;
 const SWITCH_STATES = ["limit", "switching", "switched", "failed", "over"] as const;
 
 /** One state's line of a switch divider. */
-function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined): ReactNode {
+function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined, carries?: Reset | null): ReactNode {
   const to = change.model ? `${change.to} · ${change.model}` : (change.to ?? "");
   const refused = change.reason === "unresumable";
   const hit = refused ? `${from} couldn’t resume this conversation` : change.reason === "credits" ? `Out of credits on ${from}` : `Usage limit on ${from}`;
   // When it comes back, as its CLI said; a reset already past, or none said, is "later" [D74, D379].
-  const back = change.reason !== "usage-limit" ? "" : change.resets && change.resets > Date.now() ? ` · try again at ${hhmm(change.resets)}` : " · try again later";
+  // Where Brigadier carries it on at the reset, or says why not, that's the words [C34, C54].
+  const carry = change.reason === "usage-limit" ? resetWords(carries) : null;
+  const back = carry ? ` · ${carry}` : change.reason !== "usage-limit" ? "" : change.resets && change.resets > Date.now() ? ` · try again at ${hhmm(change.resets)}` : " · try again later";
   // At the limit it reads as a status that may wrap, its icon first (D487).
   const status = (
     <>
@@ -287,14 +290,14 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
  * hasn't yet (at the limit); `actions` follow the limit's words (its links, a short note): pass them in every state,
  * so they keep their room after the row moves on. `onRetry` is the failed switch's Try again.
  */
-export function SwitchDivider({ change, from, actions, onRetry }: { change: Switch; from?: string; actions?: ReactNode; onRetry?: () => void }) {
+export function SwitchDivider({ change, from, actions, onRetry, carries }: { change: Switch; from?: string; actions?: ReactNode; onRetry?: () => void; carries?: Reset | null }) {
   const side = change.from || from || (change.reason === "unresumable" ? "The agent" : "this account");
   return (
     <div role="status" className="grid">
       {SWITCH_STATES.map((state) => (
         <LabeledDivider key={state} className={cx("col-start-1 row-start-1", state !== change.state && "invisible")}>
           <span className="flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 text-center wrap-break-word">
-            {switchLine(change, state, side, actions, onRetry)}
+            {switchLine(change, state, side, actions, onRetry, carries)}
           </span>
         </LabeledDivider>
       ))}

@@ -46,7 +46,8 @@ export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?:
 export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line" }>; action?: ReactNode }) {
   switch (item.reason) {
     case "limit-reset":
-      return <ThreadLine icon={ArrowRotateCw}>Usage limit reset · {hhmm(item.at)}</ThreadLine>;
+      // Brigadier's own carry-on at the reset says so (proposed) [C34, C54].
+      return <ThreadLine icon={ArrowRotateCw}>Usage limit reset · {item.carried ? "carried on at " : ""}{hhmm(item.at)}</ThreadLine>;
     case "model":
       return item.why === "changed" ? (
         // Under way till the new model draws a row, it shimmers as a switch's divider does (D241).

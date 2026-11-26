@@ -18,7 +18,7 @@ const SWITCH: &[&str] = &["true", "false"];
 const SWITCH_OFF: &[&str] = &["false", "true"];
 
 /// Each setting: its key, its choices and its default, the first.
-const KEYS: [(&str, &[&str]); 16] = [
+const KEYS: [(&str, &[&str]); 17] = [
     // What a message sent while a turn runs does [D188].
     ("follow_up", &["queue", "steer"]),
     // The level a new session starts on where its project is trusted [D187].
@@ -56,6 +56,8 @@ const KEYS: [(&str, &[&str]); 16] = [
     ("message_layout", &["bubbles", "stacked"]),
     // Keeping awake holds with the lid closed too, off until turned on [D333].
     ("awake_lid", SWITCH_OFF),
+    // A chat at its usage limit carries on by itself at the reset, outside a night [C34, C54].
+    ("carry_on", SWITCH),
 ];
 
 /// Every setting, read or Rust's default for one unset or unknown.

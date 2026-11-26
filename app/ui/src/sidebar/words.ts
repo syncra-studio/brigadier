@@ -17,6 +17,8 @@ export type SessionRow = {
   mark: Mark;
   /** When a usage limit resets (ms), if its CLI said; null otherwise [D74]. */
   resets: number | null;
+  /** Its carry-on at the reset, or why it won't go by itself [C34, C54]. */
+  reset?: Reset | null;
   /** The daemon's own switch of its limit is due or under way (proposed) [C6, D51]. */
   switching?: boolean;
   /** The user's last send, else when the session was made (ms): the list's order. */
@@ -66,6 +68,18 @@ const STATE_WORDS: Record<string, string | null> = {
 // A state this build has no words for yet still says what its mark means.
 const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
 
+/** A chat's carry-on at its usage limit's reset: due then, or held (no reset time given, the limit didn't lift at its reset time, or its receipt wasn't confirmed) [C34, C54]. */
+export type Reset = { due?: number; held?: "unknown" | "stuck" | "unconfirmed" };
+
+/** A limit's carry-on in words, where Brigadier carries it on or says why not (proposed) [C34, C54]. */
+export function resetWords(reset: Reset | null | undefined): string | null {
+  if (reset?.due) return `carries on at ${hhmm(reset.due)}`;
+  if (reset?.held === "stuck") return "the limit didn’t lift at its reset time";
+  if (reset?.held === "unconfirmed") return "receipt wasn’t confirmed, so it won’t carry on by itself";
+  if (reset?.held === "unknown") return "no reset time was given";
+  return null;
+}
+
 /** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
 const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();
 
@@ -77,6 +91,8 @@ export function statusWords(row: SessionRow): string | null {
   if (row.state === "limited") {
     // Spinning, an automatic switch waits it out [D51]; otherwise it's stuck until you act.
     const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";
+    const carry = resetWords(row.reset);
+    if (carry) return `${words} · ${carry}`;
     return resetAhead(row.resets) ? `${words} · resets ${hhmm(row.resets)}` : words;
   }
   // A pending approval waits as a question does; only its reason says which [D173].

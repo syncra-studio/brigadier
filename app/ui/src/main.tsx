@@ -305,7 +305,7 @@ function SessionThread({ id, rows, offline, docked }: { id: string; rows: Row[] 
                 {row?.archived ? (
                   <ArchivedPage row={row} />
                 ) : state?.status === "error" ? null : (starting || state?.id === id) && (
-                <SessionOfThread value={{ id, offline }}>
+                <SessionOfThread value={{ id, offline, reset: row?.reset }}>
                   <RewindProvider key={id} id={id} row={row} offline={offline}>
                   <Thread
                     key={id}

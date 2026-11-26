@@ -4,13 +4,14 @@ import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import { SwitchDivider } from "../components/thread/cards";
 import { errorText } from "../onboarding/api";
+import type { Reset } from "../sidebar/words";
 import type { Item } from "../thread/item";
 import { loadAccounts, switchSession, useAccounts } from "./api";
 import { maskEmails } from "./parts";
 import { agentHref } from "./providers";
 
 /** The session a thread shows, for its switch row's one click; none outside a session. */
-export const SessionOfThread = createContext<{ id: string; offline: boolean } | null>(null);
+export const SessionOfThread = createContext<{ id: string; offline: boolean; reset?: Reset | null } | null>(null);
 
 type Switch = Extract<Item, { kind: "switch" }>;
 
@@ -82,6 +83,7 @@ export function SwitchRow({ item }: { item: Switch }) {
         change={row}
         from={named(item.account ?? "")}
         actions={actions}
+        carries={item.state === "limit" ? session?.reset : null}
         onRetry={() => (pending ? go(pending.account, pending.to, pending.auto) : go(undefined, item.to ?? "", true))}
       />
       {live && agents === undefined && <ErrorLine error={error} />}
