@@ -283,8 +283,9 @@ pub fn load(data: &Path, id: &str) -> io::Result<Spec> {
 }
 
 /// A fold with the reader position it reached.
-/// A checkpoint's version: the normaliser's, and the fold's own shape (1: `limit_on`, [C40]).
-pub const FOLDED: u32 = norm::VERSION | 1 << 24;
+/// A checkpoint's version: the normaliser's, and the fold's own shape (1: `limit_on`, [C40]; 2: a
+/// pick card is no turn's, [C78]).
+pub const FOLDED: u32 = norm::VERSION | 2 << 24;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Folded {
