@@ -134,7 +134,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     // Every session id this command names, checked before any path is built from it [D706].
     let ids = match cmd {
-        "status" | "up" => &args[1..],
+        "status" | "up" | "archive" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
         | "panel" | "routing" | "plugins" | "browser" | "computer" | "terminal" => &[][..],
@@ -143,7 +143,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
     // `host @`: the Code Review page, which names no folder [D159].
     let page = cmd == "host" && args.get(1).is_some_and(|a| a == core::host::REVIEW);
-    let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT) && !page;
+    let checked = |a: &&String| {
+        *a != "--all"
+            && !(cmd == "archive" && *a == "--check")
+            && !(home && *a == HOME_DRAFT)
+            && !page
+    };
     for id in ids.iter().filter(checked) {
         let bare = id
             .strip_prefix("@home:")
