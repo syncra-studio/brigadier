@@ -12,7 +12,8 @@ impl Thread {
     pub(super) fn end_work(&mut self, o: Open, work: Value, ts: u64) {
         self.ended = Some(o.clone());
         let helpers = self.helpers(&o.id);
-        if helpers > 0 || self.working() {
+        // A summary turn is never held: a worker's result rejoins the block that started it [rev 3 §2.2].
+        if (helpers > 0 || self.working()) && self.turns[o.at]["summary"] != true {
             self.turns[o.at]["helpers"] = helpers.into();
             self.turns[o.at]["held"] = true.into();
             self.final_answer(&o, false);
