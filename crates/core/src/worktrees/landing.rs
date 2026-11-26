@@ -154,13 +154,14 @@ fn oid(s: &str) -> bool {
     matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// What a record's `base` names, in full, as git reads a short name as a tag first: a branch, an
-/// archived session's that went as its own base holds it, a remote's, one named past `refs/`, or a
-/// commit.
+/// What a record's `base` names, in full, as git reads a short name as a tag first: one named in
+/// full already, a branch, an archived session's that went as its own base holds it, a remote's,
+/// one named past `refs/`, or a commit.
 fn base_ref(repo: &Path, base: &str) -> Option<String> {
-    ["refs/heads/", super::freed::REFS, "refs/remotes/", "refs/"]
-        .map(|at| format!("{at}{base}"))
+    (base.starts_with("refs/").then_some(""))
         .into_iter()
+        .chain(["refs/heads/", super::freed::REFS, "refs/remotes/", "refs/"])
+        .map(|at| format!("{at}{base}"))
         .find(|r| git(repo, &["rev-parse", "--verify", "--quiet", r]).is_ok())
         .or_else(|| oid(base).then(|| base.into()))
 }
