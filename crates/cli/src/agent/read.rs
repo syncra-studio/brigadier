@@ -116,6 +116,12 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
                 // In proportion: escapes make a byte of text cost more than one.
                 words = start(words, words.len() * left / bytes);
             };
+            // Its files alone pass what's left: its reference, how many, and the --raw command.
+            let m = match m.to_string().len() + 1 > left {
+                true => json!({"ref": m["ref"], "from": m["from"], "text": "", "files": [],
+                    "files_cut": e.files.len(), "cut": raw}),
+                false => m,
+            };
             let bytes = m.to_string().len() + 1;
             if bytes > left {
                 break;
