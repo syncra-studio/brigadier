@@ -35,6 +35,11 @@ fn ruled(spec: &Spec, f: &fold::Fold) -> (Option<String>, &'static str) {
     (core::as_run(&spec, f, b, None).ruled(b).err(), agent)
 }
 
+/// One that waited and went, its row still to say how.
+pub(super) fn to_say(r: &Res) -> bool {
+    !r.refused.is_empty() && !["written", "held", "sent"].contains(&r.state.as_str())
+}
+
 /// Whether a refused result waits: the rule its row names still bars the parent's model, so
 /// sending it would be refused again. Any other refusal (trust, a level) goes again each pass, as
 /// before, so its row turns to the next one once it's fixed.

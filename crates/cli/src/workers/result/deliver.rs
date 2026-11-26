@@ -11,7 +11,7 @@ use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
 
@@ -96,10 +96,8 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
     let any = |s: &str| results.iter().any(|(_, r)| r.state == s);
     let held = any("held");
     // One that waited and went, its delivery still to say, is settled below too.
-    let to_say = (results.iter()).any(|(_, r)| {
-        !r.refused.is_empty() && !["written", "held", "sent"].contains(&r.state.as_str())
-    });
-    if held && !any("written") && !any("sent") && !to_say {
+    let to_say = |all: &[(PathBuf, Res)]| (all.iter()).any(|(_, r)| unsent::to_say(r));
+    if held && !any("written") && !any("sent") && !to_say(&results) {
         return Ok(());
     }
     let dir = core::session_dir(data, pid);
@@ -131,7 +129,9 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         .into_iter()
         .find(|(_, r)| r.state == "written");
     let Some((path, mut r)) = next else {
-        if !held && !proving && !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
+        // Read again: a message may have taken one that waited since (`went_with`).
+        let now = all(data, pid);
+        if !held && !proving && !now.iter().any(|(_, r)| r.state == "sent") && !to_say(&now) {
             OPEN.lock().unwrap().as_mut().map(|o| o.remove(pid));
         }
         return Ok(());
