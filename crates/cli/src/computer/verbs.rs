@@ -8,7 +8,9 @@
 mod act;
 mod apps;
 pub(super) mod asks;
+mod calls;
 mod diff;
+mod holder;
 mod open;
 mod run;
 mod shot;
@@ -21,14 +23,15 @@ use super::{Fail, HUB, lock, tool};
 use crate::agent::refuse;
 use act::{act, key, need, token};
 use apps::{apps, find, menu_path};
+use calls::{UNLOGGED, sent};
+use holder::take;
+pub use holder::turn_ended;
+pub(super) use holder::{holder, release_all};
 use open::press;
 use serde_json::{Value, json};
 use shot::{drag, screenshot};
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use web::web_page;
@@ -116,27 +119,7 @@ struct Sess {
 pub(super) const OFF: &str =
     "Computer use is off: ask the user to turn it on in Settings › Computer use.";
 
-/// The session using the computer now [D907].
-static HOLDER: Mutex<Option<String>> = Mutex::new(None);
 static SESSIONS: LazyLock<Mutex<HashMap<String, Sess>>> = LazyLock::new(Mutex::default);
-
-/// A turn ended, stopped or crashed: its session lets the computer go [D907].
-pub fn turn_ended(id: &str) {
-    asks::ended(id);
-    let mut holder = lock(&HOLDER);
-    if holder.as_deref() == Some(id) {
-        *holder = None;
-    }
-}
-
-pub(super) fn holder() -> Option<String> {
-    lock(&HOLDER).clone()
-}
-
-pub(super) fn release_all() {
-    *lock(&HOLDER) = None;
-    lock(&SESSIONS).clear();
-}
 
 struct Words<'a> {
     verb: &'a str,
@@ -239,27 +222,6 @@ pub(crate) const VERBS: [&str; 10] = [
     "menu",
     "screenshot",
 ];
-
-thread_local! {
-    /// This call's line for the calls log, until it is written.
-    static UNLOGGED: RefCell<Option<(PathBuf, &'static str)>> = const { RefCell::new(None) };
-}
-
-/// Brigadier's own count of the calls that went through or reached the app, not those it refused,
-/// which a worker's result carries so its lead needn't take its word [D2032]. Written as the
-/// action leaves, so a turn stopped while it waits still counts it.
-pub(super) fn sent() {
-    let Some((calls, verb)) = UNLOGGED.take() else {
-        return;
-    };
-    let _ = fs::create_dir_all(&calls).and_then(|()| {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(calls.join("calls"))?;
-        writeln!(f, "{} {verb}", brigadier_frames::log::now_ms())
-    });
-}
 
 fn verb(
     data: &Path,
@@ -509,24 +471,6 @@ fn checked(
     };
     lock(&SESSIONS).insert(me.to_string(), s);
     Ok(text)
-}
-
-/// Takes the computer for `me`, or names the session that has it [D907]. A holder waiting on the
-/// user (a question, an approval) has let it go: its turn goes on only once they answer.
-fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
-    let mut holder = lock(&HOLDER);
-    if let Some(id) = holder.as_deref().filter(|id| *id != me) {
-        let row = rows().into_iter().find(|r| r["id"] == id);
-        if let Some(r) = row.filter(|r| r["running"] == true && r["state"] != "waiting_answer") {
-            return Err(refuse(&format!(
-                "Computer use is in use by {} in \"{}\" (session {id}). Try again after its turn, or do something else.",
-                r["backend"].as_str().unwrap_or("another agent"),
-                r["title"].as_str().unwrap_or(id)
-            )));
-        }
-    }
-    *holder = Some(me.to_string());
-    Ok(())
 }
 
 fn said(f: Fail) -> Value {
