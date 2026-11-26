@@ -356,7 +356,7 @@ fn undo(owned: &Owned) -> io::Result<()> {
     unregister(owned)?;
     let repo = Path::new(&owned.repo);
     // A failed branch create must never take a branch another session or git made: with `made`,
-    // only the branch whose first reflog line is it; an older build's record named it once made.
+    // only the branch whose last reflog line is it; an older build's record named it once made.
     // No line to tell by (a reflog unread or expired) keeps the record for the next sweep.
     let ours = |branch: &str| -> io::Result<bool> {
         let Some(made) = &owned.made else {
@@ -368,7 +368,9 @@ fn undo(owned: &Owned) -> io::Result<()> {
             "--format=%gs",
             &format!("refs/heads/{branch}"),
         ];
-        match git(repo, &log)?.lines().last() {
+        // Newest first: a failed create's branch never moves after it's made, and an attempt cut
+        // short may have left an older line under the same name.
+        match git(repo, &log)?.lines().next() {
             Some(first) => Ok(first == made),
             None => err(format!(
                 "Brigadier couldn't tell whether it made the branch {branch}."
