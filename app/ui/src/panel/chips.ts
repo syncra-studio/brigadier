@@ -55,6 +55,9 @@ function tell(session: string, args: string[]): Promise<Record<string, any>> {
   return next;
 }
 
+/** Once this session's chip writes so far are in: a message goes after them, as its chips' take did, so none it names is missing [D237, D1174]. */
+export const chipsWritten = (session: string) => chains.get(session) ?? Promise.resolve({});
+
 /** Rust's chips, which settles any a send was handing off, with what was added here meanwhile. */
 function load(session: string): void {
   void tell(session, []).then((reply) => {

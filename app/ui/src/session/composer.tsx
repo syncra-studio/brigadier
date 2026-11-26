@@ -13,7 +13,7 @@ import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
 import { ask, type Row, showStop, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
-import { type Chip, dropChips, handOff, leaveChips, useChips, withChips } from "../panel/chips";
+import { type Chip, chipsWritten, dropChips, handOff, leaveChips, useChips, withChips } from "../panel/chips";
 import { AgentChipTile } from "../landing/agent-chip";
 import { CommentChip } from "../review/comments";
 import { sendFailed } from "../thread/follow";
@@ -169,7 +169,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const key = newId();
     setOps((now) => [...now, { ...op, key }]);
     setError(null);
-    void run(["queue", id, ...args]).then((reply) => {
+    void chipsWritten(id).then(() => run(["queue", id, ...args])).then((reply) => {
       then?.(reply);
       if (reply.ok) return setOps((now) => now.map((each) => (each.key === key ? { ...each, at: reply.at ?? 0 } : each)));
       setOps((now) => now.filter((each) => each.key !== key));
@@ -201,7 +201,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   };
   const now = (message: string, steer: boolean, cid: string, parts: string | undefined, sub: Sub) => {
     onSent?.(cid);
-    void go(run, id, { cid, kind: "send", op: sendOp(id, message, cid, { parts, steer, chips: sub.chips }), draft: sub.draft, chips: sub.chips, at: Date.now() }, sub.rev);
+    void go((args) => chipsWritten(id).then(() => run(args)), id, { cid, kind: "send", op: sendOp(id, message, cid, { parts, steer, chips: sub.chips }), draft: sub.draft, chips: sub.chips, at: Date.now() }, sub.rev);
   };
   const steerQueued = (qid: string) => act({ kind: "remove", qid }, ["steer", qid]);
   // What waits behind a command that runs goes after it, as behind a turn.
