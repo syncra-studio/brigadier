@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 /// How many given-back ids are kept: one comes again only from a bubble, which lives one app run.
 const REFUSED: usize = 200;
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct Words {
     #[serde(default)]
@@ -225,9 +225,10 @@ pub(crate) fn queued(dir: &Path, qid: &str) -> bool {
 
 /// Settles message `g`: gone into the log or the queue, or refused and given back above the draft.
 /// No save of the UI's since it was sent, what the UI holds is that message, or an older save of
-/// it: it goes either way.
+/// it: it goes either way. A save of those very words is it too, its reply not back when it went.
 fn settle(book: &mut Book, g: Going, how: How, error: Value) -> Option<Given> {
-    if how != How::Unknown && g.rev.is_some_and(|rev| book.ui.rev <= rev) {
+    let mine = |rev: u64| book.ui.rev <= rev || book.ui.words == g.words;
+    if how != How::Unknown && g.rev.is_some_and(mine) {
         book.ui.words = Words::default();
     }
     if how != How::Refused {
