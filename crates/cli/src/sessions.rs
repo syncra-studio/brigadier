@@ -37,7 +37,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     match args[0].as_str() {
         "audit" => return audit::run(&spec, args),
         // Settled first too: an archived session gets no host to settle with.
-        "archive" if has(args, "--check") => return Ok(check(data, &args[1..], false)),
+        "archive" if has(args, "--check") => return Ok(check(data, &args[1..])),
         // Every id given, each loaded first so an unknown one refuses before any is archived.
         "archive" => {
             let ids = args[1..].iter().filter(|a| !a.starts_with("--"));
@@ -130,8 +130,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "at": index::touched(&core::session_dir(data, id))}))
 }
 
-/// Proposed: what delete's confirm asks of every id given, together: the branches too [D181], and its
-/// whole worker family's with each [D3017]. One already deleted has nothing to check.
+/// What delete's confirm says: which of every id given, its whole worker family's with each [D3017],
+/// has an agent working, which delete stops. What else goes isn't listed: a branch with work that never
+/// landed is kept [D181], and delete's own guards still refuse. One already deleted has nothing to check.
 fn check_delete(data: &Path, args: &[String]) -> io::Result<Value> {
     let mut ids: Vec<String> = vec![];
     for id in args.iter().filter(|a| !a.starts_with("--")) {
@@ -146,21 +147,20 @@ fn check_delete(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
     }
-    // Side by side: each is a few git processes per session.
-    let (mut reply, asked) = std::thread::scope(|s| {
-        let asked = s.spawn(|| session::branches(data, &ids));
-        (check(data, &ids, true), asked.join().unwrap())
-    });
-    let asked = asked?;
-    for part in ["branches", "kept", "stays"] {
-        reply[part] = asked[part].clone();
-    }
-    Ok(reply)
+    let all = procs::all();
+    let at_work = core::at_once(&ids, |s| workers::at_work(data, s, &all));
+    let running: Vec<&String> = ids
+        .iter()
+        .zip(at_work)
+        .filter(|(_, w)| *w)
+        .map(|(s, _)| s)
+        .collect();
+    Ok(json!({"ok": true, "running": running}))
 }
 
-/// What archive's or delete's confirm says first [D1197]: which of `ids` has an agent working,
-/// stopped by it, and what each folder they free together loses (`archive <id>… --check`).
-fn check(data: &Path, ids: &[String], delete: bool) -> Value {
+/// What archive's confirm says first [D1197]: which of `ids` has an agent working, stopped by it, and
+/// what each folder they free together loses (`archive <id>… --check`).
+fn check(data: &Path, ids: &[String]) -> Value {
     let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
     let all = procs::all();
     let at_work = core::at_once(&ids, |s| workers::at_work(data, s, &all));
@@ -179,7 +179,7 @@ fn check(data: &Path, ids: &[String], delete: bool) -> Value {
             named.push(w);
         }
     }
-    let lost = core::worktrees::lost::losses(data, &gone, delete);
+    let lost = core::worktrees::lost::losses(data, &gone, false);
     // Archive gets `named` back: only their losses were asked about.
     json!({"ok": true, "running": running, "lost": lost, "named": named})
 }

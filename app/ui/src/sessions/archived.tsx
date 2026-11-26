@@ -7,9 +7,8 @@ import { ErrorLine } from "../components/error-line";
 import { DropdownMenuItem } from "../components/menu";
 import { EmptyState } from "../components/empty-state";
 import { NavList, NavSection } from "../components/nav";
-import { Radio, RadioGroup } from "../components/radio";
 import { showToast } from "../components/toast";
-import { ask, useDaemon } from "../daemon";
+import { ask } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
@@ -18,7 +17,8 @@ import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
 import { useStored } from "../sidebar/sidebar";
 import type { SessionRow } from "../sidebar/words";
-import { type ArchiveCheck, ConfirmLines, hideDeleting, LostLine } from "./archive";
+import { plural } from "../projects/remove";
+import { hideDeleting } from "./archive";
 
 /*
  * The docked Archived section, below the list [D191, D198]: folded at first, shown once something is
@@ -120,59 +120,33 @@ export function DeleteAsk() {
 }
 
 type Deleted = { id: string; title: string };
-/** `running`, `lost`: as archive's, its workers' too [D1197, D3017]. `repo`: a folder chat's claim's, else "". */
-type Check =
-  | { state: "checking" }
-  | ({
-      state: "done";
-      /** With work that never landed, each kept unless asked [D181]. */
-      branches: Ahead[];
-      /** With such work too, but delete leaves them whatever is picked, and why [D703]. */
-      kept: { repo: string; branch: string; why: "pr" | "shared" }[];
-      /** Folders another session still works in, which stay [D1080]. */
-      stays: { id: string; repo: string; by: string }[];
-    } & ArchiveCheck)
-  | { state: "failed"; error: string };
-type Ahead = { id: string; title: string; repo: string; branch: string };
-
-/** Rust's delete check, read as its confirm opens: the confirm shows at once, Delete waiting for it. */
-const readDelete = (rows: Deleted[]): Promise<Check> =>
-  run(["delete", ...rows.map((row) => row.id), "--check"]).then(
-    (reply) => ({ state: "done", branches: reply.branches, kept: reply.kept, stays: reply.stays, running: reply.running, lost: reply.lost }),
-    (cause) => ({ state: "failed", error: errorText(cause) }),
-  );
 
 /**
- * Delete's confirm, for one session or several [D35, D181]: a branch with work that never landed is named, kept
- * unless asked, a folder chat's by repo [D494]. Delete waits for Rust's check; Rust checks again as it runs. Each
- * row leaves at once and comes back if it fails.
+ * Delete's confirm, for one session or several [D35]: one line, as rivals' and Remove project's. Delete keeps a
+ * branch with work that never landed [D181]; Rust's check only adds the workers it stops, and Delete doesn't wait
+ * for it. Each row leaves at once and comes back if it fails, with delete's own reason.
  */
 export function DeleteForm({ rows, onClose }: { rows: Deleted[]; onClose: () => void }) {
-  const [check, setCheck] = useState<Check>({ state: "checking" });
-  const all = useDaemon().rows;
-  const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
-  const [attempt, setAttempt] = useState(0);
-  // Read as it opens, and again on Retry.
+  const [running, setRunning] = useState(0);
   useEffect(() => {
     let live = true;
-    setCheck({ state: "checking" });
-    void readDelete(rows).then((next) => live && setCheck(next));
+    const mine = new Set(rows.map((row) => row.id));
+    run(["delete", ...mine, "--check"]).then(
+      (reply) => live && setRunning((reply.running as string[]).filter((id) => !mine.has(id)).length),
+      () => {},
+    );
     return () => {
       live = false;
     };
-  }, [rows, attempt]);
+  }, [rows]);
   const one = rows.length === 1 ? rows[0]! : null;
   const many = `${rows.length} sessions`;
-  const done = check.state === "done" ? check : null;
-  const repos = Map.groupBy(done?.branches ?? [], (each) => each.repo);
+  const stop = running > 0 ? ` ${one ? "Its" : "Their"} ${plural(running, "running worker stops", "running workers stop")}.` : "";
   const confirm = () => {
     onClose();
-    const chosen = [...repos.keys()].filter((repo) => dropped.has(repo));
-    const perRepo = chosen.length > 0 && [...repos.keys()].some((repo) => repo);
-    const choice = perRepo ? chosen.flatMap((repo) => ["--delete-in", repo]) : ["--branch", chosen.length ? "delete" : "keep"];
     for (const row of rows) {
       hideDeleting(row.id, true);
-      ask({ op: "run", args: ["delete", row.id, ...choice] }, (reply) => {
+      ask({ op: "run", args: ["delete", row.id, "--branch", "keep"] }, (reply) => {
         if (reply.ok) return;
         hideDeleting(row.id, false);
         const why = reply.left?.[0] ?? (reply.error === "disconnected" ? "Brigadier isn't running" : (reply.message ?? reply.error ?? "it failed"));
@@ -180,97 +154,15 @@ export function DeleteForm({ rows, onClose }: { rows: Deleted[]; onClose: () => 
       });
     }
   };
-  const called = (id: string) => [...rows, ...(all ?? [])].find((each) => each.id === id)?.title || "another session";
-  const whose = (ids: string[]) => (one && ids.every((id) => id === one.id) ? "" : `${ids.map((id) => `“${called(id)}”`).join(", ")}: `);
   return (
     <ConfirmForm
-      title={one ? "Delete session?" : `Delete ${many}?`}
-      description={`This permanently deletes ${one ? `“${titleOf(one)}”` : many}. This can't be undone.`}
+      title={one ? `Delete “${titleOf(one)}”?` : `Delete ${many}?`}
+      description={`This can't be undone.${stop}`}
       confirm={one ? "Delete session" : `Delete ${many}`}
       destructive
-      disabled={!done}
       onConfirm={confirm}
       onCancel={onClose}
-    >
-      <ConfirmLines>
-        {check.state === "checking" && <p className="text-xs text-muted-foreground">{one ? "Checking its branch…" : "Checking their branches…"}</p>}
-        {check.state === "failed" && (
-          <div className="flex items-center gap-2">
-            <ErrorLine error={`Couldn't check ${one ? "its branch" : "their branches"}: ${check.error}`} />
-            <Button variant="ghost" size="sm" onClick={() => setAttempt(attempt + 1)}>
-              Retry
-            </Button>
-          </div>
-        )}
-        {done && done.running.length > 0 && (
-          <p className="text-xs text-muted-foreground">{one ? "Its agent is working and will be stopped." : `${done.running.map((id) => `“${called(id)}”`).join(", ")}: working, and will be stopped.`}</p>
-        )}
-        {done?.lost.map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} />)}
-        {done?.stays.map(({ id, repo, by }) => (
-          <p key={`${id} ${repo}`} className="text-xs text-muted-foreground">
-            {whose([id])}Its {repo ? <>copy of <code className="font-mono text-foreground">{repo}</code></> : "folder"} stays: {called(by)} still works there.
-          </p>
-        ))}
-        {done && done.kept.length > 0 && (
-          <div className="flex flex-col gap-1 text-xs break-words text-muted-foreground">
-            {[...new Map(done.kept.map((each) => [`${each.repo} ${each.branch}`, each]))].map(([key, { repo, branch, why }]) => (
-              <p key={key}>
-                <code className="font-mono text-foreground">{branch}</code>
-                {repo && ` in ${repo}`} stays either way: {why === "pr" ? "it's a pull request's branch." : "another session uses it."}
-              </p>
-            ))}
-          </div>
-        )}
-        {[...repos].map(([repo, branches]) => (
-          <BranchChoice
-            key={repo}
-            repo={repo}
-            branches={branches}
-            own={one !== null && repo === "" && branches.length === 1 && branches[0]!.id === one.id}
-            drop={dropped.has(repo)}
-            setDrop={(drop) => setDropped((now) => new Set(drop ? [...now, repo] : [...now].filter((each) => each !== repo)))}
-          />
-        ))}
-      </ConfirmLines>
-    </ConfirmForm>
-  );
-}
-
-/** One repository's branches with work that never landed, its workers' too: one choice for all. */
-function BranchChoice({ repo, branches, own, drop, setDrop }: { repo: string; branches: Ahead[]; own: boolean; drop: boolean; setDrop: (drop: boolean) => void }) {
-  const lone = branches.length === 1;
-  return (
-    <div className="flex flex-col gap-2.5">
-      {own ? (
-        <p className="text-xs text-muted-foreground">
-          Its branch <code className="font-mono text-foreground">{branches[0]!.branch}</code> has work that never landed.
-        </p>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {repo && <>In <code className="font-mono text-foreground">{repo}</code>, </>}
-            {repo ? "t" : "T"}{lone ? "his branch has" : "hese branches have"} work that never landed:
-          </p>
-          <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {branches.map(({ id, branch, title }) => (
-              <li key={id} className="truncate">
-                <code className="font-mono text-foreground">{branch}</code> · {title || "New session"}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      <RadioGroup value={drop ? "delete" : "keep"} onValueChange={(value) => setDrop(value === "delete")} className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-sm">
-          <Radio value="keep" />
-          {lone ? "Keep branch" : "Keep branches"}
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <Radio value="delete" />
-          {lone ? "Delete it too" : "Delete them too"}
-        </label>
-      </RadioGroup>
-    </div>
+    />
   );
 }
 

@@ -18,7 +18,7 @@ mod branches;
 mod hand;
 mod litter;
 mod sweep;
-pub use branches::{Chosen, branches};
+pub use branches::Chosen;
 use hand::hand_on;
 pub use litter::{built, built_in, left, may_take, own, tidy, unbuild, unbuilt};
 pub(crate) use litter::{guarded, picks, takes};
