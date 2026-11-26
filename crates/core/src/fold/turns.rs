@@ -335,8 +335,10 @@ impl Fold {
             });
             self.turns.remove(0);
             // Only a turn that ended well, or one Brigadier cut to carry on, waits on its workers
-            // [D3011, D108]; the turn a worker's result woke ends that worker's hold [D151].
-            if outcome != "done" && reason != "rebirth" {
+            // [D3011, D108]; the turn a worker's result woke ends that worker's hold [D151]. A summary
+            // turn that failed or Brigadier stopped leaves them: only the user's Stop or Pause ends it.
+            let kept = turn.origin == "summary" && reason != "user" && reason != "pause";
+            if outcome != "done" && reason != "rebirth" && !kept {
                 self.workers.clear();
             } else if let Some(w) = (turn.origin.strip_prefix("result:").and_then(result_of))
                 .filter(|w| !turn.messaged.contains(*w))
