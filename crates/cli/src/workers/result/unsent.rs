@@ -15,6 +15,8 @@ use std::path::Path;
 /// The row's words once it goes, and once the agent took it.
 const GOING: &str = "A worker's result that was waiting is on its way.";
 const TOOK: &str = "A worker's result that was waiting is delivered.";
+const UNSURE: &str =
+    "A worker's result that was waiting was sent, but its arrival couldn't be confirmed.";
 /// `going` of one a Resume carried whose row didn't take its on-its-way words yet.
 pub(super) const RESUMED: &str = "resumed";
 
@@ -64,9 +66,14 @@ pub(super) fn after(
     };
     r.refused = why.into();
     let (rule, agent) = ruled(spec, &f);
+    // Its words, as the queue says them: a setup or old host refusal's code alone says nothing.
+    let said = reply["message"]
+        .as_str()
+        .filter(|m| !m.is_empty())
+        .unwrap_or(why);
     let mut text = format!(
         "A worker's result is waiting: {}.",
-        why.trim_end_matches('.')
+        said.trim_end_matches('.')
     );
     if rule.as_deref() == Some(why) {
         text += &format!(
@@ -99,7 +106,8 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
             "taken" if !f.cids.contains_key(&r.going) => None,
             "taken" => settled(f, &r.going, state),
             "delivered" => Some("delivered"),
-            "uncertain" | "dropped" => Some(""),
+            "uncertain" => Some("uncertain"),
+            "dropped" => Some(""),
             _ => continue,
         };
         let Some(proof) = proof else {
@@ -107,12 +115,13 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
             continue;
         };
         // Not shown (its host not back yet): it stays to say, next pass.
-        let words = match proof {
-            "delivered" => TOOK,
-            "going" => GOING,
-            _ => "",
+        let (level, words) = match proof {
+            "delivered" => ("info", TOOK),
+            "going" => ("info", GOING),
+            "uncertain" => ("warning", UNSURE),
+            _ => ("", ""),
         };
-        if !words.is_empty() && note(data, pid, &r, "info", words).is_err() {
+        if !words.is_empty() && note(data, pid, &r, level, words).is_err() {
             more = true;
             continue;
         }
