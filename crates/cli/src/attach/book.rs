@@ -73,6 +73,10 @@ struct Going {
     #[serde(flatten)]
     words: Words,
     files: Vec<String>,
+    /// Its chips handed to it, the message itself still to come: the send that follows settles it,
+    /// else a read of the draft (a reload), as a chip handed off is settled on a read [D1174].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    handed: bool,
 }
 
 /// A message given back; `done` once its files and chips are back too.
@@ -160,12 +164,16 @@ fn cid_lock(dir: &Path, cid: &str) -> PathBuf {
 }
 
 /// Changes session `dir`'s book under its lock, in one write, what was cut short settled first.
-fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> io::Result<T>) -> io::Result<T> {
+fn change<T>(
+    dir: &Path,
+    reading: bool,
+    f: impl FnOnce(&mut Book) -> io::Result<T>,
+) -> io::Result<T> {
     let _lock = hold(&dir.join("draft.lock"))?;
     let path = dir.join("draft");
     let mut book = read(&path);
     let was = serde_json::to_vec(&book)?;
-    replay(dir, &mut book)?;
+    replay(dir, &mut book, reading)?;
     let out = f(&mut book)?;
     if serde_json::to_vec(&book)? != was {
         let mut file = serde_json::to_value(shown(&book))?;
@@ -179,17 +187,18 @@ fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> io::Result<T>) -> io::Resu
 /// log, a give-back by bringing its files and chips back. Every command on the session's draft,
 /// files or chips runs it first.
 pub fn settle_cut(dir: &Path) -> io::Result<()> {
-    change(dir, |_| Ok(()))
+    change(dir, false, |_| Ok(()))
 }
 
-fn replay(dir: &Path, book: &mut Book) -> io::Result<()> {
+fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
     let gone = |cid: &str| !lock_held(&cid_lock(dir, cid));
     for queue in [false, true] {
         let list = match queue {
             true => &mut book.adding,
             false => &mut book.inflight,
         };
-        let (cut, live) = std::mem::take(list).into_iter().partition(|g| gone(&g.cid));
+        let cut = |g: &Going| gone(&g.cid) && (read || !g.handed);
+        let (cut, live) = std::mem::take(list).into_iter().partition(cut);
         *list = live;
         for g in cut {
             let went = logged(dir, &g.cid) || (queue && queued(dir, &g.cid));
@@ -211,7 +220,8 @@ fn logged(dir: &Path, cid: &str) -> bool {
     core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid))
 }
 
-fn queued(dir: &Path, qid: &str) -> bool {
+/// Whether `qid` waits in the session's queue, or is being edited there.
+pub(crate) fn queued(dir: &Path, qid: &str) -> bool {
     let q = crate::queue::row(dir);
     let items = q["items"].as_array().into_iter().flatten();
     items.chain([&q["editing"]]).any(|i| i["id"] == qid)
@@ -277,7 +287,7 @@ fn crash_at(point: &str) {
 /// nothing is written, and the reply is stale with what it missed. Without `--base`, as before.
 pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
     let Some(text) = args.get(2) else {
-        return change(dir, |book| {
+        return change(dir, true, |book| {
             let cids: Vec<&String> = book.given.iter().map(|g| &g.cid).collect();
             let draft = serde_json::to_string(&shown(book))?;
             Ok(json!({"ok": true, "draft": draft, "rev": book.rev, "cids": cids}))
@@ -290,7 +300,7 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
     let base = flag(args, "--base").map(|b| b.parse::<u64>().map_err(io::Error::other));
     let base = base.transpose()?;
     let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
-    change(dir, |book| {
+    change(dir, false, |book| {
         let missed: Vec<&Given> = (book.given.iter())
             .filter(|g| base.is_some() && !took.contains(&g.cid.as_str()))
             .collect();
@@ -304,6 +314,8 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
             rev: book.rev,
         };
         book.given.clear();
+        // A hand-off the UI gave back itself (its reply lost) is in what it saved.
+        (book.inflight).retain(|g| !(g.handed && took.contains(&g.cid.as_str())));
         Ok(json!({"ok": true, "rev": book.rev}))
     })
 }
@@ -359,19 +371,20 @@ pub fn going(
         rev,
         words,
         files,
+        handed: false,
     };
     let queue = kind == "queue";
-    let again = change(dir, |book| {
+    let again = change(dir, false, |book| {
         if book.refused.iter().any(|c| c == cid) {
             return Ok(true);
         }
-        let list = if queue {
-            &mut book.adding
-        } else {
-            &mut book.inflight
-        };
-        list.retain(|each| each.cid != cid);
-        list.push(g);
+        // Its hand-off's entry, if any, is this one now.
+        book.inflight.retain(|each| each.cid != cid);
+        book.adding.retain(|each| each.cid != cid);
+        match queue {
+            true => book.adding.push(g),
+            false => book.inflight.push(g),
+        }
         Ok(false)
     })?;
     if again {
@@ -398,25 +411,27 @@ pub fn going(
         Ok(r) => r["message"].as_str().or(r["error"].as_str()).into(),
         Err(e) => e.to_string().into(),
     };
-    let given = change(dir, |book| {
+    let given = change(dir, false, |book| {
         let list = if queue {
             &mut book.adding
         } else {
             &mut book.inflight
         };
-        Ok(match list.iter().position(|each| each.cid == cid) {
-            Some(at) => {
-                let g = list.remove(at);
-                settle(book, g, how, error)
-            }
-            None => None,
-        })
+        let Some(at) = list.iter().position(|each| each.cid == cid) else {
+            return Ok(None);
+        };
+        if kind == "chips" && how == How::Went {
+            list[at].handed = true;
+            return Ok(None);
+        }
+        let g = list.remove(at);
+        Ok(settle(book, g, how, error))
     })?;
     crash_at("send:settled");
     let mut reply = answer(out, how);
     if let Some(mut g) = given {
         finish(dir, &mut g)?;
-        change(dir, |book| {
+        change(dir, false, |book| {
             if let Some(kept) = book.given.iter_mut().find(|each| each.cid == g.cid) {
                 (kept.chips, kept.done) = (g.chips.clone(), true);
             }
