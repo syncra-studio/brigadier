@@ -14,7 +14,7 @@ pub(crate) use unsent::unsent;
 
 use crate::{arg, flag};
 use brigadier_core::{self as core, message};
-use brigadier_frames::{lock_held, log};
+use brigadier_frames::lock_held;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File, OpenOptions};
@@ -23,9 +23,6 @@ use std::path::{Path, PathBuf};
 
 /// How many given-back ids are kept: one comes again only from a bubble, which lives one app run.
 const REFUSED: usize = 200;
-/// How long a session's host may still be starting the agent for a message its sender, gone, had
-/// asked it to take, before it logs it (proposed).
-const HOST_WAIT_MS: u64 = 60_000;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -58,9 +55,6 @@ struct Going {
     cid: String,
     /// None: not taken from the field (an Add again), so never the UI's own words.
     rev: Option<u64>,
-    /// When it set out (ms).
-    #[serde(default)]
-    at: u64,
     #[serde(flatten)]
     words: Words,
     files: Vec<String>,
@@ -196,14 +190,15 @@ fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
         let cut = |g: &Going| gone(&g.cid) && (read || !g.handed);
         let (cut, live) = std::mem::take(list).into_iter().partition(cut);
         *list = live;
-        // A host outlives its sender and logs a message only once the agent has started: while it
-        // may still be doing that, a send not in the log yet stays unsettled [D54].
+        // A host outlives its sender and may log a message it was asked to take however late, so
+        // while it holds the session a send not in the log yet stays unsettled; a hand-off alone
+        // never reached a host [D54].
         let host = !queue && lock_held(&dir.join("owner.lock"));
-        let starting = |g: &Going| host && log::now_ms().saturating_sub(g.at) < HOST_WAIT_MS;
+        let may_log = |g: &Going| host && !g.handed;
         for g in cut {
             // A send a busy turn put in the queue went there.
             let went = logged(dir, &g.cid) || queued(dir, &g.cid);
-            if !went && starting(&g) {
+            if !went && may_log(&g) {
                 book.inflight.push(g);
                 continue;
             }
@@ -374,7 +369,6 @@ pub fn going(
         words,
         files,
         handed: false,
-        at: log::now_ms(),
     };
     let queue = kind == "queue";
     let again = change(dir, false, |book| {
