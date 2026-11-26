@@ -29,7 +29,11 @@ pub(super) fn items(spec: &Spec, entries: &[Entry]) -> String {
             .filter_map(|f| {
                 let r: Value = serde_json::from_slice(&std::fs::read(f.path()).ok()?).ok()?;
                 let how = r["how"].as_str()?.to_string();
-                let when = f.metadata().ok()?.modified().ok()?;
+                // Its own time: delivery rewrites a record, so its file's is no order (O50).
+                let when = (
+                    r["at"].as_u64().unwrap_or(0),
+                    r["end"].as_u64().unwrap_or(0),
+                );
                 (!["told", "notice", "shell"].contains(&how.as_str())).then_some((when, how))
             })
             .max();
