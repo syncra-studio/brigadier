@@ -86,9 +86,10 @@ export function NoteTopBar({ content, name, listing, editor, onList, onRename, o
   const download = () => {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([asMarkdown(content)], { type: "text/markdown" }));
-    const name = content.title.replace(/[\\/:*?"<>|\n]+/g, " ").trim();
+    // The name as shown, so a note titled by its first line isn't saved as "Untitled note".
+    const file = name.replace(/[\\/:*?"<>|\n]+/g, " ").trim();
     // Cut at 120, before a drawn character (an emoji of several) that crosses it.
-    link.download = `${name.slice(0, new Intl.Segmenter().segment(name).containing(120)?.index).trim() || "Untitled note"}.md`;
+    link.download = `${file.slice(0, new Intl.Segmenter().segment(file).containing(120)?.index).trim() || "Untitled note"}.md`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 0);
   };
