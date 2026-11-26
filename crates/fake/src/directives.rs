@@ -317,6 +317,8 @@ impl Agent {
                 emit(json!({"t": "done", "ok": false}));
                 return false;
             }
+            // `stepstart`: a start mid-turn, as OpenCode's `run` says at each step [D92].
+            "stepstart" => emit(json!({"t": "turn"})),
             "compact" => emit(json!({"t": "compact"})),
             // `ctx:N`: its context now holds N thousand tokens [D88].
             "ctx" => emit(json!({"t": "context", "used": n * 1000})),
