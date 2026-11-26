@@ -446,9 +446,7 @@ fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool, cut: bool)
     let (sw, from) = (&last["switch"], str_of(&last["switch"], "from_label"));
     let why = sw["why"].as_str().unwrap_or("rebirth");
     let mut text = match cut && !f.convs.is_empty() {
-        true => core::load(data, id).and_then(|s| {
-            core::handoff::build(&s, f, why, &last, &from, core::rebirth::backend(&s, f), "")
-        })?,
+        true => core::handoff::renewal(&core::load(data, id)?, f, why, &last, &from)?,
         false => String::new(),
     };
     let plain = cut && text.is_empty(); // A hand-off says where it was.

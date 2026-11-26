@@ -10,8 +10,8 @@ use crate::{Spec, fold::Fold};
 const RANGE: usize = 40;
 
 /// The room, in estimated tokens.
-pub(super) fn room(spec: &Spec, f: &Fold, to: &str, pending: &str) -> usize {
-    let line = crate::rebirth::line_to(spec, f, to);
+pub(super) fn room(spec: &Spec, f: &Fold, to: &str, model: Option<&str>, pending: &str) -> usize {
+    let line = crate::rebirth::line_to(spec, f, to, model);
     // What this conversation's CLI added, when it's the same agent's; else the floor and a tenth
     // of the line for the project's files and tools.
     let measured = (f.context.as_ref())

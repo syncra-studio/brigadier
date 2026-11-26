@@ -36,9 +36,9 @@ pub fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
 }
 
 /// The window its model's list gives, for a CLI that doesn't say it in its events: the last check
-/// Brigadier kept for this folder.
-fn listed(spec: &Spec, f: &Fold, b: &str) -> Option<u64> {
-    let model = as_run(spec, f, b, None).model?;
+/// Brigadier kept for this folder. `model`, else the one `b` runs.
+fn listed(spec: &Spec, f: &Fold, b: &str, model: Option<&str>) -> Option<u64> {
+    let model = model.map(String::from).or(as_run(spec, f, b, None).model)?;
     // The check this folder reads, as the pickers do (checked.rs) [C27].
     let check = crate::checked::kept(&crate::data_of(spec), b, std::path::Path::new(&spec.cwd))?;
     let models = check["models"].as_array()?;
@@ -70,17 +70,17 @@ pub fn line(spec: &Spec, f: &Fold) -> u64 {
     threshold(
         c["window"]
             .as_u64()
-            .or_else(|| listed(spec, f, backend(spec, f))),
+            .or_else(|| listed(spec, f, backend(spec, f), None)),
     )
 }
 
-/// The renewal line a fresh conversation on `to` starts under: this one's for the same agent.
-/// shortcut: a picked model of the same agent is read at the old one's window; the redo rule puts a
-/// smaller window right, so read the picked model's if picks to small windows are common.
-pub fn line_to(spec: &Spec, f: &Fold, to: &str) -> u64 {
-    match to == backend(spec, f) {
+/// The renewal line a fresh conversation on `to` starts under, on `model` where one was picked:
+/// this one's for the same agent and model, else the picked model's window in its list.
+pub fn line_to(spec: &Spec, f: &Fold, to: &str, model: Option<&str>) -> u64 {
+    let runs = as_run(spec, f, to, None).model;
+    match to == backend(spec, f) && model.is_none_or(|m| runs.as_deref() == Some(m)) {
         true => line(spec, f),
-        false => threshold(listed(spec, f, to)),
+        false => threshold(listed(spec, f, to, model)),
     }
 }
 

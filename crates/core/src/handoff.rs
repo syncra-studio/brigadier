@@ -244,11 +244,26 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     Ok(p)
 }
 
+/// The hand-off to the same agent's fresh conversation, nothing sent after it.
+pub fn renewal(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::Result<String> {
+    build(
+        spec,
+        f,
+        why,
+        last,
+        from,
+        crate::rebirth::backend(spec, f),
+        None,
+        "",
+    )
+}
+
 /// The hand-off for session `spec` with fold `f`. `why`: rebirth (the next message follows), cut
 /// (its last turn was stopped mid-way for a fresh context, or its window filled), limited,
 /// unresumable, picked, switched (picked mid-turn, which it carries on) or forked; `from` names where it came from; `last` is its last turn.
-/// `to` is the agent the fresh conversation runs on and `pending` what's sent after the hand-off:
-/// together they set its room [§2.6].
+/// `to` is the agent the fresh conversation runs on, `model` the one picked there if any, and
+/// `pending` what's sent after the hand-off: together they set its room [§2.6].
+#[allow(clippy::too_many_arguments)]
 pub fn build(
     spec: &Spec,
     f: &Fold,
@@ -256,6 +271,7 @@ pub fn build(
     last: &Value,
     from: &str,
     to: &str,
+    model: Option<&str>,
     pending: &str,
 ) -> io::Result<String> {
     let id = spec.id.as_str();
@@ -455,7 +471,7 @@ pub fn build(
     }
     out += &pointers::section(id, &p);
     out += &format!("\n## Next\n{step}\n");
-    let room = room::room(spec, f, to, pending);
+    let room = room::room(spec, f, to, model, pending);
     let less = |n: usize| n.saturating_sub(estimate::tokens(&out));
     let (conv, fits) = records::conversation(id, &p, Some((less(room), less(room / 2))));
     if fits {

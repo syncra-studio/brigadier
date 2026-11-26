@@ -129,7 +129,7 @@ pub fn send(
         } else {
             text
         };
-        match crate::handoff::build(spec, f, why, &last, a.label(), &b, after) {
+        match crate::handoff::build(spec, f, why, &last, a.label(), &b, None, after) {
             Ok(seed) => {
                 let sent = match after.is_empty() {
                     true => seed,
