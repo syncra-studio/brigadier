@@ -3,10 +3,10 @@
 //! Auto and Full never ask [D903]. An app is the bundle its process runs from, as the kernel says,
 //! so a name, an id or a pid used again never stands for another one. Kept in memory only.
 
-use super::{Sess, Words, apps::past_app, lock, refuse, still, take};
+use super::apps::{app_of, is_app, past_app};
+use super::{Sess, Words, lock, refuse, still, take};
 use crate::owner;
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io;
@@ -44,22 +44,6 @@ struct Asks {
 
 static ASKS: LazyLock<Mutex<Asks>> = LazyLock::new(Mutex::default);
 
-/// The app a process runs as: the innermost bundle its file is in, else the file.
-pub(super) fn app_of(pid: i64) -> Result<PathBuf, Value> {
-    let exe = i32::try_from(pid)
-        .ok()
-        .filter(|p| *p > 0)
-        .and_then(procs::exe);
-    let exe = exe.ok_or_else(|| refuse("That app isn't running any more: read it again."))?;
-    let exe = exe.canonicalize().unwrap_or(exe);
-    let app = exe.ancestors().find(|p| is_app(p)).map(Path::to_path_buf);
-    Ok(app.unwrap_or(exe))
-}
-
-fn is_app(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("app"))
-}
-
 /// An app as its card names it: its file's own name, nothing in it that changes how it reads.
 fn shown(text: &str) -> String {
     let plain = |c: &char| {
@@ -77,6 +61,11 @@ fn name(app: &Path) -> String {
 /// folder that isn't trusted, and Auto asking for a turn its own check gave no verdict in [D455].
 /// What can't be read is Ask.
 pub(super) fn level(data: &Path, me: &str) -> (bool, Option<String>) {
+    at(data, me, true)
+}
+
+/// The same; without `checks`, the level as saved, whatever Auto's check said of a turn.
+fn at(data: &Path, me: &str, checks: bool) -> (bool, Option<String>) {
     let Ok(spec) = core::load(data, me) else {
         return (true, None);
     };
@@ -94,7 +83,7 @@ pub(super) fn level(data: &Path, me: &str) -> (bool, Option<String>) {
     let level = adapters::get(backend).map(|a| core::level(&spec, a, held));
     let asks = match level {
         Some(Ok(Some("full"))) => false,
-        Some(Ok(Some("auto"))) => turn.is_some_and(|t| t.unchecked),
+        Some(Ok(Some("auto"))) => checks && turn.is_some_and(|t| t.unchecked),
         _ => true,
     };
     (asks, turn.map(|t| t.id.clone()))
@@ -219,10 +208,15 @@ fn asked(
     };
     // No card for a computer another session has, nor one for this agent's word alone [D907].
     take(me, rows)?;
+    // A worker's chat saved at Ask: raised while it waits, the worker's own level stays [D46].
+    let chat_asked = chat != me && at(data, &chat, false).0;
     let call = Call::new(me, app);
     let start = Instant::now();
     let past = loop {
         denied()?;
+        if chat_asked && !at(data, &chat, false).0 {
+            raised(data, &chat, app);
+        }
         if allowed(data, &chat, app) {
             break false;
         }
@@ -421,6 +415,16 @@ pub(in crate::computer) fn forget() {
     for (id, c) in cards {
         let settled = json!({"kind": "resolved", "id": id});
         thread::spawn(move || note(&c.data, &c.session, settled));
+    }
+}
+
+/// The chat went past Ask: its card for `app` is answered yes, for every turn that waits on it [C42].
+fn raised(data: &Path, chat: &str, app: &Path) {
+    let card = (lock(&ASKS).cards.iter())
+        .find(|(_, c)| c.chat == chat && c.app == app)
+        .map(|(id, c)| (id.clone(), c.session.clone()));
+    if let Some((id, session)) = card {
+        let _ = answered(data, &session, &id, &json!({"decision": "allow"}));
     }
 }
 

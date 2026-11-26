@@ -4,8 +4,9 @@
 use super::diff::Control;
 use super::open::{front, own, windows};
 use super::{Sess, Words, call, refuse};
+use brigadier_frames::procs;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// An app with no window: its menus, which work by pid.
 pub(super) fn menu_bar(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Result<String, Value> {
@@ -265,4 +266,20 @@ pub(super) fn blocked(name: &str, bundle: &str) -> Result<(), Value> {
         return Err(refuse("That's a security prompt: ask the user."));
     }
     Ok(())
+}
+
+/// The app a process runs as: the innermost bundle its file is in, else the file.
+pub(super) fn app_of(pid: i64) -> Result<PathBuf, Value> {
+    let exe = i32::try_from(pid)
+        .ok()
+        .filter(|p| *p > 0)
+        .and_then(procs::exe);
+    let exe = exe.ok_or_else(|| refuse("That app isn't running any more: read it again."))?;
+    let exe = exe.canonicalize().unwrap_or(exe);
+    let app = exe.ancestors().find(|p| is_app(p)).map(Path::to_path_buf);
+    Ok(app.unwrap_or(exe))
+}
+
+pub(super) fn is_app(p: &Path) -> bool {
+    p.extension().is_some_and(|e| e.eq_ignore_ascii_case("app"))
 }
