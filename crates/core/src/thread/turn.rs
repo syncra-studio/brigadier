@@ -12,7 +12,7 @@ impl Thread {
     pub(super) fn turn_ended(&mut self, t: &Turn, item: &Value, outcome: &str, ts: u64) {
         if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
             self.user_stopped(ts);
-        } else if outcome == "interrupted" && t.delivered.is_some() {
+        } else if outcome == "interrupted" && t.delivered.is_some() && t.origin != "summary" {
             self.interrupted_line();
         } else if item["kind"] == "exited" && t.delivered.is_none() {
             // Its agent couldn't start: one line, the CLI's own words under it [D476].

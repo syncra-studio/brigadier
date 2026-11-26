@@ -303,7 +303,8 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
                 fold.limit.clone().into(),
             ),
             _ if fold.refused.is_some() => ("unresumable", fold.refused.clone().into()),
-            _ if outcome == "interrupted" => (
+            // A summary turn cut off isn't continued as work: its renewal goes at the next message.
+            _ if outcome == "interrupted" && !summary => (
                 "interrupted",
                 fold.last.clone().unwrap_or_default()["reason"].clone(),
             ),
