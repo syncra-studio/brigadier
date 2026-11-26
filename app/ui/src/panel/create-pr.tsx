@@ -51,7 +51,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
       .then((reply) => {
         if (reply.existing) return setExists(String(reply.url));
         // The writer failed: git's text to edit, and nothing committed or pushed yet [D1222].
-        if (reply.written === false) return (setTitle(String(reply.title ?? "")), setMessage(String(reply.message ?? "")), setNote(`${String(reply.why)}. Here's git's text instead: edit it, then create again.`));
+        if (reply.written === false) return (setTitle(String(reply.title ?? "")), setMessage(String(reply.message ?? "")), setNote(`${String(reply.why).trim().replace(/(?<![.!?])$/, ".")} Here's git's text instead: edit it, then create again.`));
         onOpenChange(false);
         setTitle("");
         setMessage("");
