@@ -129,7 +129,13 @@ pub fn mark(
     holding: bool,
 ) -> Option<&'static str> {
     let (state, _) = state(fold, live);
-    let state = if quiet(fold, state) { "idle" } else { state };
+    // A summary turn whose host died is no failure either: the next host ends it [rev 3 §2.2].
+    let lost = state == "interrupted" && summarizing(fold);
+    let state = if quiet(fold, state) || lost {
+        "idle"
+    } else {
+        state
+    };
     let ended = fold
         .last
         .as_ref()
@@ -228,6 +234,8 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         ),
         // A crash ends a turn before any record says so (`status` closes it in a copy); the
         // record written later names the same turn, so it doesn't tell twice.
+        // A summary turn's isn't the user's news: the new host ends it, its renewal goes ahead.
+        "interrupted" if summarizing(fold) => return None,
         "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
         // A rewind drops the last end (`last` None): no turn ended, so nothing is told again.
         _ if turn.is_some() || fold.finished == 0 || fold.last.is_none() => return None,
@@ -245,6 +253,14 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         _ => return None,
     };
     Some(json!({"id": id, "kind": kind, "text": text}))
+}
+
+/// Whether the newest turn, open or ended, is a summary turn [D92].
+fn summarizing(fold: &Fold) -> bool {
+    let last = || fold.last.as_ref().is_some_and(|l| l["origin"] == "summary");
+    fold.turns
+        .first()
+        .map_or_else(last, |t| t.origin == "summary")
 }
 
 /// The last turn's end, named by that turn (its time for a log older than turn ids).
