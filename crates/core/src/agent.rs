@@ -15,7 +15,7 @@ pub const SESSION: &str = "BRIGADIER_SESSION";
 pub const GRANT: &str = "BRIGADIER_GRANT";
 
 /// The commands an agent may run [D2026]; the daemon refuses every other.
-pub const COMMANDS: [&str; 20] = [
+pub const COMMANDS: [&str; 21] = [
     "sessions",
     "read",
     "send",
@@ -36,6 +36,7 @@ pub const COMMANDS: [&str; 20] = [
     "terminal",
     "new",
     "overnight",
+    "keep",
 ];
 
 /// How a message from another session opens, for its receiving agent; its bubble shows the rest [D2034].

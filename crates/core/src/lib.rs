@@ -15,6 +15,7 @@ pub mod git;
 pub mod handoff;
 pub mod host;
 pub mod images;
+pub mod keeps;
 mod kept;
 pub mod library;
 pub mod lid;

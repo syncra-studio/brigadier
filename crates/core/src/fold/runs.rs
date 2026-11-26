@@ -110,6 +110,7 @@ const LOOKS: &[&str] = &[
     "tree",
     "file",
     "stat",
+    "brigadier keep",
 ];
 
 /// Whether every command in a line only looks; one that writes a file with `>` doesn't. Taking a

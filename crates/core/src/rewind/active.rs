@@ -54,9 +54,10 @@ impl Active {
                 .filter(|(to, at)| item["cid"] == to.as_str() && *at > seq);
             self.until = found.map(|(_, at)| *at).max().unwrap_or(0).max(self.until);
         }
-        // A night's lines go with the turns it ran in; what else is noted happened all the same.
+        // A night's lines and the kept list's ops go with the turns they ran in; what else is noted
+        // happened all the same [D87].
         seq > self.until
-            || item["event"] != "overnight"
+            || !matches!(item["event"].as_str(), Some("overnight" | "kept"))
                 && matches!(
                     kind,
                     "spawned" | "exited" | "stopped" | "note" | "resume_id"

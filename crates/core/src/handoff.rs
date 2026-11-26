@@ -10,6 +10,7 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
+pub mod estimate;
 mod open;
 
 /// Each section's most, in characters (about four to a token), in reading order [w31].
@@ -283,6 +284,13 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }).collect();
     if !skills.is_empty() {
         out += &format!("\n## The session's skills\n{skills}");
+    }
+
+    // The agent's own kept lines, whole: `brigadier keep` caps them [D87].
+    let kept = crate::keeps::shown(&spec.dir);
+    if !kept.is_empty() {
+        out +=
+            &format!("\n## Kept by you, as you wrote them (`brigadier keep` changes them)\n{kept}");
     }
 
     // The user's answers, then their newest words, newest first; the rest as pointers.

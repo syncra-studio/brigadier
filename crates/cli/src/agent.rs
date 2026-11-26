@@ -4,6 +4,7 @@
 //! level, changes a session or prints a secret. Every wait has a timeout, and every reply is
 //! capped with a hint to read less.
 
+mod keep;
 pub(crate) mod new;
 mod wait;
 use crate::{models, peers, workers};
@@ -33,6 +34,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier models            the agents, models and efforts you may use
   brigadier skill [name]      the user's skills, or one whole
   brigadier notes [id]        the user's notes in your project, or one whole
+  brigadier keep \"<line>\"     keep a goal change or a decision for good; it starts every fresh conversation
   brigadier search \"…\"        every session's past: messages, tool calls, errors holding these words
   brigadier show <file|url>   show the user a file at its line, or a web page, in your session's tabs
   brigadier terminal …        the user's terminal tabs and ! commands: list, read their output; open one for the user
@@ -56,15 +58,7 @@ fn spec(cmd: &str) -> Option<crate::relay::Spec> {
             &[],
         ),
         "read" => (
-            "brigadier read <id> [--last N] [--user] [--json]
-brigadier read <id>#<n> [--around N] [--json]
-
-A session's last N messages (10 by default), the user's and its agent's, oldest first, each under its
-reference, after a line naming its agent and project. --user keeps only the user's own words. A reference (from `search` or an earlier read)
-opens that message, step or error with N entries on each side (3 by default), tool calls and errors
-included; a step's output reference, as a hand-off gives it, opens that step's whole output. A fork's
-messages from before it was forked are its own. Long output is cut from the oldest; --last or
---around reads fewer.",
+            include_str!("agent/read.txt"),
             &["--last", "--around"],
             &["--user"],
         ),
@@ -108,6 +102,7 @@ prompt, and a message answers the question.",
             &[],
             &[],
         ),
+        "keep" => (keep::HELP, &["--replace", "--drop"], &[]),
         "help" => (
             "brigadier help [command]\n\nLists your tools, or shows one command's help.",
             &[],
@@ -242,6 +237,9 @@ pub fn run(
     if call.cmd == "new" {
         let reply = new::new(data, me, call.id.unwrap_or(""), &value, &|f| call.has(f));
         return finish(&call, reply);
+    }
+    if call.cmd == "keep" {
+        return finish(&call, keep::run(data, me, call.id, &value));
     }
     if let Some(reply) = crate::relay::run(data, me, call.cmd, call.id, &value, &rows(), here) {
         return finish(&call, reply);
