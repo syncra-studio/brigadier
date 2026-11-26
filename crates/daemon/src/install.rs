@@ -122,13 +122,11 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
         .map(|p| format!("<string>{}</string>", esc(&p.to_string_lossy())))
         .collect();
     let log = data.join("daemon.log");
-    let output = fs::OpenOptions::new()
+    let mut output = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log)?;
-    if output.metadata()?.len() >= 5 * 1024 * 1024 {
-        output.set_len(0)?;
-    }
+    crate::logging::trim(&mut output)?;
     let stderr = esc(&log.to_string_lossy());
     let plist = data.join("daemon.plist");
     // Interactive: no resource limits, as when the app started it. No KeepAlive: the app starts it.

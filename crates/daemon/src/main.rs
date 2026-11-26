@@ -47,7 +47,7 @@ use std::fs::{self, Permissions};
 use std::io::{self, Write};
 use std::mem::size_of;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsFd, AsRawFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::mpsc::Sender;
@@ -60,6 +60,7 @@ mod caller;
 mod check;
 mod git;
 mod install;
+mod logging;
 mod ops;
 mod prs;
 mod reset;
@@ -143,6 +144,7 @@ fn main() -> io::Result<()> {
         },
         None => return Ok(()),
     };
+    let mut stderr = fs::File::from(io::stderr().as_fd().try_clone_to_owned()?);
     // Sleep a daemon that died, or a reboot, left disabled for the lid [D333].
     brigadier_core::lid::recover(&data);
     let mut lid = brigadier_core::lid::Lid::default();
@@ -197,6 +199,9 @@ fn main() -> io::Result<()> {
     let mut changed = 0;
     let mut full: Option<Instant> = None;
     loop {
+        if let Err(e) = logging::trim(&mut stderr) {
+            eprintln!("brigadierd: stderr log: {e}");
+        }
         let all = full.is_none_or(|at| at.elapsed() >= FULL);
         match index.sync(all) {
             Ok((rows, gone)) => {
