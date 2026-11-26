@@ -36,6 +36,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"draft" | "ready" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // git's text a failed write left: it goes as it reads, an empty message too [D1222].
   const [note, setNote] = useState<string | null>(null);
   const [exists, setExists] = useState<string | null>(null);
   // On its base (or no branch, or a base no one could name), the PR needs a new branch.
@@ -45,8 +46,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   const create = (draft: boolean) => {
     setBusy(draft ? "draft" : "ready");
     setError(null);
-    setNote(null);
-    const args = ["host", owner, "create", ...(newName ? ["--branch", newName] : []), ...(commit && changed ? ["--commit"] : []), "--title", title, "--message", message, ...(draft ? ["--draft"] : []), ...(base ? ["--base", base] : [])];
+    const args = ["host", owner, "create", ...(newName ? ["--branch", newName] : []), ...(commit && changed ? ["--commit"] : []), "--title", title, "--message", message, ...(note && title.trim() ? ["--as-is"] : []), ...(draft ? ["--draft"] : []), ...(base ? ["--base", base] : [])];
     run(args)
       .then((reply) => {
         if (reply.existing) return setExists(String(reply.url));
@@ -55,6 +55,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
         onOpenChange(false);
         setTitle("");
         setMessage("");
+        setNote(null);
         showToast(`Created PR #${reply.number} for ${newName || branch}`, { actions: [{ label: "Open PR in browser", run: () => window.brigadier?.openLink(String(reply.url)) }] });
       })
       .catch((cause) => setError(errorText(cause)))

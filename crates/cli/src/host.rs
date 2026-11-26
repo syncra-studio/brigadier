@@ -288,7 +288,7 @@ const WRITES: [&str; 23] = [
 ];
 
 /// The branch row's Create PR [D168]: `create [--branch NEW] [--commit] [--title T] [--message M]
-/// [--draft] [--base B] [--head H]`, a session's only. A new branch or a commit changes the
+/// [--draft] [--base B] [--head H] [--as-is]`, a session's only. A new branch or a commit changes the
 /// checkout, so it holds the branch fence and waits for no agent working there [D1021, D1082]. An
 /// empty title or message is the message writer's [D1029].
 fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
@@ -329,7 +329,11 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         .unwrap_or("")
         .trim()
         .to_string();
-    let wrote = title.is_empty() || message.is_empty();
+    // `--as-is`: the fields as given, git's text a failed write left among them [D1222].
+    let wrote = !super::has(args, "--as-is") && (title.is_empty() || message.is_empty());
+    if !wrote && title.is_empty() {
+        return Err(io::Error::other("A pull request needs a title."));
+    }
     let seen = (wrote && changes).then(|| pr.fingerprint());
     if wrote {
         // What will be committed, so what the PR will hold: the tree `seen` names [D1162].
