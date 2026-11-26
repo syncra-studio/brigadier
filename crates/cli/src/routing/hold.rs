@@ -47,7 +47,9 @@ pub(super) fn other(
             let base = account_for(data, parent, f, a);
             place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0", true).ok()?;
             let effort = effort.or(m["default_effort"].as_str().map(String::from));
-            Some(json!({"agent": a, "model": id, "effort": effort, "name": m.get("name").unwrap_or(&m["id"])}))
+            // Passed by in its own job (an effort it lacks) is still in it, at another effort.
+            let ours = mine.iter().any(|x| x["agent"] == a && x["model"] == id);
+            Some(json!({"agent": a, "model": id, "effort": effort, "name": m.get("name").unwrap_or(&m["id"]), "ours": ours}))
         })
         .unwrap_or_default()
 }
@@ -90,7 +92,10 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     ];
     if to.is_object() {
         options.push(json!({"label": format!("Use {}", words(to)),
-            "description": format!("Has room; it's not in {}", job.unwrap_or(""))}));
+        "description": match to["ours"] == true {
+            true => "Has room".into(),
+            false => format!("Has room; it's not in {}", job.unwrap_or("")),
+        }}));
     }
     let out = hold["out"]
         .as_str()

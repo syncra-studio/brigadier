@@ -393,7 +393,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
             (None, _, None) => off(data, &mut a, of, "the reviewer ended without a message"),
             (None, _, Some(said)) => {
                 let text = format!(
-                    "{}\n\nAbove are the findings {}, another agent, made reviewing your work adversarially. Fix the valid ones, commit, and merge as before; for each one you reject, give the reason. Don't reply to it: your last message goes to your parent. End it with one line: `Fixed: N, rejected: M`.",
+                    "{}\n\nAbove are the findings {}, a reviewer, made reviewing your work adversarially. Fix the valid ones, commit, and merge as before; for each one you reject, give the reason. Don't reply to it: your last message goes to your parent. End it with one line: `Fixed: N, rejected: M`.",
                     cut(said, 15 << 10),
                     model.as_str().unwrap_or("another model")
                 );

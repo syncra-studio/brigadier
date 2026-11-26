@@ -220,6 +220,8 @@ pub(crate) fn resolve(
         })
         .collect();
     let mut passed = false;
+    // The switch's reviewers already tried, for the next one's why line.
+    let mut tried: Vec<String> = vec![];
     let list = match &model {
         Some(m) => {
             let a = agent.clone().unwrap_or(mine);
@@ -251,7 +253,13 @@ pub(crate) fn resolve(
                 // The switch's reviewers that failed or met their limit are passed by [D3026].
                 let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
                 let gone: Vec<Value> = gone.unwrap_or_default();
-                list.retain(|e| !gone.contains(&json!({"agent": e["agent"], "model": e["model"]})));
+                list.retain(|e| {
+                    let out = gone.contains(&json!({"agent": e["agent"], "model": e["model"]}));
+                    if out {
+                        tried.push(str_of(e, "model").to_string());
+                    }
+                    !out
+                });
             }
             if let Some(a) = &agent {
                 list.retain(|e| e["agent"] == a.as_str());
@@ -275,7 +283,7 @@ pub(crate) fn resolve(
     let v = accounts::load(data);
     let (mut first, mut out, mut soonest) = (None, vec![], None::<u64>);
     // Every entry passed by, and why: never skipped in silence [D375].
-    let mut by_why: Vec<(String, &str)> = vec![];
+    let mut by_why: Vec<(String, &str)> = (tried.into_iter()).map(|m| (m, TRIED_REVIEW)).collect();
     for e in &list {
         let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
         let m = match allowed(data, &groups, &rules, a, id) {

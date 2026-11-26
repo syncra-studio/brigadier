@@ -156,6 +156,9 @@ pub(super) fn allowed<'a>(
 /// Why an entry was passed by, after its model's name and for one or several.
 pub(super) const FULL: &str = "had no account with room";
 
+/// Why the switch's next reviewer passed an entry by [D3026].
+pub(super) const TRIED_REVIEW: &str = "failed or met its limit reviewing this";
+
 /// Why an entry was passed by when it lacks the effort the start asked for.
 pub(super) const NO_EFFORT: &str = "can't run at the effort asked for";
 
