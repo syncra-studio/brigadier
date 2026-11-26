@@ -21,6 +21,8 @@ export type Going = {
   op: string[];
   /** The field's draft it was sent from, without its chips' words. */
   draft: Draft;
+  /** The field's revision it went from, which Rust's book needs to know a save of its words as its own; none for one not the field's. */
+  rev?: number | null;
   at: number;
   chips?: readonly Chip[];
   /** Rust's book has it, or settled it: kept in memory only. */

@@ -180,7 +180,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   /** With `sub`, the field's own message: kept first, it takes its chips as it goes, and Rust gives it back if it's refused. */
   const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) => {
     const args = ["add", message, "--qid", qid, ...(slot === undefined ? [] : ["--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...chipArgs(sub?.chips)];
-    const entry = sub && keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, chips: sub.chips, at: Date.now() });
+    const entry = sub && keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, rev: sub.rev, chips: sub.chips, at: Date.now() });
     act({ kind: "add", qid, text: message, slot }, [...args, ...draftArgs(sub?.draft, sub?.rev ?? null)], fail, entry && ((reply) => answered(run, id, entry, reply)));
   };
   /** Given back, an edited message's kept copy goes: its words come back as a new draft, never under the refused id. */

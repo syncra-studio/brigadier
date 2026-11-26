@@ -10,7 +10,7 @@ use std::io;
 use std::path::Path;
 
 /// `retry <cid>` (Try again, Add again): the message's command as it ran, again under its id, unless
-/// it's there already. `adopt <cid> --kind send|queue --op <json> --draft <json>`: the app's own copy
+/// it's there already. `adopt <cid> --kind send|queue --op <json> --draft <json> [--draft-rev R]`: the app's own copy
 /// of a message whose reply never came, kept here unless the book or the session has it; acked
 /// either way, so the app lets its copy go. `drop <cid>` (Discard, Delete, Edit).
 pub fn ops(
@@ -123,7 +123,11 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
         if present(dir, cid) {
             return Ok(json!({"ok": true, "went": true, "cid": cid}));
         }
-        let (rev, reached) = (None, false);
+        // The field's revision it went from: a save of its words, none since, is its own.
+        let (rev, reached) = (
+            flag(args, "--draft-rev").and_then(|r| r.parse().ok()),
+            false,
+        );
         let g = Going {
             cid: cid.into(),
             rev,

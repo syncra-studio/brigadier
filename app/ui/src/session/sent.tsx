@@ -39,7 +39,7 @@ export function keep(id: string, entry: Going): Going {
 
 /** Message `entry` goes: kept here first, so a reload loses nothing, then run with the draft it came from and the field's revision then. */
 export function go(run: Runner, id: string, entry: Going, rev: number | null): Promise<void> {
-  keep(id, entry);
+  keep(id, { ...entry, rev });
   return run([...entry.op, ...draftArgs(entry.draft, rev)]).then(
     (reply) => answered(run, id, entry, reply),
     (cause) => markGoing(id, entry.cid, { stuck: String(cause) }),
@@ -63,7 +63,7 @@ export function answered(run: Runner, id: string, entry: Going, reply: Record<st
 
 /** The app's copy to Rust (`adopt`): Rust's from now on, unless the draft or the session has it already. */
 function adopt(run: Runner, id: string, entry: Going): Promise<Record<string, any>> {
-  return run(["draft", id, "adopt", entry.cid, "--kind", entry.kind, "--op", JSON.stringify(entry.op), "--draft", JSON.stringify(entry.draft)]).then((reply) => {
+  return run(["draft", id, "adopt", entry.cid, "--kind", entry.kind, "--op", JSON.stringify(entry.op), "--draft", JSON.stringify(entry.draft), ...(typeof entry.rev === "number" ? ["--draft-rev", String(entry.rev)] : [])]).then((reply) => {
     // Given back, its chips wait again: the draft's read can't release them once it's forgotten.
     if (reply.given_back) keptChipsBack(id, entry);
     if (reply.ok && !reply.kept) forget(id, entry.cid);
