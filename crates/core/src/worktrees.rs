@@ -156,7 +156,7 @@ pub fn ensure(
         match read(&spec.dir)? {
             Some(owned) if !owned.failed => return Ok(()),
             Some(owned) => {
-                undo(&owned)?;
+                undo(&spec.dir, &owned)?;
                 fs::remove_file(spec.dir.join(RECORD))?;
             }
             None => {}
@@ -266,7 +266,7 @@ pub fn create(
         let step = crate::worktree_setup::finish(&spec.dir, Some(e.to_string()));
         owned.failed = true;
         let recorded = write(&spec.dir, &owned);
-        match undo(&owned) {
+        match undo(&spec.dir, &owned) {
             Ok(()) => fs::remove_file(spec.dir.join(RECORD))?,
             Err(rollback) => {
                 recorded?;
@@ -287,10 +287,24 @@ fn make(
     picks: &[String],
     owned: &mut Owned,
 ) -> io::Result<()> {
-    // A failed branch create must never claim a branch another session made.
-    git(repo, &["branch", branch, &owned.base_commit])?;
+    // Recorded before git makes it, so a create cut short between the two is undone in full; made
+    // only if it isn't there, its reflog naming this record's folder: undo takes only its own [D35].
     owned.branch = Some(branch.into());
     write(&spec.dir, owned)?;
+    let made = maker(&spec.dir);
+    let full = format!("refs/heads/{branch}");
+    git(
+        repo,
+        &[
+            "update-ref",
+            "--create-reflog",
+            "-m",
+            &made,
+            &full,
+            &owned.base_commit,
+            "",
+        ],
+    )?;
     if path.exists() {
         return err(format!("{} already exists", path.display()));
     }
@@ -330,12 +344,30 @@ fn unregister(owned: &Owned) -> io::Result<()> {
     Ok(())
 }
 
+/// The reflog line a create makes its branch with.
+fn maker(dir: &Path) -> String {
+    format!("brigadier: made for {}", dir.display())
+}
+
 /// Undoes a create: the worktree, its registration and the branch it made.
-fn undo(owned: &Owned) -> io::Result<()> {
+fn undo(dir: &Path, owned: &Owned) -> io::Result<()> {
     unregister(owned)?;
     let repo = Path::new(&owned.repo);
+    // A branch another create made under a name this one recorded but never made stays. An older
+    // build's (no such line) recorded its branch only once made.
+    let ours = |branch: &str| {
+        let log = [
+            "reflog",
+            "show",
+            "--format=%gs",
+            &format!("refs/heads/{branch}"),
+        ];
+        let first = git(repo, &log).map(|l| l.lines().last().unwrap_or_default().to_string());
+        first.is_ok_and(|f| f == maker(dir) || !f.starts_with("brigadier: made for "))
+    };
     if let Some(branch) = &owned.branch
         && has_branch(repo, branch)
+        && ours(branch)
     {
         git(repo, &["branch", "-D", branch])?;
     }
@@ -456,7 +488,7 @@ pub fn restore(dir: &Path, picks: &[String]) -> io::Result<()> {
 /// At the daemon's start: undoes each create that failed and couldn't undo itself, and removes
 /// its session once it has; then each archive, restore or delete cut short.
 pub fn sweep(data: &Path) {
-    let undone = |dir: &Path| matches!(read(dir), Ok(Some(o)) if o.failed && undo(&o).is_ok());
+    let undone = |dir: &Path| matches!(read(dir), Ok(Some(o)) if o.failed && undo(dir, &o).is_ok());
     for id in ids(data) {
         let dir = session_dir(data, &id);
         let Ok(_one) = lock(&dir) else { continue };
