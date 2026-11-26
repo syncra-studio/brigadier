@@ -54,14 +54,16 @@ impl Active {
                 .filter(|(to, at)| item["cid"] == to.as_str() && *at > seq);
             self.until = found.map(|(_, at)| *at).max().unwrap_or(0).max(self.until);
         }
-        // A night's lines and the kept list's ops go with the turns they ran in; what else is noted
+        // A night's lines, the kept list's ops and a summary go with the turns they ran in; what else is noted
         // happened all the same [D87].
         seq > self.until
-            || !matches!(item["event"].as_str(), Some("overnight" | "kept"))
-                && matches!(
-                    kind,
-                    "spawned" | "exited" | "stopped" | "note" | "resume_id"
-                )
+            || !matches!(
+                item["event"].as_str(),
+                Some("overnight" | "kept" | "summary")
+            ) && matches!(
+                kind,
+                "spawned" | "exited" | "stopped" | "note" | "resume_id"
+            )
     }
 
     /// Whether this item is a rewind newer than the scan: what was read before it is stale.
