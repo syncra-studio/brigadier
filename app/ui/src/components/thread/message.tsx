@@ -223,8 +223,9 @@ export function UserBubble({
         {!unconfirmed && (
           <ErrorLine
             size="sm"
+            wrap
             error={failed && `Not sent · ${failed}`}
-            className={side === "items-end" ? "justify-end" : undefined}
+            className={side === "items-end" ? "text-end" : undefined}
             actions={
               <>
                 {failed && signIn && (
