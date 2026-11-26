@@ -450,10 +450,21 @@ pub(crate) fn answered(
 ) -> std::io::Result<Value> {
     let allow = matches!(control["decision"].as_str(), Some("allow" | "allowSession"));
     let reason = control["reason"].as_str().unwrap_or("");
-    let decision = if allow { "approved" } else { "denied" };
+    // Left up by a daemon before this one, its call gone: nothing is allowed, and the agent hears so
+    // while the turn that asked runs and the card is still open in it.
+    let known = lock(&CARDS).get(request).is_some_and(|c| c.session == id);
+    let lost = !known
+        && allow
+        && brigadier_core::fold(&brigadier_core::session_dir(data, id), true)
+            .is_ok_and(|f| (f.fold.turns.first()).is_some_and(|t| t.asks.contains_key(request)));
+    let decision = known.then_some(if allow { "approved" } else { "denied" });
     let note = json!({"event": "browser", "item": {"kind": "resolved", "id": request, "decision": decision}});
     owner::call(data, id, json!({"op": "note", "data": note}))?;
     let Some(card) = lock(&CARDS).remove(request).filter(|c| c.session == id) else {
+        if lost {
+            let text = "[decision] The user said yes on a browser card, but Brigadier restarted after you asked, so the yes was lost and nothing was done. Make that browser call again if you still need it: it asks them once more.";
+            let _ = crate::control::steer_as(data, id, text, &Value::Null, None, "system", false);
+        }
         return Ok(json!({"ok": true}));
     };
     if allow && let Some(key) = card.key.clone() {
