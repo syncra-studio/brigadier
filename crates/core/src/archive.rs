@@ -112,7 +112,7 @@ pub fn at(item: &Value) -> String {
 
 /// Every item under its reference, oldest first: a fork's inherited copy, then what still stands of
 /// its own log.
-fn each(dir: &Path, mut f: impl FnMut(&Value, String)) -> io::Result<()> {
+pub fn each(dir: &Path, mut f: impl FnMut(&Value, String)) -> io::Result<()> {
     let text = std::fs::read_to_string(dir.join("inherited.jsonl")).unwrap_or_default();
     for (n, l) in text.lines().enumerate() {
         if let Ok(item) = serde_json::from_str(l) {

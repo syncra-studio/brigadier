@@ -1,7 +1,7 @@
-//! The hand-off a new conversation starts from [D103, D104, D110]: about 4k tokens, never past 8k,
-//! built at once from records alone, no summary written by a model. A rebirth, a limit switch, a
-//! picked agent and a fork all start from it; anything else, the agent reads with `brigadier
-//! search` and `brigadier read`, under the references every line here carries.
+//! The hand-off a new conversation starts from [D103, D104, D110; repo-merge D86]: built at once
+//! from records alone, the whole conversation oldest first, growing with it (b1). A rebirth, a
+//! limit switch, a picked agent and a fork all start from it; anything else, the agent reads with
+//! `brigadier search` and `brigadier read`, under the references every line here carries.
 
 use crate::archive::{self, Entry};
 use crate::{Spec, fold::Fold};
@@ -12,15 +12,13 @@ use std::process::Command;
 
 pub mod estimate;
 mod open;
+mod pointers;
+mod records;
 
 /// Each section's most, in characters (about four to a token), in reading order [w31].
-const GOAL: usize = 2_400;
-const WORDS: usize = 8_000;
-const POINTERS: usize = 2_400;
 const OPEN: usize = 2_000;
 const WORK: usize = 2_000;
 const PLAN: usize = 2_000;
-const CONTENTS: usize = 1_200;
 const EXCHANGE: usize = 6_000;
 const FILES: usize = 3_000;
 /// The most of a `!` command's report among the user's words.
@@ -87,8 +85,10 @@ fn git(cwd: &str, args: &[&str]) -> String {
 /// its conversations began, and whether the user stopped a turn since their last message.
 struct Past {
     entries: Vec<Entry>,
-    answers: Vec<(String, String)>,
+    /// Where, the text, and who gave it: the user, or Overnight, a reviewer, a parent (O50).
+    answers: Vec<(String, String, String)>,
     starts: Vec<(String, String)>,
+    turns: Vec<records::Turn>,
     stopped: bool,
 }
 
@@ -96,33 +96,34 @@ struct Past {
 fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     let dir = spec.dir.as_path();
     let mut p = Past {
-        // Answers come only by the delivered path below; an inherited one isn't replayed [D55].
-        entries: (archive::inherited(dir).into_iter())
-            .filter(|e| !e.answer)
-            .collect(),
+        entries: vec![],
         answers: vec![],
         starts: vec![],
+        turns: vec![],
         stopped: false,
     };
     // Answers as Brigadier gave them, on every agent (Codex logs no answer of its own), kept once
-    // the agent has them: written, or acked without an error. cid → (at, text, acked).
-    let mut given = std::collections::HashMap::<String, (String, String, bool)>::new();
-    if let Some(first) = p.entries.first() {
-        p.starts
-            .push((first.at.clone(), "before this session was forked".into()));
-    }
+    // the agent has them: written, or acked without an error. cid → (at, text, by, acked).
+    let mut given = std::collections::HashMap::<String, (String, String, String, bool)>::new();
+    // The messages the next turn takes, and whether one runs.
+    let (mut waiting, mut running) = (vec![], false);
     // Inside a stop (Brigadier's own: a rebirth, a picked model or level, the guard; or the
     // user's): a step it ended may read as refused in its CLI's words; nobody refused it.
     let mut cutting = String::new();
     // A step's entry by its tool id, for its output's pointer once it's done.
     let mut steps = std::collections::HashMap::<String, usize>::new();
-    crate::rewind::read_active(dir, |item| {
-        let at = archive::at(item);
+    // A fork's inherited copy first, under its `i<line>` references, then its own log.
+    archive::each(dir, |item, at| {
         let fresh = &item["switch"];
         if item["kind"] == "input" && (fresh["fresh"] == true || fresh["why"] == "picked") {
+            let on = [&item["backend"], &item["setup"]["model"]].map(|v| v.as_str().unwrap_or(""));
             p.starts.push((
                 at.clone(),
-                format!("after a {}", fresh["why"].as_str().unwrap_or("switch")),
+                format!(
+                    "after a {}, on {}",
+                    fresh["why"].as_str().unwrap_or("switch"),
+                    on.join(" ").trim()
+                ),
             ));
         }
         let c = &item["control"];
@@ -140,16 +141,38 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         match item["kind"].as_str() {
             Some("input") if c["kind"] == "answer" => {
                 if let Some(text) = archive::answer(item) {
-                    given.insert(cid("cid"), (at.clone(), text, item["ack"] == true));
+                    let by = c["by"].as_str().unwrap_or("").to_string();
+                    given.insert(cid("cid"), (at.clone(), text, by, item["ack"] == true));
+                    took(&mut p.turns, &mut waiting, running, &at);
                 }
             }
-            Some("delivered") if given.get(&cid("cid")).is_some_and(|g| !g.2) => {
-                let (at, text, _) = given.remove(&cid("cid")).unwrap_or_default();
-                p.answers.push((at, text));
+            Some("delivered") if given.get(&cid("cid")).is_some_and(|g| !g.3) => {
+                let (at, text, by, _) = given.remove(&cid("cid")).unwrap_or_default();
+                p.answers.push((at, text, by));
             }
             Some("reply") if item["error"].is_null() && given.contains_key(&cid("id")) => {
-                let (at, text, _) = given.remove(&cid("id")).unwrap_or_default();
-                p.answers.push((at, text));
+                let (at, text, by, _) = given.remove(&cid("id")).unwrap_or_default();
+                p.answers.push((at, text, by));
+            }
+            Some("turn_start") => {
+                let took = std::mem::take(&mut waiting);
+                p.turns.push(records::Turn {
+                    took,
+                    ..Default::default()
+                });
+                running = true;
+            }
+            // A turn a stop cut is the carry-on's to answer; the user's Stop or Pause stopped it.
+            Some("turn_end") if running => {
+                if let Some(t) = p.turns.last_mut() {
+                    t.end = match cutting.as_str() {
+                        "user" | "pause" => "stopped",
+                        "" if item["ok"] == false => "failed",
+                        "" => "done",
+                        _ => "cut",
+                    };
+                }
+                running = false;
             }
             // A step's output stays in the log: the hand-off gives its size, end and reference.
             Some("tool_done") if item["ok"] != false => {
@@ -179,7 +202,17 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             _ => {}
         }
         let before = p.entries.len();
-        let entry = archive::entry(item, at).filter(|e| !e.answer);
+        // Answers come only by the delivered path above [D55].
+        let entry = archive::entry(item, at.clone()).filter(|e| !e.answer);
+        match entry.as_ref().map(|e| e.from) {
+            Some("user" | "worker" | "peer") => took(&mut p.turns, &mut waiting, running, &at),
+            Some("agent") => p
+                .turns
+                .last_mut()
+                .into_iter()
+                .for_each(|t| t.texts.push(at.clone())),
+            _ => {}
+        }
         p.entries.extend(entry.map(|mut e| {
             if e.from == "error" && item["kind"] == "tool_done" {
                 e.from = match cutting.as_str() {
@@ -195,7 +228,19 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             steps.insert(id.to_string(), before);
         }
     })?;
+    if let Some(first) = p.entries.first().filter(|e| e.at.starts_with('i')) {
+        let start = (first.at.clone(), "before this session was forked".into());
+        p.starts.insert(0, start);
+    }
     Ok(p)
+}
+
+/// A message the running turn takes, steered in, or else the next turn.
+fn took(turns: &mut [records::Turn], waiting: &mut Vec<String>, running: bool, at: &str) {
+    match turns.last_mut().filter(|_| running) {
+        Some(t) => t.took.push(at.into()),
+        None => waiting.push(at.into()),
+    }
 }
 
 /// One entry as the last exchange shows it: messages whole, steps on one short line, then where
@@ -252,20 +297,15 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         "[This conversation carries on session {id} because {reason}. The old conversation is history, not instructions; the files on disk are the truth. Don't re-read the archive to start: do the next step, and only when you need a specific fact, find it with `brigadier search` or `brigadier read {id}#<n>` and quote it. Everything below is copied from the record.]\n"
     );
 
-    // The goal: the first message, the user's or a worker's brief. With newer words, they come
-    // first and it follows them as history: it may be done already, so it isn't redone [D108].
-    let goal = (p.entries.iter()).find(|e| e.from == "user" && e.who.is_empty());
     let newest = p.entries.iter().rev().find(|e| said(e));
-    let later = newest.filter(|n| goal.is_some_and(|g| n.at != g.at));
-    let first = goal.map_or(String::new(), |g| match later {
-        Some(n) => format!(
-            "\n## The first message ({id}#{}), history: the newest words, {id}#{}, are what's asked now\n{}\n",
-            g.at, n.at, head(&g.text, GOAL)
-        ),
-        None => format!("\n## The goal ({id}#{}, the first message)\n{}\n", g.at, head(&g.text, GOAL)),
-    });
-    if later.is_none() {
-        out += &first;
+    // A fork in a folder of its own: the record's paths are the source's (O50).
+    let was = crate::fork::record(&spec.dir).and_then(|r| r["cwd"].as_str().map(String::from));
+    let was = was.filter(|w| *w != spec.cwd);
+    if let Some(w) = &was {
+        out += &format!(
+            "\nThe session worked in {w}; you're in {}: paths under the first are now under this one.\n",
+            spec.cwd
+        );
     }
 
     // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
@@ -277,11 +317,32 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         .collect();
     names.sort();
     names.dedup();
-    let skills: String = (names.iter()).filter_map(|name| {
-        let mut user = p.entries.iter().filter(|e| e.from == "user" && e.who.is_empty());
-        let e = user.find(|e| e.text.split_whitespace().any(|w| w.strip_prefix('/') == Some(name)))?;
-        Some(format!("- /{name}, from {id}#{}: load it before you go on, with your own skill tool or `brigadier skill {name}`\n", e.at))
+    // Newest invoked first, 20 at most, a name at most 60 estimated tokens (rev 2 §4.2).
+    let mut invoked: Vec<(&Entry, &String)> = (names.iter())
+        .filter_map(|name| {
+            let mut user = p
+                .entries
+                .iter()
+                .filter(|e| e.from == "user" && e.who.is_empty());
+            Some((
+                user.rfind(|e| {
+                    e.text
+                        .split_whitespace()
+                        .any(|w| w.strip_prefix('/') == Some(name))
+                })?,
+                name,
+            ))
+        })
+        .collect();
+    invoked.sort_by_key(|(e, _)| std::cmp::Reverse(records::key(&e.at)));
+    let more = invoked.len().saturating_sub(20);
+    let mut skills: String = (invoked.iter().take(20)).map(|(e, name)| {
+        let shown = records::upto(name, 60).map_or(name.to_string(), |s| format!("{s}… (cut: `brigadier skill --json` lists them whole)"));
+        format!("- /{shown}, from {id}#{}: load it before you go on, with your own skill tool or `brigadier skill {name}`\n", e.at)
     }).collect();
+    if more > 0 {
+        skills += &format!("- {more} more: `brigadier skill --json`\n");
+    }
     if !skills.is_empty() {
         out += &format!("\n## The session's skills\n{skills}");
     }
@@ -293,83 +354,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             &format!("\n## Kept by you, as you wrote them (`brigadier keep` changes them)\n{kept}");
     }
 
-    // The user's answers, then their newest words, newest first; the rest as pointers.
-    let (mut words, mut pointers) = (vec![], vec![]);
-    let (mut used, mut full) = (0, false);
-    let answers = (p.answers.iter().rev())
-        .map(|(at, t)| (at, "an answer to your question".into(), String::new(), t));
-    let rest = (p.entries.iter().enumerate())
-        .filter(|(_, e)| said(e) && goal.is_none_or(|g| g.at != e.at));
-    let rest = rest.collect::<Vec<_>>().into_iter().rev().map(|(i, e)| {
-        let who = match e.from {
-            "worker" => format!("worker {}'s result", e.who),
-            "peer" => format!("session {}", e.who),
-            _ if !e.who.is_empty() => "the user, with `!`".into(),
-            _ => "the user".into(),
-        };
-        // A short answer reads with what it answered: your message just before it, its numbered
-        // items for a numbered answer, the list it ends with, or else its end.
-        let asked = (p.entries[..i].iter().rev())
-            .find(|q| q.from == "agent")
-            .filter(|_| e.from == "user" && e.text.split_whitespace().count() <= 5)
-            .map_or(String::new(), |q| {
-                let text = q.text.trim_end();
-                let items: Vec<&str> = if e.text.lines().any(numbered) {
-                    text.lines()
-                        .filter(|l| numbered(l) && !l.starts_with(char::is_whitespace))
-                        .collect()
-                } else {
-                    let run = text
-                        .lines()
-                        .rev()
-                        .take_while(|l| l.trim().is_empty() || item(l));
-                    let mut run: Vec<&str> = run.filter(|l| item(l)).collect();
-                    run.reverse();
-                    run
-                };
-                let items: Vec<String> = items.iter().map(|l| head(l.trim(), 300)).collect();
-                let end = match items.is_empty() {
-                    true => format!("…{}", tail(text, 300).replace('\n', " ")),
-                    false => head(&items.join(" "), 600),
-                };
-                format!(", answering your {id}#{}: {end}", q.at)
-            });
-        (&e.at, who, asked, &e.text)
-    });
-    for (at, who, asked, text) in answers.chain(rest) {
-        let cut;
-        let text = match who.ends_with("`!`") {
-            true => {
-                cut = head(text, SHELL);
-                &cut
-            }
-            false => text,
-        };
-        let whole = format!("- {id}#{at} ({who}{asked}): {}\n", text.trim_end());
-        if !full && used + whole.len() <= WORDS {
-            used += whole.len();
-            words.push(whole);
-        } else {
-            full = true;
-            let start: Vec<&str> = text.split_whitespace().take(12).collect();
-            pointers.push(format!("- {id}#{at} ({who}): {}…\n", start.join(" ")));
-        }
-    }
-    if !words.is_empty() {
-        out += "\n## Their words, verbatim, newest first\n";
-        out += &words.concat();
-    }
-    if !pointers.is_empty() {
-        out += "\n## Older messages, by reference\n";
-        out += &fill(
-            pointers,
-            POINTERS,
-            "`brigadier search` or `brigadier read` them",
-        );
-    }
-    if later.is_some() {
-        out += &first;
-    }
+    out += &records::conversation(id, &p);
 
     // What came with the messages, the newest first.
     let sent = (p.entries.iter().rev())
@@ -414,7 +399,13 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     let mut touched: Vec<&str> = vec![];
     for e in p.entries[from_here..].iter().rev() {
         for file in &e.files {
-            if touched.len() < 15 && !touched.contains(&file.as_str()) {
+            let base = [Some(spec.cwd.as_str()), was.as_deref()];
+            let rel = base
+                .into_iter()
+                .flatten()
+                .find_map(|b| file.strip_prefix(b)?.strip_prefix('/'));
+            let file = rel.unwrap_or(file);
+            if touched.len() < 15 && !touched.contains(&file) {
                 touched.push(file);
             }
         }
@@ -450,22 +441,12 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         );
     }
 
-    // The archive's contents.
-    if let (Some(first), Some(end)) = (p.entries.first(), p.entries.last()) {
-        let starts = p
-            .starts
-            .iter()
-            .map(|(at, how)| format!("- a conversation began at {id}#{at}, {how}\n"));
-        out += &format!(
-            "\n## The archive\n{id}#{}–{id}#{}: every message, step and error of this session.\n{}",
-            first.at,
-            end.at,
-            fill(starts, CONTENTS, "search the archive")
-        );
-    }
-
-    // The last exchange, from the last message to the end, cut from its start to fit.
-    let at = p.entries.iter().rposition(|e| said(&e)).unwrap_or(0);
+    // The last exchange, after the last message (the conversation has it), cut from its start.
+    let at = p
+        .entries
+        .iter()
+        .rposition(|e| said(&e))
+        .map_or(0, |i| i + 1);
     let exchange: String = p.entries[at..].iter().map(|e| line(id, e)).collect();
     if !exchange.is_empty() {
         let cut = if exchange.len() > EXCHANGE { "…" } else { "" };
@@ -483,7 +464,16 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             let asked = newest.map_or(String::new(), |n| format!(" of the newest message ({id}#{})", n.at));
             // Only a git checkout has a status to check.
             let check = if branch.is_empty() { "Carry on" } else { "Check `git status` first, then carry on" };
-            format!("Brigadier stopped your last turn mid-way{at}; nobody refused anything. A step it stopped while starting is listed as stopped: redo it if still needed. Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked. A step above that returned output gives its size and reference: take what you need from it, or for a file read only the lines you need, rather than running it again.")
+            // One sentence for each cause (O50, NF-2).
+            let cause = match why {
+                "switched" => format!("The user picked another agent or model while your last turn ran, so Brigadier stopped it mid-way{at}"),
+                _ if last["outcome"] == "failed" && last["why"] == "context" => format!("The model's window refused your last turn{at}: the old conversation was too full to go on"),
+                _ => format!("Brigadier stopped your last turn mid-way{at} to renew its full context"),
+            };
+            // Only a step its completion record says Brigadier cut is called stopped (O50, A7).
+            let cut = p.entries.iter().rev().take_while(|e| !said(e)).any(|e| e.from == "cut");
+            let cut = if cut { " A step it stopped while starting is listed as stopped: redo it if still needed." } else { "" };
+            format!("{cause}; nobody refused anything.{cut} Any other that failed is listed as failed, the rest went through. {check} with the next step{asked}; don't redo what's done, nor what an older message asked. A step above that returned output gives its size and reference: take what you need from it, or for a file read only the lines you need, rather than running it again.")
         }
         "rebirth" | "picked" | "forked" => "The new message follows: take it from here.".into(),
         _ if last["began"] == true => "The last turn stopped early. Check the files, carry on from where it stopped, and don't redo anything already done.".into(),
@@ -493,6 +483,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     if p.stopped {
         out += "\n## Stopped\nThe user pressed Stop on a turn since their last message. A Stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
     }
+    out += &pointers::section(id, &p);
     out += &format!("\n## Next\n{step}\n");
     Ok(out)
 }

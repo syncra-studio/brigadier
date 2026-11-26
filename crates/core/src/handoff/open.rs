@@ -14,7 +14,16 @@ pub(super) fn items(spec: &Spec, entries: &[Entry]) -> String {
     let open = workers.filter_map(|w| {
         let r: Value = serde_json::from_slice(&std::fs::read(w.path()).ok()?).ok()?;
         let wid = r["wid"].as_str()?;
-        let back = entries.iter().any(|e| e.from == "worker" && e.who == wid);
+        // Its end record, written before its result is delivered, says it's done (O50).
+        // shortcut: a worker told again after a result reads as done; key results by task if one is.
+        let ended = std::fs::read_dir(spec.dir.join("results"))
+            .into_iter()
+            .flatten()
+            .flatten();
+        let ended = ended
+            .map(|f| f.file_name())
+            .any(|f| f.to_string_lossy().starts_with(&format!("{wid}.")));
+        let back = ended || entries.iter().any(|e| e.from == "worker" && e.who == wid);
         (r["state"] == "started" && !back).then(|| {
             format!(
                 "- worker {wid} ({}) is still working; its result comes to you by itself\n",

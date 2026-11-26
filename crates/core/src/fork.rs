@@ -450,7 +450,7 @@ fn build(
         "backend": op.backend, "account": op.account, "moved": forked.as_ref().map(|k| &k.conv),
         "branch": forked.as_ref().zip(at).is_some_and(|(k, b)| k.conv == b.conv),
         "turns": forked.as_ref().map(|k| k.turns), "end": at.and_then(|b| b.end.clone()),
-        "inherited": inherited});
+        "inherited": inherited, "cwd": src.cwd});
     rf::write(src, op, "made")?;
     made(data, &op.record, call_in)?;
     rf::clear(src)?;
