@@ -199,8 +199,9 @@ fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
         let host = !queue && lock_held(&dir.join("owner.lock"));
         let may_log = |g: &Going| host && !g.handed;
         for g in cut {
-            // A send a busy turn put in the queue went there.
-            let went = logged(dir, &g.cid) || queued(dir, &g.cid);
+            // A send a busy turn put in the queue went there. The queue first: a drain drops an item
+            // only once the log has it, so one read between the two is in the log.
+            let went = queued(dir, &g.cid) || logged(dir, &g.cid);
             if !went && may_log(&g) {
                 book.inflight.push(g);
                 continue;
