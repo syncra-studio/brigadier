@@ -227,7 +227,8 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         // A crash ends a turn before any record says so (`status` closes it in a copy); the
         // record written later names the same turn, so it doesn't tell twice.
         "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
-        _ if turn.is_some() || fold.finished == 0 => return None,
+        // A rewind drops the last end (`last` None): no turn ended, so nothing is told again.
+        _ if turn.is_some() || fold.finished == 0 || fold.last.is_none() => return None,
         // A quiet turn's end is no news [D119].
         "idle" | "idle_jobs" if fold.last.as_ref().is_some_and(|l| l["quiet"] == true) => {
             return None;
