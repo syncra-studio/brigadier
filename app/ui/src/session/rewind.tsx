@@ -15,7 +15,7 @@ type Asking = { cid: string; op: string; text: string; preview?: RewindPreview; 
 /** Rust's answer per message, and when it was asked for. */
 type Looked = { at: number; preview?: RewindPreview };
 /** The dialog's card: 28rem, the old app's max-w-md dialog, so no line wraps [D480, D483]; the theme's 28rem token. */
-export const FRAME = "max-w-card-narrow gap-4 p-5";
+const FRAME = "max-w-card-narrow gap-4 p-5";
 /** How long an answer stands before the pointer coming back asks again. */
 const FRESH_MS = 2_000;
 type Running = { cid: string; n: number | undefined; replied: boolean };

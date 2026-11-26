@@ -9,7 +9,7 @@ import { followLayout } from "../browser/follow";
 import { ImageSquare } from "../icons";
 import { drawn, type Load, type Variant } from "./model";
 import type { MockupNote } from "./notes";
-import { type Hovered, PinLayer } from "./pins";
+import { PinLayer } from "./pins";
 
 /** "fit", or a zoom in percent. */
 export type Zoom = "fit" | number;
@@ -30,7 +30,6 @@ export function VariantColumn({
   page,
   notes,
   pointing,
-  hovered,
   onNotes,
   use,
   picked,
@@ -49,7 +48,6 @@ export function VariantColumn({
   page: PageOf;
   notes: readonly MockupNote[];
   pointing: boolean;
-  hovered?: Hovered | null;
   onNotes?: (change: (pins: MockupNote[]) => MockupNote[]) => void;
   /** Its Use button, where it takes one. */
   use?: { onClick: () => void; primary: boolean } | null;
@@ -99,7 +97,7 @@ export function VariantColumn({
       <img src={variant.shot ?? ""} alt={`${label}, its screenshot`} draggable={false} className="size-full object-contain object-top select-none" />
     );
   }
-  const pins = drawn(variant) && <PinLayer variant={letter} notes={notes} pointing={pointing} hovered={hovered} onNotes={onNotes} />;
+  const pins = drawn(variant) && <PinLayer variant={letter} notes={notes} pointing={pointing} onNotes={onNotes} />;
   return (
     <div data-slot="mockup-variant" className="flex min-w-0 flex-1 flex-col gap-1.5">
       <div className="flex h-control-sm min-w-0 items-center gap-1.5 text-sm">

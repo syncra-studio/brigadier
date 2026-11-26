@@ -305,6 +305,8 @@ impl Saved {
                         self.thread.inherit(&crate::fork::inherited(dir), &item);
                     }
                     self.thread.push(&item);
+                } else {
+                    self.thread.dropped(&item);
                 }
             }
             // Per frame, so a damaged one later leaves the fold and its place agreeing.

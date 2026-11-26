@@ -121,11 +121,11 @@ fn ask(data: &Path, id: &str) -> io::Result<u64> {
     }
     let ended = last["ts"].as_u64().unwrap_or(0) + SETTLE_MS;
     let wait = (ended.max(o.on + ASK_MS)).saturating_sub(log::now_ms());
-    if wait > 0 || queue::takes(&dir) {
+    if wait > 0 || queue::takes(&dir, None) {
         return Ok(wait.max(1_000));
     }
     let (turn, cid) = (str_of(last, "id"), format!("ask{}", o.on));
-    let takes = || queue::takes(&dir);
+    let takes = || queue::takes(&dir, None);
     const TEXT: &str = "[Brigadier: the user turned Overnight on, for the job you have. Ask what's still open before they go.]";
     queue::own(data, id, &turn, &cid, TEXT, true, &takes)?;
     Ok(5_000)
@@ -226,9 +226,7 @@ fn answer(data: &Path, id: &str) -> io::Result<()> {
         choose(card, crate::relay::mockup::SKIP)?;
     }
     for (request, r) in turn.asks.iter().filter(|(_, r)| r["to"].is_null()) {
-        if request.starts_with("peer-") {
-            choose(request, AWAY)?;
-        } else if r["items"].is_array() {
+        if r["items"].is_array() {
             control::reply(data, id, AWAY, &Value::Null, None, Some("overnight"))?;
         } else if r["action"] == "plan" {
             // Asked in a turn from before its night, no review held it: its next turn's has one.
@@ -278,7 +276,7 @@ fn step(data: &Path, id: &str, row: &Value, team: &[Value]) -> io::Result<u64> {
         || o.full
         || row["rebirth"].is_string()
         || row["optimizing"] == true
-        || queue::takes(&dir)
+        || queue::takes(&dir, None)
     {
         return Ok(1_000);
     }
@@ -435,7 +433,7 @@ fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool) -> io::Res
         }
     }
     let text = words(&load(&dir), &t, first, gone.as_deref());
-    let takes = || queue::takes(&dir);
+    let takes = || queue::takes(&dir, None);
     if !f.cids.contains_key(&cid) && !queue::own(data, id, turn, &cid, &text, true, &takes)? {
         return Ok(());
     }

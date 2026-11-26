@@ -175,12 +175,9 @@ fn call(owner: &str, driver: &str, label: &str, op: &Value, here: &dyn Fn() -> b
     }
 }
 
-/// The session whose tabs an agent works in: a worker's are its thread's, a Brigade's
-/// sub-session's its own.
+/// The session whose tabs an agent works in: a worker's are its thread's.
 fn owner(data: &Path, me: &str) -> String {
-    crate::workers::link(data, me)
-        .filter(|l| !l.session)
-        .map_or(me.to_string(), |l| l.parent)
+    crate::workers::link(data, me).map_or(me.to_string(), |l| l.parent)
 }
 
 /// The checked words of an agent's call: its action, the words after it, and its flags.

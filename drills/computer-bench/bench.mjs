@@ -10,6 +10,9 @@
 //   browser     `brigadier browser`, in the app running on BRIGADIER_DATA, for BRIGADIER_SESSION.
 //   playwright  Playwright MCP, headless and isolated: the baseline.
 //
+// Every child but Chrome (a changed HOME has no keychain for it) runs in a home of its own, never the owner's (drills/home.mjs), so Claude's sign-in comes
+// with CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, or from the .credentials.json of a scratch HOME.
+//
 // BIN=<dir with the brigadier to test> (else the one on PATH), with BRIGADIER_DATA/SESSION/GRANT.
 // MODEL (default claude-haiku-5-5) and EFFORT (default medium) are the same for every tool. Each
 // run appends a JSON line to $OUT/<tool>.jsonl (default /tmp/computer-bench) and keeps everything
@@ -22,6 +25,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { OWNER, isolate } from '../home.mjs'
+import { made, make } from '../made.mjs'
 import { serve } from './server.mjs'
 
 const tool = process.argv[2]
@@ -30,14 +35,18 @@ const ONLY = process.argv[4]?.split(',')
 const MODEL = process.env.MODEL ?? 'claude-haiku-5-5'
 const EFFORT = process.env.EFFORT ?? 'medium'
 const OUT = process.env.OUT ?? '/tmp/computer-bench'
-const CHROME = process.env.CHROME ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+const CHROME = process.env.CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
 const PROFILE = process.env.CHROME_PROFILE ?? '/tmp/bcu/chrome'
+const CHROME_PID = `${PROFILE}.pid`
 const BRIGADIER = process.env.BIN ? path.join(process.env.BIN, 'brigadier') : spawnSync('which', ['brigadier'], { encoding: 'utf8' }).stdout.trim()
 const PW_MCP = process.env.PW_MCP // path to @playwright/mcp's cli.js
 // Chrome's headless shell, so the baseline never shows as a second Chrome for Testing to computer use.
-const PW_CHROME = process.env.PW_CHROME ?? `${process.env.HOME}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
+const PW_CHROME = process.env.PW_CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 const LIMIT = 6 * 60_000
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// A recorded pid's command now, empty once it's gone: checked before a kill, as a pid may be reused.
+const commandOf = (pid) => spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim()
+const stop = (pid) => { try { process.kill(pid) } catch {} }
 
 const PORT = { computer: 8765, browser: 8766, playwright: 8767 }[tool]
 if (!PORT) { console.error('tool: computer, browser or playwright'); process.exit(2) }
@@ -51,12 +60,15 @@ fs.writeFileSync(lock, String(process.pid))
 const bin = fs.mkdtempSync('/tmp/bench-bin-')
 let running = null
 const stopAgent = (signal = 'SIGKILL') => {
-  try { if (running) process.kill(-running.pid, signal) } catch {}
-  // Its background commands have groups of their own.
-  spawnSync('pkill', ['-f', bin])
+  if (!running) return
+  try { process.kill(-running.pid, signal) } catch {}
+  // Its background calls have groups of their own: those the shim recorded and that haven't ended.
+  for (const c of calls(running.raw)) if (!c.to && commandOf(c.pid).includes(bin)) stop(c.pid)
 }
-process.on('exit', () => { stopAgent(); fs.rmSync(lock, { force: true }); fs.rmSync(bin, { recursive: true, force: true }) })
+process.on('exit', () => { stopAgent(); if (fs.existsSync(lock) && fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.rmSync(lock); fs.rmSync(bin, { recursive: true, force: true }) })
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(1))
+isolate(OUT)
+if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY && !fs.existsSync(`${process.env.CLAUDE_CONFIG_DIR}/.credentials.json`)) { console.error('Claude is not signed in here: set CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) or ANTHROPIC_API_KEY'); process.exit(2) }
 
 // Each task: where it starts, what the agent is told, and what in the log means it passed. The
 // last, T9, is not of the eight: it runs only by name.
@@ -111,12 +123,19 @@ const ARM = {
     args: ['--allowedTools', 'Bash(brigadier computer:*)', 'Read'],
     // Chrome starts afresh on the start page alone: no tab or window from before.
     clear: async () => {
-      spawnSync('pkill', ['-f', `user-data-dir=${PROFILE}`])
-      for (let i = 0; i < 40 && spawnSync('pgrep', ['-f', `user-data-dir=${PROFILE}`]).status === 0; i++) await sleep(250)
+      // A profile of the bench's own, as its tabs are deleted: never one that was there.
+      if (!made(PROFILE)) make(PROFILE)
+      // The Chrome the last setup started, this bench's or one cut short.
+      const pid = fs.existsSync(CHROME_PID) ? Number(fs.readFileSync(CHROME_PID, 'utf8')) : 0
+      const up = () => pid > 0 && commandOf(pid).includes(`user-data-dir=${PROFILE}`)
+      if (up()) stop(pid)
+      for (let i = 0; i < 40 && up(); i++) await sleep(250)
       fs.rmSync(path.join(PROFILE, 'Default', 'Sessions'), { recursive: true, force: true })
     },
     async setup(url) {
-      spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore' }).unref()
+      const chrome = spawn(CHROME, [`--user-data-dir=${PROFILE}`, '--no-first-run', '--no-default-browser-check', '--hide-crash-restore-bubble', url], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: OWNER } })
+      chrome.unref()
+      fs.writeFileSync(CHROME_PID, String(chrome.pid))
       await sleep(4000)
       const ev = await (await fetch(`${base}/events`)).json()
       if (!ev.some((e) => e.kind === 'page' && url.endsWith(e.path + (e.search ?? '')))) throw new Error(`the start page ${url} didn't load`)
@@ -147,7 +166,7 @@ function agent(prompt, raw) {
     const cwd = fs.mkdtempSync('/tmp/bench-cwd-')
     const from = Date.now()
     const p = spawn('claude', args, { cwd, detached: true, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BENCH_BRIGADIER: BRIGADIER, BENCH_RAW: raw }, stdio: ['ignore', 'pipe', 'pipe'] })
-    running = p
+    running = Object.assign(p, { raw })
     const tools = new Map()
     const a = { calls: [], cost: null, turns: 0, said: '', denied: 0, killed: false }
     let buf = ''
@@ -190,20 +209,25 @@ function agent(prompt, raw) {
       fs.rmSync(cwd, { recursive: true, force: true })
       a.calls = tool === 'playwright'
         ? [...tools.values()].filter((c) => c.verb.startsWith('mcp__playwright')).map((c) => ({ ...c, n: 1, shot: c.image && hash(Buffer.from(c.image, 'base64')) }))
-        : shimmed(path.join(raw, 'calls.jsonl'))
+        : shimmed(raw)
       done(a)
     })
   })
 }
 
 // The shim's calls: each has a line as it starts and one as it ends; a call never answered has only the first.
-function shimmed(file) {
-  const calls = new Map()
+function calls(raw) {
+  const file = path.join(raw, 'calls.jsonl')
+  const all = new Map()
   for (const l of fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean) : []) {
     const r = JSON.parse(l)
-    calls.set(r.id, { ...calls.get(r.id), ...r })
+    all.set(r.id, { ...all.get(r.id), ...r })
   }
-  return [...calls.values()].filter((c) => c.argv[0] === tool).map((c) => {
+  return [...all.values()]
+}
+
+function shimmed(raw) {
+  return calls(raw).filter((c) => c.argv[0] === tool).map((c) => {
     const verb = c.argv.includes('--help') ? '--help' : c.argv[1] ?? 'help'
     // `run` is as many actions as its steps.
     const n = verb === 'run' ? Math.max(1, c.argv.slice(2).filter((x) => !x.startsWith('--')).length) : 1

@@ -20,8 +20,8 @@ pub fn busy(data: &Path, id: &str) -> bool {
     super::link(data, id).is_some_and(|l| busy_in(data, id, &l, f, true))
 }
 
-/// The same, but for the user's own turns in it, which its parent never waits on: for a wait, its
-/// parent's row and a Brigade's.
+/// The same, but for the user's own turns in it, which its parent never waits on: for a wait and its
+/// parent's row.
 pub fn owes(data: &Path, id: &str) -> bool {
     let f = || core::fold(&core::session_dir(data, id), true).map(|r| r.fold);
     super::link(data, id).is_some_and(|l| busy_in(data, id, &l, f, false))
@@ -56,8 +56,5 @@ pub(super) fn busy_in<F: Borrow<Fold>>(
     let Ok(f) = f() else {
         return !made;
     };
-    !made
-        || (l.session && super::brigade::leading(data, id))
-        || l.review["state"] == "running"
-        || super::result::going(data, id, l, f.borrow(), direct)
+    !made || l.review["state"] == "running" || super::result::going(data, id, l, f.borrow(), direct)
 }

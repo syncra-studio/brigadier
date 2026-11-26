@@ -19,8 +19,6 @@ export type SessionRow = {
   resets: number | null;
   /** The user's last send, else when the session was made (ms): the list's order. */
   sent: number;
-  /** When it was made (ms), never changing: a Brigade's sessions oldest first [D33]. */
-  created?: number | null;
   /** Its last activity, the user's or an agent's (ms): View's other order [D655]. */
   updated?: number;
   /** When a turn last ended (ms); later than the user last saw it, the row is unread. */
@@ -31,9 +29,7 @@ export type SessionRow = {
   project: string | null;
   /** Its labels' names, in the order given [D3101, D3103]. */
   labels?: string[];
-  /** Archived with its Brigade: the Brigade's restore brings it back [D3111]. */
-  archivedWith?: boolean;
-} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "brigade" | "boss" | "worker">;
+} & Pick<Row, "pinned" | "touched" | "archived" | "lifecycle" | "forkOf" | "folder" | "worker">;
 
 export type Project = { id: string; name: string; folder: string; icon?: string | null };
 

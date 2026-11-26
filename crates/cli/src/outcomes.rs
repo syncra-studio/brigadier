@@ -4,7 +4,8 @@
 //!
 //! The review note 4.10 writes into the reviewed worker's own log [D3026]:
 //! `{"event": "outcome", "phase": "review", "reviewer": {"agent", "model"}, "findings": n,
-//! "fixed": n, "rejected": n, "ran": bool, "why": "…" | null}` (`why`: why it didn't run).
+//! "fixed": n, "rejected": n, "ran": bool, "why": "…" | null}` (`why`: why it didn't run), with the
+//! `id` of the reviewer's turn where an agent started it: one heard again has several, the last counts.
 
 use crate::workers::{self, git};
 use brigadier_core as core;
@@ -135,7 +136,7 @@ pub(crate) fn results(data: &Path) -> Value {
         let f = f.unwrap_or_default();
         // Plan reviews, in any session's own fold [§6, §8].
         f.plans.done.iter().for_each(&mut add);
-        let Some(l) = workers::link(data, &wid).filter(|l| !l.session) else {
+        let Some(l) = workers::link(data, &wid) else {
             continue;
         };
         let notes = f.outcomes;
@@ -152,8 +153,10 @@ pub(crate) fn results(data: &Path) -> Value {
             continue;
         }
         let end = notes.iter().rev().find(|n| n["phase"] == "end").cloned();
-        for n in &notes {
+        for (i, n) in notes.iter().enumerate() {
+            let again = |m: &Value| m["phase"] == "review" && m["id"] == n["id"];
             match n["phase"] == "review" {
+                true if n["id"].is_string() && notes[i + 1..].iter().any(again) => {}
                 true if n["ran"] == true => add(n),
                 true => off += 1,
                 false => {}
@@ -185,7 +188,10 @@ pub(crate) fn results(data: &Path) -> Value {
     let mut tally: BTreeMap<(Option<String>, String, String), Tally> = BTreeMap::new();
     for (wid, ran, end, cause) in rows {
         // Its model didn't end it, so it says nothing of its model, retried or not.
-        let other = matches!(cause.as_str(), "infrastructure" | "environment" | "quota");
+        let other = matches!(
+            cause.as_str(),
+            "infrastructure" | "environment" | "quota" | "refused"
+        );
         let commits = end["commits"].as_u64().unwrap_or(0);
         let (landed, reverted) = match commits {
             0 => (false, false),

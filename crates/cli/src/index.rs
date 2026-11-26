@@ -319,8 +319,6 @@ impl Index {
             row["news"] = e.marks.news.into(); // its mockup's news, read once seen as late [D560]
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
             row["plan"] = f.fold.plan.shown(); // its agent's to-do list and what it finished, the summary card's Plan [D144]
-            row["archivedWith"] = e.marks.with.into(); // archived with its Brigade [D3111]
-            row["created"] = json!(e.spec.as_ref().map(|s| s.created)); // when it was made: a Brigade's fixed order [D33]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
             // Using the computer now: holding its lock, its turn running, not waiting on the user [D907, D957].
             row["computer"] = json!(
@@ -330,7 +328,6 @@ impl Index {
             row["unchecked"] = json!(f.fold.unchecked()); // its check gave no verdict: it asks, then back [D455]
             row["child"] = live.child.is_some().into(); // its agent's process is up: a finished worker's idle one is closed
             fold::background_row(&mut row, &dir, &live);
-            crate::workers::brigade_row(&mut row, e.spec.as_ref());
             crate::overnight::row(&self.data, &mut row, &e.marks.overnight, f.fold.finished);
             // It holds its project's own folder: Local checkout can't start there again [D306].
             row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));

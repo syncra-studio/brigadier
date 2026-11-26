@@ -29,23 +29,21 @@ export function SettingsCard({
   );
 }
 
-/** A row's words: its title over a grey line. `quiet` drops the title's weight; `truncate` keeps each to one line. */
+/** A row's words: its title over a grey line. `truncate` keeps each to one line. */
 export function RowText({
   title,
   line,
-  quiet = false,
   truncate = false,
   className,
 }: {
   title: ReactNode;
   line?: ReactNode;
-  quiet?: boolean;
   truncate?: boolean;
   className?: string;
 }) {
   return (
     <span className={cx("flex min-w-0 flex-1 flex-col gap-1", className)}>
-      <span className={cx("text-label", !quiet && "font-medium", truncate && "truncate")}>{title}</span>
+      <span className={cx("text-label font-medium", truncate && "truncate")}>{title}</span>
       {line && <span className={cx("text-xs text-quiet-foreground", truncate && "truncate")}>{line}</span>}
     </span>
   );

@@ -21,9 +21,8 @@ import type { ChangeMarks, FileList, FolderEntry, Listing } from "./types";
 /** Opens `path`: in the preview tab, or with `keep` in a tab of its own. */
 export type OnOpen = (path: string, keep: boolean) => void;
 
-/** A row's right-click menu, Reveal in Finder as VS Code's [D1226]; none without `onReveal` (the gallery). */
-function Revealable({ path, onReveal, children }: { path: string; onReveal?: (path: string) => void; children: ReactElement }) {
-  if (!onReveal) return children;
+/** A row's right-click menu, Reveal in Finder as VS Code's [D1226]. */
+function Revealable({ path, onReveal, children }: { path: string; onReveal: (path: string) => void; children: ReactElement }) {
   return (
     <ContextMenu>
       <ContextMenuTrigger render={children} />
@@ -152,8 +151,8 @@ export function FileTree({
   results: string[] | null;
   onQuery: (query: string) => void;
   onOpen: OnOpen;
-  /** Shows a row in Finder; without it, rows have no menu. */
-  onReveal?: (path: string) => void;
+  /** Shows a row in Finder. */
+  onReveal: (path: string) => void;
   /** Counts up to put the keyboard in the search field (⌘P). */
   searchRequest?: number;
 }) {
@@ -268,7 +267,7 @@ export function FileTree({
   );
 }
 
-const TreeRow = memo(function TreeRow({ row, selected, onToggle, onOpen, onReveal }: { row: Row; selected: boolean; onToggle: (path: string) => void; onOpen: OnOpen; onReveal?: (path: string) => void }) {
+const TreeRow = memo(function TreeRow({ row, selected, onToggle, onOpen, onReveal }: { row: Row; selected: boolean; onToggle: (path: string) => void; onOpen: OnOpen; onReveal: (path: string) => void }) {
   const folder = row.kind === "folder";
   const mark = row.status ? LETTERS[row.status] : null;
   return (

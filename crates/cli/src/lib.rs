@@ -53,7 +53,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::{env, fs};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--brigade] [--overnight]
+pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--overnight]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
@@ -207,7 +207,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }),
                 effort: flag(args, "--effort").map(String::from),
                 fast: has(args, "--fast"),
-                brigade: has(args, "--brigade"),
                 opts,
                 created: log::now_ms(),
                 ..Default::default()
@@ -405,10 +404,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "thread" => {
             let id = arg(args, 1)?;
             let spec = core::load(data, id)?;
-            let mut thread = core::thread::Thread::default();
+            let mut saved = core::thread::Saved::default();
             // A visible setup marker guarantees SPAWNED is logged before this read starts.
             let setup = core::worktrees::setup_state(&spec.dir, true);
-            core::rewind::read_active(&spec.dir, |item| thread.push(item))?;
+            saved.advance(&spec.dir, false)?;
+            let mut thread = saved.thread;
             let f = thread.status_fold();
             let live = fold::live(f, owner::state(data, id), &spec.dir, &procs::all());
             if thread.running() && fold::status(f, &live)["state"] == "interrupted" {

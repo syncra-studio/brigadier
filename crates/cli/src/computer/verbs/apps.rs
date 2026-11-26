@@ -1,6 +1,7 @@
 //! The running apps by name, one line each, and an app's menus by path: what an agent names an app
 //! or a menu item with [D922 D928].
 
+use super::diff::Control;
 use super::open::{front, own, windows};
 use super::{Sess, Words, call, refuse};
 use serde_json::{Value, json};
@@ -163,6 +164,37 @@ pub(super) fn menu_path(w: &Words) -> Result<Vec<String>, Value> {
             "Give the menu's path: brigadier computer menu \"File > Save As…\"",
         )),
         _ => Ok(path),
+    }
+}
+
+/// Whether a menu or a click goes to the Apple menu or Services, past its app to others and the
+/// Mac itself.
+// shortcut: by their English names, as macOS gives accessibility; add others as they're met.
+pub(super) fn past_app(w: &Words, s: &Sess) -> bool {
+    let past = |name: &str| name.trim().eq_ignore_ascii_case("services");
+    let apple = |name: &str| name.trim().eq_ignore_ascii_case("apple");
+    // A control or any it is in, up to the window: an open menu's items are rows of their own.
+    let mut depth = usize::MAX;
+    let mut up = |c: &&Control| {
+        let parent = !c.reads.is_empty() && c.reads.len() < depth;
+        depth = if parent { c.reads.len() } else { depth };
+        parent
+    };
+    match w.verb {
+        "menu" => menu_path(w)
+            .is_ok_and(|p| (p.len() > 1 && apple(&p[0])) || p.iter().any(|name| past(name))),
+        "click" => {
+            let n = w.rest.first().map(|n| n.trim_matches(['[', ']']).parse());
+            let at = s.controls.iter().position(|c| n == Some(Ok(c.n)));
+            let at = s.controls.get(..at.map_or(0, |at| at + 1));
+            (at.unwrap_or_default().iter().rev())
+                .filter(|c| up(c))
+                .any(|c| {
+                    (c.role == "AXMenuBarItem" && apple(&c.name))
+                        || (c.role.starts_with("AXMenu") && past(&c.name))
+                })
+        }
+        _ => false,
     }
 }
 

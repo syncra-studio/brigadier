@@ -339,6 +339,7 @@ fn approval(id: &str, r: &Value) -> Event {
             }
             a["action"] = "command".into();
             a["command"] = field("command").into();
+            a["whole"] = a["command"].clone();
             if let Some(p) = r["blocked_path"].as_str() {
                 a["paths"] = json!([p]);
             }

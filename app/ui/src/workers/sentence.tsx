@@ -5,7 +5,6 @@ import { Chevron, DETAIL, ROW, STEPS, TOGGLE } from "../components/thread/activi
 import { cx } from "../components/cx";
 import { useKept } from "../thread/kept";
 import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
-import { duration } from "../thread/words";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Glyphs, lowerFirst, onHand, type Worker, WorkerName, WorkersPanel } from "./chip";
 
@@ -34,8 +33,8 @@ export function OpeningLine({ keep, children, detail }: { keep: string; children
   );
 }
 
-/** What a worker was told or why it stopped, in a quiet box. */
-export const QuietBrief: FC<{ children: ReactNode }> = ({ children }) => (
+/** What a worker was told, in a quiet box. */
+const QuietBrief: FC<{ children: ReactNode }> = ({ children }) => (
   <div data-slot="tool-card" className="flex flex-col rounded-control bg-code-surface text-tool-box-text">
     <div className="max-h-60 overflow-auto px-3 pt-2 pb-2">
       <div className="text-sm wrap-break-word whitespace-pre-wrap select-text">{children}</div>
@@ -139,10 +138,10 @@ export const BatchRow: FC<{ keep: string; workers: readonly Worker[]; endRows?: 
   );
 };
 
-/** A row of the lead managing its team: "Messaged Retry backoff", "You ended Retry backoff after 3m 10s". */
+/** A row of the lead managing its team: "Messaged Retry backoff", "You ended Retry backoff". */
 export type TeamStep =
   | { type: "messaged"; byUser: boolean; worker: Worker; text?: string }
-  | { type: "stopped"; byUser: boolean; workers: readonly Worker[]; afterMs?: number; reason?: string }
+  | { type: "stopped"; byUser: boolean; workers: readonly Worker[] }
   | { type: "paused" | "resumed"; workers: readonly Worker[] };
 
 export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }) => {
@@ -156,15 +155,9 @@ export const TeamStepRow: FC<{ keep: string; step: TeamStep }> = ({ keep, step }
       detail = step.text ? <QuietBrief>{step.text}</QuietBrief> : undefined;
       break;
     case "stopped":
-      // The user's own End says so on the row; the lead's says why. Ending reads "Ended" (D199).
+      // The user's own End says so on the row. Ending reads "Ended" (D199).
       icon = <StopCircle aria-hidden className="size-4 shrink-0" />;
-      line = (
-        <>
-          {step.byUser ? "You ended" : "Ended"} <Names workers={step.workers} glyph />
-          {step.afterMs !== undefined && step.afterMs >= 1000 && ` after ${duration(step.afterMs)}`}
-        </>
-      );
-      detail = step.reason && !step.byUser ? <QuietBrief>{step.reason}</QuietBrief> : undefined;
+      line = <>{step.byUser ? "You ended" : "Ended"} <Names workers={step.workers} glyph /></>;
       break;
     // The user's Pause and Resume [D3041].
     case "paused":

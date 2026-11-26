@@ -291,14 +291,22 @@ pub fn add(data: &Path, path: &str, id: Option<&str>, name: Option<&str>) -> io:
     let kind = crate::folder::kind(&folder);
     let name = name.map(clean).transpose()?;
     let added = now_ms();
-    let id = id.map_or_else(|| format!("p-{added:x}"), String::from);
-    check_id(&id).or_else(|_| err(format!("invalid project id {id:?}")))?;
+    if let Some(id) = id {
+        check_id(id).or_else(|_| err(format!("invalid project id {id:?}")))?;
+    }
     let (_, project) = change(data, |list| {
         // Checked again under the lock: another add may have landed since.
         taken(list, &folder)?;
-        if list.iter().any(|p| p.id == id) {
-            return err(format!("project id {id} is taken"));
-        }
+        let used = |id: &str| list.iter().any(|p| p.id == id);
+        let id = match id {
+            Some(id) if used(id) => return err(format!("project id {id} is taken")),
+            Some(id) => id.into(),
+            // Another add may have landed in the same millisecond: the next one free.
+            None => (added..)
+                .map(|n| format!("p-{n:x}"))
+                .find(|id| !used(id))
+                .unwrap_or_default(),
+        };
         let folder = folder.display().to_string();
         list.push(Project {
             kind,

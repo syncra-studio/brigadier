@@ -158,7 +158,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
     }
     group = null;
     if (item.kind === "group") {
-      // Every run of steps between the agent's words, one step or many, is the gallery's group line, the same live,
+      // Every run of steps between the agent's words, one step or many, is one group line, the same live,
       // ended, stopped, resumed or reloaded: one line saying what its steps did [D697, D755].
       const members: Item[] = [];
       for (let next = at + 1; next < items.length && within(items[next]!.n, item.span); next++) if (!items[next]!.hidden) members.push(items[next]!);

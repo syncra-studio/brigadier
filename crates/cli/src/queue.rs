@@ -43,7 +43,7 @@ struct Queue {
     editing: Option<Editing>,
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Default, Clone, PartialEq)]
 struct Item {
     id: String,
     text: String,
@@ -63,6 +63,13 @@ struct Item {
     /// Being judged whether it joins the work in progress (`judge`): its row reads Deciding [D521].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     deciding: bool,
+    /// Decided to join a block its workers or subagents hold open: it may go now.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    fits: bool,
+    /// Why it waits, once judged: the judge said so (`judged`), gave no answer in time (`late`) or
+    /// couldn't (`failed`). Kept through a restart: it isn't judged again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    waits: Option<String>,
     /// The user's `!` command: `wait` till its turn to run, `ended` as its report to the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shell: Option<String>,
@@ -91,15 +98,23 @@ struct Editing {
 }
 
 impl Queue {
-    /// Whether its item `at` may go to this session now, as a block's next turn where its workers
-    /// hold one open [D521]. While a command runs the user's messages wait, and the commands behind
-    /// it; a command's report and another session's message don't.
-    fn goes(&self, at: usize) -> bool {
+    /// Whether its item `at` may go to this session now: the one rule of the drain, a worker's
+    /// result and the judge. While a command runs the user's messages wait, and the commands behind
+    /// it; a command's report and another session's message don't. While workers or subagents hold
+    /// its block open, `held` is when its agent's last turn ended: one that fits goes as the block's
+    /// next turn, the rest of the user's, all decided, at the end of the next turn it takes or of
+    /// the block (repo-merge D39, D48); a command that is first goes at once.
+    fn goes(&self, at: usize, held: Option<u64>) -> bool {
         let i = &self.items[at];
+        let open = held.is_none_or(|ended| {
+            let decided = !self.items[..=at].iter().any(|i| i.deciding);
+            let first = || self.items.iter().position(Item::own) == Some(at);
+            i.fits || (decided && i.at < ended) || (i.shell.is_some() && first())
+        });
         i.to.is_none()
             && (i.origin.is_some()
                 || i.shell.as_deref() == Some("ended")
-                || self.running.is_empty())
+                || (self.running.is_empty() && open))
     }
 }
 
@@ -206,14 +221,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     text,
                     parts,
                     at: brigadier_frames::log::now_ms(),
-                    error: None,
                     deciding: origin.is_none()
                         && to.is_none()
                         && shell.is_none()
-                        && judge::judges(&dir, q, qid, at),
+                        && judge::judges(data, id, q, qid, at),
                     shell,
                     origin,
                     to: to.clone(),
+                    ..Item::default()
                 };
                 // The same id again (a retry) replaces it in place.
                 match q.items.iter_mut().find(|i| i.id == qid) {
@@ -237,7 +252,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             change(&dir, |q| {
                 let from = q.items.iter().position(|i| i.id == qid);
                 let mut item = q.items.remove(from.ok_or_else(|| missing(&qid))?);
-                item.deciding = false; // the user placed it: the judge's answer is dropped
+                // The user placed it: the judge's answer is dropped.
+                (item.deciding, item.fits, item.waits) = (false, false, None);
                 let to = to.min(q.items.len());
                 // What goes after a command is steered nowhere by itself.
                 if item.shell.is_some() {
@@ -391,11 +407,8 @@ pub fn ended(data: &Path, id: &str, cmd: &str, kept: &Value) -> io::Result<()> {
             parts: json!({"parts": [text], "attachmentIds": [], "shell": kept["line"]}),
             text,
             at: brigadier_frames::log::now_ms(),
-            error: None,
-            origin: None,
-            to: None,
-            deciding: false,
             shell: shell.clone(),
+            ..Item::default()
         };
         let slot = q.items.iter().take_while(|i| i.shell == shell).count();
         q.items.insert(slot, item);
@@ -435,11 +448,10 @@ fn restore(q: &mut Queue) {
             text: e.text,
             parts: e.parts,
             at,
-            error: None,
             origin: e.origin,
             to: e.to,
-            deciding: false,
             shell: e.shell,
+            ..Item::default()
         };
         q.items.insert(slot, item);
     }

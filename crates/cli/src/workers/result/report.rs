@@ -161,10 +161,10 @@ pub(in crate::workers) fn write_as(
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
         "context" => "stopped: its context is full",
+        "refused" => "was refused by its provider",
         _ => "failed",
     };
-    let what = if l.session { "Session" } else { "Worker" };
-    let mut text = format!("{what} {} ({wid}) {word}.\n", l.title);
+    let mut text = format!("Worker {} ({wid}) {word}.\n", l.title);
     if let Some(e) = error {
         text += &format!("It didn't start: {e}\n");
     }
@@ -289,7 +289,7 @@ pub(in crate::workers) fn write_as(
         (end.map_or(turn, |e| &e.id).into(), u64::MAX)
     });
     let last = last_by(data, wid, &said, until).or_else(|| last_by(data, wid, turn, until));
-    // Its host died in it: the log says so, or left the turn open. A reviewer's end isn't named.
+    // Its host died in it: the log says so, or left the turn open.
     let logged = match of.end {
         0 => f.end(turn),
         at => (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == at),
@@ -307,6 +307,7 @@ pub(in crate::workers) fn write_as(
         "finished" => Value::Null,
         "stopped" => "user".into(),
         "limit" => "quota".into(),
+        "refused" => "refused".into(),
         "failed" if cut || error.is_some() || why.is_some() => "infrastructure".into(),
         "failed" if (ended.as_ref()).is_some_and(|e| e["outcome"] == "sign_in") => {
             "environment".into()
@@ -318,11 +319,14 @@ pub(in crate::workers) fn write_as(
             "Its process was cut off; nothing says its work was wrong. `brigadier send {wid} \"<go on>\"` carries it on where it stopped.\n"
         );
     }
+    if how == "refused" {
+        text += "Its provider's safety checks stopped it and it isn't coming back; sent again, it's likely refused again. Ask the user, or give the work to another agent: `brigadier start --job \"<job>\" --agent <another> \"<brief>\"`.\n";
+    }
     if direct {
         text = compact(
             wid,
             &format!(
-                "{what} {} ({wid}) {word} the turn the user started in it.\n",
+                "Worker {} ({wid}) {word} the turn the user started in it.\n",
                 l.title
             ),
             &merge,

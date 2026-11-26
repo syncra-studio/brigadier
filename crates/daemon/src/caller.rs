@@ -19,7 +19,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 use std::{fs, thread};
+
+/// Proposed: the most an agent's command waits for the daemon's first list.
+const FIRST_LIST: Duration = Duration::from_secs(10);
 
 pub(super) enum Caller {
     App,
@@ -116,6 +120,11 @@ pub(super) fn serve(
             thread::spawn(move || {
                 let rows = || state.lock().unwrap().rows.values().cloned().collect();
                 let here = || here.load(Ordering::SeqCst);
+                // Till the first list no session is in it: a moment, unless it's rebuilt from nothing.
+                let started = Instant::now();
+                while !state.lock().unwrap().ready && here() && started.elapsed() < FIRST_LIST {
+                    thread::sleep(Duration::from_millis(20));
+                }
                 let mut reply = match args.first().map(String::as_str) {
                     Some("computer") => brigadier::computer::agent(&data, &id, &args, &rows, &here),
                     _ => brigadier::agent::run(&data, &id, &args, &rows, &here),

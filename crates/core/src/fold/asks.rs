@@ -102,36 +102,17 @@ impl Fold {
         }
     }
 
-    /// A `peer` note: a message to its own worker (`messaged`), or a sub-session's ask its boss
-    /// passed to the user [D189]: its own request now waits on the user, or the question it sent
-    /// its boss (`peer-<mid>`) is the user's to answer, till answered.
-    pub(super) fn passed_to_user(&mut self, item: &Value) {
-        let mid = item["mid"].as_str().map(|m| format!("peer-{m}"));
-        match (item["phase"].as_str(), mid) {
-            (Some("to_user"), Some(id)) => {
-                if let Some(t) = self.turns.first_mut() {
-                    t.question = item["text"].as_str().map(String::from);
-                    t.asks.insert(id, item["request"].clone());
-                }
-            }
-            (Some("to_user"), None) => {
-                let id = item["id"].as_str().unwrap_or("");
-                let r = self.turns.first_mut().and_then(|t| t.asks.get_mut(id));
-                r.and_then(Value::as_object_mut).map(|r| r.remove("to"));
-            }
-            (Some("answered"), Some(id)) => self.end_ask(&id, "answered"),
-            (Some("sent"), Some(_)) => self.messaged(item),
-            _ => {}
-        }
-    }
-
     /// Who answers a request instead of the user: Brigadier, an exact repeat of a command allowed
-    /// for the session, as Codex's and OpenCode's helpers do [D389]; or a worker's parent agent.
+    /// for the session, as Codex's and OpenCode's helpers do [D389], or a plain computer use call;
+    /// or a worker's parent agent.
     pub fn to(&self, item: &Value) -> Option<&'static str> {
         let r = &item["request"];
         let cwd = &r["cli"]["cwd"];
+        // Or a plain `brigadier computer` call, which asks on its own card where it must [D31]; by
+        // the line its CLI runs, as a card's may be cut to what matters of it.
         if r["grant"]["scope"] == "command"
-            && (self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+            && ((self.grants.iter()).any(|g| crate::adapters::repeat(g, &r["command"], cwd))
+                || r["whole"].as_str().is_some_and(crate::agent::computer))
         {
             return Some("brigadier");
         }
@@ -147,6 +128,10 @@ impl Fold {
         let Some(g) = self.given.as_ref().filter(|g| g["worker"] == true) else {
             return false;
         };
+        // An app of the user's Mac is the user's to allow [D31].
+        if item["request"]["action"] == "computer" {
+            return false;
+        }
         // A turn the user started in it is the user's conversation: its asks are theirs [D305].
         if self.turns.first().is_some_and(|t| t.direct) {
             return false;

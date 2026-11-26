@@ -8,8 +8,8 @@ import { RowAction } from "../components/row-action";
 import { named } from "../components/thread/rewind";
 import { toastManager } from "../components/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
-import { Archive } from "../icons";
 import { useDaemon } from "../daemon";
+import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
 import { archive, restore } from "../sidebar/actions";
@@ -58,7 +58,7 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
  * Rust's check before archiving [D1197]: whose agent is working, and per folder the batch frees, the ignored files
  * it deletes for good (or why they couldn't be listed).
  */
-export type ArchiveCheck = { running: string[]; lost: Lost[]; with?: Record<string, string[]> };
+export type ArchiveCheck = { running: string[]; lost: Lost[] };
 /** `repos`: a delete's, the repositories in what it takes. */
 export type Lost = { ids: string[]; files?: string[]; repos?: string[]; error?: string };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
@@ -93,8 +93,8 @@ export function archiveRows(chosen: SessionRow[]) {
   run(["archive", ...rows.map((row) => row.id), "--check"])
     .then(
       (reply) => {
-        const check = { running: reply.running ?? [], lost: reply.lost ?? [], with: reply.with ?? {} };
-        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus, check);
+        const check = { running: reply.running ?? [], lost: reply.lost ?? [] };
+        if (check.running.length + check.lost.length === 0) return archiveNow(rows, focus);
         ask({ rows, focus, check });
         asked = true;
       },
@@ -103,11 +103,7 @@ export function archiveRows(chosen: SessionRow[]) {
     .finally(() => !asked && hold(rows, false));
 }
 
-/** How many sessions go with the rows' Brigades [D3111]. */
-const withCount = (check?: ArchiveCheck) => Object.values(check?.with ?? {}).flat().length;
-const theirs = (count: number, owner = "its") => (count === 1 ? `${owner} session` : `${owner} ${count} sessions`);
-
-function archiveNow(rows: SessionRow[], focus: Element | null, check?: ArchiveCheck) {
+function archiveNow(rows: SessionRow[], focus: Element | null) {
   const { active, onHome } = view;
   undoFocus = focus;
   typedSinceArchive = false;
@@ -121,7 +117,7 @@ function archiveNow(rows: SessionRow[], focus: Element | null, check?: ArchiveCh
   };
   undo = back;
   const id = toastManager.add({
-    title: rows.length > 1 ? `Archived ${rows.length + withCount(check)} sessions` : withCount(check) ? `Archived ${titleOf(rows[0])} and ${theirs(withCount(check))}` : "Archived session",
+    title: rows.length > 1 ? `Archived ${rows.length} sessions` : "Archived session",
     type: "neutral",
     timeout: UNDO_MS,
     data: { actions: [{ label: "Undo", run: back }] },
@@ -156,24 +152,14 @@ export const ConfirmLines = ({ children }: { children: ReactNode }) => <div clas
 /** Archive's confirm, from Rust's check (proposed words) [D179, D1197]. */
 export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows: SessionRow[]; check?: ArchiveCheck; error?: string; onConfirm: () => void; onCancel: () => void }) {
   const one = rows.length === 1;
-  // A Brigade's sessions going with it are named from the rows Rust sends [D3111].
+  // A worker's loss is named from the rows Rust sends.
   const all = useDaemon().rows as SessionRow[] | undefined;
   const byId = (id: string) => rows.find((row) => row.id === id) ?? all?.find((row) => row.id === id);
-  const more = withCount(check);
-  const lone = one && more === 0;
-  const whose = (ids: string[]) => (lone && ids.every((id) => id === rows[0]!.id) ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
+  const whose = (ids: string[]) => (one && ids.every((id) => id === rows[0]!.id) ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
   return (
     <ConfirmForm
       title={one ? "Archive session?" : `Archive ${rows.length} sessions?`}
-      description={
-        one && more
-          ? `This archives ${titleOf(rows[0])} and ${theirs(more)}. Restore brings them back.`
-          : one
-            ? `This archives ${titleOf(rows[0])}. Restore brings it back.`
-            : more
-              ? `This archives them and ${theirs(more, "their")}. Restore brings each one back.`
-              : "Restore brings each one back."
-      }
+      description={one ? `This archives ${titleOf(rows[0])}. Restore brings it back.` : "Restore brings each one back."}
       confirm="Archive"
       destructive={!!check?.lost.some((each) => each.files)}
       onConfirm={onConfirm}
@@ -182,7 +168,7 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
       <ConfirmLines>
         {(check?.running ?? []).map((id) => (
           <p key={id} className="text-xs text-muted-foreground">
-            {lone ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
+            {one ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
           </p>
         ))}
         {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more=", and restore won't bring them back" />)}
@@ -208,7 +194,7 @@ export function ArchiveAsk() {
             check={now.check}
             error={now.error}
             onConfirm={() => {
-              archiveNow(now.rows, now.focus, now.check);
+              archiveNow(now.rows, now.focus);
               close();
             }}
             onCancel={close}

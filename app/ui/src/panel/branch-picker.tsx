@@ -10,14 +10,14 @@ export type Picker = "branch" | "create" | "from" | null;
 /**
  * The branch's quick pick, D1021's, anchored under `anchor` [D1150, D1262]: in your own folder real switching with its
  * search, off while the agent works [D1265], its list read again each time it opens; a worktree's branch has none
- * [D242]. Without `ops` (the gallery) a pick only closes.
+ * [D242].
  */
-export function useBranchPicker({ data, ops, nowMs, anchor, trigger }: { data: SourceData; ops?: SourceOps; nowMs: number; anchor: RefObject<Element | null>; trigger?: RefObject<Element | null> }) {
+export function useBranchPicker({ data, ops, nowMs, anchor, trigger }: { data: SourceData; ops: SourceOps; nowMs: number; anchor: RefObject<Element | null>; trigger?: RefObject<Element | null> }) {
   const [picker, setPickerNow] = useState<Picker>(null);
   // What the quick pick lists; undefined while it's read.
   const [read, setRead] = useState<BranchRead | null | undefined>(undefined);
   const [from, setFrom] = useState<string | null>(null);
-  const branchOps = ops?.branch;
+  const branchOps = ops.branch;
   const state = data.source;
   const folder = state?.checkout === "folder";
   const setPicker = (next: Picker) => {
@@ -40,7 +40,7 @@ export function useBranchPicker({ data, ops, nowMs, anchor, trigger }: { data: S
           place={{ anchor, trigger }}
           placeholder="Select a branch to switch to"
           search
-          items={folderItems(read === undefined && branchOps ? null : (read?.branches ?? data.branches ?? null), state.branch, nowMs)}
+          items={folderItems(read === undefined && branchOps ? null : (read?.branches ?? null), state.branch, nowMs)}
           off={(data.agentWorking || read?.working) ? "Branches can't switch while the agent is working." : null}
           onPick={(item) => {
             setPicker(null);
@@ -58,7 +58,7 @@ export function useBranchPicker({ data, ops, nowMs, anchor, trigger }: { data: S
           place={{ anchor, trigger }}
           placeholder="Select a ref to create the branch from"
           // The branches but the checked-out one, as the folder's list has them.
-          items={read === undefined && branchOps ? null : (folderItems(read?.branches ?? data.branches ?? [], state.branch, nowMs)?.slice(2) ?? null)}
+          items={read === undefined && branchOps ? null : (folderItems(read?.branches ?? [], state.branch, nowMs)?.slice(2) ?? null)}
           onPick={(item) => {
             setPicker(null);
             setFrom(item.title);

@@ -178,7 +178,7 @@ fn written(data: &Path, prompt: &str) -> Result<String, String> {
         f.accounts
             .extend(spec.starts_on.clone().map(|id| (a.name().to_string(), id)));
         match commit::written_for(data, &spec, &f, &active, None, |_| prompt.to_string()) {
-            Ok(reply) => return Ok(reply),
+            Ok((reply, _)) => return Ok(reply),
             Err(e) => why = e,
         }
     }

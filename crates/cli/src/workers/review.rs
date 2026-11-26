@@ -21,9 +21,13 @@ pub(crate) use task::{at, plan};
 
 use super::{Link, git, link, records, refuse, result, write_json};
 use crate::{owner, routing};
-use brigadier_core::{self as core, fold::Fold};
+use brigadier_core::{
+    self as core,
+    fold::{End, Fold},
+};
 use brigadier_frames::procs;
 use line::{count, cut, reviewed, word};
+use result::Of;
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io;
@@ -90,7 +94,7 @@ pub(super) fn lock_at(path: &Path) -> io::Result<fs::File> {
 /// w185's review note [D2038], into `into`'s log.
 fn note(data: &Path, into: &str, r: &Value, counts: [Option<u64>; 3], why: Option<&str>) {
     let [findings, fixed, rejected] = counts;
-    let n = json!({"event": "outcome", "phase": "review", "reviewer": r["reviewer"], "findings": findings,
+    let n = json!({"event": "outcome", "phase": "review", "id": r["id"], "reviewer": r["reviewer"], "findings": findings,
         "fixed": fixed, "rejected": rejected, "ran": why.is_none(), "why": why});
     if let Ok(spec) = core::load(data, into) {
         let _ = owner::ensure(data, &spec);
@@ -108,8 +112,7 @@ fn off(data: &Path, a: &mut Link, wid: &str, why: &str) {
 }
 
 /// `write_ended`'s one call, for a reported turn of `wid` that ended `how` with no result yet: the
-/// end its result is written with, or none while a review holds it [D3026]. A reviewer's own
-/// result is written here.
+/// end its result is written with, or none while a review holds it [D3026].
 pub(super) fn holds(
     data: &Path,
     l: &mut Link,
@@ -118,11 +121,7 @@ pub(super) fn holds(
     how: &'static str,
     f: &Fold,
 ) -> Option<&'static str> {
-    if l.review["of"].is_string() {
-        after(data, l, wid, turn, how, None);
-        return None;
-    }
-    let on = how == "finished" && !l.session && routing::review_on(data);
+    let on = how == "finished" && routing::review_on(data);
     if l.review.is_null() && !on {
         return Some(how);
     }
@@ -252,7 +251,7 @@ fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
         TRIED => Some(past.clone()),
         _ => None,
     };
-    let reply = super::make::start(data, &a.parent, "", &flags, &running, false);
+    let reply = super::make::start(data, &a.parent, "", &flags, &running);
     if let Some(id) = reply["id"].as_str().filter(|_| reply["ok"] == true) {
         return Ok(id.to_string());
     }
@@ -274,17 +273,69 @@ fn next(data: &Path, a: &Link, wid: &str) -> Result<String, String> {
 }
 
 /// A reviewer's end, its start's failure too: its result, then what comes next, under the lock.
-pub(super) fn after(data: &Path, l: &Link, wid: &str, turn: &str, how: &str, error: Option<&str>) {
+pub(super) fn after(
+    data: &Path,
+    l: &Link,
+    wid: &str,
+    turn: &str,
+    how: &str,
+    error: Option<&str>,
+    of: Of,
+) {
     let next = {
         let Ok(_one) = lock(data) else { return };
         let path = result::path_of(data, &l.parent, wid, turn);
-        if path.exists() || result::write(data, l, wid, turn, how, error).is_err() {
+        if path.exists() || result::write_as(data, l, wid, turn, how, error, of).is_err() {
             return;
         }
         act(data, l, wid, turn, how)
     };
     if let Some(of) = next {
         let _ = result::write_ended(data, &of, false);
+    }
+}
+
+/// A reviewer says its findings once: the switch's or a plan's is over at its first end, an agent's
+/// at the one that said them, so one that failed is heard again. Leaves `ends` up to that one.
+pub(super) fn once(data: &Path, l: &Link, wid: &str, turn: &str, ends: &mut Vec<End>) {
+    let says = |e: &End| {
+        let said = || last_by(data, wid, turn, e.at);
+        e.how == "done" && said().is_some_and(|m| found(&m))
+    };
+    if l.review["switch"] == true || l.review["plan"].is_string() {
+        ends.truncate(1);
+    } else if ends.len() > 1
+        && let Some(i) = ends.iter().position(says)
+    {
+        ends.truncate(i + 1);
+    }
+}
+
+pub(super) fn found(text: &str) -> bool {
+    count(text, "findings:").is_some()
+}
+
+/// The note of the review an agent started, by its reviewer's turn: `outcomes` counts the last, and
+/// one already noted isn't again.
+fn own(data: &Path, l: &Link, wid: &str, turn: &str, findings: Option<u64>, why: Option<&str>) {
+    let of = l.review["of"].as_str().unwrap_or("");
+    let into = if of == "session" { wid } else { of };
+    let r = json!({"id": format!("{wid}.{turn}"),
+        "reviewer": {"agent": l.ran["agent"], "model": l.ran["model"]}});
+    let same = |n: &Value| {
+        n["id"] == r["id"] && n["ran"] == why.is_none() && n["findings"] == json!(findings)
+    };
+    if !super::outcomes(data, into).iter().any(same) {
+        note(data, into, &r, [findings, None, None], why);
+    }
+}
+
+/// A reviewer heard again finished: its review ran after all. Noted before its result is written,
+/// so a kill between them never loses it.
+pub(super) fn ran(data: &Path, l: &Link, wid: &str, turn: &str, end: u64) {
+    if l.review["of"].is_string() {
+        let findings = last_by(data, wid, turn, end).and_then(|t| count(&t, "findings:"));
+        own(data, l, wid, turn, findings, None);
     }
 }
 
@@ -301,14 +352,12 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         plan::reviewed(data, l, how, said, findings);
         return None;
     }
-    let reviewer = json!({"agent": l.ran["agent"], "model": l.ran["model"]});
     let why = (how != "finished").then(|| format!("the reviewer {}", word(how)));
     if l.review["switch"] != true {
-        let into = if of == "session" { wid } else { of };
-        let r = json!({"reviewer": reviewer});
-        note(data, into, &r, [findings, None, None], why.as_deref());
+        own(data, l, wid, turn, findings, why.as_deref());
         return None;
     }
+    let reviewer = json!({"agent": l.ran["agent"], "model": l.ran["model"]});
     let mut a =
         link(data, of).filter(|a| a.review["by"] == wid && a.review["state"] == "running")?;
     {
@@ -320,7 +369,7 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
         (a.review["model"], a.review["reviewer"]) = (model.clone(), reviewer);
         a.review["findings"] = json!(findings);
         match (why, findings, said) {
-            (Some(_), ..) if matches!(how, "failed" | "limit") => {
+            (Some(_), ..) if matches!(how, "failed" | "limit" | "refused") => {
                 let me = json!({"by": wid, "agent": l.ran["agent"], "model": l.ran["model"], "name": model, "how": how});
                 let mut tried = a.review["tried"].as_array().cloned().unwrap_or_default();
                 tried.push(me);

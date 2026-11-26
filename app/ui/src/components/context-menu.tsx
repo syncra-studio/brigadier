@@ -7,8 +7,6 @@ import { menuSurface, type MenuContentProps } from "./menu";
 export {
   DropdownMenuItem as ContextMenuItem,
   DropdownMenuSeparator as ContextMenuSeparator,
-  DropdownMenuSub as ContextMenuSub,
-  DropdownMenuSubTrigger as ContextMenuSubTrigger,
 } from "./menu";
 
 /** A menu opened by a right-click (or the context-menu key) on its trigger, styled like the others. */
@@ -47,6 +45,3 @@ export function ContextMenuContent({
     </BaseContextMenu.Portal>
   );
 }
-
-/** A sub-menu's surface ("Open in ›"), beside its row. */
-export const ContextMenuSubContent = ContextMenuContent;

@@ -28,8 +28,8 @@ export function CodeSpans({ text, exact = false }: { text: string; exact?: boole
 
 /** A field the user types in: its keys are its own, not the card's. */
 const FIELD = "input, textarea, select, [contenteditable]:not([contenteditable='false' i])";
-/** Open menus, dialogs and the field's own menus, which take Enter and Esc first (not the gallery's, held open). */
-export const OVERLAYS = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].map((open) => `${open}:not([data-held] *)`).join(", ");
+/** Open menus, dialogs and the field's own menus, which take Enter and Esc first. */
+export const OVERLAYS = ["[role=dialog]", "[role=menu]", "[role=listbox]", "[data-slot=composer-menu]"].join(", ");
 
 export const inField = (target: EventTarget | null) => target instanceof Element && target.closest(FIELD) !== null;
 
@@ -383,9 +383,4 @@ export function ActionFreeText({
       {children && <div className="flex items-center gap-2 place-self-end">{children}</div>}
     </div>
   );
-}
-
-/** When one question card follows another its rows fade in 50ms apart (`row-stagger`); the first shows as is. */
-export function staggered(on: boolean, index: number): { className?: string; "data-row"?: number } {
-  return on ? { className: "row-stagger", "data-row": index } : {};
 }

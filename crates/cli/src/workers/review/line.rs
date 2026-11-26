@@ -21,6 +21,7 @@ pub(super) fn word(how: &str) -> &'static str {
     match how {
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
+        "refused" => "was refused by its provider",
         "context" => "ran out of context",
         _ => "failed",
     }

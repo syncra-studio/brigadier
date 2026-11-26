@@ -5,7 +5,7 @@ import { matches } from "../../shortcuts";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { viewImage } from "../image-viewer";
-import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, staggered, useCardKeys } from "./decision-parts";
+import { ActionCard, ActionCardQuestion, ActionFreeText, ActionOption, actionButton, CodeSpans, cardKey, DismissButton, forgetCards, inField, StepCounter, useCardKeys } from "./decision-parts";
 import { openChip } from "../../session/commands";
 import type { Runner } from "../../session/composer";
 import { dropTiles, forgetTiles, tilesOf, useComposerFiles } from "../../session/files";
@@ -104,7 +104,6 @@ export function QuestionCard({
   onDismiss,
   footer,
   actions,
-  stagger = false,
   error: refused = null,
   session,
   dismiss,
@@ -118,8 +117,6 @@ export function QuestionCard({
   actions?: ReactNode;
   /** A refusal that came after the card was hidden at once, so it shows when the card comes back. */
   error?: string | null;
-  /** It follows another card: its rows fade in one after another. */
-  stagger?: boolean;
   /** Whose question it is: what keeps one session's answers and drafts from another's, and where its files go. */
   session: string;
   run: Runner;
@@ -212,7 +209,6 @@ export function QuestionCard({
       error={error ?? refused}
       dismiss={dismiss}
       footer={footer}
-      stagger={stagger && at === 0}
     />
   );
 }
@@ -247,7 +243,6 @@ function QuestionPage({
   dismiss,
   footer,
   onFinish,
-  stagger,
 }: {
   title: ReactNode;
   kind?: ReactNode;
@@ -273,7 +268,6 @@ function QuestionPage({
   footer?: Footer;
   /** Sends the round as it stands, `now` this question's own answer so far. */
   onFinish: (now: Given) => Promise<boolean>;
-  stagger: boolean;
 }) {
   const { options } = item;
   const multiple = keptMarks !== undefined;
@@ -286,8 +280,6 @@ function QuestionPage({
   const [chosen, setChosen] = useState<number | null>(null);
   const [marked, setMarked] = useState<readonly number[]>(keptMarks ?? []);
   const [typed, setTyped] = useState(initial);
-  // One that came while nobody could see the window shows its rows at once.
-  const [opens] = useState(() => document.visibilityState === "visible");
   const card = useRef<HTMLElement>(null);
   const field = useRef<ComposerFieldHandle>(null);
   const files = useComposerFiles({ ...filed, field, main: false });
@@ -397,10 +389,9 @@ function QuestionPage({
     files.onDrop(event);
     setHighlight(-1);
   };
-  const row = (index: number) => staggered(stagger && opens, index);
   return (
     <ActionCard ref={card} container="request" tabIndex={0} aria-label="Question" data-action="question" onKeyDown={onKeyDown} {...(!held && { onDragOver: files.onDragOver, onDrop })}>
-      <div {...row(0)}>
+      <div>
         <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel="Skip" kind={kind} aside={aside}>
           {title}
         </ActionCardQuestion>
@@ -409,7 +400,7 @@ function QuestionPage({
         {pickable && (
           <div role={multiple ? "group" : "radiogroup"} aria-label="Answers" className={cx("flex flex-col gap-1", pictures.length > 0 && "max-h-queue-max overflow-y-auto")}>
             {options.map((option, index) => (
-              <div key={option.label} {...row(index + 1)} className={cx("flex items-center gap-2", row(index + 1).className)}>
+              <div key={option.label} className="flex items-center gap-2">
                 <ActionOption
                   className="min-w-0"
                   role={multiple ? "checkbox" : "radio"}
@@ -446,7 +437,6 @@ function QuestionPage({
           <ActionFreeText
             marker={pickable}
             highlighted={pickable && highlight === -1}
-            {...row(options.length + 1)}
             field={
               <div className="min-w-0 flex-1" onFocus={() => setHighlight(-1)}>
                 {files.tilesRow}

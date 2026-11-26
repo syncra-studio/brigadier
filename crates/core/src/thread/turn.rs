@@ -138,6 +138,7 @@ impl Thread {
             wait: None,
             waited: 0,
             kept: vec![],
+            answers: Default::default(),
             denied: 0,
             stop: (None, false),
             quiet: t.quiet,
@@ -399,7 +400,7 @@ impl Thread {
                 Some(from) => Self::peer_item(from, &t.text, t.ts, &t.id.clone().into()),
                 None => {
                     json!({"kind": "message", "role": "user", "text": t.text, "streaming": false,
-                    "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts, "brigade": t.brigade})
+                    "origin": origin, "sentAt": t.ts, "cid": t.id, "files": t.parts["files"], "draft": t.parts})
                 }
             };
             // A `!` command's report: its Shell row says it, unless other rows came between [D316].

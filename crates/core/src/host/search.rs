@@ -18,7 +18,7 @@ const PAGE: u32 = 30;
 /// views (three queries each, per state, account and project) to paint again after a relaunch [D262].
 const KEPT: usize = 60;
 
-/// A row's fields: a bare row [D613].
+/// A row's fields [D613].
 const ROW: &str = "number url title state isDraft headRefName baseRefName createdAt updatedAt additions deletions author { login avatarUrl } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }";
 
 fn path(dir: &Path) -> PathBuf {

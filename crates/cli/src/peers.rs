@@ -16,10 +16,10 @@ mod reply;
 
 use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::log;
+use brigadier_frames::{log, take_lock};
 pub(crate) use first::begin;
 pub(crate) use held::{hand_all, written};
-pub(crate) use reply::{answer, asked, hand_back, open_question, question, waits};
+pub(crate) use reply::{answer, question};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -180,6 +180,7 @@ pub fn send(
         why: why.map(String::from),
         reply: None,
     };
+    let sending = held::Sending::new(&out.mid);
     if let Err(e) = save(data, me, "out", &out.mid, &out) {
         return refuse(&e.to_string());
     }
@@ -217,6 +218,7 @@ pub fn send(
         Ok(how) => how,
         Err(e) => return refuse(&format!("Couldn't send it: {e}")),
     };
+    drop(sending);
     let said = match how {
         // As its receiver has it: a pass may have settled the sender's meanwhile.
         "steered" if unsure(data, to, &out.mid) => queue::UNSURE.into(),
@@ -422,9 +424,12 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
 
 /// Finishes and settles a sender's open messages; with none left, it leaves the set.
 fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Result<()> {
-    let now = log::now_ms();
     let mut open = false;
-    for mut out in all::<Out>(data, from, "out") {
+    for out in all::<Out>(data, from, "out") {
+        let Some(mut out) = held::current(data, from, out) else {
+            open = true;
+            continue;
+        };
         // A worker's question is its parent's to settle, by its answer.
         if DONE.contains(&out.state.as_str()) || reply::ASKS.contains(&out.state.as_str()) {
             continue;
@@ -432,19 +437,27 @@ fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Res
         open = true;
         let to = out.to.clone();
         let dir = core::session_dir(data, &to);
-        let rec: Option<In> = workers::read_json(&path(data, &to, "in", &out.mid));
+        let at = path(data, &to, "in", &out.mid);
+        let mut rec: Option<In> = workers::read_json(&at);
         if core::load(data, &to).is_err() {
             settle_out(data, from, &mut out, "dropped", Some("deleted"));
             continue;
         }
+        // What comes of a steer is saved under its receiver's queue lock: held, it's still on its way.
+        if rec.as_ref().is_some_and(|r| r.state == "steering") {
+            let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
+                continue;
+            };
+            rec = workers::read_json(&at);
+        }
         // Cut short before its receiver had it, or while it was being queued: once now, under
-        // the receiver's lock, which drops a repeat. A live send gets a moment first.
-        // shortcut: 10 s covers a live send's hand-off; one slower is handed twice, the repeat dropped.
+        // the receiver's lock, which drops a repeat.
         let cut = match &rec {
-            None => out.at + 10_000 < now,
+            None => true,
             Some(r) => {
                 matches!(r.state.as_str(), "adding" | "held")
-                    || (r.state == "steering" && r.at + 10_000 < now)
+                    || (r.state == "steering"
+                        && !core::fold(&dir, true)?.fold.cids.contains_key(&out.mid))
             }
         };
         if cut {

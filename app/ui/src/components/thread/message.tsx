@@ -113,7 +113,7 @@ export function UserBubble({
   /** The draft it was sent from: its mentions, images and pastes drawn as the composer's chips, in place [D2107]. */
   parts?: Draft["parts"];
 }) {
-  // An attachment its surroundings already hold (the gallery's sample picture) keeps that look.
+  // An attachment its surroundings already hold keeps that look.
   const known = useContext(AttachmentsContext);
   const chips = useMemo(() => {
     if (!owner || !parts?.some((part) => typeof part !== "string")) return null;

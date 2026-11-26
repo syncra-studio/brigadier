@@ -90,7 +90,7 @@ pub(crate) fn plan_held(data: &Path, id: &str, request: &str) {
                 PLAN => Some(request.to_string()),
                 _ => None,
             };
-            let reply = crate::workers::make::start(data, id, "", &flags, &running, false);
+            let reply = crate::workers::make::start(data, id, "", &flags, &running);
             let made = (reply["id"].as_str().filter(|_| reply["ok"] == true))
                 .and_then(|rid| records(data, id).into_iter().find(|x| x.wid == rid));
             made.ok_or_else(|| {

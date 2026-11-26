@@ -50,6 +50,19 @@ pub fn scratch(spec: &Spec) -> Vec<PathBuf> {
         .collect()
 }
 
+/// One conversation's scratch folders.
+pub fn scratch_of(spec: &Spec, resume: &str) -> Vec<PathBuf> {
+    scratch(spec).into_iter().map(|d| d.join(resume)).collect()
+}
+
+/// What every conversation in its folder shares: its project folder, memory and scratch.
+pub fn shared(spec: &Spec) -> Vec<PathBuf> {
+    let dir = project_dir(spec);
+    let mut dirs = vec![dir.join("memory"), dir];
+    dirs.extend(scratch(spec));
+    dirs
+}
+
 /// Its transcript and the folder beside it, transcripts it set aside (`<id>.orphaned-…`,
 /// `<id>.jsonl.superseded-…`), and per session in its home: checkpoints, environment, task list,
 /// debug log; and its temp folders.
@@ -78,7 +91,7 @@ pub fn external(spec: &Spec, resume: &str) -> Vec<PathBuf> {
                 .map(|e| e.path()),
         );
     }
-    paths.extend(scratch(spec).into_iter().map(|p| p.join(resume)));
+    paths.extend(scratch_of(spec, resume));
     paths.extend(unclosed(spec, resume));
     paths.sort();
     paths.dedup();

@@ -175,7 +175,6 @@
   --color-faint-foreground: rgb(255 255 255 / 50%);
   /* A progress bar: filling, and stopped. */
   --color-progress: color-mix(in oklab, var(--color-foreground) 80%, transparent);
-  --color-progress-cancelled: color-mix(in oklab, var(--color-foreground) 20%, transparent);
   /* A thread row's words, its object ("Read" then "blocks.ts"), and a shell box's title and output. */
   --color-row-foreground: color-mix(in oklab, var(--color-foreground) 60%, transparent);
   --color-row-object: color-mix(in oklab, var(--color-foreground) 40%, transparent);
@@ -1203,15 +1202,6 @@
   }
 }
 
-/* A question card's rows when one card follows another: each fades in 50ms after the row above
-   (decision-parts.tsx numbers them in data-row); reduced motion shows them at once. */
-@utility row-stagger {
-  @media (prefers-reduced-motion: no-preference) {
-    animation: fade-in var(--duration-fold) var(--ease-out) backwards;
-    animation-delay: calc(attr(data-row type(<number>), 0) * 50ms);
-  }
-}
-
 /* A dialog held by its top edge where it opened (dialog.tsx measures it), so new content only grows
    it downward. */
 /* A note's floating parts, placed where its editor measures them (note/tools.tsx): the selection toolbar at the
@@ -1223,15 +1213,11 @@
 @utility note-y {
   translate: 0 attr(data-y px, 0px);
 }
-/* A mockup's pin and the outline of what the pointer is over, at fractions of its frame (mockup/pins.tsx), and a
+/* A mockup's pin, at fractions of its frame (mockup/pins.tsx), and a
    frame's screenshot at a zoom (mockup/frame.tsx). */
 @utility mockup-at {
   left: calc(attr(data-x type(<number>), 0) * 100%);
   top: calc(attr(data-y type(<number>), 0) * 100%);
-}
-@utility mockup-box {
-  width: calc(attr(data-w type(<number>), 0) * 100%);
-  height: calc(attr(data-h type(<number>), 0) * 100%);
 }
 /* The tour's spotlight (onboarding/tour.tsx): the window dimmed as behind a dialog but round the part it lights,
    placed where it measures that part [D3109]. */

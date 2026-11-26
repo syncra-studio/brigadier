@@ -7,6 +7,7 @@
 
 mod verbs;
 
+pub(crate) use verbs::asks::answered;
 pub use verbs::turn_ended;
 pub(crate) use verbs::{HELP, VERBS};
 
@@ -191,6 +192,9 @@ pub(crate) fn tool(
             return Err(Fail::NotSent("Stopped.".into()));
         }
     }
+    if let Some(why) = verbs::still::closed(name, &args) {
+        return Err(Fail::NotSent(why));
+    }
     let answer = send(
         "tools/call",
         json!({"name": name, "arguments": args}),
@@ -226,6 +230,9 @@ pub(crate) fn own(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Result<Value, String>, Fail> {
     ready(data)?;
+    if let Some(why) = verbs::still::closed(method, &params) {
+        return Err(Fail::NotSent(why));
+    }
     let answer = send(&format!("brigadier/{method}"), params, CALL_WAIT, cancel)?;
     Ok(match answer["error"]["message"].as_str() {
         Some(e) => Err(e.to_string()),
@@ -391,7 +398,7 @@ pub fn agent(
     here: &dyn Fn() -> bool,
 ) -> Value {
     let help = args.get(1).is_none_or(|v| v == "help") || args.iter().any(|a| a == "--help");
-    let lead = !help && brigadier_core::load(data, me).is_ok_and(|s| !s.naked && s.boss.is_none());
+    let lead = !help && brigadier_core::load(data, me).is_ok_and(|s| !s.naked);
     match lead.then(|| crate::routing::computer_job(data)).flatten() {
         Some(job) => crate::agent::refuse(&format!(
             "Computer use runs in a worker: brigadier start --job \"{job}\" \"<brief>\""
@@ -418,6 +425,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 false => {
                     stop_helper();
                     verbs::release_all();
+                    verbs::asks::forget();
                 }
             }
             Ok(json!({"ok": true}))

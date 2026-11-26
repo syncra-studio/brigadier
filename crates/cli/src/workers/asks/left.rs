@@ -190,7 +190,7 @@ fn over(data: &Path, wid: &str) -> io::Result<Option<(File, File)>> {
 }
 
 fn is_over(data: &Path, wid: &str, l: &Link) -> bool {
-    if l.session || l.paused {
+    if l.paused {
         return false;
     }
     // Until the pick the user may still compare a mockup's variants.

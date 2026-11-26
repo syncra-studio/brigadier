@@ -4,8 +4,10 @@
 use super::{DONE, In, Out, all, path, save};
 use crate::{queue, workers};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
+use std::sync::Mutex;
 
 /// Holds `rec` for `to`'s running turn: recorded once, as every pass tries it again.
 pub(super) fn hold(data: &Path, to: &str, rec: &mut In) -> io::Result<Option<&'static str>> {
@@ -18,9 +20,57 @@ pub(super) fn hold(data: &Path, to: &str, rec: &mut In) -> io::Result<Option<&'s
     Ok(Some("held"))
 }
 
+/// The messages being sent now: still in their send's hands, up to when their receiver has them.
+static SENDING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+pub(super) struct Sending(String);
+
+impl Sending {
+    pub(super) fn new(mid: &str) -> Sending {
+        SENDING.lock().unwrap().insert(mid.into());
+        Sending(mid.into())
+    }
+}
+
+impl Drop for Sending {
+    fn drop(&mut self) {
+        SENDING.lock().unwrap().remove(&self.0);
+    }
+}
+
+/// `out` as its send left it; none while that runs.
+pub(super) fn current(data: &Path, from: &str, out: Out) -> Option<Out> {
+    if SENDING.lock().unwrap().contains(&out.mid) {
+        return None;
+    }
+    workers::read_json(&path(data, from, "out", &out.mid))
+}
+
+/// Hands on what `out`'s sender sent the same receiver before it and a send cut short left behind.
+fn left(data: &Path, from: &str, out: &Out) -> io::Result<()> {
+    let mut outs = all::<Out>(data, from, "out");
+    let open = |o: &Out| matches!(o.state.as_str(), "written" | "sent");
+    outs.retain(|o| o.to == out.to && (o.at, &o.mid) < (out.at, &out.mid) && open(o));
+    outs.sort_by(|a, b| (a.at, &a.mid).cmp(&(b.at, &b.mid)));
+    for o in outs {
+        let Some(mut o) = current(data, from, o).filter(open) else {
+            continue;
+        };
+        let rec: Option<In> = workers::read_json(&path(data, &o.to, "in", &o.mid));
+        if rec
+            .as_ref()
+            .is_none_or(|r| matches!(r.state.as_str(), "adding" | "steering"))
+        {
+            super::reply::again(data, from, &mut o, rec.is_none())?;
+        }
+    }
+    Ok(())
+}
+
 /// Hands a message on after those its receiver was sent before it, whoever sent them: they go in
 /// the order they came, though each sender's pass runs by itself.
 pub(super) fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
+    left(data, from, out)?;
     let waits = |r: &In| r.state == "held";
     let mine: Option<In> = workers::read_json(&path(data, &out.to, "in", &out.mid)).filter(waits);
     let mut before = all::<In>(data, &out.to, "in");

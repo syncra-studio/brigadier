@@ -3,14 +3,13 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { useState } from "react";
 
-import { ArrowCurvedRight, ArrowUp, ChevronUpDown, DotsHorizontal, EditPencil, Info, Play, QueueGlyph, Spinner, Trash } from "../../icons";
+import { ArrowCurvedRight, ArrowUp, ChevronUpDown, DotsHorizontal, EditPencil, Play, QueueGlyph, Spinner, Trash } from "../../icons";
 import { Terminal } from "../../icons/thread";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { Draft } from "./draft";
 import { FromPeer } from "../../peers/message";
 import { ToWorker } from "../../workers/to-chip";
@@ -32,11 +31,11 @@ export type QueuedMessage = {
   to?: { name: string | null; ended?: boolean };
   /** A `!` command, run in its turn; never steered. */
   shell?: boolean;
+  /** Why it waits, once the session decided so. */
+  waits?: string;
   /** The agent couldn't be given it. */
   refused?: boolean;
 };
-
-type HeldMessage = { draft: Draft; reason: string; onRestore: () => void; onDiscard: () => void };
 
 /** The row's words: the text with each mention's and command's name in place. */
 function preview(draft: Draft): string {
@@ -80,7 +79,6 @@ export function QueueCard({
   steer = false,
   canEdit,
   error,
-  notSent,
   onResume,
   onSteer,
   onRemove,
@@ -98,8 +96,6 @@ export function QueueCard({
   canEdit: boolean;
   /** An action that failed. */
   error?: string | null;
-  /** A message that couldn't go, kept whole: a row at the end of the list. */
-  notSent?: HeldMessage | null;
   onResume: () => void;
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
@@ -119,7 +115,7 @@ export function QueueCard({
       .catch(() => {}) // the failure comes back as `error`
       .finally(() => setHeld((now) => (now && now.moving > 1 ? { ...now, moving: now.moving - 1 } : null)));
   };
-  if (items.length === 0 && !notSent) return null;
+  if (items.length === 0) return null;
   return (
     <RailItem label="Message queue">
       {paused && (
@@ -158,7 +154,6 @@ export function QueueCard({
               onMove={move}
             />
           ))}
-          {notSent && <HeldQueueRow {...notSent} />}
         </ol>
       </DragDropProvider>
       <ErrorLine error={error} className="px-3 pb-1" />
@@ -183,40 +178,6 @@ function Words({ draft, shell }: { draft: Draft; shell?: boolean }) {
         <span className="text-muted-foreground">{files}</span>
       )}
     </span>
-  );
-}
-
-/** A message that couldn't go, in the list it waited in: Restore puts it back into the empty field, Discard lets it go. */
-function HeldQueueRow({ draft, reason, onRestore, onDiscard }: HeldMessage) {
-  return (
-    <li data-slot="queue-item" className={ROW}>
-      <span className="flex size-control-xs shrink-0 items-center justify-center text-queue-glyph">
-        <QueueGlyph className="size-icon-sm" />
-      </span>
-      <Words draft={draft} />
-      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        Not sent
-        <Tooltip>
-          {/* Focusable, so the tip opens from the keyboard too; it names the reason. */}
-          <TooltipTrigger
-            render={
-              <span role="img" tabIndex={0} aria-label={reason} className="flex shrink-0 rounded-control focus-visible:focus-ring svg:size-icon-sm">
-                <Info />
-              </span>
-            }
-          />
-          <TooltipContent>{reason}</TooltipContent>
-        </Tooltip>
-      </span>
-      <TooltipIconButton tooltip="Put it back in the field" side="top" size="xs" className="text-muted-foreground" onClick={onRestore}>
-        Restore
-      </TooltipIconButton>
-      <TooltipIconButton tooltip="Discard message" side="top" className="text-muted-foreground" onClick={onDiscard}>
-        <Trash />
-      </TooltipIconButton>
-      {/* Where a queued row has ⋯, so Restore and the trash line up with Steer and the trash above. */}
-      <span aria-hidden className="size-control-xs shrink-0" />
-    </li>
   );
 }
 
@@ -306,6 +267,8 @@ function QueueRow({
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding
         </span>
+      ) : item.waits ? (
+        <span className="shrink-0 text-xs text-muted-foreground">{item.waits}</span>
       ) : (
         item.to && <ToWorker name={item.to.name} />
       )}

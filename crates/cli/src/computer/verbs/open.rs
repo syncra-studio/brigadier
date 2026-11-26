@@ -39,6 +39,7 @@ pub(super) fn open(
     me: &str,
     s: &mut Sess,
     w: &Words,
+    rows: &dyn Fn() -> Vec<Value>,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
     let mut words = w.rest.clone();
@@ -59,14 +60,6 @@ pub(super) fn open(
         ));
     }
     blocked(&name, "")?;
-    // What the user has in front, to keep there [D909].
-    let user = front(data, here);
-    let user_window = match user {
-        Some(pid) => windows(data, pid, here)?
-            .first()
-            .map(|w| w["window_id"].clone()),
-        None => None,
-    };
     // Through LaunchServices in the background, a cold start too: Cua's launch_app brought a cold
     // Calculator to the front, and macOS left the user's full-screen Space for it; `open -g`
     // didn't (D946). Cua's handoff timed out on a Finder folder and took 8 s to give Dia a url.
@@ -82,6 +75,7 @@ pub(super) fn open(
     {
         return Err(refuse(&no));
     }
+    let asked = super::asks::opening(data, me, listed, target.as_deref(), rows, here)?;
     let titled = |pid: i64| -> Vec<(Value, Value)> {
         (windows(data, pid, here).unwrap_or_default().iter())
             .map(|w| (w["window_id"].clone(), w["title"].clone()))
@@ -93,13 +87,24 @@ pub(super) fn open(
         .filter(|a| a["running"] == true)
         .and_then(|a| a["pid"].as_i64());
     let before = was.map(titled).unwrap_or_default();
+    // What the user has in front, to keep there [D909], read after any wait for their yes.
+    let user = front(data, here);
+    let user_window = match user {
+        Some(pid) => windows(data, pid, here)?
+            .first()
+            .map(|w| w["window_id"].clone()),
+        None => None,
+    };
     let mut launch = std::process::Command::new("open");
     let app_path = listed.and_then(|a| a["launch_path"].as_str());
+    // At Ask, the very app its card named.
+    let app_path = asked.as_deref().and_then(Path::to_str).or(app_path);
     launch.args(["-g", "-a", app_path.unwrap_or(&name)]);
     launch.args(&target);
     if listed.is_none_or(|a| a["running"] == false) {
         launch.arg("--args").args(windowed(bundle));
     }
+    super::still::start(data, me, asked.as_deref())?;
     let sent = launch.output();
     if !sent.as_ref().is_ok_and(|o| o.status.success()) {
         let why = sent.map(|o| {
@@ -122,6 +127,7 @@ pub(super) fn open(
             found => break found?,
         }
     };
+    super::asks::gate(data, me, pid, rows, here)?;
     let window = match s.pid == pid {
         true => s.window,
         false => 0,

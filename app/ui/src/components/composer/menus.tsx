@@ -31,7 +31,7 @@ export type Mention = {
 };
 
 /** A part of the `@` menu: its heading (none for ranked results), rows and a grey note under them. PROPOSED. */
-export type MentionGroup = { title: string | null; items: Mention[]; note?: string };
+type MentionGroup = { title: string | null; items: Mention[]; note?: string };
 
 /**
  * What the `@` menu shows: Rust's latest reply, echoing the query it answers, asked for as the query changes
@@ -143,13 +143,11 @@ class Row<T> extends MenuOption {
  * hidden meanwhile); it scrolls past 10.5 rows. Headings and notes are `MenuHeading` and `MenuNote`.
  * The look [D332]: opaque in a hairline, 4px above the card, rows scrolling inside its 4px gutter, never cut.
  */
-export function ComposerMenu({ label, children }: { label?: string; children: ReactNode }) {
+function ComposerMenu({ children }: { children: ReactNode }) {
   return (
     <div
       data-slot="composer-menu"
       // Unlabelled inside Lexical's anchor, which is the listbox the field's aria-controls names.
-      role={label ? "listbox" : undefined}
-      aria-label={label}
       className="absolute start-0 bottom-full z-popup mb-1 flex max-h-command-list w-full flex-col overflow-hidden rounded-menu border border-border bg-popover p-1 text-foreground outline-none"
     >
       <div data-slot="composer-menu-list" className="flex min-h-0 flex-col overflow-y-auto">{children}</div>
@@ -189,13 +187,13 @@ function Panel({ anchor, children }: { anchor: RefObject<HTMLElement | null>; ch
 const ANCHOR = "contents!";
 
 // The rows' size, 8px above a heading and 4px under it, 4px above the list's first [D332].
-export const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
+const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
-export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
+const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 
 /** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
-export function MentionRow({ item, query }: { item: Mention; query: string }) {
+function MentionRow({ item, query }: { item: Mention; query: string }) {
   return (
     <MenuRow
       icon={<MentionKindIcon type={item.type} id={item.id} label={item.label} />}
@@ -208,7 +206,7 @@ export function MentionRow({ item, query }: { item: Mention; query: string }) {
 }
 
 /** A command's row: its icon, the name, its line in grey after it. */
-export function CommandRow({ command, query }: { command: SlashCommand; query: string }) {
+function CommandRow({ command, query }: { command: SlashCommand; query: string }) {
   return (
     <MenuRow
       icon={command.kind === "tool" ? <ToolIcon id={command.id} /> : <CommandKindIcon kind={command.kind} icon={command.icon} />}
@@ -220,7 +218,7 @@ export function CommandRow({ command, query }: { command: SlashCommand; query: s
 }
 
 /** One of a composer menu's rows, its content a `MenuRow`; highlighted by the keys or the pointer. */
-export function ComposerMenuOption({ selected, disabled, className, ...props }: ComponentProps<"div"> & { selected: boolean; disabled?: boolean }) {
+function ComposerMenuOption({ selected, disabled, className, ...props }: ComponentProps<"div"> & { selected: boolean; disabled?: boolean }) {
   return (
     <div
       role="option"

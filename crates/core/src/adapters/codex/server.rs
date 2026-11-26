@@ -449,6 +449,7 @@ fn request(state: &Shared, mut v: Value) {
             let inside = p["cwd"].as_str().is_some_and(|c| c.starts_with(&st.cwd));
             p["insideSession"] = inside.into();
             p["canGrant"] = can_grant(p).into();
+            p["whole"] = p["command"].clone();
             if let Some(words) = p["command"].as_str().map(unwrap_shell) {
                 p["command"] = words.into();
             }

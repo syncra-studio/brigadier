@@ -2,7 +2,7 @@
 //! archived as the chat is, marked as gone with it, so no list shows it as a chat archived. One at
 //! work then goes when it finishes; what a crash cut short goes on at the daemon's start.
 
-use super::{family, stop, unarchived};
+use super::{stop, unarchived};
 use crate::workers;
 use brigadier_core::{self as core, session, session::Guard};
 use brigadier_frames::procs;
@@ -15,10 +15,10 @@ use std::thread;
 use std::time::Duration;
 
 /// The archived session above worker `wid` that is nearest, and the family's topmost; None for one
-/// under none, or a Brigade's session.
+/// under none.
 pub(super) fn lead(data: &Path, wid: &str) -> Option<(String, String)> {
     let (mut at, mut near, mut top) = (wid.to_string(), None, None);
-    while let Some(l) = workers::link(data, &at).filter(|l| !l.session) {
+    while let Some(l) = workers::link(data, &at) {
         at = l.parent;
         if session::lifecycle(&core::session_dir(data, &at))
             .0
@@ -33,7 +33,7 @@ pub(super) fn lead(data: &Path, wid: &str) -> Option<(String, String)> {
 
 /// The workers below `id` an archive takes: made, in no archive, restore or delete, not at work.
 pub(super) fn finished(data: &Path, id: &str, all: &[procs::Proc]) -> Vec<String> {
-    (family(data, id).into_iter())
+    (workers::below(data, id).into_iter())
         .filter(|r| r.state != "starting" && unarchived(&core::session_dir(data, &r.wid)))
         .map(|r| r.wid)
         .filter(|w| !workers::at_work(data, w, all))
@@ -63,7 +63,7 @@ pub(super) fn archive(data: &Path, id: &str, new: bool) -> Vec<String> {
     // What a guard kept, or a folder based on their branch held: of those archived before, later.
     let below = match new {
         true => vec![],
-        false => family(data, id),
+        false => workers::below(data, id),
     };
     let below = below.into_iter().rev().map(|r| r.wid);
     for at in below.chain([id.to_string()]) {
@@ -109,7 +109,7 @@ pub(super) fn restore(data: &Path, spec: &core::Spec) -> io::Result<Vec<String>>
             let dir = core::session_dir(data, &r.wid);
             let archived = session::lifecycle(&dir).0.is_some();
             // One archived by itself before stays, and what went with that.
-            if r.session || (archived && !session::went_with(&dir)) {
+            if archived && !session::went_with(&dir) {
                 continue;
             }
             if archived
@@ -200,7 +200,7 @@ pub fn sweep(data: &Path) {
             // With its family's topmost.
             continue;
         }
-        let worker = workers::link(data, &id).filter(|l| !l.session);
+        let worker = workers::link(data, &id);
         match worker.filter(|_| session::went_with(&dir)) {
             // Its chat's restore was cut short.
             Some(l) if core::session_dir(data, &l.parent).exists() => {

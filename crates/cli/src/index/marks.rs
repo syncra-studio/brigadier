@@ -20,8 +20,6 @@ pub(super) struct Marks {
     /// When it was archived, and an archive, restore or delete under way or left unfinished [D180].
     pub(super) archived: Option<u64>,
     pub(super) lifecycle: Value,
-    /// Archived with its Brigade, so the Brigade's restore brings it back [D3111].
-    pub(super) with: bool,
     /// The follow-up queue (`queue.json`), null when empty.
     pub(super) queue: Value,
     /// Its PRs as the last reads kept them (`prs.json`, its claims' too), and the sidebar chip they make [D1018].
@@ -47,7 +45,6 @@ impl Marks {
             news: ms("news").unwrap_or(0),
             archived,
             lifecycle,
-            with: core::session::went_with(dir),
             queue: crate::workers::held(dir, crate::queue::row(dir)),
             pr: core::host::chip(dir, &prs),
             prs,

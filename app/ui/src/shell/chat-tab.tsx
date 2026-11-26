@@ -11,7 +11,6 @@ import { newChatIn, setHomeDraft } from "../home/start";
 import { store } from "../onboarding/api";
 import { Archive, Chat, ChatCompose, DotsHorizontal, Pencil, SidebarError, X } from "../icons";
 import { useProjects } from "../projects/projects";
-import { BrigadeGlyph } from "../sessions/brigade";
 import { useMark } from "../session/turn";
 import { rename } from "../sidebar/actions";
 import { RenameDialog, RowMenuItems } from "../sidebar/menu";
@@ -109,7 +108,7 @@ export function ChatTab({ owner, row, active, plain, separator, order, keycap }:
   const working = useMark(row, true) === "working" && !archived;
   const startRename = archived ? undefined : () => setRenaming(true);
   const label = archived ? `${title} (Archived)` : words ? [title, words].filter(Boolean).join(" · ") : title;
-  const icon = archived ? <Archive className="size-icon-md shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-md shrink-0 rotate-180 text-warning" /> : row.brigade ? <BrigadeGlyph className="size-icon-md shrink-0" /> : <ProjectIcon project={row.project} />;
+  const icon = archived ? <Archive className="size-icon-md shrink-0" /> : row.mark === "amber" ? <SidebarError className="size-icon-md shrink-0 rotate-180 text-warning" /> : <ProjectIcon project={row.project} />;
   const middleLeaves = (event: ReactMouseEvent) => {
     if (event.button !== 1) return;
     event.preventDefault();

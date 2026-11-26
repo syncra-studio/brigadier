@@ -1,4 +1,4 @@
-//! Scripted turn directives for the catalogue drill and gallery demo.
+//! Scripted turn directives for the drills and demos.
 
 use super::{Agent, emit, limited, now, out};
 use serde_json::json;

@@ -255,7 +255,7 @@ fn start(data: &Path, me: &str, what: &str, title: &str, count: usize) -> String
     };
     let all = procs::all();
     let running = |id: &str| crate::sessions::working(data, id, &all);
-    let r = workers::start(data, me, &brief(what, count), &flags, &running, false);
+    let r = workers::start(data, me, &brief(what, count), &flags, &running);
     let Some(wid) = r["id"].as_str().filter(|_| r["ok"] == true) else {
         let why = r["error"].as_str().or(r["message"].as_str()).unwrap_or("");
         return format!(

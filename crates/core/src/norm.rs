@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 44;
+pub const VERSION: u32 = 45;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -76,7 +76,7 @@ impl Norm {
                 emit(
                     self,
                     json!({"kind": "input", "cid": v["cid"], "origin": v["origin"], "text": v["text"], "parts": v["parts"], "backend": v["backend"], "retry_of": v["retry_of"], "switch": v["switch"],
-                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "brigade": v["brigade"], "review": v["review"], "starts_child": v["starts_child"], "direct": v["direct"]}),
+                           "setup": v["setup"], "steer": v["steer"], "control": v["control"], "ack": v["ack"], "review": v["review"], "starts_child": v["starts_child"], "direct": v["direct"]}),
                 );
             }
             log::DELIVERED => emit(self, json!({"kind": "delivered", "cid": control()["cid"]})),
@@ -121,8 +121,8 @@ impl Norm {
                             .insert(moved.into(), v["turns"].as_u64().unwrap_or(0));
                     }
                 }
-                // Brigadier's own card for a browser action, as any agent's approval [D518].
-                if v["event"] == "browser" && v["item"].is_object() {
+                // Brigadier's own card for a browser action or an app, as any agent's approval [D518, D31].
+                if (v["event"] == "browser" || v["event"] == "computer") && v["item"].is_object() {
                     v = v["item"].take();
                 } else {
                     v["kind"] = "note".into();

@@ -1,14 +1,13 @@
 import type { Source } from "../projects/store";
 import { setProfile } from "./api";
 import { StepFooter, StepHeader } from "./parts";
-import { useProjectSources, type Where } from "./sources";
+import { useProjectSources } from "./sources";
 
 /** Onboarding's Projects step: the sources [D676], and a button that adds what's picked and finishes the setup; with none picked it finishes without. */
-export function ProjectsStep({ source, offline, onBack, start }: { source: Source; offline: boolean; onBack: () => void; start?: Where }) {
+export function ProjectsStep({ source, offline, onBack }: { source: Source; offline: boolean; onBack: () => void }) {
   const { body, total, single, hint, adding, cloning, disabled, finish } = useProjectSources({
     source,
     offline,
-    start,
     // Not shown early: done leaves onboarding, and undoing that would restart it at the agents step.
     onDone: () => {
       // It ends on Home, never on a screen kept from an earlier run or opened under it (⌘,); set first, so that never draws.

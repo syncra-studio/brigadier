@@ -144,7 +144,7 @@ pub(crate) fn plan(
             mark,
         });
     }
-    let Some(l) = link(data, of).filter(|l| l.parent == me && !l.session && moves(l)) else {
+    let Some(l) = link(data, of).filter(|l| l.parent == me && moves(l)) else {
         return Err(refuse(
             "--reviewing takes one of your own workers, by its id, or `session`.",
         ));

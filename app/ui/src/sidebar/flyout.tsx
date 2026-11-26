@@ -191,7 +191,7 @@ export function ProjectSquare({ project, attention, chats, ...rows }: Rows & { p
   );
 }
 
-/** A session's square, smaller than a project's; a folded Brigade carries its sessions' attention, as its expanded row does [D805]. */
+/** A session's square, smaller than a project's [D805]. */
 export function SessionSquare({ row, project, active, attention, onOpen, onRename }: { row: SessionRow; project: Project | undefined; active: boolean; attention: boolean } & Pick<Rows, "onOpen" | "onRename">) {
   return (
     <SquareMenu items={<RowMenuItems row={row} project={project} onRename={() => onRename(row)} />}>

@@ -426,8 +426,8 @@ pub fn size(b: &[u8]) -> Option<(u32, u32)> {
 }
 
 /// Whether input `cid` from `origin` is the user's own message to the worker in `dir`, not a turn
-/// its parent asked for (its brief, Resume's continue) [D293, D294]. A mockup worker's notes and a
-/// Brigade's sessions are their own flows [D560, D189].
+/// its parent asked for (its brief, Resume's continue) [D293, D294]. A mockup worker's notes are
+/// their own flow [D560].
 pub fn direct(dir: &std::path::Path, cid: &str, origin: &str) -> bool {
     let link: Option<Value> = (origin == "user")
         .then(|| std::fs::read(dir.join("worker.json")).ok())
@@ -437,6 +437,6 @@ pub fn direct(dir: &std::path::Path, cid: &str, origin: &str) -> bool {
         let reports = l["report"]
             .as_array()
             .is_some_and(|r| r.iter().any(|t| t == cid));
-        !reports && l["asked"]["mockup"].is_null() && l["session"] != true
+        !reports && l["asked"]["mockup"].is_null()
     })
 }

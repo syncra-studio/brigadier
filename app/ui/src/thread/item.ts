@@ -98,7 +98,7 @@ export type FileChange = {
 };
 
 /** What an approval asks to do, provider-neutral (the old app's approval kinds). */
-export type ApprovalAction = "command" | "edit" | "network" | "permission" | "plan" | "land" | "message" | "browser" | "other";
+export type ApprovalAction = "command" | "edit" | "network" | "permission" | "plan" | "land" | "message" | "browser" | "computer" | "other";
 
 type Base = {
   id: string;
@@ -136,8 +136,6 @@ export type Item = Base &
         files?: SentFile[] | null;
         /** A user message's whole draft, which Retry and Rewind send again or put back. */
         draft?: Draft | null;
-        /** Sent with Brigade on: its pill above it [D185]. */
-        brigade?: boolean;
       }
     /**
      * Steps that came one after another in a turn, as one row: counts per kind, and the steps' items by `n`, first

@@ -30,7 +30,7 @@ pub use worktrees::lost::Guard;
 const INTENT: &str = "lifecycle.json";
 /// When the session was archived (ms).
 const ARCHIVED: &str = "archived";
-/// A Brigade's sub-session archived with it, or a chat's worker: its restore brings back only these [D3111].
+/// A chat's worker archived with it: the chat's restore brings back only these.
 const WITH: &str = "archived-with";
 
 /// What says a worktree's setup ran: without them it runs again before the next turn [D263].
@@ -51,7 +51,7 @@ fn clear(dir: &Path, name: &str) -> io::Result<()> {
     }
 }
 
-/// Whether it was archived with its Brigade or its chat, and is still [D3111].
+/// Whether it was archived with its chat, and is still.
 pub fn went_with(dir: &Path) -> bool {
     dir.join(WITH).exists() && dir.join(ARCHIVED).exists()
 }
@@ -102,7 +102,7 @@ pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
 
 /// Archives the session [D180]: `stop` ends its host (a running turn too, proposed), then its
 /// work is committed to its branch and the worktree freed; a session with none is only marked.
-/// `with`: a Brigade's sub-session or a chat's worker going with it, so its restore brings this back [D3111].
+/// `with`: a chat's worker going with it, so the chat's restore brings this back.
 /// What `guard` keeps stays in its worktree, archived all the same.
 pub fn archive(
     spec: &Spec,
@@ -258,7 +258,6 @@ pub fn restore(data: &Path, spec: &Spec) -> io::Result<()> {
         }
     }
     clear(&spec.dir, ARCHIVED)?;
-    clear(&spec.dir, WITH)?;
     clear(&spec.dir, INTENT)
 }
 
@@ -289,7 +288,7 @@ pub fn delete(spec: &Spec, f: &Fold, chosen: &Chosen) -> Value {
         Err(_) if !dir.join("session.json").exists() => return gone(dir),
         Err(e) => return fail(vec![format!("{}: {e}", dir.display())], 0),
     };
-    // Another delete got here first, its Brigade's or its own: what's gone is done [D35].
+    // Another delete got here first: what's gone is done [D35].
     if !dir.join("session.json").exists() {
         return gone(dir);
     }

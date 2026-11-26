@@ -1,6 +1,6 @@
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
 
-import { ExclamationMarkCircle, Chat, Commit, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
+import { ExclamationMarkCircle, Chat, Commit, Cursor, Dock, Globe, Info, Key, PencilSquare, QuestionMarkCircle, Sparkle, TextShorterConcise, Tools, Warning } from "../../icons";
 import type { IconProps } from "../../icons";
 import type { ApprovalAction, Item, Progress, SentFile } from "../../thread/item";
 import { SessionOfThread } from "../../accounts/limit";
@@ -30,6 +30,7 @@ const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
   land: Commit,
   message: Chat,
   browser: Globe,
+  computer: Cursor,
   other: Tools,
 };
 

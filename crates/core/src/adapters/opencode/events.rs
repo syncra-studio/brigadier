@@ -250,6 +250,7 @@ fn approval(d: &Value) -> Event {
     let scope = match action {
         "shell" => {
             a["action"] = "command".into();
+            a["whole"] = d["command"].clone();
             a["command"] = (d["command"].as_str())
                 .map_or_else(|| resources.join("\n"), String::from)
                 .into();

@@ -16,7 +16,7 @@ use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core};
 use brigadier_frames::{log, procs};
-pub(super) use report::write;
+pub(super) use report::{Of, write, write_as};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -47,7 +47,8 @@ pub(super) struct Res {
     pub wid: String,
     /// The worker's turn it reports, by its stable id; for `asks`, its request's id.
     pub turn: String,
-    /// finished | failed | limit | stopped | asks (a request for the parent, `asks`)
+    /// finished | failed | refused (by its provider's safety checks) | context | limit | stopped |
+    /// asks (a request for the parent, `asks`)
     pub how: String,
     pub text: String,
     pub at: u64,
@@ -137,9 +138,7 @@ pub(super) fn written(data: &Path, wid: &str, row: &Value) {
 /// Writes the result of each reported turn of `wid` that ended and has none yet. `cut`: its host
 /// died, so a turn it left open ended too, failed. Says whether one waits on its background work.
 pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool> {
-    let Some(mut l) =
-        link(data, wid).filter(|l| !(l.session && super::brigade::leading(data, wid)))
-    else {
+    let Some(mut l) = link(data, wid) else {
         return Ok(false);
     };
     let f = core::fold(&core::session_dir(data, wid), true)?.fold;
@@ -176,6 +175,7 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 "stopped" => "stopped",
                 "limited" => "limit",
                 _ if last.is_some_and(|l| l["why"] == "context") => "context",
+                "failed" if end.why.as_deref() == Some("blocked") => "refused",
                 _ => "failed",
             };
             // A late wake's end reports at once, whatever else still runs.
@@ -191,28 +191,25 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             if (l.paused && (how == "stopped" || own.is_none())) || moves {
                 break;
             }
-            let how = match late || *direct {
-                true => Some(how),
-                false => review::holds(data, &mut l, wid, turn, how, &f),
-            };
-            let Some(how) = how else { break };
-            // A sub-session's last word is its last turn's, after its workers' results woke it
-            // [D189]; a turn's is its own, or its wake's, never one that came after this end.
-            let last = f.last.as_ref().filter(|_| l.session && !late);
-            let said = match last {
-                Some(l) if end.at < u64::MAX => (
-                    l["id"].as_str().unwrap_or_default().into(),
-                    l["ts"].as_u64().unwrap_or(u64::MAX),
-                ),
-                Some(l) => (l["id"].as_str().unwrap_or_default().into(), u64::MAX),
-                None => (end.id.clone(), end.at),
-            };
             let of = report::Of {
                 direct: *direct,
                 end: end.at,
                 late,
-                said: (end.at > 0).then_some(said),
+                // Its own last word, or its wake's, never one that came after this end.
+                said: (end.at > 0).then_some((end.id, end.at)),
             };
+            let how = match late || *direct {
+                true => Some(how),
+                false if l.review["of"].is_string() => {
+                    review::after(data, &l, wid, turn, how, None, of);
+                    continue;
+                }
+                false => review::holds(data, &mut l, wid, turn, how, &f),
+            };
+            let Some(how) = how else { break };
+            if late && !direct && how == "finished" {
+                review::ran(data, &l, wid, turn, of.end);
+            }
             report::write_as(data, &l, wid, turn, how, None, of)?;
         }
     }
@@ -239,6 +236,7 @@ pub(super) fn unsaid(
             how: "cut".into(),
             id: ends.last().map_or(turn.into(), |e| e.id.clone()),
             began: f.turns.first().map_or(0, |t| t.ts),
+            why: None,
         });
     }
     // An input no turn of its own ended for, as one that joined another's.
@@ -251,7 +249,6 @@ pub(super) fn unsaid(
     }
     let path = |key: &str| path_of(data, &l.parent, wid, key);
     let told = |end: u64| path(&format!("{turn}.{end}")).exists();
-    // A reviewer says its findings once.
     let once = !direct && (l.review["of"].is_string() || l.review["plan"].is_string());
     let since = match path(turn).exists() {
         false => {
@@ -259,15 +256,25 @@ pub(super) fn unsaid(
             let over = |w: &[fold::End]| w[1].began.saturating_sub(w[0].at) >= WAKE_MS;
             let first = ends.windows(2).position(over).unwrap_or(ends.len() - 1);
             ends.drain(..first);
+            if once {
+                review::once(data, l, wid, turn, &mut ends);
+            }
             return (ends.into_iter().enumerate())
                 .map(|(i, e)| (e, i > 0))
-                .filter(|(_, late)| !late || !once)
                 .collect();
         }
-        true if once || told(u64::MAX) => return vec![],
+        true if told(u64::MAX) => return vec![],
         true => read_json::<Res>(&path(turn)),
     };
     let Some(r) = since else { return vec![] };
+    if once {
+        // An older build's, whose result doesn't name its end, stays over.
+        if r.end == 0 || (r.how == "finished" && review::found(&r.text)) {
+            return vec![];
+        }
+        ends.retain(|e| e.at >= r.end);
+        review::once(data, l, wid, turn, &mut ends);
+    }
     let late = |e: &fold::End| match r.end {
         // shortcut: an older build's result doesn't name its end, and a wake long before the
         // upgrade isn't news; one is told if the daemon sees it this soon.
@@ -316,7 +323,7 @@ pub(super) fn failed(data: &Path, pid: &str, r: &Record) {
     };
     let error = r.error.as_deref();
     match l.review["of"].is_string() {
-        true => review::after(data, &l, &r.wid, &r.cid, "failed", error),
+        true => review::after(data, &l, &r.wid, &r.cid, "failed", error, Of::default()),
         false => drop(write(data, &l, &r.wid, &r.cid, "failed", error)),
     }
 }
@@ -440,8 +447,9 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
     // Under the parent's queue lock: the user's queued messages go first; those that can't go now
     // don't hold a block this result's worker holds open, which it carries on [D521].
     let (_lock, waiting) = queue::hold(&dir)?;
+    let ended = core::fold(&dir, true)?.fold.finished;
     // A wait may have taken it since it was read.
-    if (waiting && (queue::takes(&dir) || !super::holding(data, pid)))
+    if (waiting && (!super::holding(data, pid) || queue::takes(&dir, Some(ended))))
         || read_json::<Res>(&path).is_none_or(|now| now.state != "written")
     {
         return Ok(());

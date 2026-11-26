@@ -410,6 +410,14 @@ pub(crate) fn read(
         return opened(data, id, row, text, list, 0);
     }
     let mut all = archive(data, id, at.is_some());
+    // An answer's, in its place among the rest.
+    if let Some(e) = at
+        .filter(|at| all.iter().all(|e| e.at != *at))
+        .and_then(|at| core::archive::answered(&dir, at))
+    {
+        let frame = |e: &core::archive::Entry| e.at.parse().unwrap_or(0u64);
+        all.insert(all.partition_point(|x| frame(x) < frame(&e)), e);
+    }
     if user {
         all.retain(|e| e.from == "user");
     }

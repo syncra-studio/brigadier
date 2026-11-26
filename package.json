@@ -12,7 +12,6 @@
     "thread": "VITE_SCREEN=thread pnpm start",
     "build": "tsc -p app/main && vite build app/ui",
     "typecheck": "tsc -p app/main --noEmit && tsc -p app/ui --noEmit",
-    "gallery": "scripts/gallery",
     "package": "scripts/package"
   },
   "dependencies": {

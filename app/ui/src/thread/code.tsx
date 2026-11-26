@@ -91,8 +91,7 @@ export function CodeBlock({
   const cut = long && !open && searched;
   const shown = long && !open && !searched ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
-  // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248]; code wraps when asked,
-  // by its own toggle [D525].
+  // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248]; code wraps when asked [D525].
   const prose = /^(|text|txt|plain|plaintext)$/i.test(language);
   const [wrap, setWrap] = useKept(`${keep}:wrap`);
   const canWrap = !prose && look === "code";

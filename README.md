@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/assets/screenshot.png" width="800" alt="Brigadier on made-up data: a chat mid-task that started two workers, one already merged with its review's result, the other still running.">
+  <img src=".github/assets/screenshot.png" width="800" alt="Brigadier on made-up data: a chat mid-task showing the code it edited, with three workers running and two messages queued. Beside it, the changes, the pull request, the plan and the project's files.">
 </p>
 
 Brigadier runs the coding agents you already use, Claude Code, Codex and OpenCode, each one's own
@@ -72,7 +72,8 @@ don't overwrite each other.
   has left.
 - **Built-in browser.** Agents read and use web pages in it.
 - **Computer use.** Off until you turn it on. Agents can then use other Mac apps while your mouse and
-  keyboard stay yours; Stop is in the menu bar.
+  keyboard stay yours; Stop is in the menu bar. At Ask you're asked once per app per chat; at Auto and
+  Full access you aren't asked.
 
 ## Install
 
@@ -109,8 +110,8 @@ only in that build. Brigadier keeps its data in `~/Library/Application Support/B
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md) first. `pnpm gallery`
-shows the app's components, and `pnpm thread` the chat, both on made-up data.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md) first. `pnpm thread`
+shows the chat on made-up data.
 
 ## Community and support
 

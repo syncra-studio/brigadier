@@ -3,6 +3,8 @@
 //! hooks are untouched. Files the project ignores stay out, git's own data too (proposed).
 
 use super::GRACE_MS;
+use super::modes::{Modes, plain, same};
+use super::names::rule;
 use crate::adapters::setup;
 use crate::fold::Fold;
 use crate::worktrees::inner;
@@ -15,13 +17,14 @@ use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
 
 pub(super) const STORE: &str = "rewind.git";
 /// An untracked file past this size isn't kept, and is named wherever it matters (proposed).
 const MAX_FILE: u64 = 2 << 20;
 const GIT_SECS: u64 = 60;
 /// Paths per git call, well under the system's limit on arguments.
-const CHUNK: usize = 200;
+pub(super) const CHUNK: usize = 200;
 
 /// The folder at one moment. `out` holds what the tree can't: each big untracked file's size and
 /// time, each nested repository's commit, none yet as "", by path. `at`: when its capture started (ms), so a
@@ -31,8 +34,23 @@ pub struct Shot {
     pub tree: String,
     pub head: Option<String>,
     pub out: BTreeMap<String, String>,
+    /// The permissions the tree can't keep, a blob in the store [D26]; empty where none stands out.
+    /// None on one taken before they were kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<u64>,
+}
+
+impl Shot {
+    /// A capture's `tree` and permissions alone, as an operation's record keeps its target.
+    pub(super) fn at(tree: &str, modes: &Option<String>) -> Shot {
+        Shot {
+            tree: tree.into(),
+            modes: modes.clone(),
+            ..Shot::default()
+        }
+    }
 }
 
 /// One turn's two edges. A missing end means no restore across it.
@@ -44,12 +62,18 @@ pub struct Record {
 
 pub struct Store {
     dir: PathBuf,
-    git: PathBuf,
+    pub(super) git: PathBuf,
     cwd: PathBuf,
 }
 
-fn done(mut command: Command, what: &str) -> io::Result<Vec<u8>> {
-    let out = setup::run(&mut command, GIT_SECS).map_err(io::Error::other)?;
+pub(super) fn done(command: Command, what: &str) -> io::Result<Vec<u8>> {
+    fed(command, what, None)
+}
+
+/// `done` with `input` on its stdin.
+pub(super) fn fed(mut command: Command, what: &str, input: Option<&str>) -> io::Result<Vec<u8>> {
+    let never = AtomicBool::new(false);
+    let out = setup::run_fed(&mut command, GIT_SECS, &never, input).map_err(io::Error::other)?;
     if out.status.success() {
         return Ok(out.stdout);
     }
@@ -58,25 +82,13 @@ fn done(mut command: Command, what: &str) -> io::Result<Vec<u8>> {
 }
 
 // shortcut: a path that isn't UTF-8 fails the snapshot, so that range offers keep only; carry bytes if anyone hits it.
-fn split(bytes: Vec<u8>) -> io::Result<Vec<String>> {
+pub(super) fn split(bytes: Vec<u8>) -> io::Result<Vec<String>> {
     let text = String::from_utf8(bytes).map_err(io::Error::other)?;
     Ok(text
         .split('\0')
         .filter(|p| !p.is_empty())
         .map(String::from)
         .collect())
-}
-
-/// A path as an anchored ignore rule that matches only it.
-fn rule(path: &str) -> String {
-    let mut out = String::from("/");
-    for c in path.chars() {
-        if matches!(c, '\\' | '*' | '?' | '[' | ']' | ' ' | '!' | '#') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
 }
 
 impl Store {
@@ -113,7 +125,7 @@ impl Store {
         self.source(&["cat-file", "-e", &rev]).is_ok()
     }
 
-    fn lock(&self) -> io::Result<File> {
+    pub(super) fn lock(&self) -> io::Result<File> {
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -124,7 +136,7 @@ impl Store {
     }
 
     /// Git on the project's own repository, read only.
-    fn source(&self, args: &[&str]) -> io::Result<Vec<u8>> {
+    pub(super) fn source(&self, args: &[&str]) -> io::Result<Vec<u8>> {
         let mut command = Command::new("git");
         command
             .args([
@@ -140,7 +152,7 @@ impl Store {
     }
 
     /// Git on the store, over the working folder. Literal paths, and bytes as they are on disk.
-    fn store(&self, index: &Path, args: &[&str]) -> Command {
+    pub(super) fn store(&self, index: &Path, args: &[&str]) -> Command {
         let mut command = Command::new("git");
         command
             .args([
@@ -170,11 +182,11 @@ impl Store {
         &self.cwd
     }
 
-    fn run(&self, index: &Path, args: &[&str]) -> io::Result<Vec<u8>> {
+    pub(super) fn run(&self, index: &Path, args: &[&str]) -> io::Result<Vec<u8>> {
         done(self.store(index, args), args[0])
     }
 
-    fn each(&self, index: &Path, args: &[&str], paths: &[&String]) -> io::Result<()> {
+    pub(super) fn each(&self, index: &Path, args: &[&str], paths: &[&String]) -> io::Result<()> {
         for chunk in paths.chunks(CHUNK) {
             let mut command = self.store(index, args);
             command.arg("--").args(chunk);
@@ -242,7 +254,9 @@ impl Store {
         let tracked = split(self.source(&["ls-files", "-c", "-i", "--exclude-standard", "-z"])?)?;
         let tracked: Vec<&String> = tracked.iter().collect();
         self.each(&index, &["add", "-f"], &tracked)?;
-        for line in split(self.run(&index, &["ls-files", "-s", "-z"])?)? {
+        self.respell(&index)?;
+        let entries = split(self.run(&index, &["ls-files", "-s", "-z"])?)?;
+        for line in &entries {
             if let (Some(rest), Some((meta, path))) =
                 (line.strip_prefix("160000 "), line.split_once('\t'))
             {
@@ -250,6 +264,7 @@ impl Store {
                 out.insert(path.into(), commit.into());
             }
         }
+        let modes = Some(self.keep_modes(&entries)?);
         let tree = String::from_utf8_lossy(&self.run(&index, &["write-tree"])?)
             .trim()
             .to_string();
@@ -261,6 +276,7 @@ impl Store {
             tree,
             head,
             out,
+            modes,
             at,
         })
     }
@@ -335,7 +351,7 @@ impl Store {
         write_atomic(&self.night_at(since), &serde_json::to_vec(record)?)
     }
 
-    /// The paths that differ between two moments.
+    /// The paths that differ between two moments, as git has them.
     pub fn diff(&self, a: &Shot, b: &Shot) -> io::Result<BTreeSet<String>> {
         let index = self.git.join("index");
         let args = ["diff-tree", "-r", "-z", "--name-only", "--no-renames"];
@@ -345,6 +361,8 @@ impl Store {
 
     /// Whether writing `path` would go through a link, or take something `changed` doesn't name.
     pub fn blocked(&self, path: &str, changed: &BTreeSet<String>) -> bool {
+        // What's there under another letter case is some other path's.
+        let named = |path: &str| self.spelled(path).unwrap_or(path.into());
         let parts: Vec<&str> = path.split('/').collect();
         let mut at = self.cwd.clone();
         for (i, part) in parts[..parts.len() - 1].iter().enumerate() {
@@ -352,12 +370,17 @@ impl Store {
             let Ok(m) = fs::symlink_metadata(&at) else {
                 return false;
             };
-            if m.is_symlink() || (!m.is_dir() && !changed.contains(&parts[..=i].join("/"))) {
-                return true;
+            // One that's named is gone by the time `path` is written.
+            if !m.is_dir() {
+                return !changed.contains(&named(&parts[..=i].join("/")));
             }
         }
         at.push(parts[parts.len() - 1]);
-        fs::symlink_metadata(&at).is_ok_and(|m| m.is_dir()) && self.foreign(&at, path, changed)
+        let there = named(path);
+        match fs::symlink_metadata(&at) {
+            Ok(m) if m.is_dir() => self.foreign(&at, &there, changed),
+            _ => there != path && !changed.contains(&there),
+        }
     }
 
     /// Whether a folder holds anything `changed` doesn't name.
@@ -377,14 +400,25 @@ impl Store {
     }
 
     /// Whether `path` is now exactly as `tree` has it, by type, mode and bytes; absent where it
-    /// has none. Anything that can't be read, or a nested repository, isn't.
-    pub fn holds(&self, tree: &str, path: &str) -> bool {
+    /// has none. Anything that can't be read, or a nested repository, isn't. `modes`: the tree's;
+    /// `cut`: as `same` takes it.
+    pub(super) fn holds(
+        &self,
+        tree: &str,
+        modes: Option<&Modes>,
+        path: &str,
+        cut: Option<u32>,
+    ) -> bool {
         let index = self.git.join("index");
         let Ok(entry) = self.run(&index, &["ls-tree", "-z", tree, "--", path]) else {
             return false;
         };
         let entry = String::from_utf8_lossy(&entry);
-        let disk = fs::symlink_metadata(self.cwd.join(path));
+        // Under another letter case it's some other path's file.
+        let disk = match self.spelled(path).is_some_and(|there| there != path) {
+            true => Err(io::ErrorKind::NotFound.into()),
+            false => fs::symlink_metadata(self.cwd.join(path)),
+        };
         // A file the turn put in a folder's place, or the other way round, leaves its path absent.
         let gone = |e: io::Error| {
             matches!(
@@ -406,9 +440,11 @@ impl Store {
             "120000" if disk.is_symlink() => {
                 fs::read_link(self.cwd.join(path)).map(|l| l.into_os_string().into_encoded_bytes())
             }
-            "100644" | "100755"
-                if disk.is_file() && (disk.mode() & 0o100 != 0) == (mode == "100755") =>
-            {
+            "100644" | "100755" if disk.is_file() => {
+                let now = disk.mode() & 0o777;
+                if !plain(mode).is_some_and(|plain| same(modes, path, plain, now, cut)) {
+                    return false;
+                }
                 fs::read(self.cwd.join(path))
             }
             _ => return false,
@@ -417,31 +453,41 @@ impl Store {
         matches!((bytes, stored), (Ok(a), Ok(b)) if a == b)
     }
 
-    /// Puts `paths` back as `tree` has them; those it doesn't have are removed, emptied folders
-    /// with them. Nothing else in the folder is touched.
-    pub fn write_back(&self, tree: &str, paths: &BTreeSet<String>) -> io::Result<()> {
+    /// Puts `paths` back as `to` has them, their permissions too; those it doesn't have are removed,
+    /// emptied folders with them. Nothing else in the folder is touched.
+    pub fn write_back(&self, to: &Shot, paths: &BTreeSet<String>) -> io::Result<()> {
         let _one = self.lock()?;
         let index = self.git.join("restore.index");
         // Only a write-back cut short leaves these, and the lock says none is running.
         let _ = fs::remove_file(self.git.join("restore.index.lock"));
         let _ = fs::remove_file(&index);
-        self.run(&index, &["read-tree", tree])?;
-        let there: BTreeSet<String> = split(self.run(&index, &["ls-files", "-z"])?)?
-            .into_iter()
+        self.run(&index, &["read-tree", &to.tree])?;
+        let entries = split(self.run(&index, &["ls-files", "-s", "-z"])?)?;
+        let there: BTreeMap<&str, &str> = (entries.iter())
+            .filter_map(|e| e.split_once('\t').map(|(meta, path)| (path, meta)))
             .collect();
-        for path in paths.iter().filter(|p| !there.contains(*p)) {
+        let files: Vec<(&String, Option<u32>)> = (paths.iter())
+            .filter_map(|p| Some((p, plain(there.get(p.as_str())?.split(' ').next()?))))
+            .collect();
+        let back = self.back(to, &index, &files)?;
+        for path in paths.iter().filter(|p| !there.contains_key(p.as_str())) {
             let file = self.cwd.join(path);
             match fs::remove_file(&file) {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
                 _ => {}
             }
             let mut up = file.parent();
-            while let Some(dir) = up.filter(|d| *d != self.cwd && fs::remove_dir(d).is_ok()) {
+            // A folder a file goes back in stays, with its permissions.
+            while let Some(dir) =
+                up.filter(|d| *d != self.cwd && !back.home(d) && fs::remove_dir(d).is_ok())
+            {
                 up = dir.parent();
             }
         }
-        let back: Vec<&String> = paths.iter().filter(|p| there.contains(*p)).collect();
-        self.each(&index, &["checkout-index", "-f"], &back)?;
+        self.check_out(&index, &files, &back)?;
+        if files.len() < paths.len() {
+            (files.iter()).try_for_each(|(path, _)| self.spell(path, paths))?;
+        }
         fs::remove_file(index)
     }
 }

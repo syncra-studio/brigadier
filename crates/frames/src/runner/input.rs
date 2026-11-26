@@ -28,7 +28,7 @@ impl Runner {
             );
         }
         let data = json!({"cid": cid, "origin": origin, "text": req["text"], "backend": req["backend"], "retry_of": req["retry_of"], "switch": req["switch"], "parts": req["parts"],
-                          "setup": req["setup"], "steer": req["steer"], "control": req["control"], "ack": req["ack"], "brigade": req["brigade"], "review": req["review"], "starts_child": req["op"] == "spawn", "direct": req["direct"]});
+                          "setup": req["setup"], "steer": req["steer"], "control": req["control"], "ack": req["ack"], "review": req["review"], "starts_child": req["op"] == "spawn", "direct": req["direct"]});
         // A control message (an answer, a steer, a stop) was judged on the log at `if_len`: it is
         // claimed only if nothing reached the log since, in the same lock as its intent [D159].
         let appended = {

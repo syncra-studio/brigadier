@@ -1,5 +1,0 @@
-/* Dev-only: the gallery's own classes. Never in the app's CSS. */
-@reference "../src/theme.css";
-
-@import "tailwindcss/utilities.css" layer(utilities) source("../src");
-@source "./";

@@ -318,7 +318,7 @@ export const openSearch = () => opened.set(true);
 export function GlobalSearch() {
   const { daemon, rows, projects } = useDaemon();
   // An archived worker is its parent's, no chat of its own [D3012].
-  const shown = useShown(rows)?.filter((row) => !(row.archived && row.worker && !row.boss));
+  const shown = useShown(rows)?.filter((row) => !(row.archived && row.worker));
   const open = opened.use();
   const onboarded = useProfile().value?.onboarded;
   useEffect(() => {

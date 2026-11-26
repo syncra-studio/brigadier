@@ -378,9 +378,8 @@ export function SummarySlot({ owner, children }: { owner: string; children: Reac
       live = false;
     };
   }, [owner, has, folderChat, updated, picked, moves, daemon]);
-  // The watch's kept PRs [D1009], the session row's where the read has none; a folder chat's, the row's alone: its own
-  // and each claimed repo's, as they change.
-  const kept = (folderChat ? null : shown.kept) ?? rows?.find((row) => row.id === owner)?.prs ?? undefined;
+  // The session row's kept PRs [D1009]; a folder chat's are its own and each claimed repo's, as they change.
+  const kept = rows?.find((row) => row.id === owner)?.prs ?? undefined;
   const prs = (folderChat ? null : shown.prs) ?? kept?.prs ?? [];
   // ⌘K's PR commands act on this card's branch [D170].
   const source = shown.source;

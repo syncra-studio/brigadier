@@ -294,7 +294,7 @@ pub(super) fn notes(groups: &[Value]) -> Value {
             and(&others)
         );
     }
-    let mut rules = "They hold everywhere Brigadier starts a model: your pickers, sessions, workers, Brigade bosses, side chats, forks and the commit writer.".to_string();
+    let mut rules = "They hold everywhere Brigadier starts a model: your pickers, sessions, workers, side chats, forks and the commit writer.".to_string();
     // What each CLI really lets the rules make of its own subagents [D376, D392 P1].
     let barred = names(&|a| a.subagents() == adapters::Subagents::Barred, true);
     let defaults = names(&|a| a.subagents() == adapters::Subagents::Defaults, true);

@@ -14,7 +14,6 @@ import { matches } from "../shortcuts";
 import { type PageOf, VariantColumn, type Zoom } from "./frame";
 import { drawn, type Load, type Mockup, ready as allIn, slots, statusOf } from "./model";
 import { type MockupNote, noteCount, type Notes } from "./notes";
-import type { Hovered } from "./pins";
 import { type Send, Tray } from "./tray";
 
 /** The zoom menu's steps, and the canvas's bounds for pinch or ⌘-scroll: those a live page's zoom follows. */
@@ -55,9 +54,6 @@ export type MockupActions = {
   openReview: () => void;
 };
 
-/** Where the tab starts, for the gallery's states: the round, view, mode and the confirm. */
-export type MockupStart = { round?: number; view?: string; mode?: Mode; compare?: Compare; confirm?: string; held?: boolean };
-
 export function MockupView({
   mockup,
   notes,
@@ -67,8 +63,6 @@ export function MockupView({
   page,
   actions,
   loads = {},
-  hovers = {},
-  start = {},
 }: {
   mockup: Mockup | null;
   notes: Notes;
@@ -79,16 +73,14 @@ export function MockupView({
   page: PageOf;
   actions: MockupActions;
   loads?: Record<string, Load>;
-  hovers?: Record<string, Hovered>;
-  start?: MockupStart;
 }) {
   const newest = (mockup?.rounds.length ?? 1) - 1;
   // The newest round drawn: a later round draws while the one before stays up and takes notes.
   const last = mockup?.rounds[newest];
   const ready = newest > 0 && last && (last.drawing || !last.variants.length) ? newest - 1 : newest;
   // The round shown: null follows the newest drawn. A round drawn shows by itself unless notes wait, then "Show" [D2070].
-  const [pinned, setPinned] = useState<number | null>(start.round ?? null);
-  const [held, setHeld] = useState(start.held ?? false);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const [held, setHeld] = useState(false);
   // The newest drawn round when the tab last looked; when the tab opens, the round its unsent notes are on.
   const [seen, setSeen] = useState(-1);
   if (mockup && seen !== ready) {
@@ -100,16 +92,16 @@ export function MockupView({
     }
   }
   const shownRound = Math.min(pinned ?? ready, newest);
-  const [view, setView] = useState(start.view ?? "all");
-  const [mode, setMode] = useState<Mode>(start.mode ?? "point");
+  const [view, setView] = useState("all");
+  const [mode, setMode] = useState<Mode>("point");
   // The frames sit on a canvas: drag or scroll pans it, pinch or ⌘-scroll zooms it, as a design canvas does.
   const [camera, setCamera] = useState<Camera>(FIT);
   const zoom: Zoom = camera.x === 0 && camera.y === 0 && camera.s === 1 ? "fit" : Math.round(camera.s * 100);
   // Space held: a drag anywhere pans, over the pages and pins too.
   const [space, setSpace] = useState(false);
   const [grabbing, setGrabbing] = useState(false);
-  const [compare, setCompare] = useState<Compare>(start.compare ?? "compare");
-  const [confirm, setConfirm] = useState<string | null>(start.confirm ?? null);
+  const [compare, setCompare] = useState<Compare>("compare");
+  const [confirm, setConfirm] = useState<string | null>(null);
   // A confirm is on the round it was opened on: another shown, it closes, so Build never takes the wrong round's.
   const [confirmOn, setConfirmOn] = useState(shownRound);
   if (confirmOn !== shownRound) {
@@ -308,7 +300,6 @@ export function MockupView({
             page={page}
             notes={mockup.real ? [] : pins}
             pointing={takes && mode === "point"}
-            hovered={hovers[variant.letter]}
             onNotes={takes && !older && send !== "sending" ? changePins : undefined}
             use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
             picked={!mockup.real && (confirm ?? picked) === variant.letter}

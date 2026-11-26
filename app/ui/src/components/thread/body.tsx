@@ -25,9 +25,8 @@ import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 import { GroupRow, ThoughtRow } from "./work";
-import { BrigadeMessagePill } from "../../sessions/brigade";
 
-function UserRow({ id, cid, text, time, dated, files, draft, brigade, older }: { brigade?: boolean; older?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
+function UserRow({ id, cid, text, time, dated, files, draft, older }: { older?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
   const session = useContext(SessionOfThread)?.id;
   const at = (file: string) => `/attachment/${session}/${file}`;
@@ -39,7 +38,7 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade, older }: {
   );
   // A message asking to repair a PR says so over it, "PR fix" [D171].
   const fix = draft?.parts.some((part) => typeof part !== "string" && part.kind === "paste" && PR_FIX.test(part.preview ?? "")) && <span className="w-fit text-sm text-muted-foreground">PR fix</span>;
-  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} older={older} rewind={cid ? offer : undefined} files={brigade || fix ? <>{sent}{brigade && <BrigadeMessagePill />}{fix}</> : sent} owner={session} parts={draft?.parts} />;
+  const bubble = <UserBubble keep={id} text={text} time={time} dated={dated} older={older} rewind={cid ? offer : undefined} files={fix ? <>{sent}{fix}</> : sent} owner={session} parts={draft?.parts} />;
   // Reaching the message asks Rust ahead, so its rewind dialog opens whole [D480]. No box of its own.
   return cid && offer ? (
     <div className="contents" onPointerEnter={offer.look} onFocus={offer.look}>
@@ -53,7 +52,7 @@ function UserRow({ id, cid, text, time, dated, files, draft, brigade, older }: {
 type StepLine = Pick<Extract<Line, { type: "item" }>, "id" | "item" | "turn" | "step">;
 
 /**
- * The group line, the gallery's, for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. Live,
+ * The group line for every run of steps: the thread's, a worker's in its panel, a skill's [D697]. Live,
  * it is one line saying what it does now: its running step, its thought, or Thinking while it is the running
  * turn's latest run. Once the run ends, the line says what its steps did [D755, D762].
  */
@@ -124,7 +123,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           <>
             {/* Each side of a turn heads itself for a screen reader. */}
             <h2 className="sr-only">You said:</h2>
-            <UserRow id={item.id} cid={item.cid} text={item.draft?.shell ? "```sh\n" + item.draft.shell + "\n```" : item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft?.shell ? null : item.draft} brigade={item.brigade} older={older} />
+            <UserRow id={item.id} cid={item.cid} text={item.draft?.shell ? "```sh\n" + item.draft.shell + "\n```" : item.text} time={item.sentAt} dated={dated} files={item.files ?? []} draft={item.draft?.shell ? null : item.draft} older={older} />
           </>
         );
       }

@@ -3,7 +3,6 @@ import type { ComponentProps } from "react";
 import { cx } from "./cx";
 
 const VARIANTS = {
-  default: "border-transparent bg-primary text-primary-fg",
   secondary: "border-transparent bg-muted text-foreground",
   destructive: "border-transparent bg-destructive-fill text-foreground",
   warning: "border-transparent bg-warning-wash text-warning",
@@ -11,7 +10,7 @@ const VARIANTS = {
   outline: "border-border text-foreground",
 };
 
-export function Badge({ className, variant = "default", ...props }: ComponentProps<"span"> & { variant?: keyof typeof VARIANTS }) {
+export function Badge({ className, variant, ...props }: ComponentProps<"span"> & { variant: keyof typeof VARIANTS }) {
   return (
     <span
       data-slot="badge"

@@ -17,7 +17,6 @@ use super::{
     Retune, Rewound, Seed, Timing, Who, base_env, classify, home_path, probe_as, s, version,
 };
 use crate::Spec;
-use cleanup::project_dir;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tools::{tool_end, tool_start};
@@ -407,7 +406,10 @@ impl Adapter for Claude {
                     u.insert("cost_usd".into(), v["total_cost_usd"].clone());
                 }
                 let mut events = vec![Event::Usage(usage)];
-                if v["is_error"].as_bool() == Some(true) {
+                // A refusal is named by its stop reason, whatever it ends as.
+                let refused = v["stop_reason"] == "refusal";
+                let failed = refused || v["is_error"] == true;
+                if failed {
                     let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
                     // Its errors as lines, without the CLI's own diagnostics ("[lede_diagnostic] …",
                     // "[ede_diagnostic] …" for a turn it was told to stop), which no user can read [D85].
@@ -428,11 +430,13 @@ impl Adapter for Claude {
                         Event::Failed("capacity", text)
                     } else if v["api_error_status"] == 429 {
                         Event::Limited(text, None)
+                    } else if refused {
+                        Event::Failed("blocked", text)
                     } else {
                         classify(&said).unwrap_or(Event::Failed("", text))
                     });
                 }
-                events.push(Event::TurnEnd(v["is_error"].as_bool() != Some(true)));
+                events.push(Event::TurnEnd(!failed));
                 events
             }
             _ => vec![Event::Unknown(line.into())],
@@ -469,8 +473,7 @@ impl Adapter for Claude {
     }
 
     fn scratch(&self, spec: &Spec, resume: &str) -> Vec<PathBuf> {
-        let dirs = cleanup::scratch(spec).into_iter();
-        dirs.map(|d| d.join(resume)).collect()
+        cleanup::scratch_of(spec, resume)
     }
 
     /// Its small model, by its family's name [D1029].
@@ -483,10 +486,7 @@ impl Adapter for Claude {
     }
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
-        let dir = project_dir(spec);
-        let mut dirs = vec![dir.join("memory"), dir];
-        dirs.extend(cleanup::scratch(spec));
-        dirs
+        cleanup::shared(spec)
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

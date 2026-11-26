@@ -301,5 +301,5 @@ fn parent(data: &Path, id: &str) -> io::Result<Option<String>> {
         .and_then(|note| Path::new(note).strip_prefix(data.join("sessions")).ok())
         .and_then(|path| path.components().next())
         .and_then(|part| part.as_os_str().to_str());
-    Ok(owner.map(String::from).or_else(|| spec.boss.clone()))
+    Ok(owner.map(String::from))
 }

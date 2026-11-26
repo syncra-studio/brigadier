@@ -3,8 +3,11 @@ import type { QueuedMessage } from "../components/composer/queue";
 import type { Row } from "../daemon";
 import type { Session } from "../thread/item";
 
+/** What a judged message's row says it waits for (proposed words) [D39]. */
+const WAITS = { judged: "Waits", late: "No answer in time · waits", failed: "Couldn't decide · waits" };
+
 /** A message in Rust's queue: `origin` names another session's; `to` the user's for one of this session's workers. */
-export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string; deciding?: boolean; /** The user's `!` command: waiting to run, or ended and its report waiting to go. */ shell?: "wait" | "ended" };
+export type RustQueued = { id: string; text: string; parts?: Draft; error?: string; origin?: string; to?: string; deciding?: boolean; /** Why it waits, once judged. */ waits?: keyof typeof WAITS; /** The user's `!` command: waiting to run, or ended and its report waiting to go. */ shell?: "wait" | "ended" };
 
 /**
  * Rust's queue as the card's rows: another session's message without the envelope's first line, with who sent it
@@ -23,7 +26,7 @@ export function queuedOf(items: readonly RustQueued[], rows: readonly Row[]): Qu
       return { id: each.id, draft: { parts: [line], attachmentIds: [] }, state: each.shell === "ended" ? "delivered" : "queued", shell: true, refused: each.error !== undefined };
     }
     const peer = each.origin?.startsWith("peer:") && each.origin.slice(5);
-    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: each.deciding ? "deciding" : "queued", ...to };
+    if (!peer) return { id: each.id, draft: each.parts ?? { parts: [each.text], attachmentIds: [] }, state: each.deciding ? "deciding" : "queued", ...(each.waits ? { waits: WAITS[each.waits] } : {}), ...to };
     const at = each.text.indexOf("]\n\n");
     const words = at < 0 ? each.text : each.text.slice(at + 3);
     return { id: each.id, draft: { parts: [words], attachmentIds: [] }, state: "queued", peer: { title: title(peer) } };

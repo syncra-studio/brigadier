@@ -85,14 +85,13 @@ const asWorker = (row: Row & { worker: WorkerRow }): Worker => ({
 /** A session's own workers, oldest first; a worker of theirs is in its own parent's [G]. */
 export function useWorkers(parent: string): Worker[] {
   const rows = useDaemon().rows ?? [];
-  // A Brigade's sessions are rows of their own in the sidebar, not its workers [D189].
-  return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent && !row.boss).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
+  return rows.filter((row): row is Row & { worker: WorkerRow } => row.worker?.parent === parent).map(asWorker).toSorted((a, b) => a.startedAt - b.startedAt);
 }
 
-/** The workers under a session, theirs too, oldest first, each with its row; a Brigade's sessions aren't among them [D189]. */
+/** The workers under a session, theirs too, oldest first, each with its row. */
 export function useFamily(id: string): { worker: Worker; row: Row }[] {
   const rows = useDaemon().rows ?? [];
-  const workers = rows.filter((row): row is Row & { worker: WorkerRow } => Boolean(row.worker) && !row.boss);
+  const workers = rows.filter((row): row is Row & { worker: WorkerRow } => Boolean(row.worker));
   const under = new Set([id]);
   // A Set's own loop reaches the ones added as it goes: each worker's own workers in turn.
   for (const parent of under) for (const row of workers) if (row.worker.parent === parent) under.add(row.id);
@@ -127,21 +126,18 @@ export const openWorker = (owner: string, worker: string) => openTab(owner, "wor
 
 /** A worker named anywhere opens it in its parent's Workers tab, `tab`'s; null opens the list [D81]. */
 export function Opens({ owner, tab = "workers", children }: { owner: string; tab?: TeamKind; children: ReactNode }) {
-  const rows = useDaemon().rows;
-  // A Brigade's session opens as the session it is [D189].
-  const session = (id: string | null) => rows?.some((row) => row.id === id && row.boss);
-  const open = (worker: string | null) => (session(worker) ? (window.location.hash = `#thread/${encodeURIComponent(worker!)}`) : openTab(owner, tab, worker ?? undefined));
+  const open = (worker: string | null) => openTab(owner, tab, worker ?? undefined);
   return <WorkersPanel.Provider value={{ open }}>{children}</WorkersPanel.Provider>;
 }
 
 /**
  * A worker @-mentioned, in the composer, a sent message or an answer: its pill, as the old app's Mentions'
- * TaskByNumber; a Brigade's session opens as the session it is [D189].
+ * TaskByNumber.
  */
-export function MentionedWorker({ id, onOpen }: { id: string; onOpen?: (kind: "chat" | "worker", id: string) => void }) {
+export function MentionedWorker({ id, onOpen }: { id: string; onOpen?: (kind: "worker", id: string) => void }) {
   const row = (useDaemon().rows ?? []).find((each) => each.id === id);
   return (
-    <WorkersPanel.Provider value={{ open: () => onOpen?.(row?.boss ? "chat" : "worker", id) }}>
+    <WorkersPanel.Provider value={{ open: () => onOpen?.("worker", id) }}>
       <WorkerChip worker={row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : null} />
     </WorkersPanel.Provider>
   );

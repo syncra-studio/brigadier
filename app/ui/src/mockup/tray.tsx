@@ -1,4 +1,4 @@
-// The tray under the frames, always there [D2055]: every unsent note with its variant and element and a ✕ each, the
+// The tray under the frames, always there [D2055]: every unsent note with its variant and a ✕ each, the
 // note for all variants (proposed, w13), Send ⌘↩ with Retry on a failure, Use's confirm, and what a stopped worker,
 // an older round or the built pick leaves to do.
 import { type ReactNode, useState } from "react";
@@ -9,7 +9,7 @@ import { Kbd } from "../components/kbd";
 import { Pencil, X } from "../icons";
 import { keysOf } from "../shortcuts";
 import { markerNumber, type MockupNote, noteCount, type Notes } from "./notes";
-import { Marker, pointedName } from "./pins";
+import { Marker } from "./pins";
 
 const LINE = "flex min-w-0 items-center gap-2";
 
@@ -18,7 +18,7 @@ export type Send = "idle" | "sending" | "failed";
 /** "1 note", "3 notes". */
 const count = (n: number) => (n === 1 ? "1 note" : `${n} notes`);
 
-/** One note in the tray: its pin's number, variant, element and words, with ✎ and ✕. */
+/** One note in the tray: its pin's number, variant and words, with ✎ and ✕. */
 function NoteChip({ note, number, onChange, onRemove }: { note: MockupNote; number: number; onChange?: (text: string) => void; onRemove?: () => void }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(note.text);
@@ -26,7 +26,6 @@ function NoteChip({ note, number, onChange, onRemove }: { note: MockupNote; numb
     <li className="flex min-w-0 items-center gap-1.5 rounded-control bg-card px-2 py-1 text-xs">
       <Marker small number={number} label={`Comment ${number}`} />
       <b className="shrink-0">{note.variant}</b>
-      {note.element && <span className="shrink-0 font-mono text-2xs text-muted-foreground">{pointedName(note.element)}</span>}
       {editing && onChange ? (
         <form
           className="min-w-0 flex-1"

@@ -156,6 +156,22 @@ pub fn listening(pid: i32) -> BTreeSet<u16> {
     ports
 }
 
+/// The pipe ends a process has as its stdin and stdout, by the kernel's own ids: the same in another
+/// one it passed them on to. None when either isn't a pipe.
+pub fn stdio(pid: i32) -> Option<[u64; 2]> {
+    // `struct pipe_fdinfo`, which libc has no type for: its size, and where its end's id is, as
+    // u64s (`sys/proc_info.h`).
+    const PIPE: i32 = 6; // PROC_PIDFDPIPEINFO
+    const SIZE: usize = 184;
+    let end = |fd: i32| {
+        let mut buf = [0u64; SIZE / 8];
+        let at = buf.as_mut_ptr().cast();
+        let n = unsafe { libc::proc_pidfdinfo(pid, fd, PIPE, at, SIZE as i32) };
+        (n as usize == SIZE).then_some(buf[20])
+    };
+    Some([end(0)?, end(1)?])
+}
+
 /// The process, if `pid` is still the one that started at `start_us`.
 pub fn same(pid: i32, start_us: u64) -> Option<Proc> {
     info(pid).filter(|p| p.start_us == start_us && !p.zombie)

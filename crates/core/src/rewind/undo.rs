@@ -2,7 +2,8 @@
 //! the toast's Redo file changes puts back what it changed, only where each path is still exactly as
 //! the restore left it [D1192].
 
-use super::repos::Part;
+use super::modes::made;
+use super::repos::{Part, named};
 use super::shared::{Lives, sharer};
 use super::snap::{Shot, Store};
 use super::{Op, checkout_lock, folded, refused};
@@ -23,9 +24,14 @@ struct Restored {
     /// None for a folder chat's, whose own folder isn't a repo [D3105].
     pre: Option<Shot>,
     target: Option<String>,
+    #[serde(default)]
+    modes: Option<String>,
     paths: BTreeSet<String>,
     #[serde(default)]
     repos: Vec<Part>,
+    /// The user's own files it brought back: Redo never removes them [D26].
+    #[serde(default)]
+    theirs: Vec<String>,
 }
 
 /// A rewind that landed: a restore's record replaces the last one, any other rewind removes it, so
@@ -35,13 +41,24 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
     let main = op.pre.is_some() && op.target.is_some() && !op.paths.is_empty();
     match main || !op.repos.is_empty() {
         true => {
-            let r = Restored {
+            let mut r = Restored {
                 op: op.op.clone(),
                 pre: op.pre.clone(),
                 target: op.target.clone(),
+                modes: op.modes.clone(),
                 paths: op.paths.clone(),
                 repos: op.repos.clone(),
+                theirs: op.hand.clone(),
             };
+            let all = r.paths.iter().cloned().chain(named(&r.repos));
+            let all: BTreeSet<String> = all.collect();
+            // What's named as the user's is only written where it was gone.
+            r.theirs.retain(|p| all.contains(p));
+            r.paths.retain(|p| !r.theirs.contains(p));
+            for part in &mut r.repos {
+                let name = &part.name;
+                (part.paths).retain(|p| !r.theirs.contains(&format!("{name}/{p}")));
+            }
             write_atomic(&path, &serde_json::to_vec(&r)?)
         }
         _ => match fs::remove_file(&path) {
@@ -54,21 +71,28 @@ pub(super) fn close(spec: &Spec, op: &Op) -> io::Result<()> {
 
 /// Puts `paths` back as `pre` has them, each only where it's still exactly as `target` has it:
 /// one changed since, unreadable, kept out of snapshots or that a write would go through stays,
-/// and is returned [D1078, D1192].
+/// and is returned [D1078, D1192]. `cut`: a rollback, whose write-back may not have finished.
 pub(super) fn put_back(
     store: &Store,
-    pre: &str,
-    target: &str,
+    pre: &Shot,
+    target: &Shot,
     paths: &BTreeSet<String>,
+    cut: bool,
 ) -> io::Result<Vec<String>> {
+    let modes = store.modes(target)?;
+    let made = match cut {
+        true => Some(made(&store.git.join("index"))?),
+        false => None,
+    };
+    // A rollback cut short too has put some back, all but their permissions.
+    let before = store.modes(pre)?;
+    let is = |p: &str, made| store.holds(&pre.tree, before.as_ref(), p, made);
+    let half = |p: &str| made.is_some() && is(p, made) && !is(p, None);
     let held: BTreeSet<String> = (paths.iter())
-        .filter(|p| store.holds(target, p))
+        .filter(|p| store.holds(&target.tree, modes.as_ref(), p, made) || half(p))
         .cloned()
         .collect();
-    let back: BTreeSet<String> = (held.iter())
-        .filter(|p| !store.blocked(p, &held))
-        .cloned()
-        .collect();
+    let (back, _) = store.open(&held);
     store.write_back(pre, &back)?;
     Ok(paths.difference(&back).cloned().collect())
 }
@@ -124,16 +148,19 @@ fn run(data: &Path, spec: &Spec, op: &str, live: Lives) -> Result<Value, Value> 
         ));
     }
     let mine = match (&store, &r.pre, &r.target) {
-        (Some(store), Some(pre), Some(target)) => put_back(store, &pre.tree, target, &r.paths),
+        (Some(store), Some(pre), Some(target)) => {
+            put_back(store, pre, &Shot::at(target, &r.modes), &r.paths, false)
+        }
         _ => Ok(vec![]),
     };
-    let kept = (mine.and_then(|mut kept| {
-        kept.extend(super::repos::put_back(spec, &r.repos)?);
+    let mut kept = (mine.and_then(|mut kept| {
+        kept.extend(super::repos::put_back(spec, &r.repos, false)?);
         Ok(kept)
     }))
     .map_err(|e| refused("failed", e.to_string()))?;
     // One deep: gone once used. Left behind, a second Undo finds every path changed and keeps it.
     let _ = fs::remove_file(&path);
-    let all = r.paths.len() + super::repos::named(&r.repos).len();
-    Ok(json!({"ok": true, "undone": all - kept.len(), "kept": kept}))
+    let undone = r.paths.len() + named(&r.repos).len() - kept.len();
+    kept.extend(r.theirs);
+    Ok(json!({"ok": true, "undone": undone, "kept": kept}))
 }

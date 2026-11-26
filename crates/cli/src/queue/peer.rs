@@ -2,7 +2,7 @@
 //! Brigadier's own send-back, which never waits there [D529].
 
 use super::{Item, change, cut, read};
-use crate::owner;
+use crate::{owner, workers};
 use brigadier_core::{self as core, adapters};
 use brigadier_frames::take_lock;
 use serde_json::{Value, json};
@@ -33,13 +33,9 @@ pub fn add_peer(
         q.items.push(Item {
             id: mid.into(),
             text: text.into(),
-            parts: Value::Null,
             at: brigadier_frames::log::now_ms(),
-            error: None,
             origin: Some(origin.into()),
-            to: None,
-            deciding: false,
-            shell: None,
+            ..Item::default()
         });
         // A cut-off worker stopped since waits for Resume.
         q.paused |= q.stopping || (cut::stopped(&f) && cut::parents(dir, Some(origin)));
@@ -75,8 +71,10 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     let origin = format!("peer:{from}");
     let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
     // What goes before it: past a cut-off run only its parent's do.
-    let goes =
-        |n: &usize| q.goes(*n) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()));
+    let block = workers::holding(data, id).then_some(f.finished);
+    let goes = |n: &usize| {
+        q.goes(*n, block) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()))
+    };
     let ahead = (0..at.unwrap_or(0)).find(goes).map(|n| &q.items[n]);
     let after = |i: &Item| match i.error {
         Some(_) => "a message before it couldn't be sent, so it waits for its user to settle that",
@@ -91,10 +89,10 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
             None => return "It was cut off mid-turn: your message carries it on.".into(),
             Some(i) => after(i),
         },
-        "interrupted" if link.as_ref().is_some_and(|l| !l.session) && !cut::begun(&f) => {
+        "interrupted" if link.is_some() && !cut::begun(&f) => {
             "it was cut off before its conversation began, so it waits for its user to message it"
         }
-        "interrupted" if link.is_some_and(|l| !l.session) => {
+        "interrupted" if link.is_some() => {
             "it was cut off mid-turn, so it waits for its user, or a message from the session that started it, to carry it on"
         }
         "interrupted" => "it was cut off mid-turn, so it waits for its user to carry it on",

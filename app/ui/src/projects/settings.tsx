@@ -30,8 +30,8 @@ import { closeProject, daemonSource, type FolderCheck, useProjectSettings } from
  * under its row. Remove project is last, apart.
  */
 
-/** Where its data comes from: the daemon, or the gallery's Fake. */
-export type SettingsSource = {
+/** Where its data comes from: the daemon. */
+type SettingsSource = {
   pick(at?: string): Promise<string | null>;
   check(path: string): Promise<FolderCheck>;
   /** `projects set <id> …args`, with `change` shown meanwhile; throws Rust's reason. */
@@ -134,7 +134,7 @@ const Profile = ({ name, hue }: { name: string; hue: number }) => (
   </span>
 );
 
-export function ProjectSettings({ project, source }: { project: Project; source: SettingsSource }) {
+function ProjectSettings({ project, source }: { project: Project; source: SettingsSource }) {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [checking, setChecking] = useState(true);
   const [repos, setRepos] = useState<string[] | null>(null);

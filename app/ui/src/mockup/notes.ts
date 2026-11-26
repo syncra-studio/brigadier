@@ -1,11 +1,8 @@
 // The user's notes on a mockup, as the old app's mockupNotes.ts: a click drops a numbered pin on a variant and a note
 // says what to change there; they are kept until sent together, as one message to the mockup worker [D2055].
 
-/** What a pin points at on a live frame: the element's component and source, where the page tells them (proposed). */
-export type Pointed = { name: string; file?: string | null };
-
 /** A note at a point of one variant, as fractions of its frame's width and height. */
-export type MockupNote = { id: string; variant: string; x: number; y: number; text: string; element?: Pointed | null };
+export type MockupNote = { id: string; variant: string; x: number; y: number; text: string };
 
 /** The notes not sent yet: the pinned ones and the one for all variants (proposed, w13), and the round they're on, 1-based. */
 export type Notes = { pins: MockupNote[]; all: string; round?: number };

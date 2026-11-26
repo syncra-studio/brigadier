@@ -5,7 +5,7 @@ import { ROW } from "../components/thread/activity-row";
 import { Chat, Clock } from "../icons";
 import { Markdown } from "../thread/markdown";
 import { OpeningLine } from "../workers/sentence";
-import { type Exchange, exchangeWords, type PeerRef, type SessionSendState, sessionSendWords, type Status, UNKNOWN_SESSION, type WordPart } from "./words";
+import { type Exchange, exchangeWords, type PeerRef, type SessionSendState, sessionSendWords, UNKNOWN_SESSION, type WordPart } from "./words";
 
 /*
  * The sender's rows of its messages to other sessions and its waits for their replies, as the old app's PeerRow and
@@ -79,48 +79,6 @@ export const PeerSentRow: FC<{ keep?: string; text?: string; exchange: Exchange 
     </SentLine>
   );
 };
-
-/** The thread's own `brigadier wait` on other sessions: "Waiting for Docs to reply", then "Received a reply from Docs", opening to the reply. */
-export const SessionWaitRow: FC<{ keep: string; to: readonly PeerRef[]; replies: readonly (PeerRef & { text: string })[]; status: Status }> = ({ keep, to, replies, status }) => {
-  const { parts, status: shown, waiting } = exchangeWords({
-    sends: [],
-    // A reply taken ends it, whatever its call still says.
-    waits: [replies.length > 0 ? "completed" : status],
-    received: replies,
-    waitingOn: to,
-  });
-  const line: ReactNode = (
-    <>
-      {waiting ? <Clock aria-hidden className="size-4 shrink-0" /> : <Chat aria-hidden className="size-4 shrink-0" />}
-      <PeerWords parts={parts} running={shown === "inProgress"} />
-    </>
-  );
-  if (replies.length === 0) return <div data-slot="orchestrator-step" data-kind="message" className={ROW}>{line}</div>;
-  return (
-    <OpeningLine
-      keep={keep}
-      detail={
-        <div data-slot="wait-replies" className="flex flex-col gap-2">
-          {replies.map((reply, index) => (
-            <Markdown key={index} text={reply.text} keep={`${keep}:${index}`} />
-          ))}
-        </div>
-      }
-    >
-      {line}
-    </OpeningLine>
-  );
-};
-
-/** A send refused before anything was recorded: "Couldn't send message to ‹name›", why in its tooltip. */
-export const PeerRefusedRow: FC<{ to: PeerRef | null; reason: string }> = ({ to, reason }) => (
-  <div data-slot="orchestrator-step" data-kind="message" data-state="refused" className={ROW} title={reason}>
-    <Chat aria-hidden className="size-4 shrink-0" />
-    <span data-slot="peer-words" className="min-w-0 truncate">
-      Couldn’t send message to {to && !to.gone ? <PeerLink peer={to} /> : <span className="text-row-object">{to?.title ?? UNKNOWN_SESSION}</span>}
-    </span>
-  </div>
-);
 
 /**
  * The thread's own `brigadier send` to another session: "Messaging Docs" while it runs, then "Messaged Docs: Can you

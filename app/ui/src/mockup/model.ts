@@ -6,7 +6,7 @@ import type { MockupNote, Notes } from "./notes";
 export type Variant = { letter: string; name: string; why?: string | null; url?: string | null; shot?: string | null };
 
 /** A round: the variants drawn so far, whether it still draws, and the notes sent on it, which start the next. */
-export type Round = { variants: Variant[]; drawing: boolean; sent: MockupNote[] };
+type Round = { variants: Variant[]; drawing: boolean; sent: MockupNote[] };
 
 export type Mockup = {
   title: string;
@@ -34,7 +34,7 @@ export type Mockup = {
 /** A live frame's page: loading, or it didn't load. Shown otherwise. */
 export type Load = "loading" | "failed";
 
-export const LETTERS = ["A", "B", "C"] as const;
+const LETTERS = ["A", "B", "C"] as const;
 
 /** A round's variants by letter, those not drawn yet as placeholders with no name. */
 export const slots = (mockup: Mockup, round: Round): Variant[] =>
