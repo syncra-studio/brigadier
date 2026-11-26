@@ -386,14 +386,14 @@ impl Adapter for Claude {
             ("system", _) | ("stream_event", _) | ("tool_progress", _) => vec![],
             // An API error the CLI answers for, as its SDK types it [D74].
             ("assistant", _)
-                if parent.is_none() && control::api_error(&v, String::new()).is_some() =>
+                if parent.is_none() && turn::api_error(&v, String::new()).is_some() =>
             {
                 let text = blocks()
                     .iter()
                     .filter_map(|b| b["text"].as_str())
                     .collect::<Vec<_>>()
                     .join("\n");
-                control::api_error(&v, text).into_iter().collect()
+                turn::api_error(&v, text).into_iter().collect()
             }
             ("assistant", _) => blocks()
                 .iter()
