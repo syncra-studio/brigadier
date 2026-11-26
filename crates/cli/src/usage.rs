@@ -51,13 +51,14 @@ fn windows(entry: &Value) -> Vec<Window> {
 }
 
 /// The last sample of each window of one account; `account` "" = the computer's login. A window
-/// whose reset has passed, or whose sample is older than `STALE_MS`, is unknown until a fresh
-/// report: never kept as exhausted, never assumed full.
+/// whose reset has passed, or with no reset said and a sample older than `STALE_MS`, is unknown
+/// until a fresh report: never kept as exhausted past its reset, never assumed full. Use only
+/// rises inside a window, so a sample whose reset is ahead still holds.
 pub(crate) fn of(data: &Path, agent: &str, account: &str) -> Vec<Window> {
     let now = now_ms();
     let mut found = windows(&load(data)[key(agent, account)]);
     for w in &mut found {
-        if w.resets.is_some_and(|r| r <= now) || now.saturating_sub(w.at) > STALE_MS {
+        if w.resets.map_or(now.saturating_sub(w.at) > STALE_MS, |r| r <= now) {
             w.used = None;
         }
     }
