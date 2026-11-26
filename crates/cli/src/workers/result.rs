@@ -161,8 +161,13 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
             // A turn cut for a rebirth, or one its full window refused, goes on in a fresh
             // conversation, whose own end reports instead [D88, D108], unless it ended done first.
             // So does one the network cut, which Brigadier resumes by itself [D339].
-            let on =
-                f.cut.as_deref() == Some(turn) && !last.is_some_and(|l| l["outcome"] == "done");
+            // Not one whose renewal the user's Stop or Pause called off in or after its summary
+            // turn, at a limit too: only they drop a renewal before it starts (D95).
+            let off = (f.last.as_ref())
+                .filter(|l| l["origin"] == "summary" && f.renewing.is_none() && f.turns.is_empty());
+            let on = f.cut.as_deref() == Some(turn)
+                && !last.is_some_and(|l| l["outcome"] == "done")
+                && off.is_none();
             if (newest && on)
                 || last.is_some_and(|l| l["why"] == "context" && core::rebirth::again_last(&f, l))
                 || last.is_some_and(|_| core::fold::reconnect(&f, false).is_some())
@@ -175,6 +180,12 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 let reason = last.and_then(|l| l["reason"].as_str().map(String::from));
                 reason.filter(|_| end.how == "stopped")
             });
+            // A cut whose renewal was called off reads as the Stop or Pause that did it.
+            let by = match off.filter(|_| f.cut.as_deref() == Some(turn)) {
+                Some(l) if l["reason"] == "pause" => Some("pause".into()),
+                Some(_) => Some("user".into()),
+                None => by,
+            };
             let how = match (end.how.as_str(), by.as_deref()) {
                 ("done", _) => "finished",
                 ("stopped", Some("stall")) => "context",
