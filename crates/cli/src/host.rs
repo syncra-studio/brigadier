@@ -298,21 +298,23 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
     let pr = host::pr(data, id)?;
     let new = super::flag(args, "--branch");
     let commit = super::has(args, "--commit");
-    let _fence = match new.is_some() || commit {
-        true => {
-            let fence = core::git::branch::fence(data)?;
-            let checkout = core::git::checkout(data, &core::git::Target::session(id))?;
-            let all = brigadier_frames::procs::all();
-            let sharing = core::git::branch::sharing(data, &checkout);
-            if (sharing.iter()).any(|id| super::sessions::working(data, id, &all)) {
-                return Err(io::Error::other(
-                    "Changes can't be committed while the agent is working.",
-                ));
-            }
-            Some(fence)
+    let changes = new.is_some() || commit;
+    let busy = || -> io::Result<()> {
+        let checkout = core::git::checkout(data, &core::git::Target::session(id))?;
+        let all = brigadier_frames::procs::all();
+        let sharing = core::git::branch::sharing(data, &checkout);
+        match (sharing.iter()).any(|id| super::sessions::working(data, id, &all)) {
+            true => Err(io::Error::other(
+                "Changes can't be committed while the agent is working.",
+            )),
+            false => Ok(()),
         }
-        false => None,
     };
+    // Written before the fence, which every send waits on: the writer only reads, and may take a
+    // minute. Asked again under the fence.
+    if changes {
+        busy()?;
+    }
     let base = super::flag(args, "--base");
     let mut title = super::flag(args, "--title")
         .unwrap_or("")
@@ -331,19 +333,30 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
             message = m;
         }
     }
+    let fence = match changes {
+        true => {
+            let fence = core::git::branch::fence(data)?;
+            busy()?;
+            Some(fence)
+        }
+        false => None,
+    };
     let commit_message = match message.is_empty() {
         true => title.clone(),
         false => format!("{title}\n\n{message}"),
     };
-    pr.create(&host::Create {
-        branch: new,
-        commit: commit.then_some(commit_message.as_str()),
-        title: &title,
-        body: &message,
-        draft: super::has(args, "--draft"),
-        base,
-        head: super::flag(args, "--head"),
-    })
+    pr.create(
+        &host::Create {
+            branch: new,
+            commit: commit.then_some(commit_message.as_str()),
+            title: &title,
+            body: &message,
+            draft: super::has(args, "--draft"),
+            base,
+            head: super::flag(args, "--head"),
+        },
+        fence,
+    )
 }
 
 /// A PR's title and description, by the message writer from what the branch changes [D1029].

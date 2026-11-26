@@ -27,9 +27,9 @@ pub struct Create<'a> {
 impl Pr {
     /// Makes the PR, each part only if it's still to do, so a retry never repeats one that landed:
     /// the new branch, the commit, the push, then `gh pr create`. A PR already open for the head is
-    /// answered with its address (`existing`). The caller holds the branch fence for a branch or a
-    /// commit [D1021].
-    pub fn create(&self, c: &Create) -> io::Result<Value> {
+    /// answered with its address (`existing`). The caller hands in the branch fence for a branch or
+    /// a commit [D1021]; it's let go once they're made, so the push and gh hold up no other session.
+    pub fn create(&self, c: &Create, fence: Option<std::fs::File>) -> io::Result<Value> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be made here.");
         };
@@ -50,6 +50,7 @@ impl Pr {
             Some(message) => branch::commit_all(&self.checkout, message, &stop)?,
             None => false,
         };
+        drop(fence);
         let pushed = match head == on {
             true => {
                 let remote = crate::git::push::remote(&self.checkout, on)?;
