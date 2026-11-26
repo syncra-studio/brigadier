@@ -34,6 +34,10 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         "logged" | "starting" | "working" | "silent" | "retrying" | "checking" | "uncertain"
         | "stalled" | "asking" => ("working", "Working".into()),
         "reconnecting" => ("working", "Reconnecting…".into()),
+        // Its last message never reached it, or its host doesn't answer: never an older turn's Done.
+        "undelivered" => ("failed", "Couldn't send".into()),
+        "unresponsive" => ("working", "Not responding".into()),
+        "no_turn_started" => ("working", "Not started yet".into()),
         // A turn that ended with background jobs left has ended: its result says how [D324], once
         // it's written. Till then, or with a message on its way to it, it works on.
         "idle" | "idle_jobs" if reports(dir, &l, f) => ("working", "Working".into()),
