@@ -9,6 +9,9 @@ use serde_json::{Value, json};
 use std::io;
 use std::sync::atomic::AtomicBool;
 
+/// The longest a fingerprint's `git add` may take.
+const FINGERPRINT_SECS: u64 = 60;
+
 /// What the Create PR dialog sends [D168].
 pub struct Create<'a> {
     /// A new branch to make from what's checked out first.
@@ -177,17 +180,18 @@ impl Pr {
         let head = read(&["rev-parse", "HEAD"]).map(text).unwrap_or_default();
         let index =
             read(&["rev-parse", "--path-format=absolute", "--git-path", "index"]).map(text)?;
-        let copy = std::env::temp_dir().join(format!("brigadier-pr-{}.index", std::process::id()));
+        // One copy per call, in the session's folder: creates of other sessions run beside it.
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let copy = (self.dir).join(format!("pr-{}-{n}.index", std::process::id()));
         // A repository with no commit yet has no index: the copy starts empty.
         let _ = std::fs::remove_file(&copy);
         let _ = std::fs::copy(&index, &copy);
+        // Bounded: a filter that hangs mustn't hold the fence it's asked under.
         let git = |args: &[&str]| {
             let mut command = crate::worktrees::command(root);
-            let out = command
-                .env("GIT_INDEX_FILE", &copy)
-                .args(args)
-                .output()
-                .ok();
+            command.env("GIT_INDEX_FILE", &copy).args(args);
+            let out = setup::run(&mut command, FINGERPRINT_SECS).ok();
             out.filter(|o| o.status.success()).map(|o| o.stdout)
         };
         let tree = git(&["add", "-A"])
