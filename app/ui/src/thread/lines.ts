@@ -136,7 +136,7 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
       push({ type: "work", id: key, gap: "turn", turn, work: foldable ? done : undefined, open: opened });
       // Shut while it runs: all it has done so far and does next, till the turn ends [D93].
       fold = foldable && !opened ? done.folded : live && !opened ? [item.n ?? 0, Number.MAX_SAFE_INTEGER] : null;
-      kept = done?.kept ?? [];
+      kept = (live ? turn.kept : done?.kept) ?? [];
     }
     // Its first row too: an empty span (a worktree's turn with only its reply) folds nothing [D85, D118].
     if (fold && !within(item.n, fold)) fold = null;

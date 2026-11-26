@@ -308,6 +308,7 @@ impl Thread {
             self.close_turn(&outcome, ts);
             self.open_turn(&t, ts);
         }
+        self.show_kept();
     }
 
     /// Ends the open turn. Every outcome the status fold knows maps to one of the view's [D64].

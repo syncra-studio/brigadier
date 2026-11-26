@@ -65,6 +65,8 @@ export type Turn = {
   helpers?: number;
   /** Answered while its subagents run, or till the agent wakes once they ended: one open block, drawn as running [D118]. */
   held?: boolean;
+  /** Rows of its block that stay visible while it runs shut, as once it folds [D63]. */
+  kept?: number[];
   /** When those subagents last did anything (ms); past 30 minutes of quiet, the block offers Stop. */
   heardAt?: number;
   /** Its parent's turn handling a worker's ask: hidden whole, it shows nothing running [D119]. */
