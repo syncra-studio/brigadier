@@ -471,7 +471,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
 /// The daemon's pass: makes what a restart left reserved, then writes and delivers results.
 /// `looked`: the sessions whose rows the index worked out now, all of them in its full passes.
 pub fn pass(data: &Path, rows: &BTreeMap<String, Value>, looked: &BTreeSet<String>) {
-    family::resume(data);
+    family::resume(data, looked);
     for (id, row) in rows.iter().filter(|(id, _)| looked.contains(*id)) {
         for r in records(data, id).iter().filter(|r| r.state == "starting") {
             make::begin(data, id, &r.wid);

@@ -8,8 +8,10 @@ use super::{CLOSING, below, family_lock, make, place, read_json, write_json};
 use crate::sessions;
 use brigadier_core::{self as core, session::Chosen};
 use serde_json::{Value, json};
+use std::collections::{BTreeSet, HashSet};
 use std::io;
 use std::path::Path;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -46,9 +48,10 @@ pub fn delete(data: &Path, id: &str, drop: &Chosen) -> io::Result<Value> {
             continue;
         }
         family.retain(|r| {
-            core::session_dir(data, &r.wid)
-                .join("session.json")
-                .exists()
+            let dir = core::session_dir(data, &r.wid);
+            dir.join("session.json").exists()
+                || (!dir.join(core::worktrees::RETAINED).exists()
+                    && core::session::lifecycle(&dir) != (None, Value::Null))
         });
         if family.is_empty() {
             break;
@@ -83,21 +86,29 @@ pub fn delete(data: &Path, id: &str, drop: &Chosen) -> io::Result<Value> {
     Ok(reply)
 }
 
-/// Once per daemon: a family delete a crash cut short goes on, and what archives left goes.
-pub(super) fn resume(data: &Path) {
+/// Retries family deletes on the daemon's passes; archive recovery runs once at startup.
+pub(super) fn resume(data: &Path, looked: &BTreeSet<String>) {
     static DONE: AtomicBool = AtomicBool::new(false);
-    if DONE.swap(true, Ordering::SeqCst) {
-        return;
+    static RUNNING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+    if !DONE.swap(true, Ordering::SeqCst) {
+        let all = data.to_path_buf();
+        thread::spawn(move || sessions::freed::sweep(&all));
     }
-    let all = data.to_path_buf();
-    thread::spawn(move || sessions::freed::sweep(&all));
-    for id in core::ids(data) {
-        if core::session_dir(data, &id).join(CLOSING).exists() {
+    for id in looked {
+        if core::session_dir(data, id).join(CLOSING).exists()
+            && RUNNING
+                .lock()
+                .unwrap()
+                .get_or_insert_with(HashSet::new)
+                .insert(id.clone())
+        {
             let data = data.to_path_buf();
+            let id = id.clone();
             thread::spawn(move || {
                 if let Err(e) = delete(&data, &id, &Chosen::All(false)) {
                     eprintln!("brigadierd: family delete {id}: {e}");
                 }
+                RUNNING.lock().unwrap().as_mut().map(|r| r.remove(&id));
             });
         }
     }
