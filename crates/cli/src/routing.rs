@@ -28,7 +28,7 @@ pub(crate) use jobs::{picked, said};
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::receipt;
 pub(crate) use retry::plan as retry;
-use rules::{FULL, allowed, barred, cap, effort_of, unusable};
+use rules::{FULL, NO_EFFORT, allowed, barred, cap, effort_of, unusable};
 pub(crate) use rules::{launch, picks};
 
 const FILE: &str = "routing.json";
@@ -387,7 +387,7 @@ pub(crate) fn after(
         .filter_map(|e| {
             let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
             let m = allowed(data, &groups, &rules, a, id).ok()?;
-            let (effort, _) = effort_of(&rules, a, m, e["effort"].as_str(), false).ok()?;
+            let (effort, _) = effort_of(&rules, a, m, e["effort"].as_str()).ok()?;
             Some((a.to_string(), id.to_string(), effort))
         })
         .collect()

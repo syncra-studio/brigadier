@@ -294,8 +294,16 @@ pub(crate) fn resolve(
         }
         let high = (m["efforts"].as_array().into_iter().flatten()).any(|x| x == "high");
         let want = (e["effort"].as_str()).or((review.is_some() && high).then_some("high"));
-        let (runs_at, capped) =
-            effort_of(&rules, a, m, want, effort.is_some()).map_err(|w| refuse(&w))?;
+        // An effort a job's entry lacks passes it by, as a model it can't run does [D375].
+        let (runs_at, capped) = match effort_of(&rules, a, m, want) {
+            Ok(e) => e,
+            Err(why) if model.is_some() => return Err(refuse(&why)),
+            Err(_) => {
+                let shown = m.get("name").unwrap_or(&m["id"]).as_str().unwrap_or(id);
+                by_why.push((shown.into(), NO_EFFORT));
+                continue;
+            }
+        };
         let Some(adapter) = adapters::get(a) else {
             continue;
         };
@@ -436,7 +444,7 @@ pub(crate) fn next(
         if same && !listed(&v, "auto", a) {
             continue;
         }
-        let Ok((runs_at, capped)) = effort_of(&rules, a, m, e["effort"].as_str(), false) else {
+        let Ok((runs_at, capped)) = effort_of(&rules, a, m, e["effort"].as_str()) else {
             continue;
         };
         let base = account_for(data, &parent, &pf, a);

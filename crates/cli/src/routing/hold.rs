@@ -43,7 +43,7 @@ pub(super) fn other(
             let (a, id) = (str_of(&e, "agent"), str_of(&e, "model"));
             let m = allowed(data, groups, &rules, a, id).ok()?;
             let has = |w: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == w);
-            let (effort, _) = effort_of(&rules, a, m, want.filter(has), false).ok()?;
+            let (effort, _) = effort_of(&rules, a, m, want.filter(has)).ok()?;
             let base = account_for(data, parent, f, a);
             place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0", true).ok()?;
             let effort = effort.or(m["default_effort"].as_str().map(String::from));
@@ -246,7 +246,7 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>) -> io::Result<Value> {
                 .unwrap_or_default();
             // The card's effort within the user's rules, as any pick's [D338].
             let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
-            let (effort, capped) = match effort_of(rules, &backend, &m, e["effort"].as_str(), false)
+            let (effort, capped) = match effort_of(rules, &backend, &m, e["effort"].as_str())
             {
                 Ok(x) => x,
                 Err(why) => return Ok(json!({"ok": false, "error": "invalid", "message": why})),
