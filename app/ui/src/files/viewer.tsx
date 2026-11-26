@@ -98,7 +98,7 @@ export function FileViewer({
   }
   const formatted = markdown && view === "formatted";
   const { target: watched, version } = useGit();
-  const target = readFrom(watched);
+  const target = readFrom(watched, owner);
   const from = target && JSON.stringify(target);
   // New on each watch read that changed something, so an image made or changed since is read again.
   const links = useMemo(

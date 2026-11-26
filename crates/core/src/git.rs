@@ -82,6 +82,21 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
     at(data, &folder(data, target)?)
 }
 
+/// A session's folder with no git in it or above it, as a checkout whose files the viewer reads
+/// inside it: a chat with no project may work in one [D388]. Nothing of git works on it.
+pub fn plain(data: &Path, target: &Target) -> io::Result<Checkout> {
+    let root = fs::canonicalize(folder(data, target)?)?;
+    if !matches!(target, Target::Session(_)) || root.ancestors().any(|a| a.join(".git").exists()) {
+        return err(format!("{} isn't a git checkout", root.display()));
+    }
+    let git_dir = root.join(".git");
+    Ok(Checkout {
+        root,
+        git_dir,
+        worktree: false,
+    })
+}
+
 /// The checkout in `folder`, as `checkout` finds it.
 pub fn at(data: &Path, folder: &Path) -> io::Result<Checkout> {
     if !folder.is_dir() {

@@ -301,13 +301,15 @@ export function useGit(): { source: SourceState | null; error: string | null; ve
 // again [D1310].
 const files = new Map<string, FileRead>();
 
-/** Whose files the viewer reads: a folder chat's from the chat, `<repo>/<path>`, whichever repo its watch follows [D776]. */
-export const readFrom = (watched: Target | null): Target | null => (watched && "session" in watched ? { session: watched.session.split("@")[0]! } : watched);
+/** Whose files the viewer reads: a folder chat's from the chat, `<repo>/<path>`, whichever repo its watch follows [D776];
+ *  with no watch (a chat with no project has no panel), `owner`'s own [D388]. */
+export const readFrom = (watched: Target | null, owner?: string): Target | null =>
+  watched && "session" in watched ? { session: watched.session.split("@")[0]! } : (watched ?? (owner && owner !== HOME ? { session: owner } : null));
 
 /** A checkout file as the viewer shows it, read again on each watch read that changed something [D1002]. */
-export function useFileRead(path: string): FileRead {
+export function useFileRead(owner: string, path: string): FileRead {
   const { target: watched, version, error } = useSyncExternalStore(subscribe, () => git);
-  const target = readFrom(watched);
+  const target = readFrom(watched, owner);
   const key = target && `${JSON.stringify(target)}\0${path}`;
   const [read, setRead] = useState<FileRead>(() => (key && files.get(key)) || { state: "loading" });
   // Another file in the same view: its own last read, not the one before's [D1310].
@@ -321,8 +323,9 @@ export function useFileRead(path: string): FileRead {
   // window shows; a watch of the file itself would be instant.
   // Kept once seen, so a file a build deletes and writes again is still followed.
   const [ignored, setIgnored] = useState(false);
-  // A folder chat's watch follows one repo, or none (it fails): its tabs look again themselves too [D776].
-  const unwatched = ignored || (watched !== null && "session" in watched && (watched.session.includes("@") || error !== null));
+  // A folder chat's watch follows one repo, or none (it fails), and a chat with no project has none: its tabs look again
+  // themselves too [D776].
+  const unwatched = ignored || watched === null || ("session" in watched && (watched.session.includes("@") || error !== null));
   useEffect(() => {
     if (!unwatched) return;
     const timer = setInterval(() => document.visibilityState === "visible" && setTick((n) => n + 1), 3000);
