@@ -62,6 +62,16 @@ impl Agent {
         summary.then(|| fs::read_to_string(self.home.join("summary.md")).ok())?
     }
 
+    /// A summary turn's reply as Claude may give it: a text per block a `<block>` line ends.
+    pub(super) fn say_summary(&self, text: &str) {
+        match text.contains("\n<block>\n") {
+            true => {
+                emit(json!({"t": "says", "texts": text.split("\n<block>\n").collect::<Vec<_>>()}))
+            }
+            false => self.say(text),
+        }
+    }
+
     /// Acts out one directive. False when the turn ended inside it.
     pub(super) fn directive(&mut self, name: &str, n: u64, word: &str, done_before: u64) -> bool {
         let left = n.saturating_sub(done_before);
