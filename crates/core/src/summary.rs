@@ -51,6 +51,15 @@ pub fn applies(spec: &crate::Spec, f: &crate::fold::Fold) -> bool {
     on() && vetoes(crate::rebirth::backend(spec, f))
 }
 
+/// Whether the old conversation can still write one after `last`: not at a usage limit, a sign-in
+/// or a refused resume, nor past a window that refused it or the loop guard's stop; those renew
+/// with the last summary carried [rev 3 §2.2].
+pub fn runs(f: &crate::fold::Fold, last: &serde_json::Value) -> bool {
+    let blocked = f.limit.is_some() || f.sign_in.is_some() || f.refused.is_some();
+    let window = last["outcome"] == "failed" && last["why"] == "context";
+    !blocked && !window && last["reason"] != "stall"
+}
+
 /// The turn the held renewal serves, as the fold had it when the summary input came: its cause,
 /// its guard count. None with no renewal held.
 pub fn served(f: &crate::fold::Fold) -> Option<serde_json::Value> {

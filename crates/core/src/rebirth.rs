@@ -146,6 +146,7 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
         .is_some_and(|p| p.backend != backend(spec, f));
     if (other || last["outcome"] == "done" && full(spec, f))
         && last["origin"] != "summary"
+        && crate::summary::runs(f, last)
         && crate::summary::applies(spec, f)
     {
         return Some("summary");
