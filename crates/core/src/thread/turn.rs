@@ -374,8 +374,8 @@ impl Thread {
             self.end_limit();
             if let Some(at) = self.reset_at.filter(|&at| at <= ts) {
                 self.reset_at = None;
-                // Brigadier's own carry-on at the reset says so on that line [C34, C54].
-                let carried = t.origin == "system";
+                // Brigadier's own carry-on at the reset says so on that line, with when it went [C34, C54].
+                let carried = (t.origin == "system").then_some(ts);
                 self.add(
                     json!({"kind": "line", "reason": "limit-reset", "at": at, "carried": carried}),
                 );

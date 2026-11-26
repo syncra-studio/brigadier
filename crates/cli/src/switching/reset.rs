@@ -41,6 +41,11 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     owner::ensure(data, &spec)?;
     crate::rewind::settled(data, &spec)?;
     let _fence = core::session::fence(data, &spec)?;
+    // The log's length before it's read: a Stop or message landing meanwhile refuses the send.
+    let ping = owner::call(data, id, json!({"op": "ping"}))?;
+    let Some(len) = ping["len"].as_u64() else {
+        return Ok(not_due);
+    };
     let f = core::fold(&spec.dir, true)?.fold;
     let worker = crate::workers::link(data, id).is_some();
     let Some(due) = row(data, &spec, &f, worker)
@@ -52,12 +57,21 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     if f.cids.contains_key(cid) {
         return Ok(not_due);
     }
+    let child = (ping["child"].as_i64()).map(|_| ping["spawn"].as_u64().unwrap_or(0));
+    let first = std::cell::Cell::new(true);
+    let call = |mut req: Value| {
+        let writes = matches!(req["op"].as_str(), Some("input" | "spawn"));
+        if req["if_len"].is_null() && writes && first.replace(false) {
+            req["if_len"] = len.into();
+        }
+        owner::call(data, id, req)
+    };
     let spec = crate::routing::told(data, &spec);
     let mut reply = core::send(
         &spec,
         &f,
-        crate::child(data, id),
-        &crate::call_fn(data, id),
+        child,
+        &call,
         cid,
         "system",
         &Message::plain(core::switch::LIMIT_RESET),

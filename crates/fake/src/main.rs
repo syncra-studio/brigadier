@@ -297,6 +297,15 @@ impl Agent {
             if let Ok(shape) = fs::read_to_string(self.home.join("offline")) {
                 return directives::api_error(shape.trim());
             }
+            // A mark in its home holding `N` or `N@ms`: its next N turns hit the limit, a carry-on's
+            // too, resetting in a minute or at that time [C54].
+            let marked = fs::read_to_string(self.home.join("limits")).unwrap_or_default();
+            let (n, at) = marked.trim().split_once('@').unwrap_or((marked.trim(), ""));
+            if let Some(n) = n.parse::<u64>().ok().filter(|&n| n > 0 && limited()) {
+                let _ = fs::write(self.home.join("limits"), format!("{}@{at}", n - 1));
+                let at = at.parse().unwrap_or(now() + 60_000);
+                return directives::limit_at(at);
+            }
         }
         // Directives are lowercase words, so a prompt's own "Retry …" is prose, not a scripted retry.
         for word in words {

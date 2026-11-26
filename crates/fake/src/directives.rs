@@ -229,12 +229,9 @@ impl Agent {
                 return false;
             }
             "limit" if !limited() => {}
+            // `limit:N` resets in N seconds, a minute without one.
             "limit" => {
-                emit(
-                    // When it resets, as some CLIs say: the minute its own message names.
-                    json!({"t": "error", "code": 429, "message": "rate limited, try again in 60s", "resets": now() + 60_000}),
-                );
-                emit(json!({"t": "done", "ok": false}));
+                limit(if n > 0 { n } else { 60 });
                 return false;
             }
             "auth" => {
@@ -345,6 +342,19 @@ impl Agent {
 /// A turn failing as each agent's CLI reports an API error, in its own lines, through its own
 /// parser (the fake's `as`): Claude's API error message and failed result, for no connection or a
 /// bad request; Codex's failed turn; OpenCode's failed execution.
+/// A turn at its usage limit, resetting in `secs`: when, as some CLIs say, the time its own message names.
+pub(super) fn limit(secs: u64) {
+    limit_at(now() + secs * 1000);
+}
+
+/// A turn at its usage limit, resetting at `at` (ms).
+pub(super) fn limit_at(at: u64) {
+    let secs = at.saturating_sub(now()) / 1000;
+    let message = format!("rate limited, try again in {secs}s");
+    emit(json!({"t": "error", "code": 429, "message": message, "resets": at}));
+    emit(json!({"t": "done", "ok": false}));
+}
+
 pub(super) fn api_error(shape: &str) {
     let dns = "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)";
     let bad = r#"API Error: 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: unexpected tool_use_id"}}"#;
