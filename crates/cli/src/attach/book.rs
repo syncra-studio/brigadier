@@ -68,7 +68,8 @@ struct Ui {
 #[derive(Serialize, Deserialize, Clone)]
 struct Going {
     cid: String,
-    rev: u64,
+    /// None: not taken from the field (an Add again), so never the UI's own words.
+    rev: Option<u64>,
     #[serde(flatten)]
     words: Words,
     files: Vec<String>,
@@ -220,7 +221,7 @@ fn queued(dir: &Path, qid: &str) -> bool {
 /// No save of the UI's since it was sent, what the UI holds is that message, or an older save of
 /// it: it goes either way.
 fn settle(book: &mut Book, g: Going, how: How, error: Value) -> Option<Given> {
-    if how != How::Unknown && book.ui.rev <= g.rev {
+    if how != How::Unknown && g.rev.is_some_and(|rev| book.ui.rev <= rev) {
         book.ui.words = Words::default();
     }
     if how != How::Refused {
@@ -347,9 +348,7 @@ pub fn going(
     };
     core::check_id(cid)?;
     let words: Words = serde_json::from_str(draft)?;
-    let rev = flag(args, "--draft-rev")
-        .and_then(|r| r.parse().ok())
-        .unwrap_or(0);
+    let rev = flag(args, "--draft-rev").and_then(|r| r.parse().ok());
     let held = hold(&cid_lock(dir, cid))?;
     let sent = message::sent(dir);
     let files = (message::ids(&serde_json::to_value(&words)?).into_iter())
