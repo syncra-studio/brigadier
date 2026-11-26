@@ -181,9 +181,13 @@ impl Index {
                 };
                 let mut title = e.title.clone();
                 let mut rewound = false;
+                let mut summary =
+                    (e.done.fold.turns.first()).is_some_and(|t| t.origin == "summary");
                 let folded = core::fold_from(&dir, e.done.clone(), |item| {
                     rewound |= item["kind"] == "note" && item["event"] == "rewound";
-                    if let Some(entry) = core::archive::entry(item, core::archive::at(item)) {
+                    let skip = core::archive::summary(item, &mut summary);
+                    let entry = core::archive::entry(item, core::archive::at(item));
+                    if let Some(entry) = entry.filter(|_| !skip) {
                         if entry.from == "user" && title.is_empty() {
                             title = crate::title::from(&entry.text);
                         }

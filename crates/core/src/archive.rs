@@ -217,17 +217,35 @@ fn answer_entry(item: &Value, at: String) -> Option<Entry> {
     })
 }
 
+/// Whether `item` is in a summary turn, from its input to its end, so no archive has its words as
+/// the agent's own [D92]. `on` carries it from item to item.
+pub fn summary(item: &Value, on: &mut bool) -> bool {
+    if item["kind"] == "input" && item["control"].is_null() {
+        *on = item["origin"] == "summary";
+    }
+    let was = *on;
+    *on &= item["kind"] != "turn_end";
+    was
+}
+
 /// A fork's inherited copy as entries, by line; none for any other session.
 pub fn inherited(dir: &Path) -> Vec<Entry> {
     let text = std::fs::read_to_string(dir.join("inherited.jsonl")).unwrap_or_default();
+    let mut on = false;
     (text.lines().enumerate())
-        .filter_map(|(n, l)| entry(&serde_json::from_str(l).ok()?, format!("i{n}")))
+        .filter_map(|(n, l)| Some((n, serde_json::from_str::<Value>(l).ok()?)))
+        .filter(|(_, item)| !summary(item, &mut on))
+        .filter_map(|(n, item)| entry(&item, format!("i{n}")))
         .collect()
 }
 
 /// The whole archive, oldest first: the inherited copy, then what still stands of its own log.
 pub fn read(dir: &Path) -> io::Result<Vec<Entry>> {
-    let mut all = vec![];
-    each(dir, |item, at| all.extend(entry(item, at)))?;
+    let (mut all, mut on) = (vec![], false);
+    each(dir, |item, at| {
+        if !summary(item, &mut on) {
+            all.extend(entry(item, at));
+        }
+    })?;
     Ok(all)
 }
