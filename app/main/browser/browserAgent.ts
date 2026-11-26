@@ -9,7 +9,7 @@ import { handleFromApp } from "./appPage";
 import { activityOf, forgetActivity, watchActivity, watchNetwork } from "./browserAgentActivity";
 import { AGENT_WORLD, forgetSecrets, keepAwake, pictureForAgent, runScript, runSeeingHandlers, sweptAndScrubbed } from "./browserAgentSecrets";
 import { evalOnPage } from "./browserDevtoolsEval";
-import { answerDialogs, dialogsCount, dialogsSaid, setConfirm, showDialogs } from "./browserAgentDialogs";
+import { answerDialogs, dialogsCount, dialogsSaid, setConfirm, showDialogs, watchDialogs } from "./browserAgentDialogs";
 import { shownTitle, shownUrl } from "./browserShownUrl";
 import { stopOf } from "./browserSignIn";
 import { stopForAddress } from "./browserSignInRules";
@@ -239,6 +239,7 @@ export function watchGuest(guest: WebContents): void {
   const id = guest.id;
   watchActivity(guest);
   watchDevTools(guest);
+  watchDialogs(guest);
   guest.once("destroyed", () => {
     held.delete(id);
     sending.delete(id);
