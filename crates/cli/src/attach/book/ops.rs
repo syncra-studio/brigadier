@@ -9,10 +9,11 @@ use serde_json::{Value, json};
 use std::io;
 use std::path::Path;
 
-/// `retry <cid>` (Try again, Add again): the message's command as it ran, again under its id, unless
-/// it's there already. `adopt <cid> --kind send|queue --op <json> --draft <json> [--draft-rev R]`: the app's own copy
-/// of a message whose reply never came, kept here unless the book or the session has it; acked
-/// either way, so the app lets its copy go. `drop <cid>` (Discard, Delete, Edit).
+/// `retry <cid>` (Try again, Add again): the message's command as it ran, again under its id,
+/// unless it's there already. `adopt <cid> --kind send|queue --op <json> --draft <json>
+/// [--draft-rev R]`: the app's own copy of a message whose reply never came, kept here unless the
+/// book or the session has it; acked either way, so the app lets its copy go. `drop <cid>`
+/// (Discard, Delete, Edit).
 pub fn ops(
     dir: &Path,
     args: &[String],
@@ -41,7 +42,9 @@ fn valid(op: &[String], id: &str, cid: &str, queue: bool) -> bool {
         false => at(0) == Some("send") && flag(opts(op), "--cid") == Some(cid),
     };
     let banned = ["--to", "--shell", "--origin", "--draft", "--draft-rev"];
-    mine && at(1) == Some(id) && !banned.iter().any(|b| has(op, b))
+    // A queue add's parser reads these anywhere in it (queue.rs), its words too; a send's never.
+    let read = if queue { op } else { opts(op) };
+    mine && at(1) == Some(id) && !banned.iter().any(|b| has(read, b))
 }
 
 impl super::Book {

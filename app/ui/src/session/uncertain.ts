@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { Draft } from "../components/composer/draft";
 import type { Chip } from "../panel/chips";
 import type { Runner } from "./composer";
-import { giveChips } from "./draft";
+import { keptChipsBack } from "./draft";
 
 /*
  * Messages on their way, sends and queue adds [D54, C58]. Each is kept in the renderer's own store, which outlives a
@@ -115,7 +115,8 @@ export function tellDrops(run: Runner, id: string): Promise<unknown> {
       telling.delete(each.cid);
       // In the log already, the thread shows it.
       if (reply.ok || reply.logged) forget(id, each.cid);
-      if (reply.ok) giveChips(id, reply.chips?.length ? reply.chips : (each.chips ?? []));
+      // Back already (a drop whose reply was lost), Rust names none: the ones a chip read held back for it show.
+      if (reply.ok) keptChipsBack(id, each, reply.chips);
     });
     telling.set(each.cid, job);
     return job;
