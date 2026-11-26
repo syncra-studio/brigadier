@@ -169,8 +169,8 @@ impl Agent {
         pending
     }
 
-    /// The message writer's prompt (core's `writer`, D1029): a message naming the diff's files, so
-    /// a commit on Fake reads as one. In the changes, "nowrite" makes it fail and "slow:<ms>" waits, for demos.
+    /// The message writer's prompt (core's `writer`, D1029): a PR title and description naming the
+    /// diff's files, so a PR on Fake reads as one. In the changes, "nowrite" makes it fail and "slow:<ms>" waits, for demos.
     fn write(&mut self, text: &str) {
         emit(json!({"t": "turn"}));
         let words: Vec<&str> = text.split_whitespace().collect();
@@ -193,10 +193,7 @@ impl Agent {
             true => "the files".to_string(),
             false => files.join(", "),
         };
-        match text.starts_with("Write the pull request") {
-            true => self.say(&format!("Update {what}\n\nThis updates {what}.")),
-            false => self.say(&format!("Update {what}")),
-        }
+        self.say(&format!("Update {what}\n\nThis updates {what}."));
         emit(json!({"t": "done"}));
     }
 
@@ -223,12 +220,8 @@ impl Agent {
         if feedback::asked(text) {
             return self.write(text);
         }
-        if text.starts_with("Write the ")
-            && text
-                .lines()
-                .next()
-                .is_some_and(|l| l.ends_with("for these changes."))
-        {
+        // Create PR's prompt (cli host.rs `written`), the only one left since the commit's went [D1029].
+        if text.starts_with("Write a pull request title") {
             return self.write(text);
         }
         // The bracketed lines Brigadier puts first (another session's name, the night's rules, a
