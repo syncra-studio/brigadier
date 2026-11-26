@@ -355,7 +355,7 @@ pub fn turn(spec: &Spec, text: &str) -> Value {
         "approvalsReviewer": reviewer, "sandboxPolicy": {"type": sandbox}, "clientUserMessageId": spec.cid});
     // A folder chat's copies commit into their repos' own git folders [D494].
     let mut roots = crate::folder::git_dirs(spec);
-    roots.extend(crate::background::temps(&spec.dir));
+    roots.extend(crate::background::writable(spec));
     if sandbox == "workspaceWrite" {
         turn["sandboxPolicy"]["writableRoots"] = roots.into();
     }

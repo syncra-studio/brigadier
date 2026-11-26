@@ -191,7 +191,7 @@ pub fn rules(spec: &Spec) -> Value {
     all.extend(free);
     if spec.level.as_deref() == Some("auto") {
         all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
-        for tmp in crate::background::temps(&spec.dir) {
+        for tmp in crate::background::writable(spec) {
             all.push(rule("external_directory", &format!("{tmp}/*"), "allow"));
         }
         // OpenCode checks only a command's folder (cd), not the paths it names: a command naming

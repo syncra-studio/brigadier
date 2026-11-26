@@ -2,6 +2,7 @@
 //! reserved under the family's lock, answered at once, then made off the caller's turn, each
 //! step safe to run again under the same ids after a restart [D54].
 
+use super::brief::{edits, fixed_line, land_line, sh};
 use super::{
     Link, Record, below, closing, family_lock, git, place, record, refuse, result, save, setting,
     write_json,
@@ -19,48 +20,6 @@ use std::thread;
 
 /// Starts in this daemon now, so its pass never makes one twice at once.
 static MAKING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-
-/// How a worker lands its work: reviewed first [D385], merged into `base` in `to` with plain git
-/// [D97], or kept on its branch; a commit and merge only if it changed files [D311].
-pub(crate) fn land_line(merge: Option<(&str, &str, &str)>, review: bool) -> String {
-    match merge {
-        _ if review => super::review::FINDINGS.into(),
-        Some((to, branch, base)) => {
-            let (dir, b) = (sh(to), sh(branch));
-            format!(
-                "If you changed files, commit them on your branch when your work is done and right, then merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why. If you committed nothing, don't merge."
-            )
-        }
-        None => "If you changed files, commit them on your branch and don't merge it.".into(),
-    }
-}
-
-/// `s` as one shell word: as is when plain, else single-quoted ("Application Support") [D309].
-fn sh(s: &str) -> String {
-    let plain = |c: char| c.is_ascii_alphanumeric() || "_./:@%+=,-".contains(c);
-    match !s.is_empty() && s.chars().all(plain) {
-        true => s.into(),
-        false => format!("'{}'", s.replace('\'', "'\\''")),
-    }
-}
-
-/// Proposed: the line every worker gets after its brief [D3000, D3023].
-/// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
-/// worktree, which merges itself back [D89, D97].
-/// A reviewer's commits nothing: its count takes the merge sentence's place [D3026].
-/// `root`: the family's first session, where the user's own words are, however deep it is.
-fn fixed_line(
-    parent: &str,
-    pid: &str,
-    root: &str,
-    merge: Option<(&str, &str, &str)>,
-    review: bool,
-) -> String {
-    let land = land_line(merge, review);
-    format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {root} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills of its own, and no MCP servers but any only it can sign in to: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
-    )
-}
 
 /// How deep workers may start workers of their own; a worker at this depth can't [D2026, D3038].
 const DEEPEST: u64 = 4;
@@ -225,9 +184,14 @@ pub fn start(
         let ran = [Some(backend.as_str()), model.as_deref(), effort.as_deref()];
         ran.into_iter().flatten().collect::<Vec<_>>().join(" · ")
     });
-    let place = match &base {
-        Some(b) => format!("in its own worktree off {b}"),
-        None => "in a folder of its own".into(),
+    let into = r.project.is_none().then(|| edits(data, &r.root)).flatten();
+    let place = match (&base, &into) {
+        (Some(b), _) => format!("in its own worktree off {b}"),
+        (None, Some((dir, _))) => format!(
+            "in a folder of its own; when its task changes files, it changes them in {} directly",
+            sh(dir)
+        ),
+        (None, None) => "in a folder of its own".into(),
     };
     let mut text = match r.hold["why"].as_str() {
         Some(why) if r.hold["retry"] == true => format!(
@@ -355,6 +319,14 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
                     .is_string()
                     .then(|| ("plan_review".into(), "1".into())))
                 .into_iter()
+                // With no project, its agent may write where its edits go [C70].
+                .chain(
+                    r.project
+                        .is_none()
+                        .then(|| edits(data, &r.root))
+                        .flatten()
+                        .map(|(d, _)| ("writes".into(), d)),
+                )
                 .collect(),
                 ..Default::default()
             },
@@ -431,13 +403,14 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     let merge = (branch.as_deref().zip(r.base.as_deref()))
         .filter(|_| r.asked["mockup"].is_null())
         .map(|(b, base)| (parent.cwd.as_str(), b, base));
-    let line = fixed_line(
-        &core::share::title(&parent),
-        pid,
-        &r.root,
-        merge,
-        !r.review.is_null(),
-    );
+    let into = r.project.is_none().then(|| edits(data, &r.root)).flatten();
+    let folder = into.as_ref().map(|(dir, of)| (dir.as_str(), of.as_str()));
+    let land = match folder {
+        // Nothing lands before Use, which says where it goes [D560].
+        Some(_) if !r.asked["mockup"].is_null() && r.review.is_null() => "Keep your work in your own folder until the user picks a variant; Use then tells you where it goes.".into(),
+        _ => land_line(merge, !r.review.is_null(), folder),
+    };
+    let line = fixed_line(&core::share::title(&parent), pid, &r.root, &land);
     let text = format!("{}\n\n{line}", r.brief.trim_end());
     if record(data, pid, &r.wid).is_some_and(|now| now.state == "stopped") {
         return Err(io::Error::other("It was stopped before it started."));

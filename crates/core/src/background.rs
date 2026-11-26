@@ -326,6 +326,14 @@ pub fn temps(dir: &Path) -> Vec<String> {
     all.iter().map(|p| p.display().to_string()).collect()
 }
 
+/// The folders a session may write in beyond its own: its throwaway ones, and the folder a
+/// no-project worker's edits go to, its family's first session's (`writes`, proposed, C70).
+pub fn writable(spec: &crate::Spec) -> Vec<String> {
+    let mut all = temps(&spec.dir);
+    all.extend(spec.opts.get("writes").cloned());
+    all
+}
+
 /// Its throwaway files and the link to them go.
 pub fn drop_temp(dir: &Path) -> io::Result<()> {
     let (tmp, link) = (tmp(dir), link(dir));
