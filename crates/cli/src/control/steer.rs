@@ -53,7 +53,10 @@ pub fn steer_turn(
     written(data, &spec.id, req, false, |f| {
         let running = f.turns.first().is_some_and(|t| t.began);
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
+        // A summary turn takes nothing: the message waits, then goes to the fresh one [rev 3 §2.2].
+        let summary = f.turns.first().is_some_and(|t| t.origin == "summary");
         match (running, can) {
+            _ if summary => Err(refused("busy", Value::Null)),
             (false, _) => Err(refused("not_running", Value::Null)),
             (_, false) => Err(refused("unsupported", Value::Null)),
             _ => Ok(

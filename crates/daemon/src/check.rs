@@ -19,6 +19,11 @@ fn check(data: &Path, id: &str) -> Option<()> {
     let dir = core::session_dir(data, id);
     let f = core::fold(&dir, true).ok()?.fold;
     let last = f.last.as_ref().filter(|_| f.turns.is_empty())?;
+    // A summary turn's end, however it ended, frees the tools; it's never sent back [rev 3 §2.2].
+    if last["origin"] == "summary" {
+        let _ = std::fs::remove_file(core::summary::flag(&dir));
+        return None;
+    }
     let turn = last["id"].as_str()?;
     // Only a turn that ended well just now: the daemon's first pass sees every session's last.
     if last["outcome"] != "done" || now_ms().saturating_sub(last["ts"].as_u64()?) > 120_000 {

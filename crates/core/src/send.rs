@@ -123,6 +123,8 @@ pub fn send(
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
     } else if reborn {
+        // Its summary turn is over, though a message may start this before the daemon sees it end.
+        let _ = std::fs::remove_file(crate::summary::flag(&spec.dir));
         let why = if cut { "cut" } else { "rebirth" };
         // The turn the renewal serves, not its summary turn.
         let last = (crate::summary::served(f).or(f.last.clone())).unwrap_or_default();
@@ -189,7 +191,9 @@ pub fn send(
     let refolded;
     let mut f = f;
     // An agent that doesn't queue takes a message mid-turn only as a steer.
-    if running && !a.per_turn() && (a.queues() || f.turns.is_empty()) {
+    // Nothing goes into a summary turn: busy, it waits in the queue for the fresh one [rev 3 §2.2].
+    let summarizing = f.turns.first().is_some_and(|t| t.origin == "summary");
+    if running && !summarizing && !a.per_turn() && (a.queues() || f.turns.is_empty()) {
         let mut bytes = String::new();
         if !f.turns.is_empty() {
             // A working child keeps its setup: the change waits for the next turn start.

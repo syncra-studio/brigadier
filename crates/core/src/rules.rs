@@ -185,6 +185,10 @@ pub fn count(dir: &Path, reply: &str, hit: bool, sent: bool, retry: bool, by: Va
 /// on, counts it, and sends it back once. Its record names the agent, so the daemon leaves that
 /// agent's turns to it.
 pub fn stop_hook(input: &Value, agent: &str, dir: Option<&Path>) -> Option<Value> {
+    // A summary turn's reply is never sent back nor counted [rev 3 §2.2].
+    if dir.is_some_and(crate::summary::running) {
+        return None;
+    }
     let reply = input["last_assistant_message"].as_str().unwrap_or("");
     let retry = input["stop_hook_active"] == true;
     let hit = asks_in_prose(reply);

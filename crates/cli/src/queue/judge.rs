@@ -105,7 +105,11 @@ fn decide(data: &Path, id: &str, qid: &str, steer: bool) {
 /// Whether its block is open now: a turn that can be steered, or one held open.
 fn open(data: &Path, id: &str, steer: bool) -> bool {
     let runs = cut::now(data, id).is_ok_and(|(f, state)| {
-        steer && !f.turns.is_empty() && !matches!(state.as_str(), "interrupted" | "undelivered")
+        let summary = f.turns.first().is_some_and(|t| t.origin == "summary");
+        steer
+            && !f.turns.is_empty()
+            && !summary
+            && !matches!(state.as_str(), "interrupted" | "undelivered")
     });
     runs || workers::holding(data, id)
 }
