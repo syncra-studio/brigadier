@@ -40,30 +40,42 @@ pub(super) fn run(
     if owner::ensure(data, &spec).is_err() {
         return refuse("This session's host isn't running.".into());
     }
+    // The line's id, named once: a retry after another keep moved the list keeps aiming at it.
+    let first = keeps::list(&spec.dir);
+    let target = match replace.as_ref().or(drop.as_ref()) {
+        None => None,
+        Some(k) => match k
+            .parse::<usize>()
+            .ok()
+            .and_then(|n| first.get(n.wrapping_sub(1)))
+        {
+            Some(l) => Some(l.id.clone()),
+            None => return refuse(format!("No kept line {k}: `brigadier keep` lists them.")),
+        },
+    };
     // Judged and written at one log length, so two keeps at once can't both pass the size check.
     for _ in 0..40 {
         let Ok(ping) = owner::call(data, me, json!({"op": "ping"})) else {
             return refuse("This session's host isn't answering.".into());
         };
         let list = keeps::list(&spec.dir);
-        let at = |k: &str| {
-            let n = k
-                .parse::<usize>()
-                .ok()
-                .filter(|n| (1..=list.len()).contains(n));
-            n.map(|n| list[n - 1].id.clone())
-                .ok_or_else(|| format!("No kept line {k}: `brigadier keep` lists them."))
-        };
-        let (op, id, words) = match (&replace, &drop, line) {
-            (Some(k), None, Some(l)) => match at(k) {
-                Ok(id) => ("replace", id, l),
-                Err(e) => return refuse(e),
-            },
-            (None, Some(k), None) => match at(k) {
-                Ok(id) => ("drop", id, ""),
-                Err(e) => return refuse(e),
-            },
-            (None, None, Some(l)) => ("add", format!("{me}.{}", &core::adapters::uuid()[..8]), l),
+        if let Some(t) = &target
+            && !list.iter().any(|l| &l.id == t)
+        {
+            let k = replace
+                .as_ref()
+                .or(drop.as_ref())
+                .map_or("", |k| k.as_str());
+            return refuse(format!(
+                "Line {k} changed meanwhile: `brigadier keep` lists them."
+            ));
+        }
+        let (op, id, words) = match (&replace, &drop, line, &target) {
+            (Some(_), None, Some(l), Some(id)) => ("replace", id.clone(), l),
+            (None, Some(_), None, Some(id)) => ("drop", id.clone(), ""),
+            (None, None, Some(l), None) => {
+                ("add", format!("{me}.{}", &core::adapters::uuid()[..8]), l)
+            }
             _ => return refuse("Give a line, --replace K with a line, or --drop K.".into()),
         };
         let replacing = (op == "replace").then_some(id.as_str());
