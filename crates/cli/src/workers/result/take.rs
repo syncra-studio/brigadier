@@ -56,7 +56,7 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
     }
     took.push(res);
     for r in &took {
-        let note = json!({"event": "worker", "phase": "result", "result": said(data, me, r)});
+        let note = json!({"event": "worker", "phase": "result", "result": said(data, me, r), "took": true});
         let _ = owner::call(data, me, json!({"op": "note", "data": note}));
     }
     let texts: Vec<String> = took.into_iter().map(|r| r.text).collect();
@@ -116,7 +116,7 @@ pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
         results.push(r);
     }
     for r in results.iter().filter(|r| !r.ended) {
-        let note = json!({"event": "worker", "phase": "result", "result": said(data, pid, r)});
+        let note = json!({"event": "worker", "phase": "result", "result": said(data, pid, r), "took": true});
         let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
     }
 }

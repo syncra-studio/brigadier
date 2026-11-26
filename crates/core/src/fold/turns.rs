@@ -269,15 +269,11 @@ impl Fold {
                 self.workers.remove(w);
             }),
             Some("result") => {
-                let said = item["result"].as_str().unwrap_or("");
-                if let Some(t) = self
-                    .turns
-                    .first_mut()
-                    .filter(|_| !said.starts_with("asks:"))
-                {
+                // Only a take's note, never a review's for the work it reviewed; no ask's [D48, D115].
+                if let Some(t) = self.turns.first_mut().filter(|_| item["took"] == true) {
                     t.took = true;
                 }
-                if let Some(w) = result_of(said) {
+                if let Some(w) = item["result"].as_str().and_then(result_of) {
                     self.workers.remove(w);
                 }
             }
