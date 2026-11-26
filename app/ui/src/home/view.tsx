@@ -13,7 +13,7 @@ import { showToast } from "../components/toast";
 import { openThread } from "../daemon";
 import { BrigadierMark } from "../onboarding/mark";
 import { daemonRun } from "../session/composer";
-import { givenError, HOME_DRAFT, onGiven } from "../session/draft";
+import { type Given, givenRefused, HOME_DRAFT, onGiven } from "../session/draft";
 import { usePutBack } from "../session/side";
 import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
@@ -102,7 +102,7 @@ export function HomeView(props: HomeProps) {
   const salutation = useGreeting(Boolean(name));
   const [empty, setEmpty] = useState(() => !props.initial || isEmpty(props.initial));
   // Why a new chat from here was refused, once its words are back [C65].
-  const [refused, setRefused] = useState(() => (props.draft ? givenError(props.draft) : null));
+  const [refused, setRefused] = useState<Given | null>(() => (props.draft ? givenRefused(props.draft) : null));
   const noModel = props.groups !== null && !props.model;
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const holder = project ? props.localHolder : undefined;
@@ -134,7 +134,7 @@ export function HomeView(props: HomeProps) {
           field.current?.set(parts);
           files.restore(back.attachmentIds);
           setEmpty(isEmpty({ parts, attachmentIds: back.attachmentIds }));
-          if (back.error) setRefused(back.error);
+          if (back.error) setRefused(back);
           return { parts, attachmentIds: [...new Set([...back.attachmentIds, ...files.tileIds])] };
         }),
   );
@@ -169,7 +169,18 @@ export function HomeView(props: HomeProps) {
             <RailItem label="Notices">
               <ul aria-live="polite">
                 {/* PROPOSED (C65) */}
-                <NoticeRow level="error" onDismiss={() => setRefused(null)}>{`Couldn't start this conversation. ${refused}`}</NoticeRow>
+                <NoticeRow
+                  level="error"
+                  onDismiss={() => setRefused(null)}
+                  // No account it could start on: Sign in goes to Providers [C36].
+                  action={
+                    refused.signIn && (
+                      <a href="#settings/providers" className="rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                        Sign in
+                      </a>
+                    )
+                  }
+                >{`Couldn't start this conversation. ${refused.error}`}</NoticeRow>
               </ul>
             </RailItem>
           )}

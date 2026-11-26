@@ -22,7 +22,7 @@ const loading = new Map<string, Promise<Draft | null>>();
 const revs = new Map<string, number>();
 const took = new Map<string, Set<string>>();
 const applied = new Map<string, Set<string>>();
-const errors = new Map<string, string>();
+const errors = new Map<string, Given>();
 const setOf = (map: Map<string, Set<string>>, id: string) => map.get(id) ?? map.set(id, new Set()).get(id)!;
 const fills = new Map<string, (back: Given) => Draft>();
 // The chip store's, set by it: imported here, it would reach the tab store, which reads HOME_DRAFT as it loads.
@@ -37,15 +37,16 @@ export const keptChipsBack = (id: string, kept: Going | undefined, given?: reado
 export const draftOf = (id: string) => drafts.get(id);
 /** The revision of session `id`'s draft this view last saw: a message sent now carries it. */
 export const revOf = (id: string) => revs.get(id) ?? 0;
-/** Why the last message given back to a session that wasn't open was refused, once. */
-export function givenError(id: string): string | null {
-  const error = errors.get(id) ?? null;
+/** The last message given back refused to a session that wasn't open, once. */
+export function givenRefused(id: string): Given | null {
+  const back = errors.get(id) ?? null;
   errors.delete(id);
-  return error;
+  return back;
 }
+export const givenError = (id: string) => givenRefused(id)?.error ?? null;
 
 /** A message Rust gave back: its words and files above the draft, its chips waiting again. */
-export type Given = { cid: string; parts: Draft["parts"]; attachmentIds: string[]; chips?: readonly Chip[]; error?: string };
+export type Given = { cid: string; parts: Draft["parts"]; attachmentIds: string[]; chips?: readonly Chip[]; error?: string; signIn?: boolean };
 
 /** Fills session `id`'s open composer with a message given back, answering the draft it holds then. */
 export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
@@ -75,7 +76,7 @@ export function takeBack(run: Runner, id: string, back: Given): void {
     const now = drafts.get(id) ?? EMPTY_DRAFT;
     const parts = isEmpty({ parts: now.parts, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...now.parts];
     drafts.set(id, { parts, attachmentIds: [...new Set([...back.attachmentIds, ...now.attachmentIds])] });
-    if (back.error) errors.set(id, back.error);
+    if (back.error) errors.set(id, back);
   }
   clearTimeout(timers.get(id));
   void write(run, id);
