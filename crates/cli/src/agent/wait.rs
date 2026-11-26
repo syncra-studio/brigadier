@@ -63,7 +63,9 @@ fn until(
                 return json!({"ok": true, "done": true, "id": id, "state": "asking", "result": ask, "text": ask});
             }
             let cut = state == "interrupted" && !crate::queue::goes_on(data, id);
-            let idle = row["running"] != true && (cut || !workers::owes(data, id));
+            let idle = row["running"] != true
+                && (cut || !workers::owes(data, id))
+                && !crate::queue::will_go(data, id, row);
             if idle || state == "waiting_answer" || state == "asking" {
                 let last = crate::relay::archive(data, id, false)
                     .into_iter()
