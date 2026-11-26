@@ -9,7 +9,7 @@
 
 use crate::{arg, flag};
 use brigadier_core::{self as core, message};
-use brigadier_frames::lock_held;
+use brigadier_frames::{lock_held, log};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File, OpenOptions};
@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 
 /// How many given-back ids are kept: one comes again only from a bubble, which lives one app run.
 const REFUSED: usize = 200;
+/// How long a session's host may still be starting the agent for a message its sender, gone, had
+/// asked it to take, before it logs it (proposed).
+const HOST_WAIT_MS: u64 = 60_000;
 
 /// An error before any host was asked to take the message: it surely never went.
 #[derive(Debug)]
@@ -70,6 +73,9 @@ struct Going {
     cid: String,
     /// None: not taken from the field (an Add again), so never the UI's own words.
     rev: Option<u64>,
+    /// When it set out (ms).
+    #[serde(default)]
+    at: u64,
     #[serde(flatten)]
     words: Words,
     files: Vec<String>,
@@ -205,14 +211,18 @@ fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
         let cut = |g: &Going| gone(&g.cid) && (read || !g.handed);
         let (cut, live) = std::mem::take(list).into_iter().partition(cut);
         *list = live;
+        // A host outlives its sender and logs a message only once the agent has started: while it
+        // may still be doing that, a send not in the log yet stays unsettled [D54].
+        let host = !queue && lock_held(&dir.join("owner.lock"));
+        let starting = |g: &Going| host && log::now_ms().saturating_sub(g.at) < HOST_WAIT_MS;
         for g in cut {
             let went = logged(dir, &g.cid) || (queue && queued(dir, &g.cid));
-            settle(
-                book,
-                g,
-                if went { How::Went } else { How::Refused },
-                Value::Null,
-            );
+            if !went && starting(&g) {
+                book.inflight.push(g);
+                continue;
+            }
+            let how = if went { How::Went } else { How::Refused };
+            settle(book, g, how, Value::Null);
         }
     }
     for g in book.given.iter_mut().filter(|g| !g.done && gone(&g.cid)) {
@@ -307,7 +317,8 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
     let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
     change(dir, false, |book| {
         let missed: Vec<&Given> = (book.given.iter())
-            .filter(|g| base.is_some() && !took.contains(&g.cid.as_str()))
+            // One still bringing its files and chips back is offered once it has.
+            .filter(|g| base.is_some() && g.done && !took.contains(&g.cid.as_str()))
             .collect();
         if base.is_some_and(|b| b != book.rev) || !missed.is_empty() {
             let given: Vec<Value> = missed.iter().map(|g| reply_of(g)).collect();
@@ -318,7 +329,7 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
             words,
             rev: book.rev,
         };
-        book.given.clear();
+        book.given.retain(|g| !g.done);
         // A hand-off the UI gave back itself (its reply lost) is in what it saved.
         (book.inflight).retain(|g| !(g.handed && took.contains(&g.cid.as_str())));
         Ok(json!({"ok": true, "rev": book.rev}))
@@ -377,6 +388,7 @@ pub fn going(
         words,
         files,
         handed: false,
+        at: log::now_ms(),
     };
     let queue = kind == "queue";
     let again = change(dir, false, |book| {
