@@ -70,6 +70,7 @@ fn git(cwd: &str, args: &[&str]) -> String {
 
 /// What a session's past holds for its hand-off: its entries, its user's answers, where each of
 /// its conversations began, and whether the user stopped a turn since their last message.
+#[derive(Default)]
 struct Past {
     entries: Vec<Entry>,
     /// Where, the text, and who gave it: the user, or Overnight, a reviewer, a parent (O50).
@@ -82,13 +83,7 @@ struct Past {
 /// `tails`: a step's output also shows its end, not only its size and reference [D485].
 fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     let dir = spec.dir.as_path();
-    let mut p = Past {
-        entries: vec![],
-        answers: vec![],
-        starts: vec![],
-        turns: vec![],
-        stopped: false,
-    };
+    let mut p = Past::default();
     // Answers as Brigadier gave them, on every agent (Codex logs no answer of its own), kept once
     // the agent has them: written, or acked without an error. cid → (at, text, by, acked).
     let mut given = std::collections::HashMap::<String, (String, String, String, bool)>::new();
@@ -101,6 +96,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     let mut cutting = String::new();
     // A step's entry by its tool id, for its output's pointer once it's done.
     let mut steps = std::collections::HashMap::<String, usize>::new();
+    let mut summary = false;
     // A fork's inherited copy first, under its `i<line>` references, then its own log.
     archive::each(dir, |item, at| {
         let fresh = &item["switch"];
@@ -126,6 +122,13 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             cutting = "user".into();
         }
         p.stopped |= cutting == "user";
+        // A summary turn, the conversation's own before its renewal, is no record but its Stop.
+        if item["kind"] == "input" && c.is_null() {
+            summary = item["origin"] == "summary";
+        }
+        if summary {
+            return;
+        }
         let cid = |k: &str| item[k].as_str().unwrap_or("").to_string();
         match item["kind"].as_str() {
             Some("input") if c["kind"] == "answer" => {
