@@ -36,6 +36,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if name.is_empty() || name.starts_with('.') {
                 return Err(io::Error::other("This file has no name to keep it by."));
             }
+            // The message's other files, as its composer holds them now: 20 a message at most [D2022].
+            let others = flag(args, "--in").map_or(0, |ids| {
+                ids.split(',').filter(|i| !i.is_empty() && *i != id).count()
+            });
+            if others >= message::MAX_FILES {
+                let why = format!("at most {} attachments per message", message::MAX_FILES);
+                return Ok(json!({"ok": false, "error": why, "full": true}));
+            }
             let bytes = match (flag(args, "--path"), flag(args, "--data")) {
                 (Some(path), _) => {
                     let size = fs::metadata(path)?.len();

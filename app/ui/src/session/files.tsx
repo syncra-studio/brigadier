@@ -12,7 +12,7 @@ import { openAttachment } from "../shell/tab-store";
 import { giveChipTabs } from "../browser/give";
 import type { SentFile } from "../thread/item";
 import type { Runner } from "./composer";
-import { HOME_DRAFT } from "./draft";
+import { draftOf, HOME_DRAFT } from "./draft";
 
 /*
  * The composer's files: each gets its id here and is shown at once, while Rust stores it under its session's folder
@@ -71,11 +71,15 @@ export const base64 = (buffer: ArrayBuffer) => {
   return btoa(text);
 };
 
+/** Each file's store, settled once its tile says how it went; and each owner's files in the order they were attached. */
+const storing = new Map<string, Promise<unknown>>();
+const admitted = new Map<string, string[]>();
+
 /** Hands `file` to Rust; a file on disk goes by its path, so a too-large one is never read whole here. */
-async function store(run: Runner, owner: string, id: string, file: File, backend: string | undefined) {
+async function store(run: Runner, owner: string, id: string, file: File, backend: string | undefined, others: readonly string[]) {
   const path = window.brigadier?.pathForFile(file) ?? "";
   const from = path ? ["--path", path] : ["--data", base64(await file.arrayBuffer())];
-  return run(["attach", owner, "add", id, file.name || "Pasted image.png", ...(backend ? ["--backend", backend] : []), ...from]);
+  return run(["attach", owner, "add", id, file.name || "Pasted image.png", ...(backend ? ["--backend", backend] : []), "--in", others.join(","), ...from]);
 }
 
 /** The draft as Rust takes it, when it holds more than words; none for plain text [D109]. */
@@ -116,13 +120,39 @@ export function useComposerFiles({ owner, draft = owner, run, field, backend, pr
     const mime = file.type || "application/octet-stream";
     set(owner, id, { id, name: file.name || "Pasted image.png", mime, state: "uploading" });
     if (!inText) change(draft, (now) => ({ ...now, tiles: [...now.tiles, id] }));
-    void store(run, owner, id, file, backend).then((reply) => {
+    // The message's files taken in, or on their way and attached before this one, so Rust holds it to 20 [D2022, D487]:
+    // a paste's later chips and later drops aren't counted, and a wait is only ever on earlier files. The field's, or its
+    // kept draft's once the composer is gone (an undercount there leaves it to the send's own check).
+    const order = (admitted.get(owner) ?? []).concat(id);
+    admitted.set(owner, order);
+    const earlier = (each: string) => order.indexOf(each) > -1 && order.indexOf(each) < order.indexOf(id);
+    const counted = () => {
+      const parts = field.current?.parts() ?? draftOf(draft)?.parts ?? [];
+      const inField = parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : []));
+      const state = (each: string) => filesOf(owner).all.get(each)?.state;
+      return [...new Set([...filesOf(draft).tiles, ...inField])].filter((each) => each !== id && (state(each) === "ready" || (state(each) === "uploading" && earlier(each))));
+    };
+    const stored = (async () => {
+      let others = counted();
+      let reply = await store(run, owner, id, file, backend, others);
+      // Refused for room while earlier files it counted were still on their way: once they've settled it asks again,
+      // so one that fails later doesn't take its place; a tile taken out meanwhile isn't stored again.
+      while (reply.full && others.some((each) => filesOf(owner).all.get(each)?.state === "uploading")) {
+        await Promise.allSettled(others.map((each) => storing.get(each)));
+        if (!inText && !filesOf(draft).tiles.includes(id)) return null;
+        others = counted();
+        reply = await store(run, owner, id, file, backend, others);
+      }
+      return reply;
+    })();
+    storing.set(id, stored.then((reply) => {
+      if (!reply) return;
       const name = file.name || "Pasted image.png";
       if (reply.ok) return set(owner, id, { id, name, mime, state: "ready", url: urlOf(owner, id) });
       set(owner, id, { id, name, mime, state: "failed", error: String(reply.message ?? reply.error ?? "Couldn't attach this file") });
       // A failed image or paste in the text shows as a tile too, saying why.
       if (inText) change(draft, (now) => ({ ...now, tiles: now.tiles.includes(id) ? now.tiles : [...now.tiles, id] }));
-    });
+    }));
   };
   const remove = (id: string) => {
     change(draft, (now) => ({ ...now, tiles: now.tiles.filter((each) => each !== id) }));
