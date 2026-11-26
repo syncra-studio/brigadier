@@ -413,6 +413,8 @@ fn attempt(
         let taken = old.iter().flat_map(|o| &o.files);
         let taken: Vec<String> = taken.filter(|f| !g.files.contains(f)).cloned().collect();
         g.files.extend(taken);
+        // This try may reach a host: an adopted one's retry included, so no later try is a first.
+        g.reached = true;
         list.push(g.clone());
         Ok(Some(old.is_none_or(|o| !o.reached)))
     })?;
