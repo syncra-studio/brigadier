@@ -39,6 +39,7 @@ mod settings;
 mod setup;
 mod side;
 pub mod signin;
+mod start;
 mod storage;
 mod switching;
 mod tabs;
@@ -47,19 +48,19 @@ pub mod workers;
 pub use brigadier_core::title;
 
 use attach::book::unsent;
-use brigadier_core::{self as core, Spec, adapters, fold};
+use brigadier_core::{self as core, adapters, fold};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
-use std::{env, fs};
 
-pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the test agent, if none) [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--cid C] [--parts JSON] [--from F] [--carry-tabs] [--overnight]
+pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the test agent, if none) [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--cid C] [--parts JSON] [--from F] [--carry-tabs] [--overnight] [--home <@home…> --draft JSON [--draft-rev R]]
        brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] [--draft JSON [--draft-rev R] [--chips <id,…>]] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
-       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R] [--took <cid,…>] | retry|drop <cid> | adopt <cid> --kind send|queue --op JSON --draft JSON [--draft-rev R]] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
+       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R] [--took <cid,…>] | retry|drop <cid> | adopt <cid> --kind send|queue|start --op JSON --draft JSON [--draft-rev R]] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
        brigadier attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) [--in IDS] | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path> | back <session> <parts JSON|null> [--carry-tabs] (back: @home only)
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <@home|@home:P|id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | profile <tab> <profile> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> | keep <tab> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen | take <@home…> <tab>…] [--behind]
@@ -140,6 +141,7 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
 }
 
 pub use out::heard;
+use start::start;
 pub use switching::{switch_settings, wants};
 
 /// Home's unsent words have no session to live in; this can't be a session id.
@@ -173,127 +175,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         core::check_id(bare.unwrap_or(id))?;
     }
     match cmd {
-        "start" => {
-            let id = arg(args, 1)?;
-            if [core::SETUP, core::TERM].iter().any(|p| id.starts_with(p)) {
-                let kept = format!("{id:?} is kept for setup runs and terminals");
-                return Err(io::Error::other(kept));
+        // A new chat from Home's draft (`--home`) is kept in its book until it settles [C65].
+        "start" => match flag(args, "--home") {
+            Some(key) if key == HOME_DRAFT || key.starts_with("@home:") => {
+                attach::book::going(&attach::place(data, key)?, args, |a| start(data, a))
             }
-            let backend = flag(args, "--backend").unwrap_or("fake");
-            if adapters::get(backend).is_none() {
-                return Err(io::Error::other(format!("unknown backend {backend}")));
-            }
-            let opts = args
-                .windows(2)
-                .filter(|w| w[0] == "--opt")
-                .filter_map(|w| w[1].split_once('='))
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect();
-            // New project sessions have their own worktree unless Local checkout is chosen [D160].
-            let (projects_lock, projects) = core::projects::locked(data)?;
-            let project = flag(args, "--project")
-                .map(|p| {
-                    let found = projects.into_iter().find(|r| r.id == p);
-                    found.ok_or_else(|| io::Error::other(format!("no project {p}")))
-                })
-                .transpose()?;
-            if project.as_ref().is_some_and(|p| p.removing) {
-                return Err(io::Error::other("This project is being removed."));
-            }
-            let worktree = project.is_some() && !has(args, "--local");
-            // A chat with no project works in a folder of its own, gone with the session [D35, D388].
-            let scratch =
-                has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
-            let cwd = flag(args, "--cwd")
-                .map(String::from)
-                .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
-                .or_else(|| project.as_ref().map(|p| p.folder.clone()))
-                .or_else(|| scratch.as_ref().map(|d| d.display().to_string()))
-                .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
-            let spec = Spec {
-                project: project.as_ref().map(|p| p.id.clone()),
-                id: id.into(),
-                backend: backend.into(),
-                mode: "pipe".into(),
-                cwd,
-                model: flag(args, "--model").map(String::from),
-                // Unpicked, Rust's default for the agent and the project's trust [D187, D239].
-                level: flag(args, "--level").map(String::from).or_else(|| {
-                    let held = models::held(data, project.as_ref().map(|p| p.id.as_str()));
-                    let chosen = settings::get(data, "default_level");
-                    adapters::get(backend)
-                        .and_then(|a| models::default_level(a, held, &chosen).map(String::from))
-                }),
-                effort: flag(args, "--effort").map(String::from),
-                fast: has(args, "--fast"),
-                opts,
-                created: log::now_ms(),
-                ..Default::default()
-            };
-            if let Some(a) = adapters::get(backend) {
-                core::level(&spec, a, false).map_err(io::Error::other)?;
-            }
-            let fresh = !core::session_dir(data, id).join("session.json").exists();
-            let mut told = None;
-            let spec = if fresh {
-                let (spec, c) = accounts::picked(data, spec);
-                // Its Use pick unusable: on the login while Providers shows it, else not at all [C36].
-                if let Err(why) =
-                    accounts::fell_back(data, &spec, c.as_ref(), "chat").map(|why| told = why)
-                {
-                    return Ok(json!({"ok": false, "error": "sign_in", "message": why}));
-                }
-                plugins::sync(data);
-                core::share::one_local(data, project.as_ref(), &spec)?;
-                core::create(data, &spec)?
-            } else {
-                core::load(data, id)?
-            };
-            // Before its first message, which tells its agent.
-            if fresh && has(args, "--overnight") {
-                overnight::on(data, &spec, None)?;
-            }
-            let parts = parts(args)?;
-            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
-            // The tabs are extras: a failure here never stops the session from starting.
-            if fresh && has(args, "--carry-tabs") {
-                let _ = tabs::carry(data, id);
-            }
-            if let Some(dir) = &scratch {
-                fs::create_dir_all(dir)?;
-            }
-            let own = Path::new(&spec.cwd) == core::worktrees::path(data, id);
-            if let Some(project) = project.filter(|_| worktree && own) {
-                let base = flag(args, "--base");
-                let title = flag(args, "--text").map_or_else(
-                    || title::from(&fs::read_to_string(spec.dir.join("title")).unwrap_or_default()),
-                    title::from,
-                );
-                let made = core::folder::ensure(&spec, &project, base, &title);
-                // A fresh session it undid goes too, what it took back with its draft; on a retry it
-                // keeps its log and first message [D35].
-                if made.is_err() && fresh && !spec.dir.join(core::worktrees::RECORD).exists() {
-                    attach::back(data, &spec, &parts, has(args, "--carry-tabs"))?;
-                    fs::remove_dir_all(&spec.dir)?;
-                }
-                made?;
-            }
-            drop(projects_lock);
-            owner::ensure(data, &spec)?;
-            accounts::tell(data, id, told);
-            match flag(args, "--text") {
-                Some(text) => {
-                    let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
-                    let reply =
-                        control::send(data, &spec, text, parts, Some(&cid), None, None, false)?;
-                    Ok(core::applied(&spec.dir, &cid, reply))
-                }
-                None => Ok(json!({"ok": true, "id": id})),
-            }
-        }
+            Some(_) => Err(io::Error::other(USAGE)),
+            None => start(data, args),
+        },
         "send" => {
             let dir = core::session_dir(data, arg(args, 1)?);
-            attach::book::going(&dir, args, |a| send(data, a))
+            attach::book::going(&attach::book::Place::Session(dir), args, |a| send(data, a))
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
         "seen" => {
@@ -328,9 +220,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "label" => labels::run(data, args),
         "draft" if matches!(arg(args, 2), Ok("retry" | "adopt" | "drop")) => {
-            let dir = core::load(data, arg(args, 1)?)?.dir;
-            attach::book::ops(&dir, args, |a| match a[0].as_str() {
+            let place = attach::place(data, arg(args, 1)?)?;
+            attach::book::ops(&place, args, |a| match a[0].as_str() {
                 "send" => send(data, a),
+                "start" => start(data, a),
                 _ => queue::run(data, a),
             })
         }
@@ -368,7 +261,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "chips" => chips::run(data, args),
         "queue" if args.get(2).is_some_and(|a| a == "add") => {
             let dir = core::session_dir(data, arg(args, 1)?);
-            attach::book::going(&dir, args, |a| queue::run(data, a))
+            attach::book::going(&attach::book::Place::Session(dir), args, |a| {
+                queue::run(data, a)
+            })
         }
         "queue" => queue::run(data, args),
         "recover" => {

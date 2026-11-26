@@ -1,4 +1,4 @@
-//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | back <session> <parts JSON or null> [--carry-tabs] | view <path> | reveal <path>`
+//! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path>`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder (book.rs), or Home's until Send makes its session [D35, D127, D363,
 //! D2022]; and `note`, the session's notes (note.rs).
@@ -6,7 +6,7 @@
 pub(crate) mod book;
 pub(crate) mod note;
 
-use super::{HOME_DRAFT, arg, flag, has, remove};
+use super::{HOME_DRAFT, arg, flag};
 use brigadier_core::git::{self, Target};
 use brigadier_core::message::{self, MAX_BYTES, draft_of, file_in, is_image, sent};
 use brigadier_core::{self as core, adapters, check_id};
@@ -23,7 +23,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let owner = arg(args, 1)?;
     if owner != HOME_DRAFT {
         core::load(data, owner)?;
-        book::settle_cut(&core::session_dir(data, owner))?;
+        book::settle_cut(&book::Place::Session(core::session_dir(data, owner)))?;
     }
     let folder = draft_of(data, owner)?;
     match arg(args, 2)? {
@@ -113,17 +113,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
                 _ => Ok(json!({"ok": true})),
             }
-        }
-        // A start that's discarded: its session, if made, goes next.
-        "back" if owner == HOME_DRAFT => {
-            let id = arg(args, 3)?;
-            check_id(id)?;
-            if core::session_dir(data, id).join("session.json").exists() {
-                let parts = serde_json::from_str(arg(args, 4)?)?;
-                let carried = has(args, "--carry-tabs");
-                back(data, &core::load(data, id)?, &parts, carried)?;
-            }
-            Ok(json!({"ok": true}))
         }
         // An image a thread's link or reply names, anywhere on disk, copied under the session's own `viewed/` for
         // the page to show from there, so it goes with the session [D35, D290]. `at` is its file, or the copy once that's gone.
@@ -318,24 +307,36 @@ fn too_large() -> Value {
     json!({"ok": false, "error": format!("File is too large to upload (maximum {} MB)", MAX_BYTES >> 20)})
 }
 
-/// What the composer holds unsent, as the UI's own JSON [D109, D237]; a deleted session refuses.
-pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
-    let id = arg(args, 1)?;
-    // Each project's draft keeps its words, and Chats' its own; `p` was checked in lib.rs.
-    let path = if id == HOME_DRAFT {
-        data.join("home-draft")
-    } else if let Some(p) = id.strip_prefix("@home:") {
-        data.join(format!("home-draft-{p}"))
-    } else {
-        core::load(data, id)?;
-        return book::kept(&core::session_dir(data, id), args);
+/// Where draft `id`'s book is: a session's, or Home's, a file of its own for each project's draft
+/// and Chats' (`@home:<p>`, `p` checked as an id); a deleted session refuses.
+pub fn place(data: &Path, id: &str) -> io::Result<book::Place> {
+    let file = match id.strip_prefix("@home:") {
+        _ if id == HOME_DRAFT => "home-draft".into(),
+        Some(p) => check_id(p).map(|()| format!("home-draft-{p}"))?,
+        None => return Ok(book::Place::Session(core::load(data, id)?.dir)),
     };
-    match args.get(2).map(String::as_str) {
-        None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),
-        Some("") => remove(&path)?,
-        Some(parts) => core::write_atomic(&path, parts.as_bytes())?,
+    let (data, file) = (data.to_path_buf(), data.join(file));
+    Ok(book::Place::Home { data, file })
+}
+
+/// What the composer holds unsent, as the UI's own JSON [D109, D237], in its book (book.rs).
+pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
+    let place = place(data, arg(args, 1)?)?;
+    let mut reply = book::kept(&place, args)?;
+    // New chat's draft of before each project had its own names the project it was in, read once.
+    let old: Option<Value> = (args.len() == 2 && place.home().is_some())
+        .then(|| serde_json::from_slice(&fs::read(place.file()).ok()?).ok())
+        .flatten();
+    if let Some(project) = old
+        .filter(|v| v.get("book").is_none())
+        .and_then(|v| v.get("project").cloned())
+        && let Some(draft) = reply["draft"].as_str()
+    {
+        let mut draft: Value = serde_json::from_str(draft)?;
+        draft["project"] = project;
+        reply["draft"] = draft.to_string().into();
     }
-    Ok(json!({"ok": true}))
+    Ok(reply)
 }
 
 /// Home's files none of its saved drafts names, once a day old, as the old app's cleanup of files nothing refers to,
@@ -347,9 +348,19 @@ pub fn sweep_home(data: &Path) {
         .flatten()
         .flatten()
         .filter(draft);
+    // A start on its way names its files only in its book's entry [C65].
     let named: Vec<String> = (drafts.filter_map(|e| fs::read_to_string(e.path()).ok()))
         .filter_map(|t| serde_json::from_str::<Value>(&t).ok())
-        .flat_map(|saved| message::ids(&saved))
+        .flat_map(|saved| {
+            let going = saved["book"]["inflight"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            [saved]
+                .into_iter()
+                .chain(going)
+                .flat_map(|each| message::ids(&each))
+        })
         .collect();
     let day = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 60 * 60);
     let Ok(home) = draft_of(data, HOME_DRAFT) else {

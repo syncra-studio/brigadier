@@ -1,8 +1,11 @@
 //! `draft <id> retry|adopt|drop <cid>`: a message on its way, from its bubble or queue row, each
-//! under the message's own lock, so it waits for an attempt under way [D54, C58].
+//! under the message's own lock, so it waits for an attempt under way [D54, C58]. Home's, a new
+//! chat from its row [C65].
 
 use super::verdict::there;
-use super::{Going, How, Words, attempt, change, cid_lock, files_of, hold, opts, present, settle};
+use super::{
+    Going, How, Place, Words, attempt, change, files_of, hold, opts, place, present, settle,
+};
 use crate::{USAGE, arg, flag, has};
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -10,41 +13,52 @@ use std::io;
 use std::path::Path;
 
 /// `retry <cid>` (Try again, Add again): the message's command as it ran, again under its id,
-/// unless it's there already. `adopt <cid> --kind send|queue --op <json> --draft <json>
+/// unless it's there already. `adopt <cid> --kind send|queue|start --op <json> --draft <json>
 /// [--draft-rev R]`: the app's own copy of a message whose reply never came, kept here unless the
 /// book or the session has it; acked either way, so the app lets its copy go. `drop <cid>`
 /// (Discard, Delete, Edit).
 pub fn ops(
-    dir: &Path,
+    place: &Place,
     args: &[String],
     run: impl FnOnce(&[String]) -> io::Result<Value>,
 ) -> io::Result<Value> {
     let (id, cid) = (arg(args, 1)?, arg(args, 3)?);
     core::check_id(cid)?;
-    let _held = hold(&cid_lock(dir, cid))?;
-    match arg(args, 2)? {
-        "retry" => retry(dir, id, cid, run),
-        "adopt" => adopt(dir, args, id, cid),
-        "drop" => discard(dir, cid),
+    place::resume(place)?;
+    let _held = hold(&place.cid_lock(cid))?;
+    match (arg(args, 2)?, place) {
+        ("retry", _) => retry(place, id, cid, run),
+        ("adopt", _) => adopt(place, args, id, cid),
+        ("drop", Place::Session(dir)) => discard(place, dir, cid),
+        ("drop", _) => place::discard(place, cid),
         _ => Err(io::Error::other(USAGE)),
     }
 }
 
-/// Whether `op` is a command a retry may run for message `cid` of session `id`: the book is a file
-/// anything can write, so it runs only a send or queue add of this session under this id, and
-/// never one for a worker, a command or another sender.
-fn valid(op: &[String], id: &str, cid: &str, queue: bool) -> bool {
+/// Whether `op` is a command a retry may run for message `cid` of session `id`, or of Home's
+/// draft `id`: the book is a file anything can write, so it runs only a send or queue add of this
+/// session, or a start from this draft, under this id, and never one for a worker, a command or
+/// another sender.
+fn valid(place: &Place, op: &[String], id: &str, cid: &str, queue: bool) -> bool {
     let at = |i: usize| op.get(i).map(String::as_str);
-    let mine = match queue {
-        true => {
+    let mine = match (queue, place) {
+        (true, Place::Session(_)) => {
             at(0) == Some("queue") && at(2) == Some("add") && flag(opts(op), "--qid") == Some(cid)
         }
-        false => at(0) == Some("send") && flag(opts(op), "--cid") == Some(cid),
+        (false, Place::Session(_)) => at(0) == Some("send") && flag(opts(op), "--cid") == Some(cid),
+        (false, Place::Home { .. }) => {
+            at(0) == Some("start") && flag(opts(op), "--cid") == Some(cid) && place.at(op).is_some()
+        }
+        (true, Place::Home { .. }) => false,
     };
     let banned = ["--to", "--shell", "--origin", "--draft", "--draft-rev"];
     // A queue add's parser reads these anywhere in it (queue.rs), its words too; a send's never.
     let read = if queue { op } else { opts(op) };
-    mine && at(1) == Some(id) && !banned.iter().any(|b| has(read, b))
+    let to = match place {
+        Place::Session(_) => at(1),
+        Place::Home { .. } => flag(opts(op), "--home"),
+    };
+    mine && to == Some(id) && !banned.iter().any(|b| has(read, b))
 }
 
 impl super::Book {
@@ -63,12 +77,12 @@ impl super::Book {
 }
 
 fn retry(
-    dir: &Path,
+    place: &Place,
     id: &str,
     cid: &str,
     run: impl FnOnce(&[String]) -> io::Result<Value>,
 ) -> io::Result<Value> {
-    let found = change(dir, |book| {
+    let found = change(place, |book| {
         let again = book.refused.iter().any(|c| c == cid);
         Ok((again, book.find(cid).map(|(queue, g)| (queue, g.clone()))))
     })?;
@@ -79,43 +93,48 @@ fn retry(
         (false, Some(found)) => found,
     };
     // There already: it went, and nothing runs.
-    if there(dir, cid) {
-        change(dir, |book| {
+    if place.at(&g.op).is_some_and(|d| there(&d, cid)) {
+        change(place, |book| {
             let list = book.list(queue);
             if let Some(at) = list.iter().position(|each| each.cid == cid) {
                 let g = list.remove(at);
-                settle(book, g, How::Went, Value::Null);
+                settle(book, g, How::Went, Value::Null, None);
             }
             Ok(())
         })?;
         return Ok(json!({"ok": true, "result": "went", "cid": cid}));
     }
-    if !valid(&g.op, id, cid, queue) {
+    if !valid(place, &g.op, id, cid, queue) {
         let error = "This message can't be tried again here: discard or edit it.";
         return Ok(json!({"ok": false, "unsettled": true, "cid": cid, "error": error}));
     }
     // Tried again it's no longer the field's words: a save of them, none since, goes with it.
-    change(dir, |book| {
+    change(place, |book| {
         book.release(&g);
         Ok(())
     })?;
-    attempt(dir, queue, Going { rev: None, ..g }, run)
+    let g = Going {
+        rev: None,
+        error: Value::Null,
+        ..g
+    };
+    attempt(place, queue, g, run)
 }
 
-fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> {
+fn adopt(place: &Place, args: &[String], id: &str, cid: &str) -> io::Result<Value> {
     let queue = match flag(args, "--kind") {
         Some("queue") => true,
-        Some("send") => false,
+        Some("send" | "start") => false,
         _ => return Err(io::Error::other(USAGE)),
     };
     let value = |name| flag(args, name).ok_or_else(|| io::Error::other(USAGE));
     let op: Vec<String> = serde_json::from_str(value("--op")?)?;
-    if !valid(&op, id, cid, queue) {
+    let Some(dir) = place.at(&op).filter(|_| valid(place, &op, id, cid, queue)) else {
         return Err(io::Error::other("not a message's own command"));
-    }
+    };
     let words: Words = serde_json::from_str(value("--draft")?)?;
-    let files = files_of(dir, &words)?;
-    let made = change(dir, |book| {
+    let files = files_of(place, &words)?;
+    let made = change(place, |book| {
         if book.refused.iter().any(|c| c == cid) {
             return Ok(json!({"ok": true, "given_back": true, "cid": cid}));
         }
@@ -123,7 +142,7 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
             return Ok(json!({"ok": true, "kept": true, "reached": g.reached, "cid": cid}));
         }
         // Under draft.lock: read without the queue's lock, the queue first [§5.2].
-        if present(dir, cid) {
+        if present(&dir, cid) {
             return Ok(json!({"ok": true, "went": true, "cid": cid}));
         }
         // The field's revision it went from: a save of its words, none since, is its own.
@@ -138,6 +157,7 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
             files,
             op: op.clone(),
             reached,
+            error: Value::Null,
         };
         book.list(queue).push(g);
         Ok(json!({"ok": true, "kept": true, "reached": false, "cid": cid}))
@@ -146,7 +166,7 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
     if made["kept"] == true {
         let chips: Vec<&str> =
             flag(opts(&op), "--chips").map_or(vec![], |c| c.split(',').collect());
-        crate::chips::take(dir, cid, id, &chips)?;
+        crate::chips::take(&dir, cid, id, &chips)?;
     }
     Ok(made)
 }
@@ -155,14 +175,14 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
 /// under, so never midway; in the log, it's refused, as nothing unsends it. Gone from the book, a
 /// give-back no save has shown the UI with it, its id is refused from then on, so a late request
 /// or a Try again never runs it, and its chips wait again. Its files stay with the session.
-fn discard(dir: &Path, cid: &str) -> io::Result<Value> {
+fn discard(place: &Place, dir: &Path, cid: &str) -> io::Result<Value> {
     let pulled = crate::queue::pull(dir, cid)?;
     if !pulled && core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid)) {
         return Ok(
             json!({"ok": false, "logged": true, "cid": cid, "error": "It was already sent."}),
         );
     }
-    change(dir, |book| {
+    change(place, |book| {
         // A save of its words, none since it went, goes with it.
         if let Some((_, g)) = book.find(cid).map(|(q, g)| (q, g.clone())) {
             book.release(&g);
