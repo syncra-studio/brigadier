@@ -291,7 +291,11 @@ fn make(
 ) -> io::Result<()> {
     // Recorded before git makes it, so a create cut short between the two is undone in full; made
     // only if it isn't there, with a reflog line of its own for undo to know it by.
-    let made = format!("brigadier: made for {}", spec.dir.display());
+    // A token git keeps as written (it folds whitespace in a reflog line), unique to this create.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let made = format!("brigadier:made:{nanos:x}.{:x}", std::process::id());
     owned.branch = Some(branch.into());
     owned.made = Some(made.clone());
     write(&spec.dir, owned)?;
@@ -353,21 +357,27 @@ fn undo(owned: &Owned) -> io::Result<()> {
     let repo = Path::new(&owned.repo);
     // A failed branch create must never take a branch another session or git made: with `made`,
     // only the branch whose first reflog line is it; an older build's record named it once made.
-    let ours = |branch: &str| match &owned.made {
-        None => true,
-        Some(made) => {
-            let log = [
-                "reflog",
-                "show",
-                "--format=%gs",
-                &format!("refs/heads/{branch}"),
-            ];
-            git(repo, &log).is_ok_and(|l| l.lines().last() == Some(made.as_str()))
+    // No line to tell by (a reflog unread or expired) keeps the record for the next sweep.
+    let ours = |branch: &str| -> io::Result<bool> {
+        let Some(made) = &owned.made else {
+            return Ok(true);
+        };
+        let log = [
+            "reflog",
+            "show",
+            "--format=%gs",
+            &format!("refs/heads/{branch}"),
+        ];
+        match git(repo, &log)?.lines().last() {
+            Some(first) => Ok(first == made),
+            None => err(format!(
+                "Brigadier couldn't tell whether it made the branch {branch}."
+            )),
         }
     };
     if let Some(branch) = &owned.branch
         && has_branch(repo, branch)
-        && ours(branch)
+        && ours(branch)?
     {
         git(repo, &["branch", "-D", branch])?;
     }
