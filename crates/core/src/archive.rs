@@ -172,18 +172,24 @@ pub fn answer(item: &Value) -> Option<String> {
     Some(text).filter(|t| !t.trim().is_empty())
 }
 
-/// An answer, from the log, by the reference a hand-off gives it, as the user's entry. Nothing
+/// An answer, from the log or a fork's copy, by the reference a hand-off gives it, as the user's entry. Nothing
 /// indexes it; only the log keeps it.
 pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
     let mut found = None;
-    crate::rewind::read_active(dir, |item| {
-        if self::at(item) == at
+    // A fork's inherited answers too, under their `i<line>` references.
+    each(dir, |item, here| {
+        if here == at
             && let Some(text) = answer(item)
         {
             found = Some(Entry {
                 at: at.into(),
-                from: "user",
-                who: String::new(),
+                // Only the user's own is theirs: Overnight's, a reviewer's or a parent's says so (O50).
+                from: if item["control"]["by"].is_null() {
+                    "user"
+                } else {
+                    "answer"
+                },
+                who: item["control"]["by"].as_str().unwrap_or("").into(),
                 text,
                 files: vec![],
                 ts: item["ts"].as_u64().unwrap_or(0),

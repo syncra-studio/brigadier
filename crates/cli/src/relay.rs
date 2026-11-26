@@ -384,6 +384,7 @@ pub(crate) fn sender(e: &core::archive::Entry) -> String {
         "tool" if e.who.is_empty() => "files changed".into(),
         "tool" => format!("tool {}", e.who),
         "summary" => format!("summary written by {}", e.who),
+        "answer" => format!("answer given by {}, not the user", e.who),
         f => f.into(),
     }
 }
@@ -423,8 +424,12 @@ pub(crate) fn read(
         .filter(|at| all.iter().all(|e| e.at != *at))
         .and_then(|at| core::archive::answered(&dir, at))
     {
-        let frame = |e: &core::archive::Entry| e.at.parse().unwrap_or(0u64);
-        all.insert(all.partition_point(|x| frame(x) < frame(&e)), e);
+        // Log order: a fork's inherited lines, then its own frames.
+        let key = |e: &core::archive::Entry| match e.at.strip_prefix('i') {
+            Some(n) => (0, n.parse().unwrap_or(0u64)),
+            None => (1, e.at.parse().unwrap_or(0)),
+        };
+        all.insert(all.partition_point(|x| key(x) < key(&e)), e);
     }
     if user {
         all.retain(|e| e.from == "user");
