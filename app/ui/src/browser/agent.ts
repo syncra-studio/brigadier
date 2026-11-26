@@ -26,10 +26,14 @@ const holdChangeFailed = (error: unknown) => console.error("changing an agent's 
 
 /** Runs the daemon's calls in this window, and gives the agent its hold back or takes it as the user does. */
 export function installBrowserAgent(): void {
+  // A call right after its session's turn ended waits for that end's void, 2 s at most; a slower end stops at the call.
+  const ending = new Map<string, Promise<unknown>>();
+  const begun = new Map<string, number>();
   setBrowserHandler((frame) => {
     const call = frame as Call;
-    if (call.op.op === "end") return void endTurn(call).catch(holdChangeFailed);
-    void runCall(call).then((result) => run(["browser", "answer", call.id, JSON.stringify(result)])).catch(holdChangeFailed);
+    const before = ending.get(call.driver) ?? Promise.resolve();
+    if (call.op.op === "end") return void ending.set(call.driver, before.then(() => Promise.race([endTurn(call, begun), wait(2000)])).catch(holdChangeFailed));
+    void before.then(() => (begun.set(call.driver, (begun.get(call.driver) ?? 0) + 1), runCall(call))).then((result) => run(["browser", "answer", call.id, JSON.stringify(result)])).catch(holdChangeFailed);
   });
   // The user took a tab over: the agent's hold of its page goes at once, so what they do is their own. Continue gives
   // it back as it was, except that refs from before the user's turn are void.
@@ -48,12 +52,12 @@ export function installBrowserAgent(): void {
  * The agent's turn ended (crates/cli/src/browser/hub.rs): it lets go of its tabs, which stay open in its group, the
  * user's to use until its next turn, as Claude in Chrome's [D894 D901].
  */
-async function endTurn({ owner, driver }: Call): Promise<void> {
+async function endTurn({ owner, driver }: Call, begun: Map<string, number>): Promise<void> {
+  const calls = begun.get(driver), stale = () => begun.get(driver) !== calls;
   await tabsRead(owner);
-  for (const tab of browserTabs(owner)) {
-    // A tab with no driver now was ungrouped as it ended, as an archive does: its hold goes too.
-    if (tab.driver === driver || !tab.driver) agentDrive(tab.id, false).catch(holdChangeFailed);
-  }
+  // A tab with no driver now was ungrouped as it ended, as an archive does: its hold goes too.
+  const mine = browserTabs(owner).filter((tab) => tab.driver === driver || !tab.driver);
+  await Promise.all(mine.map((tab) => agentDrive(tab.id, false, false, stale).catch(holdChangeFailed)));
 }
 
 /** Its page goes with it: a tab of a session not on screen has no view whose unmount would close it. */

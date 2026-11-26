@@ -43,13 +43,14 @@ struct Hub {
     /// The user's yes to one call until it goes through, by agent, tab and the call itself. In
     /// memory only, so nothing typed is ever written down.
     grants: Mutex<HashMap<(String, String, String), Value>>,
-    /// Each tab's last read for its agent: its page load and text, for the next read's changes.
-    reads: Mutex<HashMap<String, (u64, String)>>,
+    /// Each tab's last read: its page load and text, for the next read's changes, who read it and
+    /// when its call began (ms).
+    reads: Mutex<HashMap<String, (u64, String, String, u64)>>,
     /// The tab each agent works in now.
     tabs: Mutex<HashMap<String, String>>,
     /// The session whose tabs each agent worked in this turn, so its turn's end lets go of them all,
-    /// a tab the user gave it too.
-    owners: Mutex<HashMap<String, String>>,
+    /// a tab the user gave it too, and when its last call began (ms).
+    owners: Mutex<HashMap<String, (String, u64)>>,
 }
 
 static HUB: LazyLock<Hub> = LazyLock::new(Hub::default);
@@ -311,7 +312,8 @@ fn held(owner: &str, me: &str, label: &str, op: &Value, here: &dyn Fn() -> bool)
     let tab_of = |id: &str| id.split('/').next().unwrap_or(id).to_string();
     let on = op["tab"].as_str().unwrap_or("");
     let tab = &tab_of(on);
-    lock(&HUB.owners).insert(me.to_string(), owner.to_string());
+    let at = brigadier_frames::log::now_ms();
+    lock(&HUB.owners).insert(me.to_string(), (owner.to_string(), at));
     loop {
         if !tab.is_empty() && !unpaused(tab, me, until, here) {
             // The window it is on stays its target, as any answer's does.
@@ -351,9 +353,19 @@ fn tab_of(w: &Words, me: &str) -> Result<String, Value> {
 }
 
 /// Session `me`'s turn ended: it lets go of the tabs it worked in (agent.ts), which stay open in
-/// its group, as Claude in Chrome's do [D894 D901].
-pub fn turn_ended(me: &str) {
-    let Some(owner) = lock(&HUB.owners).remove(me) else {
+/// its group, as Claude in Chrome's do [D894 D901]. `finished` is when it ended (ms): the daemon
+/// may hear of it late, and what its next turn did since stays.
+pub fn turn_ended(me: &str, finished: u64) {
+    // The user may use its tabs until its next turn: their next read is whole, not their changes.
+    lock(&HUB.reads).retain(|_, (_, _, by, at)| by != me || *at > finished);
+    let owner = {
+        let mut owners = lock(&HUB.owners);
+        if owners.get(me).is_some_and(|(_, at)| *at > finished) {
+            return;
+        }
+        owners.remove(me)
+    };
+    let Some((owner, _)) = owner else {
         return;
     };
     let Some((_, out)) = lock(&HUB.pages).last().cloned() else {

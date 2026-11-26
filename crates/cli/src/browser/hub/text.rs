@@ -68,7 +68,7 @@ fn changes(before: &str, after: &str) -> String {
 }
 
 /// A read page as the agent gets it: whole the first time and after a new page, else what changed.
-fn page_text(tab: &str, page: &Value, whole: bool) -> String {
+fn page_text(me: &str, tab: &str, page: &Value, whole: bool) -> String {
     let s = |k: &str| page[k].as_str().unwrap_or("").trim().to_string();
     let title = Some(s("title"))
         .filter(|t| !t.is_empty())
@@ -81,10 +81,15 @@ fn page_text(tab: &str, page: &Value, whole: bool) -> String {
     let head = format!("{tab} · {title} — {}{loading}", s("url"));
     let text = page["text"].as_str().unwrap_or("");
     let generation = page["generation"].as_u64().unwrap_or(0);
+    // No owner now: its turn ended during the call, so its next read is whole.
+    let at = lock(&HUB.owners).get(me).map(|(_, at)| *at);
     let mut reads = lock(&HUB.reads);
-    let last = reads.insert(tab.to_string(), (generation, text.to_string()));
-    match last.filter(|(g, _)| !whole && *g == generation) {
-        Some((_, before)) => format!("{head}\n\n{}", changes(&before, text)),
+    let last = match at {
+        Some(at) => reads.insert(tab.into(), (generation, text.into(), me.into(), at)),
+        None => reads.remove(tab),
+    };
+    match last.filter(|(g, ..)| !whole && *g == generation) {
+        Some((_, before, ..)) => format!("{head}\n\n{}", changes(&before, text)),
         None => format!("{head}\n\n{text}"),
     }
 }
@@ -171,7 +176,7 @@ pub(super) fn reply(data: &Path, me: &str, w: &Words, op: &Value, result: Value)
                     op["op"].as_str(),
                     Some("click" | "type" | "press" | "hover" | "scroll" | "wait")
                 );
-            let mut text = page_text(&tab, &result["page"], whole);
+            let mut text = page_text(me, &tab, &result["page"], whole);
             if stopped {
                 forget(&tab);
             }

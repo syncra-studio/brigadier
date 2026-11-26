@@ -210,7 +210,10 @@ fn main() -> io::Result<()> {
                         // Not on a running row's first sight: a new worker may already hold the
                         // computer or a tab [D907].
                         if was.is_some() || row["running"] != true {
-                            brigadier::browser::turn_ended(id);
+                            brigadier::browser::turn_ended(
+                                id,
+                                row["finished"].as_u64().unwrap_or(0),
+                            );
                             brigadier::computer::turn_ended(id);
                         }
                         check::turn_ended(&data, id);
