@@ -13,7 +13,7 @@ import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
 import { ask, type Row, showStop, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
-import { type Chip, dropChips, handOff, leaveChips, restoreChips, useChips, withChips } from "../panel/chips";
+import { type Chip, dropChips, handOff, leaveChips, useChips, withChips } from "../panel/chips";
 import { AgentChipTile } from "../landing/agent-chip";
 import { CommentChip } from "../review/comments";
 import { sendFailed } from "../thread/follow";
@@ -22,14 +22,14 @@ import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting
 import { SessionLevel } from "./level";
 import { takesImages, useSessionModel } from "./model";
 import { SessionNotices } from "./notices";
-import { draftOf, givenError, keepDraft, loadDraft, onGiven, resyncDraft, revOf, takeBack } from "./draft";
+import { draftOf, givenError, keepDraft, loadDraft, onGiven, revOf, takeBack } from "./draft";
 import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
-import { deliver, draftArgs, type Sent, setSent, useOnItsWay } from "./sent";
-import { addUncertain, dropUncertain, useUncertain } from "./uncertain";
+import { again, answered, chipArgs, discard, draftArgs, go, keep, sendOp, useHanding, useOnItsWay } from "./sent";
+import { useGoingOf } from "./uncertain";
 import { useTurn } from "./turn";
 import { OVERNIGHT, overnight, useOvernight } from "../sessions/overnight";
 import { NightReady, nightLook, nightPlaceholder, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
@@ -148,7 +148,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     return turn !== undefined && thread!.items.some((item) => item.kind === "question" && item.turnId === turn);
   });
   const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
-  const uncertain = useUncertain(id, daemon, run, (qid) => act({ kind: "remove", qid }, ["remove", qid]));
+  useHanding(id, daemon, run);
+  const onItsWay = useGoingOf(id).filter((each) => each.kind === "queue" && !each.removing); // Queue adds Rust may not hold, or holds unsettled (uncertain.ts).
+  const lost = (qid: string) => onItsWay.find((each) => each.cid === qid);
   let paused = row?.queue?.paused === true;
   // A `!` command that ended shows only while its report can't go.
   const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
@@ -160,57 +162,46 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local", shell: op.shell });
     }
   }
-  items = [...items, ...uncertain.rows.filter((each) => !delivered.has(each.id) && !items.some((one) => one.id === each.id))];
+  items = [...items, ...onItsWay.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
   const text = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
 
-  const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void) => {
+  const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void, then?: (reply: Record<string, any>) => void) => {
     const key = newId();
     setOps((now) => [...now, { ...op, key }]);
     setError(null);
     void run(["queue", id, ...args]).then((reply) => {
+      then?.(reply);
       if (reply.ok) return setOps((now) => now.map((each) => (each.key === key ? { ...each, at: reply.at ?? 0 } : each)));
       setOps((now) => now.filter((each) => each.key !== key));
       setError(failure(reply));
       fail?.(reply);
     });
   };
-  /** With `sub`, a refusal gives it back (`carry`), and one whose reply never came waits marked in the queue (uncertain.ts). */
-  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) =>
-    act({ kind: "add", qid, text: message, slot }, [...(slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...draftArgs(sub?.draft, sub?.rev ?? null)], (reply) => {
-      if (sub && reply.error === "disconnected") addUncertain(id, { qid, text: message, draft: sub.draft, chips: sub.chips, parts, at: Date.now() }, daemon);
-      fail?.(reply);
-    });
-  /** The chips a message carries leave with it. Refused, Rust gives the message back with them (an edited one's kept
-   * copy goes: it comes back as a new draft); a lost connection may have queued it, so they stay in its message rather
-   * than go twice. */
-  const carry = (sent: readonly Chip[], msg: string, pulled: typeof editing.current = null, sub?: Sub) => {
-    leaveChips(id, sent);
-    return (reply: Record<string, any>) => {
-      if (reply.error === "disconnected") return;
-      if (!reply.given_back || !sub) return restoreChips(id, msg, sent);
-      if (reply.again) resyncDraft(run, id);
-      else takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
-      if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
-    };
+  /** With `sub`, the field's own message: kept first, it takes its chips as it goes, and Rust gives it back if it's refused. */
+  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) => {
+    const args = ["add", message, "--qid", qid, ...(slot === undefined ? [] : ["--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...chipArgs(sub?.chips)];
+    const entry = sub && keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, chips: sub.chips, at: Date.now() });
+    act({ kind: "add", qid, text: message, slot }, [...args, ...draftArgs(sub?.draft, sub?.rev ?? null)], fail, entry && ((reply) => answered(run, id, entry, reply)));
   };
-  /** The field and the chips leave at once; Rust takes the chips for message `msg`, then it goes. Refused, nothing goes
-   * and all come back above what's typed since; given back by Rust, as from a refused add [D30, D1174, D1195, D363]. `into`: the session it starts. */
-  const going = (sent: readonly Chip[], msg: string, go: (pulled: typeof editing.current, back: (reply: Record<string, any>) => void, sub: Sub) => void, into?: string) => {
+  /** Given back, an edited message's kept copy goes: its words come back as a new draft, never under the refused id. */
+  const gave = (pulled: typeof editing.current) => (reply: Record<string, any>) => reply.given_back && pulled && act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
+  /** The field and the chips leave at once, the message kept first (uncertain.ts), so a reload loses nothing; `send` sends it with its chips [D30,
+   * D1174, D1195, D363]. Send as new (`into`: the session it starts) hands its chips over first; refused, all come back above what's typed since. */
+  const going = (sent: readonly Chip[], msg: string, send: (pulled: typeof editing.current, sub: Sub) => void, into?: string) => {
     const sub: Sub = { draft: { parts: field.current?.parts() ?? [], attachmentIds: [...files.tileIds] }, rev: revOf(id), chips: sent };
-    const pulled = take();
-    files.sent(into ? [] : sub.draft.parts);
-    const back = carry(sent, msg, pulled, sub);
-    handOff(id, sent, msg, () => go(pulled, back, sub), (reply) => {
-      if (reply.given_back) return back(reply);
+    const pulled = editing.current;
+    files.sent(into ? [] : sub.draft.parts); // Its tabs are its agent's before it goes [D775].
+    if (!into) send(pulled, sub);
+    take();
+    leaveChips(id, sent);
+    if (into) handOff(id, sent, msg, () => send(pulled, sub), (reply) => {
       editing.current ??= pulled;
       takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
-    }, into, into ? [] : draftArgs(sub.draft, sub.rev));
+    }, into);
   };
-  const now = (message: string, steer = false, cid = newId(), parts?: string, sub?: Sub) => {
-    const entry: Sent = { cid, text: message, parts, steer, at: Date.now(), ...sub };
-    onSent?.(entry.cid);
-    setSent(id, (list) => [...list, entry]);
-    deliver(run, id, entry);
+  const now = (message: string, steer: boolean, cid: string, parts: string | undefined, sub: Sub) => {
+    onSent?.(cid);
+    void go(run, id, { cid, kind: "send", op: sendOp(id, message, cid, { parts, steer, chips: sub.chips }), draft: sub.draft, chips: sub.chips, at: Date.now() }, sub.rev);
   };
   const steerQueued = (qid: string) => act({ kind: "remove", qid }, ["steer", qid]);
   // What waits behind a command that runs goes after it, as behind a turn.
@@ -230,9 +221,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (!waits) onSent?.(qid);
   };
   const edit = (qid: string) => {
-    // One not added goes above what's typed, as a message given back [D363].
-    const lost = uncertain.find(qid);
-    if (lost) return takeBack(run, id, { cid: qid, ...lost.draft, chips: lost.chips });
+    // One Rust may not hold goes from there, its words above what's typed, as a new message [D363].
+    const mine = lost(qid);
+    if (mine) return discard(run, id, mine, true);
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
     const { parts: draft, to: worker, shell: command } = row?.queue?.items.find((each) => each.id === qid) ?? {};
@@ -353,10 +344,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     }
     const msg = (mode === "queue" && editing.current?.qid) || newId();
     const draft = body(parts, tiles, chips);
-    going(chips, msg, (pulled, back, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
+    going(chips, msg, (pulled, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, gave(pulled), draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
   };
   // Sent at once or steered, an edited message's kept copy goes.
-  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string, parts?: string, sub?: Sub) => {
+  const sendNow = (message: string, pulled: typeof editing.current, steer: boolean, cid: string, parts: string | undefined, sub: Sub) => {
     now(message, steer, cid, parts, sub);
     if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
   };
@@ -394,15 +385,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
             onResume={resume}
             onSteer={steerQueued}
-            onRemove={(qid) => (uncertain.find(qid) ? uncertain.drop(qid) : act({ kind: "remove", qid }, ["remove", qid]))}
+            onRemove={(qid) => (lost(qid) ? discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
             onEdit={edit}
-            onAddAgain={(qid) => {
-              const lost = uncertain.find(qid)!;
-              const sub = { draft: lost.draft, rev: null, chips: lost.chips ?? [] }; // Handed off again: a read since may have put them back waiting [D1174].
-              dropUncertain(id, qid);
-              const back = carry(sub.chips, qid, null, sub);
-              handOff(id, sub.chips, qid, () => queue(lost.text, qid, undefined, back, lost.parts, sub), (reply) => takeBack(run, id, { cid: qid, ...lost.draft, chips: sub.chips, error: failure(reply) }), id, draftArgs(lost.draft, null));
-            }}
+            onAddAgain={(qid) => void again(run, id, lost(qid)!)}
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
@@ -450,14 +435,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           onSendNow={() => {
             if (asking !== null) {
               const [text, msg, draft] = [asking, newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-              going(askingChips.current, msg, (pulled, _, sub) => sendNow(text, pulled, false, msg, draft, sub));
+              going(askingChips.current, msg, (pulled, sub) => sendNow(text, pulled, false, msg, draft, sub));
             }
             setAsking(null);
           }}
           onKeepPaused={() => {
             if (asking !== null) {
               const [text, msg, draft] = [asking, editing.current?.qid ?? newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-              going(askingChips.current, msg, (pulled, back, sub) => queue(text, msg, pulled?.slot, back, draft, sub));
+              going(askingChips.current, msg, (pulled, sub) => queue(text, msg, pulled?.slot, gave(pulled), draft, sub));
             }
             setAsking(null);
           }}

@@ -1,62 +1,96 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
-import { dropGiven, resyncDraft } from "./draft";
 import type { Chip } from "../panel/chips";
-import type { QueuedMessage } from "../components/composer/queue";
 import type { Runner } from "./composer";
+import { giveChips } from "./draft";
 
 /*
- * A queue add whose reply never came (Brigadier went away): Rust may have it or not [D54]. It waits in the renderer's
- * own store, which outlives a reload, until Rust's queue, its thread or its draft says which; only where Rust can't be
- * reached does the app keep anything itself. It's never put in the draft, so it can't be sent by accident.
- * PROPOSED: "May not have been added"; once Rust answers without it, "Not added" with Add again and Edit.
+ * Messages on their way, sends and queue adds [D54, C58]. Each is kept in the renderer's own store, which outlives a
+ * reload, from before the field empties until Rust says its book has it (the command's own reply, the draft's read, or
+ * `draft <id> adopt` on a later connection) or what came of it: an empty book is no answer. Rust's then: its bubble or
+ * queue row comes from Rust's book (`draft <id>`'s `going`), with Try again or Add again, Discard or Delete, and Edit.
+ * A Delete Rust hasn't heard yet is kept too (`removing`), and told before the draft is read or saved, so what Rust
+ * gave back for it never comes into the draft. Only this file names what the app keeps; Rust decides the rest.
+ * PROPOSED: "May have been sent" / "May not have been added"; "Not sent" / "Not added" for one no host was asked.
  */
-export type Uncertain = { qid: string; text: string; draft: Draft; chips?: readonly Chip[]; parts?: string; at: number; unadded?: boolean; removing?: boolean };
+export type Going = {
+  cid: string;
+  kind: "send" | "queue";
+  /** Its command as it goes, its chips (`--chips`) named; empty for one from an older book. */
+  op: string[];
+  /** The field's draft it was sent from, without its chips' words. */
+  draft: Draft;
+  at: number;
+  chips?: readonly Chip[];
+  /** Rust's book has it, or settled it: kept in memory only. */
+  booked?: boolean;
+  /** An attempt may have reached a host; false for one only adopted. */
+  reached?: boolean;
+  /** Why it isn't on its way, shown with its actions; none while it goes. */
+  stuck?: string;
+  removing?: boolean;
+};
 
 const PREFIX = "brigadier.uncertain.";
 const key = (session: string) => PREFIX + session;
-const all = new Map<string, readonly Uncertain[]>();
+const all = new Map<string, readonly Going[]>();
 const listeners = new Set<() => void>();
-const NONE: readonly Uncertain[] = [];
-// The connection each add was lost on, or last asked about, this run: only a later one asks again.
-const lostOn = new Map<string, unknown>();
+const NONE: readonly Going[] = [];
 
-function of(session: string): readonly Uncertain[] {
+function of(session: string): readonly Going[] {
   if (!all.has(session)) {
-    let kept: Uncertain[] = [];
+    let kept: Going[] = [];
     try {
       kept = JSON.parse(localStorage.getItem(key(session)) ?? "[]");
     } catch {
       // Not ours to read: nothing is kept.
     }
+    // Kept before sends were: a queue add whose reply never came, its command made again.
+    type Old = { qid: string; text: string; parts?: string; chips?: readonly Chip[] };
+    const op = (old: Old) => ["queue", session, "add", old.text, "--qid", old.qid, ...(old.parts ? ["--parts", old.parts] : []), ...(old.chips?.length ? ["--chips", old.chips.map((chip) => chip.id).join(",")] : [])];
+    kept = kept.map((each) => (Array.isArray(each.op) ? each : { ...each, cid: (each as unknown as Old).qid, kind: "queue", op: op(each as unknown as Old) }));
     all.set(session, kept.length > 0 ? kept : NONE);
   }
   return all.get(session)!;
 }
 
-function put(session: string, next: readonly Uncertain[]): void {
+function put(session: string, next: readonly Going[]): void {
   all.set(session, next.length > 0 ? next : NONE);
-  if (next.length > 0) localStorage.setItem(key(session), JSON.stringify(next));
+  const mine = next.filter((each) => !each.booked || each.removing);
+  if (mine.length > 0) localStorage.setItem(key(session), JSON.stringify(mine));
   else localStorage.removeItem(key(session));
   for (const listener of listeners) listener();
 }
 
-export function addUncertain(session: string, entry: Uncertain, daemon: unknown): void {
-  lostOn.set(entry.qid, daemon);
-  put(session, [...of(session).filter((each) => each.qid !== entry.qid), entry]);
-}
-export const dropUncertain = (session: string, qid: string) => of(session).some((each) => each.qid === qid) && put(session, of(session).filter((each) => each.qid !== qid));
-/** The adds deleted in session `session` that Rust hasn't answered about yet. */
-export const removingOf = (session: string) => of(session).filter((each) => each.removing).map((each) => each.qid);
-const mark = (session: string, qid: string, change: Partial<Uncertain>) => put(session, of(session).map((each) => (each.qid === qid ? { ...each, ...change } : each)));
+export const keepGoing = (session: string, entry: Going) => (put(session, [...of(session).filter((each) => each.cid !== entry.cid), entry]), entry);
+export const forget = (session: string, cid: string) => of(session).some((each) => each.cid === cid) && put(session, of(session).filter((each) => each.cid !== cid));
+export const markGoing = (session: string, cid: string, change: Partial<Going>) => put(session, of(session).map((each) => (each.cid === cid ? { ...each, ...change } : each)));
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
   return () => listeners.delete(listener);
 };
+export const useGoingOf = (session: string) => useSyncExternalStore(subscribe, () => of(session));
 
-/** A session gone from Rust's list takes its uncertain adds with it [D35]. */
+/** The value after `name` in a message's command. */
+export const flagOf = (op: readonly string[], name: string) => (op.includes(name) ? op[op.indexOf(name) + 1] : undefined);
+
+/** The chips messages on their way here carry: a read of Rust's doesn't show them waiting meanwhile. */
+export const heldChips = (session: string) => new Set(of(session).flatMap((each) => flagOf(each.op, "--chips")?.split(",") ?? []));
+
+/** Why one Rust's book holds isn't on its way: no reply said where it is. */
+export const UNCONFIRMED = "it couldn't be confirmed";
+
+/** Rust's book as the draft's read shows it: each there is Rust's now, and one not kept here yet comes in. */
+export function fromBook(session: string, going: readonly Pick<Going, "cid" | "kind" | "op" | "draft" | "reached">[]): void {
+  const theirs = new Map(going.map((each) => [each.cid, each]));
+  const now = of(session).map((each) => (theirs.has(each.cid) ? { ...each, booked: true, reached: theirs.get(each.cid)!.reached } : each));
+  const fresh = going.filter((each) => !now.some((one) => one.cid === each.cid)).map((each): Going => ({ ...each, at: Date.now(), booked: true, stuck: UNCONFIRMED }));
+  put(session, [...now, ...fresh]);
+}
+
+/** A session gone from Rust's list takes what was kept for it [D35]. */
 export function pruneUncertain(ids: ReadonlySet<string>): void {
   for (const at of Object.keys(localStorage).filter((each) => each.startsWith(PREFIX) && !ids.has(each.slice(PREFIX.length)))) {
     localStorage.removeItem(at);
@@ -64,43 +98,21 @@ export function pruneUncertain(ids: ReadonlySet<string>): void {
   }
 }
 
+const telling = new Map<string, Promise<void>>();
 /**
- * Session `id`'s uncertain adds as the queue card's rows, each asked about once Rust answers on a new connection: in
- * its queue, an ordinary item (Rust's row shows it); in its log, delivered; in neither, not added. A Delete waits to
- * tell Rust until it answers.
+ * Tells Rust each Delete in session `id` it hasn't heard (`drop`), before its draft is read or saved, so a message
+ * Rust gave back for one never comes in, and words typed since stay [D363]. Gone, its chips wait again.
  */
-export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (qid: string) => void) {
-  const mine = useSyncExternalStore(subscribe, () => of(id));
-  const answering = Boolean(daemon);
-  useEffect(() => {
-    if (!answering) return;
-    for (const each of mine.filter((one) => lostOn.get(one.qid) !== daemon)) {
-      lostOn.set(each.qid, daemon);
-      void run(["queue", id, "has", each.qid]).then((reply) => {
-        if (!reply.ok) return;
-        // Its add still waits its turn in Rust: asked again in a moment.
-        if (reply.pending) {
-          return void setTimeout(() => {
-            lostOn.delete(each.qid);
-            put(id, [...of(id)]);
-          }, 1000);
-        }
-        if (each.removing && reply.queued) remove(each.qid);
-        // Deleted, what Rust gave back for it goes too, never into the draft [D363].
-        else if (each.removing) dropGiven(run, id, each.qid);
-        // Rust gave it back: it comes into the draft, as a refused add's does.
-        else if (reply.given) resyncDraft(run, id);
-        if (each.removing || reply.queued || reply.logged || reply.given) dropUncertain(id, each.qid);
-        else mark(id, each.qid, { unadded: true });
-      });
-    }
-  });
-  const rows: QueuedMessage[] = mine.filter((each) => !each.removing).map((each) => ({ id: each.qid, draft: each.draft, state: each.unadded ? "unadded" : "uncertain" }));
-  const find = (qid: string) => mine.find((each) => each.qid === qid);
-  // Asked about again first: an add still under way is removed once it's in.
-  const drop = (qid: string) => {
-    lostOn.delete(qid);
-    mark(id, qid, { removing: true });
+export function tellDrops(run: Runner, id: string): Promise<unknown> {
+  const tell = (each: Going) => {
+    const job = run(["draft", id, "drop", each.cid]).then((reply) => {
+      telling.delete(each.cid);
+      // In the log already, the thread shows it.
+      if (reply.ok || reply.logged) forget(id, each.cid);
+      if (reply.ok) giveChips(id, reply.chips?.length ? reply.chips : (each.chips ?? []));
+    });
+    telling.set(each.cid, job);
+    return job;
   };
-  return { rows, find, drop };
+  return Promise.all(of(id).filter((each) => each.removing).map((each) => telling.get(each.cid) ?? tell(each)));
 }

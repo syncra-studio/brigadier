@@ -5,13 +5,14 @@ import type { LineRange } from "../review/diff-view";
 import type { AgentChip } from "../landing/agent-chip";
 import type { DiffComment } from "../review/types";
 import { onChipsBack } from "../session/draft";
+import { heldChips } from "../session/uncertain";
 import { HOME } from "../shell/tab-store";
 
 /*
  * What waits above a session's composer for the agent, sent with the next message and never on its own [D1019,
  * D1040]: for now the diff's comments. Kept in the session's folder by Rust, with the comment being written, so an app
- * restart drops neither [D35, D1195]. A send hands its chips to its message in Rust before it goes, so a crash neither
- * loses them nor sends them twice [D1174].
+ * restart drops neither [D35, D1195]. A send takes its chips for its message in Rust as it goes (`--chips`), so a crash
+ * neither loses them nor sends them twice [D1174].
  */
 
 /** `on`: the diff it was made on (the Review tab, or a commit's), which alone draws it. */
@@ -62,7 +63,9 @@ function load(session: string): void {
     // A tool pill saved before tools became chips in the text (kind "tool") goes.
     const saved = reply.chips as (Chip | { kind: "tool"; id: string })[];
     const theirs = saved.filter((chip): chip is Chip => chip.kind !== "tool");
-    const kept = theirs.filter((chip) => !gone.has(chip.id) && !now.some((each) => each.id === chip.id));
+    // One a message kept here carries (uncertain.ts) is its own, though Rust may not have it yet.
+    const held = heldChips(session);
+    const kept = theirs.filter((chip) => !gone.has(chip.id) && !held.has(chip.id) && !now.some((each) => each.id === chip.id));
     // The comment being written as it is here reaches Rust again, a save made while it was away included.
     const mine = drafts.get(session);
     if (drafts.has(session)) void tell(session, ["draft", mine ? JSON.stringify(mine) : "-"]);
@@ -107,15 +110,15 @@ export const dropChips = (session: string, ids: readonly string[]) => {
 };
 
 /**
- * Hands `sent` to message `msg` (going to session `into`) in Rust, then runs `go`; with none, `go` runs at once. If
- * Rust couldn't take them nothing is sent, and `refused` says why; `draft` (`--draft`), Rust gave the message back.
+ * Hands `sent` to message `msg` going to session `into` (Send as new) in Rust, then runs `go`; with none, `go` runs at
+ * once. If Rust couldn't take them nothing is sent, and `refused` says why.
  */
-export function handOff(session: string, sent: readonly Chip[], msg: string, go: () => void, refused: (reply: Record<string, any>) => void, into = session, draft: string[] = []): void {
+export function handOff(session: string, sent: readonly Chip[], msg: string, go: () => void, refused: (reply: Record<string, any>) => void, into = session): void {
   const before = handing.get(session);
   // Messages go in the order they were sent [D237]: one without chips waits for an earlier one's handover.
   if (sent.length === 0 && !before) return go();
   const next = (before ?? Promise.resolve()).then(() =>
-    sent.length === 0 ? go() : tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...draft, ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply))),
+    sent.length === 0 ? go() : tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply))),
   );
   handing.set(session, next);
   void next.finally(() => handing.get(session) === next && handing.delete(session));
@@ -134,13 +137,6 @@ const chipsBack = (session: string, back: readonly Chip[]) => {
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
 };
 onChipsBack(chipsBack);
-
-/** Puts back chips a send couldn't take, before any added since. */
-export const restoreChips = (session: string, msg: string, back: readonly Chip[]) => {
-  if (back.length === 0) return;
-  chipsBack(session, back);
-  void tell(session, ["back", msg]);
-};
 
 /** The comment being written on a session's diff `on`, as Rust kept it, and where its changes go: a Review tab's props. */
 export function useCommentDraft(session: string, on: string) {

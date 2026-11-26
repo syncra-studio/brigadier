@@ -1,7 +1,7 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
 import type { Chip } from "../panel/chips";
 import type { Runner } from "./composer";
-import { dropUncertain, removingOf } from "./uncertain";
+import { forget, fromBook, tellDrops } from "./uncertain";
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -28,6 +28,8 @@ const fills = new Map<string, (back: Given) => Draft>();
 // The chip store's, set by it: imported here, it would reach the tab store, which reads HOME_DRAFT as it loads.
 let chipsBack: (id: string, chips: readonly Chip[]) => void = () => {};
 export const onChipsBack = (back: typeof chipsBack) => void (chipsBack = back);
+/** Chips Rust has waiting again: in the composer again. */
+export const giveChips = (id: string, chips: readonly Chip[]) => chipsBack(id, chips);
 
 export const draftOf = (id: string) => drafts.get(id);
 /** The revision of session `id`'s draft this view last saw: a message sent now carries it. */
@@ -48,9 +50,6 @@ export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
   return () => fills.get(id) === fill && fills.delete(id);
 }
 
-/** Whether message `cid` came back into session `id`'s draft. */
-export const givenBack = (id: string, cid: string) => applied.get(id)?.has(cid) ?? false;
-
 /** Asks Rust for what it gave back that this view may not have: a save, stale if it missed any, or a first read. */
 export function resyncDraft(run: Runner, id: string): void {
   if (!drafts.has(id)) return void loadDraft(run, id);
@@ -61,7 +60,7 @@ export function resyncDraft(run: Runner, id: string): void {
 /** Takes a message given back into session `id`'s draft, open or not, once per message; saved at once. */
 export function takeBack(run: Runner, id: string, back: Given): void {
   setOf(took, id).add(back.cid);
-  dropUncertain(id, back.cid);
+  forget(id, back.cid);
   if (setOf(applied, id).has(back.cid)) return;
   setOf(applied, id).add(back.cid);
   chipsBack(id, back.chips ?? []);
@@ -77,13 +76,6 @@ export function takeBack(run: Runner, id: string, back: Given): void {
   void write(run, id);
 }
 
-/** A message deleted where it waited, unshown: one Rust gave back for it is taken without coming in, and saved so. */
-export function dropGiven(run: Runner, id: string, cid: string): void {
-  setOf(took, id).add(cid);
-  setOf(applied, id).add(cid);
-  resyncDraft(run, id);
-}
-
 /** One write at a time per session, so the last words typed are the last written; whether they were. */
 function write(run: Runner, id: string): Promise<boolean> {
   const job = writing.get(id) ?? save(run, id);
@@ -92,6 +84,8 @@ function write(run: Runner, id: string): Promise<boolean> {
 }
 
 async function save(run: Runner, id: string): Promise<boolean> {
+  // A Delete first: what Rust gave back for that message isn't this save's to take [D363].
+  await tellDrops(run, id);
   const draft = drafts.get(id) ?? EMPTY_DRAFT;
   const acked = [...setOf(took, id)];
   const revised = id.startsWith(HOME_DRAFT) ? [] : ["--base", String(revOf(id)), ...(acked.length > 0 ? ["--took", acked.join(",")] : [])];
@@ -137,20 +131,19 @@ export function loadDraft(run: Runner, id: string): Promise<Draft | null> {
 }
 
 async function readDraft(run: Runner, id: string): Promise<Draft | null> {
-  // An add deleted where it waited: what Rust gave back for it is taken, never shown [D363].
-  for (const qid of removingOf(id)) {
-    setOf(took, id).add(qid);
-    setOf(applied, id).add(qid);
-  }
-  const gone = id.startsWith(HOME_DRAFT) ? [] : [...setOf(took, id)];
-  const reply = await run(["draft", id, ...(gone.length > 0 ? ["--took", gone.join(",")] : [])]);
-  if (!reply.ok || drafts.has(id)) return null;
+  // A message deleted where it waited goes first: what Rust gave back for it never comes in [D363].
+  if (!id.startsWith(HOME_DRAFT)) await tellDrops(run, id);
+  const reply = await run(["draft", id]);
+  if (!reply.ok) return null;
+  // Its messages on their way, Rust's from now on, whatever was typed meanwhile.
+  if (Array.isArray(reply.going)) fromBook(id, reply.going);
+  if (drafts.has(id)) return null;
   // What Rust gave back since the last save is in the draft it read already.
   if (typeof reply.rev === "number") revs.set(id, reply.rev);
   for (const cid of (reply.cids as string[] | undefined) ?? []) {
     setOf(took, id).add(cid);
     setOf(applied, id).add(cid);
-    dropUncertain(id, cid);
+    forget(id, cid);
   }
   let saved: unknown = null;
   try {

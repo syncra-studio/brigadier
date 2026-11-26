@@ -18,8 +18,8 @@ import { RailItem } from "./rail";
 /**
  * A message waiting for the running turn, as Rust holds it. PROPOSED to the owning runs. `local`: just sent,
  * not yet confirmed (its actions wait); `deciding`: the session is judging whether it joins the work in
- * progress; `delivered`: the session has it, so it can't be pulled back to edit. `uncertain`: its add's reply never
- * came, so it may not be there; `unadded`: Rust answered without it (Add again, Edit). PROPOSED.
+ * progress; `delivered`: the session has it, so it can't be pulled back to edit. `uncertain`: no reply said where it
+ * is, so it may not be there; `unadded`: no add of it ever ran. Both have Add again, Edit and Delete. PROPOSED.
  */
 export type QueuedMessage = {
   id: string;
@@ -284,7 +284,7 @@ function QueueRow({
         item.to && <ToWorker name={item.to.name} />
       )}
       {/* One for a worker steers into that worker's turn, while it has one. */}
-      {unadded && onAddAgain && (
+      {lost && onAddAgain && (
         <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onAddAgain(item.id)}>
           Add again
         </Button>
@@ -310,7 +310,7 @@ function QueueRow({
           <DotsHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={!unadded && (!canEdit || local || lost || item.state === "delivered" || !!item.peer)} onClick={() => onEdit(item.id)}>
+          <DropdownMenuItem disabled={!lost && (!canEdit || local || item.state === "delivered" || !!item.peer)} onClick={() => onEdit(item.id)}>
             <EditPencil />
             Edit
           </DropdownMenuItem>

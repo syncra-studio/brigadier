@@ -78,6 +78,7 @@ export function UserBubble({
   time,
   failed,
   signIn,
+  maybe = false,
   onRetry,
   onDiscard,
   rewind,
@@ -98,6 +99,8 @@ export function UserBubble({
   failed?: string;
   /** It failed for want of a signed-in account: Sign in goes to Providers [C36]. */
   signIn?: boolean;
+  /** It may have gone, though it can't be shown to have (PROPOSED). */
+  maybe?: boolean;
   onRetry?: () => void;
   onDiscard?: () => void;
   /** Going back to this message, where it's offered [D384]. */
@@ -224,7 +227,7 @@ export function UserBubble({
           <ErrorLine
             size="sm"
             wrap
-            error={failed && `Not sent · ${failed}`}
+            error={failed && `${maybe ? "May have been sent" : "Not sent"} · ${failed}`}
             className={side === "items-end" ? "text-end" : undefined}
             actions={
               <>
