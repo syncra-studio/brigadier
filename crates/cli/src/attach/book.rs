@@ -163,6 +163,11 @@ fn cid_lock(dir: &Path, cid: &str) -> PathBuf {
     dir.join(format!("draft-{cid}.lock"))
 }
 
+/// Whether a command for `cid` is still under way here.
+pub(crate) fn pending(dir: &Path, cid: &str) -> bool {
+    lock_held(&cid_lock(dir, cid))
+}
+
 /// Changes session `dir`'s book under its lock, in one write, what was cut short settled first.
 fn change<T>(
     dir: &Path,
@@ -445,8 +450,8 @@ pub fn going(
             }
         }
     }
+    // Its lock file stays: a retry already waiting on it, and replay, must see the same one.
     drop(held);
-    let _ = fs::remove_file(cid_lock(dir, cid));
     reply
 }
 
