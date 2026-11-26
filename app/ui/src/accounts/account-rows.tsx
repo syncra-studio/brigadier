@@ -254,7 +254,8 @@ function AccountRow({
         </span>,
       );
     if (account.sign_in?.running) line.push("Signing in…");
-    else if (!signedIn) line.push("Not signed in");
+    // A check that failed (a timeout, a crash) says nothing of the sign-in: its error shows below.
+    else if (!signedIn) line.push(c.error ? "Couldn't check its sign-in" : "Not signed in");
     else if (c.kept_apart === false) line.push(`${c.how} · this sign-in kind isn't kept apart, so it's never used`);
     else if (c.plan) line.push(`${planName(c.plan)} plan`);
   }
