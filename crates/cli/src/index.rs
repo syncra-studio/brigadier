@@ -339,6 +339,9 @@ impl Index {
             row["local"] = json!(core::share::holds_local(e.spec.as_ref(), &projects));
             row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
             row["limits"] = json!(f.fold.limits); // its CLI's newest usage report, for the store [D2039]
+            // A summary turn's end, which `finished` leaves out: the daemon's turn-end work sees it.
+            let summary = (f.fold.last.as_ref()).filter(|l| l["origin"] == "summary");
+            row["summarized"] = json!(summary.map(|l| &l["ts"]));
             row["context"] = json!(f.fold.context); // how full its context is; a rebirth due now below [D88, D108]
             // A cut's input lost before its CLI read it, or a summary turn whose host died: the new
             // host ends that one failed, never sent again, and the renewal goes ahead [rev 3 §2.2].

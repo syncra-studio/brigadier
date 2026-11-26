@@ -205,8 +205,10 @@ fn main() -> io::Result<()> {
                 }
                 for row in &rows {
                     let id = row["id"].as_str().unwrap_or("");
-                    let was = ends.insert(id.into(), row["finished"].clone());
-                    if was.as_ref() != Some(&row["finished"]) {
+                    // A summary turn's end too, for its checks and queue, not as a turn of the user's.
+                    let end = json!([row["finished"], row["summarized"]]);
+                    let was = ends.insert(id.into(), end.clone());
+                    if was.as_ref() != Some(&end) {
                         let _ = ended.send(id.into());
                         // Not on a running row's first sight: a new worker may already hold the
                         // computer or a tab [D907].
