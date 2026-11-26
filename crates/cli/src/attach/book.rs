@@ -7,9 +7,10 @@
 //! chips with it, whatever the UI does meanwhile; one cut short by a crash is settled by the log
 //! the next time anything here is read or changed [D54].
 
+mod outcome;
 mod unsent;
 
-use unsent::is_unsent;
+use outcome::{answer, how};
 pub(crate) use unsent::unsent;
 
 use crate::{arg, flag};
@@ -466,32 +467,4 @@ pub fn going(
     // Its lock file stays: a retry already waiting on it, and replay, must see the same one.
     drop(held);
     reply
-}
-
-fn how(dir: &Path, kind: &str, cid: &str, out: &io::Result<Value>) -> How {
-    let went = |yes: bool| if yes { How::Went } else { How::Refused };
-    match out {
-        Ok(r) if r["ok"] == true => How::Went,
-        // A queue add Rust refused never got in: neither the queue nor the log has it.
-        _ if kind == "queue" => went(queued(dir, cid) || logged(dir, cid)),
-        // A hand-off refused took nothing: its message never went.
-        _ if kind == "chips" => How::Refused,
-        Ok(r) if r["answered"] == false => How::Unknown,
-        Ok(_) => went(logged(dir, cid)),
-        Err(e) if is_unsent(e) => How::Refused,
-        Err(_) => How::Unknown,
-    }
-}
-
-/// The command's reply with `logged`, where it's known.
-fn answer(out: io::Result<Value>, how: How) -> io::Result<Value> {
-    let mut reply = match out {
-        Ok(reply) => reply,
-        Err(e) if how == How::Refused => json!({"ok": false, "error": e.to_string()}),
-        Err(e) => return Err(e),
-    };
-    if reply["ok"] != true && how != How::Unknown {
-        reply["logged"] = (how == How::Went).into();
-    }
-    Ok(reply)
 }
