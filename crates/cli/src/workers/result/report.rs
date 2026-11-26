@@ -324,7 +324,10 @@ pub(in crate::workers) fn write_as(
         }
         _ => "unknown".into(),
     };
-    if cut && how == "failed" {
+    // No conversation announced: nothing to carry on, and the message may never have arrived [D66].
+    if cut && how == "failed" && f.resume.is_empty() {
+        text += "Its first message was cut before its agent started, so it may not have arrived. Send it again if it's still needed.\n";
+    } else if cut && how == "failed" {
         text += &format!(
             "Its process was cut off; nothing says its work was wrong. `brigadier send {wid} \"<go on>\"` carries it on where it stopped.\n"
         );

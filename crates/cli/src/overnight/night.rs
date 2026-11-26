@@ -40,6 +40,10 @@ const GIVE_UP: u64 = 5;
 const MOST: u64 = 40;
 /// Proposed: failures in a row, none of them passing, that end the night.
 const FAILURES: u32 = 8;
+const FAILING: &str = "Its agent kept failing, so the night ended early.";
+const CUT: &str =
+    "your last turn was cut off before it started: check where you were before you go on";
+const NEVER: u64 = u64::MAX / 2; // Not again while its row stays the same.
 
 /// Sessions and workers looked at now, or not again before this (ms) while the row's turn is this.
 static NEXT: Mutex<Option<HashMap<String, (u64, Value)>>> = Mutex::new(None);
@@ -169,17 +173,28 @@ fn unstick(data: &Path, id: &str, row: &Value) -> io::Result<u64> {
             Ok(MINUTE)
         }
         "interrupted" => {
-            let f = core::fold(&core::session_dir(data, id), true)?.fold;
+            let dir = core::session_dir(data, id);
+            let f = core::fold(&dir, true)?.fold;
             // The user's own Stop on it stays theirs.
-            let halted =
-                (f.last.as_ref()).is_some_and(|l| f.turns.is_empty() && l["halted"] == true);
-            if !halted {
-                let r = queue::recover(data, id, false)?;
-                if r["ok"] != true {
-                    eprintln!("brigadierd: overnight {id}: {}", r["error"]);
+            if (f.last.as_ref()).is_some_and(|l| f.turns.is_empty() && l["halted"] == true) {
+                return Ok(MINUTE);
+            }
+            let r = queue::recover(data, id, false)?;
+            if r["ok"] == true {
+                return Ok(MINUTE);
+            }
+            eprintln!("brigadierd: overnight {id}: {}", r["error"]);
+            // Never sent again unproven [D66, D80]: a worker's result tells its parent; a lead's cut,
+            // once logged closed (the refusal logs it), counts once its message goes.
+            match (workers::link(data, id).is_some(), f.turns.is_empty()) {
+                (true, _) => Ok(NEVER),
+                (_, false) => Ok(2_000),
+                _ if load(&dir).tries.failed >= FAILURES => finish(data, id, Some(FAILING)),
+                _ => {
+                    let turn = f.last.as_ref().map(|l| str_of(l, "id")).unwrap_or_default();
+                    carry_on(data, id, &f, &turn, true, true).map(|()| MINUTE)
                 }
             }
-            Ok(MINUTE)
         }
         // Never sent again unproven: stopped, so its session goes on with a message of its own.
         _ => {
@@ -292,7 +307,7 @@ fn step(data: &Path, id: &str, row: &Value, team: &[Value]) -> io::Result<u64> {
     // 1, 2, 4, 8, then 15 minutes apart.
     let backoff = ended + (MINUTE << o.tries.failed.min(4)).min(15 * MINUTE);
     let turn = str_of(last, "id");
-    let carry = || carry_on(data, id, &f, &turn, false);
+    let carry = || carry_on(data, id, &f, &turn, false, false);
     match state {
         "limited" | "out_of_credits" => {
             let due = match f.resets {
@@ -319,12 +334,8 @@ fn step(data: &Path, id: &str, row: &Value, team: &[Value]) -> io::Result<u64> {
             },
             backoff,
         ),
-        "failed" if o.tries.failed >= FAILURES => finish(
-            data,
-            id,
-            Some("Its agent kept failing, so the night ended early."),
-        ),
-        "failed" => go(&|| carry_on(data, id, &f, &turn, true), backoff),
+        "failed" if o.tries.failed >= FAILURES => finish(data, id, Some(FAILING)),
+        "failed" => go(&|| carry_on(data, id, &f, &turn, true, false), backoff),
         "idle" | "idle_jobs" | "stopped" => {
             let by = last["reason"]
                 .as_str()
@@ -385,13 +396,11 @@ fn mark(data: &Path, id: &str, o: &Overnight) -> String {
 
 /// Brigadier's own next message, under an id of its own: what's still open, and to try otherwise
 /// once nothing moved for a while; a part that had its turns is left first. `fails`: the last
-/// turn failed, which says nothing of the work.
-fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool) -> io::Result<()> {
+/// turn failed, which says nothing of the work. `cut`: it was cut before it started.
+fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool, cut: bool) -> io::Result<()> {
     let dir: PathBuf = core::session_dir(data, id);
-    let ran = f
-        .last
-        .as_ref()
-        .is_some_and(|l| matches!(l["outcome"].as_str(), Some("done" | "stopped")));
+    let last = f.last.clone().unwrap_or_default();
+    let ran = matches!(last["outcome"].as_str(), Some("done" | "stopped"));
     let o = load(&dir);
     let cid = format!("on{}-{}", o.since, o.tries.sent + 1);
     let now = mark(data, id, &o);
@@ -432,7 +441,16 @@ fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool) -> io::Res
             t.same = GIVE_UP;
         }
     }
-    let text = words(&load(&dir), &t, first, gone.as_deref());
+    // Cut with a conversation before it (a hand-off's launch, or its resend cut again): the fresh
+    // one gets the hand-off, from the record. shortcut: a resend's says rebirth for its reason.
+    let (sw, from) = (&last["switch"], str_of(&last["switch"], "from_label"));
+    let why = sw["why"].as_str().unwrap_or("rebirth");
+    let mut text = match cut && !f.convs.is_empty() {
+        true => core::handoff::build(&core::load(data, id)?, f, why, &last, &from)?,
+        false => String::new(),
+    };
+    let plain = cut && text.is_empty(); // A hand-off says where it was.
+    text += &words(&load(&dir), &t, first, plain, gone.as_deref());
     let takes = || queue::takes(&dir, None);
     if !f.cids.contains_key(&cid) && !queue::own(data, id, turn, &cid, &text, true, &takes)? {
         return Ok(());
@@ -449,12 +467,15 @@ fn carry_on(data: &Path, id: &str, f: &Fold, turn: &str, fails: bool) -> io::Res
     })
 }
 
-fn words(o: &Overnight, t: &Tries, first: bool, gone: Option<&str>) -> String {
+fn words(o: &Overnight, t: &Tries, first: bool, cut: bool, gone: Option<&str>) -> String {
     let open = o.open().join("; ");
     let mut say = vec![];
     if first {
         say.push("the user pressed Start night and is away from now on. You have Full access and this job is yours".to_string());
-    } else {
+    }
+    if cut {
+        say.push(CUT.into());
+    } else if !first {
         say.push("your turn ended and nothing of yours is running".into());
     }
     if let Some(gone) = gone {
