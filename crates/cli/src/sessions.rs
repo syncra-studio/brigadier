@@ -55,12 +55,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             for (id, spec) in specs {
                 stayed.extend(archive(data, id, &spec, false, named.clone())?);
             }
-            // All are archived; a worker that couldn't go with them is named.
+            // All are archived, so it answers ok; a worker that couldn't go with them is named.
             if !stayed.is_empty() {
                 let stayed = stayed.join("; ");
-                return Err(io::Error::other(format!(
-                    "archived, but not its workers: {stayed}"
-                )));
+                return Ok(json!({"ok": true, "at": index::touched(&spec.dir),
+                    "warning": format!("Archived, but not its workers: {stayed}")}));
             }
         }
         // A worker's is its chat's: it went with that, and comes back with it.

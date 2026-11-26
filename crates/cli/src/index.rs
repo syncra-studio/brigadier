@@ -25,7 +25,8 @@ use std::{fs, io};
 /// 3: titles follow the short local rule [D186], so older indexes rebuild them.
 /// 4: `sessions.archived`, so search puts archived sessions last [D197].
 /// 5: every archive entry with its reference, sender, time and files, for agents' search [D103].
-const SCHEMA: i64 = 5;
+/// 6: the user's answers to an agent's questions, so older ones are found too [D75].
+const SCHEMA: i64 = 6;
 /// Longer than the watchdog's TERM, wait, KILL, wait (2 s), so it always goes first.
 const SWEEP_AFTER_MS: u64 = 3_000;
 

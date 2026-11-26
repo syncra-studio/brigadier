@@ -194,8 +194,50 @@ pub(super) fn past_app(w: &Words, s: &Sess) -> bool {
                         || (c.role.starts_with("AXMenu") && past(&c.name))
                 })
         }
+        // The Apple menu's own keys: Force Quit, Lock Screen, Log Out.
+        "key" => {
+            let mut keys: Vec<&str> = (w.rest.join("").split('+'))
+                .map(|k| match k.trim().to_lowercase().as_str() {
+                    "command" | "cmd" => "cmd",
+                    "control" | "ctrl" => "ctrl",
+                    "alt" | "option" => "option",
+                    "shift" => "shift",
+                    "q" => "q",
+                    "escape" | "esc" => "escape",
+                    _ => "",
+                })
+                .collect();
+            keys.sort_unstable();
+            [
+                &["cmd", "escape", "option"][..],
+                &["cmd", "ctrl", "q"],
+                &["cmd", "q", "shift"],
+                &["cmd", "option", "q", "shift"],
+            ]
+            .contains(&keys.as_slice())
+        }
         _ => false,
     }
+}
+
+/// An app given by its path, as the path leads: a link or a renamed copy of a blocked app is
+/// still that app [D903].
+pub(super) fn blocked_path(path: &Path) -> Result<(), Value> {
+    let real = path.canonicalize().unwrap_or(path.into());
+    if !real
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("app"))
+    {
+        return Ok(());
+    }
+    let id = std::process::Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleIdentifier", "raw", "-o", "-"])
+        .arg(real.join("Contents/Info.plist"))
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    blocked(&real.to_string_lossy(), id.as_deref().unwrap_or(""))
 }
 
 /// Brigadier itself and the system's security prompts are closed at every level [D903].

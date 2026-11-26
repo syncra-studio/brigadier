@@ -27,6 +27,11 @@ pub(super) fn wait(
     reply
 }
 
+/// Whether `id` is `me`'s own worker just started, with no row yet: it's at work, not gone.
+pub(super) fn making(data: &Path, me: &str, id: &str) -> bool {
+    workers::record(data, me, id).is_some() && !workers::over(data, me, id)
+}
+
 fn until(
     data: &Path,
     me: &str,
@@ -42,6 +47,9 @@ fn until(
         let rows = rows();
         for id in ids.iter().map(String::as_str) {
             let Some(row) = rows.iter().find(|r| r["id"] == id) else {
+                if making(data, me, id) {
+                    continue;
+                }
                 return refuse(&format!("Session {id} is gone."));
             };
             state = str_of(row, "state").to_string();
@@ -55,7 +63,9 @@ fn until(
                 return json!({"ok": true, "done": true, "id": id, "state": "asking", "result": ask, "text": ask});
             }
             let cut = state == "interrupted" && !crate::queue::goes_on(data, id);
-            let idle = row["running"] != true && (cut || !workers::owes(data, id));
+            let idle = row["running"] != true
+                && (cut || !workers::owes(data, id))
+                && !crate::queue::will_go(data, id, row);
             if idle || state == "waiting_answer" || state == "asking" {
                 let last = crate::relay::archive(data, id, false)
                     .into_iter()
@@ -67,7 +77,7 @@ fn until(
                     return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "result": result, "text": result});
                 }
                 let text = (state == "waiting_answer")
-                    .then(|| workers::for_user(data, id))
+                    .then(|| workers::for_user(data, me, id))
                     .flatten()
                     .unwrap_or_else(|| {
                         format!("{id} is {state}. Its last message:\n{}", last.trim_end())

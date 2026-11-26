@@ -10,6 +10,7 @@ pub(crate) mod modes;
 mod names;
 mod night;
 mod plan;
+mod records;
 mod repos;
 mod shared;
 mod snap;

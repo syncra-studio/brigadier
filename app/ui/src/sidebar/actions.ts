@@ -32,6 +32,8 @@ function sendFirst(id: string): void {
     if (queue?.[0] !== action) return;
     if (reply.ok) {
       action.at = reply.at ?? 0;
+      // Done, with something the user should know (an archive whose workers' processes still run).
+      if (reply.warning) showToast(String(reply.warning));
       return settle(id);
     }
     queue.shift();

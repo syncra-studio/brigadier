@@ -3,9 +3,10 @@ brigadier new "<first message>" [--fork | --branch] [--title T] [--model M [--ag
 Starts an ordinary session of the user's on its first message, with its own row in the sidebar. Run it
 only when the user asks for a new session or a fork in their own words; a job you split off yourself
 goes to a worker (`start`). Don't ask them to confirm.
-Fresh, it starts as New chat does, in its own worktree off the project's default branch, and knows only
-the message: write it as a task for someone new, with the user's own words. --branch starts it from
-your branch instead, when the user says to build on yours.
+Fresh, it starts as New chat does, in its own worktree off the project folder's current branch (in a
+folder project, a folder of its own), and knows only the message: write it as a task for someone
+new, with the user's own words. --branch starts it from your branch instead, when the user says to
+build on yours.
 --fork carries this conversation and its files up to your last finished answer, so say in the message
 what came after. Use it when the user asks for a fork, or the job needs this conversation.
 It runs on your agent, model, effort and permission level; name another only when the user does.

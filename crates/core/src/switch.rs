@@ -8,8 +8,12 @@ use crate::fold::{self, Fold};
 use crate::{Call, Spec, adapters, as_run, cli_version};
 use serde_json::{Value, json};
 
-/// The old app's words for a turn its account's limit cut short (D48).
-const CARRY_ON: &str = "[Your last turn stopped early: its account hit a usage limit. You now run on another account, in the same session. Carry on from where you stopped. Don't redo anything you already did.]";
+/// The old app's words for a turn its account's limit cut short (D48); `{}` is what changed.
+fn carry_on(moved: &str) -> String {
+    format!(
+        "[Your last turn stopped early: its account hit a usage limit. You now run on {moved}, in the same session. Carry on from where you stopped. Don't redo anything you already did.]"
+    )
+}
 
 /// What the same agent is told when a model picked mid-turn stopped it [D124].
 pub const SWITCHED: &str = "[The user switched your model or permission level mid-turn, so your last turn was stopped. A step that stop cut may read as refused or rejected; nobody refused it: redo it if still needed. Carry on from where you stopped: a reply cut off goes on from its last word, none of it repeated. Don't redo anything you already did.]";
@@ -89,7 +93,13 @@ pub fn switch(
     } else if proof {
         ("user", last["text"].as_str().unwrap_or("").to_string())
     } else {
-        ("system", CARRY_ON.to_string())
+        // A worker moved to its job's next model on the same account [D375].
+        let same = f.accounts.get(from).map_or("", String::as_str) == to.account;
+        let moved = match (same, to.name.or(to.model)) {
+            (true, Some(m)) => format!("another model, {m}"),
+            _ => "another account".into(),
+        };
+        ("system", carry_on(&moved))
     };
     let to_named = match to.name.or(to.model) {
         Some(m) => format!("{} · {m}", to.label),

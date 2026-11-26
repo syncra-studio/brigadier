@@ -309,6 +309,9 @@ fn add(data: &Path, mut v: Value) -> io::Result<String> {
         }
         return Err(e);
     }
+    // One found of its name is the user's own now; failing, the old word stays unused while
+    // theirs holds the key.
+    let _ = found::forget(data, &[&key]);
     Ok(key)
 }
 
@@ -348,15 +351,23 @@ fn set(data: &Path, key: &str, v: Value) -> io::Result<()> {
         true => None,
         false => Some(scope_of(&v["scope"])?),
     };
+    let keys: Vec<String> = these.iter().map(|i| str(&i["key"]).to_string()).collect();
     for item in these {
         if let Some(on) = v["on"].as_bool() {
             item["on"] = on.into();
+            found::chose(item, "on");
         }
         if let Some(scope) = &scope {
             item["scope"] = scope.clone();
+            found::chose(item, "scope");
         }
     }
-    library::save(data, &items)
+    library::save(data, &items)?;
+    // After the change, so a failure can't lose a kept word for a place that's gone. Failing,
+    // it leaves the user's older word for a place that's gone, never a default; the item's own
+    // is written over it when it goes.
+    let _ = found::forget(data, &keys.iter().map(String::as_str).collect::<Vec<_>>());
+    Ok(())
 }
 
 fn remove(data: &Path, key: &str) -> io::Result<()> {
@@ -399,6 +410,8 @@ fn remove_skill(data: &Path, mut items: Vec<Value>, at: usize) -> io::Result<()>
         gone.push(key.into());
         library::save_removed(data, &gone)?;
     }
+    // Failing, the old word stays unused: a removed key is never found, and `add` clears it.
+    let _ = found::forget(data, &[key]);
     if item["found"].is_null() {
         forget(data, key, str(&item["name"]))?;
     }

@@ -158,9 +158,10 @@ fn start(
         true => "a fork of this conversation up to your last finished answer, so without this turn"
             .into(),
         false if parent.project.is_none() => "in a chat of its own".into(),
+        false if core::folder::of(&parent).is_some() => "in a folder of its own".into(),
         false => match ran("--base") {
             Some(b) => format!("in its own worktree off {b}"),
-            None => "in its own worktree off the default branch".to_string(),
+            None => "in its own worktree off the project folder's current branch".to_string(),
         },
     };
     let mut reply = format!(

@@ -53,35 +53,48 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::{env, fs};
 
-pub const USAGE: &str = "usage: brigadier start <id> --backend B [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--carry-tabs] [--overnight]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] | side <id> <new-id> --text T --cid C [--qid Q]
+pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the test agent, if none) [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--cid C] [--parts JSON] [--from F] [--carry-tabs] [--overnight]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
+       brigadier draft <@home|@home:P|id> [<json>|\"\"] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
+       brigadier attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) [--in IDS] | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path> | back <session> <parts JSON|null> [--carry-tabs] (back: @home only)
        brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
-       brigadier tabs <id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | ungroup <driver> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen] | note <id> read <note> | write <note> <head> <body> [--base R] | list | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
+       brigadier tabs <@home|@home:P|id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | profile <tab> <profile> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> | keep <tab> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen | take <@home…> <tab>…] [--behind]
+       brigadier terminal <owner> start|restart <tab> [cols] [rows] [--run <line>] | terminal sweep | shell <session> stop|output <command id> | shell settle
+       brigadier note <@home|id> [--project P] read <note> [--first] | write <note> <head> <body> [--base R] [--from <note>] | image <note> <name> (--path P | --from <note>/<name> | --data BASE64) | list [--q Q] | pin <note> on|off | rename <note> <name> | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
        brigadier rewind <id> <cid> --preview | rewind <id> <cid> --op OP [--restore | --undo]
-       brigadier fork <id> --check <cid> | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
+       brigadier fork <id> --check <cid> | fork <id> --latest | fork <id> <new-id> --at <cid> [--where worktree|chat] [--fingerprint F] [--to B --model M [--effort E] [--fast]]
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id>... --check | delete <id> [--branch keep|delete] [--delete-in <repo>]... | owner <id> | up <id>...
-       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--to W | --shell] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
+       brigadier jobs <id> history | servers | stop <pid> <start_us>
+       brigadier workers <id> [stop [<wid>...] | pause|resume <wid>] | peers <id> send <mid> | mockup <wid> [draft '<notes>' | send '<notes>' | use <letter> '<notes>']
+       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
-       brigadier git <id> | git --project P [--watch]
+       brigadier git <id>|--project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]
        brigadier source <id>|--project P truth | status | source <id> restore-checkout
-       brigadier source <id> files [<repo>...] | folder <path> | find <query> | since | repos
+       brigadier source <id> files [<repo>...] | folder <path> | find <query> | reveal [<path>] | since | repos
        brigadier source <id>|--project P branches | switch <branch> [--remote] | create <name> [--from <ref>]
-       brigadier browser <session|-> profiles|imports <op> ... [--profile ID] [--json]
+       brigadier browser <session|-|@home> profiles list|create|rename|recolour|move|make-default|delete-mark|forget|session-pick|tab-pick|resolve ... [--json]
+       brigadier browser <session|-|@home> imports sources|origins|read|place | certs trust|clear | dates record|since|clear [--profile ID | --tab T] [--json] | browser answer <call> <json> | browser <session> paused <tab> true|false [<agent>]
+       brigadier computer status|on|off|grant accessibility|screenRecording
        brigadier panel [open on|off | width <px>]
-       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name>
-       brigadier host <id>|@ (@: the Code Review page; ref = host/owner/name#n; (in): text on stdin) view|files <ref> [kept] | search <query>... | users <ref> <text> | stack|generated <ref> | comment <ref> (in) | comment-edit <ref> <node> (in) | comment-delete <ref> <node> | react <ref> <node> <content> on|off | edit <ref> --title T | --body (in) | reply <ref> <thread> (in) | resolve|unresolve <ref> <thread> | viewed|unviewed <ref> <path> | pending <ref> <path> <line> LEFT|RIGHT [<start>] (in) | review <ref> approve|comment|changes (in) | review-discard <ref>
+       brigadier host <id> view <n|owner/name#n> [kept] | host <id> files <n|owner/name#n> [kept] | host <id> list | host <id> search <query>... [--kept] [--after <cursor>] | host <id> runs <query>... [--kept] | host <id> run <run> [kept] | host <id> job-log <job> | host <id> rerun <run> <all|failed> | host <id> sides <n|owner/name#n> <path> | host <id> project <owner/name> | host <id> base (<id>: a session or a project)
+       brigadier host <id>|@ (@: the Code Review page; ref = host/owner/name#n; (in): --text T, else stdin) view|files <ref> [kept] | search <query>... [--as <login>] (@ only) | scopes (@ only) | users <ref> <text> | stack|generated <ref> | comment <ref> (in) | comment-edit <ref> <node> (in) | comment-delete <ref> <node> | react <ref> <node> <content> on|off | edit <ref> --title T | --body (in) | reply <ref> <thread> (in) | resolve|unresolve <ref> <thread> | viewed|unviewed <ref> <path> | pending <ref> <path> <line> LEFT|RIGHT [<start>] (in) | review <ref> approve|comment|changes (in) | review-discard <ref>
        brigadier host <id>|@ reviewers <ref> add|remove|rerequest <login|org/team>... | merge <ref> squash|merge|rebase --head <sha> | automerge <ref> on <method> | off | close|reopen|draft|ready <ref> | host <session> create [--branch NEW] [--commit] [--title T] [--message M] [--draft] [--base B] [--head H] | attach|detach <ref> | compare <base> <head>
        brigadier index [--cold] | transcript <id> | thread <id> | title <text>
-       brigadier awake [off|work|always|lid|lid-setup|lid-seen AT] | settings [KEY VALUE | agent NAME on|off] | storage [build|worktrees|temp|history|browser|programs | free build|left ID]
-       brigadier agents [<agent>] [--cwd D] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
-       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] (null: choose the first available writer again) | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: find a GitHub account again, save the default browser profile, or restore the default icon) | accounts I | reveal I | remove I]
-       brigadier accounts [add <agent> [--name N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
+       brigadier awake [off|work|always|lid|lid-setup|lid-seen AT] | storage [build|worktrees|temp|history|browser|programs | free build|left ID]
+       brigadier settings [KEY VALUE | chat-layout bubbles|stacked | agent NAME on|off | agent-path NAME PATH | model NAME ID on|off | star NAME ID on|off]
+       brigadier models [--session S | --project P | --cwd D] [--fresh] [--all] | set <session> --agent B --model M [--effort E] [--fast] --op OP | set <session> --now --op OP
+       brigadier routing [--json | set <json> | offer <id> use|later|never | results | resume <wid> | answer <wid> <request> <choice>]
+       brigadier plugins [add '<json>' | install <id> '<scope>' [client_id] | use <id> '<scope>' | sync | ask | set <key> '<json>' | remove <key> | show|reveal <key> | signin|wait|cancel|signout <key> | browse server|skill <query>]
+       brigadier agents [<agent>] [--cwd D] [--cached] | agents test <agent> | forges [github|gitlab sign-in|close] | setup <agent> install|sign-in|update|close|code <code> [--account <id>] [--cols N] [--rows N]
+       brigadier feedback account|sign-in [wait|cancel]|write NOTE|file REPORTS | profile [--name N] [--intro] [--done] [--tour] [--git-writer JSON|null] (null: choose the first available writer again) | projects [--check P | add P [--id I] [--name N] | rename I N | set I [--name N] [--folder P] [--trusted true|false|none] [--setup S] [--include LINES] [--branch-prefix PREFIX] [--github-account LOGIN] [--browser-profile ID] [--icon tag:N|emoji:E|image:P] (empty: find a GitHub account again, save the default browser profile, or restore the default icon) | pin I [--off] | accounts I | reveal I | remove I [--check]]
+       brigadier projects branches I | drop-branches <repo> <branch>... | put-branches <repo> <branch>=<commit>... | find | inspect <path> | clone <url|owner/name> --to <dest> [--github [--account <login>]] --id <id> | init <dest> [--here] --id <id> | github | warm
+       brigadier accounts [add <agent> [--name N] [--cols N] [--rows N] | remove <id> | use <agent> <id> | rename <agent> <id> <name>]
        brigadier switching [--agent A --auto on|off] [--agents on|off]
-       brigadier switch <id> [--account A] [--auto]";
+       brigadier switch <id> [--account A] [--auto] | rebirth <id> [--go-on] | reconnect <id> [--now]";
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -135,7 +148,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let cmd = args.first().map(String::as_str).unwrap_or("");
     // Every session id this command names, checked before any path is built from it [D706].
     let ids = match cmd {
-        "status" | "up" => &args[1..],
+        "status" | "up" | "archive" => &args[1..],
         "index" | "awake" | "settings" | "agents" | "setup" | "profile" | "projects" | "forges"
         | "accounts" | "switching" | "models" | "title" | "feedback" | "git" | "source"
         | "panel" | "routing" | "plugins" | "browser" | "computer" | "terminal" | "storage" => {
@@ -146,7 +159,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let home = matches!(cmd, "draft" | "tabs" | "attach" | "note" | "commands");
     // `host @`: the Code Review page, which names no folder [D159].
     let page = cmd == "host" && args.get(1).is_some_and(|a| a == core::host::REVIEW);
-    let checked = |a: &&String| *a != "--all" && !(home && *a == HOME_DRAFT) && !page;
+    let checked = |a: &&String| {
+        *a != "--all"
+            && !(cmd == "archive" && *a == "--check")
+            && !(home && *a == HOME_DRAFT)
+            && !page
+    };
     for id in ids.iter().filter(checked) {
         let bare = id
             .strip_prefix("@home:")

@@ -88,6 +88,8 @@ pub(in crate::workers) struct Of {
     pub late: bool,
     /// The turn or wake whose last message it carries, and up to when (ms): none finds it.
     pub said: Option<(String, u64)>,
+    /// Who stopped it (`End::by`).
+    pub by: Option<String>,
 }
 
 /// The turn's time and computer calls as Brigadier measured them, not as the worker tells them.
@@ -158,8 +160,15 @@ pub(in crate::workers) fn write_as(
     let word = match how {
         "finished" => "finished",
         "stopped" if l.last["by"] == "user" => "was ended by the user",
+        // A parent's Stop reaches the turn as "user" too: only its link tells them apart.
+        "stopped" if l.last["by"] != "agent" && of.by.as_deref() == Some("user") => {
+            "was stopped by the user"
+        }
         "stopped" => "was stopped",
         "limit" => "stopped at a usage limit",
+        "context" if of.by.as_deref() == Some("stall") => {
+            "stopped: its context kept filling with no progress"
+        }
         "context" => "stopped: its context is full",
         "refused" => "was refused by its provider",
         _ => "failed",
@@ -295,7 +304,8 @@ pub(in crate::workers) fn write_as(
         at => (f.ends.get(turn).into_iter().flatten()).find(|e| e.at == at),
     };
     let unended = of.end == u64::MAX || (of.end == 0 && f.turns.iter().any(|t| t.id == turn));
-    let cut = unended || logged.is_some_and(|e| e.how == "interrupted");
+    // Brigadier stopped it, overnight or the like: cut off, as by a host's end.
+    let cut = unended || logged.is_some_and(|e| e.how == "interrupted") || of.by.is_some();
     let ended = f.last;
     text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
@@ -314,7 +324,10 @@ pub(in crate::workers) fn write_as(
         }
         _ => "unknown".into(),
     };
-    if cut && how == "failed" {
+    // No conversation announced: nothing to carry on, and the message may never have arrived [D66].
+    if cut && how == "failed" && f.resume.is_empty() {
+        text += "Its first message was cut before its agent started, so it may not have arrived. Send it again if it's still needed.\n";
+    } else if cut && how == "failed" {
         text += &format!(
             "Its process was cut off; nothing says its work was wrong. `brigadier send {wid} \"<go on>\"` carries it on where it stopped.\n"
         );
@@ -326,7 +339,7 @@ pub(in crate::workers) fn write_as(
         text = compact(
             wid,
             &format!(
-                "Worker {} ({wid}) {word} the turn the user started in it.\n",
+                "Worker {} ({wid}): the turn the user started in it {word}.\n",
                 l.title
             ),
             &merge,

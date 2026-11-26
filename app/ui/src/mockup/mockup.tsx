@@ -301,7 +301,7 @@ export function MockupView({
             notes={mockup.real ? [] : pins}
             pointing={takes && mode === "point"}
             onNotes={takes && !older && send !== "sending" ? changePins : undefined}
-            use={working && !mockup.building && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
+            use={working && !mockup.building && !mockup.picked && !mockup.real && drawn(variant) ? { onClick: () => setConfirm(variant.letter), primary: confirm ? confirm === variant.letter : picking } : null}
             picked={!mockup.real && (confirm ?? picked) === variant.letter}
             dim={!mockup.real && Boolean(confirm ?? picked) && (confirm ?? picked) !== variant.letter}
             onName={view === "all" && !mockup.real && variants.length > 1 ? () => setView(variant.letter) : undefined}

@@ -20,11 +20,7 @@ pub fn remote(checkout: &Checkout, branch: &str) -> io::Result<String> {
     {
         return Ok(remote);
     }
-    let out = read(&checkout.root, &["remote"], &never)?;
-    let remotes: Vec<String> = String::from_utf8_lossy(&out)
-        .lines()
-        .map(String::from)
-        .collect();
+    let remotes = remotes(checkout)?;
     match &remotes[..] {
         [only] => Ok(only.clone()),
         _ if remotes.iter().any(|r| r == "origin") => Ok("origin".into()),
@@ -35,6 +31,15 @@ pub fn remote(checkout: &Checkout, branch: &str) -> io::Result<String> {
             "This repository has several remotes and none is set for pushing.",
         )),
     }
+}
+
+/// The checkout's remotes, as `git remote` lists them.
+pub fn remotes(checkout: &Checkout) -> io::Result<Vec<String>> {
+    let out = read(&checkout.root, &["remote"], &AtomicBool::new(false))?;
+    Ok(String::from_utf8_lossy(&out)
+        .lines()
+        .map(String::from)
+        .collect())
 }
 
 /// Where `remote` pushes, as it was given before git's `insteadOf` rewrites: its pushurl, else

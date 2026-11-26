@@ -18,6 +18,7 @@ mod jobs;
 mod now;
 mod offers;
 mod pick;
+mod place;
 mod receipt;
 mod renamed;
 mod retry;
@@ -26,9 +27,9 @@ mod rules;
 pub(crate) use hold::{ask, due, real, set_ran, stopped, stops};
 pub(crate) use jobs::{picked, said};
 pub(crate) use pick::{next, resolve};
-pub(crate) use receipt::receipt;
+pub(crate) use receipt::{label as account_label, receipt};
 pub(crate) use retry::plan as retry;
-use rules::{FULL, allowed, barred, cap, effort_of, unusable};
+use rules::{FULL, NO_EFFORT, TRIED_REVIEW, allowed, barred, cap, effort_of, unusable};
 pub(crate) use rules::{launch, picks};
 
 const FILE: &str = "routing.json";
@@ -47,14 +48,21 @@ fn read(path: &Path) -> Value {
 /// when the user has no job to start one on.
 pub(crate) fn computer_job(data: &Path) -> Option<String> {
     let t = current(data);
-    let mut all = jobs::startable(t["jobs"].as_array().map_or(&[], Vec::as_slice)).peekable();
-    all.peek()?;
-    let covers = |j: &&Value| str_of(j, "for").to_lowercase().contains("computer");
-    Some(
-        all.find(covers)
-            .map_or("<the job that covers computer use>", |j| str_of(j, "name"))
-            .into(),
-    )
+    let all: Vec<&Value> =
+        jobs::startable(t["jobs"].as_array().map_or(&[], Vec::as_slice)).collect();
+    let covers = |j: &&&Value| str_of(j, "for").to_lowercase().contains("computer");
+    match all.iter().find(covers) {
+        Some(j) => Some(str_of(j, "name").into()),
+        // No line names it: the lead picks one of the real jobs, not a placeholder.
+        None if !all.is_empty() => Some(format!(
+            "<one of: {}>",
+            all.iter()
+                .map(|j| str_of(j, "name"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        None => None,
+    }
 }
 
 fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
@@ -101,9 +109,9 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
             r["groups"].as_array().cloned().unwrap_or_default()
         })
     };
-    // Barred models too: the table and its checks name them [D376].
-    let home = of(&["models".into(), "--all".into()]);
-    let here = me.map_or(vec![], |m| {
+    // Barred models too: the table and its checks name them [D376]. `me`'s folder reads its own
+    // check, else its project's, else home's, per agent (checked.rs) [C27]; home's without one.
+    let here = me.map(|m| {
         of(&[
             "models".into(),
             "--all".into(),
@@ -111,14 +119,9 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
             m.into(),
         ])
     });
-    // A folder not checked yet takes the home folder's check, as Home's picker does.
-    let all = match here
-        .iter()
-        .any(|g| g["models"].as_array().is_some_and(|m| !m.is_empty()))
-    {
-        true => here,
-        false => home,
-    };
+    let all = here
+        .filter(|g| !g.is_empty())
+        .unwrap_or_else(|| of(&["models".into(), "--all".into()]));
     (all.into_iter())
         .filter(|g| g["unavailable"].is_null() && settings::enabled(data, str_of(g, "provider")))
         .map(|mut g| {
@@ -387,7 +390,7 @@ pub(crate) fn after(
         .filter_map(|e| {
             let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
             let m = allowed(data, &groups, &rules, a, id).ok()?;
-            let (effort, _) = effort_of(&rules, a, m, e["effort"].as_str(), false).ok()?;
+            let (effort, _) = effort_of(&rules, a, m, e["effort"].as_str()).ok()?;
             Some((a.to_string(), id.to_string(), effort))
         })
         .collect()

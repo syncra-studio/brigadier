@@ -8,7 +8,9 @@
 mod act;
 mod apps;
 pub(super) mod asks;
+mod calls;
 mod diff;
+mod holder;
 mod open;
 mod run;
 mod shot;
@@ -18,15 +20,17 @@ mod web;
 mod window;
 
 use super::{Fail, HUB, lock, tool};
-use crate::agent::{cap, refuse};
+use crate::agent::refuse;
 use act::{act, key, need, token};
 use apps::{apps, find, menu_path};
+use calls::{UNLOGGED, sent};
+use holder::take;
+pub use holder::turn_ended;
+pub(super) use holder::{holder, release_all};
 use open::press;
 use serde_json::{Value, json};
 use shot::{drag, screenshot};
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -115,27 +119,7 @@ struct Sess {
 pub(super) const OFF: &str =
     "Computer use is off: ask the user to turn it on in Settings › Computer use.";
 
-/// The session using the computer now [D907].
-static HOLDER: Mutex<Option<String>> = Mutex::new(None);
 static SESSIONS: LazyLock<Mutex<HashMap<String, Sess>>> = LazyLock::new(Mutex::default);
-
-/// A turn ended, stopped or crashed: its session lets the computer go [D907].
-pub fn turn_ended(id: &str) {
-    asks::ended(id);
-    let mut holder = lock(&HOLDER);
-    if holder.as_deref() == Some(id) {
-        *holder = None;
-    }
-}
-
-pub(super) fn holder() -> Option<String> {
-    lock(&HOLDER).clone()
-}
-
-pub(super) fn release_all() {
-    *lock(&HOLDER) = None;
-    lock(&SESSIONS).clear();
-}
 
 struct Words<'a> {
     verb: &'a str,
@@ -207,6 +191,24 @@ pub fn agent(
     }
 }
 
+/// Cuts a reply to the agent's cap from its end: its first line names the window and says what
+/// was done, so that stays.
+fn cap(text: &str) -> String {
+    const ROOM: usize = crate::agent::CAP - 100;
+    if text.len() <= crate::agent::CAP {
+        return text.to_string();
+    }
+    let mut to = ROOM;
+    while !text.is_char_boundary(to) {
+        to -= 1;
+    }
+    format!(
+        "{}\n[cut: {} more bytes; read less with --query]",
+        &text[..to],
+        text.len() - to
+    )
+}
+
 /// What `brigadier computer` does, as its calls log names them.
 pub(crate) const VERBS: [&str; 10] = [
     "apps",
@@ -222,6 +224,26 @@ pub(crate) const VERBS: [&str; 10] = [
 ];
 
 fn verb(
+    data: &Path,
+    me: &str,
+    w: &Words,
+    rows: &dyn Fn() -> Vec<Value>,
+    here: &dyn Fn() -> bool,
+) -> Result<String, Value> {
+    let verb = VERBS.iter().find(|v| **v == w.verb).copied().unwrap_or("");
+    UNLOGGED.set(Some((
+        brigadier_core::session_dir(data, me).join("computer"),
+        verb,
+    )));
+    let done = checked(data, me, w, rows, here);
+    if done.is_ok() {
+        sent();
+    }
+    UNLOGGED.set(None);
+    done
+}
+
+fn checked(
     data: &Path,
     me: &str,
     w: &Words,
@@ -272,16 +294,6 @@ fn verb(
         return Err(refuse(&no));
     }
     asks::check(data, me, w, &s, rows, here)?;
-    // Brigadier's own count of what went past its refusals, which a worker's result carries so its lead needn't take the
-    // worker's word for it [D2032].
-    let calls = brigadier_core::session_dir(data, me).join("computer");
-    let _ = fs::create_dir_all(&calls).and_then(|()| {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(calls.join("calls"))?;
-        writeln!(f, "{} {}", brigadier_frames::log::now_ms(), w.verb)
-    });
     let text = match w.verb {
         "apps" => apps(data, here)?,
         "open" => open::open(data, me, &mut s, w, rows, here)?,
@@ -461,24 +473,6 @@ fn verb(
     Ok(text)
 }
 
-/// Takes the computer for `me`, or names the session that has it [D907]. A holder waiting on the
-/// user (a question, an approval) has let it go: its turn goes on only once they answer.
-fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
-    let mut holder = lock(&HOLDER);
-    if let Some(id) = holder.as_deref().filter(|id| *id != me) {
-        let row = rows().into_iter().find(|r| r["id"] == id);
-        if let Some(r) = row.filter(|r| r["running"] == true && r["state"] != "waiting_answer") {
-            return Err(refuse(&format!(
-                "Computer use is in use by {} in \"{}\" (session {id}). Try again after its turn, or do something else.",
-                r["backend"].as_str().unwrap_or("another agent"),
-                r["title"].as_str().unwrap_or(id)
-            )));
-        }
-    }
-    *holder = Some(me.to_string());
-    Ok(())
-}
-
 fn said(f: Fail) -> Value {
     match f {
         Fail::NotSent(why) => refuse(&why),
@@ -489,6 +483,10 @@ fn said(f: Fail) -> Value {
 }
 
 fn call(data: &Path, name: &str, args: Value, here: &dyn Fn() -> bool) -> Result<Value, Value> {
+    // Past a lookup, the call reaches the app's window.
+    if !["list_apps", "list_windows", "check_permissions"].contains(&name) {
+        sent();
+    }
     tool(data, name, args, &|| !here())
         .map_err(said)?
         .map_err(|e| refuse(&cap(&ours(&e))))

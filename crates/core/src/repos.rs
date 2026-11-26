@@ -315,7 +315,8 @@ pub fn clone(
         let _ = fs::remove_dir_all(&dir);
         let reason = e.to_string().to_lowercase();
         if reason.contains("repository not found")
-            || (reason.contains("repository ") && reason.contains(" not found"))
+            || (reason.contains("repository ")
+                && (reason.contains(" not found") || reason.contains(" does not exist")))
             || reason.contains("could not read username")
             || reason.contains("could not read password")
             || reason.contains("authentication failed")

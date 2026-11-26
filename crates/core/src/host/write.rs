@@ -42,6 +42,7 @@ pub(super) fn page(data: &Path) -> Pr {
         dir,
         avatars: data.join("avatars"),
         account: None,
+        project: None,
     }
 }
 

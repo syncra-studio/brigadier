@@ -227,6 +227,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             if key == crate::computer::CURSOR {
                 crate::computer::cursor_switched(data);
             }
+            if key == crate::computer::SETTING && value == "false" {
+                crate::computer::turned_off();
+            }
         }
         [_, agent, name, on] if agent == "agent" && adapters::get(name).is_some() => {
             let off = saved["agents_off"].as_array_mut().unwrap();

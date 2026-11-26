@@ -20,7 +20,8 @@ pub(crate) fn launch(
         return Ok(core::Ruled::default());
     }
     // The agent's whole listed catalogue, hidden models too: the pickers' is filtered [D2082]. The
-    // launch folder's check (a project's own models), else the home folder's, as the pickers read.
+    // launch folder's check as the pickers read it (checked.rs) [C27]. One that listed nothing
+    // (failed, or empty) takes home's here only, to find what a rule bars or caps: it never allows.
     let listed_in = |cwd: &str| -> Vec<Value> {
         let mut args = vec!["agents".to_string(), "--cached".into()];
         if !cwd.is_empty() {
@@ -51,7 +52,7 @@ pub(crate) fn launch(
         return Err(format!("{name} is barred by your rule; pick another model"));
     }
     let effort = m
-        .and_then(|m| effort_of(&rules, agent, m, effort, false).ok())
+        .and_then(|m| effort_of(&rules, agent, m, effort).ok())
         .filter(|(_, note)| note.is_some())
         .and_then(|(e, _)| e);
     let ids = || listed.iter().filter_map(|m| m["id"].as_str());
@@ -156,6 +157,12 @@ pub(super) fn allowed<'a>(
 /// Why an entry was passed by, after its model's name and for one or several.
 pub(super) const FULL: &str = "had no account with room";
 
+/// Why the switch's next reviewer passed an entry by [D3026].
+pub(super) const TRIED_REVIEW: &str = "failed or met its limit reviewing this";
+
+/// Why an entry was passed by when it lacks the effort the start asked for.
+pub(super) const NO_EFFORT: &str = "can't run at the effort asked for";
+
 /// An entry `allowed` refuses, by its name, and why.
 pub(super) fn unusable(
     data: &Path,
@@ -179,14 +186,13 @@ pub(super) fn unusable(
 }
 
 /// The effort an entry runs at: its own (or `--effort`), else the model's default; one above a
-/// rule, or a default its CLI doesn't say, runs at the highest the rule allows, with a note, or is
-/// refused when asked for outright (`strict`) [D338] (proposed).
+/// rule, or a default its CLI doesn't say, runs at the highest the rule allows, with a note, asked
+/// for outright too [D338, D376]. Err: the model has no such effort.
 pub(super) fn effort_of(
     rules: &[Value],
     agent: &str,
     m: &Value,
     want: Option<&str>,
-    strict: bool,
 ) -> Result<(Option<String>, Option<String>), String> {
     let id = str_of(m, "id");
     let efforts: Vec<&str> = (m["efforts"].as_array().into_iter().flatten())
@@ -200,10 +206,6 @@ pub(super) fn effort_of(
     let now = want.or(m["default_effort"].as_str());
     let at = now.and_then(|e| efforts.iter().position(|x| *x == e));
     match (cap(rules, agent, &efforts), at) {
-        (Some(cap), Some(at)) if at > cap && strict => Err(format!(
-            "A rule in Settings › Routing says never above {}, so {id} can't run at {}.",
-            efforts[cap], efforts[at]
-        )),
         (Some(cap), at) if at.is_none_or(|at| at > cap) => Ok((
             Some(efforts[cap].into()),
             Some(format!("{id} runs at {} by your rule", efforts[cap])),

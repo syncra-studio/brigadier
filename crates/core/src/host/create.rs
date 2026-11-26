@@ -7,7 +7,14 @@ use super::{GH_SECS, Kind, Pr, err, failed, gh, setup};
 use crate::git::branch;
 use serde_json::{Value, json};
 use std::io;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
+
+/// The longest a fingerprint's `git add` may take.
+const FINGERPRINT_SECS: u64 = 60;
+
+/// Create PR's refusal when no one could name the base [D168].
+pub const UNLEARNED: &str = "Brigadier couldn't learn this repository's default branch, so name a new branch for this pull request.";
 
 /// What the Create PR dialog sends [D168].
 pub struct Create<'a> {
@@ -22,14 +29,16 @@ pub struct Create<'a> {
     pub base: Option<&'a str>,
     /// Its head on the host; the checked-out branch when None.
     pub head: Option<&'a str>,
+    /// The push runs the repository's own hooks: its project is trusted on record [D166, D211].
+    pub hooks: bool,
 }
 
 impl Pr {
     /// Makes the PR, each part only if it's still to do, so a retry never repeats one that landed:
     /// the new branch, the commit, the push, then `gh pr create`. A PR already open for the head is
-    /// answered with its address (`existing`). The caller holds the branch fence for a branch or a
-    /// commit [D1021].
-    pub fn create(&self, c: &Create) -> io::Result<Value> {
+    /// answered with its address (`existing`). The caller hands in the branch fence for a branch or
+    /// a commit [D1021]; it's let go once they're made, so the push and gh hold up no other session.
+    pub fn create(&self, c: &Create, fence: Option<std::fs::File>) -> io::Result<Value> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
             return err("Only GitHub's pull requests can be made here.");
         };
@@ -40,24 +49,34 @@ impl Pr {
         if head.is_empty() || head == base {
             return err("Name a new branch for this pull request.");
         }
+        // A base no one could name may be the branch checked out: none of it goes onto that one,
+        // unless an earlier try made it for this PR.
+        let stays = c.branch.is_none_or(|name| name == self.branch)
+            && !branch::marked(&self.checkout, &self.branch);
+        if base.is_empty() && stays && (c.commit.is_some() || head == on) {
+            return err(UNLEARNED);
+        }
         let stop = AtomicBool::new(false);
         if let Some(name) = c.branch
             && name != self.branch
         {
             branch::create(&self.checkout, name, None, &stop)?;
+            branch::mark(&self.checkout, name, &stop)?;
         }
         let committed = match c.commit {
             Some(message) => branch::commit_all(&self.checkout, message, &stop)?,
             None => false,
         };
+        drop(fence);
         let pushed = match head == on {
             true => {
                 let remote = crate::git::push::remote(&self.checkout, on)?;
-                branch::push(&self.checkout, &remote, on, &stop)?
+                branch::push(&self.checkout, &remote, on, c.hooks, &stop)?
             }
             false => false,
         };
-        let gh = gh(repo, self.account.as_deref()).ok_or_else(|| io::Error::other(super::NO_GH))?;
+        let pick = self.account.as_deref();
+        let gh = gh(repo, pick).ok_or_else(|| io::Error::other(super::no_gh(repo, pick)))?;
         let at = format!("{}/{}", repo.host, repo.path);
         let mut command = gh.command();
         command.args(["pr", "create", "-R", &at, "--head", head]);
@@ -144,6 +163,46 @@ impl Pr {
             .to_string()
     }
 
+    /// `landing`, else the default branch GitHub names for the repository, asked once and kept in
+    /// its project's folder; "" when neither can say. One gh read, up to `GH_SECS` [D168].
+    pub fn learn(&self, data: &Path) -> String {
+        let known = self.landing();
+        let Some(repo) =
+            (self.repo.as_ref()).filter(|r| known.is_empty() && r.kind == Kind::GitHub)
+        else {
+            return known;
+        };
+        let path = (self.project.as_ref())
+            .map(|p| crate::projects::dir(data, p).join("default-branches.json"));
+        let mut kept = path.clone().map(read_kept).unwrap_or_default();
+        if let Some(name) = kept[repo.key()].as_str() {
+            return name.to_string();
+        }
+        let Some(gh) = gh(repo, self.account.as_deref()) else {
+            return String::new();
+        };
+        let mut command = gh.command();
+        let at = format!("repos/{}", repo.path);
+        command.args([
+            "api",
+            "--hostname",
+            &repo.host,
+            &at,
+            "--jq",
+            ".default_branch",
+        ]);
+        let name = (setup::run(&mut command, GH_SECS).ok())
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+            .filter(|name| !name.is_empty() && name != "null" && !name.starts_with('-'))
+            .unwrap_or_default();
+        if let Some(path) = path.filter(|_| !name.is_empty()) {
+            kept[repo.key()] = json!(name);
+            keep(&path, &kept);
+        }
+        name
+    }
+
     /// The host's page comparing `head` to `base` [D169].
     pub fn compare(&self, base: &str, head: &str) -> io::Result<String> {
         let Some(repo) = self.repo.as_ref().filter(|r| r.kind == Kind::GitHub) else {
@@ -164,6 +223,37 @@ impl Pr {
                 encode(head)
             ),
         })
+    }
+
+    /// What a commit of everything would take now: HEAD and the tree of every file git doesn't
+    /// ignore, staged in a copy of the index so the folder's own isn't touched. None when git
+    /// can't say.
+    pub fn fingerprint(&self) -> Option<String> {
+        let (root, never) = (&self.checkout.root, AtomicBool::new(false));
+        let read = |args: &[&str]| crate::git::read(root, args, &never).ok();
+        let text = |out: Vec<u8>| String::from_utf8_lossy(&out).trim().to_string();
+        let head = read(&["rev-parse", "HEAD"]).map(text).unwrap_or_default();
+        let index =
+            read(&["rev-parse", "--path-format=absolute", "--git-path", "index"]).map(text)?;
+        // One copy per call, in the session's folder: creates of other sessions run beside it.
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let copy = (self.dir).join(format!("pr-{}-{n}.index", std::process::id()));
+        // A repository with no commit yet has no index: the copy starts empty.
+        let _ = std::fs::remove_file(&copy);
+        let _ = std::fs::copy(&index, &copy);
+        // Bounded: a filter that hangs mustn't hold the fence it's asked under.
+        let git = |args: &[&str]| {
+            let mut command = crate::worktrees::command(root);
+            command.env("GIT_INDEX_FILE", &copy).args(args);
+            let out = setup::run(&mut command, FINGERPRINT_SECS).ok();
+            out.filter(|o| o.status.success()).map(|o| o.stdout)
+        };
+        let tree = git(&["add", "-A"])
+            .and_then(|_| git(&["write-tree"]))
+            .map(text);
+        let _ = std::fs::remove_file(&copy);
+        Some(format!("{head} {}", tree?))
     }
 
     /// What the message writer reads to name a PR: the branch's commits past its base and what's

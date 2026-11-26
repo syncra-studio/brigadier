@@ -21,6 +21,7 @@ mod timeline;
 mod touched;
 mod view;
 mod write;
+use accounts::no_gh;
 pub use actions::{kept_run, kept_runs};
 pub use chat::{chat, listed};
 pub use chip::{chip, moved_on, opened};
@@ -385,6 +386,8 @@ pub struct Pr {
     /// Its project's GitHub account, read as [D631]; None: whichever can see the repository. On the
     /// Pull Requests page, the one account its search reads as, else every one [D243].
     pub account: Option<String>,
+    /// Its project's id, whose folder keeps the default branch GitHub named [D168].
+    project: Option<String>,
 }
 
 /// `hosted`, the repository None on a server it can't name; None with no remote.
@@ -463,11 +466,11 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
     // shortcut: the PR is made in the repository the branch is pushed to; a fork's PR into its
     // upstream (head and base in two repositories) waits until someone needs it.
     let repo = repo(&push::url(&checkout, &remote)?);
-    let account = match target {
+    let project = match target {
         Target::Project(id) => Some(id.to_string()),
         Target::Session(id) | Target::Repo(id, _) => load(data, id).ok().and_then(|s| s.project),
-    }
-    .and_then(|p| github::picked(data, &p, repo.as_ref()));
+    };
+    let account = (project.as_ref()).and_then(|p| github::picked(data, p, repo.as_ref()));
     let scope = (homes.into_iter().map(|(_, r)| r))
         .filter(|r| r.kind == Kind::GitHub && slug(&r.path))
         .collect();
@@ -488,5 +491,6 @@ pub fn pr(data: &Path, id: &str) -> io::Result<Pr> {
         dir: dir(data, id),
         avatars: data.join("avatars"),
         account,
+        project,
     })
 }

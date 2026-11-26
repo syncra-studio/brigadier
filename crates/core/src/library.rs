@@ -45,6 +45,19 @@ pub fn save_removed(data: &Path, keys: &[String]) -> io::Result<()> {
     crate::write_atomic(&dir(data).join("removed.json"), &bytes)
 }
 
+/// The user's switch and scope of found items no agent has right now, by where they were found
+/// [D721]: `{"<key> <found> <from>": {on?, scope?}}`.
+pub fn switches(data: &Path) -> serde_json::Map<String, Value> {
+    let bytes = fs::read(dir(data).join("switches.json")).unwrap_or_default();
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+pub fn save_switches(data: &Path, kept: &serde_json::Map<String, Value>) -> io::Result<()> {
+    fs::create_dir_all(dir(data))?;
+    let bytes = serde_json::to_vec_pretty(kept)?;
+    crate::write_atomic(&dir(data).join("switches.json"), &bytes)
+}
+
 /// Whether an item is on for a session in `project`: switched on, for all projects or chosen ones
 /// [D2046 D727].
 pub fn on(item: &Value, project: Option<&str>) -> bool {

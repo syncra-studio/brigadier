@@ -13,10 +13,13 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Proposed: the most any reply prints.
-const CAP: usize = 16 << 10;
+pub(crate) const CAP: usize = 16 << 10;
 /// Proposed: `wait`'s default and longest timeout, in seconds.
 pub(crate) const WAIT: u64 = 60;
 const WAIT_MAX: u64 = 600;
+/// The most `read --last`/`--around` and `sessions --limit` take.
+pub(crate) const LAST_MOST: u64 = 1000;
+const LIMIT_MOST: u64 = 100;
 
 const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
 
@@ -258,7 +261,10 @@ pub fn run(
         Some((id, at)) if call.cmd == "read" => (id, Some(at)),
         _ => (id, None),
     };
-    if !id.is_empty() && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
+    if !id.is_empty()
+        && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id))
+        && !(call.cmd == "wait" && core::check_id(id).is_ok() && wait::making(data, me, id))
+    {
         if core::check_id(id).is_ok() && core::load(data, id).is_ok() {
             return refuse(&format!(
                 "{id} isn't in Brigadier's list yet. Try again in a moment."
@@ -270,7 +276,7 @@ pub fn run(
     }
     let reply = match call.cmd {
         "sessions" => call
-            .number("--limit", 20, 100)
+            .number("--limit", 20, LIMIT_MOST)
             .map(|n| sessions(data, me, n, &rows())),
         "read" => {
             let (n, default) = match at {
@@ -281,7 +287,7 @@ pub fn run(
                 .into_iter()
                 .find(|r| r["id"] == id)
                 .unwrap_or_default();
-            call.number(n, default, 1000)
+            call.number(n, default, LAST_MOST)
                 .map(|n| crate::relay::read(data, id, &row, at, n, call.has("--user")))
         }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
@@ -291,7 +297,7 @@ pub fn run(
         }),
         "stop" => Ok(workers::stop(data, me, id)),
         "send" if crate::routing::held(data, id) => {
-            Err(refuse(&workers::for_user(data, id).unwrap_or_default()))
+            Err(refuse(&workers::for_user(data, me, id).unwrap_or_default()))
         }
         "send"
             if call.has("--allow")
@@ -422,10 +428,11 @@ fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
         })
         .collect();
     if more > 0 {
-        text += &format!(
-            "… {more} older; brigadier sessions --limit {}\n",
-            limit + more as u64
-        );
+        let n = (limit + more as u64).min(LIMIT_MOST);
+        text += &match n > limit {
+            true => format!("… {more} older; brigadier sessions --limit {n}\n"),
+            false => format!("… {more} older, past the most it lists\n"),
+        };
     }
     json!({"ok": true, "sessions": list, "more": more, "text": text})
 }
@@ -442,7 +449,7 @@ fn models(data: &Path, me: &str) -> Value {
             let models: Vec<Value> = (g["models"].as_array().into_iter().flatten())
                 .map(|m| json!({"id": m["id"], "efforts": m["efforts"], "default_effort": m["default_effort"], "draws": m["draws"]}))
                 .collect();
-            json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"]})
+            json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"], "from": g["from"]})
         })
         .collect();
     let mut text = String::new();
@@ -452,6 +459,10 @@ fn models(data: &Path, me: &str) -> Value {
         let levels: Vec<&str> = levels.filter_map(Value::as_str).collect();
         if !levels.is_empty() {
             text += &format!("  Levels: {}\n", levels.join(", "));
+        }
+        // (proposed) Home's list stands in until this folder is checked [C27].
+        if a["from"] == "home" {
+            text += "  This folder hasn't been checked yet; these are your home folder's models.\n";
         }
         if a["models"].as_array().is_none_or(Vec::is_empty) {
             text += "  No models listed.\n";

@@ -23,6 +23,7 @@ pub use freed::shed;
 mod hand;
 pub mod inner;
 mod kept;
+mod made;
 use kept::keeps;
 pub use kept::kept;
 pub(crate) mod landing;
@@ -67,6 +68,8 @@ struct Owned {
     freed: Option<freed::Freed>,
     /// Started on a branch that was there before (a PR's, by an older build): delete never takes it [D703].
     on: bool,
+    /// The token its create made `branch` with (`made`): undo takes only that branch [D35].
+    made: Option<String>,
 }
 
 fn err<T>(message: String) -> io::Result<T> {
@@ -294,10 +297,12 @@ fn make(
     picks: &[String],
     owned: &mut Owned,
 ) -> io::Result<()> {
-    // A failed branch create must never claim a branch another session made.
-    git(repo, &["branch", branch, &owned.base_commit])?;
+    // Named before git makes it [D35].
+    let made = made::token();
     owned.branch = Some(branch.into());
+    owned.made = Some(made.clone());
     write(&spec.dir, owned)?;
+    made::make(repo, branch, &owned.base_commit, &made)?;
     if path.exists() {
         return err(format!("{} already exists", path.display()));
     }
@@ -343,6 +348,7 @@ fn undo(owned: &Owned) -> io::Result<()> {
     let repo = Path::new(&owned.repo);
     if let Some(branch) = &owned.branch
         && has_branch(repo, branch)
+        && made::ours(repo, branch, owned.made.as_deref())?
     {
         git(repo, &["branch", "-D", branch])?;
     }
@@ -391,6 +397,10 @@ pub fn branch(dir: &Path) -> io::Result<Option<String>> {
 /// when its base holds all of it, or when `drop` says so and it's still this session's own. A
 /// branch with work that never landed, kept, is returned. The caller holds `lock`.
 pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
+    // A create that failed is undone as at a sweep: only a branch it made goes [D35].
+    if let Some(owned) = read(dir)?.filter(|o| o.failed) {
+        return undo(&owned).map(|()| None);
+    }
     free(dir)?;
     let Some(owned) = read(dir)? else {
         return Ok(None);

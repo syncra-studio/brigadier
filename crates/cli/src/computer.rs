@@ -28,7 +28,7 @@ const CALL_WAIT: Duration = Duration::from_secs(20);
 /// at most this often, so a grant given in System Settings shows without restarting Brigadier.
 const RECHECK: Duration = Duration::from_secs(4);
 /// The setting, off until the user turns it on [D911, D912].
-const SETTING: &str = "computer_use";
+pub const SETTING: &str = "computer_use";
 /// The agent cursor's setting, on unless the user turns it off [D956].
 pub const CURSOR: &str = "computer_cursor";
 pub const WEB: &str = "computer_web";
@@ -407,6 +407,13 @@ pub fn agent(
     }
 }
 
+/// Off by any path ends the helper, the holder and every yes [D46].
+pub fn turned_off() {
+    stop_helper();
+    verbs::release_all();
+    verbs::asks::forget();
+}
+
 /// The app's side: `computer status|on|off|grant accessibility|screenRecording` [D911, D912].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map_or("", String::as_str);
@@ -418,15 +425,9 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 .map(String::from)
                 .into();
             crate::settings::run(data, &set)?;
-            match on {
-                // Turning it on raises macOS's own prompts for what's missing [D911].
-                true if helper_app(data).is_some() => launch(data, Some("all"))?,
-                true => {}
-                false => {
-                    stop_helper();
-                    verbs::release_all();
-                    verbs::asks::forget();
-                }
+            // Turning it on raises macOS's own prompts for what's missing [D911].
+            if on && helper_app(data).is_some() {
+                launch(data, Some("all"))?;
             }
             Ok(json!({"ok": true}))
         }

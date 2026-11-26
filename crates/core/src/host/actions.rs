@@ -4,7 +4,7 @@
 //! in `actions/` in the session's folder, so the tab paints the last read at once.
 
 use super::view::{keep, read_kept};
-use super::{GH_SECS, Gh, Kind, NO_GH, Pr, Repo, err, failed, gh, graphql, setup};
+use super::{GH_SECS, Gh, Kind, Pr, Repo, err, failed, gh, graphql, setup};
 use crate::adapters::iso_ms;
 use brigadier_frames::log::now_ms;
 use serde_json::{Value, json};
@@ -222,7 +222,7 @@ impl Pr {
         };
         match gh(repo, self.account.as_deref()) {
             Some(gh) => Ok((repo, gh)),
-            None => err(NO_GH),
+            None => err(super::no_gh(repo, self.account.as_deref())),
         }
     }
 

@@ -242,7 +242,8 @@ fn card(data: &Path, a: &dyn Adapter) -> Value {
 }
 
 fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
-    let mut out = last_check(data, a, cwd).unwrap_or_else(|| json!({}));
+    // Its own check, else its worktree's project folder's, else home's [C27].
+    let mut out = core::checked::kept(data, a.name(), cwd).unwrap_or_else(|| json!({}));
     out.as_object_mut()
         .unwrap()
         .extend(card(data, a).as_object().unwrap().clone());
@@ -448,8 +449,7 @@ pub(crate) fn start(
 /// A run still going is shown again; an ended one is replaced.
 pub fn still_running(data: &Path, id: &str) -> io::Result<Option<Value>> {
     if session_dir(data, id).join("session.json").exists() {
-        let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
-        if !ping["child"].is_null() {
+        if state::runs(data, id).0 {
             return Ok(Some(json!({"ok": true, "id": id, "running": true})));
         }
         close(data, id)?;

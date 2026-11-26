@@ -62,7 +62,7 @@ pub fn branch(checkout: &Checkout) -> io::Result<String> {
 }
 
 /// Git in the checkout with the network's settings: never a prompt, and the trusted project's hooks.
-fn net(checkout: &Checkout, hooks: bool) -> std::process::Command {
+pub(super) fn net(checkout: &Checkout, hooks: bool) -> std::process::Command {
     let mut command = match hooks {
         true => worktrees::with_hooks(&checkout.root),
         false => worktrees::command(&checkout.root),

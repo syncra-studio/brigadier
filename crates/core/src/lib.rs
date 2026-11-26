@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod agent;
 pub mod archive;
 pub mod background;
+pub mod checked;
 pub mod feedback;
 pub mod fold;
 pub mod folder;
@@ -266,7 +267,12 @@ pub fn create(data: &Path, spec: &Spec) -> io::Result<Spec> {
 
 pub fn load(data: &Path, id: &str) -> io::Result<Spec> {
     let dir = session_dir(data, id);
-    let mut spec: Spec = serde_json::from_slice(&fs::read(dir.join("session.json"))?)?;
+    // Kept NotFound for callers that test the kind; the words name the session [C6].
+    let bytes = fs::read(dir.join("session.json")).map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => io::Error::new(e.kind(), format!("no session {id:?}")),
+        _ => e,
+    })?;
+    let mut spec: Spec = serde_json::from_slice(&bytes)?;
     spec.dir = dir;
     Ok(spec)
 }

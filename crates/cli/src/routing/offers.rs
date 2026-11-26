@@ -33,10 +33,12 @@ fn listed<'a>(groups: &'a [Value], k: &str) -> Option<&'a Value> {
     model_of(groups, agent, id)
 }
 
-/// A model whose agent lists its models now and not this one.
+/// A model whose agent lists its models now and not this one; a check that listed none (one that
+/// failed) says nothing of it.
 fn gone(groups: &[Value], k: &str) -> bool {
     let agent = split(k).0;
-    groups.iter().any(|g| g["provider"] == agent) && listed(groups, k).is_none()
+    let lists = |g: &Value| g["models"].as_array().is_some_and(|m| !m.is_empty());
+    groups.iter().any(|g| g["provider"] == agent && lists(g)) && listed(groups, k).is_none()
 }
 
 fn name(groups: &[Value], k: &str) -> String {

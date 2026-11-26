@@ -100,6 +100,30 @@ fn destination(checkout: &git::Checkout) -> io::Result<(String, String)> {
     Ok((remote, url))
 }
 
+/// The repository a picked account's token is for, so the child always gets it [D631, C19]: the
+/// push destination when it is on GitHub, else the first GitHub remote (with remotes on several
+/// GitHub hosts, the first decides), else github.com, since a pick names a login and no host.
+/// Only git itself failing is an error.
+fn picked_repo(checkout: &git::Checkout) -> io::Result<Repo> {
+    let github = |url: &str| super::repo(url).filter(|r| r.kind == Kind::GitHub);
+    if let Some(repo) = destination(checkout).ok().and_then(|(_, url)| github(&url)) {
+        return Ok(repo);
+    }
+    for remote in push::remotes(checkout)? {
+        if let Some(repo) = push::url(checkout, &remote)
+            .ok()
+            .and_then(|url| github(&url))
+        {
+            return Ok(repo);
+        }
+    }
+    Ok(Repo {
+        kind: Kind::GitHub,
+        host: "github.com".into(),
+        path: String::new(),
+    })
+}
+
 /// Whether `checkout` pushes over SSH, as git rewrites its URL: get-url includes
 /// insteadOf/pushInsteadOf, which can turn HTTPS into SSH.
 fn ssh(checkout: &git::Checkout) -> bool {
@@ -362,12 +386,16 @@ fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, Str
         Some(folder) => (covered(data, folder).repos.into_iter())
             .map(|(_, r)| r)
             .collect(),
+        None if pick.is_some() => {
+            let checkout = git::checkout(data, &Target::session(&spec.id))
+                .map_err(|error| error.to_string())?;
+            vec![picked_repo(&checkout).map_err(|error| error.to_string())?]
+        }
         None => {
             let url = git::checkout(data, &Target::session(&spec.id))
                 .and_then(|checkout| destination(&checkout).map(|(_, url)| url));
             match url {
                 Ok(url) => super::repo(&url).into_iter().collect(),
-                Err(error) if pick.is_some() => return Err(error.to_string()),
                 Err(_) => return Ok(None),
             }
         }
@@ -383,9 +411,7 @@ fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, Str
             if gh.is_none()
                 && let Some(login) = pick
             {
-                return Err(format!(
-                    "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {host}, or choose another account in Project settings."
-                ));
+                return Err(signed_out(&login, host));
             }
             gh.and_then(|gh| gh.token)
         }
@@ -401,4 +427,20 @@ fn repository_url_uses_its_host() {
         path: "team/project".into(),
     };
     assert_eq!(repo.url(), "https://github.example.com/team/project");
+}
+
+/// Why `gh(repo, pick)` gave none: a picked account is named, as it's never read as another [D631].
+pub(super) fn no_gh(repo: &Repo, pick: Option<&str>) -> String {
+    match pick {
+        Some(login) if repo.kind == Kind::GitHub && setup::find("gh", &[]).is_some() => {
+            signed_out(login, &repo.host)
+        }
+        _ => super::NO_GH.into(),
+    }
+}
+
+fn signed_out(login: &str, host: &str) -> String {
+    format!(
+        "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {host}, or choose another account in Project settings."
+    )
 }

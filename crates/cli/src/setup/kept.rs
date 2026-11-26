@@ -15,9 +15,9 @@ fn checks_path(data: &Path, a: &dyn Adapter) -> PathBuf {
     data.join("agents").join(format!("{}.json", a.name()))
 }
 
+/// This folder's own check: under its canonical key, else as it was kept before keys were [C27].
 pub(super) fn last_check(data: &Path, a: &dyn Adapter, cwd: &Path) -> Option<Value> {
-    let all: Value = serde_json::from_slice(&fs::read(checks_path(data, a)).ok()?).ok()?;
-    all.get(cwd.to_str()?).filter(|v| v.is_object()).cloned()
+    core::checked::saved(data, a.name(), cwd)
 }
 
 /// Keeps the check before releasing the lock, so a waiting caller gets the same result.
@@ -28,11 +28,16 @@ pub(super) fn keep_check(data: &Path, a: &dyn Adapter, cwd: &Path, out: &Value) 
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .filter(|v| v.is_object())
         .unwrap_or_else(|| json!({}));
-    if let (Some(map), Some(cwd)) = (all.as_object_mut(), cwd.to_str()) {
-        // A deleted session's folder goes with it.
+    if let (Some(map), Some(raw)) = (all.as_object_mut(), cwd.to_str()) {
+        let cwd = core::checked::key(cwd);
+        // A deleted session's folder goes with it, under either form of the sessions root.
         let own = data.join("sessions");
-        map.retain(|f, _| !Path::new(f).starts_with(&own) || Path::new(f).is_dir());
-        map.insert(cwd.into(), out.clone());
+        let real = PathBuf::from(core::checked::key(data)).join("sessions");
+        let mine = |f: &Path| f.starts_with(&own) || f.starts_with(&real);
+        map.retain(|f, _| !mine(Path::new(f)) || Path::new(f).is_dir());
+        // The one entry for this folder, under its canonical key.
+        map.remove(raw);
+        map.insert(cwd, out.clone());
         fs::create_dir_all(path.parent().unwrap())?;
         core::write_atomic(&path, all.to_string().as_bytes())?;
     }

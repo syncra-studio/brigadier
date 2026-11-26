@@ -140,13 +140,13 @@ pub(crate) fn results(data: &Path) -> Value {
             continue;
         };
         let notes = f.outcomes;
-        // A retry still going has already said its parent failed a check.
-        for n in &notes {
-            // A rerun after a temporary end isn't a failed check [D340, D353].
-            let start = n["phase"] == "start" && n["step"] != "same";
-            if let Some(of) = n["retry_of"].as_str().filter(|_| start) {
-                *retried.entry(of.into()).or_default() += 1;
-            }
+        // A retry has said its parent failed a check, going, held for the user's call or stopped
+        // there: read from its record, as the ladder reads it. A rerun after a temporary end
+        // isn't a failed check [D340, D353].
+        let r = workers::record(data, &l.parent, &wid).map(|r| r.retry);
+        let r = r.unwrap_or_default();
+        if let Some(of) = r["retry_of"].as_str().filter(|_| r["step"] != "same") {
+            *retried.entry(of.into()).or_default() += 1;
         }
         // One that never ended (held unstarted, or still going) is no result yet [C5].
         if l.last.is_null() {

@@ -104,7 +104,7 @@ fn group(check: &Value, held: bool, chosen: &str, hidden: &[Value]) -> Value {
     let (levels, level) = levels(&check["name"], held, chosen);
     json!({"provider": check["name"], "label": check["label"], "short": check["short"], "mark": check["mark"],
         "unavailable": unavailable, "models": models, "hidden": off, "error": check["error"],
-        "levels": levels, "level": level, "held": held})
+        "levels": levels, "level": level, "held": held, "from": check["from"]})
 }
 
 /// `models [--session ID | --project P | --cwd D] [--fresh] [--all]`: the groups from each agent's last
@@ -202,13 +202,9 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     };
     let effort = flag(args, "--effort");
     let spec = core::load(data, id)?;
-    // A folder not checked yet takes the home folder's check, as the pickers do.
+    // The check the pickers read for this folder (checked.rs) [C27].
     let check = ["agents", b, "--cached", "--cwd", &spec.cwd].map(String::from);
-    let mut checks = setup::run(data, &check)?;
-    let of = &checks["agents"][0];
-    if of["models"].is_null() && of["error"].is_null() {
-        checks = setup::run(data, &check[..3])?;
-    }
+    let checks = setup::run(data, &check)?;
     let g = group(&checks["agents"][0], false, "", &[]);
     if !g["unavailable"].is_null() {
         return refuse(

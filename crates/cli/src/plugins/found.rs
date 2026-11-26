@@ -6,7 +6,7 @@
 use super::{folders_of, str};
 use brigadier_core::library;
 use brigadier_core::{adapters, projects};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::io;
 use std::path::Path;
 
@@ -57,7 +57,7 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         (w["key"], w["kind"], w["name"]) = (key.into(), o["kind"].clone(), name.into());
         (w["found"], w["from"]) = (json!([o["place"]]), from(&o).into());
         // One from a project's own file (`.mcp.json`) is the repo's word, not the user's: it
-        // starts off, and switching it on is their yes [D418].
+        // starts off, and switching it on is their yes (owner 2026-11-25, amending D721).
         w["on"] = (o["enabled"] != false && o["repo"] != true).into();
         w["repo"] = (o["repo"] == true).then_some(true).into();
         want.push(w);
@@ -79,6 +79,23 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
             false => a.clone(),
         };
         want[at]["set"] = (peers.len() > 1).then_some(set).into();
+    }
+    // The user's own switch and scope of one this pass doesn't see is kept first, by where it
+    // was found, so it's theirs again when it's back [D721]; failing that, nothing goes.
+    let mut kept = library::switches(data);
+    let was = kept.clone();
+    let gone = |i: &&Value| i["found"].is_array() && !want.iter().any(|w| w["key"] == i["key"]);
+    for i in items.iter().filter(gone) {
+        let chose: Map<String, Value> = (["on", "scope"].into_iter())
+            .filter(|f| i["chosen"][*f] == true)
+            .map(|f| (f.to_string(), i[f].clone()))
+            .collect();
+        if !chose.is_empty() {
+            kept.insert(source(i), chose.into());
+        }
+    }
+    if kept != was {
+        library::save_switches(data, &kept)?;
     }
     let before = items.clone();
     items.retain(|i| i["found"].is_null() || want.iter().any(|w| w["key"] == i["key"]));
@@ -108,6 +125,16 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
                     true => json!({"all": true}),
                     false => json!({ "projects": places }),
                 };
+                // Back from where it was: off or a scope the user chose holds; their on doesn't
+                // overrule a repo's server arriving off.
+                if let Some(k) = kept.get(&source(&w)) {
+                    if k["on"] == false || k["on"] == true && w["repo"] != true {
+                        (w["on"], w["chosen"]["on"]) = (k["on"].clone(), true.into());
+                    }
+                    if k["scope"].is_object() {
+                        (w["scope"], w["chosen"]["scope"]) = (k["scope"].clone(), true.into());
+                    }
+                }
                 items.push(w);
             }
         }
@@ -116,6 +143,29 @@ pub(super) fn sync(data: &Path) -> io::Result<()> {
         library::save(data, &items)?;
     }
     Ok(())
+}
+
+/// Where a found item was found: its key, places and agents.
+fn source(i: &Value) -> String {
+    format!("{} {} {}", str(&i["key"]), i["found"], str(&i["from"]))
+}
+
+/// The user's word on `field` ("on" or "scope") of a found item, kept if it goes.
+pub(super) fn chose(i: &mut Value, field: &str) {
+    if i["found"].is_array() {
+        i["chosen"][field] = true.into();
+    }
+}
+
+/// Clears what was kept of these keys from every place: the user has a newer word on them.
+pub(super) fn forget(data: &Path, keys: &[&str]) -> io::Result<()> {
+    let mut kept = library::switches(data);
+    let len = kept.len();
+    kept.retain(|k, _| !keys.contains(&k.split(' ').next().unwrap_or("")));
+    match kept.len() < len {
+        true => library::save_switches(data, &kept),
+        false => Ok(()),
+    }
 }
 
 /// How each new address signs in, all asked at once, saved once they answer; one that doesn't

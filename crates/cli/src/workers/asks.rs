@@ -33,7 +33,7 @@ pub(super) fn waits(data: &Path, wid: &str, id: &str) -> bool {
         || crate::peers::question(data, wid).is_some_and(|mid| mid == id)
         || (core::fold(&core::session_dir(data, wid), true).ok())
             .and_then(|f| f.fold.hold)
-            .is_some_and(|h| h["id"] == id)
+            .is_some_and(|h| h["id"] == id || h["told"] == id)
 }
 
 /// The daemon's pass for a session whose turn waits on Brigadier's side: a worker's ask written
@@ -227,11 +227,18 @@ fn subject(r: &Value) -> String {
 }
 
 /// What session `id` waits on its user for, as a `wait` on it says: only the user answers it [D126].
-pub fn for_user(data: &Path, id: &str) -> Option<String> {
+/// Only `me`'s own worker's result comes to `me` by itself.
+pub fn for_user(data: &Path, me: &str, id: &str) -> Option<String> {
     let f = core::fold(&core::session_dir(data, id), true).ok()?.fold;
+    let next = match link(data, id).is_some_and(|l| l.parent == me) {
+        true => "End your turn: its result comes to you when it's done.".to_string(),
+        false => {
+            format!("Nothing from it comes to you by itself: `brigadier wait {id}` again later.")
+        }
+    };
     if let Some(h) = &f.hold {
         return Some(format!(
-            "{id} is held: {}. Only the user can choose, on its card. End your turn: its result comes to you when it runs.",
+            "{id} is held: {}. Only the user can choose, on its card. {next}",
             h["why"].as_str().unwrap_or("")
         ));
     }
@@ -245,7 +252,7 @@ pub fn for_user(data: &Path, id: &str) -> Option<String> {
         ),
     };
     Some(format!(
-        "{id} waits for the user {what}\nOnly the user can answer it, in Brigadier: `brigadier send {id} --allow` can't. End your turn: its result comes to you when it's done."
+        "{id} waits for the user {what}\nOnly the user can answer it, in Brigadier: `brigadier send {id} --allow` can't. {next}"
     ))
 }
 
@@ -276,7 +283,9 @@ pub fn answer(
             Some(_) => refuse(&format!(
                 "{wid} asks a question: answer it with `brigadier send {wid} \"<your answer>\"`."
             )),
-            None => refuse(&for_user(data, wid).unwrap_or(format!("{wid} isn't waiting on you."))),
+            None => {
+                refuse(&for_user(data, me, wid).unwrap_or(format!("{wid} isn't waiting on you.")))
+            }
         };
     };
     let (question, plan) = (r["items"].is_array(), r["action"] == "plan");

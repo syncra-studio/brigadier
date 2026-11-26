@@ -1,7 +1,7 @@
 //! What each job would run now, for Settings › Routing: each model's quota or why it can't run, on
 //! the account new work starts on. Only shown: nothing is reserved and no CLI is asked.
 
-use super::pick::place;
+use super::place::place;
 use super::*;
 
 /// "Weekly 43%, resets 14:05", "Full until 15:10", "Barred by your rule", and whether it can't run.
@@ -48,8 +48,7 @@ pub(super) fn now(data: &Path, groups: &[Value], t: &Value) -> Value {
             let name = m.and_then(|m| m["name"].as_str()).unwrap_or(id);
             let (text, off) = state(data, groups, &rules, &v, e);
             if !off && runs.is_none() {
-                let effort =
-                    m.and_then(|m| effort_of(&rules, agent, m, e["effort"].as_str(), false).ok());
+                let effort = m.and_then(|m| effort_of(&rules, agent, m, e["effort"].as_str()).ok());
                 let effort = (effort.and_then(|x| x.0))
                     .or(m.and_then(|m| m["default_effort"].as_str().map(String::from)))
                     .map_or(String::new(), |x| format!(" · {}", level(&x)));

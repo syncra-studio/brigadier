@@ -22,8 +22,10 @@ import type { Pr } from "./types";
  */
 function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { owner, repo, branch, changed, draft: startDraft = false } = ask;
-  const [base, setBase] = useState<string | null>(null);
+  // undefined while it's asked; null: no one could name it, so the PR needs a branch of its own.
+  const [base, setBase] = useState<string | null | undefined>(undefined);
   useEffect(() => {
+    setBase(undefined);
     run(["host", owner, "base"])
       .then((reply) => setBase(String(reply.base) || null))
       .catch(() => setBase(null));
@@ -35,26 +37,28 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   const [busy, setBusy] = useState<"draft" | "ready" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exists, setExists] = useState<string | null>(null);
+  // On its base (or no branch, or a base no one could name), the PR needs a new branch.
+  const needsBranch = !branch || base === null || branch === base;
+  // Only a field that shows is sent.
+  const newName = needsBranch ? name.trim() : "";
   const create = (draft: boolean) => {
     setBusy(draft ? "draft" : "ready");
     setError(null);
-    const args = ["host", owner, "create", ...(name.trim() ? ["--branch", name.trim()] : []), ...(commit && changed ? ["--commit"] : []), "--title", title, "--message", message, ...(draft ? ["--draft"] : []), ...(base ? ["--base", base] : [])];
+    const args = ["host", owner, "create", ...(newName ? ["--branch", newName] : []), ...(commit && changed ? ["--commit"] : []), "--title", title, "--message", message, ...(draft ? ["--draft"] : []), ...(base ? ["--base", base] : [])];
     run(args)
       .then((reply) => {
         if (reply.existing) return setExists(String(reply.url));
         onOpenChange(false);
         setTitle("");
         setMessage("");
-        showToast(`Created PR #${reply.number} for ${name.trim() ? name.trim() : branch}`, { actions: [{ label: "Open PR in browser", run: () => window.brigadier?.openLink(String(reply.url)) }] });
+        showToast(`Created PR #${reply.number} for ${newName || branch}`, { actions: [{ label: "Open PR in browser", run: () => window.brigadier?.openLink(String(reply.url)) }] });
       })
       .catch((cause) => setError(errorText(cause)))
       .finally(() => setBusy(null));
   };
-  // On its base (or no branch), the PR needs a new branch.
-  const needsBranch = !branch || branch === base;
-  const head = name.trim() || (needsBranch ? "New branch" : branch);
-  // Never committed or pushed onto the base itself.
-  const blocked = Boolean(busy) || (needsBranch && (!name.trim() || name.trim() === base));
+  const head = newName || (needsBranch ? "New branch" : branch);
+  // Never committed or pushed onto the base itself; nothing goes before the base is known or not.
+  const blocked = Boolean(busy) || base === undefined || (needsBranch && (!newName || newName === base));
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && (onOpenChange(next), setExists(null))}>
       <DialogContent>

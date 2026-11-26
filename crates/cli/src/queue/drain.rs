@@ -109,6 +109,11 @@ fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
             }
             return Ok(false);
         }
+        // Archived since it was queued, nothing under way: settled once, not tried for ever.
+        if matches!(core::session::lifecycle(&dir), (Some(_), Value::Null)) {
+            q.items[at].error = Some("This session was archived".into());
+            return Ok(false);
+        }
         owner::ensure(data, &spec)?;
         let ping = owner::call(data, id, json!({"op": "ping"}))?;
         let Some(len) = ping["len"].as_u64() else {
@@ -173,4 +178,20 @@ fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
         }
         Ok(false)
     })
+}
+
+/// Whether the drain sends `id` a queued message once it's between turns, as `drain` reads it
+/// from the queue file, fresher than `row`: a `wait` just after a send isn't over yet. A paused
+/// or stopping queue, or a first message that failed, never goes by itself [CL-2].
+pub fn will_go(data: &Path, id: &str, row: &Value) -> bool {
+    let Ok(q) = read(&core::session_dir(data, id)) else {
+        return false;
+    };
+    let held = (row["holding"] == true).then(|| row["finished"].as_u64().unwrap_or(0));
+    let first = (q.items.iter().enumerate()).find(|(at, _)| q.goes(*at, held));
+    let state = row["state"].as_str().unwrap_or("");
+    !q.paused
+        && !q.stopping
+        && DRAINS.contains(&state)
+        && first.is_some_and(|(_, i)| i.error.is_none())
 }

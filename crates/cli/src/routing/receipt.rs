@@ -46,7 +46,7 @@ pub(crate) fn receipt(ran: &Value) -> Option<String> {
 }
 
 /// An account as Providers names it, for the receipt [D24]: its name, else which login it is.
-pub(super) fn label(v: &Value, agent: &str, id: &str) -> String {
+pub(crate) fn label(v: &Value, agent: &str, id: &str) -> String {
     if adapters::get(agent).is_none_or(|a| a.accounts().is_none()) {
         return String::new();
     }

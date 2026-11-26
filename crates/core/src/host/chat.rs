@@ -72,14 +72,15 @@ pub fn chat(data: &Path, id: &str) -> Option<Value> {
     };
     let one = pr.one();
     let _held = one.lock().unwrap_or_else(|e| e.into_inner());
-    let gh = gh(&repo, pr.account.as_deref());
+    let pick = pr.account.as_deref();
+    let gh = gh(&repo, pick).ok_or_else(|| super::no_gh(&repo, pick));
     let pr = Pr {
         repo: Some(repo),
         ..pr
     };
     Some(pr.keep(match gh {
-        Some(gh) => pr.read(&gh, found),
-        None => Err(super::NO_GH.into()),
+        Ok(gh) => pr.read(&gh, found),
+        Err(why) => Err(why),
     }))
 }
 

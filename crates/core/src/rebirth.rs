@@ -39,9 +39,9 @@ fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
 fn listed(spec: &Spec, f: &Fold) -> Option<u64> {
     let b = backend(spec, f);
     let model = as_run(spec, f, b, None).model?;
-    let path = crate::data_of(spec).join(format!("agents/{b}.json"));
-    let checks: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-    let models = checks[spec.cwd.as_str()]["models"].as_array()?;
+    // The check this folder reads, as the pickers do (checked.rs) [C27].
+    let check = crate::checked::kept(&crate::data_of(spec), b, std::path::Path::new(&spec.cwd))?;
+    let models = check["models"].as_array()?;
     models.iter().find(|m| m["id"] == model.as_str())?["window"].as_u64()
 }
 
@@ -76,11 +76,13 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
         // A safe point: no tool runs, nothing waits on the user, and no turn its CLI queued
         // behind it would be stopped with it.
-        let idle = t.tools.is_empty() && !t.stopping && t.question.is_none() && t.began;
-        let idle = idle && t.asks.is_empty() && f.turns.len() == 1;
-        if idle && switching(spec, f, &t.backend) {
+        let calm = !t.stopping && t.question.is_none() && t.began;
+        let calm = calm && t.asks.is_empty() && f.turns.len() == 1;
+        // A stricter level the user picked doesn't wait for the running tool [D166, C16].
+        if calm && switching(spec, f, &t.backend) && (t.tools.is_empty() || stricter(spec, f, t)) {
             return Some("switch");
         }
+        let idle = calm && t.tools.is_empty();
         // A message under way may be the reply that ends the turn: a cut waits for a step or the end.
         let idle = idle && !t.replying;
         return (idle && full(spec, f)).then_some(match again(f, &t.id, &t.switch, t.moved) {
@@ -101,6 +103,19 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     let lost = last["switch"]["why"] == "cut" && last["never_ran"] == true;
     let going = f.go_on.is_some() && f.go_on.as_deref() == last["id"].as_str();
     (refused || stopped || lost || going).then_some("cut")
+}
+
+/// Whether the session's own level, its project's trust aside, is stricter than the one the
+/// running turn was given. A night that ended during the turn gave that level back: it, and an
+/// untrusted project, keep the safe point (O6).
+fn stricter(spec: &Spec, f: &Fold, t: &crate::fold::Turn) -> bool {
+    let rank = |l: Option<&str>| ["ask", "auto", "full"].iter().position(|x| Some(*x) == l);
+    let own = crate::adapters::get(&t.backend).and_then(|a| crate::level(spec, a, false).ok());
+    let given = rank(f.given.as_ref().and_then(|g| g["level"].as_str()));
+    let night = crate::overnight::load(&spec.dir)
+        .morning
+        .is_some_and(|m| m.at >= t.ts);
+    !t.unchecked && !night && rank(own.flatten()).zip(given).is_some_and(|(o, g)| o < g)
 }
 
 /// Whether the user picked another agent and said Switch now [D557], or another model of `backend`
