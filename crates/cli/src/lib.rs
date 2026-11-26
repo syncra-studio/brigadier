@@ -454,9 +454,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "routing" => routing::run(data, args),
         "plugins" => plugins::run(data, args),
         "models" | "set" => models::run(data, args),
-        "accounts" | "switching" | "switch" | "rebirth" | "reconnect" | "reset" => {
-            accounts::run(data, args)
-        }
+        "accounts" | "switching" | "switch" | "rebirth" | "reconnect" => accounts::run(data, args),
+        "reset" => accounts::run(data, args),
         "awake" => settings::awake(data, args),
         "storage" => storage::run(data, args),
         "transcript" => {

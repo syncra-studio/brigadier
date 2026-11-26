@@ -24,6 +24,7 @@ pub mod overnight;
 pub mod projects;
 pub mod rebirth;
 pub mod repos;
+pub mod reset;
 pub mod rewind;
 pub mod rules;
 mod send;

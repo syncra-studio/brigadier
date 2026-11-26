@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::{fs, thread};
 
+pub(crate) mod reset;
 mod start;
 pub(crate) use start::{check_as, fell_back, login_ok, picked, starting, tell, told};
 
@@ -168,7 +169,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             switching::rebirth::go_on(data, id)
         }
         ("rebirth", Some(id)) => switching::rebirth::run(data, id),
-        ("reset", Some(id)) => switching::reset::run(data, id),
+        ("reset", Some(id)) => reset::run(data, id),
         ("reconnect", Some(id)) => {
             switching::reconnect::run(data, id, args.iter().any(|a| a == "--now"))
         }

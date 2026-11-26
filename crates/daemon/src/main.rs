@@ -62,6 +62,7 @@ mod git;
 mod install;
 mod ops;
 mod prs;
+mod reset;
 mod store;
 mod switch;
 mod term;
@@ -234,7 +235,7 @@ fn main() -> io::Result<()> {
         }
         switch::rebirth(&data, &index.rows);
         switch::reconnect(&data, &index.rows);
-        switch::at_reset(&data, &index.rows);
+        reset::at_reset(&data, &index.rows);
         brigadier::rewind::ends(&data, &index.rows, &mut finished);
         brigadier::queue::drain(&data, &index.rows);
         brigadier::control::repeats(&data, &index.rows);

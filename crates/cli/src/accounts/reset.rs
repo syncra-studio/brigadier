@@ -23,7 +23,7 @@ pub fn row(data: &Path, spec: &Spec, f: &Fold, worker: bool) -> Option<Value> {
     if off {
         return None;
     }
-    let mut due = core::switch::reset_due(f, |last| {
+    let mut due = core::reset::reset_due(f, |last| {
         let b = last["backend"].as_str().unwrap_or(&spec.backend);
         let (Some(a), Some(id)) = (adapters::get(b), f.resume.get(b)) else {
             return false;
@@ -100,7 +100,7 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         &call,
         cid,
         "system",
-        &Message::plain(core::switch::LIMIT_RESET),
+        &Message::plain(core::reset::LIMIT_RESET),
         due["backend"].as_str().filter(|b| !b.is_empty()),
         due["of"].as_str(),
     );
