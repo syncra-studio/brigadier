@@ -92,10 +92,12 @@ pub(in crate::workers) struct Of {
     pub by: Option<String>,
 }
 
-/// The turn's time and computer calls as Brigadier measured them, not as the worker tells them.
-/// shortcut: one turn's; a job carried over a context cut counts from the last cut on. The calls
-/// log is the worker's own folder's, so a worker could write lines in it: log in the daemon if one does.
-fn measured(dir: &Path, ended: Option<&Value>) -> String {
+/// The turn's time and computer calls as Brigadier measured them, not as the worker tells them,
+/// with each turn it carried on: a rebirth's `rb-<turn>`, a switch's or reconnect's [D51, D339].
+/// shortcut: an earlier turn's wait on an answer counts as work, as `End` keeps no wait; add one
+/// if it matters. The calls log is the worker's own folder's, so a worker could write lines in it:
+/// log in the daemon if one does.
+fn measured(dir: &Path, f: &core::fold::Fold, turn: &str, ended: Option<&Value>) -> String {
     let Some(e) = ended else {
         return String::new();
     };
@@ -106,16 +108,36 @@ fn measured(dir: &Path, ended: Option<&Value>) -> String {
     if from == 0 || to < from {
         return String::new();
     }
+    let mut spans = vec![(from, to)];
+    let (mut t, mut seen) = (turn.to_string(), HashSet::new());
+    // The recorded link first: a reborn turn's reconnect is `rb-<turn>.n1` [D339].
+    let of = |t: &str| {
+        (f.carried.iter())
+            .find_map(|(of, to)| (to == t).then(|| of.clone()))
+            .or_else(|| t.strip_prefix("rb-").map(String::from))
+    };
+    while let Some(was) = of(&t).filter(|was| seen.insert(was.clone())) {
+        let own = (f.ends.get(&was).into_iter().flatten()).filter(|e| e.id == was);
+        spans.extend(
+            own.filter(|e| e.began > 0 && e.at >= e.began)
+                .map(|e| (e.began, e.at)),
+        );
+        t = was;
+    }
     let calls = fs::read_to_string(dir.join("computer").join("calls")).unwrap_or_default();
     let verbs: Vec<&str> = (calls.lines())
         .filter_map(|l| l.split_once(' '))
-        .filter(|(at, _)| at.parse::<u64>().is_ok_and(|at| (from..=to).contains(&at)))
+        .filter(|(at, _)| {
+            at.parse::<u64>()
+                .is_ok_and(|at| spans.iter().any(|s| (s.0..=s.1).contains(&at)))
+        })
         .map(|(_, verb)| verb)
         .filter(|v| crate::computer::VERBS.contains(v))
         .collect();
     // Its time working: what it waited on an answer is left out.
     let waited = e["waited"].as_u64().unwrap_or(0).min(to - from);
-    let mins = (to - from - waited) as f64 / 60_000.0;
+    let work: u64 = spans.iter().map(|(a, b)| b - a).sum::<u64>() - waited;
+    let mins = work as f64 / 60_000.0;
     let mut said =
         format!("Measured by Brigadier: {mins:.1} min of work from its input to its end");
     if waited >= 6_000 {
@@ -306,8 +328,8 @@ pub(in crate::workers) fn write_as(
     let unended = of.end == u64::MAX || (of.end == 0 && f.turns.iter().any(|t| t.id == turn));
     // Brigadier stopped it, overnight or the like: cut off, as by a host's end.
     let cut = unended || logged.is_some_and(|e| e.how == "interrupted") || of.by.is_some();
-    let ended = f.last;
-    text += &measured(&dir, (ended.as_ref()).filter(|e| e["id"] == turn));
+    let ended = &f.last;
+    text += &measured(&dir, &f, turn, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
     let why = why.and_then(|e| e["why"].as_str().filter(|w| core::adapters::temporary(w)));
