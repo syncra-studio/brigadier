@@ -229,6 +229,10 @@ impl Fold {
                     t.stopping = true;
                     t.stop_by = c["by"].clone();
                 }
+                // The user's Stop or Pause during a summary turn stops its renewal too (D95).
+                if matches!(c["by"].as_str(), Some("user" | "pause")) {
+                    self.renewing = None;
+                }
                 true
             }
             // A setup the agent confirms before a turn's message: no turn of its own [D222].
