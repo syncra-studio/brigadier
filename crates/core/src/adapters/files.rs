@@ -87,6 +87,20 @@ pub fn uuid() -> String {
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;
     let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    dashed(&h)
+}
+
+/// A command id as a UUID (v5's shape, from its SHA-1), for an agent that names an input only by
+/// a UUID it was given: the same id gives the same UUID, in every build.
+pub fn uuid_of(cid: &str) -> String {
+    let mut h = sha1(cid.as_bytes())[..32].to_string();
+    let variant = 8 | (u8::from_str_radix(&h[16..17], 16).unwrap_or(0) & 3);
+    h.replace_range(12..13, "5");
+    h.replace_range(16..17, &format!("{variant:x}"));
+    dashed(&h)
+}
+
+fn dashed(h: &str) -> String {
     format!(
         "{}-{}-{}-{}-{}",
         &h[..8],

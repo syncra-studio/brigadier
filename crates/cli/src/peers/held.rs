@@ -3,8 +3,11 @@
 
 use super::{DONE, In, Out, all, path, save};
 use crate::{queue, workers};
+use brigadier_core as core;
+use brigadier_frames::take_lock;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
+use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::Mutex;
@@ -28,9 +31,78 @@ pub(super) fn behind(data: &Path, from: &str, to: &str, at: u64, mid: &str) -> b
         .any(|o| earlier(&o))
 }
 
-pub(super) fn unsure(data: &Path, to: &str, mid: &str) -> bool {
-    let rec: Option<In> = workers::read_json(&path(data, to, "in", mid));
-    rec.is_some_and(|r| r.state == "uncertain")
+/// Where `to`'s record of message `mid` stands.
+pub(super) fn state(data: &Path, to: &str, mid: &str) -> Option<String> {
+    workers::read_json::<In>(&path(data, to, "in", mid)).map(|r| r.state)
+}
+
+/// After a Recover gave `id`'s agent back the messages it never got [D66]: their records wait
+/// again, now for its reply to the recovery that carries them.
+pub(super) fn reopen(data: &Path, id: &str, mids: &Value) {
+    for mid in mids
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        let p = path(data, id, "in", mid);
+        let Some(mut rec) = workers::read_json::<In>(&p) else {
+            continue;
+        };
+        rec.state = "steering".into();
+        let o = path(data, &rec.from, "out", mid);
+        let out = workers::read_json::<Out>(&o).filter(|o| o.state == "uncertain");
+        if workers::write_json(&p, &rec).is_ok()
+            && let Some(mut out) = out
+        {
+            out.state = "sent".into();
+            let _ = workers::write_json(&o, &out);
+        }
+        super::open(data, &rec.from);
+    }
+}
+
+/// A recovery of `id` that may log the links settling its senders' messages, a Recover's or a
+/// rebirth's, and the only way one runs [D66]. Marked before it logs anything, under a lock of its
+/// own, so the daemon wakes those senders once it ends, even if it dies first; what it gave back,
+/// or found taken, then waits for that proof again.
+pub fn recovery(data: &Path, id: &str, go: impl FnOnce() -> Value) -> io::Result<Value> {
+    let at = core::session_dir(data, id).join("recover.lock");
+    let mut opts = fs::OpenOptions::new();
+    let lock = opts.create(true).truncate(false).write(true).open(at)?;
+    lock.lock()?;
+    let dir = data.join("peers-recover");
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join(id), "")?;
+    let reply = go();
+    let accepted = json!([reply["accepted"]]);
+    for mids in [&reply["resent"], &reply["taken"], &accepted] {
+        reopen(data, id, mids);
+    }
+    Ok(reply)
+}
+
+/// Each recovery that ended since: the senders of its receiver's messages still open, or settled
+/// uncertain, which its links may settle now.
+pub(super) fn recovered(data: &Path, open: &mut BTreeSet<String>) {
+    for e in (fs::read_dir(data.join("peers-recover"))
+        .into_iter()
+        .flatten())
+    .flatten()
+    {
+        let id = e.file_name().to_string_lossy().to_string();
+        // Still running: its lock says so.
+        if let Ok(None) = take_lock(&core::session_dir(data, &id).join("recover.lock")) {
+            continue;
+        }
+        if fs::remove_file(e.path()).is_ok() {
+            let ins = all::<In>(data, &id, "in").into_iter();
+            open.extend(
+                ins.filter(|r| matches!(r.state.as_str(), "uncertain" | "steering"))
+                    .map(|r| r.from),
+            );
+        }
+    }
 }
 
 /// The messages being sent now: still in their send's hands, up to when their receiver has them.
@@ -65,15 +137,26 @@ fn left(data: &Path, from: &str, out: &Out) -> io::Result<()> {
     let open = |o: &Out| matches!(o.state.as_str(), "written" | "sent");
     outs.retain(|o| o.to == out.to && (o.at, &o.mid) < (out.at, &out.mid) && open(o));
     outs.sort_by(|a, b| (a.at, &a.mid).cmp(&(b.at, &b.mid)));
+    let mut log = None;
     for o in outs {
         let Some(mut o) = current(data, from, o).filter(open) else {
             continue;
         };
         let rec: Option<In> = workers::read_json(&path(data, &o.to, "in", &o.mid));
-        if rec
-            .as_ref()
-            .is_none_or(|r| matches!(r.state.as_str(), "adding" | "steering"))
-        {
+        // A steer its receiver logged is on its way, waiting on its agent's word [D66], not cut.
+        let cut = match rec.as_ref().map(|r| r.state.as_str()) {
+            None | Some("adding") => true,
+            Some("steering") => {
+                let dir = core::session_dir(data, &out.to);
+                let f = match &mut log {
+                    Some(f) => f,
+                    None => log.insert(core::fold(&dir, true)?.fold),
+                };
+                !f.cids.contains_key(&o.mid)
+            }
+            _ => false,
+        };
+        if cut {
             super::reply::again(data, from, &mut o, rec.is_none())?;
         }
     }

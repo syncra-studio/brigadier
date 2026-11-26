@@ -1,6 +1,6 @@
 //! A message into the turn that runs.
 
-use super::{deliver, new_cid, refused, send};
+use super::{new_cid, refused, send, written};
 use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::io;
@@ -50,7 +50,7 @@ pub fn steer_turn(
         req["parts"] = msg.parts;
     }
     let images = msg.images;
-    deliver(data, &spec.id, req, false, |f| {
+    written(data, &spec.id, req, false, |f| {
         let running = f.turns.first().is_some_and(|t| t.began);
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
         match (running, can) {

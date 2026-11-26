@@ -55,7 +55,8 @@ impl Thread {
             // Sent anyway, by the user, after it stopped.
             "sent" => (row["state"], row["why"]) = ("sending".into(), Value::Null),
             "handed" | "delivered" => row["state"] = "sent".into(),
-            "uncertain" | "dropped" | "stopped" => {
+            // A steer its agent refused after it was written says so, with the agent's words [D66].
+            "uncertain" | "dropped" | "stopped" | "refused" => {
                 (row["state"], row["why"]) = (phase.into(), item["why"].clone())
             }
             "replied" => row["waited"] = "replied".into(),

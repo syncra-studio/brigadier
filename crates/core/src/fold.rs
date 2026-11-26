@@ -2,8 +2,6 @@
 //! about the owner and the child. It never guesses Working: that needs an open, delivered turn, a
 //! live child that isn't stopped, and either fresh output or a tool whose processes still run.
 
-use crate::adapters;
-
 mod asks;
 mod input;
 mod live;
@@ -151,9 +149,10 @@ pub struct Fold {
     /// The agent's replies to requests Brigadier sent it, by request id: `{error, level}`.
     #[serde(default)]
     pub replies: BTreeMap<String, Value>,
-    /// Inputs written to an agent that acks, not yet applied by its reply [D222].
+    /// Inputs written to an agent that acks, not yet applied by its reply, with their words and
+    /// origin, which a Recover gives back [D222, D66].
     #[serde(default)]
-    pub acking: BTreeSet<String>,
+    pub acking: BTreeMap<String, Value>,
     /// Every finished turn still in the conversation, oldest first [D384].
     #[serde(default)]
     pub boundaries: Vec<Boundary>,
@@ -255,9 +254,7 @@ impl Fold {
                 }
             }
             "input" => self.input(item, ts),
-            "delivered" if !self.acking.contains(&str_of("cid")) => {
-                self.delivered(&str_of("cid"), ts)
-            }
+            "delivered" => self.written(&str_of("cid"), ts),
             "spawned" => {
                 let (pid, start_us) = (
                     item["pid"].as_i64().unwrap_or(0) as i32,
@@ -281,26 +278,7 @@ impl Fold {
                 }
                 self.spawn_settled(&str_of("cid"), false);
             }
-            "exited" => {
-                let pid = item["pid"].as_i64().unwrap_or(0) as i32;
-                let Some(child) = self.child.as_mut().filter(|c| c.pid == pid) else {
-                    return;
-                };
-                child.exited = true;
-                (self.agents, self.pending) = Default::default();
-                let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
-                let clean = item["code"].as_i64() == Some(0);
-                let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
-                if per_turn && clean && delivered {
-                    self.close("done", Value::Null, ts);
-                } else {
-                    self.close_all(
-                        if delivered { "interrupted" } else { "failed" },
-                        json!({"child_exited": {"code": item["code"], "signal": item["signal"]}}),
-                        ts,
-                    );
-                }
-            }
+            "exited" => self.exited(item, ts),
             "turn_start" => {
                 let of = self.woke_of();
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
@@ -473,6 +451,7 @@ impl Fold {
                 Some("switch_now") => self.picked.iter_mut().for_each(|p| p.now = true),
                 Some("rewound" | "forked" | "unforked") => self.rewound(item),
                 Some("spawn_failed") => self.spawn_settled(&str_of("cid"), true),
+                Some("confirmed") => self.confirmed(item),
                 Some("peer") if item["phase"] == "sent" => self.messaged(item),
                 Some("plan_review") => self.plan_review(item),
                 Some("hold") => self.hold = (item["phase"] != "answered").then(|| item.clone()),

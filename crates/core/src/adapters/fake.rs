@@ -112,6 +112,29 @@ impl Adapter for Fake {
         false
     }
 
+    /// It names each message and steer it takes, by its id, as a CLI's ack [D66].
+    fn acks(&self) -> bool {
+        true
+    }
+
+    /// An answer, its images, a setup or a stop is taken as written.
+    fn acks_control(&self, msg: &Value) -> bool {
+        msg["kind"] == "steer" && !msg["request"].is_object()
+    }
+
+    /// Its record notes each input it takes before acting on it.
+    fn accepted(&self, spec: &Spec, resume: &str, cid: &str) -> bool {
+        let log = std::fs::read_to_string(spec.dir.join("fake").join(format!("{resume}.log")));
+        log.is_ok_and(|l| l.lines().any(|l| l.strip_prefix("took ") == Some(cid)))
+    }
+
+    /// That note's write failing stops it, so a record read without it proves it never took it; one
+    /// that can't be read proves nothing.
+    fn missed(&self, spec: &Spec, resume: &str, cid: &str) -> bool {
+        let log = std::fs::read_to_string(spec.dir.join("fake").join(format!("{resume}.log")));
+        log.is_ok_and(|l| !l.lines().any(|l| l.strip_prefix("took ") == Some(cid)))
+    }
+
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
         let mut argv = vec![
@@ -161,7 +184,9 @@ impl Adapter for Fake {
             }
             // An answer's images: the fake takes them with it.
             Some("steer") if msg["request"].is_object() => json!({"before": spec.images}),
-            Some("steer") => json!({"text": msg["text"], "steer": true, "images": spec.images}),
+            Some("steer") => {
+                json!({"text": msg["text"], "steer": true, "images": spec.images, "id": spec.cid})
+            }
             Some("interrupt") => json!({"interrupt": true}),
             _ => return Err("unknown control message".into()),
         };
@@ -169,7 +194,10 @@ impl Adapter for Fake {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        format!("{}\n", json!({"text": text, "images": spec.images}))
+        format!(
+            "{}\n",
+            json!({"text": text, "images": spec.images, "id": spec.cid})
+        )
     }
 
     fn parse(&self, line: &str) -> Vec<Event> {
@@ -179,6 +207,11 @@ impl Adapter for Fake {
         match s(&v, &["t"]) {
             "hello" => vec![Event::Resume(s(&v, &["session"]).into())],
             "turn" => vec![Event::TurnStart],
+            "took" => vec![Event::Reply {
+                id: s(&v, &["id"]).into(),
+                error: v["error"].as_str().map(String::from),
+                level: None,
+            }],
             "say" => vec![Event::Text(s(&v, &["text"]).into())],
             "image" => vec![Event::Image(
                 json!({"id": v["id"], "progress": v["progress"],

@@ -2,8 +2,9 @@
 //! besides a message: answers, steers and stops [D159, D177].
 
 use super::Fold;
+use crate::adapters;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// A session's mockups [D2067].
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -32,6 +33,33 @@ impl Fold {
             .for_each(|t| t.orphaned = true);
         self.grants.clear();
         self.granting.clear();
+    }
+
+    /// Its child ended: what its turns come to, by what it had confirmed.
+    pub(super) fn exited(&mut self, item: &Value, ts: u64) {
+        let pid = item["pid"].as_i64().unwrap_or(0) as i32;
+        let Some(child) = self.child.as_mut().filter(|c| c.pid == pid) else {
+            return;
+        };
+        child.exited = true;
+        (self.agents, self.pending) = Default::default();
+        let per_turn = adapters::get(&child.backend).is_some_and(|a| a.per_turn());
+        let clean = item["code"].as_i64() == Some(0);
+        let delivered = self.turns.first().is_some_and(|t| t.delivered.is_some());
+        let first = self.turns.first().and_then(|t| t.cid.as_ref());
+        if per_turn && clean && delivered {
+            self.close("done", Value::Null, ts);
+        } else if first.is_some_and(|c| !delivered && self.acking.contains_key(c)) {
+            // It died before confirming its message, which it may have taken: uncertain,
+            // as when its owner dies, so a Recover asks its record first [D66].
+            self.turns.iter_mut().for_each(|t| t.orphaned = true);
+        } else {
+            self.close_all(
+                if delivered { "interrupted" } else { "failed" },
+                json!({"child_exited": {"code": item["code"], "signal": item["signal"]}}),
+                ts,
+            );
+        }
     }
 
     /// A mockup card shown, or picked [D2067]; a mockup opened.
@@ -236,7 +264,7 @@ impl Fold {
     /// the agent's reason, closing its request or failing its turn. No reply keeps it uncertain.
     pub(super) fn acked(&mut self, item: &Value, ts: u64) {
         let cid = item["id"].as_str().unwrap_or("");
-        if !self.acking.remove(cid) {
+        if self.acking.remove(cid).is_none() {
             return;
         }
         let Some(error) = item["error"].as_str() else {
@@ -246,12 +274,26 @@ impl Fold {
             self.closed.insert(id, "refused".into());
         }
         self.granting.remove(cid);
-        if self
-            .turns
-            .first()
-            .is_some_and(|t| t.cid.as_deref() == Some(cid))
-        {
+        // A Stop's own (its interrupt cancelled the message unread): its turn ends as the Stop
+        // has it, so Resume carries it on [D66].
+        if (self.turns.first()).is_some_and(|t| t.cid.as_deref() == Some(cid) && !t.stopping) {
             self.close("failed", serde_json::json!({"refused": error}), ts);
+        }
+    }
+
+    /// Written to the agent: delivery, unless only its reply says so [D222].
+    pub(super) fn written(&mut self, cid: &str, ts: u64) {
+        if !self.acking.contains_key(cid) {
+            self.delivered(cid, ts);
+        }
+    }
+
+    /// A Recover settled an input its agent never confirmed [D66]: its agent's record shows it took
+    /// it (`accepted`), it went again inside the input `as`, or neither is known (`unknown`).
+    pub(super) fn confirmed(&mut self, item: &Value) {
+        let cid = item["cid"].as_str().unwrap_or("");
+        if self.acking.remove(cid).is_some() {
+            self.replies.insert(cid.into(), item.clone());
         }
     }
 

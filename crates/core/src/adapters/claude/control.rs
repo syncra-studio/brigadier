@@ -3,7 +3,7 @@
 //! requests (a stop, a new level or model) get a reply by theirs. Shapes per the Agent SDK's
 //! public docs and types (code.claude.com/docs/en/agent-sdk/user-input).
 
-use super::super::{Delivery, Event, Retune, s, uuid};
+use super::super::{Delivery, Event, Retune, s, uuid, uuid_of};
 use crate::Spec;
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
@@ -42,8 +42,9 @@ fn level_of(mode: &str) -> Option<&'static str> {
     }
 }
 
-/// A user message on stdin, its images as Claude's own base64 blocks [D2008].
-pub fn user(text: &str, images: &[PathBuf]) -> String {
+/// A user message on stdin, its images as Claude's own base64 blocks [D2008]. Under its command id's
+/// UUID, which the turn that takes it echoes (the Agent SDK's `SDKUserMessage.uuid`) [D66].
+pub fn user(text: &str, images: &[PathBuf], cid: Option<&str>) -> String {
     let mut content = json!(text);
     if !images.is_empty() {
         let blocks = images.iter().filter_map(|p| {
@@ -54,10 +55,11 @@ pub fn user(text: &str, images: &[PathBuf]) -> String {
             .chain(blocks)
             .collect();
     }
-    format!(
-        "{}\n",
-        json!({"type": "user", "message": {"role": "user", "content": content}})
-    )
+    let mut line = json!({"type": "user", "message": {"role": "user", "content": content}});
+    if let Some(cid) = cid {
+        line["uuid"] = uuid_of(cid).into();
+    }
+    format!("{line}\n")
 }
 
 /// A request of Brigadier's own, and the id its reply will carry.
@@ -400,7 +402,10 @@ const SKIPPED: &str = "The user skipped this question. Use your own judgment.";
 /// A control message as the line Claude reads [D159, D192, D193].
 pub fn control(spec: &Spec, msg: &Value) -> Result<Delivery, String> {
     let line = match msg["kind"].as_str() {
-        Some("steer") => return Ok(Delivery::Stdin(user(s(msg, &["text"]), &spec.images))),
+        Some("steer") => {
+            let cid = spec.cid.as_deref();
+            return Ok(Delivery::Stdin(user(s(msg, &["text"]), &spec.images, cid)));
+        }
         Some("interrupt") => {
             // Messages Claude still holds would run after a stop: they go with it.
             let (line, _) = request(json!({"subtype": "interrupt", "cancel_queued": true}));

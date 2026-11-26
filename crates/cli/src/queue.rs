@@ -19,12 +19,15 @@ mod cut;
 mod drain;
 mod judge;
 mod peer;
+mod stop;
 mod to;
 pub mod wake;
+
 pub use cut::{goes_on, off as cut_off, recover};
 pub use drain::{drain, takes, will_go};
 pub(crate) use peer::own;
 pub use peer::{UNSURE, add_peer, pending, send_back, waits_for};
+pub use stop::stop;
 pub use to::held as give_held;
 
 #[derive(Serialize, Deserialize, Default, PartialEq)]
@@ -354,7 +357,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 let (f, state) = cut::now(data, id)?;
                 if fold::resumable(&f, &state) || cut::resumes(&dir, &f, &state, q) {
                     let reply = recover(data, id, true)?;
-                    let went = matches!(reply["result"].as_str(), Some("delivered" | "logged"));
+                    let went = matches!(
+                        reply["result"].as_str(),
+                        Some("delivered" | "logged" | "sent")
+                    );
                     if reply["ok"] != true && !went {
                         // Its first message can't go either: it waits saying why, as a refused send's does [D392 P9].
                         if let Some(first) = q.items.first_mut() {
@@ -458,42 +464,10 @@ fn restore(q: &mut Queue) {
 }
 
 /// Whether a message reached the log under `cid`: delivered, logged though not proven delivered
-/// (never sent again by itself), or found there.
+/// (never sent again by itself), written to an agent whose reply is still to come, or found there.
 fn went(dir: &Path, reply: &Value, cid: &str) -> bool {
-    matches!(reply["result"].as_str(), Some("delivered" | "logged"))
-        || core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid))
-}
-
-/// Stop [D159]: the queue is paused first, so nothing goes on while the turn ends, and stays paused
-/// if anything waits, including what was added during the Stop. Then the agent's own stop, and the
-/// kill only when it has none or it didn't stop in time. `by`: "user", or "pause" for a worker's Pause.
-pub fn stop(data: &Path, id: &str, by: &str) -> io::Result<Value> {
-    let dir = core::session_dir(data, id);
-    change(&dir, |q| {
-        (q.paused, q.stopping) = (true, true);
-        Ok(())
-    })?;
-    let stopped = (|| {
-        if let Ok(Some(stopped)) = control::interrupt(data, id, by) {
-            return Ok(stopped);
-        }
-        match owner::call(data, id, json!({"op": "stop", "by": by})) {
-            Ok(v) => Ok(v),
-            // A cut-off worker's is logged, so its parent's next message waits for Resume.
-            Err(_) if by == "user" && cut::stoppable(data, id) => {
-                owner::ensure(data, &core::load(data, id)?)?;
-                owner::call(data, id, json!({"op": "stop", "by": by}))
-            }
-            // No owner: nothing can be running under us, but leftovers recorded in the log still go.
-            Err(e) => {
-                let f = core::fold(&dir, true)?;
-                Ok(json!({"ok": true, "owner": e.to_string(), "swept": core::sweep(&f.fold, &dir)}))
-            }
-        }
-    })();
-    change(&dir, |q| {
-        q.stopping = false;
-        Ok(())
-    })?;
-    stopped
+    matches!(
+        reply["result"].as_str(),
+        Some("delivered" | "logged" | "sent")
+    ) || core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid))
 }

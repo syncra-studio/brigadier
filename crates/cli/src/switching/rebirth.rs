@@ -106,15 +106,9 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         true => Message::plain(core::switch::SWITCHED),
         false => Message::plain(""),
     };
-    Ok(core::send(
-        &crate::routing::told(data, &spec),
-        &f,
-        child,
-        &call,
-        &cid,
-        "system",
-        &msg,
-        None,
-        None,
-    ))
+    // With what the cut turn's agent never took of the steers written to it [D66].
+    let told = crate::routing::told(data, &spec);
+    crate::peers::held::recovery(data, id, || {
+        core::with_back(&told, &f, child, &call, &cid, "system", &msg, None, None)
+    })
 }

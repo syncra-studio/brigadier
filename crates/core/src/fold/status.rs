@@ -297,12 +297,12 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             no_start_ms: 30_000,
         });
     let Some(delivered) = turn.delivered else {
-        let acks = turn.cid.as_ref().is_some_and(|c| fold.acking.contains(c));
-        let wait = if acks {
-            crate::send::CONFIRM_WAIT.as_millis() as u64
-        } else {
-            2_000
-        };
+        let acks = turn
+            .cid
+            .as_ref()
+            .is_some_and(|c| fold.acking.contains_key(c));
+        let confirm = adapters::get(&turn.backend).map_or(10_000, |a| a.confirm_ms());
+        let wait = if acks { confirm } else { 2_000 };
         let young =
             live.now.saturating_sub(turn.ts) < wait && live.owner == Owner::Alive && !turn.orphaned;
         // A child's gate opens, and its input is written, only after its `spawned` record: with the

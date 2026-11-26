@@ -9,12 +9,13 @@ pub mod mcp;
 mod models;
 mod tools;
 mod trust;
+mod turn;
 mod updates;
 
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Launch, ModelInfo,
-    Retune, Rewound, Seed, Timing, Who, base_env, classify, home_path, probe_as, s, version,
+    Retune, Rewound, Seed, Timing, Who, base_env, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -158,6 +159,20 @@ impl Adapter for Claude {
         false
     }
 
+    /// The turn that takes a message or a steer echoes its UUID; an answer or a stop is taken as
+    /// written [D66], and so are an answer's images, which go just before it: no turn runs to
+    /// echo them till the answer that lets it go on.
+    fn acks(&self) -> bool {
+        true
+    }
+    fn acks_control(&self, msg: &Value) -> bool {
+        msg["kind"] == "steer" && !msg["request"].is_object()
+    }
+    /// Its first reply may wait on a slow model (proposed).
+    fn confirm_ms(&self) -> u64 {
+        30_000
+    }
+
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
         let mut argv = vec![exe.display().to_string()];
@@ -218,7 +233,7 @@ impl Adapter for Claude {
                 argv.push("--fork-session".into());
             }
         }
-        let input = text.map(|t| control::user(t, &spec.images));
+        let input = text.map(|t| control::user(t, &spec.images, spec.cid.as_deref()));
         let mut env = base_env(spec, &exe, &self.keys());
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
@@ -235,7 +250,7 @@ impl Adapter for Claude {
     }
 
     fn encode(&self, spec: &Spec, text: &str) -> String {
-        control::redial(spec) + &control::user(text, &spec.images)
+        control::redial(spec) + &control::user(text, &spec.images, spec.cid.as_deref())
     }
 
     /// Anthropic's own limits for an image in a message: 5 MB, 8,000 pixels a side.
@@ -276,7 +291,8 @@ impl Adapter for Claude {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             return vec![Event::Unknown(line.into())];
         };
-        if let Some(events) = control::parse(&v) {
+        if let Some(mut events) = control::parse(&v) {
+            events.extend(turn::cancelled(&v));
             return events;
         }
         let blocks = || {
@@ -296,7 +312,9 @@ impl Adapter for Claude {
                 start: None,
                 end: Some(id.into()),
             });
-        let mut events: Vec<Event> = match (kind, s(&v, &["subtype"])) {
+        // The inputs it took go first, so a turn's end never reads before its confirmation [D66].
+        let mut events = turn::echoed(&v);
+        events.extend(match (kind, s(&v, &["subtype"])) {
             ("system", "init") => [
                 Some(Event::Resume(s(&v, &["session_id"]).into())),
                 v["model"].as_str().map(|m| Event::Model(m.into())),
@@ -399,48 +417,9 @@ impl Adapter for Claude {
                 })
                 .collect(),
             ("rate_limit_event", _) => models::rate_limit(&v["rate_limit_info"]),
-            ("result", _) => {
-                // With its cost so far, as the CLI reports it [D221].
-                let mut usage = v["usage"].clone();
-                if let Some(u) = usage.as_object_mut() {
-                    u.insert("cost_usd".into(), v["total_cost_usd"].clone());
-                }
-                let mut events = vec![Event::Usage(usage)];
-                // A refusal is named by its stop reason, whatever it ends as.
-                let refused = v["stop_reason"] == "refusal";
-                let failed = refused || v["is_error"] == true;
-                if failed {
-                    let said = format!("{} {}", s(&v, &["result"]), v["errors"]);
-                    // Its errors as lines, without the CLI's own diagnostics ("[lede_diagnostic] …",
-                    // "[ede_diagnostic] …" for a turn it was told to stop), which no user can read [D85].
-                    let diagnostic = |e: &str| {
-                        (e.split_once(']')).is_some_and(|(tag, _)| {
-                            tag.starts_with('[') && tag.ends_with("_diagnostic")
-                        })
-                    };
-                    let text = match s(&v, &["result"]) {
-                        "" => (v["errors"].as_array().into_iter().flatten())
-                            .filter_map(Value::as_str)
-                            .filter(|e| !diagnostic(e))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        text => text.into(),
-                    };
-                    events.push(if v["api_error_status"] == 529 {
-                        Event::Failed("capacity", text)
-                    } else if v["api_error_status"] == 429 {
-                        Event::Limited(text, None)
-                    } else if refused {
-                        Event::Failed("blocked", text)
-                    } else {
-                        classify(&said).unwrap_or(Event::Failed("", text))
-                    });
-                }
-                events.push(Event::TurnEnd(!failed));
-                events
-            }
+            ("result", _) => turn::result(&v),
             _ => vec![Event::Unknown(line.into())],
-        };
+        });
         events.extend(mark);
         events.extend(tools::records(&v));
         events
@@ -487,6 +466,12 @@ impl Adapter for Claude {
 
     fn shared(&self, spec: &Spec) -> Vec<PathBuf> {
         cleanup::shared(spec)
+    }
+
+    /// A message it took is in its transcript under the UUID it was written with. One missing
+    /// proves nothing: a steer's is kept only as text [D66].
+    fn accepted(&self, _spec: &Spec, resume: &str, cid: &str) -> bool {
+        cleanup::holds(resume, &super::uuid_of(cid))
     }
 
     fn transcript(&self, spec: &Spec, resume: &str) -> Option<(u64, u64)> {

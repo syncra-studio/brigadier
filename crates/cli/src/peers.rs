@@ -10,13 +10,14 @@
 //! sent again by itself. A chain stops at 8 hops and a sender at 20 a minute; only the user's
 //! Send anyway lets that message through.
 
+mod finish;
 mod first;
 pub mod held;
 mod reply;
 
 use crate::{control, owner, queue, workers};
 use brigadier_core::{self as core, adapters};
-use brigadier_frames::{log, take_lock};
+use brigadier_frames::log;
 pub(crate) use first::begin;
 pub(crate) use held::{hand_all, written};
 pub(crate) use reply::{answer, question};
@@ -221,8 +222,12 @@ pub fn send(
     drop(sending);
     let said = match how {
         // As its receiver has it: a pass may have settled the sender's meanwhile.
-        "steered" if held::unsure(data, to, &out.mid) => queue::UNSURE.into(),
-        "steered" => "It went into the turn it's working on.".into(),
+        "steered" => match held::state(data, to, &out.mid).as_deref() {
+            Some("uncertain") => queue::UNSURE.into(),
+            // Proposed words.
+            Some("steering") => "It went into the turn it's working on. Its agent hasn't confirmed it yet: don't send it again.".into(),
+            _ => "It went into the turn it's working on.".into(),
+        },
         "dropped" => return refuse(&format!("{to} was deleted.")),
         _ => queue::waits_for(data, me, to, &out.mid, how == "held"),
     };
@@ -281,10 +286,10 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
             let reply =
                 control::steer_as(data, &to, &body, &Value::Null, Some(&mid), &origin, false)?;
             let logged = core::fold(&dir, true).is_ok_and(|f| f.fold.cids.contains_key(&mid));
+            // Written: only its agent's own reply says it took it, and a pass settles it then [D66].
             let state = match reply["result"].as_str() {
                 Some("delivered") => Some("delivered"),
-                Some("logged") => Some("uncertain"),
-                _ if logged => Some("uncertain"),
+                _ if logged => Some("steering"),
                 _ => None,
             };
             if let Some(state) = state {
@@ -324,7 +329,7 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
         return Ok(how);
     }
     let state = match (how, rec.state.as_str()) {
-        ("steered", s) => s.to_string(),
+        ("steered", s) if s != "steering" => s.to_string(),
         _ => "sent".into(),
     };
     note(
@@ -391,6 +396,9 @@ fn known(data: &Path) -> BTreeSet<String> {
 fn open(data: &Path, id: &str) {
     let mut open = OPEN.lock().unwrap();
     open.get_or_insert_with(|| known(data)).insert(id.into());
+    // And for the daemon's own set, when another process opened it: a standalone Recover's [D66].
+    let dir = data.join("peers-open");
+    let _ = fs::create_dir_all(&dir).and_then(|()| fs::write(dir.join(id), ""));
 }
 
 const DONE: [&str; 5] = ["delivered", "uncertain", "dropped", "stopped", "refused"];
@@ -400,6 +408,16 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
     let senders: Vec<String> = {
         let mut open = OPEN.lock().unwrap();
         let open = open.get_or_insert_with(|| known(data));
+        for e in fs::read_dir(data.join("peers-open"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if fs::remove_file(e.path()).is_ok() {
+                open.insert(e.file_name().to_string_lossy().into());
+            }
+        }
+        held::recovered(data, open);
         open.retain(|id| rows.contains_key(id));
         open.iter().cloned().collect()
     };
@@ -414,85 +432,10 @@ pub fn pass(data: &Path, rows: &BTreeMap<String, Value>) {
             .collect();
         let data = data.to_path_buf();
         thread::spawn(move || {
-            if let Err(e) = finish(&data, &id, &states) {
+            if let Err(e) = finish::finish(&data, &id, &states) {
                 eprintln!("brigadierd: messages from {id}: {e}");
             }
             PASSING.lock().unwrap().as_mut().map(|p| p.remove(&id));
         });
     }
-}
-
-/// Finishes and settles a sender's open messages; with none left, it leaves the set.
-fn finish(data: &Path, from: &str, states: &BTreeMap<String, String>) -> io::Result<()> {
-    let mut open = false;
-    for out in all::<Out>(data, from, "out") {
-        let Some(mut out) = held::current(data, from, out) else {
-            open = true;
-            continue;
-        };
-        // A worker's question is its parent's to settle, by its answer.
-        if DONE.contains(&out.state.as_str()) || reply::ASKS.contains(&out.state.as_str()) {
-            continue;
-        }
-        open = true;
-        let to = out.to.clone();
-        let dir = core::session_dir(data, &to);
-        let at = path(data, &to, "in", &out.mid);
-        let mut rec: Option<In> = workers::read_json(&at);
-        if core::load(data, &to).is_err() {
-            settle_out(data, from, &mut out, "dropped", Some("deleted"));
-            continue;
-        }
-        // What comes of a steer is saved under its receiver's queue lock: held, it's still on its way.
-        if rec.as_ref().is_some_and(|r| r.state == "steering") {
-            let Some(_lock) = take_lock(&dir.join("queue.lock"))? else {
-                continue;
-            };
-            rec = workers::read_json(&at);
-        }
-        // Cut short before its receiver had it, or while it was being queued: once now, under
-        // the receiver's lock, which drops a repeat.
-        let cut = match &rec {
-            None => true,
-            Some(r) => {
-                matches!(r.state.as_str(), "adding" | "held")
-                    || (r.state == "steering"
-                        && !core::fold(&dir, true)?.fold.cids.contains_key(&out.mid))
-            }
-        };
-        if cut {
-            reply::again(data, from, &mut out, rec.is_none())?;
-            continue;
-        }
-        let Some(mut rec) = rec else { continue };
-        let f = core::fold(&dir, true)?.fold;
-        let state = states.get(&to).map_or("", String::as_str);
-        let settled = if f.cids.contains_key(&out.mid) {
-            match rec.state.as_str() {
-                // A steer cut short: logged, never proven taken.
-                "steering" => Some("uncertain"),
-                "delivered" | "uncertain" => Some(rec.state.as_str()),
-                _ => workers::settled(&f, &out.mid, state),
-            }
-        } else if queue::pending(&dir, &out.mid) {
-            None
-        } else if rec.state == "queued" {
-            Some("dropped")
-        } else {
-            None
-        };
-        let Some(settled) = settled.map(String::from) else {
-            continue;
-        };
-        if rec.state != settled {
-            rec.state = settled.clone();
-            save(data, &to, "in", &out.mid, &rec)?;
-        }
-        let why = (settled == "dropped").then_some("removed from its queue");
-        settle_out(data, from, &mut out, &settled, why);
-    }
-    if !open {
-        OPEN.lock().unwrap().as_mut().map(|o| o.remove(from));
-    }
-    Ok(())
 }

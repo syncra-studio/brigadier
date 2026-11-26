@@ -4,7 +4,7 @@ mod lead;
 mod recover;
 mod setup;
 pub(crate) use recover::{RECONNECT, RESUME};
-pub use recover::{reconnect, recover};
+pub use recover::{reconnect, recover, with_back};
 pub use setup::relevel;
 use setup::{idle, retuned};
 
@@ -236,8 +236,9 @@ pub fn send(
                 req["spawn"] = spawn.into();
             }
             let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+            // "sent", to an agent that acks: its caller waits for the reply once it holds no lock.
             if reply["error"] != "no_child" {
-                return applied(&spec.dir, cid, reply);
+                return reply;
             }
         }
     } else if running {
@@ -247,7 +248,7 @@ pub fn send(
     if let Some(old) = (f.turns.first())
         .filter(|t| !running && retry_of.is_none() && t.delivered.is_none())
         .and_then(|t| t.cid.as_ref())
-        .filter(|old| f.acking.contains(*old))
+        .filter(|old| f.acking.contains_key(*old))
     {
         let closed =
             json!({"op": "note", "data": {"event": "interrupted", "reason": {"undelivered": old}}});
@@ -301,7 +302,9 @@ pub fn send(
     if picking && reply["error"] == "changed" {
         reply["message"] = "The session changed while switching. Try again.".into();
     }
-    applied(&spec.dir, cid, reply)
+    // "sent", as an input's: its caller waits for the agent's reply once it holds no lock, so a
+    // Stop never waits behind a slow start [D66].
+    reply
 }
 
 /// An input written to an agent that acks is applied only once its reply names the command id
@@ -312,11 +315,30 @@ pub fn applied(dir: &std::path::Path, cid: &str, mut reply: Value) -> Value {
         return reply;
     }
     let started = Instant::now();
+    let f = crate::fold(dir, true).ok();
+    let wait = (f.and_then(|f| adapters::get(&f.fold.backend)))
+        .map_or(CONFIRM_WAIT, |a| Duration::from_millis(a.confirm_ms()));
     let (result, error, why) = loop {
         let f = crate::fold(dir, true).ok();
+        // Given back with a Recover's or a switch's message, that one's reply is its own [D66].
+        let mut cid = cid;
+        for _ in 0..16 {
+            let link = f.as_ref().and_then(|f| f.fold.replies.get(cid));
+            match link
+                .filter(|r| r["how"] == "resent")
+                .and_then(|r| r["as"].as_str())
+            {
+                Some(next) => cid = next,
+                None => break,
+            }
+        }
         if let Some(r) = f.as_ref().and_then(|f| f.fold.replies.get(cid)) {
             break match r["error"].as_str() {
                 None => ("delivered", Value::Null, Value::Null),
+                // Settled by a Recover that couldn't tell: not the agent's refusal.
+                Some(_) if !r["how"].is_null() => {
+                    ("logged", "the agent didn't confirm it".into(), Value::Null)
+                }
                 Some(e) => ("refused", "agent".into(), e.into()),
             };
         }
@@ -326,7 +348,22 @@ pub fn applied(dir: &std::path::Path, cid: &str, mut reply: Value) -> Value {
         {
             break ("logged", "the agent couldn't start".into(), Value::Null);
         }
-        if started.elapsed() > CONFIRM_WAIT {
+        // Its agent or its host is gone without confirming it: no reply can come now [D66].
+        if let Some(f) = f.as_ref().map(|f| &f.fold)
+            && f.acking.contains_key(cid)
+            && (f.child.as_ref().is_some_and(|c| c.exited)
+                || f.turns
+                    .iter()
+                    .any(|t| t.orphaned && t.cid.as_deref() == Some(cid))
+                || !brigadier_frames::lock_held(&dir.join("owner.lock")))
+        {
+            break (
+                "logged",
+                "the agent stopped before confirming it".into(),
+                Value::Null,
+            );
+        }
+        if started.elapsed() > wait {
             break ("logged", "the agent didn't confirm it".into(), Value::Null);
         }
         thread::sleep(Duration::from_millis(50));

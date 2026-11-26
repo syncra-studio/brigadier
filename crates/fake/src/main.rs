@@ -8,6 +8,7 @@ mod directives;
 mod feedback;
 mod generate;
 mod processes;
+mod tool;
 
 use brigadier_frames::log;
 use generate::generate;
@@ -16,9 +17,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::mpsc::Receiver;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{env, process, thread};
 
 struct Agent {
@@ -35,6 +35,8 @@ struct Agent {
     /// Answers to its requests by id, and what the user allowed for this session [D193].
     answers: HashMap<String, Value>,
     grants: HashSet<String>,
+    /// The id of the input it is about to act on.
+    took: Option<String>,
 }
 
 fn now() -> u64 {
@@ -87,88 +89,6 @@ impl Agent {
             .lines()
             .map(String::from)
             .collect()
-    }
-
-    /// Runs `cmd` as a tool for up to `secs`, with a heartbeat each second unless `quiet`. Progress
-    /// is saved, so a resumed session continues what is left rather than starting over.
-    /// False when the user stopped the turn inside it.
-    fn tool(
-        &mut self,
-        directive: &str,
-        secs: u64,
-        done_before: u64,
-        quiet: bool,
-        cmd: &str,
-    ) -> bool {
-        self.tools += 1;
-        let id = format!("tl{}-{}", self.tools, now());
-        self.note(&format!("tool {directive}"));
-        emit(json!({"t": "tool", "id": id, "name": directive}));
-        let mut child = match Command::new("/bin/sh")
-            .arg("-c")
-            .arg(cmd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                self.say(&format!("tool failed: {e}"));
-                return true;
-            }
-        };
-        ledger(&format!(
-            "child {} {} {} start_us={}",
-            self.sid,
-            child.id(),
-            now() + secs.saturating_sub(done_before) * 1000,
-            brigadier_frames::procs::info(child.id() as i32).map_or(0, |p| p.start_us)
-        ));
-        if !quiet {
-            emit(json!({"t": "child", "pid": child.id()}));
-        }
-        let started = Instant::now();
-        let mut beat = 0;
-        loop {
-            if let Ok(Some(_)) = child.try_wait() {
-                break;
-            }
-            if self.poll() {
-                return self.stopped(Some(&mut child));
-            }
-            thread::sleep(Duration::from_millis(250));
-            let elapsed = started.elapsed().as_secs();
-            if elapsed > beat {
-                beat = elapsed;
-                self.note(&format!("progress {directive} {}", done_before + elapsed));
-                if !quiet {
-                    emit(json!({"t": "beat", "n": beat}));
-                }
-            }
-        }
-        ledger(&format!("child_done {}", child.id()));
-        self.note(&format!("finished {directive}"));
-        emit(json!({"t": "tool_done", "id": id}));
-        true
-    }
-
-    /// The last tool that started but never finished, with the seconds it already ran.
-    fn pending(&self) -> Option<(String, u64)> {
-        let text = fs::read_to_string(self.home.join(format!("{}.log", self.sid))).ok()?;
-        let mut pending = None;
-        for line in text.lines() {
-            let mut parts = line.split(' ');
-            match (parts.next(), parts.next(), parts.next()) {
-                (Some("tool"), Some(d), _) => pending = Some((d.to_string(), 0)),
-                (Some("progress"), Some(_), Some(n)) => {
-                    pending = pending.map(|(d, _)| (d, n.parse().unwrap_or(0)))
-                }
-                (Some("finished"), _, _) => pending = None,
-                _ => {}
-            }
-        }
-        pending
     }
 
     /// The message writer's prompt (core's `writer`, D1029): a PR title and description naming the
@@ -265,7 +185,18 @@ impl Agent {
             None => body,
         };
         let first = body.split_whitespace().next().unwrap_or("");
-        ledger(&format!("recv {} {first}", self.sid));
+        // Noted as taken before it acts, so a record without the note proves it never did; one it
+        // died before acting on is acted on when resumed [D66].
+        // Messages a Recover gave back ride ahead of its own words, each in its envelope: each read.
+        let back = body
+            .split("\n\n[")
+            .skip(1)
+            .filter_map(|m| m.split_once("]\n\n"));
+        let firsts = [first]
+            .into_iter()
+            .chain(back.filter_map(|m| m.1.split_whitespace().next()));
+        let act: Vec<String> = firsts.map(|w| format!("recv {} {w}", self.sid)).collect();
+        self.take(None, text, &act.join("\n"));
         self.note(&format!("recv {text}"));
         let words: Vec<&str> = body.split_whitespace().collect();
         // An answer goes on with the waiting turn, acting out its own directives.
@@ -380,7 +311,9 @@ fn agent(args: &[String]) {
         backlog: VecDeque::new(),
         answers: HashMap::new(),
         grants: HashSet::new(),
+        took: None,
     };
+    agent.backlog.extend(control::left(&agent.home, &agent.sid));
     emit(json!({"t": "hello", "session": agent.sid, "version": "fake 1"}));
     let mut before = vec![];
     while let Some(v) = agent.backlog.pop_front().or_else(|| agent.rx.recv().ok()) {
@@ -421,6 +354,7 @@ fn agent(args: &[String]) {
             format!("{text}\n[sees images: {}]", images.join(", "))
         };
         if !text.trim().is_empty() || (agent.waiting && v["answer"]["answers"].is_array()) {
+            agent.took = v["id"].as_str().map(String::from);
             agent.handle(&text);
         }
     }

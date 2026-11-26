@@ -80,8 +80,36 @@ impl Fold {
         let str_of = |k: &str| item[k].as_str().unwrap_or("").to_string();
         let cid = str_of("cid");
         *self.cids.entry(cid.clone()).or_default() += 1;
+        // Steers a Recover gave back went with this input once it was logged, whatever came of
+        // the send: only its own confirmation, or a resend of it, settles them now [D66].
+        for c in item["parts"]["back"].as_array().into_iter().flatten() {
+            let back = c["cid"].as_str().unwrap_or("");
+            if self.acking.remove(back).is_some() {
+                let went = json!({"event": "confirmed", "cid": back, "how": "resent", "as": cid, "error": "unconfirmed"});
+                self.replies.insert(back.into(), went);
+            }
+        }
+        // A Recover's resend of one its agent never confirmed (`<cid>.r<ms>`) is linked to it by its
+        // own frame, so a daemon gone before the link's note still settles it by the retry [D66].
+        if let Some(of) =
+            (item["retry_of"].as_str()).filter(|of| cid.starts_with(&format!("{of}.r")))
+            && self.acking.remove(of).is_some()
+        {
+            let went = json!({"event": "confirmed", "cid": of, "how": "resent", "as": cid, "error": "unconfirmed"});
+            self.replies.insert(of.into(), went);
+        }
         if item["ack"] == true {
-            self.acking.insert(cid.clone());
+            let keep =
+                ["text", "parts", "origin", "backend", "steer", "n"].map(|k| (k, item[k].clone()));
+            let mut keep: serde_json::Map<String, Value> =
+                keep.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+            // A steer is the running child's to confirm: none other ever will [D66].
+            let to = self
+                .child
+                .as_ref()
+                .filter(|c| !c.exited && item["steer"] == true);
+            keep.insert("child".into(), to.map(|c| c.start_us).into());
+            self.acking.insert(cid.clone(), Value::Object(keep));
         }
         // The user's words to a worker, a steer too, for its parent's one-line note [D294, D303].
         if item["direct"] == true && !self.direct.iter().any(|d| d["cid"] == cid.as_str()) {

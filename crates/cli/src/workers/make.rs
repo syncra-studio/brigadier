@@ -417,7 +417,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     }
     let reply = say(data, &r.wid, &text, &r.cid)?;
     match reply["result"].as_str() {
-        Some("delivered" | "logged") => Ok(()),
+        Some("delivered" | "logged" | "sent") => Ok(()),
         _ => Err(io::Error::other(
             reply["message"]
                 .as_str()

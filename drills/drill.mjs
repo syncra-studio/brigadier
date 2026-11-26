@@ -1210,7 +1210,7 @@ async function peersDrill() {
     waited.push({ id, error: q.items[0].error, behind: q.items.length - 1 })
     await cliAsync(['queue', id, 'resume'])
   }
-  const back = async (id) => { await cliAsync(['up', id]); const st = status([id])[id]?.state; if (['interrupted', 'undelivered'].includes(st)) await cliAsync(['recover', id]); await settleQueue(id) }
+  const back = async (id) => { await cliAsync(['up', id]); const st = status([id])[id]?.state; if (['interrupted', 'undelivered', 'uncertain'].includes(st)) await cliAsync(['recover', id]); await settleQueue(id) }
   const hit = async (step) => {
     const r = receivers[Math.floor(Math.random() * receivers.length)], s = senders[Math.floor(Math.random() * senders.length)]
     const ev = { step, at: now(), id: step.startsWith('sender') ? s : step.startsWith('receiver') ? r : 'daemon' }
@@ -1255,7 +1255,7 @@ async function peersDrill() {
   let left = open().length
   for (const t = now(); left && now() - t < 180000; left = open().length) {
     for (const id of receivers) await settleQueue(id)
-    for (const id of receivers) if (['interrupted', 'undelivered'].includes(status([id])[id]?.state)) await back(id)
+    for (const id of receivers) if (['interrupted', 'undelivered', 'uncertain'].includes(status([id])[id]?.state)) await back(id)
     await sleep(2000)
   }
   await sleep(2000)

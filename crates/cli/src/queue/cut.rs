@@ -21,9 +21,14 @@ pub(super) fn now(data: &Path, id: &str) -> io::Result<(Fold, String)> {
     Ok((f, state.unwrap_or_default()))
 }
 
-/// Whether its last run was cut off and nothing carried it on.
+/// Whether its last run was cut off, or its message never proven taken, and nothing carried it on:
+/// its one Recover settles each [D66].
 pub fn off(data: &Path, id: &str) -> io::Result<bool> {
-    Ok(now(data, id)?.1 == "interrupted")
+    let state = now(data, id)?.1;
+    Ok(matches!(
+        state.as_str(),
+        "interrupted" | "uncertain" | "undelivered"
+    ))
 }
 
 pub(super) fn link(dir: &Path) -> Option<workers::Link> {
@@ -135,8 +140,13 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
         false => vec![],
     };
     let spec = crate::routing::told(data, &spec);
-    let reply = core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more);
-    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+    let reply = crate::peers::held::recovery(data, id, || {
+        core::recover(&spec, &f.fold, &live, crate::child(data, id), &call, &more)
+    })?;
+    if matches!(
+        reply["result"].as_str(),
+        Some("delivered" | "logged" | "sent")
+    ) {
         workers::went_with(data, id, held);
     }
     Ok(reply)

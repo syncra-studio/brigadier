@@ -36,6 +36,20 @@ pub(crate) fn refused(error: &str, why: Value) -> Value {
 pub(crate) fn deliver(
     data: &Path,
     id: &str,
+    req: Value,
+    exact: bool,
+    judge: impl Fn(&Fold) -> Result<Value, Value>,
+) -> io::Result<Value> {
+    let cid = req["cid"].as_str().unwrap_or("").to_string();
+    let reply = written(data, id, req, exact, judge)?;
+    Ok(core::applied(&core::session_dir(data, id), &cid, reply))
+}
+
+/// The same, back once it's written: an agent's reply that confirms it isn't waited for, so a
+/// caller holding the queue's lock never holds it that long [D66].
+pub(crate) fn written(
+    data: &Path,
+    id: &str,
     mut req: Value,
     exact: bool,
     judge: impl Fn(&Fold) -> Result<Value, Value>,
@@ -78,7 +92,7 @@ pub(crate) fn deliver(
             Ok(d) => d,
             Err(e) => return Ok(refused("unsupported", e.into())),
         };
-        if a.acks() {
+        if a.acks_control(&msg) {
             req["ack"] = true.into();
         }
         req["op"] = "input".into();
@@ -93,8 +107,7 @@ pub(crate) fn deliver(
         }
         let reply = owner::call(data, id, req.clone())?;
         if reply["error"] != "changed" {
-            let cid = req["cid"].as_str().unwrap_or("");
-            return Ok(core::applied(&spec.dir, cid, reply));
+            return Ok(reply);
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -446,7 +459,10 @@ pub(crate) fn send(
         }
         .into();
     }
-    if matches!(reply["result"].as_str(), Some("delivered" | "logged")) {
+    if matches!(
+        reply["result"].as_str(),
+        Some("delivered" | "logged" | "sent")
+    ) {
         crate::workers::went_with(data, &spec.id, held);
     }
     Ok(reply)

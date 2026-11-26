@@ -52,7 +52,9 @@ use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of, gone, leaving, marked, taken};
 pub use kept::{fold, keep};
-pub use send::{Call, CallIn, Running, applied, level, reconnect, recover, relevel, send};
+pub use send::{
+    Call, CallIn, Running, applied, level, reconnect, recover, relevel, send, with_back,
+};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Spec {

@@ -4,11 +4,38 @@
 use super::{Agent, emit, ledger, now};
 use brigadier_frames::procs;
 use serde_json::{Value, json};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::io::{self, BufRead};
+use std::path::Path;
+use std::process;
 use std::process::Child;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
+
+/// The input a conversation's record shows taken but that died before acting on it: a resumed
+/// conversation holds it, as a CLI's transcript does, so it's acted on first [D66]. Its act is
+/// the ledger's line, so one there since it was taken was acted on already.
+pub fn left(home: &Path, sid: &str) -> Option<Value> {
+    let taking = home.join(format!("{sid}.taking"));
+    let v: Value = serde_json::from_str(&fs::read_to_string(&taking).ok()?).ok()?;
+    let _ = fs::remove_file(taking);
+    let log = fs::read_to_string(home.join(format!("{sid}.log"))).ok()?;
+    let took = format!("took {}", v["id"].as_str()?);
+    let at = v["at"].as_u64().unwrap_or(0) as usize;
+    let acted = (ledger_at().and_then(|p| fs::read(p).ok())).is_some_and(|b| {
+        let since = String::from_utf8_lossy(b.get(at..).unwrap_or_default()).into_owned();
+        since
+            .lines()
+            .any(|l| l.starts_with(&format!("recv {sid} ")))
+    });
+    (log.lines().any(|l| l == took) && !acted).then_some(v)
+}
+
+fn ledger_at() -> Option<std::ffi::OsString> {
+    std::env::var_os("FAKE_LEDGER")
+}
 
 /// Each stdin line as JSON.
 pub fn reader() -> Receiver<Value> {
@@ -31,6 +58,36 @@ pub fn reader() -> Receiver<Value> {
 }
 
 impl Agent {
+    /// Notes that it took input `id`, in its record, before acting on it (`act`, its ledger line):
+    /// a note it can't write stops it, so a record without it proves it never took that input.
+    /// Then says so on its output, as a CLI's ack, last: that write is what kills it once its host
+    /// is gone. `text` waits beside the note until it's acted on, for `left` [D66].
+    pub fn take(&mut self, id: Option<String>, text: &str, act: &str) {
+        let Some(id) = id.or_else(|| self.took.take()) else {
+            return act.lines().for_each(ledger);
+        };
+        let taking = self.home.join(format!("{}.taking", self.sid));
+        let at = ledger_at()
+            .and_then(|p| fs::metadata(p).ok())
+            .map_or(0, |m| m.len());
+        let _ = fs::write(
+            &taking,
+            json!({"id": id, "text": text, "at": at}).to_string(),
+        );
+        let path = self.home.join(format!("{}.log", self.sid));
+        let noted = OpenOptions::new().create(true).append(true).open(path);
+        let noted = noted.and_then(|mut f| {
+            f.write_all(format!("took {id}\n").as_bytes())
+                .and_then(|_| f.sync_data())
+        });
+        if noted.is_err() {
+            process::exit(4);
+        }
+        act.lines().for_each(ledger);
+        let _ = fs::remove_file(taking);
+        emit(json!({"t": "took", "id": id}));
+    }
+
     /// Takes what came in since: true when it was a stop. Messages wait for the turn to end.
     pub fn poll(&mut self) -> bool {
         while let Ok(v) = self.rx.try_recv() {
@@ -41,9 +98,19 @@ impl Agent {
             } else if v["answer"].is_object() {
                 let id = v["answer"]["id"].as_str().unwrap_or("").to_string();
                 self.answers.insert(id, v["answer"].clone());
+            } else if v["steer"] == true
+                && v["text"]
+                    .as_str()
+                    .is_some_and(|t| t.contains("refuse_steer"))
+            {
+                // Refused unread, as a CLI whose turn ended before it read a steer answers [D66].
+                emit(
+                    json!({"t": "took", "id": v["id"], "error": "The turn ended before it read this."}),
+                );
             } else if v["steer"] == true {
                 let text = v["text"].as_str().unwrap_or("");
-                ledger(&format!("recv {} {text}", self.sid));
+                let act = format!("recv {} {text}", self.sid);
+                self.take(v["id"].as_str().map(String::from), text, &act);
                 self.say(&format!("Steered: {text}"));
             } else {
                 self.backlog.push_back(v);

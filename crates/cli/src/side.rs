@@ -77,7 +77,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             data,
             &start_args(data, &src, &project, target, &text, &parts, &cid)?,
         ) {
-            Ok(r) if r["result"] == "delivered" || r["result"] == "logged" => None,
+            Ok(r) if matches!(r["result"].as_str(), Some("delivered" | "logged" | "sent")) => None,
             Ok(r) => Some(
                 r["message"]
                     .as_str()

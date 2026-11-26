@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Bumped whenever the items, or the fold over them, would change for the same frames; old
 /// checkpoints and `index.db` are then rebuilt.
-pub const VERSION: u32 = 45;
+pub const VERSION: u32 = 46;
 const MAX_LINE: usize = 8 << 20;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -36,6 +36,13 @@ pub struct Norm {
     /// This turn's `show_draft` calls, by id: each shows once, as its card, never as a step.
     #[serde(default)]
     drafts: Vec<String>,
+    /// The inputs that wait on their agent's reply, as (the UUID an agent that names them so
+    /// echoes, command id): its reply is the command id's [D66]. Each waits till its echo comes.
+    #[serde(default)]
+    acks: Vec<(String, String)>,
+    /// The last of those echoed, for the frames that echo them again.
+    #[serde(default)]
+    echoed: Vec<(String, String)>,
 }
 
 /// How a `show_draft` call reads in its reply: the message card's fence, its JSON on one line
@@ -72,6 +79,9 @@ impl Norm {
                 let v = control();
                 if let Some(b) = v["backend"].as_str() {
                     self.backend = b.into();
+                }
+                if let Some(cid) = v["cid"].as_str().filter(|_| v["ack"] == true) {
+                    self.acks.push((adapters::uuid_of(cid), cid.into()));
                 }
                 emit(
                     self,
@@ -308,6 +318,21 @@ impl Norm {
                     json!({"kind": "resolved", "id": id, "decision": decision})
                 }
                 Event::Reply { id, error, level } => {
+                    let cid = match self.acks.iter().position(|(u, c)| *u == id || *c == id) {
+                        Some(at) => {
+                            let echo = self.acks.remove(at);
+                            let cid = echo.1.clone();
+                            self.echoed.push(echo);
+                            if self.echoed.len() > 64 {
+                                self.echoed.remove(0);
+                            }
+                            Some(cid)
+                        }
+                        None => {
+                            (self.echoed.iter().find(|(u, _)| *u == id)).map(|(_, c)| c.clone())
+                        }
+                    };
+                    let id = cid.unwrap_or(id);
                     json!({"kind": "reply", "id": id, "error": error, "level": level})
                 }
                 Event::Level(level) => json!({"kind": "level", "level": level}),

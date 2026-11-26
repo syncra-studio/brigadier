@@ -281,16 +281,12 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             owner::ensure(data, &spec)?;
             accounts::tell(data, id, told);
             match flag(args, "--text") {
-                Some(text) => control::send(
-                    data,
-                    &spec,
-                    text,
-                    parts,
-                    flag(args, "--cid"),
-                    None,
-                    None,
-                    false,
-                ),
+                Some(text) => {
+                    let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+                    let reply =
+                        control::send(data, &spec, text, parts, Some(&cid), None, None, false)?;
+                    Ok(core::applied(&spec.dir, &cid, reply))
+                }
                 None => Ok(json!({"ok": true, "id": id})),
             }
         }
@@ -301,15 +297,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 if let Some(from) = flag(args, "--from") {
                     core::message::take(data, &core::load(data, id)?.dir, &parts, Some(from))?;
                 }
-                return control::steer_as(
-                    data,
-                    id,
-                    text,
-                    &parts,
-                    flag(args, "--cid"),
-                    "user",
-                    false,
-                );
+                let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+                let reply = control::steer_as(data, id, text, &parts, Some(&cid), "user", false)?;
+                // Its agent's reply is waited for here, with no lock held [D66].
+                return Ok(core::applied(&core::session_dir(data, id), &cid, reply));
             }
             let spec = core::load(data, id)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
@@ -337,7 +328,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
             // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
             if reply["error"] != "busy: a turn is running" {
-                return Ok(reply);
+                return Ok(core::applied(&spec.dir, &cid, reply));
             }
             let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];
             queued.extend(["--qid".into(), cid.clone()]);
@@ -411,7 +402,13 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "computer" => computer::run(data, args),
         "chips" => chips::run(data, args),
         "queue" => queue::run(data, args),
-        "recover" => queue::recover(data, arg(args, 1)?, false),
+        "recover" => {
+            let id = arg(args, 1)?;
+            let reply = queue::recover(data, id, false)?;
+            // Its agent's reply to what it sent is waited for here, with no lock held [D66].
+            let cid = reply["cid"].as_str().unwrap_or("").to_string();
+            Ok(core::applied(&core::session_dir(data, id), &cid, reply))
+        }
         "archive" | "restore" | "delete" | "jobs" | "audit" => sessions::run(data, args),
         // The short title a first message gives its session, for the app's row before Rust's [D186].
         "feedback" => feedback::run(data, args),
