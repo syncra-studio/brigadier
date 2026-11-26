@@ -135,12 +135,14 @@ export function useComposerFiles({ owner, draft = owner, run, field, backend, pr
     const stored = (async () => {
       let others = counted();
       let reply = await store(run, owner, id, file, backend, others);
-      // Refused for room while earlier files it counted were still on their way: once they've settled it asks again,
-      // so one that fails later doesn't take its place; a tile taken out meanwhile isn't stored again.
-      while (reply.full && others.some((each) => filesOf(owner).all.get(each)?.state === "uploading")) {
+      // Refused for room: once the files it counted have settled it counts again and asks again if that changed, so one
+      // that failed or was taken out, even before the reply came, doesn't keep its place; a tile taken out isn't stored.
+      while (reply.full) {
         await Promise.allSettled(others.map((each) => storing.get(each)));
         if (!inText && !filesOf(draft).tiles.includes(id)) return null;
-        others = counted();
+        const now = counted();
+        if (now.length === others.length && now.every((each) => others.includes(each))) break;
+        others = now;
         reply = await store(run, owner, id, file, backend, others);
       }
       return reply;
