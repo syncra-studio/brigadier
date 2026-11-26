@@ -314,8 +314,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             // A failed turn says so though a job it left runs: its notice, mark and Try again.
             _ if outcome == "failed" && !summary => ("failed", Value::Null),
             _ if live.jobs > 0 => ("idle_jobs", live.jobs.into()),
-            // Brigadier's own stop of a summary turn, late or at a tool, isn't the user's [rev 3 §4].
-            _ if outcome == "stopped" && !(summary && last_reason(fold) == "summary") => {
+            // Brigadier's own stop of a summary turn, late, at a tool or to archive, isn't the user's [rev 3 §4].
+            _ if outcome == "stopped"
+                && !(summary && ["summary", "archive"].contains(&last_reason(fold))) =>
+            {
                 ("stopped", Value::Null)
             }
             _ if fold.items == 0 => ("new", Value::Null),
