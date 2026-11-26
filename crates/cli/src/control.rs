@@ -20,6 +20,7 @@ use std::{io, process, thread};
 mod given;
 mod level;
 mod steer;
+use crate::attach::book::unsent;
 pub use given::beside;
 use given::with;
 pub use level::level;
@@ -308,7 +309,7 @@ pub fn reply(
     cid: Option<&str>,
     by: Option<&str>,
 ) -> io::Result<Option<Value>> {
-    let f = core::fold(&core::session_dir(data, id), true)?;
+    let f = core::fold(&core::session_dir(data, id), true).map_err(unsent)?;
     let review = by == Some("review");
     let asked = f.fold.turns.first().and_then(|t| {
         let mut questions = t.asks.iter().filter(|(_, r)| {
@@ -322,7 +323,7 @@ pub fn reply(
     let Some(request) = asked else {
         return Ok(None);
     };
-    let given = Answers::of(&core::load(data, id)?, text, parts)?;
+    let given = Answers::of(&core::load(data, id).map_err(unsent)?, text, parts).map_err(unsent)?;
     if beside(data, id, &given, Some(&request))?["result"] == "refused" {
         return Ok(None);
     }
@@ -442,14 +443,18 @@ pub(crate) fn send(
     }
     // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
     // Taken before the fence, the order every rewind and delivery takes them in [JR-FX2].
-    let _lock = (!queued)
-        .then(|| crate::queue::hold(&spec.dir))
-        .transpose()?;
-    crate::rewind::settle_held(data, spec)?;
-    let _fence = core::session::fence(data, spec)?;
+    let (_lock, _fence, mut msg) = (|| {
+        let lock = (!queued)
+            .then(|| crate::queue::hold(&spec.dir))
+            .transpose()?;
+        crate::rewind::settle_held(data, spec)?;
+        let fence = core::session::fence(data, spec)?;
+        let msg = core::message::compose(spec, text, parts, backend)?;
+        io::Result::Ok((lock, fence, msg))
+    })()
+    .map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
-    let mut msg = core::message::compose(spec, text, parts, backend)?;
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
@@ -460,7 +465,7 @@ pub(crate) fn send(
             spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
         ))
     };
-    let mut reply = go()?;
+    let mut reply = go().map_err(unsent)?;
     let logged = || core::fold(&spec.dir, true).is_ok_and(|f| f.fold.cids.contains_key(&cid));
     // Retry a busy race or moving host only when the log proves the command never got in;
     // an uncertain delivery is never sent again by itself [D54].
@@ -478,6 +483,10 @@ pub(crate) fn send(
             (false, false) => "not_logged",
         }
         .into();
+        // No host answered: whether it went is unknown, so Try again keeps its id [D54].
+        if reply["result"] == "not_logged" {
+            reply["answered"] = false.into();
+        }
     }
     if matches!(
         reply["result"].as_str(),

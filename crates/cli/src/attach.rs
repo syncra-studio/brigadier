@@ -1,8 +1,9 @@
 //! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | back <session> <parts JSON or null> [--carry-tabs] | view <path> | reveal <path>`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
-//! under the session's folder, or Home's until Send makes its session [D35, D127, D363, D2022]; and
-//! `note`, the session's notes (note.rs).
+//! under the session's folder (book.rs), or Home's until Send makes its session [D35, D127, D363,
+//! D2022]; and `note`, the session's notes (note.rs).
 
+pub(crate) mod book;
 pub(crate) mod note;
 
 use super::{HOME_DRAFT, arg, flag, has, remove};
@@ -22,6 +23,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let owner = arg(args, 1)?;
     if owner != HOME_DRAFT {
         core::load(data, owner)?;
+        book::settle_cut(&core::session_dir(data, owner))?;
     }
     let folder = draft_of(data, owner)?;
     match arg(args, 2)? {
@@ -326,7 +328,7 @@ pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
         data.join(format!("home-draft-{p}"))
     } else {
         core::load(data, id)?;
-        core::session_dir(data, id).join("draft")
+        return book::kept(&core::session_dir(data, id), args);
     };
     match args.get(2).map(String::as_str) {
         None => return Ok(json!({"ok": true, "draft": fs::read_to_string(&path).ok()})),

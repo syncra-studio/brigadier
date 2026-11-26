@@ -1,6 +1,6 @@
 //! A message into the turn that runs.
 
-use super::{new_cid, refused, send, written};
+use super::{new_cid, refused, send, unsent, written};
 use brigadier_core::{self as core, adapters};
 use serde_json::{Value, json};
 use std::io;
@@ -17,12 +17,17 @@ pub fn steer_as(
     origin: &str,
     queued: bool,
 ) -> io::Result<Value> {
-    let spec = core::load(data, id)?;
+    let spec = core::load(data, id).map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
-    core::message::take(data, &spec.dir, parts, None)?;
+    core::message::take(data, &spec.dir, parts, None).map_err(unsent)?;
     // With no turn to take it the user's starts one, which carries on a block its subagents or
     // workers hold open [D521]; a turn that began meanwhile takes it as any steer.
-    if origin == "user" && core::fold(&spec.dir, true)?.fold.turns.is_empty() {
+    let idle = core::fold(&spec.dir, true)
+        .map_err(unsent)?
+        .fold
+        .turns
+        .is_empty();
+    if origin == "user" && idle {
         let (p, c) = (parts.clone(), Some(cid.as_str()));
         let reply = send(data, &spec, text, p, c, None, None, queued)?;
         if reply["error"] != "busy: a turn is running" {
@@ -41,7 +46,7 @@ pub fn steer_turn(
     cid: &str,
     origin: &str,
 ) -> io::Result<Value> {
-    let msg = core::message::compose(spec, text, parts.clone(), None)?;
+    let msg = core::message::compose(spec, text, parts.clone(), None).map_err(unsent)?;
     let mut req = json!({"cid": cid, "text": text, "steer": true, "origin": origin});
     if core::message::direct(&spec.dir, cid, origin) {
         req["direct"] = true.into();

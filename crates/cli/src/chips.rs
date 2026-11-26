@@ -72,6 +72,31 @@ fn went(data: &Path, id: &str, (msg, into): &(String, String)) -> bool {
         || has(&q["editing"])
 }
 
+/// Message `msg`'s chips waiting again: the ones it had.
+fn untake(state: &mut Chips, msg: &str) -> Vec<Value> {
+    let mut back = vec![];
+    for kept in &mut state.chips {
+        if kept.taken.as_ref().is_some_and(|(m, _)| m == msg) {
+            kept.taken = None;
+            back.push(kept.chip.clone());
+        }
+    }
+    back
+}
+
+/// A refused message's chips back, as `back` does, for a give-back (attach/book.rs).
+pub(crate) fn back(dir: &Path, msg: &str) -> io::Result<Vec<Value>> {
+    let _lock = worktrees::lock(dir)?;
+    let path = dir.join(FILE);
+    let mut state: Chips =
+        serde_json::from_slice(&fs::read(&path).unwrap_or_default()).unwrap_or_default();
+    let back = untake(&mut state, msg);
+    if !back.is_empty() {
+        core::write_atomic(&path, &serde_json::to_vec(&state)?)?;
+    }
+    Ok(back)
+}
+
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
     let dir = core::session_dir(data, id);
@@ -120,14 +145,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }
             }
         }
-        Some("back") => {
-            let msg = arg(args, 3)?;
-            for kept in &mut state.chips {
-                if kept.taken.as_ref().is_some_and(|(m, _)| m == msg) {
-                    kept.taken = None;
-                }
-            }
-        }
+        Some("back") => drop(untake(&mut state, arg(args, 3)?)),
         Some("draft") => {
             state.draft = match arg(args, 3)? {
                 "-" => Value::Null,

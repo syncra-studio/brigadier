@@ -46,6 +46,7 @@ pub mod usage;
 pub mod workers;
 pub use brigadier_core::title;
 
+use attach::book::unsent;
 use brigadier_core::{self as core, Spec, adapters, fold};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
@@ -54,13 +55,13 @@ use std::path::Path;
 use std::{env, fs};
 
 pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the test agent, if none) [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--cid C] [--parts JSON] [--from F] [--carry-tabs] [--overnight]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] | side <id> <new-id> --text T --cid C [--qid Q]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] [--draft JSON --draft-rev R] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
-       brigadier draft <@home|@home:P|id> [<json>|\"\"] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
+       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R --took <cid,…>]] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
        brigadier attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) [--in IDS] | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path> | back <session> <parts JSON|null> [--carry-tabs] (back: @home only)
-       brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
+       brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] [--draft JSON --draft-rev R] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <@home|@home:P|id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | profile <tab> <profile> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> | keep <tab> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen | take <@home…> <tab>…] [--behind]
        brigadier terminal <owner> start|restart <tab> [cols] [rows] [--run <line>] | terminal sweep | shell <session> stop|output <command id> | shell settle
        brigadier note <@home|id> [--project P] read <note> [--first] | write <note> <head> <body> [--base R] [--from <note>] | image <note> <name> (--path P | --from <note>/<name> | --data BASE64) | list [--q Q] | pin <note> on|off | rename <note> <name> | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
@@ -69,7 +70,7 @@ pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id>... --check | delete <id> [--branch keep|delete] [--delete-in <repo>]... | owner <id> | up <id>...
        brigadier jobs <id> history | servers | stop <pid> <start_us>
        brigadier workers <id> [stop [<wid>...] | pause|resume <wid>] | peers <id> send <mid> | mockup <wid> [draft '<notes>' | send '<notes>' | use <letter> '<notes>']
-       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
+       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] [--draft JSON --draft-rev R] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id>|--project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]
@@ -291,53 +292,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
         "send" => {
-            let (id, text, parts) = (arg(args, 1)?, arg(args, 2)?, parts(args)?);
-            if has(args, "--steer") {
-                // A worker's message from its parent's composer brings the parent's files [D3013].
-                if let Some(from) = flag(args, "--from") {
-                    core::message::take(data, &core::load(data, id)?.dir, &parts, Some(from))?;
-                }
-                let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
-                let reply = control::steer_as(data, id, text, &parts, Some(&cid), "user", false)?;
-                // A summary turn takes no steer: as a message, it waits in the queue [rev 3 §2.2].
-                if reply["error"] != "busy" {
-                    // Its agent's reply is waited for here, with no lock held [D66].
-                    return Ok(core::applied(&core::session_dir(data, id), &cid, reply));
-                }
-            }
-            let spec = core::load(data, id)?;
-            core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
-            if let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)?
-            {
-                return Ok(reply);
-            }
-            owner::ensure(data, &spec)?;
-            let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
-            // A block its subagents or workers hold open is still running: as mid-turn [D521].
-            let reply = match workers::holding(data, id) {
-                true => json!({"error": "busy: a turn is running"}),
-                false => control::send(
-                    data,
-                    &spec,
-                    text,
-                    parts,
-                    Some(&cid),
-                    flag(args, "--backend"),
-                    // A failed turn's message again, after its rewind: it replaces that attempt [D492].
-                    flag(args, "--retry-of"),
-                    false,
-                )?,
-            };
-            // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
-            // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
-            if reply["error"] != "busy: a turn is running" {
-                return Ok(core::applied(&spec.dir, &cid, reply));
-            }
-            let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];
-            queued.extend(["--qid".into(), cid.clone()]);
-            queued.extend(args.iter().skip_while(|a| *a != "--parts").take(2).cloned());
-            queue::run(data, &queued)?;
-            Ok(json!({"ok": true, "result": "queued", "cid": cid}))
+            let dir = core::session_dir(data, arg(args, 1)?);
+            attach::book::going(&dir, args, |a| send(data, a))
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
         "seen" => {
@@ -402,7 +358,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "tabs" | "terminal" | "shell" => tabs::run(data, args),
         "browser" => browser::run(data, args),
         "computer" => computer::run(data, args),
-        "chips" => chips::run(data, args),
+        "chips" => {
+            let dir = core::session_dir(data, arg(args, 1)?);
+            attach::book::going(&dir, args, |a| chips::run(data, a))
+        }
+        "queue" if args.get(2).is_some_and(|a| a == "add") => {
+            let dir = core::session_dir(data, arg(args, 1)?);
+            attach::book::going(&dir, args, |a| queue::run(data, a))
+        }
         "queue" => queue::run(data, args),
         "recover" => {
             let id = arg(args, 1)?;
@@ -488,6 +451,57 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         _ => Err(io::Error::other(USAGE)),
     }
+}
+
+/// `send`: a message from the composer, at once or steered [D30, D54].
+fn send(data: &Path, args: &[String]) -> io::Result<Value> {
+    let (id, text, parts) = (arg(args, 1)?, arg(args, 2)?, parts(args)?);
+    if has(args, "--steer") {
+        // A worker's message from its parent's composer brings the parent's files [D3013].
+        if let Some(from) = flag(args, "--from") {
+            let dir = core::load(data, id).map_err(unsent)?.dir;
+            core::message::take(data, &dir, &parts, Some(from)).map_err(unsent)?;
+        }
+        let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+        let reply = control::steer_as(data, id, text, &parts, Some(&cid), "user", false)?;
+        // A summary turn takes no steer: as a message, it waits in the queue [rev 3 §2.2].
+        if reply["error"] != "busy" {
+            // Its agent's reply is waited for here, with no lock held [D66].
+            return Ok(core::applied(&core::session_dir(data, id), &cid, reply));
+        }
+    }
+    let spec = core::load(data, id).map_err(unsent)?;
+    core::message::take(data, &spec.dir, &parts, flag(args, "--from")).map_err(unsent)?;
+    if let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)? {
+        return Ok(reply);
+    }
+    owner::ensure(data, &spec).map_err(unsent)?;
+    let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
+    // A block its subagents or workers hold open is still running: as mid-turn [D521].
+    let reply = match workers::holding(data, id) {
+        true => json!({"error": "busy: a turn is running"}),
+        false => control::send(
+            data,
+            &spec,
+            text,
+            parts,
+            Some(&cid),
+            flag(args, "--backend"),
+            // A failed turn's message again, after its rewind: it replaces that attempt [D492].
+            flag(args, "--retry-of"),
+            false,
+        )?,
+    };
+    // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
+    // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
+    if reply["error"] != "busy: a turn is running" {
+        return Ok(core::applied(&spec.dir, &cid, reply));
+    }
+    let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];
+    queued.extend(["--qid".into(), cid.clone()]);
+    queued.extend(args.iter().skip_while(|a| *a != "--parts").take(2).cloned());
+    queue::run(data, &queued)?;
+    Ok(json!({"ok": true, "result": "queued", "cid": cid}))
 }
 
 /// Removes a file that may already be gone.
