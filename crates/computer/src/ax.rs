@@ -202,11 +202,19 @@ fn same(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
-/// Presses a menu item by its path, or by its key equivalent (`keys`: ["cmd", "n"]), with no
-/// window needed: menus belong to the app.
+/// Presses a menu item by its path, with no window needed: menus belong to the app. With
+/// `window` (the window read), an item goes only when that window would get it [C79].
 fn press(app: &CFType, p: &Value) -> Result<Value, String> {
     let bar = attr(app, "AXMenuBar").ok_or("This app has no menu bar.")?;
     let path_of = p["path"].as_array().filter(|p| p.len() > 1);
+    let want = p["window"].as_u64().unwrap_or(0) as u32;
+    // Before the item is looked up, so the daemon's fallback to Cua's menu never runs either.
+    if let Some(path) = path_of.filter(|_| want != 0)
+        && let Some((id, title)) = elsewhere(app, want)
+    {
+        let key = walk(&bar, path).map(|i| shortcut(&i)).unwrap_or_default();
+        return Ok(json!({"elsewhere": {"window": id, "title": title, "key": key}}));
+    }
     let (item, path) = match (path_of, p["path"][0].as_str()) {
         // One name: an item of the menu open now (a context menu, a popup). Chromium hangs it
         // under the control that opened it, in a window AXWindows drops while it's open; Cocoa's
@@ -225,27 +233,14 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
                 name.to_string(),
             )
         }
-        (Some(path), _) => {
-            let mut at = bar;
-            let mut item = None;
-            for (i, name) in path.iter().filter_map(Value::as_str).enumerate() {
-                let menu = if i == 0 { Some(at) } else { submenu(&at) };
-                let found = (menu.as_ref().map(children).unwrap_or_default())
-                    .into_iter()
-                    .find(|c| same(&text(c, "AXTitle"), name))
-                    .ok_or_else(|| format!("No menu item \"{name}\"."))?;
-                at = found.clone();
-                item = Some(found);
-            }
-            (
-                item.ok_or("No menu path.")?,
-                path.iter()
-                    .filter_map(Value::as_str)
-                    .collect::<Vec<_>>()
-                    .join(" > "),
-            )
-        }
-        (None, None) => by_key(&bar, p)?,
+        (Some(path), _) => (
+            walk(&bar, path)?,
+            path.iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" > "),
+        ),
+        (None, None) => return Err("No menu path.".into()),
     };
     // D903: no paste into a window with a password field, the item found by its ⌘V in any language.
     let cmd_v = text(&item, "AXMenuItemCmdChar").eq_ignore_ascii_case("v")
@@ -375,19 +370,37 @@ fn apple_events(id: &str, ask: bool) -> i32 {
     }
 }
 
-/// An item named `name` in a menu open under `e`; web content and the menu bar hold none.
-fn open_item(e: &CFType, name: &str, in_menu: bool, depth: u8) -> Option<CFType> {
-    let role = text(e, "AXRole");
-    if in_menu && role == "AXMenuItem" && same(&text(e, "AXTitle"), name) {
-        return Some(e.clone());
+/// The item at `path` in the menu bar.
+fn walk(bar: &CFType, path: &[Value]) -> Result<CFType, String> {
+    let mut at = bar.clone();
+    for (i, name) in path.iter().filter_map(Value::as_str).enumerate() {
+        let menu = (i == 0).then_some(at.clone()).or_else(|| submenu(&at));
+        at = (menu.as_ref().map(children).unwrap_or_default())
+            .into_iter()
+            .find(|c| same(&text(c, "AXTitle"), name))
+            .ok_or_else(|| format!("No menu item \"{name}\"."))?;
     }
-    if depth > 20 || ["AXWebArea", "AXMenuBar"].contains(&role.as_str()) {
-        return None;
+    Ok(at)
+}
+
+/// The window an app's menu item would go to, when it isn't `want`: AppKit tries the key
+/// window's responders, then the main window's, so both must be `want`. Id 0: one of them can't
+/// be read, so where it goes isn't known.
+fn elsewhere(app: &CFType, want: u32) -> Option<(u32, String)> {
+    type WindowOf = unsafe extern "C" fn(CFTypeRef, *mut u32) -> i32;
+    let id_of = |w: &CFType| {
+        let get: WindowOf = sym(c"_AXUIElementGetWindow")?;
+        let mut id = 0;
+        (unsafe { get(w.as_CFTypeRef(), &mut id) } == 0 && id != 0).then_some(id)
+    };
+    for name in ["AXFocusedWindow", "AXMainWindow"] {
+        match attr(app, name).map(|w| (id_of(&w), text(&w, "AXTitle"))) {
+            Some((Some(id), _)) if id == want => {}
+            Some((Some(id), title)) => return Some((id, title)),
+            _ => return Some((0, String::new())),
+        }
     }
-    let in_menu = in_menu || role == "AXMenu";
-    children(e)
-        .iter()
-        .find_map(|c| open_item(c, name, in_menu, depth + 1))
+    None
 }
 
 /// The item under `e` whose key equivalent is `key` with modifiers `mods`, and its path.
@@ -407,6 +420,21 @@ fn find_key(e: &CFType, path: &str, key: &str, mods: i64, depth: u8) -> Option<(
         }
     }
     None
+}
+
+/// An item named `name` in a menu open under `e`; web content and the menu bar hold none.
+fn open_item(e: &CFType, name: &str, in_menu: bool, depth: u8) -> Option<CFType> {
+    let role = text(e, "AXRole");
+    if in_menu && role == "AXMenuItem" && same(&text(e, "AXTitle"), name) {
+        return Some(e.clone());
+    }
+    if depth > 20 || ["AXWebArea", "AXMenuBar"].contains(&role.as_str()) {
+        return None;
+    }
+    let in_menu = in_menu || role == "AXMenu";
+    children(e)
+        .iter()
+        .find_map(|c| open_item(c, name, in_menu, depth + 1))
 }
 
 // WindowServer's front process, as Cua's skylight.rs reads and sets it.

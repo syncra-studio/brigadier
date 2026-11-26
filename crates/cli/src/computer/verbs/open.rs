@@ -283,6 +283,29 @@ pub(super) fn windows(data: &Path, pid: i64, here: &dyn Fn() -> bool) -> Result<
     Ok(all)
 }
 
+/// Why a menu item wasn't pressed: the app would send it to another window than the one read
+/// [C79]. The words are proposed.
+fn elsewhere(data: &Path, s: &Sess, item: &str, to: &Value, here: &dyn Fn() -> bool) -> String {
+    let (app, id) = (&s.app, to["window"].as_u64().unwrap_or(0));
+    if id == 0 {
+        return format!(
+            "{item}: I can't tell which of {app}'s windows would get it, so nothing was pressed. Read the window again, or ask the user."
+        );
+    }
+    let key = to["key"].as_str().unwrap_or("");
+    // Keys go to the window read, except in Chromium and Electron, where none are sent [D909].
+    let keys = match key.is_empty() || super::window::chromium(data, s.pid, here) {
+        true => String::new(),
+        false => format!(
+            " Or press its key, {key}, in the window you read (`brigadier computer key`), then read to check it took."
+        ),
+    };
+    format!(
+        "{item} would go to {app}'s front window \"{}\" (--window {id}), not the one you read, so nothing was pressed. Read that window first if you mean it (`brigadier computer read {app} --window {id}`); an item for the whole app does the same from there.{keys}",
+        to["title"].as_str().unwrap_or("")
+    )
+}
+
 /// Presses a menu item by its path or its key equivalent, by pid; where the app has no such item
 /// and has a window, `cua` (the driver's own route) runs instead. A window it opens or closes is
 /// read; else what changed.
@@ -323,7 +346,12 @@ pub(super) fn press(
         }
     }
     what["pid"] = s.pid.into();
+    what["window"] = s.window.into();
     what["no_paste"] = (!s.secure.is_empty()).into();
+    let item = (what["path"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join(" > ");
     let read_again = format!("`brigadier computer read {}` shows its menus.", s.app);
     super::sent();
     let chose = match crate::computer::own(data, "menu", what, &|| !here()) {
@@ -352,6 +380,9 @@ pub(super) fn press(
             return act(data, me, s, &line, cua.0, cua.1, here);
         }
         Ok(Err(why)) => return Err(refuse(&format!("{why} {read_again}"))),
+        Ok(Ok(done)) if done["elsewhere"].is_object() => {
+            return Err(refuse(&elsewhere(data, s, &item, &done["elsewhere"], here)));
+        }
         Ok(Ok(done)) => done["pressed"].as_str().unwrap_or("the item").to_string(),
     };
     let start = Instant::now();
