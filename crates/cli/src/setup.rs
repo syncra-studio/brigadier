@@ -448,8 +448,7 @@ pub(crate) fn start(
 /// A run still going is shown again; an ended one is replaced.
 pub fn still_running(data: &Path, id: &str) -> io::Result<Option<Value>> {
     if session_dir(data, id).join("session.json").exists() {
-        let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
-        if !ping["child"].is_null() {
+        if state::runs(data, id).0 {
             return Ok(Some(json!({"ok": true, "id": id, "running": true})));
         }
         close(data, id)?;

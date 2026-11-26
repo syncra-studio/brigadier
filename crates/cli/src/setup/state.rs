@@ -7,6 +7,19 @@ use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
 use std::path::Path;
 
+/// Whether run `id`'s host has its command running, and whether that's a guess: a host still there
+/// that didn't answer in time (a loaded Mac, a stopped host) may still run it, so it's never taken
+/// for ended or closed on one missed ping.
+pub(crate) fn runs(data: &Path, id: &str) -> (bool, bool) {
+    match owner::call(data, id, json!({"op": "ping"})) {
+        Ok(ping) => (!ping["child"].is_null(), false),
+        Err(_) => {
+            let there = owner::state(data, id) != core::fold::Owner::Dead;
+            (there, there)
+        }
+    }
+}
+
 /// A setup run's state; with the agent, the code page or device code a running sign-in printed,
 /// or its own error words once it failed; and once it failed, or an update ended, its last line in
 /// the CLI's own words [D2077].
@@ -14,14 +27,13 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
     let Ok(spec) = core::load(data, id) else {
         return Value::Null;
     };
-    let ping = owner::call(data, id, json!({"op": "ping"})).unwrap_or_default();
-    let running = !ping["child"].is_null();
+    let (running, unsure) = runs(data, id);
     let action = spec.opts.get("setup").map(String::as_str);
     // Its output is read only for an agent's sign-in: its code while it runs, its error after.
     let page = action == Some("sign-in") && agent.is_some();
     let (mut exited, mut out) = (Value::Null, Vec::new());
     if let Ok(mut r) = Reader::open(&spec.dir.join("log"), 0, 0) {
-        let wanted = |k| k == log::EXITED || ((page || !running) && k == log::PTY);
+        let wanted = |k| k == log::EXITED || ((page || !running || unsure) && k == log::PTY);
         while let Ok(Some(f)) = r.next_with(wanted) {
             if f.kind == log::EXITED {
                 exited = serde_json::from_slice(&f.data).unwrap_or_default();
@@ -30,6 +42,8 @@ pub fn run_state(data: &Path, id: &str, agent: Option<&dyn Adapter>) -> Value {
             }
         }
     }
+    // Unanswered, its own end record is what says it ended.
+    let running = running && !(unsure && !exited.is_null());
     // A sign-in whose command wasn't found (127: a shim whose CLI is gone) is no run: the card shows what
     // the check finds again, Install, not the shim's own line [D32].
     if page && !running && exited["code"] == 127 {
