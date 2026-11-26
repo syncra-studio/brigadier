@@ -420,6 +420,12 @@ pub(crate) fn send(
     retry_of: Option<&str>,
     queued: bool,
 ) -> io::Result<Value> {
+    if let Some(why) = crate::routing::refuses(data, spec, cid) {
+        return Ok(
+            json!({"ok": false, "result": "refused", "error": "held", "logged": false,
+            "message": why}),
+        );
+    }
     // Under the queue's lock, as a delivery sends: what's held for this message goes with it [D329].
     // Taken before the fence, the order every rewind and delivery takes them in [JR-FX2].
     let _lock = (!queued)

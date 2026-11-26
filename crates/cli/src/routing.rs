@@ -24,7 +24,7 @@ mod renamed;
 mod retry;
 mod rules;
 
-pub(crate) use hold::{ask, due, real, set_ran, stopped, stops};
+pub(crate) use hold::{ask, due, real, refuses, set_ran, stopped, stops, unbriefed};
 pub(crate) use jobs::{picked, said};
 pub(crate) use pick::{next, resolve};
 pub(crate) use receipt::{label as account_label, receipt};

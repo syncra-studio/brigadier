@@ -133,6 +133,40 @@ fn draw(data: &Path, wid: &str, hold: &Value) -> io::Result<(String, String)> {
     Ok((id, format!("{why}, {resets}")))
 }
 
+/// Why a held worker takes no message but its own brief (its record's cid): while its card waits
+/// unanswered, a retry's too, the card is its only way on [C22]; once Wait is chosen, until its
+/// brief has gone at the reset [C32]. Words proposed.
+pub(crate) fn refuses(data: &Path, spec: &Spec, cid: Option<&str>) -> Option<String> {
+    let f = core::fold(&spec.dir, true).ok()?.fold;
+    let hold = f.hold.as_ref()?;
+    let l = crate::workers::link(data, &spec.id);
+    let r = l.and_then(|l| crate::workers::record(data, &l.parent, &spec.id));
+    if r.as_ref().is_some_and(|r| cid == Some(r.cid.as_str())) {
+        return None;
+    }
+    if core::fold::held(&f) {
+        let why = hold["why"].as_str().unwrap_or("It waits on its card");
+        return Some(format!("{why}: answer its card first."));
+    }
+    let at = hold["resets"]
+        .as_u64()
+        .filter(|_| hold["phase"] == "waiting");
+    (r.is_some_and(|r| r.state == "held")).then(|| match at {
+        Some(at) => format!(
+            "It starts at {}, as you chose; send it then.",
+            crate::workers::row::clock(at)
+        ),
+        None => "It starts once its wait is over, as you chose; send it then.".into(),
+    })
+}
+
+/// Whether worker `wid`'s brief hasn't gone yet: held before it started, or being made [C32].
+pub(crate) fn unbriefed(data: &Path, wid: &str) -> bool {
+    workers::link(data, wid)
+        .and_then(|l| workers::record(data, &l.parent, wid))
+        .is_some_and(|r| r.state == "held" || r.state == "starting")
+}
+
 /// The user's answer on a hold's card: "Use …" runs its model now, "Wait …" waits for
 /// the reset, then goes on as picked (`resume`). Its note goes only once the answer is taken, so a
 /// refused one, or a crash before it, leaves the card up to answer again.

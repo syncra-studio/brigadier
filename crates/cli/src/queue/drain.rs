@@ -75,6 +75,10 @@ fn send_first(data: &Path, id: &str) -> io::Result<()> {
 
 /// One try of it, the queue's lock held; says whether another is due. The `last` says why on it.
 fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
+    // A worker takes nothing queued before its brief has gone (held before it started) [C32].
+    if crate::routing::unbriefed(data, id) {
+        return Ok(false);
+    }
     let dir = core::session_dir(data, id);
     let spec = core::load(data, id)?;
     crate::rewind::settle_held(data, &spec)?;
