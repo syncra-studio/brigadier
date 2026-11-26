@@ -103,6 +103,11 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
 /// otherwise. A stopped or paused session is left as the user left it.
 pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
+        // A summary turn is never cut: its own minutes bound it, then it's "late" [rev 3 §2.2].
+        if t.origin == "summary" {
+            let ran = brigadier_frames::log::now_ms().saturating_sub(t.ts);
+            return (ran > crate::summary::LIMIT.as_millis() as u64).then_some("late");
+        }
         // A safe point: no tool runs, nothing waits on the user, and no turn its CLI queued
         // behind it would be stopped with it.
         let calm = !t.stopping && t.question.is_none() && t.began;
@@ -123,6 +128,19 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     // input provably never reached a CLI; one that may have, isn't sent twice [D54]. The user's
     // Continue carries a stalled one on.
     let last = f.last.as_ref()?;
+    // Its summary turn ended, however: a cut renews at once, a turn ended done at the next message.
+    if let Some(r) = f.renewing.as_ref().filter(|r| r["turn"] == last["id"]) {
+        return (r["why"] == "cut").then_some("cut");
+    }
+    // A turn ended done past its line writes its summary at once, while the user reads; not one a
+    // summary turn was, nor one whose renewal the user stopped [D92].
+    if last["outcome"] == "done"
+        && last["origin"] != "summary"
+        && crate::summary::applies(spec, f)
+        && full(spec, f)
+    {
+        return Some("summary");
+    }
     let refused = last["outcome"] == "failed" && last["why"] == "context" && again_last(f, last);
     // A cut its turn beat by ending on its own is none: it rebirths at the next message [D108].
     let stopped = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";
@@ -207,7 +225,7 @@ pub fn record(spec: &Spec, f: &Fold, why: &str, sent: &str) -> Value {
     let run = as_run(spec, f, b, None);
     // A cut carries the guard's count on; the user's message starts it over. One whose input
     // never ran keeps the count it had.
-    let last = f.last.clone().unwrap_or_default();
+    let last = (crate::summary::served(f).or(f.last.clone())).unwrap_or_default();
     let empty = match last["never_ran"] == true {
         true => last["switch"]["empty"].as_u64().unwrap_or(0),
         false => empty(

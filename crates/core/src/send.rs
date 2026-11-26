@@ -55,7 +55,9 @@ pub fn send(
         .and_then(|t| t.switch["why"].as_str())
         .filter(|why| matches!(*why, "rebirth" | "cut"));
     let cut = redo.map_or(origin == "system" && text.is_empty(), |why| why == "cut");
+    // A summary input is past the line by definition: it goes to the old conversation [rev 3 §2.2].
     let reborn = !picking
+        && origin != "summary"
         && (redo.is_some()
             || (backend.is_none() && f.turns.is_empty() && (cut || crate::rebirth::full(spec, f))));
     let mut replace = None;
@@ -122,7 +124,8 @@ pub fn send(
         }
     } else if reborn {
         let why = if cut { "cut" } else { "rebirth" };
-        let last = f.last.clone().unwrap_or_default();
+        // The turn the renewal serves, not its summary turn.
+        let last = (crate::summary::served(f).or(f.last.clone())).unwrap_or_default();
         // What goes after the hand-off: the user's message, or on a cut the night's line.
         let after = if cut {
             night.as_deref().unwrap_or("")

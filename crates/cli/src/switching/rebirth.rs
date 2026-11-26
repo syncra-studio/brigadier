@@ -45,6 +45,13 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
     };
+    // A summary turn past its minutes is stopped; its renewal goes ahead without it [rev 3 §4].
+    if why == "late" {
+        if crate::control::interrupt(data, id, "summary")?.is_none() {
+            owner::call(data, id, json!({"op": "stop", "by": "summary"}))?;
+        }
+        return Ok(json!({"ok": true, "result": "late"}));
+    }
     if why == "stall" {
         if crate::control::interrupt(data, id, "stall")?.is_none() {
             owner::call(data, id, json!({"op": "stop", "by": "stall"}))?;
@@ -80,12 +87,26 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let Some(why) = core::rebirth::due(&spec, &f) else {
         return Ok(not_due);
     };
+    // A turn ended done past its line, or one this cut stopped, first writes its summary in the
+    // old conversation, once per renewal [D92; rev 3 §2.2].
+    let cut = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";
+    let summary = match why {
+        "summary" => Some("rebirth"),
+        "cut" if cut && f.renewing.is_none() && core::summary::applies(&spec, &f) => Some("cut"),
+        _ => None,
+    };
+    // The turn the renewal serves, past its summary turn.
+    let served = core::summary::served(&f).unwrap_or_else(|| last.clone());
     // One per turn it carries on: a repeat or a racing pass finds its id logged [D54].
-    let cid = format!("rb-{}", last["id"].as_str().unwrap_or(""));
+    let cid = match summary {
+        Some(_) => format!("sm-{}", last["id"].as_str().unwrap_or("")),
+        None => format!("rb-{}", served["id"].as_str().unwrap_or("")),
+    };
     // A worker's cut turn would have reported to its parent: the fresh one does instead, so a
     // second cut can't leave the first reading as finished.
-    let turn = last["id"].as_str().unwrap_or("");
-    if let Some(mut l) = workers::link(data, id).filter(|l| l.report.iter().any(|r| r == turn)) {
+    let turn = served["id"].as_str().unwrap_or("");
+    let worker = workers::link(data, id).filter(|_| summary.is_none());
+    if let Some(mut l) = worker.filter(|l| l.report.iter().any(|r| r == turn)) {
         l.report.retain(|r| r != turn);
         l.report.push(cid.clone());
         workers::write_json(&spec.dir.join("worker.json"), &l)?;
@@ -98,8 +119,22 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         if req["if_len"].is_null() && writes && first.replace(false) {
             req["if_len"] = len.into();
         }
+        if writes && let Some(why) = summary {
+            req["renewing"] = why.into();
+        }
         owner::call(data, id, req)
     };
+    if summary.is_some() {
+        // Every tool call is refused while it's there; the daemon takes it away at the turn's end.
+        let flag = core::summary::flag(&spec.dir);
+        std::fs::write(&flag, b"")?;
+        let msg = Message::plain(core::summary::PROMPT);
+        let reply = core::send(&spec, &f, child, &call, &cid, "summary", &msg, None, None);
+        if reply["ok"] != true {
+            let _ = std::fs::remove_file(flag);
+        }
+        return Ok(reply);
+    }
     // Another agent picked carries on from the hand-off; another model of this one, in the same
     // conversation, told why it stopped [D110, D124].
     let msg = match why == "switch" && f.picked.is_none() {

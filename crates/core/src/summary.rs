@@ -34,3 +34,26 @@ pub fn tool_hook(dir: Option<&Path>) -> Option<&'static str> {
         "Brigadier: this turn writes the conversation's summary, with no tools. Answer in text only."
     })
 }
+
+/// The summary input's words. shortcut: a placeholder until rev 3 §2.3's prompt lands (step 7).
+// No word of it is one of the fake's directives, so the drills' summary turn runs no step.
+pub const PROMPT: &str = "Brigadier renews this conversation next. First sum it up for the fresh one, as text only with no tools: what the user wants now, the rules and decisions that hold, what's done with its proof, what's open, and the next step.";
+
+/// Whether `backend`'s CLI is proved to refuse every tool call before it runs, under the flag
+/// [D92]. The others renew without a summary. shortcut: names only, the fake's, until step 8
+/// wires Claude's PreToolUse hook; an adapter method once a second agent passes.
+pub fn vetoes(backend: &str) -> bool {
+    backend == "fake"
+}
+
+/// Whether this session's renewals write a summary first.
+pub fn applies(spec: &crate::Spec, f: &crate::fold::Fold) -> bool {
+    on() && vetoes(crate::rebirth::backend(spec, f))
+}
+
+/// The turn the held renewal serves, as the fold had it when the summary input came: its cause,
+/// its guard count. None with no renewal held.
+pub fn served(f: &crate::fold::Fold) -> Option<serde_json::Value> {
+    let r = f.renewing.as_ref()?;
+    Some(r["last"].clone()).filter(|l| !l.is_null())
+}
