@@ -398,9 +398,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onEdit={edit}
             onAddAgain={(qid) => {
               const lost = uncertain.find(qid)!;
-              const sub = { draft: lost.draft, rev: null, chips: [] };
+              const sub = { draft: lost.draft, rev: null, chips: lost.chips ?? [] }; // Handed off again: a read since may have put them back waiting [D1174].
               dropUncertain(id, qid);
-              queue(lost.text, qid, undefined, carry([], qid, null, sub), lost.parts, sub);
+              const back = carry(sub.chips, qid, null, sub);
+              handOff(id, sub.chips, qid, () => queue(lost.text, qid, undefined, back, lost.parts, sub), (reply) => takeBack(run, id, { cid: qid, ...lost.draft, chips: sub.chips, error: failure(reply) }), id, draftArgs(lost.draft, null));
             }}
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
