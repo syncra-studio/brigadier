@@ -450,6 +450,8 @@
   /** What a click on the control is refused or asked for, as it is now. */
   const clickStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
+    // A click on the frame itself lands on whatever it draws there.
+    if (FRAMES.has(element.localName)) return { error: `${op.target} is a frame, which agents can't see into, so nothing was clicked: use another control, or ask the user.` };
     // A control with no role acts as a button does, whatever it's made of, so it asks as one.
     const role = controlOf(element) || "clickable";
     const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
