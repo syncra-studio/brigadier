@@ -48,10 +48,17 @@ fn sh(s: &str) -> String {
 /// `merge`: the parent's folder, the worker's branch and the parent's branch, for one with a
 /// worktree, which merges itself back [D89, D97].
 /// A reviewer's commits nothing: its count takes the merge sentence's place [D3026].
-fn fixed_line(parent: &str, pid: &str, merge: Option<(&str, &str, &str)>, review: bool) -> String {
+/// `root`: the family's first session, where the user's own words are, however deep it is.
+fn fixed_line(
+    parent: &str,
+    pid: &str,
+    root: &str,
+    merge: Option<(&str, &str, &str)>,
+    review: bool,
+) -> String {
     let land = land_line(merge, review);
     format!(
-        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {pid} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills of its own, and no MCP servers but any only it can sign in to: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
+        "You're a worker for {parent} ({pid}). When you end your turn, your last message goes back to it by itself, so end with what you did and found. To ask it something, `brigadier send {pid} \"<question>\"` and wait for its answer there; don't end your turn on a question. {land} `brigadier read {root} --user` has the user's own words. What you leave running ends when you finish. Your CLI loads no skills of its own, and no MCP servers but any only it can sign in to: `brigadier skill`, `brigadier mcp` and `brigadier search` (past sessions) bring what you need."
     )
 }
 
@@ -420,6 +427,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
     let line = fixed_line(
         &core::share::title(&parent),
         pid,
+        &r.root,
         merge,
         !r.review.is_null(),
     );
