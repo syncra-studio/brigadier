@@ -15,7 +15,8 @@ pub(super) fn items(spec: &Spec, entries: &[Entry]) -> String {
         let r: Value = serde_json::from_slice(&std::fs::read(w.path()).ok()?).ok()?;
         let wid = r["wid"].as_str()?;
         // Its newest record, written before its delivery, says it ended, unless it's a question
-        // it asked and waits on (O50). shortcut: a worker told again after a result reads as done.
+        // it asked and waits on (O50). Words to or from it while it runs (told, notice) aren't one.
+        // shortcut: a worker told again after a result reads as done.
         let records = std::fs::read_dir(spec.dir.join("results"))
             .into_iter()
             .flatten();
@@ -25,12 +26,15 @@ pub(super) fn items(spec: &Spec, entries: &[Entry]) -> String {
                     .to_string_lossy()
                     .starts_with(&format!("{wid}."))
             })
-            .filter_map(|f| Some((f.metadata().ok()?.modified().ok()?, f.path())))
+            .filter_map(|f| {
+                let r: Value = serde_json::from_slice(&std::fs::read(f.path()).ok()?).ok()?;
+                let how = r["how"].as_str()?.to_string();
+                let when = f.metadata().ok()?.modified().ok()?;
+                (!["told", "notice", "shell"].contains(&how.as_str())).then_some((when, how))
+            })
             .max();
         let back = match newest {
-            Some((_, path)) => (std::fs::read(path).ok())
-                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                .is_some_and(|end| end["how"] != "asks"),
+            Some((_, how)) => how != "asks",
             None => entries.iter().any(|e| e.from == "worker" && e.who == wid),
         };
         (r["state"] == "started" && !back).then(|| {
