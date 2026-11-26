@@ -74,6 +74,13 @@ export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (
       lostOn.set(each.qid, daemon);
       void run(["queue", id, "has", each.qid]).then((reply) => {
         if (!reply.ok) return;
+        // Its add still waits its turn in Rust: asked again in a moment.
+        if (reply.pending) {
+          return void setTimeout(() => {
+            lostOn.delete(each.qid);
+            put(id, of(id));
+          }, 1000);
+        }
         if (each.removing && reply.queued) remove(each.qid);
         if (each.removing || reply.queued || reply.logged) dropUncertain(id, each.qid);
         else mark(id, each.qid, { unadded: true });

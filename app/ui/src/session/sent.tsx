@@ -7,7 +7,7 @@ import { sendFailed } from "../thread/follow";
 import type { Source } from "../thread/thread";
 import type { Chip } from "../panel/chips";
 import { daemonRun, failure, type Runner } from "./composer";
-import { takeBack } from "./draft";
+import { resyncDraft, takeBack } from "./draft";
 import { inThread } from "./queued";
 import { newId } from "./store";
 
@@ -44,8 +44,9 @@ export function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   };
   const given = (reply: Record<string, any>) => {
     setSent(id, (list) => list.filter((each) => each.cid !== message.cid));
-    // Given back before (`again`), it's in the draft already, or comes with the next save.
-    if (!reply.again) takeBack(run, id, { cid: message.cid, parts: reply.parts, attachmentIds: reply.attachmentIds, chips: message.chips?.length ? message.chips : reply.chips, error: failure(reply) });
+    // Given back before (`again`), it's in the draft already, or comes with a save now.
+    if (reply.again) return resyncDraft(run, id);
+    takeBack(run, id, { cid: message.cid, parts: reply.parts, attachmentIds: reply.attachmentIds, chips: message.chips?.length ? message.chips : reply.chips, error: failure(reply) });
   };
   // Logged: the thread shows the turn and how it ended, so the message has its place there.
   return run(message.steer ? [...args, "--steer"] : args).then((reply) => void (reply.ok || reply.result === "logged" || (reply.given_back ? given(reply) : fail(failure(reply)))), (cause) => fail(String(cause)));

@@ -45,6 +45,13 @@ export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
   return () => fills.get(id) === fill && fills.delete(id);
 }
 
+/** Asks Rust for what it gave back that this view may not have: a save, stale if it missed any, or a first read. */
+export function resyncDraft(run: Runner, id: string): void {
+  if (!drafts.has(id)) return void loadDraft(run, id);
+  clearTimeout(timers.get(id));
+  void write(run, id);
+}
+
 /** Takes a message given back into session `id`'s draft, open or not, once per message; saved at once. */
 export function takeBack(run: Runner, id: string, back: Given): void {
   setOf(took, id).add(back.cid);

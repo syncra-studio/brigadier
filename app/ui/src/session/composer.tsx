@@ -22,7 +22,7 @@ import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting
 import { SessionLevel } from "./level";
 import { takesImages, useSessionModel } from "./model";
 import { SessionNotices } from "./notices";
-import { draftOf, givenError, keepDraft, loadDraft, onGiven, revOf, takeBack } from "./draft";
+import { draftOf, givenError, keepDraft, loadDraft, onGiven, resyncDraft, revOf, takeBack } from "./draft";
 import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
@@ -188,7 +188,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     return (reply: Record<string, any>) => {
       if (reply.error === "disconnected") return;
       if (!reply.given_back || !sub) return restoreChips(id, msg, sent);
-      if (!reply.again) takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
+      if (reply.again) resyncDraft(run, id);
+      else takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
       if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
     };
   };

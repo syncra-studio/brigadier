@@ -302,12 +302,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 Ok(())
             })?;
         }
-        // A reply that never came: whether the message waits here or reached the log, by its id [D54].
+        // A reply that never came: whether the message waits here or reached the log, by its id, or
+        // its add is still under way [D54].
         "has" => {
             let qid = qid()?;
+            let pending = crate::attach::book::pending(&dir, &qid);
             let queued = crate::attach::book::queued(&dir, &qid);
             let logged = went(&dir, &Value::Null, &qid);
-            return Ok(json!({"ok": true, "queued": queued, "logged": logged}));
+            return Ok(json!({"ok": true, "pending": pending, "queued": queued, "logged": logged}));
         }
         "restore" => change(&dir, |q| {
             restore(q);

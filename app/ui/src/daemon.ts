@@ -347,6 +347,7 @@ function onFrame(frame: Record<string, any>): void {
     n = frame.n;
     for (const row of frame.rows as Row[]) rows.set(row.id, row);
     for (const id of frame.gone as string[]) rows.delete(id);
+    if ((frame.gone as string[]).length > 0) pruneUncertain(new Set(rows.keys()));
     for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
     for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
     set({ rows: [...rows.values()], projects: [...projects.values()], lid: frame.lid });
