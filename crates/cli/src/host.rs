@@ -320,7 +320,7 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         Some(base) => base.to_string(),
         None => pr.learn(data),
     };
-    let base = Some(base.as_str());
+    let (learned, base) = (base.as_str(), Some(base.as_str()));
     let mut title = super::flag(args, "--title")
         .unwrap_or("")
         .trim()
@@ -332,7 +332,20 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
     let wrote = title.is_empty() || message.is_empty();
     let seen = (wrote && changes).then(|| pr.fingerprint());
     if wrote {
-        let (t, m) = written(data, id, &pr.changes(super::flag(args, "--base")))?;
+        // What will be committed, so what the PR will hold: the tree `seen` names [D1162].
+        let tree = (seen.as_ref().filter(|_| commit).cloned().flatten())
+            .and_then(|s| s.split_once(' ').map(|(_, tree)| tree.to_string()));
+        let (t, m) = match written(data, id, &pr.changes(learned, tree.as_deref())) {
+            Ok(text) => text,
+            // A failed write leaves git's text to edit, and the commit and push to the user [D1222].
+            Err(e) => {
+                let (t, m) = pr.fill(learned);
+                let pick =
+                    |given: &str, git: String| if given.is_empty() { git } else { given.into() };
+                return Ok(json!({"written": false, "why": e.to_string(),
+                    "title": pick(&title, t), "message": pick(&message, m)}));
+            }
+        };
         if title.is_empty() {
             title = t;
         }
@@ -403,7 +416,8 @@ fn written(data: &Path, id: &str, changes: &str) -> io::Result<(String, String)>
     active.lock_shared()?;
     let prompt = format!(
         "Write a pull request title on the first line (under 72 characters), then a blank line, \
-         then a short description of what changed and why. Reply with only that.\n\n{changes}"
+         then a short description of what changed and why. Reply with only that. You have no tools: \
+         everything you need is below.\n\n{changes}"
     );
     let (reply, _) = super::commit::written_for(data, &spec, &f, &active, chosen.as_ref(), |_| {
         prompt.clone()

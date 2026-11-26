@@ -149,8 +149,10 @@ pub(crate) fn written_for(
     let ready = |run: &mut Spec, a: &dyn adapters::Adapter| {
         run.cid = Some(adapters::uuid());
         run.dir = writer::home(&spec.dir);
-        // It only writes a message: none of the user's skills, servers, plugins or hooks.
+        // It only writes a message: none of the user's skills, servers, plugins or hooks, and no
+        // tool, which would only end it (writer.rs) [D771] (proposed).
         run.naked = true;
+        run.opts.insert("no_tools".into(), "1".into());
         run.level = a.can().levels.first().map(|l| l.to_string());
         run.grants = vec![];
     };

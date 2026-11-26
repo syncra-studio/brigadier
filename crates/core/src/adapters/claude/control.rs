@@ -195,9 +195,11 @@ pub fn standing(spec: &Spec) -> Vec<String> {
         settings.to_string(),
         "--disallowedTools".into(),
         "ListAgents,SendMessage".into(),
-        "--mcp-config".into(),
-        tools.to_string(),
     ];
+    // A run with no tools gets none of Brigadier's either: `--tools ""` leaves MCP's [D771].
+    if !spec.opts.contains_key("no_tools") {
+        args.extend(["--mcp-config".into(), tools.to_string()]);
+    }
     if fresh {
         args.extend(["--system-prompt-snapshot".into(), "off".into()]);
     }

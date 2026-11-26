@@ -12,6 +12,8 @@ use std::sync::atomic::AtomicBool;
 
 /// The longest a fingerprint's `git add` may take.
 const FINGERPRINT_SECS: u64 = 60;
+/// Proposed: the most of a PR's patch the message writer reads.
+const PATCH_CHARS: usize = 20_000;
 
 /// Create PR's refusal when no one could name the base [D168].
 pub const UNLEARNED: &str = "Brigadier couldn't learn this repository's default branch, so name a new branch for this pull request.";
@@ -256,22 +258,77 @@ impl Pr {
         Some(format!("{head} {}", tree?))
     }
 
-    /// What the message writer reads to name a PR: the branch's commits past its base and what's
-    /// changed and not yet committed.
-    pub fn changes(&self, base: Option<&str>) -> String {
+    /// Where the branch left `base`: its own name, else the remote's copy, as what the host names
+    /// may have no local branch; the Review tab's merge-base [D1035].
+    fn since(&self, base: &str) -> Option<String> {
         let never = AtomicBool::new(false);
-        let base = base.unwrap_or(&self.base_ref);
-        let range = format!("{base}..HEAD");
+        let names = [base.to_string(), format!("{}/{base}", self.remote)];
+        (names.into_iter())
+            .filter(|_| !base.is_empty() && !base.starts_with('-'))
+            .find_map(|b| crate::git::diff::since(&self.checkout, &b, &never).ok())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// What the message writer reads to name a PR, what the PR will hold [D1029, D1162]: the
+    /// commits past where the branch left `base`, and the diff from there to `to` (the tree a
+    /// commit of everything makes, `fingerprint`'s), else to HEAD.
+    pub fn changes(&self, base: &str, to: Option<&str>) -> String {
+        let never = AtomicBool::new(false);
         let read = |args: &[&str]| {
             crate::git::read(&self.checkout.root, args, &never)
                 .map(|out| String::from_utf8_lossy(&out).into_owned())
                 .unwrap_or_default()
         };
-        let log = match base.is_empty() || base.starts_with('-') {
-            true => String::new(),
-            false => read(&["log", "--format=%s%n%b", &range]),
+        let since = self.since(base);
+        let (from, to) = (since.as_deref().unwrap_or("HEAD"), to.unwrap_or("HEAD"));
+        let (note, log) = match &since {
+            Some(s) => (
+                String::new(),
+                read(&["log", "--format=%s%n%b", &format!("{s}..HEAD")]),
+            ),
+            None => (
+                format!(
+                    "(Its base \"{base}\" isn't in this checkout, so the branch's commits aren't below.)\n"
+                ),
+                String::new(),
+            ),
         };
-        format!("{log}\n{}", read(&["diff", "--stat", "HEAD"]))
+        // Never the user's external diff or text filters: programs from their config [D166].
+        let diff = |stat: bool| {
+            let mut args = vec!["diff", "--no-color", "--no-ext-diff", "--no-textconv", "-M"];
+            args.extend(stat.then_some("--stat"));
+            read(&[args, vec![from, to]].concat())
+        };
+        let patch = diff(false);
+        // shortcut: a patch past PATCH_CHARS is cut and only the stat names the rest; share it per file if big ones crowd out the others.
+        let patch = match patch.char_indices().nth(PATCH_CHARS) {
+            Some((at, _)) => format!("{}\n…(cut)", &patch[..at]),
+            None => patch,
+        };
+        format!("{note}{log}\n{}\n{patch}", diff(true))
+    }
+
+    /// What Create PR's fields get when the writer fails, as `gh pr create --fill` [D1164, D1222]:
+    /// one commit's subject and body, else the branch's name and its commits' subjects.
+    pub fn fill(&self, base: &str) -> (String, String) {
+        let never = AtomicBool::new(false);
+        let range = format!(
+            "{}..HEAD",
+            self.since(base).unwrap_or_else(|| "HEAD".into())
+        );
+        let args = ["log", "--reverse", "--format=%s%x1f%b%x1e", &range];
+        let out = crate::git::read(&self.checkout.root, &args, &never).unwrap_or_default();
+        let out = String::from_utf8_lossy(&out);
+        let commits: Vec<(&str, &str)> = (out.split('\x1e'))
+            .filter_map(|c| c.trim().split_once('\x1f'))
+            .collect();
+        match commits[..] {
+            [(subject, body)] => (subject.trim().into(), body.trim().into()),
+            _ => {
+                let list = commits.iter().map(|(s, _)| format!("- {}", s.trim()));
+                (self.branch.clone(), list.collect::<Vec<_>>().join("\n"))
+            }
+        }
     }
 }
 

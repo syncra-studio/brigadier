@@ -36,6 +36,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"draft" | "ready" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [exists, setExists] = useState<string | null>(null);
   // On its base (or no branch, or a base no one could name), the PR needs a new branch.
   const needsBranch = !branch || base === null || branch === base;
@@ -44,10 +45,13 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
   const create = (draft: boolean) => {
     setBusy(draft ? "draft" : "ready");
     setError(null);
+    setNote(null);
     const args = ["host", owner, "create", ...(newName ? ["--branch", newName] : []), ...(commit && changed ? ["--commit"] : []), "--title", title, "--message", message, ...(draft ? ["--draft"] : []), ...(base ? ["--base", base] : [])];
     run(args)
       .then((reply) => {
         if (reply.existing) return setExists(String(reply.url));
+        // The writer failed: git's text to edit, and nothing committed or pushed yet [D1222].
+        if (reply.written === false) return (setTitle(String(reply.title ?? "")), setMessage(String(reply.message ?? "")), setNote(`${String(reply.why)}. Here's git's text instead: edit it, then create again.`));
         onOpenChange(false);
         setTitle("");
         setMessage("");
@@ -86,6 +90,7 @@ function CreatePrDialog({ ask, open, onOpenChange }: { ask: CreateAsk; open: boo
               {repo && `${repo} · `}
               {head} → {base ?? "-"}
             </p>
+            {note && <p className="text-xs text-muted-foreground">{note}</p>}
             <ErrorLine error={error} />
             <DialogFooter>
               <Button variant="outline" disabled={blocked} onClick={() => create(!startDraft)}>
