@@ -8,11 +8,14 @@
 //! went comes back here, its files and chips with it, whatever the UI does meanwhile [D54, C58].
 //! Home's drafts keep one too, for the new chats they start (place.rs) [C65].
 
+mod args;
 mod ops;
 mod place;
 mod unsent;
 mod verdict;
 
+pub(super) use args::opts;
+use args::{bare, opt};
 pub use ops::ops;
 pub use place::Place;
 use place::{Undo, crash_at, finish, hold};
@@ -330,32 +333,6 @@ fn reply_of(g: &Given) -> Value {
     json!({"cid": g.cid, "rev": g.rev, "parts": g.words.parts, "attachmentIds": g.words.attachment_ids, "chips": g.chips, "error": g.error})
 }
 
-/// A message command's options: what follows `send <id> <text>`, `queue <id> add <text>` or
-/// `start <id>`, so words that look like an option stay words.
-pub(super) fn opts(args: &[String]) -> &[String] {
-    let n = match args.first().map(String::as_str) {
-        Some("queue") => 4,
-        Some("start") => 2,
-        _ => 3,
-    };
-    &args[n.min(args.len())..]
-}
-
-/// `args` without the draft it carries, and without its chips unless `chips`: what runs, or with
-/// its chips what's kept.
-fn bare(args: &[String], chips: bool) -> Vec<String> {
-    let mut out = args[..args.len() - opts(args).len()].to_vec();
-    let mut each = opts(args).iter();
-    while let Some(a) = each.next() {
-        match a.as_str() {
-            "--draft" | "--draft-rev" => drop(each.next()),
-            "--chips" if !chips => drop(each.next()),
-            _ => out.push(a.clone()),
-        }
-    }
-    out
-}
-
 /// `send`, `queue add` and Home's `start` (`--home`). With `--draft`, what goes is kept in the book
 /// first, its chips taken for it, and settled by its verdict (verdict.rs); one given back or
 /// discarded before is refused again (`again`), never sent. A reply that isn't `ok` says whether
@@ -369,8 +346,8 @@ pub fn going(
 ) -> io::Result<Value> {
     let queue = arg(args, 0)? == "queue";
     let o = opts(args);
-    let cid = flag(o, if queue { "--qid" } else { "--cid" });
-    let draft = (flag(o, "--draft")).filter(|_| place.there() && flag(o, "--to").is_none());
+    let cid = opt(o, if queue { "--qid" } else { "--cid" });
+    let draft = (opt(o, "--draft")).filter(|_| place.there() && opt(o, "--to").is_none());
     let (Some(cid), Some(draft)) = (cid, draft) else {
         if place.there() {
             settle_cut(place)?;
@@ -380,7 +357,7 @@ pub fn going(
     core::check_id(cid)?;
     let g = Going {
         cid: cid.into(),
-        rev: flag(o, "--draft-rev").and_then(|r| r.parse().ok()),
+        rev: opt(o, "--draft-rev").and_then(|r| r.parse().ok()),
         words: serde_json::from_str(draft)?,
         files: vec![],
         op: bare(args, true),
@@ -440,7 +417,7 @@ fn attempt(
     } else {
         "send:inflight"
     });
-    let chips: Vec<&str> = flag(opts(&g.op), "--chips").map_or(vec![], |c| c.split(',').collect());
+    let chips: Vec<&str> = opt(opts(&g.op), "--chips").map_or(vec![], |c| c.split(',').collect());
     let out = match crate::chips::take(&at, &cid, arg(&g.op, 1)?, &chips) {
         Ok(()) => run(&bare(&g.op, false)),
         Err(e) => Err(unsent(e)),

@@ -4,9 +4,9 @@
 //! try is undone in stages, each saved before the next, so a crash goes on from the last one saved:
 //! its files and tabs back, then its session deleted, then its words shown [D35, D363].
 
+use super::args::{has_opt, opt};
 use super::verdict::How;
 use super::{Book, Given, Going, change, opts, read, settle};
-use crate::has;
 use brigadier_core::{self as core, message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -120,8 +120,8 @@ pub(super) fn intent(op: &[String], asked: bool) -> Undo {
     Undo {
         stage: "intent".into(),
         session: op.get(1).cloned().unwrap_or_default(),
-        parts: crate::parts(o).unwrap_or_default(),
-        tabs: has(o, "--carry-tabs"),
+        parts: (opt(o, "--parts").and_then(|p| serde_json::from_str(p).ok())).unwrap_or_default(),
+        tabs: has_opt(o, "--carry-tabs"),
         asked,
         error: None,
     }

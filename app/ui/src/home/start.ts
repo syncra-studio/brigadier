@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { daemonRun, failure } from "../session/composer";
-import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
+import { type Draft, EMPTY_DRAFT, isEmpty, plainText } from "../components/composer/draft";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft, moveDraft, oldProject, resyncDraft, revOf, takeBack } from "../session/draft";
 import { adopt, draftArgs, keep } from "../session/sent";
 import { flagOf, forget, goingOf, type Going, keptOf, UNCONFIRMED } from "../session/uncertain";
@@ -263,7 +263,9 @@ async function booked(entry: Starting): Promise<Record<string, any> | null> {
 async function restore(key: string): Promise<void> {
   await loadDraft(daemonRun, key);
   for (const each of goingOf(key).filter((one) => one.kind === "start" && one.op[1] && !get(one.op[1]))) {
-    const entry: Starting = { id: each.op[1], cid: each.cid, project: flagOf(each.op, "--project") ?? null, text: flagOf(each.op, "--text") ?? "", parts: flagOf(each.op, "--parts"), title: "", args: each.op, sent: each.at, asking: false, draft: key, error: each.stuck ?? UNCONFIRMED, maybe: each.reached !== false, left: each.left };
+    // One whose session couldn't go is named by its session alone: its words are its draft's, its project its key's.
+    const project = flagOf(each.op, "--project") ?? (key === REVIEW_DRAFT || key === HOME_DRAFT ? null : key.slice(HOME_DRAFT.length + 1));
+    const entry: Starting = { id: each.op[1], cid: each.cid, project, text: flagOf(each.op, "--text") ?? plainText(each.draft.parts), parts: flagOf(each.op, "--parts") ?? JSON.stringify(each.draft), title: "", args: each.op, sent: each.at, asking: false, draft: key, error: each.stuck ?? UNCONFIRMED, maybe: each.reached !== false, left: each.left };
     add(entry);
     if (!each.booked) void booked(entry).then((reply) => reply && reply.error !== "disconnected" && land(entry.id, reply));
   }

@@ -2,6 +2,7 @@
 //! under the message's own lock, so it waits for an attempt under way [D54, C58]. Home's, a new
 //! chat from its row [C65].
 
+use super::args::{has_opt, opt};
 use super::verdict::there;
 use super::{
     Going, How, Place, Words, attempt, change, files_of, hold, opts, place, present, settle,
@@ -43,22 +44,30 @@ fn valid(place: &Place, op: &[String], id: &str, cid: &str, queue: bool) -> bool
     let at = |i: usize| op.get(i).map(String::as_str);
     let mine = match (queue, place) {
         (true, Place::Session(_)) => {
-            at(0) == Some("queue") && at(2) == Some("add") && flag(opts(op), "--qid") == Some(cid)
+            at(0) == Some("queue") && at(2) == Some("add") && opt(opts(op), "--qid") == Some(cid)
         }
-        (false, Place::Session(_)) => at(0) == Some("send") && flag(opts(op), "--cid") == Some(cid),
+        (false, Place::Session(_)) => at(0) == Some("send") && opt(opts(op), "--cid") == Some(cid),
         (false, Place::Home { .. }) => {
-            at(0) == Some("start") && flag(opts(op), "--cid") == Some(cid) && place.at(op).is_some()
+            at(0) == Some("start") && opt(opts(op), "--cid") == Some(cid) && place.at(op).is_some()
         }
         (true, Place::Home { .. }) => false,
     };
-    let banned = ["--to", "--shell", "--origin", "--draft", "--draft-rev"];
     // A queue add's parser reads these anywhere in it (queue.rs), its words too; a send's never.
-    let read = if queue { op } else { opts(op) };
+    let banned = |b: &&str| {
+        if queue {
+            has(op, b)
+        } else {
+            has_opt(opts(op), b)
+        }
+    };
     let to = match place {
         Place::Session(_) => at(1),
-        Place::Home { .. } => flag(opts(op), "--home"),
+        Place::Home { .. } => opt(opts(op), "--home"),
     };
-    mine && to == Some(id) && !banned.iter().any(|b| has(read, b))
+    mine && to == Some(id)
+        && !["--to", "--shell", "--origin", "--draft", "--draft-rev"]
+            .iter()
+            .any(banned)
 }
 
 impl super::Book {
@@ -164,8 +173,7 @@ fn adopt(place: &Place, args: &[String], id: &str, cid: &str) -> io::Result<Valu
     })?;
     // Its chips are its own while it waits, as a send's are: Try again takes no others.
     if made["kept"] == true {
-        let chips: Vec<&str> =
-            flag(opts(&op), "--chips").map_or(vec![], |c| c.split(',').collect());
+        let chips: Vec<&str> = opt(opts(&op), "--chips").map_or(vec![], |c| c.split(',').collect());
         crate::chips::take(&dir, cid, id, &chips)?;
     }
     Ok(made)

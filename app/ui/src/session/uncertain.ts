@@ -83,7 +83,9 @@ export const goingOf = of;
 /** The value after `name` in a message's command, among its options: after `send <id> <text>`, `queue <id> add <text>` or `start <id>`, so its words are never read as one. */
 export function flagOf(op: readonly string[], name: string): string | undefined {
   const opts = op.slice(op[0] === "queue" ? 4 : op[0] === "start" ? 2 : 3);
-  return opts.includes(name) ? opts[opts.indexOf(name) + 1] : undefined;
+  // A start's words are `--text`'s value: stepped over, as Rust does (book/args.rs).
+  for (let i = 0; i < opts.length; i += opts[i] === "--text" && name !== "--text" ? 2 : 1) if (opts[i] === name) return opts[i + 1];
+  return undefined;
 }
 
 /** The chips messages on their way here carry: a read of Rust's doesn't show them waiting meanwhile. */
