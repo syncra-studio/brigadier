@@ -116,8 +116,11 @@ pub fn send(
     let handoff = picked.is_none() && crate::fork::handoff(spec, f, &b);
     // A summary turn's reply, checked, is noted before the hand-off that carries it; a renewal
     // never waits on it [rev 3 §4].
-    if reborn || picked.is_some() {
-        let _ = crate::summary::settle(spec, f, call);
+    // Written under the idle child's guard, which then goes on from the note.
+    if (reborn || picked.is_some())
+        && let Ok(Some(len)) = crate::summary::settle(spec, f, call, replace)
+    {
+        replace = Some(len);
     }
     let (change, sent) = if let Some(p) = picked {
         run.model = Some(p.model.clone());

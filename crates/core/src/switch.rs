@@ -81,8 +81,10 @@ pub fn switch(
     let summary = last["origin"] == "summary";
     let last = (crate::summary::served(f).filter(|_| summary)).unwrap_or(last);
     let fresh = to.backend != from || why == "unresumable" || summary;
-    if summary {
-        let _ = crate::summary::settle(spec, f, call);
+    // Written under the switch's guard, which then goes on from the note.
+    let mut len = ping["len"].as_u64();
+    if summary && let Ok(Some(l)) = crate::summary::settle(spec, f, call, len) {
+        len = Some(l);
     }
     // The message the CLI refused outright goes again only on proof: its limit, after delivery,
     // before any work. Anything else is told what happened, never sent the user's words twice.
@@ -157,7 +159,7 @@ pub fn switch(
     let req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
         "backend": to.backend, "retry_of": last["cid"], "switch": switch, "setup": setup, "review": spec.review, "argv": launch.argv, "env": env,
         "cwd": spec.cwd, "keep_stdin": launch.keep_stdin, "input": launch.input,
-        "cli_version": cli_version(spec, a), "replace": true, "if_len": ping["len"]});
+        "cli_version": cli_version(spec, a), "replace": true, "if_len": len});
     if !still() {
         return json!({"ok": false, "error": "off", "message": "Automatic switching was turned off."});
     }

@@ -73,15 +73,17 @@ pub fn served(f: &crate::fold::Fold) -> Option<serde_json::Value> {
 }
 
 /// Writes the held renewal's summary note, once: its summary turn's last reply, checked, or why
-/// it failed [rev 3 §2.2, §2.4, §4]. With no renewal held, or its note there, nothing.
+/// it failed [rev 3 §2.2, §2.4, §4]. With no renewal held, or its note there, nothing. Only if the
+/// log is still `len` long, when given; the log's new length when written.
 pub fn settle(
     spec: &crate::Spec,
     f: &crate::fold::Fold,
     call: crate::send::Call,
-) -> io::Result<()> {
+    len: Option<u64>,
+) -> io::Result<Option<u64>> {
     use crate::handoff::check::{self, Source};
     let Some(turn) = f.renewing.as_ref().and_then(|r| r["turn"].as_str()) else {
-        return Ok(());
+        return Ok(None);
     };
     let (mut sources, mut from) = (Vec::<Source>::new(), None);
     let (mut inside, mut hit, mut past, mut noted, mut tools) = (false, false, false, false, false);
@@ -153,7 +155,7 @@ pub fn settle(
         }
     })?;
     if noted || !hit {
-        return Ok(());
+        return Ok(None);
     }
     let last = f.last.as_ref().filter(|l| l["id"] == turn);
     let has = |h: &str| {
@@ -163,9 +165,9 @@ pub fn settle(
     let failed = match last {
         None => Some("unfinished"),
         Some(l) if l["outcome"] != "done" => {
-            let why = ["why", "reason", "outcome"]
-                .into_iter()
-                .find_map(|k| l[k].as_str());
+            // Its outcome (limited, stopped at its minutes), or a failure's own why.
+            let why = ["outcome", "why"].map(|k| l[k].as_str());
+            let why = why[0].filter(|o| *o != "failed").or(why[1]);
             Some(why.unwrap_or("failed"))
         }
         _ => None,
@@ -195,9 +197,9 @@ pub fn settle(
             v
         }
     };
-    let reply = call(serde_json::json!({"op": "note", "data": data}))?;
+    let reply = call(serde_json::json!({"op": "note", "data": data, "if_len": len}))?;
     match reply["ok"] == true {
-        true => Ok(()),
+        true => Ok(reply["len"].as_u64()),
         false => Err(io::Error::other(format!(
             "the summary's note: {}",
             reply["error"]

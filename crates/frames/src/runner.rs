@@ -130,14 +130,13 @@ impl Runner {
 
     /// A note, only if the log is still where the caller judged it (`if_len`), in one lock.
     fn noted(&self, req: &Value) -> Value {
-        let appended = {
-            let mut log = self.log.lock().unwrap();
-            if req["if_len"].as_u64().is_some_and(|len| len != log.len) {
-                return fail("changed");
-            }
-            log.append(log::NOTE, req["data"].to_string().as_bytes(), true)
-        };
-        appended.map_or_else(fail, |seq| json!({"ok": true, "seq": seq}))
+        let mut log = self.log.lock().unwrap();
+        if req["if_len"].as_u64().is_some_and(|len| len != log.len) {
+            return fail("changed");
+        }
+        // Its new length, for a caller that goes on judging the log from there.
+        let appended = log.append(log::NOTE, req["data"].to_string().as_bytes(), true);
+        appended.map_or_else(fail, |seq| json!({"ok": true, "seq": seq, "len": log.len}))
     }
 
     pub fn busy(&self) -> bool {
