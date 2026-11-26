@@ -17,10 +17,42 @@ pub(super) fn room(spec: &Spec, f: &Fold, to: &str, pending: &str) -> usize {
     let measured = (f.context.as_ref())
         .and_then(|c| c["overhead"].as_u64())
         .filter(|_| to == crate::rebirth::backend(spec, f));
-    let over = measured.unwrap_or_else(|| crate::adapters::overhead::floor(to) + line / 10);
+    // Else the newest any session measured for that agent in this folder.
+    let known = || read(spec, to)[spec.cwd.as_str()].as_u64();
+    let over = (measured.or_else(known))
+        .unwrap_or_else(|| crate::adapters::overhead::floor(to) + line / 10);
     // shortcut: a pending message's attachments aren't counted; count them once images go along.
     let room = (line * 8 / 10).saturating_sub(over) as usize;
     room.saturating_sub(tokens(pending))
+}
+
+/// The newest overhead each folder measured for `backend`'s CLI, across the data folder's sessions
+/// (a home the design left open: `agents/<backend>.overhead.json`).
+fn store(spec: &Spec, backend: &str) -> std::path::PathBuf {
+    (crate::data_of(spec).join("agents")).join(format!("{backend}.overhead.json"))
+}
+
+fn read(spec: &Spec, backend: &str) -> serde_json::Value {
+    let text = std::fs::read(store(spec, backend)).unwrap_or_default();
+    serde_json::from_slice(&text).unwrap_or_else(|_| serde_json::json!({}))
+}
+
+/// Keeps what the session's conversation measured its CLI adding, once its first reading is in,
+/// for any session's renewal onto that agent in this folder.
+pub fn remember(spec: &Spec, f: &Fold) {
+    let Some(n) = f.context.as_ref().and_then(|c| c["overhead"].as_u64()) else {
+        return;
+    };
+    let backend = crate::rebirth::backend(spec, f);
+    let mut all = read(spec, backend);
+    if all[spec.cwd.as_str()] == n {
+        return;
+    }
+    all[spec.cwd.as_str()] = n.into();
+    let path = store(spec, backend);
+    // A lost write only leaves the floor's guess, which the redo rule puts right.
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path))
+        .and_then(|_| crate::write_atomic(&path, all.to_string().as_bytes()));
 }
 
 /// A line's shape: whole, shortened (a reference alone, or the user's start and its reference),

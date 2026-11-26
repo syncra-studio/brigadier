@@ -38,6 +38,7 @@ pub fn send(
     backend: Option<&str>,
     retry_of: Option<&str>,
 ) -> Value {
+    crate::handoff::remember(spec, f);
     let (led, night) = lead::led(spec, origin, &msg.agent);
     let text = led.as_deref().unwrap_or(msg.agent.as_str());
     // The user's next turn, or their Resume, goes to the agent they picked; a message into a

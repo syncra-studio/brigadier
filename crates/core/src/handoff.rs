@@ -14,6 +14,7 @@ mod open;
 mod pointers;
 mod records;
 mod room;
+pub use room::remember;
 mod skills;
 
 /// Each section's most, in characters (about four to a token), in reading order [w31].
