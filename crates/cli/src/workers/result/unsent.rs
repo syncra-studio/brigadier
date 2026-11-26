@@ -70,13 +70,14 @@ pub(super) fn after(
             " It goes once you pick another {agent} model or lift the rule in Settings › Routing."
         );
     }
-    note(data, pid, &r, "warning", &text);
+    // Not shown: it isn't marked said, so the next pass tries again.
+    note(data, pid, &r, "warning", &text)?;
     write_json(path, &r)
 }
 
-/// One that waited went with a message: its row says it's on its way.
+/// One that waited went with a message: its row says it's on its way, or delivered, once proven.
 pub(super) fn on_way(data: &Path, pid: &str, r: &Res) {
-    note(data, pid, r, "info", GOING);
+    let _ = note(data, pid, r, "info", GOING);
 }
 
 /// Each that waited and went since: its row says delivered once the parent's log proves the agent
@@ -99,8 +100,10 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
             more = true;
             continue;
         };
-        if proof == "delivered" {
-            note(data, pid, &r, "info", TOOK);
+        // Not shown (its host not back yet): it stays to say, next pass.
+        if proof == "delivered" && note(data, pid, &r, "info", TOOK).is_err() {
+            more = true;
+            continue;
         }
         r.refused.clear();
         write_json(&path, &r)?;
@@ -109,10 +112,11 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
 }
 
 /// Its row, one per result by its id. A worker's ask to its parent gives the user none [D121].
-fn note(data: &Path, pid: &str, r: &Res, level: &str, text: &str) {
+fn note(data: &Path, pid: &str, r: &Res, level: &str, text: &str) -> io::Result<()> {
     if r.how == "asks" {
-        return;
+        return Ok(());
     }
     let note = json!({"event": "worker", "phase": "unsent", "ids": [r.wid], "result": r.id, "level": level, "text": text});
-    let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
+    owner::ensure(data, &core::load(data, pid)?)?;
+    owner::call(data, pid, json!({"op": "note", "data": note})).map(drop)
 }

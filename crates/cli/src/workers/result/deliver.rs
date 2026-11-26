@@ -57,8 +57,10 @@ pub fn deliver(data: &Path, rows: &BTreeMap<String, Value>) {
     }
 }
 
+/// Whether one is logged and not yet settled: sent, or one that waited carried by a message.
 fn has_sent(data: &Path, pid: &str) -> bool {
-    all(data, pid).iter().any(|(_, r)| r.state == "sent")
+    (all(data, pid).iter())
+        .any(|(_, r)| r.state == "sent" || (r.state == "taken" && !r.refused.is_empty()))
 }
 
 /// How an input logged under `id` came out, by the session's fold and state; none while open.
