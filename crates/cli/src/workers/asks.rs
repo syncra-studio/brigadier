@@ -142,6 +142,7 @@ fn write(
         hop: crate::peers::hop_of(data, wid, turn),
         merge: String::new(),
         going: String::new(),
+        refused: String::new(),
         end: 0,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;

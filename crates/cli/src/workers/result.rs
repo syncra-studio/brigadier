@@ -10,6 +10,7 @@ mod images;
 mod report;
 mod take;
 pub(super) mod told;
+mod unsent;
 
 use super::review;
 use super::{Link, Record, link, read_json};
@@ -69,6 +70,9 @@ pub(super) struct Res {
     /// its host's death ended, 0 for one no turn ended for or an older build's.
     #[serde(default)]
     pub end: u64,
+    /// Why its parent refused it last, said once in the parent's thread till it goes [C26].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub refused: String,
 }
 
 /// Parents with a result not yet settled; filled from disk at the daemon's first pass.

@@ -94,6 +94,20 @@ impl Thread {
                 self.worker_ended(ts);
                 self.settle_held(false);
             }
+            // A result its parent refused, and how that cleared: one kept row per result, changed
+            // in place; the block it holds is left alone [C26, D48].
+            Some("unsent") => {
+                let id = format!("unsent:{}", item["result"].as_str().unwrap_or(""));
+                let row = json!({"kind": "notice", "level": item["level"], "text": item["text"]});
+                match self.named.get(&id).copied() {
+                    Some(at) => {
+                        self.items[at]["level"] = row["level"].clone();
+                        self.items[at]["text"] = row["text"].clone();
+                        self.changed_items.insert(at);
+                    }
+                    None => drop(self.kept_as(row, Some(id))),
+                }
+            }
             // A worker waits on the user, at Ask: its block waits with it, that time waited [D551].
             Some("waits") => {
                 (self.asking).extend(

@@ -2,7 +2,7 @@
 //! the parent's log [D3006, D54, D82].
 
 use super::take::said;
-use super::{OPEN, Res, all, fresh, known, told};
+use super::{OPEN, Res, all, fresh, known, told, unsent};
 use crate::workers::{closing, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::fold::{self, Owner};
@@ -112,6 +112,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         r.state = state.into();
         write_json(&path, &r)?;
     }
+    let proving = unsent::proved(data, pid, &f, state)?;
     // A worker's ask answered or gone before it went isn't sent [D131].
     for (path, mut r) in all(data, pid)
         .into_iter()
@@ -124,7 +125,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         .into_iter()
         .find(|(_, r)| r.state == "written");
     let Some((path, mut r)) = next else {
-        if !held && !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
+        if !held && !proving && !all(data, pid).iter().any(|(_, r)| r.state == "sent") {
             OPEN.lock().unwrap().as_mut().map(|o| o.remove(pid));
         }
         return Ok(());
@@ -147,6 +148,9 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         return write_json(&path, &r);
     }
     let spec = core::load(data, pid)?;
+    if unsent::waits(&spec, &core::fold(&dir, true)?.fold, &r) {
+        return Ok(());
+    }
     crate::rewind::settle_held(data, &spec)?;
     owner::ensure(data, &spec)?;
     let ping = owner::call(data, pid, json!({"op": "ping"}))?;
@@ -179,10 +183,7 @@ fn settle(data: &Path, pid: &str, state: &str, finished: u64) -> io::Result<()> 
         true => r.text.clone(),
         false => format!("{}\n\n{}", notes.trim_start(), r.text),
     };
-    crate::workers::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &text);
-    if core::fold(&dir, true)?.fold.cids.contains_key(&r.id) {
-        r.state = "sent".into();
-        write_json(&path, &r)?;
-    }
-    Ok(())
+    let reply =
+        crate::workers::make::say_result(&spec, &f.fold, child, &call, &r.id, &origin, &text);
+    unsent::after(data, pid, &spec, &path, r, &reply)
 }

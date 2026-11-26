@@ -406,6 +406,7 @@ pub(in crate::workers) fn write_as(
         hop: crate::peers::hop_of(data, wid, turn),
         merge,
         going: String::new(),
+        refused: String::new(),
         end: of.end,
     };
     fs::create_dir_all(dir_of(data, &l.parent))?;

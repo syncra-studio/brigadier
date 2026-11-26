@@ -1,7 +1,7 @@
 //! The parent's own `wait` takes its worker's result or ask, so it isn't sent again [D3034]; its
 //! next message takes those held for it [D329].
 
-use super::{Res, all, fresh, holds, path_of, unsaid, woken, write, write_ended};
+use super::{Res, all, fresh, holds, path_of, unsaid, unsent, woken, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
 use brigadier_core::{self as core, fold::Fold};
@@ -70,6 +70,11 @@ pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, agent: &mut String) 
         .filter(|(_, r)| matches!(r.state.as_str(), "held" | "written") && r.how != "asks")
         .collect();
     due.sort_by_key(|(_, r)| r.ended);
+    // One that waited on a refusal: its row says delivered once this message is proven taken.
+    for (path, r) in due.iter_mut().filter(|(_, r)| !r.refused.is_empty()) {
+        r.going = cid.unwrap_or_default().into();
+        let _ = write_json(path, r);
+    }
     for (_, r) in due.iter().filter(|(_, r)| !r.ended) {
         *agent += &format!("\n\n{}", r.text);
     }
@@ -91,6 +96,13 @@ pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
         .filter_map(|p| Some((p.clone(), read_json::<Res>(&p)?)))
     {
         r.state = "taken".into();
+        if !r.refused.is_empty() {
+            unsent::on_way(data, pid, &r);
+            // A Resume's input is unknown here: on its way is all its row says.
+            if r.going.is_empty() {
+                r.refused.clear();
+            }
+        }
         let _ = write_json(&path, &r);
         results.push(r);
     }
