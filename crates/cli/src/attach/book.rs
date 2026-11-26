@@ -146,12 +146,21 @@ fn read(path: &Path) -> Book {
 }
 
 /// The draft as the composer shows it: what was given back, newest first, above the UI's own;
-/// `done`, only those whose files and chips are back too.
-fn shown(book: &Book, done: bool) -> Words {
+/// `read`, as the UI reads it: only those whose files and chips are back too, and none of the UI's
+/// a message on its way still holds, no save since it went (as `settle` decides), so it never
+/// shows both as words and as its bubble or row.
+fn shown(book: &Book, read: bool) -> Words {
     let mut out = Words::default();
-    let given = book.given.iter().rev().filter(|g| g.done || !done);
-    let all = given.map(|g| &g.words);
-    for w in all.chain([&book.ui.words]).filter(|w| !w.blank()) {
+    let given = book.given.iter().rev().filter(|g| g.done || !read);
+    let mine = |g: &Going| {
+        g.rev
+            .is_some_and(|r| book.ui.rev <= r || book.ui.words == g.words)
+    };
+    let held = read && book.inflight.iter().chain(&book.adding).any(mine);
+    let all = given
+        .map(|g| &g.words)
+        .chain((!held).then_some(&book.ui.words));
+    for w in all.filter(|w| !w.blank()) {
         if !out.parts.is_empty() && !w.parts.is_empty() {
             out.parts.push("\n\n".into());
         }
@@ -338,11 +347,22 @@ fn reply_of(g: &Given) -> Value {
     json!({"cid": g.cid, "rev": g.rev, "parts": g.words.parts, "attachmentIds": g.words.attachment_ids, "chips": g.chips, "error": g.error})
 }
 
+/// A message command's options: what follows `send <id> <text>` or `queue <id> add <text>`, so
+/// words that look like an option stay words.
+pub(super) fn opts(args: &[String]) -> &[String] {
+    let n = if args.first().is_some_and(|a| a == "queue") {
+        4
+    } else {
+        3
+    };
+    &args[n.min(args.len())..]
+}
+
 /// `args` without the draft it carries, and without its chips unless `chips`: what runs, or with
 /// its chips what's kept.
 fn bare(args: &[String], chips: bool) -> Vec<String> {
-    let mut out = vec![];
-    let mut each = args.iter();
+    let mut out = args[..args.len() - opts(args).len()].to_vec();
+    let mut each = opts(args).iter();
     while let Some(a) = each.next() {
         match a.as_str() {
             "--draft" | "--draft-rev" => drop(each.next()),
@@ -364,8 +384,9 @@ pub fn going(
     run: impl FnOnce(&[String]) -> io::Result<Value>,
 ) -> io::Result<Value> {
     let queue = arg(args, 0)? == "queue";
-    let cid = flag(args, if queue { "--qid" } else { "--cid" });
-    let draft = (flag(args, "--draft")).filter(|_| dir.is_dir() && flag(args, "--to").is_none());
+    let o = opts(args);
+    let cid = flag(o, if queue { "--qid" } else { "--cid" });
+    let draft = (flag(o, "--draft")).filter(|_| dir.is_dir() && flag(o, "--to").is_none());
     let (Some(cid), Some(draft)) = (cid, draft) else {
         if dir.is_dir() {
             settle_cut(dir)?;
@@ -375,7 +396,7 @@ pub fn going(
     core::check_id(cid)?;
     let g = Going {
         cid: cid.into(),
-        rev: flag(args, "--draft-rev").and_then(|r| r.parse().ok()),
+        rev: flag(o, "--draft-rev").and_then(|r| r.parse().ok()),
         words: serde_json::from_str(draft)?,
         files: vec![],
         op: bare(args, true),
@@ -429,7 +450,7 @@ fn attempt(
         );
     };
     crash_at("send:inflight");
-    let chips: Vec<&str> = flag(&g.op, "--chips").map_or(vec![], |c| c.split(',').collect());
+    let chips: Vec<&str> = flag(opts(&g.op), "--chips").map_or(vec![], |c| c.split(',').collect());
     let out = match crate::chips::take(dir, &cid, arg(&g.op, 1)?, &chips) {
         Ok(()) => run(&bare(&g.op, false)),
         Err(e) => Err(unsent(e)),

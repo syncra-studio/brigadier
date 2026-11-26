@@ -2,7 +2,7 @@
 //! under the message's own lock, so it waits for an attempt under way [D54, C58].
 
 use super::verdict::there;
-use super::{Going, How, Words, attempt, change, cid_lock, files_of, hold, present, settle};
+use super::{Going, How, Words, attempt, change, cid_lock, files_of, hold, opts, present, settle};
 use crate::{USAGE, arg, flag, has};
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -35,8 +35,10 @@ pub fn ops(
 fn valid(op: &[String], id: &str, cid: &str, queue: bool) -> bool {
     let at = |i: usize| op.get(i).map(String::as_str);
     let mine = match queue {
-        true => at(0) == Some("queue") && at(2) == Some("add") && flag(op, "--qid") == Some(cid),
-        false => at(0) == Some("send") && flag(op, "--cid") == Some(cid),
+        true => {
+            at(0) == Some("queue") && at(2) == Some("add") && flag(opts(op), "--qid") == Some(cid)
+        }
+        false => at(0) == Some("send") && flag(opts(op), "--cid") == Some(cid),
     };
     let banned = ["--to", "--shell", "--origin", "--draft", "--draft-rev"];
     mine && at(1) == Some(id) && !banned.iter().any(|b| has(op, b))
@@ -115,7 +117,8 @@ fn adopt(dir: &Path, args: &[String], id: &str, cid: &str) -> io::Result<Value> 
     })?;
     // Its chips are its own while it waits, as a send's are: Try again takes no others.
     if made["kept"] == true {
-        let chips: Vec<&str> = flag(&op, "--chips").map_or(vec![], |c| c.split(',').collect());
+        let chips: Vec<&str> =
+            flag(opts(&op), "--chips").map_or(vec![], |c| c.split(',').collect());
         crate::chips::take(dir, cid, id, &chips)?;
     }
     Ok(made)
