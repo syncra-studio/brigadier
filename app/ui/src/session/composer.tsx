@@ -194,14 +194,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     };
   };
   /** The field and the chips leave at once; Rust takes the chips for message `msg`, then it goes. Refused, nothing goes
-   * and both come back [D30, D1174, D1195]. `into`: the session it starts. */
+   * and all come back above what's typed since; given back by Rust, as from a refused add [D30, D1174, D1195, D363]. `into`: the session it starts. */
   const going = (sent: readonly Chip[], msg: string, go: (pulled: typeof editing.current, back: (reply: Record<string, any>) => void, sub: Sub) => void, into?: string) => {
     const sub: Sub = { draft: { parts: field.current?.parts() ?? [], attachmentIds: [...files.tileIds] }, rev: revOf(id), chips: sent };
     const pulled = take();
     files.sent(into ? [] : sub.draft.parts);
     const back = carry(sent, msg, pulled, sub);
-    // Refused, its words, files and chips come back above what's typed since, Rust's give-back or not [D363].
     handOff(id, sent, msg, () => go(pulled, back, sub), (reply) => {
+      if (reply.given_back) return back(reply);
       editing.current ??= pulled;
       takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
     }, into, into ? [] : draftArgs(sub.draft, sub.rev));
