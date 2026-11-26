@@ -1,5 +1,5 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
-import { type Chip, chipsBack } from "../panel/chips";
+import type { Chip } from "../panel/chips";
 import type { Runner } from "./composer";
 import { dropUncertain, removingOf } from "./uncertain";
 
@@ -25,6 +25,9 @@ const applied = new Map<string, Set<string>>();
 const errors = new Map<string, string>();
 const setOf = (map: Map<string, Set<string>>, id: string) => map.get(id) ?? map.set(id, new Set()).get(id)!;
 const fills = new Map<string, (back: Given) => Draft>();
+// The chip store's, set by it: imported here, it would reach the tab store, which reads HOME_DRAFT as it loads.
+let chipsBack: (id: string, chips: readonly Chip[]) => void = () => {};
+export const onChipsBack = (back: typeof chipsBack) => void (chipsBack = back);
 
 export const draftOf = (id: string) => drafts.get(id);
 /** The revision of session `id`'s draft this view last saw: a message sent now carries it. */

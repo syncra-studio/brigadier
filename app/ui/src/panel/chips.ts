@@ -4,6 +4,7 @@ import { ask, useDaemon } from "../daemon";
 import type { LineRange } from "../review/diff-view";
 import type { AgentChip } from "../landing/agent-chip";
 import type { DiffComment } from "../review/types";
+import { onChipsBack } from "../session/draft";
 import { HOME } from "../shell/tab-store";
 
 /*
@@ -127,11 +128,12 @@ export const leaveChips = (session: string, sent: readonly Chip[]) => {
 };
 
 /** Chips waiting again, before any added since: Rust has them back already. */
-export const chipsBack = (session: string, back: readonly Chip[]) => {
+const chipsBack = (session: string, back: readonly Chip[]) => {
   if (back.length === 0) return;
   for (const chip of back) gone.delete(chip.id);
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
 };
+onChipsBack(chipsBack);
 
 /** Puts back chips a send couldn't take, before any added since. */
 export const restoreChips = (session: string, msg: string, back: readonly Chip[]) => {
