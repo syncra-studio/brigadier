@@ -168,10 +168,12 @@ pub fn paths(data: &Path, req: &Value) -> Value {
         let whole = asked
             .strip_prefix("~/")
             .map_or_else(|| asked.to_string(), |rest| format!("{home}/{rest}"));
-        // Under the root as it is, links followed: `/tmp/a` is in `/private/tmp/`.
-        let real = (whole.starts_with('/'))
-            .then(|| std::fs::canonicalize(&whole).ok())
-            .flatten()
+        // Under the root as it is, its folder's links followed (`/tmp/a` is in `/private/tmp/`); its
+        // own name kept, so a tracked link isn't taken for its target.
+        let path = Path::new(&whole);
+        let real = (path.parent().zip(path.file_name()))
+            .filter(|_| whole.starts_with('/'))
+            .and_then(|(up, name)| Some(std::fs::canonicalize(up).ok()?.join(name)))
             .map_or_else(|| whole.clone(), |p| p.display().to_string());
         if whole.starts_with('/') && (root.is_empty() || !real.starts_with(&root)) {
             if let Ok(meta) = std::fs::metadata(&whole) {

@@ -155,7 +155,9 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         // A file opens where its links point: a plain folder's too, a no-project worker's in the
         // folder its edits go to [D388, C70].
-        _ if matches!(arg(args, at)?, "file" | "image") => (git::files_of(data, &target)?, args),
+        _ if matches!(arg(args, at)?, "file" | "image" | "reveal") => {
+            (git::files_of(data, &target)?, args)
+        }
         _ => (git::checkout(data, &target)?, args),
     };
     let word = |i: usize| arg(args, at + i);
