@@ -5,13 +5,21 @@ use super::{Owned, branch, err, git, inner};
 use std::io;
 use std::path::Path;
 
-/// Commits what changed in `path`, `owned`'s worktree; on another branch, nothing, and why.
+/// Commits what changed in `path`, `owned`'s worktree; on another branch, nothing, and why if it
+/// has changes. Clean there, it has nothing to keep: its commits stay on that branch.
 pub(super) fn commit(owned: &Owned, path: &Path) -> io::Result<()> {
     let branch = branch::at(path)?;
-    if Some(&branch) != owned.branch.as_ref() {
-        return err("The worktree is on another branch; switch back first.".into());
-    }
     let held = inner::held(path)?;
+    if Some(&branch) != owned.branch.as_ref() {
+        let status = ["status", "--porcelain", "-z", "--"].into_iter();
+        let status: Vec<&str> = status.chain(held.iter().map(String::as_str)).collect();
+        if git(path, &status)?.is_empty() {
+            return Ok(());
+        }
+        return err(format!(
+            "The worktree is on {branch} with uncommitted changes; commit them or switch back first."
+        ));
+    }
     let add = ["add", "-A", "--"].into_iter();
     git(
         path,

@@ -64,7 +64,10 @@ pub fn delete(data: &Path, id: &str, drop: &Chosen) -> io::Result<Value> {
                             .flatten()
                             .cloned(),
                     );
-                    left.extend(reply["left"].as_array().into_iter().flatten().cloned());
+                    // Named, as the toast shows it under the chat's title.
+                    let named = reply["left"].as_array().into_iter().flatten();
+                    let named = named.map(|l| format!("{}: {}", r.title, l.as_str().unwrap_or("")));
+                    left.extend(named.map(Value::from));
                 }
                 Err(e) => left.push(format!("{}: {e}", r.title).into()),
             }
