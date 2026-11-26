@@ -180,7 +180,13 @@ pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -
     rows.sort_by_key(|r| r.0);
     let mine = |e: &&Entry| e.from == "user" && e.who.is_empty();
     let first = p.entries.iter().find(mine).map(|e| e.at.as_str());
-    let newest = p.entries.iter().rev().find(mine).map(|e| e.at.as_str());
+    // The user's newest words: a message, or an answer they gave to a question [wave-4 4.15].
+    let answers = (p.answers.iter())
+        .filter(|a| a.2.is_empty())
+        .map(|a| a.0.as_str());
+    let newest = (p.entries.iter().filter(mine).map(|e| e.at.as_str()))
+        .chain(answers)
+        .max_by_key(|at| key(at));
     let mut units = vec![];
     for (_, row) in &rows {
         let (at, who, text, context, user) = match *row {
