@@ -309,7 +309,7 @@ export async function discard(id: string): Promise<void> {
   if (!back.ok) return put(id, { asking: false, error: `Couldn't discard it: ${reason(back)}` });
   ask({ op: "run", args: ["delete", id] }, (reply) => {
     // Never made (no session.json): nothing of it is anywhere but here.
-    const gone = reply.ok || /os error 2\b/.test(String(reply.error));
+    const gone = reply.ok || /os error 2\b|no session "/.test(String(reply.error));
     if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
     put(id, null);
     if (entry.fork) {
