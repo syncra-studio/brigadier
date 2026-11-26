@@ -23,6 +23,8 @@ pub struct Entry {
     pub sent: Vec<String>,
     /// A hand-off's pointer to the step's output in the log; never set in the archive [D485].
     pub out: String,
+    /// The user's answer to a question: a hand-off gives it on its own path, once delivered [D55].
+    pub answer: bool,
 }
 
 fn capped(s: &str) -> String {
@@ -43,8 +45,12 @@ fn paths(changes: &Value) -> Vec<String> {
 pub fn entry(item: &Value, at: String) -> Option<Entry> {
     let s = |k: &str| item[k].as_str().unwrap_or("");
     let (from, who, text, files): (&str, String, String, Vec<String>) = match s("kind") {
-        // A control (a Stop, a model change) is no message; Brigadier's own (a hand-off) isn't the user's.
-        "input" if item["control"].is_object() => return None,
+        // A control (a Stop, a model change) is no message; Brigadier's own (a hand-off) isn't the
+        // user's. Their answer to a question is, but not one the night, a reviewer or a lead gave.
+        "input" if item["control"].is_object() => {
+            let text = answer(item).filter(|_| item["control"]["by"].is_null())?;
+            ("user", String::new(), text, vec![])
+        }
         "input" => match s("origin").split(':').collect::<Vec<_>>()[..] {
             // A `!` command they ran reads as theirs too: `who` says so.
             ["user"] => {
@@ -91,6 +97,7 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
         ts: item["ts"].as_u64().unwrap_or(0),
         sent: crate::message::notes::files(&item["parts"]),
         out: String::new(),
+        answer: item["control"].is_object(),
     })
 }
 
@@ -156,6 +163,7 @@ pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
                 ts: item["ts"].as_u64().unwrap_or(0),
                 sent: vec![],
                 out: String::new(),
+                answer: true,
             });
         }
     })

@@ -95,7 +95,10 @@ struct Past {
 fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     let dir = spec.dir.as_path();
     let mut p = Past {
-        entries: archive::inherited(dir),
+        // Answers come only by the delivered path below; an inherited one isn't replayed [D55].
+        entries: (archive::inherited(dir).into_iter())
+            .filter(|e| !e.answer)
+            .collect(),
         answers: vec![],
         starts: vec![],
         stopped: false,
@@ -175,7 +178,8 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             _ => {}
         }
         let before = p.entries.len();
-        p.entries.extend(archive::entry(item, at).map(|mut e| {
+        let entry = archive::entry(item, at).filter(|e| !e.answer);
+        p.entries.extend(entry.map(|mut e| {
             if e.from == "error" && item["kind"] == "tool_done" {
                 e.from = match cutting.as_str() {
                     "rebirth" | "stall" => "cut",
