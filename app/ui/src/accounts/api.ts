@@ -178,7 +178,10 @@ export async function signIn(agent: string, id: string): Promise<void> {
 
 export const closeSignIn = (agent: string, id: string) => run(["setup", agent, "close", "--account", id]).then(() => loadAccounts());
 
-/** Removes an account; Rust refuses while a session runs on it and says why. */
+/** How many chats ran on an account, which go on with this computer's login once it's removed [C40]. */
+export const accountChats = (id: string) => run(["accounts", "remove", id, "--check"]).then((reply) => (reply.chats as number) ?? 0);
+
+/** Removes an account; Rust refuses while a chat on it is working and says why. */
 export async function removeAccount(id: string): Promise<string | null> {
   const reply = await run(["accounts", "remove", id]);
   await loadAccounts();

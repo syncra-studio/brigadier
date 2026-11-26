@@ -16,7 +16,7 @@ import { stateOf, useAgentSetup } from "../onboarding/agents";
 import { type Agent, checkAll, setEnabled, useAgents } from "../onboarding/api";
 import { SettingsPage, SettingsSection } from "../settings/parts";
 import { AgentPage } from "./agent-page";
-import { type Account, type SwitchAgent, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
+import { type Account, type SwitchAgent, accountChats, loadAccounts, removeAccount, setAgents, setAuto, useAccounts } from "./api";
 import { AgentMark, CheckAgainButton, OVERVIEW_ROWS, PlanChip, ROW_TITLE, SetupLine, standing, useFailed } from "./parts";
 import { UsageMeter, tightest } from "./usage";
 
@@ -34,7 +34,7 @@ export const PROVIDERS_ROWS = {
 } as const;
 
 /** What turning a switch on, or removing an account, asks first [D51]. */
-export type Ask = { kind: "auto"; agent: SwitchAgent } | { kind: "agents" } | { kind: "remove"; agent: SwitchAgent; account: Account };
+export type Ask = { kind: "auto"; agent: SwitchAgent } | { kind: "agents" } | { kind: "remove"; agent: SwitchAgent; account: Account; chats?: number | null };
 
 /** How often the accounts, and so their usage, are read again while Providers is open. */
 const USAGE_MS = 5 * 60_000;
@@ -108,7 +108,12 @@ export function ProvidersPage({ detail }: { detail?: string }) {
             failed={failed}
             act={act}
             onSwitchAccounts={switchAccountsTo}
-            onRemove={(owner, account) => setAsk({ kind: "remove", agent: owner, account })}
+            onRemove={(owner, account) => {
+              setAsk({ kind: "remove", agent: owner, account });
+              // null: the count couldn't be read, so the confirm says what happens without one.
+              const told = (chats: number | null) => setAsk((now) => (now?.kind === "remove" && now.account.id === account.id ? { ...now, chats } : now));
+              accountChats(account.id).then(told, () => told(null));
+            }}
           />
         ) : (
           <SettingsPage title={list ? "No such agent" : "Checking…"}>
@@ -130,6 +135,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
         open={ask !== null}
         onOpenChange={(next) => !next && setAsk(null)}
         busy={busy}
+        disabled={ask?.kind === "remove" && ask.chats === undefined}
         destructive={ask?.kind === "remove"}
         title={
           ask?.kind === "auto"
@@ -146,7 +152,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
             : ask?.kind === "agents"
               ? `When an agent's accounts are all at their limit, the conversation goes to another vendor's agent${targets.length ? ` (${listNames(targets)})` : ""}, and that agent sees the whole thread, including what it read. You turn it on at your own risk.`
               : ask?.kind === "remove"
-                ? `${ask.agent.label} signs it out with its own sign-out, then its folder is deleted. Your history stays.`
+                ? `${ask.agent.label} signs it out with its own sign-out, then its folder is deleted. Your history stays.${ask.chats === null ? " Chats on this account will go on with this computer's login." : ask.chats ? ` ${ask.chats} chat${ask.chats === 1 ? "" : "s"} on this account will go on with this computer's login.` : ""}`
                 : ""
         }
         confirm={ask?.kind === "remove" ? "Remove" : "Turn on"}

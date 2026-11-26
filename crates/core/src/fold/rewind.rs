@@ -151,6 +151,20 @@ impl Fold {
     }
 
     /// This conversation's turns: on the agent and account it runs on now, since the last switch.
+    /// Drops each account `gone` names: its chat is on the computer's login now, and so are its
+    /// turns' rewind points, the same conversation [C40].
+    pub fn drop_accounts(&mut self, gone: impl Fn(&str) -> bool) {
+        if !self.accounts.values().any(|id| gone(id)) {
+            return;
+        }
+        self.accounts.retain(|_, id| !gone(id));
+        for b in &mut self.boundaries {
+            if !b.account.is_empty() && gone(&b.account) {
+                b.account.clear();
+            }
+        }
+    }
+
     fn current(&self) -> Vec<&Boundary> {
         let account = self
             .accounts

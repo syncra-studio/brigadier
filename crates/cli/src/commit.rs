@@ -93,6 +93,11 @@ pub(crate) fn written_for(
     chosen: Option<&writer::Choice>,
     prompt: impl Fn(&[String]) -> String,
 ) -> Result<(String, Option<String>), String> {
+    // The accounts this write runs on, checked under the lock `active` holds, which Remove's busy
+    // check tries [C40].
+    if core::taken(data, &f.accounts) {
+        return Err("This account is being removed.".into());
+    }
     let prompt = prompt(&writer::asks(&spec.dir));
     // Each candidate a rule bars is skipped for the next: the chosen, the cheap, the session's own,
     // the offline one [D376].

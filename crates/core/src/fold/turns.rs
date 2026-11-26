@@ -298,6 +298,25 @@ impl Fold {
         }
     }
 
+    /// A limit, a sign-in it needs, or a resume its CLI refused: the turn ends so.
+    pub(super) fn limited(&mut self, kind: &str, item: &Value, ts: u64) {
+        let message = item["message"].as_str().unwrap_or("").to_string();
+        match kind {
+            "limited" => {
+                self.limit = Some(message);
+                self.credits = item["credits"] == true;
+                // A second limit line that gives no time keeps the one the first gave [D74].
+                self.resets = item["resets"].as_u64().or(self.resets);
+            }
+            "sign_in" => self.sign_in = Some(message),
+            _ => self.refused = Some(message),
+        }
+        if kind != "sign_in" {
+            self.limit_on = self.accounts.get(&self.backend).cloned();
+        }
+        self.close(kind, item["message"].clone(), ts);
+    }
+
     pub(super) fn close(&mut self, outcome: &str, reason: Value, ts: u64) {
         if let Some(turn) = self.turns.first().cloned() {
             if turn.held {

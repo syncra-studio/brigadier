@@ -75,6 +75,8 @@ pub struct Fold {
     pub commands: BTreeMap<String, Value>,
     pub backend: String,
     pub limit: Option<String>,
+    /// The account its limit, or its refused resume, came on: one removed since isn't its now [C40].
+    pub limit_on: Option<String>,
     /// When the limit resets (ms), if its CLI said [D74].
     #[serde(default)]
     pub resets: Option<u64>,
@@ -447,21 +449,7 @@ impl Fold {
                 self.limits = Some(json!({"backend": self.backend, "account": account,
                     "limits": item["limits"], "at": ts}));
             }
-            "limited" => {
-                self.limit = Some(str_of("message"));
-                self.credits = item["credits"] == true;
-                // A second limit line that gives no time keeps the one the first gave [D74].
-                self.resets = item["resets"].as_u64().or(self.resets);
-                self.close("limited", item["message"].clone(), ts);
-            }
-            "sign_in" => {
-                self.sign_in = Some(str_of("message"));
-                self.close("sign_in", item["message"].clone(), ts);
-            }
-            "unresumable" => {
-                self.refused = Some(str_of("message"));
-                self.close("unresumable", item["message"].clone(), ts);
-            }
+            "limited" | "sign_in" | "unresumable" => self.limited(kind, item, ts),
             "stopped" => {
                 // The user's Stop or Pause ends the limit; a handoff's stop keeps it [D51].
                 if matches!(item["by"].as_str(), Some("user" | "pause")) {

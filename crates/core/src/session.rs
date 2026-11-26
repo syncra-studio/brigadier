@@ -93,7 +93,8 @@ pub fn retired(dir: &Path) -> Option<&'static str> {
 pub fn fence(data: &Path, spec: &Spec) -> io::Result<(File, Option<File>)> {
     let lock = worktrees::lock(&spec.dir)?;
     let removing = projects::removing(data, spec).then_some("This project is being removed.");
-    if let Some(why) = closed(&spec.dir).or(removing) {
+    let leaving = crate::account::leaving(&spec.dir).then_some("This account is being removed.");
+    if let Some(why) = closed(&spec.dir).or(removing).or(leaving) {
         return Err(io::Error::other(why));
     }
     let shared = crate::rewind::checkout_lock(data, false)?;

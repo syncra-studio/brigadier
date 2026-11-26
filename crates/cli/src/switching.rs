@@ -147,11 +147,22 @@ fn attempt(
     };
     let a = agent(b)?;
     let cur = f.accounts.get(b).cloned().unwrap_or_default();
+    // The account at the limit was removed since: the chat is on the login now [C40].
+    let left = f
+        .limit_on
+        .as_deref()
+        .is_some_and(|a| a != cur && core::gone(data, a));
+    // Past a removed account's limit, the login it went on to counts as a way on.
+    let skip = if left {
+        f.limit_on.clone().unwrap_or_default()
+    } else {
+        cur.clone()
+    };
     let v = {
         let _one = STORE.lock().unwrap();
         let mut v = load(data);
         // Skipped until its CLI said it resets [D74].
-        if why == "limited" {
+        if why == "limited" && !left {
             let until = f.resets.unwrap_or(log::now_ms() + SKIP_MS);
             v["limited"][format!("{b}/{cur}")] = until.into();
             v["limited_at"][format!("{b}/{cur}")] = log::now_ms().into();
@@ -181,7 +192,7 @@ fn attempt(
                 json!({"ok": false, "error": "held", "message": "It waits on the user's call."}),
             );
         }
-        match crate::routing::next(data, id, &spec, &f, &cur)? {
+        match crate::routing::next(data, id, &spec, &f, &skip)? {
             Some((t, r)) => (target, ran, kind) = (Some(t), r, "job"),
             None => {
                 return Ok(
@@ -190,7 +201,7 @@ fn attempt(
             }
         }
     } else if let Some(pick) = pick {
-        if pick == cur || !accounts_of(&v, b).iter().any(|(x, _)| x == pick) {
+        if (pick == cur && !left) || !accounts_of(&v, b).iter().any(|(x, _)| x == pick) {
             return Ok(
                 json!({"ok": false, "error": "bad_account", "message": "Pick another account of this agent."}),
             );
@@ -213,7 +224,7 @@ fn attempt(
         );
     } else {
         if listed(&v, "auto", b) {
-            target = pick_account(data, &v, a, &cur, &spec.cwd).map(|id| (a, id, None, None));
+            target = pick_account(data, &v, a, &skip, &spec.cwd).map(|id| (a, id, None, None));
         }
         if target.is_none() && v["agents"] == true {
             kind = "agents";
@@ -232,6 +243,14 @@ fn attempt(
             json!({"ok": false, "error": "no_target", "message": "No other account or agent has room."}),
         );
     };
+    // Whoever picked it, never onto an account Remove is taking away [C40].
+    let leaving =
+        |e: &Value| e["agent"] == to.name() && e["id"] == account.as_str() && core::marked(e);
+    if v["accounts"].as_array().into_iter().flatten().any(leaving) {
+        return Ok(
+            json!({"ok": false, "error": "removing", "message": "This account is being removed."}),
+        );
+    }
     let to_label = label(&v, to, &account);
     let name = (model.as_deref()).and_then(|m| crate::routing::name_of(data, id, to.name(), m));
     // "Opus 5.5 had no account with room, so the next in Write code ran: Codex · GPT-6.1-Sol · High".

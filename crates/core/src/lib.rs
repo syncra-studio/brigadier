@@ -49,7 +49,7 @@ use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-pub use account::{account_home, as_run, data_of};
+pub use account::{account_home, as_run, data_of, gone, leaving, marked, taken};
 pub use kept::{fold, keep};
 pub use send::{Call, CallIn, Running, applied, level, reconnect, recover, relevel, send};
 
@@ -278,6 +278,9 @@ pub fn load(data: &Path, id: &str) -> io::Result<Spec> {
 }
 
 /// A fold with the reader position it reached.
+/// A checkpoint's version: the normaliser's, and the fold's own shape (1: `limit_on`, [C40]).
+pub const FOLDED: u32 = norm::VERSION | 1 << 24;
+
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Folded {
     pub v: u32,
@@ -308,9 +311,9 @@ fn starts_on(dir: &Path, f: &mut Fold) {
 /// keep such a result for status, but resume only from a clean one. A fold from another
 /// normaliser version starts over.
 pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io::Result<Folded> {
-    if f.v != norm::VERSION {
+    if f.v != FOLDED {
         f = Folded {
-            v: norm::VERSION,
+            v: FOLDED,
             ..Default::default()
         };
     }
@@ -321,11 +324,13 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
     if log_len > f.pos {
         let mut reader = Reader::open(&dir.join("log"), f.pos, f.seq)?;
         let (mut items, mut replan, mut seq) = (vec![], false, 0);
+        let removed = account::removed(dir);
         while let Some(frame) = reader.frame()? {
             seq = frame.seq;
             f.norm.push(&frame, &mut items);
             for item in items.drain(..) {
                 each(&item);
+                account::drop_removed(&mut f.fold, &removed, &item);
                 f.fold.push(&item);
                 replan |= item["kind"] == "note"
                     && matches!(item["event"].as_str(), Some("rewound" | "forked"));
@@ -343,6 +348,7 @@ pub fn fold_from(dir: &Path, mut f: Folded, mut each: impl FnMut(&Value)) -> io:
             f.fold.plan = fold::todo::Todo::replay(dir, seq)?;
         }
     }
+    account::drop_gone(dir, &mut f.fold);
     Ok(f)
 }
 

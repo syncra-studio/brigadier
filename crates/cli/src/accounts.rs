@@ -24,7 +24,8 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 /// `accounts.json`: the extra accounts, which agents switch accounts automatically, whether agents
 /// switch, when each account last hit a limit, the account each agent's new sessions start on
-/// (`use`, none: the computer's login) and the name given to each agent's computer login [D2082].
+/// (`use`, none: the computer's login), the name given to each agent's computer login [D2082] and
+/// when each removed account went (`removed`, by id) [C40].
 pub(crate) fn load(data: &Path) -> Value {
     let v: Value = fs::read(data.join("accounts.json"))
         .ok()
@@ -33,7 +34,7 @@ pub(crate) fn load(data: &Path) -> Value {
     let list = |k: &str| v[k].as_array().cloned().unwrap_or_default();
     let map = |k: &str| v[k].as_object().cloned().unwrap_or_default();
     json!({"accounts": list("accounts"), "auto": list("auto"), "agents": v["agents"] == true,
-        "limited": map("limited"), "limited_at": map("limited_at"), "use": map("use"), "names": map("names")})
+        "limited": map("limited"), "limited_at": map("limited_at"), "use": map("use"), "names": map("names"), "removed": map("removed")})
 }
 
 pub(crate) fn save(data: &Path, v: &Value) -> io::Result<()> {
@@ -67,17 +68,22 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
     let extra = v["accounts"].as_array().into_iter().flatten();
     let own = v["names"][agent].as_str().unwrap_or("").to_string();
     std::iter::once((String::new(), own))
-        .chain(extra.filter(|e| e["agent"] == agent).map(|e| {
-            let name = e["name"].as_str().unwrap_or("");
-            // An added account went by "Account N" until it was named; that name was never given.
-            let given = !name
-                .strip_prefix("Account ")
-                .is_some_and(|n| n.parse::<u32>().is_ok());
-            (
-                e["id"].as_str().unwrap_or("").to_string(),
-                if given { name } else { "" }.to_string(),
-            )
-        }))
+        // One Remove is taking away is no longer offered [C40].
+        .chain(
+            extra
+                .filter(|e| e["agent"] == agent && !core::marked(e))
+                .map(|e| {
+                    let name = e["name"].as_str().unwrap_or("");
+                    // An added account went by "Account N" until it was named; that name was never given.
+                    let given = !name
+                        .strip_prefix("Account ")
+                        .is_some_and(|n| n.parse::<u32>().is_ok());
+                    (
+                        e["id"].as_str().unwrap_or("").to_string(),
+                        if given { name } else { "" }.to_string(),
+                    )
+                }),
+        )
         .collect()
 }
 
@@ -174,7 +180,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 size("--rows"),
             )
         }
-        ("accounts", Some("remove")) => remove(data, args.get(2).map_or("", String::as_str)),
+        ("accounts", Some("remove")) => remove(
+            data,
+            args.get(2).map_or("", String::as_str),
+            args.iter().any(|a| a == "--check"),
+        ),
         ("accounts", Some(op @ ("use" | "rename"))) => {
             let arg = |i: usize| args.get(i).map_or("", String::as_str);
             name_or_use(data, op, agent(arg(2))?, arg(3), arg(4))
@@ -340,37 +350,85 @@ fn add(
     Ok(reply)
 }
 
-/// Removes an extra account: refused while any session runs on it or its sign-in is open [D51]. A
-/// sign-in kind the home keeps apart is signed out by the CLI itself first; any other is left
-/// alone, since signing it out could reach a login outside the home.
-fn remove(data: &Path, id: &str) -> io::Result<Value> {
+/// Removes an extra account: refused while a chat on it is working or its sign-in is open [D51].
+/// The chats it ran go on with the computer's login: its home gone, they read as on it [C40].
+/// `check`: only how many chats it ran, for the confirm. A sign-in kind the home keeps apart is
+/// signed out by the CLI itself first; any other is left alone, since signing it out could reach
+/// a login outside the home.
+fn remove(data: &Path, id: &str, check_only: bool) -> io::Result<Value> {
     let (a, id) = find(data, id)?;
+    let on = |s: &String| {
+        core::fold(&core::session_dir(data, s), true)
+            .is_ok_and(|f| f.fold.accounts.get(a.name()) == Some(&id))
+    };
+    if check_only {
+        let chats = core::ids(data).iter().filter(|s| on(s)).count();
+        return Ok(json!({"ok": true, "chats": chats}));
+    }
     let run = sign_in_id(a.name(), &id);
     if setup::run_state(data, &run, None)["running"] == true {
         return Ok(
             json!({"ok": false, "error": "signing_in", "message": "Its sign-in is still open."}),
         );
     }
-    let using: Vec<String> = core::ids(data)
-        .into_iter()
-        .filter(|s| {
-            core::fold(&core::session_dir(data, s), true)
-                .is_ok_and(|f| f.fold.accounts.get(a.name()) == Some(&id))
-        })
-        .collect();
-    if !using.is_empty() {
-        let n = using.len();
-        return Ok(json!({"ok": false, "error": "in_use", "sessions": using,
-            "message": format!("{n} session{} run{} on this account. Switch {} to another account first.",
-                if n == 1 { "" } else { "s" }, if n == 1 { "s" } else { "" }, if n == 1 { "it" } else { "them" })}));
+    // Marked first: no turn starts on it, nor a switch to it [D172]. Any failure takes it off.
+    mark(data, &id, true)?;
+    let done = take_away(data, a, &id, &run, on);
+    if !done.as_ref().is_ok_and(|v| v["ok"] == true) {
+        mark(data, &id, false)?;
     }
-    let home = account_home(data, &id);
-    let c = check(a, data, &id, &adapters::home_path("").display().to_string());
+    done
+}
+
+/// Remove's work once its mark is on.
+fn take_away(
+    data: &Path,
+    a: &dyn Adapter,
+    id: &str,
+    run: &str,
+    on: impl Fn(&String) -> bool,
+) -> io::Result<Value> {
+    // Each turn start that passed its fence before the mark is waited out, so the fold shows it.
+    let ids = core::ids(data);
+    for s in &ids {
+        drop(core::worktrees::lock(&core::session_dir(data, s)));
+    }
+    let all = crate::procs::all();
+    let using: Vec<&String> = ids.iter().filter(|s| on(s)).collect();
+    // A commit message or PR text being written may run on it too, outside a chat's turn and on
+    // an account its chat's fold may not name: any of them waits.
+    let writing = |s: &String| {
+        core::writer::writing(&core::session_dir(data, s)).is_ok_and(|w| w.try_lock().is_err())
+    };
+    let n = (using.iter())
+        .filter(|s| crate::sessions::working(data, s, &all))
+        .count()
+        + ids.iter().filter(|s| writing(s)).count();
+    if n > 0 {
+        let (s, them) = if n == 1 {
+            ("chat is", "it")
+        } else {
+            ("chats are", "them")
+        };
+        return Ok(json!({"ok": false, "error": "in_use",
+            "message": format!("{n} {s} working on this account. Wait for {them} to finish or stop {them} first.")}));
+    }
+    // An idle child kept between turns runs in its home: stopped, its next launch is the login's.
+    // One that won't stop keeps the account.
+    for s in using {
+        if crate::owner::state(data, s) == core::fold::Owner::Alive {
+            crate::owner::call(data, s, json!({"op": "stop", "by": "account"}))?;
+            core::background::end_left(&core::session_dir(data, s))?;
+            crate::owner::release(data, s)?;
+        }
+    }
+    let home = account_home(data, id);
+    let c = check(a, data, id, &adapters::home_path("").display().to_string());
     let mut note = Value::Null;
     if c["signed_in"] == true {
         match (c["kept_apart"] == true, a.accounts(), a.exe()) {
             (true, Some(acc), Some(exe)) => {
-                let spec = on_account(a, data, &id, "");
+                let spec = on_account(a, data, id, "");
                 let out = probe_as(&spec, &exe, &home, &a.keys(), acc.sign_out, 30)
                     .map_err(io::Error::other)?;
                 if !out.status.success() {
@@ -386,10 +444,24 @@ fn remove(data: &Path, id: &str) -> io::Result<Value> {
             }
         }
     }
-    setup::close(data, &run)?;
+    setup::close(data, run)?;
+    // From here its chats are on the login: their folds drop it at this time, kept before the
+    // home goes, so a crash between leaves it said [C40].
+    {
+        let _one = STORE.lock().unwrap();
+        let mut v = load(data);
+        v["removed"][id] = brigadier_frames::log::now_ms().into();
+        save(data, &v)?;
+    }
     // Links are removed, never followed: the history they point at stays.
     match fs::remove_dir_all(&home) {
-        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            let _one = STORE.lock().unwrap();
+            let mut v = load(data);
+            v["removed"].as_object_mut().unwrap().remove(id);
+            save(data, &v)?;
+            return Err(e);
+        }
         _ => {}
     }
     let _one = STORE.lock().unwrap();
@@ -397,14 +469,29 @@ fn remove(data: &Path, id: &str) -> io::Result<Value> {
     v["accounts"]
         .as_array_mut()
         .unwrap()
-        .retain(|e| e["id"] != id.as_str());
-    v["limited"]
-        .as_object_mut()
-        .unwrap()
-        .remove(&format!("{}/{id}", a.name()));
-    if v["use"][a.name()] == id.as_str() {
+        .retain(|e| e["id"] != id);
+    for k in ["limited", "limited_at"] {
+        v[k].as_object_mut()
+            .unwrap()
+            .remove(&format!("{}/{id}", a.name()));
+    }
+    if v["use"][a.name()] == id {
         v["use"].as_object_mut().unwrap().remove(a.name());
     }
     save(data, &v)?;
+    drop(_one);
+    usage::forget(data, a.name(), id)?;
     Ok(json!({"ok": true, "note": note}))
+}
+
+/// Sets or clears Remove's mark on added account `id`: this process's id, so a crash's lapses [C40].
+fn mark(data: &Path, id: &str, on: bool) -> io::Result<()> {
+    let _one = STORE.lock().unwrap();
+    let mut v = load(data);
+    for e in v["accounts"].as_array_mut().unwrap() {
+        if e["id"] == id {
+            e["removing"] = on.then(std::process::id).into();
+        }
+    }
+    save(data, &v)
 }

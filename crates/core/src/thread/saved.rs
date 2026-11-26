@@ -297,6 +297,7 @@ impl Saved {
         if self.thread.fold.cids.is_empty() {
             crate::starts_on(dir, &mut self.thread.fold);
         }
+        let removed = crate::account::removed(dir);
         let mut reader = Reader::open(&log, self.pos, self.seq)?;
         let mut items = vec![];
         while let Some(frame) = reader.frame()? {
@@ -305,6 +306,7 @@ impl Saved {
                 // A rewind logged after the scan: what came before it is stale.
                 self.rewound |= self.active.newer(frame.seq, &item);
                 if self.active.keep(frame.seq, &item) {
+                    crate::account::drop_removed(&mut self.thread.fold, &removed, &item);
                     if item["kind"] == "note" && item["event"] == "forked" {
                         self.thread.inherit(&crate::fork::inherited(dir), &item);
                     }

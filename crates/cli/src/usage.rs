@@ -82,13 +82,11 @@ fn record(
     at: u64,
     who: Option<(Option<bool>, Option<&str>, bool)>,
 ) -> io::Result<()> {
-    fs::create_dir_all(data)?;
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(data.join("usage.lock"))?;
-    lock.lock()?;
+    let _lock = locked(data)?;
+    // A late read of an account removed meanwhile doesn't bring its entry back [C40].
+    if core::gone(data, account) {
+        return Ok(());
+    }
     let mut v = load(data);
     let entry = &mut v[key(agent, account)];
     if let Some((signed_in, email, usable)) = who {
@@ -116,6 +114,31 @@ fn record(
         entry["windows"] = json!(kept);
     }
     core::write_atomic(&data.join("usage.json"), v.to_string().as_bytes())
+}
+
+/// Under `usage.lock`, which every write of usage.json takes, across processes.
+fn locked(data: &Path) -> io::Result<File> {
+    fs::create_dir_all(data)?;
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join("usage.lock"))?;
+    lock.lock()?;
+    Ok(lock)
+}
+
+/// Drops a removed account's entry [C40].
+pub(crate) fn forget(data: &Path, agent: &str, account: &str) -> io::Result<()> {
+    let _lock = locked(data)?;
+    let mut v = load(data);
+    if v.as_object_mut()
+        .and_then(|o| o.remove(&key(agent, account)))
+        .is_some()
+    {
+        core::write_atomic(&data.join("usage.json"), v.to_string().as_bytes())?;
+    }
+    Ok(())
 }
 
 /// Keeps what a check on one account read: who, and its limits where it read them.

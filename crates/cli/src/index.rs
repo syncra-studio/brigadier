@@ -8,7 +8,7 @@ mod find;
 mod marks;
 mod search;
 use brigadier_core::fold::{self, Owner};
-use brigadier_core::{self as core, Folded, adapters, norm, projects};
+use brigadier_core::{self as core, Folded, adapters, projects};
 use brigadier_frames::{log, procs, take_lock};
 pub use find::find;
 use marks::Marks;
@@ -31,7 +31,8 @@ const SCHEMA: i64 = 6;
 const SWEEP_AFTER_MS: u64 = 3_000;
 
 fn version() -> i64 {
-    SCHEMA * 1000 + norm::VERSION as i64
+    // The fold's own version too: a checkpoint of another one replays every item [C40].
+    SCHEMA * 1000 + core::FOLDED as i64
 }
 
 pub(crate) fn db_err(e: rusqlite::Error) -> io::Error {
@@ -297,7 +298,7 @@ impl Index {
                              "notice": e.error.is_none().then(|| fold::notice(&f.fold, state.as_str().unwrap_or(""))).flatten(),
                              "resets": f.fold.resets, "sent": f.fold.sent, "finished": f.fold.finished, "backend": backend,
                              "updated": updated, "items": f.fold.items, "error": e.error, "works": works,
-                             "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend),
+                             "switchable": fold::switchable(&f.fold), "account": f.fold.accounts.get(&f.fold.backend).filter(|a| !core::gone(&self.data, a)),
                              "project": project, "model": run.as_ref().and_then(|s| s.model.as_ref()),
                              "archived": e.marks.archived, "lifecycle": e.marks.lifecycle,
                              "effort": run.as_ref().and_then(|s| s.effort.as_ref()), "fast": run.as_ref().is_some_and(|s| s.fast), "picked": f.fold.picked, "setup_op": f.fold.setup_op,

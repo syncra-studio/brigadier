@@ -1,7 +1,7 @@
 //! A session's fold kept between reads: in this process, and for others in its checkpoint. Both are
 //! only caches: losing them changes nothing but speed.
 
-use crate::{Folded, fold_from, norm, write_atomic};
+use crate::{Folded, fold_from, write_atomic};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
@@ -50,7 +50,7 @@ pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
     let (mut saved, f) = kept.unwrap_or_else(|| {
         let f = (fs::read(&ckpt).ok())
             .and_then(|b| serde_json::from_slice::<Folded>(&b).ok())
-            .filter(|f| f.v == norm::VERSION && f.pos <= len)
+            .filter(|f| f.v == crate::FOLDED && f.pos <= len)
             .unwrap_or_default();
         (f.pos, f)
     });
