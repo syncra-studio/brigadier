@@ -16,7 +16,7 @@ pub(super) fn argv(words: &[&str]) -> Vec<String> {
             } else if hide {
                 HIDDEN.into()
             } else {
-                text(word)
+                text(word, 0)
             };
             hide = i > 0
                 && word.starts_with('-')
@@ -62,12 +62,33 @@ fn container(key: &str) -> bool {
     })
 }
 
-fn text(word: &str) -> String {
+fn text(word: &str, depth: usize) -> String {
+    // Fail closed before assignment chains or embedded configs exhaust the host's stack.
+    if depth >= 32 {
+        return HIDDEN.into();
+    }
     let trimmed = word.trim_start();
     if trimmed.starts_with(['{', '[']) {
+        // serde_json's default nesting limit still exceeds the host thread's small stack.
+        let (mut nesting, mut quoted, mut escaped) = (depth, false, false);
+        for byte in word.bytes() {
+            match (quoted, escaped, byte) {
+                (true, true, _) => escaped = false,
+                (true, false, b'\\') => escaped = true,
+                (_, false, b'"') => quoted = !quoted,
+                (false, _, b'{' | b'[') => {
+                    nesting += 1;
+                    if nesting >= 32 {
+                        return HIDDEN.into();
+                    }
+                }
+                (false, _, b'}' | b']') => nesting = nesting.saturating_sub(1),
+                _ => {}
+            }
+        }
         return match serde_json::from_str::<Value>(word) {
             Ok(mut value) => {
-                scrub(&mut value);
+                scrub(&mut value, depth + 1);
                 value.to_string()
             }
             // A malformed inline config must not fall back to logging its credentials.
@@ -101,14 +122,18 @@ fn text(word: &str) -> String {
             if secret(key) || container(key) {
                 HIDDEN.into()
             } else {
-                text(value)
+                text(value, depth + 1)
             }
         );
     }
     word.into()
 }
 
-fn scrub(value: &mut Value) {
+fn scrub(value: &mut Value, depth: usize) {
+    if depth >= 32 {
+        *value = HIDDEN.into();
+        return;
+    }
     match value {
         Value::Object(fields) => {
             for (key, value) in fields {
@@ -120,7 +145,7 @@ fn scrub(value: &mut Value) {
                 } else if secret(key) {
                     *value = HIDDEN.into();
                 } else {
-                    scrub(value);
+                    scrub(value, depth + 1);
                 }
             }
         }
@@ -133,12 +158,12 @@ fn scrub(value: &mut Value) {
                 if hide {
                     *item = HIDDEN.into();
                 } else {
-                    scrub(item);
+                    scrub(item, depth + 1);
                 }
                 hide = next;
             }
         }
-        Value::String(word) => *word = text(word),
+        Value::String(word) => *word = text(word, depth + 1),
         _ => {}
     }
 }
