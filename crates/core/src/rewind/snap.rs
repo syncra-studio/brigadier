@@ -25,7 +25,7 @@ const GIT_SECS: u64 = 60;
 pub(super) const CHUNK: usize = 200;
 
 /// The folder at one moment. `out` holds what the tree can't: each big untracked file's size and
-/// time, each nested repository's commit, by path. `at`: when its capture started (ms), so a
+/// time, each nested repository's commit ("none" before its first), by path. `at`: when its capture started (ms), so a
 /// turn spans its two captures [D1078, D1089]; none on one taken before that.
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Shot {
@@ -87,6 +87,21 @@ pub(super) fn split(bytes: Vec<u8>) -> io::Result<Vec<String>> {
         .filter(|p| !p.is_empty())
         .map(String::from)
         .collect())
+}
+
+/// Whether the repository at `dir` has a commit checked out.
+fn has_commit(dir: &Path) -> bool {
+    let mut command = Command::new("git");
+    (command.args([
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.fsmonitor=false",
+        "-C",
+    ]))
+    .arg(dir)
+    .args(["rev-parse", "-q", "--verify", "HEAD"]);
+    done(command, "rev-parse").is_ok()
 }
 
 /// A path as an anchored ignore rule that matches only it.
@@ -240,6 +255,12 @@ impl Store {
             if m.is_file() && m.len() > MAX_FILE && !path.contains('\n') {
                 let stamp = format!("{}:{}.{}", m.len(), m.mtime(), m.mtime_nsec());
                 out.insert(path, stamp);
+            } else if let Some(repo) = path.strip_suffix('/')
+                && !path.contains('\n')
+                && !has_commit(&self.cwd.join(repo))
+            {
+                // git can't add a repository with no commit yet, so it's kept out and named as nested.
+                out.insert(repo.into(), "none".into());
             }
         }
         // The project's own personal ignores count, then this snapshot's big files.
