@@ -242,7 +242,8 @@ fn card(data: &Path, a: &dyn Adapter) -> Value {
 }
 
 fn saved(data: &Path, a: &dyn Adapter, cwd: &Path) -> Value {
-    let mut out = last_check(data, a, cwd).unwrap_or_else(|| json!({}));
+    // Its own check, else its worktree's project folder's, else home's [C27].
+    let mut out = core::checked::kept(data, a.name(), cwd).unwrap_or_else(|| json!({}));
     out.as_object_mut()
         .unwrap()
         .extend(card(data, a).as_object().unwrap().clone());

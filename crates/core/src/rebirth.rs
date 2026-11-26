@@ -39,9 +39,9 @@ fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
 fn listed(spec: &Spec, f: &Fold) -> Option<u64> {
     let b = backend(spec, f);
     let model = as_run(spec, f, b, None).model?;
-    let path = crate::data_of(spec).join(format!("agents/{b}.json"));
-    let checks: Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
-    let models = checks[spec.cwd.as_str()]["models"].as_array()?;
+    // The check this folder reads, as the pickers do (checked.rs) [C27].
+    let check = crate::checked::kept(&crate::data_of(spec), b, std::path::Path::new(&spec.cwd))?;
+    let models = check["models"].as_array()?;
     models.iter().find(|m| m["id"] == model.as_str())?["window"].as_u64()
 }
 

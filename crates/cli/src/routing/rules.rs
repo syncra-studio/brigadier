@@ -20,7 +20,8 @@ pub(crate) fn launch(
         return Ok(core::Ruled::default());
     }
     // The agent's whole listed catalogue, hidden models too: the pickers' is filtered [D2082]. The
-    // launch folder's check (a project's own models), else the home folder's, as the pickers read.
+    // launch folder's check as the pickers read it (checked.rs) [C27]. One that listed nothing
+    // (failed, or empty) takes home's here only, to find what a rule bars or caps: it never allows.
     let listed_in = |cwd: &str| -> Vec<Value> {
         let mut args = vec!["agents".to_string(), "--cached".into()];
         if !cwd.is_empty() {

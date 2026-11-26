@@ -6,6 +6,7 @@ pub mod adapters;
 pub mod agent;
 pub mod archive;
 pub mod background;
+pub mod checked;
 pub mod feedback;
 pub mod fold;
 pub mod folder;

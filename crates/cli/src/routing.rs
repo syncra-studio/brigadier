@@ -109,9 +109,9 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
             r["groups"].as_array().cloned().unwrap_or_default()
         })
     };
-    // Barred models too: the table and its checks name them [D376].
-    let home = of(&["models".into(), "--all".into()]);
-    let here = me.map_or(vec![], |m| {
+    // Barred models too: the table and its checks name them [D376]. `me`'s folder reads its own
+    // check, else its project's, else home's, per agent (checked.rs) [C27]; home's without one.
+    let here = me.map(|m| {
         of(&[
             "models".into(),
             "--all".into(),
@@ -119,14 +119,9 @@ fn groups(data: &Path, me: Option<&str>) -> Vec<Value> {
             m.into(),
         ])
     });
-    // A folder not checked yet takes the home folder's check, as Home's picker does.
-    let all = match here
-        .iter()
-        .any(|g| g["models"].as_array().is_some_and(|m| !m.is_empty()))
-    {
-        true => here,
-        false => home,
-    };
+    let all = here
+        .filter(|g| !g.is_empty())
+        .unwrap_or_else(|| of(&["models".into(), "--all".into()]));
     (all.into_iter())
         .filter(|g| g["unavailable"].is_null() && settings::enabled(data, str_of(g, "provider")))
         .map(|mut g| {

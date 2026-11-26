@@ -449,7 +449,7 @@ fn models(data: &Path, me: &str) -> Value {
             let models: Vec<Value> = (g["models"].as_array().into_iter().flatten())
                 .map(|m| json!({"id": m["id"], "efforts": m["efforts"], "default_effort": m["default_effort"], "draws": m["draws"]}))
                 .collect();
-            json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"]})
+            json!({"agent": g["provider"], "label": g["label"], "models": models, "levels": g["levels"], "from": g["from"]})
         })
         .collect();
     let mut text = String::new();
@@ -459,6 +459,10 @@ fn models(data: &Path, me: &str) -> Value {
         let levels: Vec<&str> = levels.filter_map(Value::as_str).collect();
         if !levels.is_empty() {
             text += &format!("  Levels: {}\n", levels.join(", "));
+        }
+        // (proposed) Home's list stands in until this folder is checked [C27].
+        if a["from"] == "home" {
+            text += "  This folder hasn't been checked yet; these are your home folder's models.\n";
         }
         if a["models"].as_array().is_none_or(Vec::is_empty) {
             text += "  No models listed.\n";
