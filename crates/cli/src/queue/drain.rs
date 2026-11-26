@@ -109,6 +109,11 @@ fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
             }
             return Ok(false);
         }
+        // Archived since it was queued, nothing under way: settled once, not tried for ever.
+        if matches!(core::session::lifecycle(&dir), (Some(_), Value::Null)) {
+            q.items[at].error = Some("This session was archived".into());
+            return Ok(false);
+        }
         owner::ensure(data, &spec)?;
         let ping = owner::call(data, id, json!({"op": "ping"}))?;
         let Some(len) = ping["len"].as_u64() else {
