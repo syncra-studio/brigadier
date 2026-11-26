@@ -315,7 +315,7 @@ pub(crate) fn row(data: &Path, row: &mut Value, o: &Overnight, finished: u64) {
     }
     let asks = matches!(
         row["notice"]["kind"].as_str(),
-        Some("question" | "approval")
+        Some("question" | "approval" | "pick")
     );
     let told = |o: &Overnight| !asks && o.morning.as_ref().is_some_and(|m| m.at >= finished);
     if o.night() {

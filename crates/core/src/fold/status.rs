@@ -209,6 +209,7 @@ pub fn quiet(fold: &Fold, state: &str) -> bool {
 /// says nothing.
 pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
     let turn = fold.turns.first();
+    let pick = fold.mockups.cards.iter().rev().find(|(_, t)| t.is_empty());
     let (kind, id, text) = match state {
         "waiting_answer" if turn.is_none() => {
             let id = fold.hold.as_ref()?["id"].as_str()?;
@@ -221,11 +222,16 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
                     ("question", format!("ask:{id}"), turn.question.clone())
                 }
                 Some((id, _)) => ("approval", format!("ask:{id}"), None),
-                None => (
-                    "question",
-                    format!("question:{}", turn.ts),
-                    turn.question.clone(),
-                ),
+                // Its mockup offer is a question of its own: a later one in the turn is told too.
+                // PROPOSED [C78]: a daemon upgraded under an open app tells an offer up then once more.
+                None => match fold.mockups.cards.iter().find(|(_, t)| *t == turn.id) {
+                    Some((id, _)) => ("question", format!("offer:{id}"), None),
+                    None => (
+                        "question",
+                        format!("question:{}", turn.ts),
+                        turn.question.clone(),
+                    ),
+                },
             }
         }
         "sign_in" => (
@@ -238,6 +244,12 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         // A summary turn's isn't the user's news: the new host ends it, its renewal goes ahead.
         "interrupted" if summarizing(fold) => return None,
         "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
+        // A round ready to pick, its lead idle: told as a pick, the newest first [C78, D2067].
+        "idle" | "idle_jobs" if turn.is_none() && pick.is_some() => {
+            ("pick", format!("offer:{}", pick?.0), None)
+        }
+        // The turn's end a pick answered since came before is no news.
+        "idle" | "idle_jobs" if fold.mockups.picked > fold.finished => return None,
         // A rewind drops the last end (`last` None): no turn ended, so nothing is told again.
         _ if turn.is_some() || fold.finished == 0 || fold.last.is_none() => return None,
         // A quiet turn's end is no news [D119]; a summary's tells the done turn it served, once [D92].

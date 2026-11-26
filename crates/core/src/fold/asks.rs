@@ -13,6 +13,9 @@ pub struct Mockups {
     pub cards: Vec<(String, String)>,
     /// The workers whose mockup it opened: its own, and the ones it reuses.
     pub opened: Vec<String>,
+    /// When the user last answered a pick card, after which the turn's end before it isn't told [C78].
+    #[serde(default)]
+    pub picked: u64,
 }
 
 impl Fold {
@@ -67,10 +70,17 @@ impl Fold {
         let id = item["id"].as_str().unwrap_or("").to_string();
         match item["phase"].as_str() {
             Some("asked") => {
-                let turn = self.turns.first().map(|t| t.id.clone());
+                // A pick (`mockup` set) is no turn's: no call waits on it, only an offer's [C78].
+                let turn = (self.turns.first()).filter(|_| item["request"]["mockup"].is_null());
+                let turn = turn.map(|t| t.id.clone());
                 self.mockups.cards.push((id, turn.unwrap_or_default()));
             }
-            Some("answered") => self.mockups.cards.retain(|c| c.0 != id),
+            Some("answered") => {
+                if (self.mockups.cards.iter()).any(|c| c.0 == id && c.1.is_empty()) {
+                    self.mockups.picked = item["ts"].as_u64().unwrap_or(0);
+                }
+                self.mockups.cards.retain(|c| c.0 != id)
+            }
             Some("started") if !self.mockups.opened.contains(&id) => self.mockups.opened.push(id),
             _ => {}
         }

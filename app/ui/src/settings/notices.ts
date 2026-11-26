@@ -13,7 +13,7 @@ import { resetWords } from "../sidebar/words";
  * rows, goes as one that needs you, and is sent once per discharge even when the app opens after it.
  */
 
-type Notice = { id: string; kind: "question" | "approval" | "sign_in" | "done" | "failed"; text: string | null; held?: boolean };
+type Notice = { id: string; kind: "question" | "approval" | "pick" | "sign_in" | "done" | "failed"; text: string | null; held?: boolean };
 
 const seen = new Set<string>();
 let started = false;
@@ -27,6 +27,9 @@ function words(row: Row, notice: Notice): { title: string; body: string } {
       return { title: "A question for you", body: notice.text || titleOf(row) };
     case "approval":
       return { title: "Awaiting approval", body: titleOf(row) };
+    // A mockup round ready to pick, PROPOSED words [C78].
+    case "pick":
+      return { title: "A mockup to pick from", body: titleOf(row) };
     case "sign_in":
       return { title: "Sign-in needed", body: notice.text || titleOf(row) };
     case "done":
