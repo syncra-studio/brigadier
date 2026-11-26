@@ -36,7 +36,7 @@ pub fn row(data: &Path, spec: &Spec, f: &Fold, worker: bool) -> Option<Value> {
     })?;
     // A try refused (a rule, the project's trust, a level): its words, while it tries each minute.
     let refused: Value = crate::workers::read_json(&spec.dir.join(REFUSED)).unwrap_or_default();
-    if refused["cid"] == due["cid"] {
+    if due["cid"].is_string() && refused["cid"] == due["cid"] {
         due["error"] = refused["error"].clone();
     }
     Some(due)
