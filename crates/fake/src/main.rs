@@ -277,6 +277,18 @@ impl Agent {
             }
             slow();
             // Refused outright, before any turn: what a CLI at its limit answers to a new message.
+            // `refuse:N` says it resets in N seconds.
+            let refuse = words.iter().find_map(|w| w.strip_prefix("refuse:"));
+            if let Some(secs) = refuse
+                .and_then(|n| n.parse::<u64>().ok())
+                .filter(|_| limited())
+            {
+                let resets = now() + secs * 1000;
+                emit(
+                    json!({"t": "error", "code": 429, "message": "usage limit reached", "resets": resets}),
+                );
+                return emit(json!({"t": "done", "ok": false}));
+            }
             if words.contains(&"refuse") && limited() {
                 emit(json!({"t": "error", "code": 429, "message": "usage limit reached"}));
                 return emit(json!({"t": "done", "ok": false}));

@@ -82,16 +82,6 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         }
         Ok(reply)
     };
-    let (origin, text) = match due["resend"] == true {
-        true => (
-            "user",
-            f.last
-                .as_ref()
-                .and_then(|l| l["text"].as_str())
-                .unwrap_or(""),
-        ),
-        false => ("system", core::switch::LIMIT_RESET),
-    };
     let spec = crate::routing::told(data, &spec);
     let mut reply = core::send(
         &spec,
@@ -99,8 +89,8 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         child,
         &call,
         cid,
-        origin,
-        &Message::plain(text),
+        "system",
+        &Message::plain(core::switch::LIMIT_RESET),
         due["backend"].as_str().filter(|b| !b.is_empty()),
         due["of"].as_str(),
     );
