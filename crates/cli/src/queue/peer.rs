@@ -10,14 +10,15 @@ use std::io;
 use std::path::Path;
 
 /// Another session's message [D2034] or a system notice: under the queue's lock, a repeat of its id (queued, being
-/// edited or in the log) is dropped; else `first` records it and may take it itself (a steer, or
-/// held for the running turn), saying how; else it goes last, as its sender's. Says which happened.
+/// edited or in the log) is dropped; else `first`, told whether the queue holds one of its
+/// sender's, records it and may take it itself (a steer, or held for the running turn), saying
+/// how; else it goes last, as its sender's. Says which happened.
 pub fn add_peer(
     dir: &Path,
     mid: &str,
     origin: &str,
     text: &str,
-    first: impl FnOnce() -> io::Result<Option<&'static str>>,
+    first: impl FnOnce(bool) -> io::Result<Option<&'static str>>,
 ) -> io::Result<&'static str> {
     change(dir, |q| {
         let f = core::fold(dir, true)?.fold;
@@ -27,7 +28,10 @@ pub fn add_peer(
         if known {
             return Ok("repeat");
         }
-        if let Some(how) = first()? {
+        let theirs = |o: &Option<String>| o.as_deref() == Some(origin);
+        let queued = q.items.iter().any(|i| theirs(&i.origin))
+            || q.editing.as_ref().is_some_and(|e| theirs(&e.origin));
+        if let Some(how) = first(queued)? {
             return Ok(how);
         }
         q.items.push(Item {
@@ -69,6 +73,25 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     }
     let link = cut::link(&dir);
     let origin = format!("peer:{from}");
+    // Held behind its sender's earlier message that still waits [D67].
+    let earlier = (q.items.iter()).find(|i| i.origin.as_deref() == Some(origin.as_str()));
+    let on_way = crate::peers::written(data, from, id)
+        .first()
+        .is_some_and(|m| m != mid);
+    if held && (earlier.is_some() || on_way) {
+        let paused = q.paused || link.as_ref().is_some_and(|l| l.paused);
+        let then = match earlier {
+            Some(i) if i.error.is_some() => {
+                "which couldn't be sent, so both wait for its user to settle that"
+            }
+            Some(_) if paused => {
+                "which was stopped or paused, so both wait for its user to press Resume"
+            }
+            Some(_) => "which goes first",
+            None => "which is still on its way",
+        };
+        return format!("It's queued: it waits behind your earlier message to it, {then}.");
+    }
     let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
     // What goes before it: past a cut-off run only its parent's do.
     let block = workers::holding(data, id).then_some(f.finished);

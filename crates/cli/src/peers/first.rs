@@ -37,7 +37,7 @@ pub(crate) fn begin(data: &Path, from: &str, dir: &Path, mid: &str, text: &str) 
         "{}\"{title}\" ({from}), another agent, not the user. The user asked it for this session. Ask the user here and give results here. `brigadier read {from} --user` has their words.]\n\n{text}",
         core::agent::PEER_HEAD
     );
-    queue::add_peer(dir, mid, &format!("peer:{from}"), &body, || Ok(None))?;
+    queue::add_peer(dir, mid, &format!("peer:{from}"), &body, |_| Ok(None))?;
     queue::wake::now();
     Ok(())
 }

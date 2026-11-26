@@ -20,6 +20,19 @@ pub(super) fn hold(data: &Path, to: &str, rec: &mut In) -> io::Result<Option<&'s
     Ok(Some("held"))
 }
 
+/// Whether `from` sent `to` a message before this one that isn't on its way yet [D67].
+pub(super) fn behind(data: &Path, from: &str, to: &str, at: u64, mid: &str) -> bool {
+    let earlier = |o: &Out| (o.at, o.mid.as_str()) < (at, mid);
+    let outs = all::<Out>(data, from, "out").into_iter();
+    outs.filter(|o| o.to == to && o.state == "written")
+        .any(|o| earlier(&o))
+}
+
+pub(super) fn unsure(data: &Path, to: &str, mid: &str) -> bool {
+    let rec: Option<In> = workers::read_json(&path(data, to, "in", mid));
+    rec.is_some_and(|r| r.state == "uncertain")
+}
+
 /// The messages being sent now: still in their send's hands, up to when their receiver has them.
 static SENDING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
@@ -85,8 +98,16 @@ pub(super) fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'stati
             continue;
         };
         match super::hand(data, &r.from, &mut sent) {
-            // Still waiting, so this one, which came after it, does too.
-            Ok("held") if mine.is_some() => return Ok("held"),
+            // Its sender's earlier one still waits, so this one does too, by the order its sender
+            // sent them, which overlapping sends can record the other way; another sender's waits
+            // only on its own [D67].
+            Ok("held")
+                if mine.is_some()
+                    && r.from == from
+                    && (sent.at, &sent.mid) < (out.at, &out.mid) =>
+            {
+                return Ok("held");
+            }
             Ok(_) => {}
             Err(e) => eprintln!("brigadierd: message {} to {}: {e}", r.mid, out.to),
         }

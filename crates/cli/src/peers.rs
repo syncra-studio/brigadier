@@ -221,7 +221,7 @@ pub fn send(
     drop(sending);
     let said = match how {
         // As its receiver has it: a pass may have settled the sender's meanwhile.
-        "steered" if unsure(data, to, &out.mid) => queue::UNSURE.into(),
+        "steered" if held::unsure(data, to, &out.mid) => queue::UNSURE.into(),
         "steered" => "It went into the turn it's working on.".into(),
         "dropped" => return refuse(&format!("{to} was deleted.")),
         _ => queue::waits_for(data, me, to, &out.mid, how == "held"),
@@ -259,15 +259,20 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
     };
     // A switch review's findings start a fix turn of their own, never steered [D3026].
     let steer = workers::link(data, from).is_none_or(|l| l.review["switch"] != true);
-    let how = queue::add_peer(&dir, &mid, &origin, &body, || {
+    let at = out.at;
+    let how = queue::add_peer(&dir, &mid, &origin, &body, |queued| {
+        // Never past its sender's earlier one that still waits: held behind it [D67].
+        if held::behind(data, from, &to, at, &mid) {
+            return held::hold(data, &to, &mut rec);
+        }
         let f = core::fold(&dir, true)?.fold;
         let can = adapters::get(&f.backend).is_some_and(|a| a.can().steer);
         // Mid-turn it goes into that turn, past the user's queue and whatever Follow-up says: that
-        // queue is the user's own [D118]. A turn that can't take it yet (not begun, waiting on the
+        // queue is the user's own [D118], unless one of its sender's waits there [D67]. A turn that can't take it yet (not begun, waiting on the
         // user, an agent with no steer) holds it for the next pass; a dead host's turn doesn't.
         let alive = owner::state(data, &to) == core::fold::Owner::Alive;
         if let Some(t) = f.turns.first().filter(|_| alive && steer) {
-            if !(can && t.began && t.asks.is_empty()) {
+            if queued || !(can && t.began && t.asks.is_empty()) {
                 return held::hold(data, &to, &mut rec);
             }
             (rec.how, rec.turn, rec.state) =
@@ -329,11 +334,6 @@ fn hand(data: &Path, from: &str, out: &mut Out) -> io::Result<&'static str> {
     );
     settle_out(data, from, out, &state, None);
     Ok(how)
-}
-
-fn unsure(data: &Path, to: &str, mid: &str) -> bool {
-    let rec: Option<In> = workers::read_json(&path(data, to, "in", mid));
-    rec.is_some_and(|r| r.state == "uncertain")
 }
 
 /// Moves the sender's record on, and its row with it.

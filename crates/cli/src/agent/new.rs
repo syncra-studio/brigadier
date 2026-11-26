@@ -365,7 +365,7 @@ fn finish(data: &Path, me: &str, mut r: Record) -> io::Result<()> {
             &format!("{}-failed", r.mid),
             "system",
             &text,
-            || Ok(None),
+            |_| Ok(None),
         )?;
     }
     r.state = if r.error.is_none() {
