@@ -363,7 +363,7 @@ pub fn going(
     let files = (message::ids(&serde_json::to_value(&words)?).into_iter())
         .filter(|f| message::file_in(&sent, f).is_none())
         .collect();
-    let g = Going {
+    let mut g = Going {
         cid: cid.into(),
         rev,
         words,
@@ -375,7 +375,12 @@ pub fn going(
         if book.refused.iter().any(|c| c == cid) {
             return Ok(true);
         }
-        // Its hand-off's entry, if any, is this one now.
+        // Its hand-off's entry, or a try cut short, is this one now: files that try took are its.
+        let old = (book.inflight.iter().chain(&book.adding)).filter(|each| each.cid == cid);
+        let taken = old
+            .flat_map(|each| &each.files)
+            .filter(|f| !g.files.contains(f));
+        g.files.extend(taken.cloned().collect::<Vec<_>>());
         book.inflight.retain(|each| each.cid != cid);
         book.adding.retain(|each| each.cid != cid);
         match queue {
