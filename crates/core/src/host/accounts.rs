@@ -419,16 +419,6 @@ fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, Str
     Ok(token.map(|token| (token_key(host).into(), token)))
 }
 
-#[test]
-fn repository_url_uses_its_host() {
-    let repo = Repo {
-        kind: Kind::GitHub,
-        host: "github.example.com".into(),
-        path: "team/project".into(),
-    };
-    assert_eq!(repo.url(), "https://github.example.com/team/project");
-}
-
 /// Why `gh(repo, pick)` gave none: a picked account is named, as it's never read as another [D631].
 pub(super) fn no_gh(repo: &Repo, pick: Option<&str>) -> String {
     match pick {

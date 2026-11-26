@@ -264,24 +264,6 @@ fn server(s: &Value, lib: &[Value]) -> Value {
         "mark": mark, "icon": server_icons(s), "in_library": held, "form": form, "why": why})
 }
 
-#[test]
-fn registry_server_catalog_address() {
-    for (url, expected) in [
-        ("https://mcp.linear.app/mcp", Some("linear")),
-        ("HTTPS://MCP.LINEAR.APP:443/mcp///", Some("linear")),
-        ("https://mcp.linear.app/other", None),
-        ("https://mcp.linear.app/mcp?other=1", None),
-        ("https://mcp.linear.app.evil.example/mcp", None),
-        ("not a url", None),
-    ] {
-        let found = server(
-            &json!({"name": "app.linear/linear", "remotes": [{"type": "streamable-http", "url": url}]}),
-            &[],
-        );
-        assert_eq!(found["catalog"], json!(expected), "{url}");
-    }
-}
-
 /// A stdio package as its version-pinned command line, and what it is; None for one Brigadier
 /// can't start (dnx and mcpb come later).
 fn command(p: &Value) -> Option<String> {

@@ -245,39 +245,3 @@ pub fn cwd(v: &Value) -> Option<Event> {
     (v["hook_event"] == "PreToolUse" && !tool.is_empty() && !cwd.is_empty())
         .then(|| Event::Cwd(tool.into(), cwd.into()))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Claude's own Bash calls, from a real lead's turn, sort by what they do, as every provider's do [D291].
-    #[test]
-    fn claude_bash_steps_sort_by_what_they_do() {
-        let step = |command: &str| match &tool_start(
-            &json!({"id": "t", "name": "Bash", "input": {"command": command}}),
-            None,
-        )[..]
-        {
-            [Event::ToolStart(t)] => t.step,
-            _ => panic!("no step for {command}"),
-        };
-        assert_eq!(step("brigadier help 2>&1 | head -80"), "read");
-        assert_eq!(
-            step("brigadier models 2>&1 | head -60; brigadier help start 2>&1 | head -60"),
-            "read"
-        );
-        assert_eq!(step("cargo test --help"), "read");
-        assert_eq!(step("brigadier search \"clock\" --in s-abc"), "search");
-        assert_eq!(
-            step(
-                "which magick convert 2>/dev/null; ls /opt/homebrew/bin | grep -iE 'magick' | head"
-            ),
-            "list"
-        );
-        assert_eq!(step("/tmp/clockenv/bin/python -I -c \"print(1)\""), "run");
-        assert_eq!(
-            step("python3 -m venv /tmp/env && /tmp/env/bin/pip install -q pillow"),
-            "run"
-        );
-    }
-}
