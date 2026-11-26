@@ -121,6 +121,15 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
         .chain([bin.join("current/brigadierd")])
         .map(|p| format!("<string>{}</string>", esc(&p.to_string_lossy())))
         .collect();
+    let log = data.join("daemon.log");
+    let output = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)?;
+    if output.metadata()?.len() >= 5 * 1024 * 1024 {
+        output.set_len(0)?;
+    }
+    let stderr = esc(&log.to_string_lossy());
     let plist = data.join("daemon.plist");
     // Interactive: no resource limits, as when the app started it. No KeepAlive: the app starts it.
     fs::write(
@@ -132,6 +141,7 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
 <key>Label</key><string>{label}</string>
 <key>ProgramArguments</key><array>{argv}</array>
 <key>EnvironmentVariables</key><dict>{env}</dict>
+<key>StandardErrorPath</key><string>{stderr}</string>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><false/>
 <key>AbandonProcessGroup</key><true/>
