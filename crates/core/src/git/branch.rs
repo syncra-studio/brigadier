@@ -140,15 +140,13 @@ pub fn push(
     branch: &str,
     stop: &AtomicBool,
 ) -> io::Result<bool> {
-    let ahead = read(
-        &checkout.root,
-        &["rev-list", "--count", "@{upstream}..HEAD"],
-        stop,
-    );
+    check_name(checkout, branch)?;
+    // By its name, not HEAD: the folder may be on another branch by now.
+    let range = format!("{branch}@{{upstream}}..{branch}");
+    let ahead = read(&checkout.root, &["rev-list", "--count", &range], stop);
     if ahead.is_ok_and(|n| String::from_utf8_lossy(&n).trim() == "0") {
         return Ok(false);
     }
-    check_name(checkout, branch)?;
     if remote.starts_with('-') {
         return err(format!("No remote {remote}."));
     }

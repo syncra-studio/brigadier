@@ -324,8 +324,10 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         .unwrap_or("")
         .trim()
         .to_string();
-    if title.is_empty() || message.is_empty() {
-        let (t, m) = written(data, id, &pr.changes(base))?;
+    let seen = pr.changes(base);
+    let wrote = title.is_empty() || message.is_empty();
+    if wrote {
+        let (t, m) = written(data, id, &seen)?;
         if title.is_empty() {
             title = t;
         }
@@ -337,6 +339,14 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         true => {
             let fence = core::git::branch::fence(data)?;
             busy()?;
+            // A shared folder may have moved while the message was written: what's committed is
+            // what it describes [D1029].
+            let now = host::pr(data, id)?;
+            if now.branch != pr.branch || (wrote && now.changes(base) != seen) {
+                return Err(io::Error::other(
+                    "The branch changed while its message was written. Try again.",
+                ));
+            }
             Some(fence)
         }
         false => None,
