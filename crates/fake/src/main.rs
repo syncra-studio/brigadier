@@ -229,11 +229,19 @@ impl Agent {
         {
             return self.write(text);
         }
-        // Another session's message: the line Brigadier puts first is prose, not directives.
-        let body = (text
-            .strip_prefix("[From session ")
-            .and_then(|r| r.split_once("]\n\n")))
-        .map_or(text, |(_, body)| body);
+        // The bracketed lines Brigadier puts first (another session's name, the night's rules, a
+        // note's) are prose, not directives ("Never ask: …").
+        let mut body = text;
+        while let Some((_, rest)) = body.strip_prefix('[').and_then(|r| r.split_once("]\n\n")) {
+            body = rest;
+        }
+        // A reviewer's brief quotes the work's task: only what the asking session added acts.
+        if body.starts_with("Adversarial review of ") {
+            body = (body.split_once("From the session that asked for this review:\n"))
+                .map_or("", |(_, g)| {
+                    g.split_once("\n\nTry to break it.").map_or(g, |g| g.0)
+                });
+        }
         // A worker's brief: the line Brigadier puts after it is prose too ("To ask it something…").
         let body = body
             .split_once("\n\nYou're a worker for ")
