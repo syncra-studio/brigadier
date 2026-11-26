@@ -4,7 +4,7 @@
 //! beside a password, and before a script; Full runs them all. Password fields stay closed
 //! at every level (the page's script).
 
-use super::keys::{key_of, keys};
+use super::keys::{key_of, keys, shown_script, web_address};
 use super::{HUB, Words, lock, tab_of};
 use crate::agent::refuse;
 use crate::owner;
@@ -19,8 +19,6 @@ use std::time::{Duration, Instant};
 /// How long a call that asks the user waits for the answer; one that comes later still counts,
 /// told to the agent as a message.
 const ANSWER_WAIT: Duration = Duration::from_secs(300);
-/// The most of a script a card shows whole.
-const SCRIPT_MOST: usize = 16 * 1024;
 /// What a yes for the session lets through on its site.
 const COVERED: [&str; 4] = ["script", "action", "delete", "send"];
 
@@ -70,9 +68,11 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
             json!({"op": "open", "url": web_address(&one("a web address")?)?})
         }
         "navigate" => match (w.rest.as_slice(), w.values.get("--go").copied()) {
-            ([url], None) => json!({"op": "navigate", "tab": tab()?, "url": web_address(url)?}),
+            ([url], None) => {
+                json!({"op": "navigate", "tab": tab()?, "url": web_address(url)?, "asks": asks})
+            }
             ([], Some(go @ ("back" | "forward" | "reload"))) => {
-                json!({"op": "go", "tab": tab()?, "action": go})
+                json!({"op": "go", "tab": tab()?, "action": go, "asks": asks})
             }
             _ => {
                 return Err(refuse(
@@ -177,7 +177,7 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
             ));
         }
         "show" => none().and_then(|()| Ok(json!({"op": "show", "tab": tab()?})))?,
-        "close" => none().and_then(|()| Ok(json!({"op": "close", "tab": tab()?})))?,
+        "close" => none().and_then(|()| Ok(json!({"op": "close", "tab": tab()?, "asks": asks})))?,
         other => {
             return Err(refuse(&format!(
                 "`brigadier browser {other}` isn't a browser command. `brigadier browser --help` lists them."
@@ -186,42 +186,7 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
     })
 }
 
-/// `url` when it is a web address a tab may load.
-fn web_address(url: &str) -> Result<String, Value> {
-    let lower = url.trim().to_ascii_lowercase();
-    match lower.starts_with("http://") || lower.starts_with("https://") {
-        true => Ok(url.trim().to_string()),
-        false => Err(refuse(&format!(
-            "{url} isn't a web address: the browser opens http and https pages only."
-        ))),
-    }
-}
-
-/// `script` when the card can show the user exactly what runs: not empty, not too long to read,
-/// and with nothing that changes how the text reads.
-fn shown_script(script: &str) -> Result<String, Value> {
-    if script.trim().is_empty() {
-        return Err(refuse("`brigadier browser eval` needs a script."));
-    }
-    if script.len() > SCRIPT_MOST {
-        return Err(refuse(&format!(
-            "That script is {} bytes; the user reads it on a card, so {SCRIPT_MOST} is the most. Send a shorter one.",
-            script.len()
-        )));
-    }
-    let hidden = |c: char| {
-        (c.is_control() && !matches!(c, '\n' | '\t' | '\r'))
-            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}')
-    };
-    if script.chars().any(hidden) {
-        return Err(refuse(
-            "That script has invisible characters, so the user's card couldn't show what really runs. Write them as \\u escapes.",
-        ));
-    }
-    Ok(script.to_string())
-}
-
-/// The call an op is, for a yes to hold for it alone: clicks, typing and scripts.
+/// The call an op is, for a yes to hold for it alone: clicks, typing, scripts and leaving a page.
 pub(super) fn fingerprint(op: &Value) -> Option<String> {
     let s = |k: &str| op[k].as_str().unwrap_or("").to_string();
     match op["op"].as_str()? {
@@ -239,6 +204,9 @@ pub(super) fn fingerprint(op: &Value) -> Option<String> {
             op["modifiers"]
         )),
         "eval" => Some(format!("eval\u{1f}{}", s("script"))),
+        "navigate" | "go" | "close" => {
+            Some(format!("{}\u{1f}{}{}", s("op"), s("url"), s("action")))
+        }
         _ => None,
     }
 }
@@ -301,6 +269,9 @@ fn question(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
         "action" if click => format!("Click this on {site}?"),
         "action" if named => format!("Type in {name} on {site}?"),
         "action" => format!("Type on {site}?"),
+        "leave" if op["op"] == "close" => format!("Close your tab on {site}?"),
+        "leave" if op["action"] == "reload" => format!("Reload your page on {site}?"),
+        "leave" => format!("Leave your page on {site}?"),
         _ => format!("Run this script on {site}?"),
     }
 }
@@ -320,6 +291,9 @@ fn details(op: &Value, sensitive: &str, what: &str, url: &str) -> String {
             format!("Clicks {what}, and answers OK when the page asks to confirm.")
         }
         Some("click") => format!("Clicks {what}."),
+        Some("navigate") => format!("Opens {} in the tab you gave it.", s("url")),
+        Some("go") => format!("Goes {} in the tab you gave it.", s("action")),
+        Some("close") => "Closes the tab you gave it.".into(),
         Some("press") => format!("Presses {} in {what}.", keys(op)),
         Some("type") => {
             let then = if op["submit"] == true {

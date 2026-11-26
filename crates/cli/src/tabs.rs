@@ -73,6 +73,9 @@ struct Tab {
     /// The session of the agent working a browser tab, its own or a worker's; none for the user's own [D516].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     driver: Option<String>,
+    /// An agent works it as the user gave it: leaving or closing its page asks (agent.ts) [C41].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    given: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]

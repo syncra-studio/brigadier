@@ -1,7 +1,11 @@
-//! The keys an agent's `brigadier browser press` names, checked here so the app gets one form.
+//! The keys, web addresses and scripts an agent's `brigadier browser` names, checked here so the
+//! app gets one form.
 
 use crate::agent::refuse;
 use serde_json::Value;
+
+/// The most of a script a card shows whole.
+const SCRIPT_MOST: usize = 16 * 1024;
 
 /// A key as the agent names it ("Escape", "Meta+K", "⌘K", "shift+tab"): its name and modifiers,
 /// in the words main's key call takes.
@@ -102,4 +106,39 @@ pub(super) fn keys(op: &Value) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// `url` when it is a web address a tab may load.
+pub(super) fn web_address(url: &str) -> Result<String, Value> {
+    let lower = url.trim().to_ascii_lowercase();
+    match lower.starts_with("http://") || lower.starts_with("https://") {
+        true => Ok(url.trim().to_string()),
+        false => Err(refuse(&format!(
+            "{url} isn't a web address: the browser opens http and https pages only."
+        ))),
+    }
+}
+
+/// `script` when the card can show the user exactly what runs: not empty, not too long to read,
+/// and with nothing that changes how the text reads.
+pub(super) fn shown_script(script: &str) -> Result<String, Value> {
+    if script.trim().is_empty() {
+        return Err(refuse("`brigadier browser eval` needs a script."));
+    }
+    if script.len() > SCRIPT_MOST {
+        return Err(refuse(&format!(
+            "That script is {} bytes; the user reads it on a card, so {SCRIPT_MOST} is the most. Send a shorter one.",
+            script.len()
+        )));
+    }
+    let hidden = |c: char| {
+        (c.is_control() && !matches!(c, '\n' | '\t' | '\r'))
+            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{feff}')
+    };
+    if script.chars().any(hidden) {
+        return Err(refuse(
+            "That script has invisible characters, so the user's card couldn't show what really runs. Write them as \\u escapes.",
+        ));
+    }
+    Ok(script.to_string())
 }

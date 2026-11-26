@@ -88,13 +88,11 @@ impl super::Tabs {
                     .iter()
                     .any(mine) =>
             {
-                self.tabs[at].driver = Some(driver.into());
+                self.tabs[at].driven(driver);
             }
             Some(at) => {
-                let given = super::Tab {
-                    driver: Some(driver.into()),
-                    ..self.tabs.remove(at)
-                };
+                let mut given = self.tabs.remove(at);
+                given.driven(driver);
                 self.tabs.insert(end(&self.tabs, at), given);
             }
             None if !self.exists(tab) => {
@@ -111,6 +109,14 @@ impl super::Tabs {
             None => {}
         }
         Ok(())
+    }
+}
+
+impl super::Tab {
+    /// Worked by `driver` now; one that was the user's is theirs given [C41].
+    fn driven(&mut self, driver: &str) {
+        self.given |= self.driver.is_none();
+        self.driver = Some(driver.into());
     }
 }
 

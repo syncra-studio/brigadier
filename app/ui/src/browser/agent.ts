@@ -233,6 +233,9 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     await loaded(tab.id);
     if (!users && isPaused(tab.id)) return { result: "paused", tab: opened ?? tab.id };
   }
+  // A tab the user gave asks before its page is left or it closes, at Ask and Auto, as a script does [C41].
+  const leaves = tab.given && ["navigate", "go", "close"].includes(op.op) ? unapproved(tab.id, op, "leave") : null;
+  if (leaves) return leaves;
   if (!users) {
     agentDoing(tab.id, DOING[op.op] ?? null);
     await agentDrive(tab.id, true);
@@ -354,10 +357,8 @@ async function act(tab: string, op: Op, owner: string, label: string, driver: st
     }
     case "eval": {
       // At Auto a run asks: a yes goes with one call, on the page it was given on.
-      const shown = browserPage(tab);
-      if (op.asks && (approvedHere(tab, op.approved)?.url ?? null) !== shown?.url) {
-        return { result: "needsApproval", tab, url: shown?.url ?? "", generation: agentPage(tab).generation, sensitive: "script", what: "" };
-      }
+      const shown = browserPage(tab), asked = unapproved(tab, op, "script");
+      if (asked) return asked;
       const answer = await agentRun(tab, { kind: "eval", script: op.script });
       const error = errorOf(answer);
       if (error) return failed(error);
@@ -417,6 +418,10 @@ function approvedHere(tab: string, approved: { generation: number; url: string; 
   return approved && approved.generation === agentPage(tab).generation ? approved : null;
 }
 
+/** The card's ask, at Ask and Auto, unless the user's yes is for the page the tab is on now. */
+const unapproved = (tab: string, op: Op, sensitive: string, url = browserPage(tab)?.url): Result | null =>
+  op.asks && (approvedHere(tab, op.approved)?.url ?? null) !== url ? { result: "needsApproval", tab, url: url ?? "", generation: agentPage(tab).generation, sensitive, what: "" } : null;
+
 const SENSITIVE = ["pay", "send", "delete", "signIn", "credentials", "card", "oneTimeCode", "script", "action"];
 
 function askOf(answer: unknown): { sensitive: string; reasons: string[]; what: string } | null {
@@ -426,14 +431,9 @@ function askOf(answer: unknown): { sensitive: string; reasons: string[]; what: s
   return sensitive ? { sensitive, reasons: SENSITIVE.filter((each) => ask.reasons?.includes(each)), what: String(ask.what ?? "") } : null;
 }
 
-function errorOf(answer: unknown): string | null {
-  if (typeof answer !== "object" || !answer) return "The page didn't answer.";
-  return "error" in answer ? String(answer.error) : null;
-}
+const errorOf = (answer: unknown): string | null => (typeof answer !== "object" || !answer ? "The page didn't answer." : "error" in answer ? String(answer.error) : null);
 
-function urlOf(answer: unknown): string | null {
-  return typeof answer === "object" && answer && "url" in answer ? String(answer.url) : null;
-}
+const urlOf = (answer: unknown): string | null => (typeof answer === "object" && answer && "url" in answer ? String(answer.url) : null);
 
 /** What's loaded in a tab, or in a window its page opened. */
 const shownPage = (id: string): { url: string; title: string; loading: boolean; ready?: boolean } | undefined => {

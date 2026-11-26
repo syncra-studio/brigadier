@@ -39,7 +39,7 @@ export type TabKind = keyof typeof TAB_KINDS;
  * `target`: a file tab's path, a PR tab's number [D1014], the worker or subagent a Workers or Subagents tab shows (none: their list) [D80], the worker whose mockup it is, an attachment's `<id>/<name>` [D2104], a note's id [D244], a browser tab's page. A file tab also has the line last asked for, and whether it's
  * the preview the next file takes; a browser tab its profile, none for the default one.
  */
-export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string; driver?: string };
+export type Tab = { id: string; kind: TabKind; opener: string; target?: string; line?: number; preview?: boolean; scope?: string; profile?: string; driver?: string; given?: boolean };
 /** A PR named in full, the same from any project. */
 export const isRef = (target?: string) => /^[^/#]+\/[^/#]+\/[^/#]+#\d+$/.test(target ?? "");
 export type Tabs = { tabs: Tab[]; active: string };
@@ -306,10 +306,10 @@ export function driveTab(owner: string, id: string, url: string, driver: string)
       if (was && (was.kind !== "browser" || was.driver === driver)) return now;
       if (!was && id === CHAT) return now;
       // Dropped inside or beside its group, it stays where it was let go, as Chrome's.
-      if (was && [now.tabs[at - 1], now.tabs[at + 1]].some((tab) => tab?.driver === driver)) return { ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, driver } : tab)) };
+      if (was && [now.tabs[at - 1], now.tabs[at + 1]].some((tab) => tab?.driver === driver)) return { ...now, tabs: now.tabs.map((tab) => (tab.id === id ? { ...tab, driver, given: tab.given || !tab.driver } : tab)) };
       const rest = was ? now.tabs.toSpliced(at, 1) : now.tabs;
       const last = rest.findLastIndex((tab) => tab.driver === driver);
-      const made: Tab = was ? { ...was, driver } : { id, kind: "browser", opener: now.active, target: url, driver };
+      const made: Tab = was ? { ...was, driver, given: was.given || !was.driver } : { id, kind: "browser", opener: now.active, target: url, driver };
       return { ...now, tabs: rest.toSpliced(last < 0 ? (was ? at : rest.length) : last + 1, 0, made) };
     },
   });
