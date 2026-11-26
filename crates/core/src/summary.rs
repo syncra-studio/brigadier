@@ -34,9 +34,14 @@ pub fn tool_hook(dir: Option<&Path>) -> Option<&'static str> {
     })
 }
 
-/// The summary input's words. shortcut: a placeholder until rev 3 §2.3's prompt lands (step 7).
+/// The summary input's words [rev 3 §2.3]: ours, modelled on Claude Code's and Codex's.
 // No word of it is one of the fake's directives, so the drills' summary turn runs no step.
-pub const PROMPT: &str = "Brigadier renews this conversation next. First sum it up for the fresh one, as text only with no tools: what the user wants now, the rules and decisions that hold, what's done with its proof, what's open, and the next step.";
+pub const PROMPT: &str = include_str!("handoff/summary.txt");
+
+/// The headings a summary must hold, as the prompt names them; one without them failed [§4].
+pub fn headings() -> impl Iterator<Item = &'static str> {
+    PROMPT.lines().filter_map(|l| l.strip_prefix("## "))
+}
 
 /// Whether `backend`'s CLI is proved to refuse every tool call before it runs, under the flag
 /// [D92]. The others renew without a summary. shortcut: names only, the fake's, until step 8
