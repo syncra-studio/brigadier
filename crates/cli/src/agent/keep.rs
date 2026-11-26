@@ -40,7 +40,8 @@ pub(super) fn run(
     if owner::ensure(data, &spec).is_err() {
         return refuse("This session's host isn't running.".into());
     }
-    // The line's id, named once: a retry after another keep moved the list keeps aiming at it.
+    // The line as first judged, its id and words: a retry after another keep moved the list keeps
+    // aiming at it, and one that changed it meanwhile is refused, not overwritten.
     let first = keeps::list(&spec.dir);
     let target = match replace.as_ref().or(drop.as_ref()) {
         None => None,
@@ -49,7 +50,7 @@ pub(super) fn run(
             .ok()
             .and_then(|n| first.get(n.wrapping_sub(1)))
         {
-            Some(l) => Some(l.id.clone()),
+            Some(l) => Some((l.id.clone(), l.text.clone())),
             None => return refuse(format!("No kept line {k}: `brigadier keep` lists them.")),
         },
     };
@@ -59,8 +60,8 @@ pub(super) fn run(
             return refuse("This session's host isn't answering.".into());
         };
         let list = keeps::list(&spec.dir);
-        if let Some(t) = &target
-            && !list.iter().any(|l| &l.id == t)
+        if let Some((id, was)) = &target
+            && !list.iter().any(|l| &l.id == id && &l.text == was)
         {
             let k = replace
                 .as_ref()
@@ -71,8 +72,8 @@ pub(super) fn run(
             ));
         }
         let (op, id, words) = match (&replace, &drop, line, &target) {
-            (Some(_), None, Some(l), Some(id)) => ("replace", id.clone(), l),
-            (None, Some(_), None, Some(id)) => ("drop", id.clone(), ""),
+            (Some(_), None, Some(l), Some((id, _))) => ("replace", id.clone(), l),
+            (None, Some(_), None, Some((id, _))) => ("drop", id.clone(), ""),
             (None, None, Some(l), None) => {
                 ("add", format!("{me}.{}", &core::adapters::uuid()[..8]), l)
             }
