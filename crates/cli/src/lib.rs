@@ -161,7 +161,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let page = cmd == "host" && args.get(1).is_some_and(|a| a == core::host::REVIEW);
     let checked = |a: &&String| {
         *a != "--all"
-            && !(cmd == "archive" && *a == "--check")
+            && !(cmd == "archive" && (*a == "--check" || a.starts_with("--named=")))
             && !(home && *a == HOME_DRAFT)
             && !page
     };
