@@ -116,13 +116,14 @@ export function pageUsed(id: string): void {
 /**
  * Continue, or Done after the agent stopped for the user: the agent goes on in tab `id`; also when the tab closes.
  * `done`: a call of the agent's waiting on the tab goes on, else it hears Done as the user's message, which goes as
- * any follow-up does (sent, or queued and steered in while it works) [D781].
+ * any follow-up does (sent, or queued and steered in while it works) [D781]. `closedFrom`: the tab closed, and was
+ * this agent's; a waiting call hears there's no such tab now, and a message says the user closed it.
  */
-export function handBack(id: string, done = false): void {
+export function handBack(id: string, done = false, closedFrom?: string): void {
   const session = state.paused[id];
   if (session === undefined) return;
-  const driver = driverOf(id)?.driver;
-  const told = done && driver && state.asked[id] ? doneWords(id) : null;
+  const driver = closedFrom ?? driverOf(id)?.driver;
+  const told = done && driver && state.asked[id] ? (closedFrom === undefined ? doneWords(id) : `I closed browser tab ${id} without handing it back, so it's gone. Open another if you still need one.`) : null;
   set(({ paused, devtools, asked }) => {
     const { [id]: _gone, ...rest } = paused;
     const { [id]: _open, ...shut } = devtools;
