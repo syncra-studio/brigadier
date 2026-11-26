@@ -22,6 +22,32 @@ pub(super) struct Turn {
     pub end: &'static str,
 }
 
+/// A turn begins at its CLI's start, or where none runs, at its first output after the messages it
+/// takes, as the fold counts a turn from its input: some CLIs say it once for several.
+pub(super) fn begin(
+    turns: &mut Vec<Turn>,
+    waiting: &mut Vec<String>,
+    running: &mut bool,
+    start: bool,
+) {
+    if start || !*running {
+        let took = std::mem::take(waiting);
+        turns.push(Turn {
+            took,
+            ..Default::default()
+        });
+        *running = true;
+    }
+}
+
+/// A message the running turn takes, steered in, or else the next turn.
+pub(super) fn took(turns: &mut [Turn], waiting: &mut Vec<String>, running: bool, at: &str) {
+    match turns.last_mut().filter(|_| running) {
+        Some(t) => t.took.push(at.into()),
+        None => waiting.push(at.into()),
+    }
+}
+
 /// A reference's place in log order: a fork's inherited lines, then the session's own frames.
 pub(super) fn key(at: &str) -> (u8, u64) {
     match at.strip_prefix('i') {

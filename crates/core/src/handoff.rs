@@ -143,7 +143,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                 if let Some(text) = archive::answer(item) {
                     let by = c["by"].as_str().unwrap_or("").to_string();
                     given.insert(cid("cid"), (at.clone(), text, by, item["ack"] == true));
-                    took(&mut p.turns, &mut waiting, running, &at);
+                    records::took(&mut p.turns, &mut waiting, running, &at);
                 }
             }
             Some("delivered") if given.get(&cid("cid")).is_some_and(|g| !g.3) => {
@@ -154,16 +154,12 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                 let (at, text, by, _) = given.remove(&cid("id")).unwrap_or_default();
                 p.answers.push((at, text, by));
             }
-            Some("turn_start") => {
-                let took = std::mem::take(&mut waiting);
-                p.turns.push(records::Turn {
-                    took,
-                    ..Default::default()
-                });
-                running = true;
-            }
+            Some("turn_start") => records::begin(&mut p.turns, &mut waiting, &mut running, true),
+            // A CLI that says it once for several messages (Claude's init): a step starts the next.
+            Some("tool") => records::begin(&mut p.turns, &mut waiting, &mut running, false),
             // A turn a stop cut is the carry-on's to answer; the user's Stop or Pause stopped it.
-            Some("turn_end") if running => {
+            Some("turn_end") if running || !waiting.is_empty() => {
+                records::begin(&mut p.turns, &mut waiting, &mut running, false);
                 if let Some(t) = p.turns.last_mut() {
                     t.end = match cutting.as_str() {
                         "user" | "pause" => "stopped",
@@ -205,12 +201,17 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         // Answers come only by the delivered path above [D55].
         let entry = archive::entry(item, at.clone()).filter(|e| !e.answer);
         match entry.as_ref().map(|e| e.from) {
-            Some("user" | "worker" | "peer") => took(&mut p.turns, &mut waiting, running, &at),
+            Some("user" | "worker" | "peer") => {
+                records::took(&mut p.turns, &mut waiting, running, &at)
+            }
             // The entry itself: texts of one output chunk share a frame.
-            Some("agent") => (p.turns.last_mut().into_iter()).for_each(|t| {
-                t.texts.push(at.clone());
-                t.answer = Some(p.entries.len());
-            }),
+            Some("agent") => {
+                records::begin(&mut p.turns, &mut waiting, &mut running, false);
+                (p.turns.last_mut().into_iter()).for_each(|t| {
+                    t.texts.push(at.clone());
+                    t.answer = Some(p.entries.len());
+                })
+            }
             _ => {}
         }
         p.entries.extend(entry.map(|mut e| {
@@ -233,14 +234,6 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         p.starts.insert(0, start);
     }
     Ok(p)
-}
-
-/// A message the running turn takes, steered in, or else the next turn.
-fn took(turns: &mut [records::Turn], waiting: &mut Vec<String>, running: bool, at: &str) {
-    match turns.last_mut().filter(|_| running) {
-        Some(t) => t.took.push(at.into()),
-        None => waiting.push(at.into()),
-    }
 }
 
 /// One entry as the last exchange shows it: messages whole, steps on one short line, then where

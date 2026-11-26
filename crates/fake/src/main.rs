@@ -236,7 +236,13 @@ impl Agent {
                 emit(json!({"t": "error", "code": 402, "message": "Insufficient account funds"}));
                 return emit(json!({"t": "done", "ok": false}));
             }
-            emit(json!({"t": "turn"}));
+            // `FAKE_ONE_START`: one turn start for the process, as Claude's `system/init` gives.
+            static STARTED: std::sync::atomic::AtomicBool =
+                std::sync::atomic::AtomicBool::new(false);
+            let again = STARTED.swap(true, std::sync::atomic::Ordering::Relaxed);
+            if !again || env::var_os("FAKE_ONE_START").is_none() {
+                emit(json!({"t": "turn"}));
+            }
             emit(json!({"t": "mark", "start": self.conv().len().to_string()}));
             append(&self.home.join(format!("{}.conv", self.sid)), text);
             // `FAKE_OVERHEAD`: a CLI's own reading each turn, what it adds by itself plus a third of
