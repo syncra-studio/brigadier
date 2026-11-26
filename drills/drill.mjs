@@ -55,16 +55,24 @@ const status = (ids) => Object.fromEntries(cli(['status', ...ids]).all.map((s) =
 const statusAll = () => Object.fromEntries(cli(['status', '--all']).all.map((s) => [s.id, s]))
 
 function ps() {
+  // Read identities before arguments: a pid reused during the snapshot then fails the signal check.
+  const starts = JSON.parse(spawnSync(`${BIN}/brigadier-fake`, ['procs'], { encoding: 'utf8' }).stdout)
   const r = spawnSync('ps', ['-axo', 'pid=,pgid=,ppid=,stat=,command='], { encoding: 'utf8' })
   return r.stdout.trim().split('\n').map((l) => {
     const m = l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
-    return m && { pid: +m[1], pgid: +m[2], ppid: +m[3], stat: m[4], cmd: m[5] }
+    return m && { pid: +m[1], start_us: starts[m[1]], pgid: +m[2], ppid: +m[3], stat: m[4], cmd: m[5] }
   }).filter(Boolean)
 }
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
 // Whether there was one to kill.
-const kill = (pid, sig = 'SIGKILL') => { try { return process.kill(pid, sig) } catch { return false } }
+const kill = (p, sig = 'SIGKILL') => {
+  const ok = !!p?.start_us && spawnSync(`${BIN}/brigadier-fake`, ['procs', String(p.pid), String(p.start_us), sig], { encoding: 'utf8' }).stdout?.trim() === 'true'
+  if (!ok) log({ skipped_pid: p?.pid, reason: p?.start_us ? 'process gone or start time changed; not signalled' : 'no recorded start time; not signalled' })
+  return ok
+}
+const record = (pid) => ps().find((p) => p.pid === pid)
 const ownerPid = (id) => cli(['owner', id]).out.pid
+const owner = (id) => record(ownerPid(id))
 // Only processes of this run: its own data folder or its own binaries, never a shell or this script.
 const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsWith(DATA) || p.cmd.startsWith(`${BIN}/`)) && !/drill\.mjs|^\S*(zsh|bash|node)\b/.test(p.cmd))
 const agentsOf = (id) => ps().filter((p) => p.cmd.includes('brigadier-fake agent') && p.cmd.includes(`${DATA}/sessions/${id}/fake`))
@@ -77,7 +85,7 @@ function ledger(name = 'ledger') {
     const p = l.split(' ')
     if (p[0] === 'recv') recv[p[2]] = (recv[p[2]] ?? 0) + 1
     if (p[0] === 'start') starts[p[2]] = (starts[p[2]] ?? 0) + 1
-    if (p[0] === 'child') children[p[2]] = { sid: p[1], ends: +p[3] }
+    if (p[0] === 'child') children[p[2]] = { sid: p[1], ends: +p[3], start_us: p[4]?.startsWith('start_us=') ? +p[4].slice(9) : undefined }
     if (p[0] === 'child_done') done.set(p[1], +p[2])
   }
   return { recv, starts, children, done }
@@ -132,10 +140,11 @@ let daemons = []
 function startDaemon(bin = BIN) {
   const d = spawn(`${bin}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA }, detached: true, stdio: 'ignore' })
   d.unref()
+  d.start_us = record(d.pid)?.start_us
   daemons.push(d)
 }
 function stopDaemon() {
-  const hit = daemons.map((d) => kill(d.pid)).includes(true)
+  const hit = daemons.map((d) => kill(d)).includes(true)
   daemons = []
   return hit
 }
@@ -200,11 +209,16 @@ function cleanup() {
   // Give exiting processes a moment before calling them leftovers.
   for (let i = 0; i < 30 && mine().length; i++) spawnSync('sleep', ['0.1'])
   // Tool processes carry no path of ours: find them from the ledger's recorded pids instead.
-  const all = ps(), roots = new Set(Object.keys(ledger().children).map(Number))
+  const all = ps(), roots = new Set()
+  for (const [pid, child] of Object.entries(ledger().children)) {
+    const p = all.find((p) => p.pid === +pid)
+    if (!child.start_us || (p && p.start_us !== child.start_us)) log({ skipped_pid: +pid, reason: child.start_us ? 'recorded tool start time changed' : 'no recorded tool start time' })
+    else if (p) roots.add(+pid)
+  }
   const tools = all.filter((p) => roots.has(p.pid))
   for (let grew = true; grew;) { grew = false; for (const p of all) if (!tools.includes(p) && tools.some((t) => t.pid === p.ppid)) { tools.push(p); grew = true } }
   const left = [...mine(), ...tools].filter((p) => p.pid !== process.pid)
-  for (const p of left) kill(p.pid)
+  for (const p of left) kill(p)
   if (process.env.KEEP !== '1') drop(DATA)
   return left.map((p) => p.cmd.slice(0, 120))
 }
@@ -220,6 +234,7 @@ function swapTo(dir) {
 const follow = (id, n) => {
   const file = `${DATA}/follow-${id}-${n}.jsonl`
   const child = spawn(`${BIN}/brigadier`, ['read', id, '--follow'], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: ['ignore', fs.openSync(file, 'w'), 'ignore'] })
+  child.start_us = record(child.pid)?.start_us
   return { child, file }
 }
 
@@ -322,15 +337,16 @@ async function killloop(minutes) {
     // A client killed mid-send, then retried with the same command id.
     const c = cid('x')
     const inflight = spawn(`${BIN}/brigadier`, ['send', 'chat', `${c} say:1`, '--cid', c], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' })
+    inflight.start_us = record(inflight.pid)?.start_us
     await sleep(Math.floor(Math.random() * 40))
-    inflight.kill('SIGKILL')
+    kill(inflight)
     const before = pidsBefore()
     const listBefore = await daemonList(5000)
     const helloBefore = await daemonHello()
     const idleBefore = Object.fromEntries(idles.map((id) => [id, ownerJson(id)]))
     // The clients die and the app's binaries are replaced. On odd minutes the old daemon is left
     // running, and the new one must replace it only if its build is newer; on even ones it's killed.
-    for (const f of followers) f.child.kill('SIGKILL')
+    for (const f of followers) kill(f.child)
     const leave = k % 2 === 1
     if (!leave) stopDaemon()
     swapTo(builds[k % builds.length])
@@ -385,7 +401,7 @@ async function killloop(minutes) {
     log({ drill: 'killloop', ...ev })
     await sleep(Math.max(0, 60000 - (now() - t0)))
   }
-  for (const f of followers) f.child.kill('SIGKILL')
+  for (const f of followers) kill(f.child)
   await sleep(1000)
   // History: every live follow output must equal the start of a fresh full read.
   const history = {}
@@ -451,8 +467,8 @@ async function hang() {
   // A stuck reader: a follower frozen with the log open.
   const reader = follow('h3', 0)
   await sleep(300)
-  kill(reader.child.pid, 'SIGSTOP')
-  const agent = agentsOf('h1')[0].pid
+  kill(reader.child, 'SIGSTOP')
+  const agent = agentsOf('h1')[0]
   kill(agent, 'SIGSTOP')
   const t = now()
   const stalled = await waitFor(() => status(['h1']).h1.state === 'stalled', 10000, 50)
@@ -465,10 +481,10 @@ async function hang() {
   const stop = cli(['stop', 'h1'])
   r.stop = { ms: Math.round(stop.ms), result: stop.out }
   r.h1_after_stop = status(['h1']).h1.state
-  r.h1_processes_left = agentsOf('h1').length + ps().filter((p) => p.ppid === agent).length
-  kill(reader.child.pid, 'SIGKILL')
+  r.h1_processes_left = agentsOf('h1').length + ps().filter((p) => p.ppid === agent.pid).length
+  kill(reader.child, 'SIGKILL')
   // Kill the agent child: one clear state and one recovery.
-  const a2 = agentsOf('h2')[0].pid
+  const a2 = agentsOf('h2')[0]
   kill(a2)
   const gone = await waitFor(() => status(['h2']).h2.state === 'interrupted', 5000, 50)
   r.child_killed = { shown_ms: gone.ms, state: status(['h2']).h2.state }
@@ -477,7 +493,7 @@ async function hang() {
   r.child_killed.recover = rec.out.recovered ?? rec.out.error
   r.child_killed.after = status(['h2']).h2.state
   // Kill the owner itself: nothing may run unsupervised.
-  const own = ownerPid('h3')
+  const own = owner('h3')
   const tree = ps().filter((p) => p.pgid === agentsOf('h3')[0]?.pgid).map((p) => p.pid)
   kill(own)
   const k0 = now()
@@ -489,7 +505,7 @@ async function hang() {
   r.owner_killed.recover = rec3.out.recovered ?? rec3.out.error
   r.owner_killed.after_recover = status(['h3']).h3.state
   // Freeze the owner: status must say so, commands must fail fast, and nothing replaces it.
-  const o = ownerPid('h1')
+  const o = owner('h1')
   kill(o, 'SIGSTOP')
   r.owner_frozen = { state: status(['h1']).h1.state }
   const s = cli(['send', 'h1', `${cid()} say:1`], {}, 20000)
@@ -510,10 +526,10 @@ async function hang() {
     await sleep(300)
   }
   const bg = ps().filter((p) => p.pgid === first.pgid && p.pid !== first.pid).map((p) => p.pid)
-  const host = ownerPid('h4')
-  const dog = ps().find((p) => p.ppid === host && p.cmd.includes('--watchdog'))
+  const host = owner('h4')
+  const dog = ps().find((p) => p.ppid === host?.pid && p.cmd.includes('--watchdog'))
   kill(host)
-  kill(dog?.pid)
+  kill(dog)
   const k4 = now()
   const swept = await waitFor(() => bg.every((p) => !alive(p)), 15000, 100)
   r.host_and_watchdog_killed = {
@@ -534,16 +550,16 @@ async function hang() {
   startFake('h6')
   cli(['send', 'h6', `${cid()} exit:0`])
   await sleep(2500)
-  const h6 = ownerPid('h6')
-  const dog6 = ps().find((p) => p.ppid === h6 && p.cmd.includes('--watchdog'))?.pid
+  const h6 = owner('h6')
+  const dog6 = ps().find((p) => p.ppid === h6?.pid && p.cmd.includes('--watchdog'))?.pid
   fs.copyFileSync(`${BIN}/${OWNER_BIN}`, `${BIN}/.${OWNER_BIN}.new`)
   fs.renameSync(`${BIN}/.${OWNER_BIN}.new`, `${BIN}/${OWNER_BIN}`)
   const t6 = now()
   const moved6 = await waitFor(() => ownerJson('h6').mtime > t6, 10000, 50)
   await sleep(300)
-  const kids6 = ps().filter((p) => p.ppid === h6)
+  const kids6 = ps().filter((p) => p.ppid === h6?.pid)
   r.moved_host = {
-    moved_ms: moved6.ok ? moved6.ms : null, same_pid: ownerJson('h6').pid === h6, old_watchdog_gone: !alive(dog6),
+    moved_ms: moved6.ok ? moved6.ms : null, same_pid: ownerJson('h6').pid === h6?.pid, old_watchdog_gone: !alive(dog6),
     watchdogs: kids6.filter((p) => p.cmd.includes('--watchdog')).length, zombies: kids6.filter((p) => p.stat.startsWith('Z')).length,
   }
   cli(['send', 'h6', `${cid()} tree:120`])
@@ -574,7 +590,7 @@ async function catalogue() {
   const r = {}
   // Stale socket and two starts racing.
   startFake('c1')
-  kill(ownerPid('c1'))
+  kill(owner('c1'))
   await sleep(200)
   const [x, y] = [cid('ra'), cid('rb')]
   const racers = [x, y].map((c) => spawn(`${BIN}/brigadier`, ['send', 'c1', `${c} say:1`, '--cid', c], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' }))
@@ -596,7 +612,7 @@ async function catalogue() {
   cli(['send', 'c2', 'warm say:1'])
   // The warm turn ends first, so the only open turn is the one the crash catches.
   await waitFor(() => status(['c2']).c2.state === 'idle', 5000, 50)
-  kill(ownerPid('c2'))
+  kill(owner('c2'))
   await sleep(300)
   cli(['up', 'c2'], crashEnv)
   const boom = cid('boom')
@@ -858,7 +874,7 @@ async function rebirthDrill() {
   await fake('x1', 'work ctx:5 ctx:60 hang:4 say:1', async (id) => {
     cli(['send', id, 'warm say:1'])
     await settled(id, 30000)
-    kill(ownerPid(id))
+    kill(owner(id))
     await sleep(300)
     cli(['up', id], { BRIGADIER_CRASH_AT: 'after_intent:rb-' })
   })
@@ -1176,6 +1192,7 @@ async function peersDrill() {
     stopDaemon()
     const d = spawn(`${BIN}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA, BRIGADIER_CRASH_AT: at }, detached: true, stdio: 'ignore' })
     d.unref()
+    d.start_us = record(d.pid)?.start_us
     daemons.push(d)
     return d
   }
@@ -1199,20 +1216,20 @@ async function peersDrill() {
     const ev = { step, at: now(), id: step.startsWith('sender') ? s : step.startsWith('receiver') ? r : 'daemon' }
     if (step === 'daemon') { ev.fired = stopDaemon(); await sleep(Math.random() * 400); await restart() }
     else if (step.startsWith('peer:')) ev.fired = await hooked(step)
-    else if (step.endsWith('host')) { ev.fired = kill(ownerPid(ev.id)); await sleep(300 + Math.random() * 700); await back(ev.id) }
-    else if (step.endsWith('agent')) { ev.fired = agentsOf(ev.id).map((p) => kill(p.pid)).includes(true); await sleep(500 + Math.random() * 500); await back(ev.id) }
+    else if (step.endsWith('host')) { ev.fired = kill(owner(ev.id)); await sleep(300 + Math.random() * 700); await back(ev.id) }
+    else if (step.endsWith('agent')) { ev.fired = agentsOf(ev.id).map((p) => kill(p)).includes(true); await sleep(500 + Math.random() * 500); await back(ev.id) }
     else {
       // The daemon and the CLI both carry the hook, so whichever brings the receiver's host back, it dies at
       // the next peer message; then the daemon comes back clean.
       ev.id = receivers[Math.floor(Math.random() * 3)]
       const at = `${step.split(' ')[1]}:m`
       hook(at)
-      kill(ownerPid(ev.id))
+      kill(owner(ev.id))
       await cliAsync(['up', ev.id], { BRIGADIER_CRASH_AT: at })
-      const pid = ownerPid(ev.id)
+      const target = owner(ev.id), pid = target?.pid
       ev.fired = !!pid && (await waitFor(() => !alive(pid), 12000, 50)).ok
       await restart()
-      if (!ev.fired) kill(pid)
+      if (!ev.fired) kill(target)
       await back(ev.id)
     }
     ev.ms = now() - ev.at
@@ -1684,12 +1701,13 @@ async function speed() {
       const c = spawn(process.env.ELECTRON, ['-r', main, '--host-resolver-rules=MAP * ~NOTFOUND', '--use-mock-keychain', arms[arm]], { env: { ...process.env, BRIGADIER_DATA: DATA, SPEED_OUT: out, SPEED_BIG: 'g0000', SPEED_WORD: 'ipsum' }, stdio: ['ignore', 'ignore', 'pipe'] })
       let err = ''
       c.stderr.on('data', (d) => { err += d })
+      const child = record(c.pid)
       const ended = new Promise((res) => c.on('exit', res))
       await Promise.race([ended, sleep(90000)])
-      if (c.exitCode === null) { kill(c.pid); await ended }
+      if (c.exitCode === null) { kill(child); await ended }
       // The daemon the app started, by its own first frame, so the next start is whole.
       const d = await daemonHello()
-      if (d?.pid) { kill(d.pid); await waitFor(() => !alive(d.pid), 3000, 20) }
+      if (d?.pid) { kill(record(d.pid)); await waitFor(() => !alive(d.pid), 3000, 20) }
       try { return { ...JSON.parse(fs.readFileSync(out, 'utf8')), spawned: t } } catch { return { error: err.slice(-300) || 'no answer' } }
     }
     for (let k = -1; k < n; k++) {
@@ -1730,13 +1748,13 @@ async function speed() {
       if (got[arm].search.length !== n) bad.push({ size, arm, error: `${got[arm].search.length} of ${n} agent searches measured` })
       spawnSync(`${bin(arm)}/brigadier`, ['stop', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
       spawnSync(`${bin(arm)}/brigadier`, ['delete', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA } })
-      for (const d of daemons.splice(was)) kill(d.pid)
+      for (const d of daemons.splice(was)) kill(d)
     }
     await sleep(500)
     for (const arm of Object.keys(got)) {
       DATA = datas[arm]
       left.push(...mine().map((p) => p.cmd.slice(0, 100)))
-      for (const p of mine()) kill(p.pid)
+      for (const p of mine()) kill(p)
       drop(datas[arm])
     }
     r.at[size] = Object.fromEntries(Object.entries(got).map(([arm, g]) => [arm, Object.fromEntries(Object.entries(g).map(([k, v]) => [k, Array.isArray(v) ? times(v) : v]))]))
@@ -1815,11 +1833,12 @@ function side(name, bin, data) {
       fs.mkdirSync(this.data, { recursive: true, mode: 0o700 })
       const d = spawn(`${this.bin}/brigadierd`, [], { env: { ...process.env, HOME: home, BRIGADIER_DATA: this.data }, detached: true, stdio: 'ignore' })
       d.unref()
+      d.start_us = record(d.pid)?.start_us
       daemons.push(d)
-      this.pid = d.pid
+      this.process = daemons.at(-1)
       for (const kv of (process.env.AGENT_PATHS ?? '').split(',').filter(Boolean)) this.cli(['settings', 'agent-path', ...kv.split('=')])
     },
-    down() { kill(this.pid) },
+    down() { kill(this.process) },
   }
 }
 
@@ -1953,7 +1972,7 @@ async function standing() {
   }
   sides.forEach((sd) => sd.down())
   // Hosts wait on after a stop: every process under this run's folder ends with it.
-  for (const p of ps()) if (own.some((d) => p.cmd.includes(`${d}/`)) && p.pid !== process.pid) kill(p.pid)
+  for (const p of ps()) if (own.some((d) => p.cmd.includes(`${d}/`)) && p.pid !== process.pid) kill(p)
   log({ summary: 'standing', pass: results.length > 0 && n > 0 && !blocked.length, results, blocked })
   if (process.env.KEEP !== '1') own.forEach(drop)
 }
