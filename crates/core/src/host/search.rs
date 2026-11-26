@@ -114,7 +114,7 @@ impl Pr {
         many_hosts: bool,
     ) -> Result<(Value, Option<String>), String> {
         let repo = repos[0];
-        let gh = gh(repo, self.pick(repo)).ok_or(NO_GH)?;
+        let gh = gh(repo, self.pick(repo)).ok_or_else(|| super::no_gh(repo, self.pick(repo)))?;
         let repos: Vec<String> = repos.iter().map(|r| format!("repo:{}", r.path)).collect();
         let scope = format!("{} is:pr", repos.join(" "));
         self.search_as(&gh, repo, &scope, queries, after, many_hosts)

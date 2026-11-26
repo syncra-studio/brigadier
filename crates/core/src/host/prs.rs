@@ -64,7 +64,7 @@ impl Pr {
         }
         Some(match gh(repo, self.account.as_deref()) {
             Some(gh) => self.keep(self.read(&gh, self.touched())),
-            None => self.keep(Err(super::NO_GH.into())),
+            None => self.keep(Err(super::no_gh(repo, self.account.as_deref()))),
         })
     }
 
@@ -313,12 +313,17 @@ impl Pr {
     }
 
     pub fn list(&self) -> Option<Value> {
-        self.prs(
-            &self
-                .repo
-                .as_ref()
-                .and_then(|r| gh(r, self.account.as_deref()))?,
-        )
+        let repo = self.repo.as_ref()?;
+        match gh(repo, self.account.as_deref()) {
+            Some(gh) => self.prs(&gh),
+            // Kept as a failed read's is, so the reply says this and not an older read's why.
+            None => {
+                let one = self.one();
+                let _held = one.lock().unwrap_or_else(|e| e.into_inner());
+                self.keep(Err(super::no_gh(repo, self.account.as_deref())));
+                None
+            }
+        }
     }
 
     fn record_merge(&self, pr: &Value) {

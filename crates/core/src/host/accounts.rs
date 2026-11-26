@@ -411,9 +411,7 @@ fn session_env(data: &Path, spec: &Spec) -> Result<Option<(String, String)>, Str
             if gh.is_none()
                 && let Some(login) = pick
             {
-                return Err(format!(
-                    "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {host}, or choose another account in Project settings."
-                ));
+                return Err(signed_out(&login, host));
             }
             gh.and_then(|gh| gh.token)
         }
@@ -429,4 +427,20 @@ fn repository_url_uses_its_host() {
         path: "team/project".into(),
     };
     assert_eq!(repo.url(), "https://github.example.com/team/project");
+}
+
+/// Why `gh(repo, pick)` gave none: a picked account is named, as it's never read as another [D631].
+pub(super) fn no_gh(repo: &Repo, pick: Option<&str>) -> String {
+    match pick {
+        Some(login) if repo.kind == Kind::GitHub && setup::find("gh", &[]).is_some() => {
+            signed_out(login, &repo.host)
+        }
+        _ => super::NO_GH.into(),
+    }
+}
+
+fn signed_out(login: &str, host: &str) -> String {
+    format!(
+        "The picked GitHub account @{login} is signed out. Sign in with gh auth login --hostname {host}, or choose another account in Project settings."
+    )
 }

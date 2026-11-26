@@ -75,7 +75,8 @@ impl Pr {
             }
             false => false,
         };
-        let gh = gh(repo, self.account.as_deref()).ok_or_else(|| io::Error::other(super::NO_GH))?;
+        let pick = self.account.as_deref();
+        let gh = gh(repo, pick).ok_or_else(|| io::Error::other(super::no_gh(repo, pick)))?;
         let at = format!("{}/{}", repo.host, repo.path);
         let mut command = gh.command();
         command.args(["pr", "create", "-R", &at, "--head", head]);

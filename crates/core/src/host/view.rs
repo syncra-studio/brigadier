@@ -77,12 +77,12 @@ impl Pr {
             Some(other) => super::repo(&format!("https://{other}")),
             None => repo,
         };
-        match repo
-            .and_then(|r| Some((gh(&r, self.pick(&r))?, r)))
-            .map(|(gh, r)| (r, gh))
-        {
-            Some(found) => Ok(found),
-            None => err(super::NO_GH),
+        let Some(repo) = repo else {
+            return err(super::NO_GH);
+        };
+        match gh(&repo, self.pick(&repo)) {
+            Some(gh) => Ok((repo, gh)),
+            None => err(super::no_gh(&repo, self.pick(&repo))),
         }
     }
 
