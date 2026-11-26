@@ -7,7 +7,7 @@ import { sendFailed } from "../thread/follow";
 import type { Source } from "../thread/thread";
 import type { Chip } from "../panel/chips";
 import { daemonRun, failure, type Runner } from "./composer";
-import { resyncDraft, takeBack } from "./draft";
+import { givenBack, resyncDraft, takeBack } from "./draft";
 import { inThread } from "./queued";
 import { newId } from "./store";
 
@@ -44,6 +44,7 @@ export function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   };
   const given = (reply: Record<string, any>) => {
     setSent(id, (list) => list.filter((each) => each.cid !== message.cid));
+    sendFailed(message.cid);
     // Given back before (`again`), it's in the draft already, or comes with a save now.
     if (reply.again) return resyncDraft(run, id);
     takeBack(run, id, { cid: message.cid, parts: reply.parts, attachmentIds: reply.attachmentIds, chips: message.chips?.length ? message.chips : reply.chips, error: failure(reply) });
@@ -68,7 +69,8 @@ export const useOnItsWay = (id: string) => useSyncExternalStore(subscribeSent, (
 export function SentBubbles({ id, source = threadSource, run = daemonRun, hover = false }: { id: string; source?: Source; run?: Runner; /** Actions only on hover: the worker panel's, whose rows draw none. */ hover?: boolean }) {
   const list = useSyncExternalStore(subscribeSent, () => sent.get(id));
   const session = useSyncExternalStore(source.subscribe, source.get);
-  const done = (each: Sent) => inThread(session).has(each.cid);
+  // Given back by a later save (its reply lost), it's in the draft, not on its way.
+  const done = (each: Sent) => inThread(session).has(each.cid) || givenBack(id, each.cid);
   useEffect(() => {
     if (list?.some(done)) setSent(id, (now) => now.filter((each) => !done(each)));
   });

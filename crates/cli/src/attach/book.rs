@@ -7,6 +7,11 @@
 //! chips with it, whatever the UI does meanwhile; one cut short by a crash is settled by the log
 //! the next time anything here is read or changed [D54].
 
+mod unsent;
+
+use unsent::is_unsent;
+pub(crate) use unsent::unsent;
+
 use crate::{arg, flag};
 use brigadier_core::{self as core, message};
 use brigadier_frames::{lock_held, log};
@@ -21,26 +26,6 @@ const REFUSED: usize = 200;
 /// How long a session's host may still be starting the agent for a message its sender, gone, had
 /// asked it to take, before it logs it (proposed).
 const HOST_WAIT_MS: u64 = 60_000;
-
-/// An error before any host was asked to take the message: it surely never went.
-#[derive(Debug)]
-struct Unsent(String);
-
-impl std::fmt::Display for Unsent {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Unsent {}
-
-pub(crate) fn unsent(e: io::Error) -> io::Error {
-    io::Error::new(e.kind(), Unsent(e.to_string()))
-}
-
-fn is_unsent(e: &io::Error) -> bool {
-    e.get_ref().is_some_and(|inner| inner.is::<Unsent>())
-}
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -216,7 +201,8 @@ fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
         let host = !queue && lock_held(&dir.join("owner.lock"));
         let starting = |g: &Going| host && log::now_ms().saturating_sub(g.at) < HOST_WAIT_MS;
         for g in cut {
-            let went = logged(dir, &g.cid) || (queue && queued(dir, &g.cid));
+            // A send a busy turn put in the queue went there.
+            let went = logged(dir, &g.cid) || queued(dir, &g.cid);
             if !went && starting(&g) {
                 book.inflight.push(g);
                 continue;
@@ -439,6 +425,11 @@ pub fn going(
         };
         if kind == "chips" && how == How::Went {
             list[at].handed = true;
+            return Ok(None);
+        }
+        // Whether it went is unknown: kept, for replay to settle by the log once its host can't
+        // still log it; its bubble's Try again goes meanwhile under the same id.
+        if how == How::Unknown {
             return Ok(None);
         }
         let g = list.remove(at);
