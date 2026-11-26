@@ -37,12 +37,13 @@ pub fn status(fold: &Fold, live: &Live) -> Value {
 }
 
 /// The last turn ended on the user's Stop and nothing ran since, background jobs or not: Resume
-/// carries it on [D373, D2004].
+/// carries it on [D373, D2004]. Not a summary turn: its Stop ended its renewal too [D95, D102].
 pub fn resumable(fold: &Fold, state: &str) -> bool {
     matches!(state, "stopped" | "idle_jobs")
         && fold.turns.is_empty()
-        && (fold.last.as_ref())
-            .is_some_and(|l| l["outcome"] == "stopped" && l["reason"] != "handoff")
+        && (fold.last.as_ref()).is_some_and(|l| {
+            l["outcome"] == "stopped" && l["reason"] != "handoff" && l["origin"] != "summary"
+        })
 }
 
 impl Fold {
