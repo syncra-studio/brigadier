@@ -6,7 +6,7 @@ import type { Runner } from "./composer";
 import { keptChipsBack } from "./draft";
 
 /*
- * Messages on their way, sends and queue adds [D54, C58]. Each is kept in the renderer's own store, which outlives a
+ * Messages on their way, sends and queue adds [D54, C58], and Home's new chats (`start`, kept under the Home draft's key) [C65]. Each is kept in the renderer's own store, which outlives a
  * reload, from before the field empties until Rust says its book has it (the command's own reply, the draft's read, or
  * `draft <id> adopt` on a later connection) or what came of it: an empty book is no answer. Rust's then: its bubble or
  * queue row comes from Rust's book (`draft <id>`'s `going`), with Try again or Add again, Discard or Delete, and Edit.
@@ -16,7 +16,8 @@ import { keptChipsBack } from "./draft";
  */
 export type Going = {
   cid: string;
-  kind: "send" | "queue";
+  /** A start is Home's draft's new chat [C65]. */
+  kind: "send" | "queue" | "start";
   /** Its command as it goes, its chips (`--chips`) named; empty for one from an older book. */
   op: string[];
   /** The field's draft it was sent from, without its chips' words. */
@@ -32,6 +33,8 @@ export type Going = {
   /** Why it isn't on its way, shown with its actions; none while it goes. */
   stuck?: string;
   removing?: boolean;
+  /** A start whose session couldn't go: only Discard goes on with it. */
+  left?: boolean;
 };
 
 const PREFIX = "brigadier.uncertain.";
@@ -75,10 +78,11 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 export const useGoingOf = (session: string) => useSyncExternalStore(subscribe, () => of(session));
+export const goingOf = of;
 
-/** The value after `name` in a message's command, among its options: after `send <id> <text>` or `queue <id> add <text>`, so its words are never read as one. */
+/** The value after `name` in a message's command, among its options: after `send <id> <text>`, `queue <id> add <text>` or `start <id>`, so its words are never read as one. */
 export function flagOf(op: readonly string[], name: string): string | undefined {
-  const opts = op.slice(op[0] === "queue" ? 4 : 3);
+  const opts = op.slice(op[0] === "queue" ? 4 : op[0] === "start" ? 2 : 3);
   return opts.includes(name) ? opts[opts.indexOf(name) + 1] : undefined;
 }
 
@@ -89,16 +93,17 @@ export const heldChips = (session: string) => new Set(of(session).flatMap((each)
 export const UNCONFIRMED = "it couldn't be confirmed";
 
 /** Rust's book as the draft's read shows it: each there is Rust's now, and one not kept here yet comes in. */
-export function fromBook(session: string, going: readonly Pick<Going, "cid" | "kind" | "op" | "draft" | "reached">[]): void {
+export function fromBook(session: string, going: readonly (Pick<Going, "cid" | "kind" | "op" | "draft" | "reached" | "left"> & { error?: string | null })[]): void {
   const theirs = new Map(going.map((each) => [each.cid, each]));
   const now = of(session).map((each) => (theirs.has(each.cid) ? { ...each, booked: true, reached: theirs.get(each.cid)!.reached } : each));
-  const fresh = going.filter((each) => !now.some((one) => one.cid === each.cid)).map((each): Going => ({ ...each, at: Date.now(), booked: true, stuck: UNCONFIRMED }));
+  // A start stays with why Rust refused it, its session kept [C65].
+  const fresh = going.filter((each) => !now.some((one) => one.cid === each.cid)).map(({ error, ...each }): Going => ({ ...each, at: Date.now(), booked: true, stuck: error || UNCONFIRMED }));
   put(session, [...now, ...fresh]);
 }
 
-/** A session gone from Rust's list takes what was kept for it [D35]. */
+/** A session gone from Rust's list takes what was kept for it [D35]; Home's drafts, no session's, keep theirs. */
 export function pruneUncertain(ids: ReadonlySet<string>): void {
-  for (const at of Object.keys(localStorage).filter((each) => each.startsWith(PREFIX) && !ids.has(each.slice(PREFIX.length)))) {
+  for (const at of Object.keys(localStorage).filter((each) => each.startsWith(PREFIX) && !each.startsWith(`${PREFIX}@home`) && !ids.has(each.slice(PREFIX.length)))) {
     localStorage.removeItem(at);
     all.delete(at.slice(PREFIX.length));
   }

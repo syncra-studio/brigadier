@@ -62,7 +62,7 @@ export function answered(run: Runner, id: string, entry: Going, reply: Record<st
 }
 
 /** The app's copy to Rust (`adopt`): Rust's from now on, unless the draft or the session has it already. */
-function adopt(run: Runner, id: string, entry: Going): Promise<Record<string, any>> {
+export function adopt(run: Runner, id: string, entry: Going): Promise<Record<string, any>> {
   return run(["draft", id, "adopt", entry.cid, "--kind", entry.kind, "--op", JSON.stringify(entry.op), "--draft", JSON.stringify(entry.draft), ...(typeof entry.rev === "number" ? ["--draft-rev", String(entry.rev)] : [])]).then((reply) => {
     // Given back, its chips wait again: the draft's read can't release them once it's forgotten.
     if (reply.given_back) keptChipsBack(id, entry);

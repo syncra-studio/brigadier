@@ -228,9 +228,11 @@ export function StartingBubble({ id }: { id: string }) {
         actions={
           !entry.asking && (
             <>
-              <Button variant="link-blue" size={null} onClick={() => retry(id)}>
-                Try again
-              </Button>
+              {!entry.left && (
+                <Button variant="link-blue" size={null} onClick={() => retry(id)}>
+                  Try again
+                </Button>
+              )}
               <Button variant="link-blue" size={null} onClick={() => discard(id)}>
                 Discard
               </Button>
@@ -255,7 +257,8 @@ export function StartingBubble({ id }: { id: string }) {
       unconfirmed={entry.unknown}
       failed={entry.error}
       signIn={entry.signIn}
-      onRetry={entry.asking ? undefined : () => retry(id)}
+      maybe={entry.maybe}
+      onRetry={entry.asking || entry.left ? undefined : () => retry(id)}
       onDiscard={entry.asking ? undefined : () => discard(id)}
     />
   );

@@ -5,7 +5,7 @@ import { flagOf, forget, fromBook, type Going, keptOf, tellDrops } from "./uncer
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
- * the session; this copy is what brings them back at once on a switch. Home's words go the same way, under HOME_DRAFT.
+ * the session; this copy is what brings them back at once on a switch. Home's words go the same way, under HOME_DRAFT, and its refused new chats come back into them [C65].
  */
 export const HOME_DRAFT = "@home";
 const SAVE_MS = 400;
@@ -16,7 +16,7 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const writing = new Map<string, Promise<boolean>>();
 const loading = new Map<string, Promise<Draft | null>>();
 /*
- * A session's draft is revised in Rust, which gives a refused message back into it [D363]: a save names the revision
+ * A draft, a session's or Home's, is revised in Rust, which gives a refused message back into it [D363, C65]: a save names the revision
  * it last saw and every message given back it has taken since, or it's stale and Rust says what it missed.
  */
 const revs = new Map<string, number>();
@@ -93,7 +93,7 @@ async function save(run: Runner, id: string): Promise<boolean> {
   await tellDrops(run, id);
   const draft = drafts.get(id) ?? EMPTY_DRAFT;
   const acked = [...setOf(took, id)];
-  const revised = id.startsWith(HOME_DRAFT) ? [] : ["--base", String(revOf(id)), ...(acked.length > 0 ? ["--took", acked.join(",")] : [])];
+  const revised = ["--base", String(revOf(id)), ...(acked.length > 0 ? ["--took", acked.join(",")] : [])];
   const reply = await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft), ...revised]);
   if (typeof reply.rev === "number") revs.set(id, reply.rev);
   if (reply.ok) for (const cid of acked) took.get(id)?.delete(cid);

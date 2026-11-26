@@ -1,8 +1,10 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { daemonRun } from "../session/composer";
+import { daemonRun, failure } from "../session/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
-import { draftOf, HOME_DRAFT, keepDraft, loadDraft, moveDraft, oldProject } from "../session/draft";
+import { draftOf, HOME_DRAFT, keepDraft, loadDraft, moveDraft, oldProject, resyncDraft, revOf, takeBack } from "../session/draft";
+import { adopt, draftArgs, keep } from "../session/sent";
+import { flagOf, forget, goingOf, type Going, keptOf, UNCONFIRMED } from "../session/uncertain";
 import { dropTiles } from "../session/files";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
@@ -25,7 +27,10 @@ import { placeOnOpen } from "../thread/place";
  * - logged (in the log, delivery not proven): the session is "undelivered", and Try again is Rust's recover;
  * - refused or not logged: Try again runs the same start again, which finishes a setup cut short;
  * - the link lost: asked again under the same ids on reconnect, where a logged id is never sent twice.
- * Discard takes a made session away through Rust's delete [D35]; if that fails, it stays with the reason.
+ * Kept first in the app's own store (uncertain.ts), then in Rust's book of the Home draft it came from (`--home`), so a
+ * reload shows it again; Try again is Rust's `retry` of it, Discard Rust's `drop` [C65]. Refused, Rust takes back what
+ * the session took and deletes it, then gives its words back to that draft; one whose worktree was made stays, with the
+ * reason, until Discard. A made session that can't be deleted stays with the reason too [D35].
  */
 
 export type HomeDraft = {
@@ -169,6 +174,10 @@ export type Starting = {
   /** The link dropped before an answer: asked again on reconnect. */
   unknown?: boolean;
   error?: string;
+  /** It may have reached its agent: Rust couldn't say. */
+  maybe?: boolean;
+  /** Its session couldn't be deleted: only Discard goes on with it. */
+  left?: boolean;
   /** The Home draft it was sent from, which Discard puts the words back in. */
   draft?: string;
   /** A fork of session `source` [D1063]: no message; `cid` is the answer's, whose turn its thread starts with. */
@@ -184,6 +193,7 @@ const titles = new Map<string, string>();
 export const useStarting = starting.use;
 
 const get = (id: string) => starting.get().get(id);
+const add = (entry: Starting) => starting.set(new Map(starting.get()).set(entry.id, entry));
 function put(id: string, change: Partial<Starting> | null): void {
   const next = new Map(starting.get());
   const now = next.get(id);
@@ -197,8 +207,23 @@ const isOpen = (id: string) => window.location.hash === `#thread/${encodeURIComp
 
 /** A start's or recover's reply, read by its outcome, never by the session merely existing. */
 function land(id: string, reply: Record<string, any>): void {
-  if (!get(id)) return;
+  const entry = get(id);
+  if (!entry) return;
   if (reply.error === "disconnected") return put(id, { asking: false, unknown: true });
+  const key = entry.draft ?? HOME_DRAFT;
+  // Rust's book has it now, or what came of it: the app's copy goes.
+  if (!entry.fork) forget(key, entry.cid);
+  if (reply.given_back) {
+    // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
+    if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : reason(reply) });
+    else resyncDraft(daemonRun, key);
+    put(id, null);
+    rereadTabs(key);
+    if (isOpen(id)) newSession(entry.project);
+    return;
+  }
+  // In its session's log already, or settled: the session's own row and recover take over [D54].
+  if (reply.went || reply.result === "went" || reply.result === "settled") return put(id, null);
   // A fork answers with its session once it holds all it needs [D35].
   const result = (reply.result ?? (reply.ok && reply.session ? "delivered" : undefined)) as string | undefined;
   if (result === "delivered") {
@@ -210,16 +235,38 @@ function land(id: string, reply: Record<string, any>): void {
     return;
   }
   if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
-  put(id, { asking: false, unknown: false, error: reason(reply), signIn: reply.error === "sign_in" });
-  if (!get(id)!.fork) sendFailed(get(id)!.cid);
-  rereadTabs(get(id)!.draft ?? HOME_DRAFT);
+  put(id, { asking: false, unknown: false, error: reason(reply), maybe: reply.unsettled === true, left: reply.left === true, signIn: reply.error === "sign_in" });
+  if (!entry.fork) sendFailed(entry.cid);
+  rereadTabs(key);
 }
 
 function runStart(entry: Starting): void {
   put(entry.id, { asking: true, unknown: false, error: undefined });
   // Rust's short title, back long before the worktree is made [D186]; asked again if the link took it.
   if (!entry.title) ask({ op: "run", args: ["title", entry.text] }, (reply) => reply.ok && put(entry.id, { title: reply.title }));
-  ask({ op: "run", args: entry.args }, (reply) => land(entry.id, reply));
+  const kept = entry.draft === undefined ? undefined : keptOf(entry.draft, entry.cid);
+  ask({ op: "run", args: [...entry.args, ...(kept ? draftArgs(kept.draft, kept.rev ?? null) : [])] }, (reply) => land(entry.id, reply));
+}
+
+/** The app's copy of `entry` to Rust first, if Rust may not have it: null once Rust's book has it, else Rust's answer. */
+async function booked(entry: Starting): Promise<Record<string, any> | null> {
+  const kept = keptOf(entry.draft ?? HOME_DRAFT, entry.cid);
+  const adopted = kept && !kept.booked ? await adopt(daemonRun, entry.draft ?? HOME_DRAFT, kept) : { kept: true };
+  return adopted.kept ? null : adopted;
+}
+
+/**
+ * Each start Home's draft `key` holds, in Rust's book or as the app's own copy whose reply never came, shown again
+ * after a reload; a copy Rust may not have is handed to it [C65]. PROPOSED: "it couldn't be confirmed" for one Rust
+ * holds but can't say of.
+ */
+async function restore(key: string): Promise<void> {
+  await loadDraft(daemonRun, key);
+  for (const each of goingOf(key).filter((one) => one.kind === "start" && one.op[1] && !get(one.op[1]))) {
+    const entry: Starting = { id: each.op[1], cid: each.cid, project: flagOf(each.op, "--project") ?? null, text: flagOf(each.op, "--text") ?? "", parts: flagOf(each.op, "--parts"), title: "", args: each.op, sent: each.at, asking: false, draft: key, error: each.stuck ?? UNCONFIRMED, maybe: each.reached !== false, left: each.left };
+    add(entry);
+    if (!each.booked) void booked(entry).then((reply) => reply && reply.error !== "disconnected" && land(entry.id, reply));
+  }
 }
 
 /** A new session's id, made here so its row and thread show before Rust has it [D30]. */
@@ -243,7 +290,7 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   const cid = newId();
   const key = draftKey();
   const link = place.review && `\n\n${prUrl(place.review)}`;
-  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text + (link || ""), "--cid", cid, ...(place.review ? [] : ["--carry-tabs"])];
+  const args = ["start", id, "--backend", model.provider, ...(project ? ["--project", project, ...placeArgs(place)] : ["--scratch"]), "--model", model.model, "--text", text + (link || ""), "--cid", cid, "--home", key, ...(place.review ? [] : ["--carry-tabs"])];
   if (model.effort) args.push("--effort", model.effort);
   if (model.fast) args.push("--fast");
   if (level) args.push("--level", level);
@@ -251,7 +298,10 @@ export function start(project: string | null, place: Place, model: ModelChoice, 
   // Its files move from Home's draft folder into the session [D2022 #18].
   if (parts) args.push("--parts", link ? withLink(parts, link) : parts);
   const entry: Starting = { id, cid, project, text, parts, title: place.review ? reviewTitle(place.review) : "", args, sent: Date.now(), asking: true, draft: key, ...(project && place.workIn === "worktree" && place.base && { worktree: { base: place.base } }), ...(place.review && { then: reviewStarted(id, place.review) }) };
-  starting.set(new Map(starting.get()).set(id, entry));
+  add(entry);
+  // Kept before the field empties, with the draft it came from and the revision then, so a reload loses nothing.
+  const words: Draft = parts ? JSON.parse(parts) : { parts: [text], attachmentIds: [] };
+  keep(key, { cid, kind: "start", op: args, draft: words, rev: revOf(key), at: entry.sent } satisfies Going);
   placeOnOpen(id, cid);
   // The next new session starts on the project's default level again, as the old app's did.
   setHomeDraft({ level: undefined, overnight: undefined, once: undefined, model });
@@ -288,44 +338,42 @@ export function startFork(source: string, project: string | null, at: string, wh
   // Another agent or model goes on from there [D1081].
   if (to) args.push("--to", to.provider, "--model", to.model, ...(to.effort ? ["--effort", to.effort] : []), ...(to.fast ? ["--fast"] : []));
   const entry: Starting = { id, cid: at, project, text: "", title, args, sent: Date.now(), asking: true, fork: { source, where } };
-  starting.set(new Map(starting.get()).set(id, entry));
+  add(entry);
   window.location.hash = `#thread/${encodeURIComponent(id)}`;
   runStart(entry);
 }
 
-/** Again: Rust's recover for a message logged but not delivered; otherwise the same start under the same ids. */
+/** Again: Rust's recover for a message logged but not delivered; otherwise Rust's `retry` of the same start under the same ids. */
 export function retry(id: string): void {
   const entry = get(id);
-  if (!entry || entry.asking) return;
-  if (entry.outcome !== "logged") return runStart(entry);
-  put(id, { asking: true, error: undefined });
-  ask({ op: "run", args: ["recover", id] }, (reply) => land(id, reply));
+  if (!entry || entry.asking || entry.left) return;
+  if (entry.fork) return runStart(entry);
+  put(id, { asking: true, unknown: false, error: undefined });
+  if (entry.outcome === "logged") return void ask({ op: "run", args: ["recover", id] }, (reply) => land(id, reply));
+  void booked(entry).then((reply) => (reply ? land(id, reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "retry", entry.cid] }, (again) => land(id, again))));
 }
 
-/** The start goes: a session Rust made is deleted through Rust first [D35]; Home then shows the message again, its files Home's. */
-export async function discard(id: string): Promise<void> {
+/** The start goes: Rust deletes what's left of its session and gives its words and files back to its draft (`drop`) [D35]; a fork's session is deleted. */
+export function discard(id: string): void {
   const entry = get(id);
   if (!entry || entry.asking) return;
   put(id, { asking: true });
-  const back = entry.fork ? { ok: true } : await daemonRun(["attach", HOME_DRAFT, "back", id, entry.parts ?? "null", ...entry.args.filter((each) => each === "--carry-tabs")]);
-  if (!back.ok) return put(id, { asking: false, error: `Couldn't discard it: ${reason(back)}` });
-  ask({ op: "run", args: ["delete", id] }, (reply) => {
-    // Never made (no session.json): nothing of it is anywhere but here.
-    const gone = reply.ok || /os error 2\b|no session "/.test(String(reply.error));
-    if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
-    put(id, null);
-    if (entry.fork) {
-      if (isOpen(id)) window.location.hash = `#thread/${encodeURIComponent(entry.fork.source)}`;
-      return;
-    }
-    // Over what's been typed there since.
-    const key = entry.draft ?? HOME_DRAFT;
-    const words: Draft = entry.parts ? JSON.parse(entry.parts) : { parts: [entry.text], attachmentIds: [] };
-    const since = draftOf(key);
-    keepDraft(daemonRun, key, since && !isEmpty(since) ? { parts: [...words.parts, "\n\n", ...since.parts], attachmentIds: [...words.attachmentIds, ...since.attachmentIds] } : words);
-    rereadTabs(key);
-    if (isOpen(id)) newSession(entry.project);
-  });
+  if (entry.fork) {
+    const fork = entry.fork;
+    return void ask({ op: "run", args: ["delete", id] }, (reply) => {
+      // Never made (no session.json): nothing of it is anywhere but here.
+      const gone = reply.ok || /os error 2\b|no session "/.test(String(reply.error));
+      if (!gone) return put(id, { asking: false, error: `Couldn't discard it: ${reason(reply)}` });
+      put(id, null);
+      if (isOpen(id)) window.location.hash = `#thread/${encodeURIComponent(fork.source)}`;
+    });
+  }
+  const dropped = (reply: Record<string, any>) => {
+    if (reply.given_back || reply.went) return land(id, reply);
+    if (reply.ok) return put(id, null);
+    put(id, { asking: false, error: reply.left ? reason(reply) : `Couldn't discard it: ${failure(reply)}`, left: reply.left === true });
+  };
+  void booked(entry).then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
 }
 
 /**
@@ -333,13 +381,18 @@ export async function discard(id: string): Promise<void> {
  * lost is asked again under the same ids. Also reopens the open session's thread when Rust's row for it arrives.
  */
 export function useStartingRows(open: string | null): Row[] | undefined {
-  const { daemon, rows } = useDaemon();
+  const { daemon, rows, projects } = useDaemon();
   const pending = starting.use();
   const thread = useThread();
   const session = useSyncExternalStore(threadSource.subscribe, threadSource.get);
   useEffect(() => {
-    if (daemon) for (const entry of pending.values()) if (entry.unknown && !entry.asking) runStart(entry);
+    if (daemon) for (const entry of pending.values()) if (entry.unknown && !entry.asking) retry(entry.id);
   }, [daemon]);
+  // Every Home draft's starts, once read: after a reload, its rows come from Rust's book and the app's copies [C65].
+  const keys = [HOME_DRAFT, REVIEW_DRAFT, ...(projects ?? []).map((each) => keyOf(each.id))].join("\n");
+  useEffect(() => {
+    if (daemon) for (const key of keys.split("\n")) void restore(key);
+  }, [daemon, keys]);
   // Delivered, in Rust's rows and, when open, in its thread: nothing left to show from here.
   useEffect(() => {
     for (const entry of pending.values()) {

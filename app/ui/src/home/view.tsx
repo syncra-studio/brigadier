@@ -13,7 +13,7 @@ import { showToast } from "../components/toast";
 import { openThread } from "../daemon";
 import { BrigadierMark } from "../onboarding/mark";
 import { daemonRun } from "../session/composer";
-import { HOME_DRAFT } from "../session/draft";
+import { givenError, HOME_DRAFT, onGiven } from "../session/draft";
 import { usePutBack } from "../session/side";
 import { useComposerCommands } from "../session/commands";
 import { payload, useComposerFiles } from "../session/files";
@@ -101,6 +101,8 @@ export function HomeView(props: HomeProps) {
   const { name, projects, project, offline } = props;
   const salutation = useGreeting(Boolean(name));
   const [empty, setEmpty] = useState(() => !props.initial || isEmpty(props.initial));
+  // Why a new chat from here was refused, once its words are back [C65].
+  const [refused, setRefused] = useState(() => (props.draft ? givenError(props.draft) : null));
   const noModel = props.groups !== null && !props.model;
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const holder = project ? props.localHolder : undefined;
@@ -122,12 +124,27 @@ export function HomeView(props: HomeProps) {
     setEmpty(isEmpty({ parts: back, attachmentIds: draft?.attachmentIds ?? [] }));
     field.current?.focus();
   });
+  // A new chat Rust gave back goes above what's typed since, never over it, with its files, as a session's composer takes it [D363].
+  useEffect(() =>
+    props.draft === undefined
+      ? undefined
+      : onGiven(props.draft, (back) => {
+          const now = field.current?.parts() ?? [];
+          const parts = isEmpty({ parts: now, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...now];
+          field.current?.set(parts);
+          files.restore(back.attachmentIds);
+          setEmpty(isEmpty({ parts, attachmentIds: back.attachmentIds }));
+          if (back.error) setRefused(back.error);
+          return { parts, attachmentIds: [...new Set([...back.attachmentIds, ...files.tileIds])] };
+        }),
+  );
   const send = (parts: Draft["parts"]) => {
     const tiles = files.tiles();
     if (isEmpty({ parts, attachmentIds: tiles })) return;
     // Said in a toast: text under the composer would move it [D388].
     const waits = blocked ?? files.hold(parts);
     if (waits) return void showToast(waits);
+    setRefused(null);
     props.onSend(plainText(parts).trim(), payload(parts, tiles));
     files.sent();
   };
@@ -148,6 +165,14 @@ export function HomeView(props: HomeProps) {
     <SharedComposer
       rail={
         <>
+          {refused && (
+            <RailItem label="Notices">
+              <ul aria-live="polite">
+                {/* PROPOSED (C65) */}
+                <NoticeRow level="error" onDismiss={() => setRefused(null)}>{`Couldn't start this conversation. ${refused}`}</NoticeRow>
+              </ul>
+            </RailItem>
+          )}
           {props.modelError && (
             <RailItem label="Notices">
               <ul aria-live="polite">
