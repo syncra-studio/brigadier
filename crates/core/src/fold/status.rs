@@ -264,6 +264,12 @@ fn summarizing(fold: &Fold) -> bool {
         .map_or_else(last, |t| t.origin == "summary")
 }
 
+fn last_reason(fold: &Fold) -> &str {
+    (fold.last.as_ref())
+        .and_then(|l| l["reason"].as_str())
+        .unwrap_or("")
+}
+
 /// The last turn's end, named by that turn (its time for a log older than turn ids).
 fn ended(fold: &Fold) -> String {
     match fold.last.as_ref().and_then(|l| l["id"].as_str()) {
@@ -307,7 +313,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             // A failed turn says so though a job it left runs: its notice, mark and Try again.
             _ if outcome == "failed" && !summary => ("failed", Value::Null),
             _ if live.jobs > 0 => ("idle_jobs", live.jobs.into()),
-            _ if outcome == "stopped" => ("stopped", Value::Null),
+            // Brigadier's own stop of a summary turn, late or at a tool, isn't the user's [rev 3 §4].
+            _ if outcome == "stopped" && !(summary && last_reason(fold) == "summary") => {
+                ("stopped", Value::Null)
+            }
             _ if fold.items == 0 => ("new", Value::Null),
             _ => ("idle", Value::Null),
         };
