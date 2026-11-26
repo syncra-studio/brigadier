@@ -186,6 +186,11 @@ pub struct Fold {
     /// The stalled turn the user's Continue carries on: the rebirth guard starts over [D144].
     #[serde(default)]
     pub go_on: Option<String>,
+    /// A renewal held while its summary turn runs [repo-merge D92; rev 3 §2.2]: `{why, turn, last}`,
+    /// "rebirth" or "cut", the summary input's id and the turn the renewal serves. Cleared by the
+    /// renewal's own input, and by the user's Stop or Pause.
+    #[serde(default)]
+    pub renewing: Option<Value>,
     /// Its CLI's newest usage report in a run, `{backend, account, limits, at}`, for the store [D2039].
     #[serde(default)]
     pub limits: Option<Value>,
@@ -433,6 +438,8 @@ impl Fold {
                 // The user's Stop or Pause ends the limit; a handoff's stop keeps it [D51].
                 if matches!(item["by"].as_str(), Some("user" | "pause")) {
                     (self.limit, self.resets, self.refused) = (None, None, None);
+                    // A Stop during a summary turn stops the renewal too: nothing carries on (D95).
+                    self.renewing = None;
                 }
                 self.agents.clear();
                 self.halt();

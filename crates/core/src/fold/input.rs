@@ -178,6 +178,7 @@ impl Fold {
             self.picked = None;
             // For delete, `convs` keeps the old conversation, or the same one's new account.
             if switch["fresh"] == true {
+                self.renewing = None;
                 self.resume.remove(to);
                 self.pin.remove(to);
                 // What a renewal sent, for its overhead once the first reading comes [§2.6].
@@ -198,6 +199,9 @@ impl Fold {
             t.cid = Some(cid);
             t.ts = ts;
             return;
+        }
+        if item["origin"] == "summary" {
+            self.renewing = Some(json!({"why": item["renewing"], "turn": cid, "last": self.last}));
         }
         self.backend = str_of("backend");
         if item["origin"] == "user" {
