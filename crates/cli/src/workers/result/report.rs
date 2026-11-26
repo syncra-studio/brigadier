@@ -311,7 +311,10 @@ pub(in crate::workers) fn write_as(
         .iter()
         .filter_map(|v| v.as_str())
         .collect();
-    text += &format!("Ran on {}.\n", ran.join(" · "));
+    // A start that failed never ran, and may have no log to read [NH-A11].
+    if error.is_none() {
+        text += &format!("Ran on {}.\n", ran.join(" · "));
+    }
     text += &review::said(data, l, wid, turn);
     // That turn's own last message, not a later turn's the user started in the worker [D3006].
     let f = core::fold(&dir, true).map(|f| f.fold).unwrap_or_default();
@@ -379,11 +382,12 @@ pub(in crate::workers) fn write_as(
         }
         text += &format!("Its last message:\n{}\n", last.trim_end());
     }
-    if !direct {
+    if !direct && error.is_none() {
         text += &format!("\n`brigadier read {wid}` for more.");
     }
     // A lead that waited on this result often went on without ticking its list [D441].
     if core::rebirth::todo() && !direct {
+        text.truncate(text.trim_end().len());
         text += "\n\nTick off on your to-do list what this settles.";
     }
     let res = Res {
