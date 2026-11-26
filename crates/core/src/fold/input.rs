@@ -133,7 +133,8 @@ impl Fold {
         if self.control(item, &cid) {
             return;
         }
-        if item["origin"] != "system" {
+        // Brigadier's own inputs, a summary's too, leave what ran for the loop guard [D144].
+        if !matches!(item["origin"].as_str(), Some("system" | "summary")) {
             self.runs.ran.clear();
         }
         // A message ends what a held turn's subagent asked, as any new turn ends what waits.
