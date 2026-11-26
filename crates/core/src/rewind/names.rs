@@ -15,10 +15,25 @@ impl Store {
         Some((m.dev(), m.ino()))
     }
 
-    /// Whether the disk takes two letter cases for one, as the folder's own path tells.
+    /// Whether the disk takes two letter cases for one, as a name in the folder tells, read only:
+    /// the folder's own path may run through a disk that does where the folder's doesn't.
     pub(super) fn folds(&self) -> bool {
-        let there = self.file("");
-        there.is_some() && there == self.file(&self.cwd().to_string_lossy().to_uppercase())
+        let names: BTreeSet<String> = (fs::read_dir(self.cwd()).into_iter().flatten().flatten())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        let flip = |c: char| match c.is_ascii_lowercase() {
+            true => c.to_ascii_uppercase(),
+            false => c.to_ascii_lowercase(),
+        };
+        let other = (names.iter())
+            .find_map(|n| Some(n.chars().map(flip).collect::<String>()).filter(|o| o != n));
+        let Some(other) = other else {
+            // No name with a letter to ask by: the folder's path is all there is.
+            let there = self.file("");
+            return there.is_some()
+                && there == self.file(&self.cwd().to_string_lossy().to_uppercase());
+        };
+        !names.contains(&other) && self.file(&other).is_some()
     }
 
     /// `path` as the disk spells it, only its letter case ever apart; None where nothing is there.
