@@ -33,6 +33,10 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
     let at = (results.iter()).rposition(|(_, r)| due(r) && pick(r) && fresh(data, r))?;
     let (path, mut res) = results[at].clone();
     res.state = "taken".into();
+    // A refused one: the wait gave it, not a message an earlier try named [C26].
+    if !res.refused.is_empty() {
+        res.going.clear();
+    }
     write_json(&path, &res).ok()?;
     if res.how == "asks" {
         return Some(res.text);
@@ -42,6 +46,9 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
     for (path, mut r) in results.into_iter().take(at) {
         if due(&r) && r.how != "asks" {
             r.state = "taken".into();
+            if !r.refused.is_empty() {
+                r.going.clear();
+            }
             if write_json(&path, &r).is_ok() {
                 took.push(r);
             }
