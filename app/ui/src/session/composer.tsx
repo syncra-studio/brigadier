@@ -177,7 +177,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   /** With `sub`, a refusal gives it back (`carry`), and one whose reply never came waits marked in the queue (uncertain.ts). */
   const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) =>
     act({ kind: "add", qid, text: message, slot }, [...(slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...draftArgs(sub?.draft, sub?.rev ?? null)], (reply) => {
-      if (sub && reply.error === "disconnected") addUncertain(id, { qid, text: message, draft: sub.draft, parts, at: Date.now() }, daemon);
+      if (sub && reply.error === "disconnected") addUncertain(id, { qid, text: message, draft: sub.draft, chips: sub.chips, parts, at: Date.now() }, daemon);
       fail?.(reply);
     });
   /** The chips a message carries leave with it. Refused, Rust gives the message back with them (an edited one's kept
@@ -232,7 +232,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const edit = (qid: string) => {
     // One not added goes above what's typed, as a message given back [D363].
     const lost = uncertain.find(qid);
-    if (lost) return takeBack(run, id, { cid: qid, ...lost.draft });
+    if (lost) return takeBack(run, id, { cid: qid, ...lost.draft, chips: lost.chips });
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
     const { parts: draft, to: worker, shell: command } = row?.queue?.items.find((each) => each.id === qid) ?? {};

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
+import type { Chip } from "../panel/chips";
 import type { QueuedMessage } from "../components/composer/queue";
 import type { Runner } from "./composer";
 
@@ -10,7 +11,7 @@ import type { Runner } from "./composer";
  * reached does the app keep anything itself. It's never put in the draft, so it can't be sent by accident.
  * PROPOSED: "May not have been added"; once Rust answers without it, "Not added" with Add again and Edit.
  */
-export type Uncertain = { qid: string; text: string; draft: Draft; parts?: string; at: number; unadded?: boolean; removing?: boolean };
+export type Uncertain = { qid: string; text: string; draft: Draft; chips?: readonly Chip[]; parts?: string; at: number; unadded?: boolean; removing?: boolean };
 
 const PREFIX = "brigadier.uncertain.";
 const key = (session: string) => PREFIX + session;
@@ -78,7 +79,7 @@ export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (
         if (reply.pending) {
           return void setTimeout(() => {
             lostOn.delete(each.qid);
-            put(id, of(id));
+            put(id, [...of(id)]);
           }, 1000);
         }
         if (each.removing && reply.queued) remove(each.qid);
@@ -89,10 +90,10 @@ export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (
   });
   const rows: QueuedMessage[] = mine.filter((each) => !each.removing).map((each) => ({ id: each.qid, draft: each.draft, state: each.unadded ? "unadded" : "uncertain" }));
   const find = (qid: string) => mine.find((each) => each.qid === qid);
+  // Asked about again first: an add still under way is removed once it's in.
   const drop = (qid: string) => {
-    if (!answering) return mark(id, qid, { removing: true });
-    remove(qid);
-    dropUncertain(id, qid);
+    lostOn.delete(qid);
+    mark(id, qid, { removing: true });
   };
   return { rows, find, drop };
 }
