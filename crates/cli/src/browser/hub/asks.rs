@@ -1,7 +1,7 @@
 //! What an agent's browser call asks of the page, and the user's yes first where it needs one, on
 //! one "Go ahead in the browser?" card [D503, D518, D533]: Ask asks before every click and typing;
 //! Ask and Auto before an action that pays, sends, deletes, signs in or fills a card, a code or
-//! beside a password; Auto also before a script; Full runs them all. Password fields stay closed
+//! beside a password, and before a script; Full runs them all. Password fields stay closed
 //! at every level (the page's script).
 
 use super::keys::{key_of, keys};
@@ -62,8 +62,8 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         Some("sign-in") => "signIn".into(),
         Some(_) => return Err(refuse("--asks takes pay, send or sign-in.")),
     };
-    // Full runs every action; Ask and Auto ask before a sensitive one, Ask before any, and Auto
-    // before a script.
+    // Full runs every action; Ask and Auto ask before a sensitive one and a script, Ask before
+    // any.
     let (asks, always) = (level != "full", level == "ask");
     Ok(match w.action {
         "open" => {
@@ -146,7 +146,7 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         }
         "screenshot" => none().and_then(|()| Ok(json!({"op": "screenshot", "tab": tab()?})))?,
         "eval" => {
-            json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": level == "auto"})
+            json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": asks})
         }
         "events" => {
             none()?;
