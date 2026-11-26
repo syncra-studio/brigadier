@@ -336,8 +336,13 @@ async function act(tab: string, op: Op, owner: string, label: string, driver: st
       }
       const error = errorOf(answer);
       if (error) return withDialogs(failed(error), answer);
-      const left = await settled(tab);
-      const after = withDialogs(await withPopups(await page(left, owner, driver), owner, before), answer);
+      const first = await settled(tab);
+      const read = await page(first, owner, driver);
+      // A page may go on to another a moment later, as one that waits on its server first does: that one is the answer.
+      // shortcut: a second settle on every action (~0.75 s); upgrade: wait only while a request it started is in flight.
+      const left = await settled(first);
+      const on = left !== first || (read.result === "page" && agentPage(left).generation !== (read.page as { generation: number }).generation);
+      const after = withDialogs(await withPopups(on ? await page(left, owner, driver) : read, owner, before), answer);
       return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
     }
     case "eval": {
@@ -355,7 +360,7 @@ async function act(tab: string, op: Op, owner: string, label: string, driver: st
     case "screenshot": {
       const shot = await agentCapture(tab);
       const { url } = await agentShown(tab, shot.url);
-      return { result: "shot", tab, url, png: base64(shot.png) };
+      return { result: "shot", tab, url, png: shot.png };
     }
     case "ask": {
       // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
@@ -485,13 +490,4 @@ async function stoppedAt(id: string, driver: string): Promise<Result | null> {
   const { generation } = agentPage(at);
   const read = { ...(await agentShown(at, shown?.url ?? "", shown?.title)), generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
   return { result: "page", tab: at, page: read, user: false, stopped: true };
-}
-
-/** `bytes` as base64. */
-function base64(bytes: Uint8Array): string {
-  let text = "";
-  for (let at = 0; at < bytes.length; at += 0x8000) {
-    text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-  }
-  return btoa(text);
 }

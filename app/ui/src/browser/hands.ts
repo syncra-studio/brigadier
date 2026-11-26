@@ -305,6 +305,10 @@ export function agentEvents(id: string, since: number, kinds: readonly string[])
   return agent({ call: "events", guest: agentPage(id).guest, since, kinds });
 }
 
-export async function agentCapture(id: string): Promise<{ png: Uint8Array; url: string }> {
-  return await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as { png: Uint8Array; url: string };
+/** A picture of the page, as base64. */
+export async function agentCapture(id: string): Promise<{ png: string; url: string }> {
+  const shot = await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as { png: Uint8Array; url: string };
+  let text = "";
+  for (let at = 0; at < shot.png.length; at += 0x8000) text += String.fromCharCode(...shot.png.subarray(at, at + 0x8000));
+  return { png: btoa(text), url: shot.url };
 }
