@@ -229,9 +229,10 @@ pub fn notice(fold: &Fold, state: &str) -> Option<Value> {
         "interrupted" if turn.is_some() => ("failed", format!("end:{}", turn?.id), None),
         // A rewind drops the last end (`last` None): no turn ended, so nothing is told again.
         _ if turn.is_some() || fold.finished == 0 || fold.last.is_none() => return None,
-        // A quiet turn's end is no news [D119].
+        // A quiet turn's end is no news [D119]; a summary's tells the done turn it served, once [D92].
         "idle" | "idle_jobs" if fold.last.as_ref().is_some_and(|l| l["quiet"] == true) => {
-            return None;
+            let served = crate::summary::served(fold).filter(|l| l["outcome"] == "done")?;
+            ("done", format!("end:{}", served["id"].as_str()?), None)
         }
         "idle" | "idle_jobs" => ("done", ended(fold), None),
         "failed" | "interrupted" | "limited" | "out_of_credits" | "unresumable" => (

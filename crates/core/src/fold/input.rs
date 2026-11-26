@@ -225,7 +225,8 @@ impl Fold {
             switch: item["switch"].clone(),
             ts,
             spawning: item["starts_child"] == true,
-            quiet: str_of("origin").starts_with("result:asks:"),
+            // A worker's ask its parent answers, or a summary turn: no news of its own [D119, D92].
+            quiet: str_of("origin").starts_with("result:asks:") || item["origin"] == "summary",
             direct,
             ..Default::default()
         });

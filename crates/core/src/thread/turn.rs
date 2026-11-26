@@ -119,10 +119,9 @@ impl Thread {
 
     fn new_turn(&mut self, t: &Turn, ts: u64) {
         let at = self.turns.len();
-        let quiet = t.quiet || t.origin == "summary";
         self.turns.push(
             json!({"id": t.id, "status": "running", "startedAt": ts, "endedAt": null,
-            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": quiet}),
+            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": t.quiet}),
         );
         self.changed_turns.insert(at);
         self.open = Some(Open {
@@ -143,7 +142,7 @@ impl Thread {
             answers: Default::default(),
             denied: 0,
             stop: (None, false),
-            quiet,
+            quiet: t.quiet,
             joins: None,
             after: None,
         });
