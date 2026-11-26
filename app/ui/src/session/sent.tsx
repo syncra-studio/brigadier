@@ -7,7 +7,7 @@ import { sendFailed } from "../thread/follow";
 import type { Source } from "../thread/thread";
 import type { Chip } from "../panel/chips";
 import { daemonRun, failure, type Runner } from "./composer";
-import { revOf, takeBack } from "./draft";
+import { takeBack } from "./draft";
 import { inThread } from "./queued";
 import { newId } from "./store";
 
@@ -51,9 +51,10 @@ export function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   return run(message.steer ? [...args, "--steer"] : args).then((reply) => void (reply.ok || reply.result === "logged" || (reply.given_back ? given(reply) : fail(failure(reply)))), (cause) => fail(String(cause)));
 }
 
-/** A message sent from outside the composer, with its pending bubble and command-id recovery: the retry after a rewind (`retryOf`). */
+/** A message sent from outside the composer, with its pending bubble and command-id recovery: the retry after a rewind (`retryOf`).
+ * Not the field's words, so its revision is none: going or given back, it never clears what the field holds. */
 export function sendMessage(run: Runner, id: string, text: string, retryOf?: string, draft?: Draft | null): Promise<void> {
-  const entry: Sent = { cid: newId(), text, parts: draft ? JSON.stringify(draft) : undefined, steer: false, at: Date.now(), retryOf, draft: draft ?? { parts: [text], attachmentIds: [] }, rev: revOf(id) };
+  const entry: Sent = { cid: newId(), text, parts: draft ? JSON.stringify(draft) : undefined, steer: false, at: Date.now(), retryOf, draft: draft ?? { parts: [text], attachmentIds: [] }, rev: null };
   setSent(id, (list) => [...list, entry]);
   return deliver(run, id, entry);
 }
