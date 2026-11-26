@@ -58,7 +58,7 @@ pub(super) fn ended(
 ) -> Option<&'static str> {
     let per_turn = || crate::adapters::get(&agent.1).is_some_and(|a| a.per_turn());
     Some(match item["kind"].as_str()? {
-        "stopped" if matches!(item["by"].as_str(), None | Some("" | "user" | "pause")) => "stopped",
+        "stopped" if matches!(item["by"].as_str(), None | Some("" | "user" | "pause" | "lead")) => "stopped",
         "stopped" => "cut",
         "exited" if item["pid"].as_i64() != agent.0 => return None,
         "exited" if per_turn() && item["code"] == 0 => "done",
@@ -353,6 +353,7 @@ pub(super) fn line(id: &str, e: &Entry) -> String {
         "agent" => format!("\n[{at} you]\n{}\n", e.text.trim_end()),
         "cut" => "- stopped mid-way by Brigadier, not refused: redo it if still needed\n".into(),
         "stopped" => "- stopped by the user's Stop after any approval it had, not refused: it may have run, so check before redoing it\n".into(),
+        "led" => "- stopped by your lead's stop after any approval it had, not refused: it may have run, so check before redoing it\n".into(),
         "error" => format!(
             "- failed: {}\n",
             head(e.text.lines().next().unwrap_or(""), 200)

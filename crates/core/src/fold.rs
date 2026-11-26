@@ -172,6 +172,9 @@ pub struct Fold {
     /// Rewinds done, by the app's op id: one is never done twice [D54].
     #[serde(default)]
     pub rewinds: BTreeSet<String>,
+    /// The session whose stop came last, for a lead's: a re-stop of its wake names it too [C76].
+    #[serde(default)]
+    pub stop_from: Option<String>,
     #[serde(default)]
     pub runs: runs::Runs,
     /// How full the conversation's window is, `{used, window}`, as its CLI last said; none since
@@ -460,6 +463,7 @@ impl Fold {
                     // A Stop during a summary turn stops the renewal too: nothing carries on (D95).
                     self.renewing = None;
                 }
+                self.stop_from = item["from"].as_str().map(Into::into);
                 self.agents.clear();
                 self.halt();
                 self.close_all("stopped", item["by"].clone(), ts)

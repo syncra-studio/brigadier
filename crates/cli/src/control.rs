@@ -224,8 +224,12 @@ pub fn hush(data: &Path, rows: &BTreeMap<String, Value>) {
             continue;
         }
         let (data, id, by) = (data.to_path_buf(), id.clone(), by.to_string());
+        let from = row["woke_from"]
+            .as_str()
+            .filter(|_| by == "lead")
+            .map(String::from);
         thread::spawn(move || {
-            if let Err(e) = crate::queue::stop(&data, &id, &by, None) {
+            if let Err(e) = crate::queue::stop(&data, &id, &by, from.as_deref()) {
                 eprintln!("brigadierd: hush {id}: {e}");
             }
             HUSHING.lock().unwrap().remove(&id);

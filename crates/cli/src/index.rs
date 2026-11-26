@@ -326,6 +326,7 @@ impl Index {
             row["labels"] = e.marks.labels.clone(); // its labels [D3101, D3103]
             row["plan"] = f.fold.plan.shown(); // its agent's to-do list and what it finished, the summary card's Plan [D144]
             row["woke"] = json!(fold::woke(&f.fold)); // woke itself after a Stop or Pause: stopped again [D95]
+            row["woke_from"] = json!(f.fold.stop_from); // a lead's stop: the re-stop names it [C76]
             // Using the computer now: holding its lock, its turn running, not waiting on the user [D907, D957].
             row["computer"] = json!(
                 row["running"] == true && state != "waiting_answer" && crate::computer::holds(id)

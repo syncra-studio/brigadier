@@ -69,7 +69,8 @@ fn git(cwd: &str, args: &[&str]) -> String {
 }
 
 /// What a session's past holds for its hand-off: its entries, its user's answers, where each of
-/// its conversations began, and whether the user stopped a turn since their last message.
+/// its conversations began, and whether the user stopped a turn since their last message, or
+/// its lead did (`led`) [C76].
 #[derive(Default)]
 struct Past {
     entries: Vec<Entry>,
@@ -78,6 +79,7 @@ struct Past {
     starts: Vec<(String, String)>,
     turns: Vec<records::Turn>,
     stopped: bool,
+    led: bool,
 }
 
 /// `tails`: a step's output also shows its end, not only its size and reference [D485].
@@ -115,13 +117,14 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         if item["kind"] == "input" && (c.is_null() || c["kind"] == "interrupt") {
             cutting = c["by"].as_str().unwrap_or("").into();
             if c.is_null() && item["origin"] == "user" {
-                p.stopped = false;
+                (p.stopped, p.led) = (false, false);
             }
         }
-        if item["kind"] == "stopped" && item["by"] == "user" {
-            cutting = "user".into();
+        if item["kind"] == "stopped" && matches!(item["by"].as_str(), Some("user" | "lead")) {
+            cutting = item["by"].as_str().unwrap_or("").into();
         }
         p.stopped |= cutting == "user";
+        p.led |= cutting == "lead";
         // A summary turn, the conversation's own before its renewal, is no record but its Stop.
         if item["kind"] == "input" && c.is_null() {
             summary = item["origin"] == "summary";
@@ -153,7 +156,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             Some("turn_end") if running || !waiting.is_empty() => {
                 records::begin(&mut p.turns, &mut waiting, &mut running);
                 let how = match cutting.as_str() {
-                    "user" | "pause" => "stopped",
+                    "user" | "pause" | "lead" => "stopped",
                     "" if item["ok"] == false => "failed",
                     "" => "done",
                     _ => "cut",
@@ -214,6 +217,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                 e.from = match cutting.as_str() {
                     "rebirth" | "stall" => "cut",
                     "user" => "stopped",
+                    "lead" => "led",
                     _ => "error",
                 };
             }
@@ -456,6 +460,8 @@ pub fn build(
     // A step the user's Stop cut reads as refused in its CLI's words; it wasn't [D170].
     if p.stopped {
         out += "\n## Stopped\nThe user pressed Stop on a turn since their last message. A Stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
+    } else if p.led {
+        out += "\n## Stopped\nYour lead stopped a turn of yours since the user's last message. A stop isn't a refusal: a step it cut may read as refused or failed above, but it was stopped while it ran, after any approval it had, and may have run in part or in full.\n";
     }
     out += &pointers::section(id, &p);
     out += &format!("\n## Next\n{step}\n");
