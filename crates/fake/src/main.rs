@@ -234,6 +234,14 @@ impl Agent {
             .strip_prefix("[From session ")
             .and_then(|r| r.split_once("]\n\n")))
         .map_or(text, |(_, body)| body);
+        // A worker's brief: the line Brigadier puts after it is prose too ("To ask it something…").
+        let body = body
+            .split_once("\n\nYou're a worker for ")
+            .map_or(body, |(brief, _)| brief);
+        // A worker's result or ask into its parent is prose quoting the worker: nothing in it acts.
+        let about_worker =
+            text.starts_with("Worker ") && text.lines().next().is_some_and(|l| l.contains(" (w"));
+        let body = if about_worker { "" } else { body };
         // A hand-off is prose: only the message after its Next step acts [D88], or what the task's
         // `reborn:N:a+b` asks of its first N fresh conversations: `a b` again [D144].
         let again = text
