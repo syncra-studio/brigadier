@@ -325,7 +325,7 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         .trim()
         .to_string();
     let wrote = title.is_empty() || message.is_empty();
-    let seen = (wrote && commit).then(|| pr.fingerprint());
+    let seen = (wrote && changes).then(|| pr.fingerprint());
     if wrote {
         let (t, m) = written(data, id, &pr.changes(base))?;
         if title.is_empty() {
