@@ -206,11 +206,11 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         let entry = archive::entry(item, at.clone()).filter(|e| !e.answer);
         match entry.as_ref().map(|e| e.from) {
             Some("user" | "worker" | "peer") => took(&mut p.turns, &mut waiting, running, &at),
-            Some("agent") => p
-                .turns
-                .last_mut()
-                .into_iter()
-                .for_each(|t| t.texts.push(at.clone())),
+            // The entry itself: texts of one output chunk share a frame.
+            Some("agent") => (p.turns.last_mut().into_iter()).for_each(|t| {
+                t.texts.push(at.clone());
+                t.answer = Some(p.entries.len());
+            }),
             _ => {}
         }
         p.entries.extend(entry.map(|mut e| {

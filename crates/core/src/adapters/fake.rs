@@ -213,6 +213,9 @@ impl Adapter for Fake {
                 level: None,
             }],
             "say" => vec![Event::Text(s(&v, &["text"]).into())],
+            "says" => (v["texts"].as_array().into_iter().flatten())
+                .map(|t| Event::Text(t.as_str().unwrap_or("").into()))
+                .collect(),
             "image" => vec![Event::Image(
                 json!({"id": v["id"], "progress": v["progress"],
                 "attachment": v["attachment"], "name": v["name"], "prompt": null, "error": v["error"]}),

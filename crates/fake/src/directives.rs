@@ -81,6 +81,23 @@ impl Agent {
                     self.say(String::from_utf8_lossy(&text).trim_end());
                 }
             }
+            // `says:N`: N texts of 1 KiB in one output line, as a CLI's message of several blocks.
+            "says" => {
+                let texts: Vec<String> = (0..n)
+                    .map(|i| format!("part {i} {}", "x".repeat(1000)))
+                    .collect();
+                emit(json!({"t": "says", "texts": texts}));
+            }
+            // `final:N`: the turn ends on one output line of N texts, its answer the last.
+            "final" => {
+                let mut texts: Vec<String> =
+                    (1..n).map(|i| format!("note {i} on the way")).collect();
+                texts.push("the final answer".into());
+                emit(json!({"t": "says", "texts": texts}));
+                emit(json!({"t": "mark", "end": self.conv().len().to_string()}));
+                emit(json!({"t": "done"}));
+                return false;
+            }
             // `out:N`: a passing shell step with N KiB of numbered output, for reads that give it whole.
             "out" => {
                 self.tools += 1;

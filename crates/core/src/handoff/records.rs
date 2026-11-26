@@ -16,6 +16,8 @@ const ANSWER: usize = 60;
 pub(super) struct Turn {
     pub took: Vec<String>,
     pub texts: Vec<String>,
+    /// Its last text's entry, by index.
+    pub answer: Option<usize>,
     /// done, cut, stopped or failed; empty while it runs.
     pub end: &'static str,
 }
@@ -169,7 +171,7 @@ pub(super) fn conversation(id: &str, p: &Past) -> String {
         };
         match (t.end, t.texts.split_last()) {
             ("done", Some((last, rest))) => {
-                let answer = (p.entries.iter()).find(|e| e.at == *last && e.from == "agent");
+                let answer = t.answer.and_then(|i| p.entries.get(i));
                 let answer = answer.map_or("", |e| e.text.trim());
                 let start = upto(answer, ANSWER).map_or(answer.to_string(), |s| format!("{s}…"));
                 out += &format!("  ↳ {id}#{last} you: {}", start.replace('\n', " "));
