@@ -95,6 +95,8 @@ pub(super) fn proved(data: &Path, pid: &str, f: &fold::Fold, state: &str) -> io:
         let proof = match r.state.as_str() {
             "taken" if r.going == RESUMED => Some("going"),
             "taken" if r.going.is_empty() => Some("delivered"),
+            // Not in this fold yet: logged since it was read, it's proven on a later pass.
+            "taken" if !f.cids.contains_key(&r.going) => None,
             "taken" => settled(f, &r.going, state),
             "delivered" => Some("delivered"),
             "uncertain" | "dropped" => Some(""),
@@ -127,5 +129,9 @@ fn note(data: &Path, pid: &str, r: &Res, level: &str, text: &str) -> io::Result<
     }
     let note = json!({"event": "worker", "phase": "unsent", "ids": [r.wid], "result": r.id, "level": level, "text": text});
     owner::ensure(data, &core::load(data, pid)?)?;
-    owner::call(data, pid, json!({"op": "note", "data": note})).map(drop)
+    let reply = owner::call(data, pid, json!({"op": "note", "data": note}))?;
+    match reply["ok"] == true {
+        true => Ok(()),
+        false => Err(io::Error::other(format!("note not logged: {reply}"))),
+    }
 }
