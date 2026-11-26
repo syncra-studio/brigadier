@@ -180,9 +180,14 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
             // hold an MCP server's credentials: no command prints a secret [D2026].
             _ => continue,
         };
+        // A step's changed files, whole: what a range's cut entry points here for.
+        let files: String = (item["changes"].as_array().into_iter().flatten())
+            .filter_map(|c| c["path"].as_str())
+            .map(|p| format!("(file: {p})\n"))
+            .collect();
         let name = [s("kind"), s("name"), s("event")].join(" ");
         out += &format!(
-            "[{id}#{at} {}]\n{body}\n",
+            "[{id}#{at} {}]\n{body}\n{files}",
             name.split_whitespace().collect::<Vec<_>>().join(" ")
         );
     }
