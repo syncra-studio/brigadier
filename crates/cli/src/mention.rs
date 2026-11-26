@@ -192,7 +192,11 @@ pub fn paths(data: &Path, req: &Value) -> Value {
         let alone = named.next().filter(|_| named.next().is_none());
         let there = || {
             let at = git::inside(plain?, want).ok()?;
-            Some((want.to_string(), std::fs::metadata(at).ok()?.is_dir()))
+            // Only a file or folder: a pipe's read would never end.
+            let meta = std::fs::metadata(at)
+                .ok()
+                .filter(|m| m.is_file() || m.is_dir())?;
+            Some((want.to_string(), meta.is_dir()))
         };
         let hit = (all.iter().find(|f| f.1 == want).or(alone))
             .map(|(_, path, folder)| (path.clone(), *folder))
