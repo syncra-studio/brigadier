@@ -11,12 +11,13 @@ use std::io;
 use std::path::Path;
 
 /// The row's `reset`: its carry-on, or why it won't go by itself; none for a worker (routing's
-/// hold waits for it, D2028), in a night (the night carries on, C17), with the setting off, or at
+/// hold waits for it, D2028), archived or going, in a night (the night carries on, C17), with the setting off, or at
 /// no limit.
 pub fn row(data: &Path, spec: &Spec, f: &Fold, worker: bool) -> Option<Value> {
     let off = f.limit.is_none()
         || !f.turns.is_empty()
         || worker
+        || core::session::retired(&spec.dir).is_some()
         || core::overnight::load(&spec.dir).night()
         || crate::settings::get(data, "carry_on") != "true";
     if off {
