@@ -182,10 +182,9 @@ export const closeSignIn = (agent: string, id: string) => run(["setup", agent, "
 export const accountChats = (id: string) => run(["accounts", "remove", id, "--check"]).then((reply) => (reply.chats as number) ?? 0);
 
 /** Removes an account; Rust refuses while a chat on it is working and says why. */
-export async function removeAccount(id: string): Promise<string | null> {
-  const reply = await run(["accounts", "remove", id]);
+export async function removeAccount(id: string): Promise<void> {
+  await run(["accounts", "remove", id]);
   await loadAccounts();
-  return (reply.note as string | null) ?? null;
 }
 
 /**

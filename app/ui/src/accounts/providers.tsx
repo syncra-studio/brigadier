@@ -84,8 +84,8 @@ export function ProvidersPage({ detail }: { detail?: string }) {
       if (ask.kind === "auto") await setAuto(ask.agent.name, true);
       else if (ask.kind === "agents") await setAgents(true);
       else {
-        const note = await removeAccount(ask.account.id);
-        if (note) throw new Error(note);
+        // A note (a sign-in kind it couldn't sign out) is no failure: the confirm already said so [AC-3].
+        await removeAccount(ask.account.id);
       }
     });
     setBusy(false);
@@ -152,7 +152,7 @@ export function ProvidersPage({ detail }: { detail?: string }) {
             : ask?.kind === "agents"
               ? `When an agent's accounts are all at their limit, the conversation goes to another vendor's agent${targets.length ? ` (${listNames(targets)})` : ""}, and that agent sees the whole thread, including what it read. You turn it on at your own risk.`
               : ask?.kind === "remove"
-                ? `${ask.agent.label} signs it out with its own sign-out, then its folder is deleted. Your history stays.${ask.chats === null ? " Chats on this account will go on with this computer's login." : ask.chats ? ` ${ask.chats} chat${ask.chats === 1 ? "" : "s"} on this account will go on with this computer's login.` : ""}`
+                ? `${ask.account.check.kept_apart === false ? "Its sign-in kind isn't kept in its own folder, so it isn't signed out: only its folder is deleted." : `${ask.agent.label} signs it out with its own sign-out, then its folder is deleted.`} Your history stays.${ask.chats === null ? " Chats on this account will go on with this computer's login." : ask.chats ? ` ${ask.chats} chat${ask.chats === 1 ? "" : "s"} on this account will go on with this computer's login.` : ""}`
                 : ""
         }
         confirm={ask?.kind === "remove" ? "Remove" : "Turn on"}
