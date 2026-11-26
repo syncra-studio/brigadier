@@ -233,7 +233,13 @@ impl Agent {
             body = rest;
         }
         // A reviewer's brief quotes the work's task: only what the asking session added acts.
-        if body.starts_with("Adversarial review of ") {
+        // A plan's review acts on the plan's own words (`exitplan`'s is `approve`).
+        if body.starts_with("Adversarial review of ") && body.contains("\n\nThe plan:\n") {
+            body = (body.split_once("\n\nThe plan:\n")).map_or("", |(_, p)| {
+                p.split_once("\n\nTry to break this plan.")
+                    .map_or(p, |p| p.0)
+            });
+        } else if body.starts_with("Adversarial review of ") {
             body = (body.split_once("From the session that asked for this review:\n"))
                 .map_or("", |(_, g)| {
                     g.split_once("\n\nTry to break it.").map_or(g, |g| g.0)
