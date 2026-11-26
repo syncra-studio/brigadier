@@ -146,12 +146,12 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                 let (at, text, by, _) = given.remove(&cid("id")).unwrap_or_default();
                 p.answers.push((at, text, by));
             }
-            Some("turn_start") => records::begin(&mut p.turns, &mut waiting, &mut running, true),
+            Some("turn_start") => records::begin(&mut p.turns, &mut waiting, &mut running),
             // A CLI that says it once for several messages (Claude's init): a step starts the next.
-            Some("tool") => records::begin(&mut p.turns, &mut waiting, &mut running, false),
+            Some("tool") => records::begin(&mut p.turns, &mut waiting, &mut running),
             // A turn a stop cut is the carry-on's to answer; the user's Stop or Pause stopped it.
             Some("turn_end") if running || !waiting.is_empty() => {
-                records::begin(&mut p.turns, &mut waiting, &mut running, false);
+                records::begin(&mut p.turns, &mut waiting, &mut running);
                 let how = match cutting.as_str() {
                     "user" | "pause" => "stopped",
                     "" if item["ok"] == false => "failed",
@@ -217,7 +217,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             }
             // The entry itself: texts of one output chunk share a frame.
             Some("agent") => {
-                records::begin(&mut p.turns, &mut waiting, &mut running, false);
+                records::begin(&mut p.turns, &mut waiting, &mut running);
                 (p.turns.last_mut().into_iter()).for_each(|t| {
                     t.texts.push(at.clone());
                     t.answer = Some(p.entries.len());

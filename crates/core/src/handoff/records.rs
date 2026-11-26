@@ -28,14 +28,10 @@ pub(super) struct Turn {
 }
 
 /// A turn begins at its CLI's start, or where none runs, at its first output after the messages it
-/// takes, as the fold counts a turn from its input: some CLIs say it once for several.
-pub(super) fn begin(
-    turns: &mut Vec<Turn>,
-    waiting: &mut Vec<String>,
-    running: &mut bool,
-    start: bool,
-) {
-    if start || !*running {
+/// takes, as the fold counts a turn from its input: some CLIs say it once for several. A start
+/// while one runs is a step's in it (OpenCode's `run` says one at each), as the fold keeps it.
+pub(super) fn begin(turns: &mut Vec<Turn>, waiting: &mut Vec<String>, running: &mut bool) {
+    if !*running {
         let took = std::mem::take(waiting);
         turns.push(Turn {
             took,
