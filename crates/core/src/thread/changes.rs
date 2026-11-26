@@ -34,6 +34,15 @@ impl Thread {
         Some(out)
     }
 
+    /// A summary turn starts hidden, beside the block its renewal carries on, which stays held
+    /// meanwhile, never settled as ended [rev 3 §2.2].
+    pub(super) fn summary_opened(&mut self, t: &crate::fold::Turn, ts: u64) {
+        self.new_turn(t, ts);
+        let start = (t.id.clone(), t.id.clone(), self.items.len(), false);
+        self.starts.push(start);
+        self.divider();
+    }
+
     /// The renewal's divider, from its cut or its summary turn's start, running till the fresh
     /// conversation starts: one, for a cut its summary turn follows [D112, D203; rev 3 §2.2].
     pub(super) fn divider(&mut self) {

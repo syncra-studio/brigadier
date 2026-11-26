@@ -117,11 +117,11 @@ impl Thread {
         }
     }
 
-    fn new_turn(&mut self, t: &Turn, ts: u64) {
+    pub(super) fn new_turn(&mut self, t: &Turn, ts: u64) {
         let at = self.turns.len();
         self.turns.push(
             json!({"id": t.id, "status": "running", "startedAt": ts, "endedAt": null,
-            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": t.quiet}),
+            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": t.quiet, "summary": t.origin == "summary"}),
         );
         self.changed_turns.insert(at);
         self.open = Some(Open {
@@ -230,13 +230,16 @@ impl Thread {
 
     pub(super) fn open_turn(&mut self, t: &Turn, ts: u64) {
         self.shown.insert(t.id.clone());
+        if t.origin == "summary" {
+            return self.summary_opened(t, ts);
+        }
         // A turn no one sent, or a worker's result, while a turn is held for its helpers, or right
         // after they ended: the agent woke for them, and carries that block on [D106, D118, D151].
         // So does the input that carries on a turn Brigadier cut [D108, D124]. While its helpers
         // still run the block is running: any turn that starts then is part of it, the user's
         // message a steer in it, never a second block beside it [D521]. Any other ends what waits.
         let last = (self.held.values().map(|(o, _)| o.at).max())
-            .filter(|&at| at + 1 == self.turns.len())
+            .filter(|&at| self.turns[at + 1..].iter().all(|t| t["summary"] == true))
             .and_then(|at| self.turns[at]["id"].as_str().map(String::from));
         let cut = (last.as_ref())
             .and_then(|id| self.held.get(id))
@@ -319,10 +322,6 @@ impl Thread {
             .take_if(|at| self.items[*at]["kind"] == "line")
         {
             self.switching = Some(at);
-        }
-        // A summary turn's rows are hidden: the renewal's divider stands for it [rev 3 §2.2].
-        if t.origin == "summary" {
-            return self.divider();
         }
         // A rebirth shows as one divider, its message under it; a cut another turn beat fails, a pick's ends done [D88, D112, D203].
         let rebirth = matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"));
