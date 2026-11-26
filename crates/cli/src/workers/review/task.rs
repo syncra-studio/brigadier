@@ -117,13 +117,21 @@ pub(crate) fn plan(
         g => format!("\n\nFrom the session that asked for this review:\n{g}"),
     };
     if of == "session" {
-        let task = link(data, me).map(|l| l.brief);
+        let spec = core::load(data, me).map_err(|e| refuse(&e.to_string()))?;
+        // A night's task is its words and done list as the user agreed them, not the lead's [D3026].
+        let o = core::overnight::load(&spec.dir);
+        let night = (o.night() && !o.items.is_empty()).then(|| {
+            let list = (o.items.iter().enumerate())
+                .map(|(i, it)| format!("\n{}. {}", i + 1, it.title))
+                .collect::<String>();
+            format!("{}\n\nIts done list:{list}", o.words.trim())
+        });
+        let task = link(data, me).map(|l| l.brief).or(night);
         if task.is_none() && given.is_empty() {
             return Err(refuse(
                 "`brigadier start --reviewing session \"<plan>\"` needs the plan or work to review, in quotes: your session has no brief of its own.",
             ));
         }
-        let spec = core::load(data, me).map_err(|e| refuse(&e.to_string()))?;
         let f = core::fold(&spec.dir, true).map_err(|e| refuse(&e.to_string()))?;
         // Its author is the session's own agent [D385, §6].
         let authors = vec![crate::models::next_agent(&spec, &f.fold).to_string()];
