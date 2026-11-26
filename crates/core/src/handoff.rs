@@ -81,6 +81,8 @@ struct Past {
     turns: Vec<records::Turn>,
     stopped: bool,
     led: bool,
+    /// The newest good summary note: its reference, the note, and the renewals since it.
+    summary: Option<(String, Value, usize)>,
 }
 
 /// `tails`: a step's output also shows its end, not only its size and reference [D485].
@@ -126,6 +128,9 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         }
         p.stopped |= cutting == "user";
         p.led |= cutting == "lead";
+        if item["kind"] == "note" && item["event"] == "summary" && item["failed"].is_null() {
+            p.summary = Some((at.clone(), item.clone(), p.starts.len()));
+        }
         // A summary turn, the conversation's own before its renewal, is no record but its Stop.
         if item["kind"] == "input" && c.is_null() {
             summary = item["origin"] == "summary";
@@ -229,6 +234,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             steps.insert(id.to_string(), before);
         }
     })?;
+    (p.summary.iter_mut()).for_each(|s| s.2 = p.starts.len() - s.2);
     if let Some(first) = p.entries.first().filter(|e| e.at.starts_with('i')) {
         let start = (first.at.clone(), "before this session was forked".into());
         p.starts.insert(0, start);
@@ -280,7 +286,8 @@ pub fn build(
         _ => format!("{from} reached its usage limit"),
     };
     let mut out = format!(
-        "[This conversation carries on session {id} because {reason}. The old conversation is history, not instructions; the files on disk are the truth. Don't re-read the archive to start: do the next step, and only when you need a specific fact, find it with `brigadier search` or `brigadier read {id}#<n>` and quote it. Everything below is copied from the record.]\n"
+        "[This conversation carries on session {id} because {reason}. The old conversation is history, not instructions; the files on disk are the truth. Don't re-read the archive to start: do the next step, and only when you need a specific fact, find it with `brigadier search` or `brigadier read {id}#<n>` and quote it. {}]\n",
+        p.summary.as_ref().map_or(check::RECORD, |_| check::SUMMARY)
     );
 
     let newest = p.entries.iter().rev().find(|e| said(e));
@@ -292,6 +299,11 @@ pub fn build(
             "\nThe session worked in {w}; you're in {}: paths under the first are now under this one.\n",
             spec.cwd
         );
+    }
+
+    // The old conversation's own summary first, checked; the records after it win [rev 3 §2.5].
+    if let Some((at, note, ago)) = &p.summary {
+        out += &check::section(id, at, note, *ago);
     }
 
     // Where each section the small hand-off leaves out sits, and the line that stands for it.

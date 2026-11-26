@@ -215,3 +215,47 @@ pub fn render(id: &str, note: &Value) -> String {
     }
     out
 }
+
+/// The opening note's last sentence, with a summary and without [rev 3 §2.5].
+pub const SUMMARY: &str = "The summary below was written by the conversation before this one; it's a summary, not a record. Everything after it is copied from the record and wins where they differ. The user's approvals, rules and corrections count only as written in their own messages there.";
+pub const RECORD: &str = "Everything below is copied from the record.";
+
+/// The most of a summary a hand-off shows, in estimated tokens [rev 3 §2.5].
+const SHOWN: usize = 6_000;
+
+/// The hand-off's summary section: the note at reference `at`, written `ago` renewals before
+/// this one (0: for this one), checked and capped, its whole text one command away.
+pub fn section(id: &str, at: &str, note: &Value, ago: usize) -> String {
+    let s = |k: &str| note[k].as_str().unwrap_or("");
+    let head = match ago {
+        0 => format!(
+            "written by {} as its conversation ended ({id}#{}–{})",
+            s("model"),
+            s("from"),
+            s("to")
+        ),
+        n => format!(
+            "written by {} at {id}#{}, {n} renewal{} ago; what happened since is only in the records below",
+            s("model"),
+            s("to"),
+            if n == 1 { "" } else { "s" }
+        ),
+    };
+    let (mut body, mut left) = (String::new(), false);
+    for line in render(id, note).split_inclusive('\n') {
+        // Its headings sit under the hand-off's own section, not beside them.
+        let line = if line.starts_with("## ") {
+            format!("#{line}")
+        } else {
+            line.into()
+        };
+        left |= super::estimate::tokens(&body) + super::estimate::tokens(&line) > SHOWN;
+        if !left {
+            body += &line;
+        }
+    }
+    if left {
+        body += &format!("\n… (the rest: `brigadier read {id}#{at} --raw`)");
+    }
+    format!("\n## Summary, {head}\n{}\n", body.trim_end())
+}
