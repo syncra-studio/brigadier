@@ -324,10 +324,10 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
         .unwrap_or("")
         .trim()
         .to_string();
-    let seen = pr.changes(base);
     let wrote = title.is_empty() || message.is_empty();
+    let seen = (wrote && commit).then(|| pr.fingerprint());
     if wrote {
-        let (t, m) = written(data, id, &seen)?;
+        let (t, m) = written(data, id, &pr.changes(base))?;
         if title.is_empty() {
             title = t;
         }
@@ -342,7 +342,10 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
             // A shared folder may have moved while the message was written: what's committed is
             // what it describes [D1029].
             let now = host::pr(data, id)?;
-            if now.branch != pr.branch || (wrote && now.changes(base) != seen) {
+            let moved = seen
+                .as_ref()
+                .is_some_and(|s| s.is_none() || now.fingerprint() != *s);
+            if now.branch != pr.branch || moved {
                 return Err(io::Error::other(
                     "The branch changed while its message was written. Try again.",
                 ));

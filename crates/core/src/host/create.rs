@@ -167,6 +167,36 @@ impl Pr {
         })
     }
 
+    /// What a commit of everything would take now: HEAD and the tree of every file git doesn't
+    /// ignore, staged in a copy of the index so the folder's own isn't touched. None when git
+    /// can't say.
+    pub fn fingerprint(&self) -> Option<String> {
+        let (root, never) = (&self.checkout.root, AtomicBool::new(false));
+        let read = |args: &[&str]| crate::git::read(root, args, &never).ok();
+        let text = |out: Vec<u8>| String::from_utf8_lossy(&out).trim().to_string();
+        let head = read(&["rev-parse", "HEAD"]).map(text).unwrap_or_default();
+        let index =
+            read(&["rev-parse", "--path-format=absolute", "--git-path", "index"]).map(text)?;
+        let copy = std::env::temp_dir().join(format!("brigadier-pr-{}.index", std::process::id()));
+        // A repository with no commit yet has no index: the copy starts empty.
+        let _ = std::fs::remove_file(&copy);
+        let _ = std::fs::copy(&index, &copy);
+        let git = |args: &[&str]| {
+            let mut command = crate::worktrees::command(root);
+            let out = command
+                .env("GIT_INDEX_FILE", &copy)
+                .args(args)
+                .output()
+                .ok();
+            out.filter(|o| o.status.success()).map(|o| o.stdout)
+        };
+        let tree = git(&["add", "-A"])
+            .and_then(|_| git(&["write-tree"]))
+            .map(text);
+        let _ = std::fs::remove_file(&copy);
+        Some(format!("{head} {}", tree?))
+    }
+
     /// What the message writer reads to name a PR: the branch's commits past its base and what's
     /// changed and not yet committed.
     pub fn changes(&self, base: Option<&str>) -> String {
