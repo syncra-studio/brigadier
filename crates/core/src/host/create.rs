@@ -258,13 +258,19 @@ impl Pr {
         Some(format!("{head} {}", tree?))
     }
 
-    /// Where the branch left `base`: its own name, else the remote's copy, as what the host names
-    /// may have no local branch; the Review tab's merge-base [D1035].
+    /// Where the branch left `base`, the Review tab's merge-base [D1035]: by the remote's copy the
+    /// PR compares with, else the ref the session recorded where it names that branch, else a
+    /// local branch of that name.
     fn since(&self, base: &str) -> Option<String> {
         let never = AtomicBool::new(false);
-        let names = [base.to_string(), format!("{}/{base}", self.remote)];
-        (names.into_iter())
-            .filter(|_| !base.is_empty() && !base.starts_with('-'))
+        let recorded = (self.base_ref == base || self.base_ref.ends_with(&format!("/{base}")))
+            .then(|| self.base_ref.clone());
+        let remote = format!("{}/{base}", self.remote);
+        let names = [Some(remote), recorded, Some(base.into())]
+            .into_iter()
+            .flatten();
+        names
+            .filter(|b| !base.is_empty() && !b.starts_with('-'))
             .find_map(|b| crate::git::diff::since(&self.checkout, &b, &never).ok())
             .filter(|s| !s.is_empty())
     }
