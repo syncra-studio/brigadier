@@ -3,6 +3,7 @@
 //! `"summary"`, with no tools. Off unless `BRIGADIER_SUMMARY=1`, until the bench shows it adds no
 //! made-up facts and loses no recall (D93).
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -69,4 +70,137 @@ pub fn runs(f: &crate::fold::Fold, last: &serde_json::Value) -> bool {
 pub fn served(f: &crate::fold::Fold) -> Option<serde_json::Value> {
     let r = f.renewing.as_ref()?;
     Some(r["last"].clone()).filter(|l| !l.is_null())
+}
+
+/// Writes the held renewal's summary note, once: its summary turn's last reply, checked, or why
+/// it failed [rev 3 §2.2, §2.4, §4]. With no renewal held, or its note there, nothing.
+pub fn settle(
+    spec: &crate::Spec,
+    f: &crate::fold::Fold,
+    call: crate::send::Call,
+) -> io::Result<()> {
+    use crate::handoff::check::{self, Source};
+    let Some(turn) = f.renewing.as_ref().and_then(|r| r["turn"].as_str()) else {
+        return Ok(());
+    };
+    let (mut sources, mut from) = (Vec::<Source>::new(), None);
+    let (mut inside, mut hit, mut past, mut noted, mut tools) = (false, false, false, false, false);
+    let (mut reply, mut model) = (String::new(), String::new());
+    crate::archive::each(&spec.dir, |item, at| {
+        let s = |k: &str| item[k].as_str().unwrap_or("");
+        // No summary cites one: not a note, nor a summary turn, nor a hand-off that carries one.
+        if item["kind"] == "note" {
+            noted |= item["event"] == "summary" && item["turn"] == turn;
+            return;
+        }
+        if item["kind"] == "input" && item["control"].is_null() {
+            inside = s("origin") == "summary";
+            past |= hit;
+            hit |= s("cid") == turn;
+            if s("cid") == turn {
+                model = item["setup"]["model"].as_str().unwrap_or("").into();
+            }
+            let fresh = &item["switch"];
+            if !hit && (fresh["fresh"] == true || fresh["why"] == "picked") {
+                from = None;
+            }
+        }
+        if hit {
+            if inside && !past {
+                match s("kind") {
+                    "tool" => (tools, reply) = (true, String::new()),
+                    "text" => reply = s("text").into(),
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if inside {
+            return;
+        }
+        let origin = s("origin");
+        let (text, user, tool) = match s("kind") {
+            "input" if item["control"].is_object() => {
+                let mine = item["control"]["by"].is_null();
+                (
+                    crate::archive::answer(item)
+                        .filter(|_| mine)
+                        .unwrap_or_default(),
+                    true,
+                    false,
+                )
+            }
+            "input" if origin == "user" => (s("text").into(), true, false),
+            "input" if origin.starts_with("result:") || origin.starts_with("peer:") => {
+                (s("text").into(), false, false)
+            }
+            "text" => (s("text").into(), false, false),
+            "tool" => match item["input"].as_str() {
+                Some(i) => (i.into(), false, true),
+                None => (item["input"].to_string(), false, true),
+            },
+            "tool_done" => (s("output").into(), false, true),
+            _ => return,
+        };
+        if !text.trim().is_empty() {
+            from.get_or_insert(at.clone());
+            sources.push(Source {
+                at,
+                text: check::fold(&text),
+                user,
+                tool,
+            });
+        }
+    })?;
+    if noted || !hit {
+        return Ok(());
+    }
+    let last = f.last.as_ref().filter(|l| l["id"] == turn);
+    let has = |h: &str| {
+        let h = h.to_lowercase();
+        (reply.lines()).any(|l| l.trim().trim_start_matches('#').trim().to_lowercase() == h)
+    };
+    let failed = match last {
+        None => Some("unfinished"),
+        Some(l) if l["outcome"] != "done" => {
+            let why = ["why", "reason", "outcome"]
+                .into_iter()
+                .find_map(|k| l[k].as_str());
+            Some(why.unwrap_or("failed"))
+        }
+        _ => None,
+    }
+    .or(tools.then_some("tool"))
+    .or(reply.trim().is_empty().then_some("empty"))
+    .or((!headings().all(has)).then_some("headings"));
+    let data = match failed {
+        Some(why) => serde_json::json!({"event": "summary", "turn": turn, "failed": why}),
+        None => {
+            let was =
+                crate::fork::record(&spec.dir).and_then(|r| r["cwd"].as_str().map(String::from));
+            let was = was.filter(|w| *w != spec.cwd);
+            let text = reply.trim_end();
+            let mut v = check::check(text, &sources, &spec.cwd, was.as_deref());
+            let model = if model.is_empty() {
+                crate::rebirth::backend(spec, f).to_string()
+            } else {
+                model
+            };
+            v["event"] = "summary".into();
+            v["turn"] = turn.into();
+            v["from"] = from.into();
+            v["to"] = sources.last().map(|s| s.at.clone()).into();
+            v["model"] = model.into();
+            v["text"] = text.into();
+            v
+        }
+    };
+    let reply = call(serde_json::json!({"op": "note", "data": data}))?;
+    match reply["ok"] == true {
+        true => Ok(()),
+        false => Err(io::Error::other(format!(
+            "the summary's note: {}",
+            reply["error"]
+        ))),
+    }
 }

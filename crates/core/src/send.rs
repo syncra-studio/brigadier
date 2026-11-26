@@ -114,6 +114,11 @@ pub fn send(
     };
     let mut run = as_run(spec, f, &b, None);
     let handoff = picked.is_none() && crate::fork::handoff(spec, f, &b);
+    // A summary turn's reply, checked, is noted before the hand-off that carries it; a renewal
+    // never waits on it [rev 3 §4].
+    if reborn || picked.is_some() {
+        let _ = crate::summary::settle(spec, f, call);
+    }
     let (change, sent) = if let Some(p) = picked {
         run.model = Some(p.model.clone());
         run.effort = p.effort.clone();

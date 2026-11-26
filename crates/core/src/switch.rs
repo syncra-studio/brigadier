@@ -81,6 +81,9 @@ pub fn switch(
     let summary = last["origin"] == "summary";
     let last = (crate::summary::served(f).filter(|_| summary)).unwrap_or(last);
     let fresh = to.backend != from || why == "unresumable" || summary;
+    if summary {
+        let _ = crate::summary::settle(spec, f, call);
+    }
     // The message the CLI refused outright goes again only on proof: its limit, after delivery,
     // before any work. Anything else is told what happened, never sent the user's words twice.
     let proof = last["outcome"] == "limited"

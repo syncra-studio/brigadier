@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::io;
 use std::process::Command;
 
+pub mod check;
 pub mod estimate;
 mod open;
 mod pointers;
