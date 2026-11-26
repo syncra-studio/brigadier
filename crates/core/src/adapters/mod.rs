@@ -8,6 +8,7 @@ mod fake;
 mod files;
 mod model;
 mod opencode;
+pub mod overhead;
 mod rewind;
 pub mod setup;
 mod shell;

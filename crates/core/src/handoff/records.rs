@@ -3,6 +3,7 @@
 //! with the start of the answer its turn gave and a reference to everything else that turn said.
 
 use super::estimate::tokens;
+use super::room::{Keep, Unit, WHOLE, fit, render};
 use super::{Past, SHELL, head, tail};
 use crate::archive::Entry;
 
@@ -10,6 +11,10 @@ use crate::archive::Entry;
 const LINE: usize = 670;
 const FIRST: usize = 800;
 const ANSWER: usize = 60;
+/// A line the ceiling shortened keeps this much of the user's words [§2.6, step 2].
+const START: usize = 20;
+/// Under the first message once the ceiling shortened any line.
+const CEILING: &str = "  (To fit, older lines below show only their reference or start, and runs of them merge into range lines: `brigadier read` opens each whole.)\n";
 
 /// One turn: the messages it took, the agent's words in it, and how it ended.
 #[derive(Default)]
@@ -164,7 +169,9 @@ enum Row<'a> {
     Carry(&'a Turn),
 }
 
-pub(super) fn conversation(id: &str, p: &Past) -> String {
+/// The conversation's section, its lines fitted to `budget` (the room less every other section, and
+/// its half); none fits the small hand-off's. False when even the last step didn't fit.
+pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -> (String, bool) {
     let said = |e: &Entry| matches!(e.from, "user" | "worker" | "peer");
     let mut rows: Vec<((u8, u64), Row)> = (p.entries.iter().enumerate())
         .filter(|(_, e)| said(e))
@@ -175,12 +182,17 @@ pub(super) fn conversation(id: &str, p: &Past) -> String {
     let carried = (p.turns.iter()).filter(|t| t.took.is_empty());
     rows.extend(carried.filter_map(|t| Some((key(t.texts.first()?), Row::Carry(t)))));
     rows.sort_by_key(|r| r.0);
-    let first = (p.entries.iter()).find(|e| e.from == "user" && e.who.is_empty());
-    let mut out = String::new();
+    let mine = |e: &&Entry| e.from == "user" && e.who.is_empty();
+    let first = p.entries.iter().find(mine).map(|e| e.at.as_str());
+    let newest = p.entries.iter().rev().find(mine).map(|e| e.at.as_str());
+    let mut units = vec![];
     for (_, row) in &rows {
-        let (at, who, text, context) = match *row {
+        let (at, who, text, context, user) = match *row {
             Row::Carry(t) => {
-                out += &format!("- you, carrying on: {}\n", range(id, &t.texts));
+                let line = format!("- you, carrying on: {}\n", range(id, &t.texts));
+                let refs = (t.texts[0].clone(), t.texts[t.texts.len() - 1].clone());
+                let lines = [line.clone(), line.clone(), line];
+                units.push(Unit::new(refs, false, Keep::No, t.texts.len(), lines));
                 continue;
             }
             Row::Said(i) => {
@@ -196,38 +208,54 @@ pub(super) fn conversation(id: &str, p: &Past) -> String {
                     true => head(e.text.trim_end(), SHELL),
                     false => e.text.trim_end().to_string(),
                 };
-                (e.at.as_str(), who, text, asked(id, &p.entries, i, e))
+                let user = e.from == "user";
+                (e.at.as_str(), who, text, asked(id, &p.entries, i, e), user)
             }
             Row::Answer((at, text, by)) => (
                 at.as_str(),
                 answered_by(by).into(),
                 text.trim_end().to_string(),
                 String::new(),
+                by.is_empty(),
             ),
         };
-        let max = if first.is_some_and(|f| f.at == at) {
-            FIRST
-        } else {
-            LINE
-        };
+        let max = if first == Some(at) { FIRST } else { LINE };
         let shown = upto(&text, max).map_or(text.clone(), |start| {
             format!("{start}… ({id}#{at}, {} KiB)", text.len().div_ceil(1024))
         });
-        out += &format!("- {id}#{at} ({who}{context}): {shown}\n");
+        // Shortened by the ceiling: the user's words to their start, anyone else's to the reference.
+        let short = match (user, upto(&text, START)) {
+            (true, Some(start)) => format!("- {id}#{at} ({who}): {start}…\n"),
+            (true, None) => format!("- {id}#{at} ({who}): {text}\n"),
+            (false, _) => format!("- {id}#{at} ({who})\n"),
+        };
+        let bare = context.split_once(": ").map_or("", |c| c.0);
+        let keep = match () {
+            _ if first == Some(at) => Keep::First,
+            _ if newest == Some(at) => Keep::Newest,
+            _ if !context.is_empty() => Keep::Pair,
+            _ => Keep::No,
+        };
+        let lines = [
+            format!("- {id}#{at} ({who}{context}): {shown}\n"),
+            short,
+            format!("- {id}#{at} ({who}{bare}): {shown}\n"),
+        ];
+        units.push(Unit::new((at.into(), at.into()), user, keep, 1, lines));
         // The turn that took it last: its answer's start and the rest it said [repo-merge D59].
         let Some(t) = (p.turns.iter()).find(|t| t.took.last().is_some_and(|l| l == at)) else {
             continue;
         };
-        match (t.end, t.texts.split_last()) {
+        let line = match (t.end, t.texts.split_last()) {
             ("done", Some((last, rest))) => {
                 let answer = t.answer.and_then(|i| p.entries.get(i));
                 let answer = answer.map_or("", |e| e.text.trim());
                 let start = upto(answer, ANSWER).map_or(answer.to_string(), |s| format!("{s}…"));
-                out += &format!("  ↳ {id}#{last} you: {}", start.replace('\n', " "));
+                let mut line = format!("  ↳ {id}#{last} you: {}", start.replace('\n', " "));
                 if !rest.is_empty() {
-                    out += &format!(" (said along the way: {})", range(id, rest));
+                    line += &format!(" (said along the way: {})", range(id, rest));
                 }
-                out += "\n";
+                line + "\n"
             }
             (end @ ("cut" | "stopped" | "failed"), texts) => {
                 let words = texts.map_or(String::new(), |_| {
@@ -238,15 +266,40 @@ pub(super) fn conversation(id: &str, p: &Past) -> String {
                 } else {
                     ""
                 };
-                out += &format!("  ({end}{words}{carry})\n");
+                format!("  ({end}{words}{carry})\n")
             }
-            _ => {}
-        }
+            _ => continue,
+        };
+        let Some((a, b)) = t.texts.first().zip(t.texts.last()) else {
+            continue;
+        };
+        let short = format!("  ↳ {} you\n", range(id, &t.texts));
+        let short = if t.end == "done" { short } else { line.clone() };
+        let lines = [line, short.clone(), short];
+        units.push(Unit::new(
+            (a.clone(), b.clone()),
+            false,
+            Keep::No,
+            t.texts.len(),
+            lines,
+        ));
     }
-    if out.is_empty() {
-        return out;
+    if units.is_empty() {
+        return (String::new(), true);
     }
-    format!(
-        "\n## The conversation, oldest first\nA later line overrides an earlier one; only the last message is what's asked now. A line ending in … is only its start: read the whole of any that bears on your next step. Open one with `brigadier read {id}#<n> --around 0`, a range #a–b with `brigadier read {id}#a --to b`.\n{out}"
-    )
+    let heading = format!(
+        "\n## The conversation, oldest first\nA later line overrides an earlier one; only the last message is what's asked now. A line ending in … is only its start: read the whole of any that bears on your next step. Open one with `brigadier read {id}#<n> --around 0`, a range #a–b with `brigadier read {id}#a --to b`.\n"
+    );
+    let less = |n: usize| n.saturating_sub(tokens(&heading) + tokens(CEILING));
+    let fits = fit(
+        &mut units,
+        budget.map(|(whole, half)| (less(whole), less(half))),
+    );
+    // The first message's line says what the ceiling shortened (rev 2 §4.1, step 5).
+    if units.iter().any(|u| u.mode != WHOLE)
+        && let Some(u) = units.iter_mut().find(|u| u.keep == Keep::First)
+    {
+        u.lines[u.mode] += CEILING;
+    }
+    (heading + &render(id, &units, key), fits)
 }

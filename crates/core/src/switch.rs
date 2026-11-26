@@ -84,7 +84,7 @@ pub fn switch(
         && last["began"] == false
         && last["origin"] == "user";
     let (origin, text) = if fresh {
-        match crate::handoff::build(spec, f, why, &last, to.from) {
+        match crate::handoff::build(spec, f, why, &last, to.from, to.backend, "") {
             Ok(t) => ("system", t),
             Err(e) => {
                 return json!({"ok": false, "error": format!("couldn't start the new conversation: {e}")});
@@ -188,6 +188,8 @@ pub fn picked(
         why,
         &f.last.clone().unwrap_or_default(),
         &from_label,
+        to,
+        text,
     )?;
     let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "name": p.name, "effort": p.effort, "fast": p.fast},
@@ -212,6 +214,7 @@ pub fn forked(spec: &Spec, f: &Fold, text: &str) -> std::io::Result<String> {
         .and_then(adapters::get)
         .map_or("the agent", |a| a.label());
     let last = (f.last.clone()).unwrap_or_else(|| json!({"ts": brigadier_frames::log::now_ms()}));
-    let seed = crate::handoff::build(spec, f, "forked", &last, from)?;
+    let to = crate::rebirth::backend(spec, f);
+    let seed = crate::handoff::build(spec, f, "forked", &last, from, to, text)?;
     Ok(format!("{seed}\n\n{text}"))
 }

@@ -7,13 +7,14 @@ use crate::archive::{self, Entry};
 use crate::{Spec, fold::Fold};
 use serde_json::Value;
 use std::io;
-use std::path::Path;
 use std::process::Command;
 
 pub mod estimate;
 mod open;
 mod pointers;
 mod records;
+mod room;
+mod skills;
 
 /// Each section's most, in characters (about four to a token), in reading order [w31].
 const OPEN: usize = 2_000;
@@ -278,7 +279,17 @@ fn line(id: &str, e: &Entry) -> String {
 /// The hand-off for session `spec` with fold `f`. `why`: rebirth (the next message follows), cut
 /// (its last turn was stopped mid-way for a fresh context, or its window filled), limited,
 /// unresumable, picked, switched (picked mid-turn, which it carries on) or forked; `from` names where it came from; `last` is its last turn.
-pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::Result<String> {
+/// `to` is the agent the fresh conversation runs on and `pending` what's sent after the hand-off:
+/// together they set its room [§2.6].
+pub fn build(
+    spec: &Spec,
+    f: &Fold,
+    why: &str,
+    last: &Value,
+    from: &str,
+    to: &str,
+    pending: &str,
+) -> io::Result<String> {
     let id = spec.id.as_str();
     // An output's end goes only to the same agent's fresh conversation [D485].
     let p = past(spec, matches!(why, "rebirth" | "cut"))?;
@@ -307,44 +318,7 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
         );
     }
 
-    // The skills the user's messages invoked: a fresh agent gets their `/name` as plain text.
-    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
-    let mut names: Vec<String> = (crate::adapters::all().iter())
-        .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
-        .filter(|k| k["kind"] == "skill" && !hidden.has(k))
-        .filter_map(|k| k["name"].as_str().map(String::from))
-        .collect();
-    names.sort();
-    names.dedup();
-    // Newest invoked first, 20 at most, a name at most 60 estimated tokens (rev 2 §4.2).
-    let mut invoked: Vec<(&Entry, &String)> = (names.iter())
-        .filter_map(|name| {
-            let mut user = p
-                .entries
-                .iter()
-                .filter(|e| e.from == "user" && e.who.is_empty());
-            Some((
-                user.rfind(|e| {
-                    e.text
-                        .split_whitespace()
-                        .any(|w| w.strip_prefix('/') == Some(name))
-                })?,
-                name,
-            ))
-        })
-        .collect();
-    invoked.sort_by_key(|(e, _)| std::cmp::Reverse(records::key(&e.at)));
-    let more = invoked.len().saturating_sub(20);
-    let mut skills: String = (invoked.iter().take(20)).map(|(e, name)| {
-        let shown = records::upto(name, 60).map_or(name.to_string(), |s| format!("{s}… (cut: `brigadier skill --json` lists them whole)"));
-        format!("- /{shown}, from {id}#{}: load it before you go on, with your own skill tool or `brigadier skill {name}`\n", e.at)
-    }).collect();
-    if more > 0 {
-        skills += &format!("- {more} more: `brigadier skill --json`\n");
-    }
-    if !skills.is_empty() {
-        out += &format!("\n## The session's skills\n{skills}");
-    }
+    out += &skills::section(spec, &p);
 
     // The agent's own kept lines, whole: `brigadier keep` caps them [D87].
     let kept = crate::keeps::shown(&spec.dir);
@@ -353,7 +327,8 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
             &format!("\n## Kept by you, as you wrote them (`brigadier keep` changes them)\n{kept}");
     }
 
-    out += &records::conversation(id, &p);
+    // Measured with every other section, then fitted to what's left of the room.
+    let conv_at = out.len();
 
     // What came with the messages, the newest first.
     let sent = (p.entries.iter().rev())
@@ -484,5 +459,9 @@ pub fn build(spec: &Spec, f: &Fold, why: &str, last: &Value, from: &str) -> io::
     }
     out += &pointers::section(id, &p);
     out += &format!("\n## Next\n{step}\n");
+    let room = room::room(spec, f, to, pending);
+    let less = |n: usize| n.saturating_sub(estimate::tokens(&out));
+    let (conv, _) = records::conversation(id, &p, Some((less(room), less(room / 2))));
+    out.insert_str(conv_at, &conv);
     Ok(out)
 }

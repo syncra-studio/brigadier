@@ -28,7 +28,7 @@ pub fn threshold(window: Option<u64>) -> u64 {
 }
 
 /// The backend the session runs on now.
-fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
+pub fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
     match f.backend.as_str() {
         "" => &spec.backend,
         b => b,
@@ -37,8 +37,7 @@ fn backend<'a>(spec: &'a Spec, f: &'a Fold) -> &'a str {
 
 /// The window its model's list gives, for a CLI that doesn't say it in its events: the last check
 /// Brigadier kept for this folder.
-fn listed(spec: &Spec, f: &Fold) -> Option<u64> {
-    let b = backend(spec, f);
+fn listed(spec: &Spec, f: &Fold, b: &str) -> Option<u64> {
     let model = as_run(spec, f, b, None).model?;
     // The check this folder reads, as the pickers do (checked.rs) [C27].
     let check = crate::checked::kept(&crate::data_of(spec), b, std::path::Path::new(&spec.cwd))?;
@@ -68,7 +67,21 @@ pub fn reading(was: Option<&Value>, item: &Value) -> Value {
 /// The renewal line of the conversation's window, as the fold last read it.
 pub fn line(spec: &Spec, f: &Fold) -> u64 {
     let c = f.context.clone().unwrap_or_default();
-    threshold(c["window"].as_u64().or_else(|| listed(spec, f)))
+    threshold(
+        c["window"]
+            .as_u64()
+            .or_else(|| listed(spec, f, backend(spec, f))),
+    )
+}
+
+/// The renewal line a fresh conversation on `to` starts under: this one's for the same agent.
+/// shortcut: a picked model of the same agent is read at the old one's window; the redo rule puts a
+/// smaller window right, so read the picked model's if picks to small windows are common.
+pub fn line_to(spec: &Spec, f: &Fold, to: &str) -> u64 {
+    match to == backend(spec, f) {
+        true => line(spec, f),
+        false => threshold(listed(spec, f, to)),
+    }
 }
 
 /// Whether the conversation has passed its threshold, having begun below it.
