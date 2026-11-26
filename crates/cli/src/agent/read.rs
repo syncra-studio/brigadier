@@ -122,7 +122,8 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
         let body = match s("kind") {
             "tool" => s("input").to_string(),
             "tool_done" => s("output").to_string(),
-            "text" | "input" => s("text").to_string(),
+            "input" => core::archive::answer(item).unwrap_or_else(|| s("text").to_string()),
+            "text" => s("text").to_string(),
             "failed" => s("message").to_string(),
             _ if item["event"] == "summary" => s("text").to_string(),
             _ => serde_json::to_string_pretty(item).unwrap_or_default(),
