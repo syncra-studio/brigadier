@@ -6,7 +6,7 @@
 //! The parent's agent merges a worker's branch with plain git; Brigadier has no merge [D3003].
 
 mod asks;
-mod brief;
+pub(crate) mod brief;
 mod busy;
 mod family;
 mod make;
@@ -16,18 +16,16 @@ mod review;
 pub(crate) mod row;
 pub use asks::{answer, asks_parent, for_user};
 pub(crate) use asks::{built_goes, question, told_held, unbuilt};
-pub(crate) use brief::{edits, land_line};
 pub(crate) use busy::at_work;
 use busy::busy_in;
 pub use busy::{busy, owes};
-pub use family::delete;
-pub use make::start;
 pub(crate) use make::{begin, full};
 pub use pause::held;
 pub use result::{deliver, take, take_ask, told_take, went_with, with_next};
 pub(crate) use result::{hop as result_hop, settled, take_shell, told_notice, told_shell, unrun};
 pub(crate) use review::{at, last_of_turn, moves};
 pub use row::{holding, holds, row};
+pub use {family::delete, make::start};
 
 use crate::{arg, owner, queue, settings};
 use brigadier_core as core;

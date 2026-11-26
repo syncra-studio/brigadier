@@ -359,10 +359,10 @@ pub(super) fn pick(data: &Path, wid: &str, letter: &str, notes: &Value) -> io::R
             (branch.as_deref().zip(base.as_deref())).map(|(b, base)| (into.as_str(), b, base));
         // With no project, the pick lands in the family's folder now, as a branch merges now [D560, C70].
         let into = (core::load(data, wid)?.project.is_none())
-            .then(|| workers::edits(data, &link.root))
+            .then(|| workers::brief::edits(data, &link.root))
             .flatten();
         let folder = into.as_ref().map(|(d, of)| (d.as_str(), of.as_str()));
-        let merge = workers::land_line(merge, !link.review.is_null(), folder);
+        let merge = workers::brief::land_line(merge, !link.review.is_null(), folder);
         (
             wid.to_string(),
             format!(
