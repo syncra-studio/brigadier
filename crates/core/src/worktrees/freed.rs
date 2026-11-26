@@ -22,6 +22,14 @@ impl Freed {
         format!("{REFS}{}", self.branch)
     }
 
+    /// Its branch, while the ref keeps a commit the record's base no longer holds (a reset since).
+    pub(super) fn unmerged(&self, owned: &Owned) -> Option<String> {
+        let repo = Path::new(&owned.repo);
+        let kept = git(repo, &["rev-parse", "--verify", "--quiet", &self.name()]).is_ok();
+        (kept && !landing::in_base(repo, &owned.base, &self.name(), owned.landing.as_ref()))
+            .then(|| self.branch.clone())
+    }
+
     /// Takes the ref; one gone, its repository too, is done.
     pub(super) fn forget(&self, repo: &Path) -> io::Result<()> {
         match git(repo, &["rev-parse", "--verify", "--quiet", &self.name()]) {
@@ -60,16 +68,16 @@ pub fn shed(dir: &Path) -> io::Result<()> {
         return Ok(());
     };
     let repo = Path::new(&owned.repo).to_path_buf();
+    let name = format!("refs/heads/{branch}");
     if has_branch(&repo, &branch) {
         if kept::keeps(dir, &owned, &branch).is_some()
             || open_pr(dir, &branch)
             || based(dir, &owned, &branch)
-            || !landing::in_base(&repo, &owned.base, &branch, owned.landing.as_ref())
+            || !landing::in_base(&repo, &owned.base, &name, owned.landing.as_ref())
         {
             return Ok(());
         }
         let commit = tip(&repo, &branch)?;
-        let name = format!("refs/heads/{branch}");
         let upstream = git(
             &repo,
             &["for-each-ref", "--format=%(upstream:short)", &name],
@@ -95,6 +103,22 @@ pub fn shed(dir: &Path) -> io::Result<()> {
     }
     owned.branch = None;
     write(dir, &owned)
+}
+
+/// Delete's part: the ref goes, but one `unmerged` that Keep branch keeps comes back as its
+/// branch first [D181].
+pub(super) fn settle(dir: &Path, owned: &mut Owned, drop: bool) -> io::Result<()> {
+    let Some(freed) = owned.freed.clone() else {
+        return Ok(());
+    };
+    if !drop && freed.unmerged(owned).is_some() {
+        bring_back(dir, owned)?;
+    }
+    // A ref restore left for later goes now, or delete fails and runs again.
+    owned
+        .freed
+        .as_ref()
+        .map_or(Ok(()), |f| f.forget(Path::new(&owned.repo)))
 }
 
 /// Makes the branch `shed` dropped again, at the same commit, for restore.

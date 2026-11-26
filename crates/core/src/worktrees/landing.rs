@@ -112,7 +112,8 @@ pub fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
     };
     let repo = Path::new(&owned.repo);
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
-        return Ok(None);
+        // One archive freed whose base no longer holds it, reset since: delete asks [D181].
+        return Ok(owned.freed.as_ref().and_then(|f| f.unmerged(&owned)));
     };
     // What the checkpoint would take.
     let status = |p: &Path| {
@@ -126,7 +127,8 @@ pub fn own_unlanded(dir: &Path) -> io::Result<Option<String>> {
         )
     };
     let dirty = live(&owned).is_some_and(|p| status(p).map_or(true, |s| !s.is_empty()));
-    Ok((dirty || !in_base(repo, &owned.base, &branch, owned.landing.as_ref())).then_some(branch))
+    let at = format!("refs/heads/{branch}");
+    Ok((dirty || !in_base(repo, &owned.base, &at, owned.landing.as_ref())).then_some(branch))
 }
 
 /// Whether the session's commits are all in its base, its uncommitted files aside: "Merged into
@@ -147,7 +149,14 @@ fn own_merged(dir: &Path) -> io::Result<bool> {
     };
     let repo = Path::new(&owned.repo);
     let branch = owned.branch.filter(|b| has_branch(repo, b));
-    Ok(branch.is_none_or(|b| in_base(repo, &owned.base, &b, owned.landing.as_ref())))
+    Ok(branch.is_none_or(|b| {
+        in_base(
+            repo,
+            &owned.base,
+            &format!("refs/heads/{b}"),
+            owned.landing.as_ref(),
+        )
+    }))
 }
 
 fn oid(s: &str) -> bool {
@@ -166,14 +175,13 @@ fn base_ref(repo: &Path, base: &str) -> Option<String> {
         .or_else(|| oid(base).then(|| base.into()))
 }
 
-/// The branch is in `base`, by ancestry or a landing that still holds.
-pub(super) fn in_base(repo: &Path, base: &str, branch: &str, landing: Option<&Landing>) -> bool {
+/// The ref `at` (a branch's, or a freed one's) is in `base`, by ancestry or a landing that still holds.
+pub(super) fn in_base(repo: &Path, base: &str, at: &str, landing: Option<&Landing>) -> bool {
     let Some(base) = base_ref(repo, base) else {
         return false;
     };
-    let branch = format!("refs/heads/{branch}");
-    git(repo, &["merge-base", "--is-ancestor", &branch, &base]).is_ok()
+    git(repo, &["merge-base", "--is-ancestor", at, &base]).is_ok()
         || landing.is_some_and(|l| {
-            git(repo, &["rev-parse", &branch]).is_ok_and(|tip| landed(repo, &base, &tip, l))
+            git(repo, &["rev-parse", at]).is_ok_and(|tip| landed(repo, &base, &tip, l))
         })
 }

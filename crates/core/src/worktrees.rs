@@ -402,14 +402,12 @@ pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
         return undo(&owned).map(|()| None);
     }
     free(dir)?;
-    let Some(owned) = read(dir)? else {
+    let Some(mut owned) = read(dir)? else {
         return Ok(None);
     };
     hand::drop_maker(dir, &owned)?;
+    freed::settle(dir, &mut owned, drop)?;
     let repo = Path::new(&owned.repo);
-    if let Some(f) = &owned.freed {
-        f.forget(repo)?;
-    }
     let Some(branch) = owned.branch.clone().filter(|b| has_branch(repo, b)) else {
         return Ok(None);
     };
