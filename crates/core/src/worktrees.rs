@@ -19,6 +19,7 @@ mod branches;
 pub use branches::{drop_branches, put_branches};
 mod hand;
 mod kept;
+mod made;
 use kept::keeps;
 pub use kept::kept;
 pub(crate) mod landing;
@@ -59,7 +60,7 @@ struct Owned {
     inherited: Option<String>,
     /// Started on a branch that was there before (a PR's, by an older build): delete never takes it [D703].
     on: bool,
-    /// The reflog line its create made `branch` with, recorded first: undo takes only that branch [D35].
+    /// The token its create made `branch` with (`made`): undo takes only that branch [D35].
     made: Option<String>,
 }
 
@@ -289,29 +290,12 @@ fn make(
     picks: &[String],
     owned: &mut Owned,
 ) -> io::Result<()> {
-    // Recorded before git makes it, so a create cut short between the two is undone in full; made
-    // only if it isn't there, with a reflog line of its own for undo to know it by.
-    // A token git keeps as written (it folds whitespace in a reflog line), unique to this create.
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    let made = format!("brigadier:made:{nanos:x}.{:x}", std::process::id());
+    // Named before git makes it [D35].
+    let made = made::token();
     owned.branch = Some(branch.into());
     owned.made = Some(made.clone());
     write(&spec.dir, owned)?;
-    let full = format!("refs/heads/{branch}");
-    git(
-        repo,
-        &[
-            "update-ref",
-            "--create-reflog",
-            "-m",
-            &made,
-            &full,
-            &owned.base_commit,
-            "",
-        ],
-    )?;
+    made::make(repo, branch, &owned.base_commit, &made)?;
     if path.exists() {
         return err(format!("{} already exists", path.display()));
     }
@@ -355,32 +339,9 @@ fn unregister(owned: &Owned) -> io::Result<()> {
 fn undo(owned: &Owned) -> io::Result<()> {
     unregister(owned)?;
     let repo = Path::new(&owned.repo);
-    // A failed branch create must never take a branch another session or git made: with `made`,
-    // only the branch whose last reflog line is it; an older build's record named it once made.
-    // No line to tell by (a reflog unread or expired) keeps the record for the next sweep.
-    let ours = |branch: &str| -> io::Result<bool> {
-        let Some(made) = &owned.made else {
-            return Ok(true);
-        };
-        let log = [
-            "reflog",
-            "show",
-            "--no-show-signature",
-            "--format=%gs",
-            &format!("refs/heads/{branch}"),
-        ];
-        // Newest first: a failed create's branch never moves after it's made, and an attempt cut
-        // short may have left an older line under the same name.
-        match git(repo, &log)?.lines().next() {
-            Some(first) => Ok(first == made),
-            None => err(format!(
-                "Brigadier couldn't tell whether it made the branch {branch}."
-            )),
-        }
-    };
     if let Some(branch) = &owned.branch
         && has_branch(repo, branch)
-        && ours(branch)?
+        && made::ours(repo, branch, owned.made.as_deref())?
     {
         git(repo, &["branch", "-D", branch])?;
     }
@@ -432,6 +393,10 @@ pub fn branch(dir: &Path) -> io::Result<Option<String>> {
 /// when its base holds all of it, or when `drop` says so and it's still this session's own. A
 /// branch with work that never landed, kept, is returned. The caller holds `lock`.
 pub fn delete(dir: &Path, drop: bool) -> io::Result<Option<String>> {
+    // A create that failed is undone as at a sweep: only a branch it made goes [D35].
+    if let Some(owned) = read(dir)?.filter(|o| o.failed) {
+        return undo(&owned).map(|()| None);
+    }
     free(dir)?;
     let Some(owned) = read(dir)? else {
         return Ok(None);
