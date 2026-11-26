@@ -85,7 +85,8 @@ impl Thread {
 /// the loop guard's says why, with Continue [D144].
 pub(super) fn stop_line(by: Option<&str>) -> Option<&'static str> {
     match by {
-        Some("rebirth") => None,
+        // Brigadier's own, of a summary turn past its minutes or at a tool: its divider says it.
+        Some("rebirth" | "summary") => None,
         Some("pause") => Some("paused"),
         Some("stall") => Some("stalled"),
         // Nobody's Stop: a night's, of a turn that hung.
