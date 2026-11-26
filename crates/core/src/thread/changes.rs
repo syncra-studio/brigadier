@@ -34,6 +34,35 @@ impl Thread {
         Some(out)
     }
 
+    /// The renewal's divider, from its cut or its summary turn's start, running till the fresh
+    /// conversation starts: one, for a cut its summary turn follows [D112, D203; rev 3 §2.2].
+    pub(super) fn divider(&mut self) {
+        if self.cutting.is_none() {
+            self.break_group();
+            let row = json!({"kind": "compaction", "summary": null, "progress": "running"});
+            self.cutting = Some(self.add(row));
+        }
+    }
+
+    /// A summary turn's end: a renewal at the next message leaves its divider done till then, a
+    /// cut's renews at once, and one the user's Stop cancelled fails it, the Stop's line shown in
+    /// the hidden turn as `user_stopped` draws it [rev 3 §2.2].
+    pub(super) fn summary_ended(&mut self, t: &crate::fold::Turn) {
+        let Some(at) = self.cutting.filter(|_| t.origin == "summary") else {
+            return;
+        };
+        let progress = match self.fold.renewing.as_ref().map(|r| &r["why"]) {
+            None => {
+                self.cutting = None;
+                "failed"
+            }
+            Some(why) if why == "rebirth" => "done",
+            Some(_) => return,
+        };
+        self.items[at]["progress"] = progress.into();
+        self.changed_items.insert(at);
+    }
+
     /// Forgets what changed: a thread kept to copy from sends nothing itself.
     pub fn settle(&mut self) {
         self.changed_items.clear();

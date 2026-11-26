@@ -10,6 +10,7 @@ impl Thread {
     /// agent says ended well finished before the Stop took. One its host or agent dropped says
     /// so, a line that stays once another turn runs [D92].
     pub(super) fn turn_ended(&mut self, t: &Turn, item: &Value, outcome: &str, ts: u64) {
+        self.summary_ended(t);
         if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
             self.user_stopped(ts);
         } else if outcome == "interrupted" && t.delivered.is_some() {
@@ -118,9 +119,10 @@ impl Thread {
 
     fn new_turn(&mut self, t: &Turn, ts: u64) {
         let at = self.turns.len();
+        let quiet = t.quiet || t.origin == "summary";
         self.turns.push(
             json!({"id": t.id, "status": "running", "startedAt": ts, "endedAt": null,
-            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": t.quiet}),
+            "backend": t.backend, "waitingSince": null, "waitedMs": 0, "quiet": quiet}),
         );
         self.changed_turns.insert(at);
         self.open = Some(Open {
@@ -141,7 +143,7 @@ impl Thread {
             answers: Default::default(),
             denied: 0,
             stop: (None, false),
-            quiet: t.quiet,
+            quiet,
             joins: None,
             after: None,
         });
@@ -216,7 +218,7 @@ impl Thread {
     pub(super) fn quiet_row(&mut self, row: &mut Value) {
         if let Some(o) = self.open.as_mut().filter(|o| o.quiet) {
             match row["kind"].as_str() {
-                Some("approval" | "question") => {}
+                Some("approval" | "question" | "compaction") => {}
                 Some("message") if row["origin"] == "user" => {
                     o.quiet = false;
                     self.turns[o.at]["quiet"] = false.into();
@@ -318,6 +320,10 @@ impl Thread {
             .take_if(|at| self.items[*at]["kind"] == "line")
         {
             self.switching = Some(at);
+        }
+        // A summary turn's rows are hidden: the renewal's divider stands for it [rev 3 §2.2].
+        if t.origin == "summary" {
+            return self.divider();
         }
         // A rebirth shows as one divider, the message that carries it under it; a cut another turn beat fails [D88, D112, D203].
         let rebirth = matches!(t.switch["why"].as_str(), Some("rebirth" | "cut"));

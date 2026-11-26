@@ -28,13 +28,14 @@ impl Thread {
             // A rebirth runs from where its cut turn ended, its divider live till the fresh
             // conversation starts [D112, D203]; a model picked mid-turn is no rebirth [D124].
             if !self.fold.switched {
-                self.break_group();
-                let row = json!({"kind": "compaction", "summary": null, "progress": "running"});
-                self.cutting = Some(self.add(row));
+                self.divider();
             }
             return;
         };
         let ms = ts.saturating_sub(o.started);
+        if let Some(o) = self.open.as_mut().filter(|_| self.cutting.is_some()) {
+            o.quiet = false;
+        }
         self.kept_row(json!({"kind": "line", "reason": reason, "ms": ms}));
     }
 
