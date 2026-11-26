@@ -189,7 +189,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
       } else {
         await agentDrive(tab, true);
       }
-      return await page(tab, owner);
+      return await page(tab, owner, driver);
     } finally {
       agentDoing(tab, null);
     }
@@ -233,7 +233,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     agentDoing(tab.id, DOING[op.op] ?? null);
     await agentDrive(tab.id, true);
   }
-  const result = await act(opened ?? tab.id, op, owner, label);
+  const result = await act(opened ?? tab.id, op, owner, label, driver);
   return !tab.driver && result.result === "page" ? { ...result, user: true } : result;
 }
 
@@ -245,13 +245,13 @@ const TABS_ONLY = new Set(["navigate", "go", "eval", "ask", "show", "close"]);
 const WAIT_MOST_MS = 20_000;
 
 /** The page after a `wait` for `op.text` to show, or `op.gone` to go; said so when it didn't. */
-async function waited(tab: string, op: Op, owner: string): Promise<Result> {
+async function waited(tab: string, op: Op, owner: string, driver: string): Promise<Result> {
   const ms = Math.min(Number(op.ms) || WAIT_MOST_MS, WAIT_MOST_MS);
   const wanted = String(op.text ?? op.gone ?? "");
   if (!wanted) {
     if (op.ms) await wait(ms);
     else await loaded(tab);
-    return page(tab, owner);
+    return page(tab, owner, driver);
   }
   const deadline = Date.now() + ms;
   const needle = wanted.toLowerCase();
@@ -259,16 +259,16 @@ async function waited(tab: string, op: Op, owner: string): Promise<Result> {
     if (isPaused(tabOf(tab))) return { result: "paused", tab };
     const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
     const there = String((answer as { text?: unknown } | null)?.text ?? "").toLowerCase().includes(needle);
-    if (there === Boolean(op.text)) return page(tab, owner);
+    if (there === Boolean(op.text)) return page(tab, owner, driver);
     if (Date.now() >= deadline) {
       const note = `Waited ${Math.round(ms / 1000)} s: ${JSON.stringify(wanted)} ${op.text ? "didn't show" : "is still there"}.`;
-      return { ...(await page(tab, owner)), note };
+      return { ...(await page(tab, owner, driver)), note };
     }
     await wait(250);
   }
 }
 
-async function act(tab: string, op: Op, owner: string, label: string): Promise<Result> {
+async function act(tab: string, op: Op, owner: string, label: string, driver: string): Promise<Result> {
   switch (op.op) {
     case "events": {
       const { lines, next, dropped } = await agentEvents(tab, Number(op.since), op.kinds) as Record<string, unknown>;
@@ -278,15 +278,15 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       loadStarts(tab);
       agentLoad(tab, op.url);
       await loaded(tab);
-      return page(tab, owner);
+      return page(tab, owner, driver);
     case "go":
       go(tab, op.action);
       await settled(tab);
-      return page(tab, owner);
+      return page(tab, owner, driver);
     case "read":
-      return page(tab, owner);
+      return page(tab, owner, driver);
     case "wait":
-      return waited(tab, op, owner);
+      return waited(tab, op, owner, driver);
     case "hover":
     case "scroll": {
       const answer = await agentRun(tab, { kind: op.op, label, target: op.target, way: op.way });
@@ -295,7 +295,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return withDialogs(failed(error), answer);
       await settled(tab);
-      return withDialogs(await page(tab, owner), answer);
+      return withDialogs(await page(tab, owner, driver), answer);
     }
     case "click":
     case "type":
@@ -333,7 +333,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return withDialogs(failed(error), answer);
       const left = await settled(tab);
-      const after = withDialogs(await withPopups(await page(left, owner), owner, before), answer);
+      const after = withDialogs(await withPopups(await page(left, owner, driver), owner, before), answer);
       return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
     }
     case "eval": {
@@ -445,8 +445,8 @@ async function settled(tab: string): Promise<string> {
 }
 
 /** The tab's page, read for the agent. */
-async function page(tab: string, owner: string): Promise<Result> {
-  const stopped = await stoppedAt(tab);
+async function page(tab: string, owner: string, driver: string): Promise<Result> {
+  const stopped = await stoppedAt(tab, driver);
   if (stopped) return stopped;
   const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
   if (devToolsOpen(tabOf(tab))) return failed(PAUSED_DEVTOOLS);
@@ -461,11 +461,12 @@ async function page(tab: string, owner: string): Promise<Result> {
 
 /**
  * What the agent hears on a page that stops it: the action it asked for is done, so this is its answer and not `paused`,
- * which the daemon would run again after Continue. Its next call on the tab waits.
+ * which the daemon would run again after Continue. Its next call on the tab waits. Only the tab's own agent, `driver`,
+ * stops there: another's read of it leaves the tab as it is.
  */
-async function stoppedAt(id: string): Promise<Result | null> {
+async function stoppedAt(id: string, driver: string): Promise<Result | null> {
   const tab = tabOf(id);
-  if (!driverOf(tab)) return null;
+  if (driverOf(tab)?.driver !== driver) return null;
   let stop = askedOf(tab);
   if (!stop && !isPaused(tab)) {
     const found = await signInStopOf(id);
