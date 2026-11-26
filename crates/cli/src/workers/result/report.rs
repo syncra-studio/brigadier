@@ -331,7 +331,9 @@ pub(in crate::workers) fn write_as(
     let unended = of.end == u64::MAX || (of.end == 0 && f.turns.iter().any(|t| t.id == turn));
     // Brigadier stopped it, overnight or the like: cut off, as by a host's end.
     let cut = unended || logged.is_some_and(|e| e.how == "interrupted") || of.by.is_some();
-    let ended = &f.last;
+    // Past a summary turn it wrote since, the turn that summary served [D92].
+    let summary = (f.last.as_ref()).is_some_and(|l| l["origin"] == "summary");
+    let ended = &(core::summary::served(&f).filter(|_| summary)).or(f.last.clone());
     text += &measured(&dir, &f, turn, (ended.as_ref()).filter(|e| e["id"] == turn));
     // A failure that passes by itself: the parent may try it again [D340].
     let why = (ended.as_ref()).filter(|e| how == "failed" && e["id"] == turn);
