@@ -261,7 +261,10 @@ pub fn run(
         Some((id, at)) if call.cmd == "read" => (id, Some(at)),
         _ => (id, None),
     };
-    if !id.is_empty() && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id)) {
+    if !id.is_empty()
+        && (core::check_id(id).is_err() || !rows().iter().any(|r| r["id"] == id))
+        && !(call.cmd == "wait" && core::check_id(id).is_ok() && wait::making(data, me, id))
+    {
         if core::check_id(id).is_ok() && core::load(data, id).is_ok() {
             return refuse(&format!(
                 "{id} isn't in Brigadier's list yet. Try again in a moment."

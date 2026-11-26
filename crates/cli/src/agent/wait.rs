@@ -27,6 +27,11 @@ pub(super) fn wait(
     reply
 }
 
+/// Whether `id` is `me`'s own worker just started, with no row yet: it's at work, not gone.
+pub(super) fn making(data: &Path, me: &str, id: &str) -> bool {
+    workers::record(data, me, id).is_some() && !workers::over(data, me, id)
+}
+
 fn until(
     data: &Path,
     me: &str,
@@ -42,6 +47,9 @@ fn until(
         let rows = rows();
         for id in ids.iter().map(String::as_str) {
             let Some(row) = rows.iter().find(|r| r["id"] == id) else {
+                if making(data, me, id) {
+                    continue;
+                }
                 return refuse(&format!("Session {id} is gone."));
             };
             state = str_of(row, "state").to_string();
