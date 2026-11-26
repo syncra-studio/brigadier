@@ -85,16 +85,6 @@ fn text(word: &str) -> String {
     if word.starts_with(['/', '.']) {
         return word.into();
     }
-    if let Some((key, value)) = word.split_once('=') {
-        return format!(
-            "{key}={}",
-            if secret(key) || container(key) {
-                HIDDEN.into()
-            } else {
-                text(value)
-            }
-        );
-    }
     if let Some((key, _)) = word.split_once(':')
         && secret(key)
     {
@@ -104,6 +94,16 @@ fn text(word: &str) -> String {
         || trimmed.to_ascii_lowercase().starts_with("basic ")
     {
         return HIDDEN.into();
+    }
+    if let Some((key, value)) = word.split_once('=') {
+        return format!(
+            "{key}={}",
+            if secret(key) || container(key) {
+                HIDDEN.into()
+            } else {
+                text(value)
+            }
+        );
     }
     word.into()
 }
