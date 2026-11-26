@@ -47,14 +47,21 @@ fn read(path: &Path) -> Value {
 /// when the user has no job to start one on.
 pub(crate) fn computer_job(data: &Path) -> Option<String> {
     let t = current(data);
-    let mut all = jobs::startable(t["jobs"].as_array().map_or(&[], Vec::as_slice)).peekable();
-    all.peek()?;
-    let covers = |j: &&Value| str_of(j, "for").to_lowercase().contains("computer");
-    Some(
-        all.find(covers)
-            .map_or("<the job that covers computer use>", |j| str_of(j, "name"))
-            .into(),
-    )
+    let all: Vec<&Value> =
+        jobs::startable(t["jobs"].as_array().map_or(&[], Vec::as_slice)).collect();
+    let covers = |j: &&&Value| str_of(j, "for").to_lowercase().contains("computer");
+    match all.iter().find(covers) {
+        Some(j) => Some(str_of(j, "name").into()),
+        // No line names it: the lead picks one of the real jobs, not a placeholder.
+        None if !all.is_empty() => Some(format!(
+            "<one of: {}>",
+            all.iter()
+                .map(|j| str_of(j, "name"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        None => None,
+    }
 }
 
 fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
