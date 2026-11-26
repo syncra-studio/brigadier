@@ -7,10 +7,14 @@ use super::{GH_SECS, Kind, Pr, err, failed, gh, setup};
 use crate::git::branch;
 use serde_json::{Value, json};
 use std::io;
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 /// The longest a fingerprint's `git add` may take.
 const FINGERPRINT_SECS: u64 = 60;
+
+/// Create PR's refusal when no one could name the base [D168].
+pub const UNLEARNED: &str = "Brigadier couldn't learn this repository's default branch, so name a new branch for this pull request.";
 
 /// What the Create PR dialog sends [D168].
 pub struct Create<'a> {
@@ -42,6 +46,11 @@ impl Pr {
         // Never a commit or a push onto the base itself: the PR needs a branch of its own first.
         if head.is_empty() || head == base {
             return err("Name a new branch for this pull request.");
+        }
+        // A base no one could name may be the branch checked out: none of it goes onto that one.
+        let stays = c.branch.is_none_or(|name| name == self.branch);
+        if base.is_empty() && stays && (c.commit.is_some() || head == on) {
+            return err(UNLEARNED);
         }
         let stop = AtomicBool::new(false);
         if let Some(name) = c.branch
@@ -146,6 +155,46 @@ impl Pr {
         name.strip_prefix(&format!("{}/", self.remote))
             .unwrap_or_default()
             .to_string()
+    }
+
+    /// `landing`, else the default branch GitHub names for the repository, asked once and kept in
+    /// its project's folder; "" when neither can say. One gh read, up to `GH_SECS` [D168].
+    pub fn learn(&self, data: &Path) -> String {
+        let known = self.landing();
+        let Some(repo) =
+            (self.repo.as_ref()).filter(|r| known.is_empty() && r.kind == Kind::GitHub)
+        else {
+            return known;
+        };
+        let path = (self.project.as_ref())
+            .map(|p| crate::projects::dir(data, p).join("default-branches.json"));
+        let mut kept = path.clone().map(read_kept).unwrap_or_default();
+        if let Some(name) = kept[repo.key()].as_str() {
+            return name.to_string();
+        }
+        let Some(gh) = gh(repo, self.account.as_deref()) else {
+            return String::new();
+        };
+        let mut command = gh.command();
+        let at = format!("repos/{}", repo.path);
+        command.args([
+            "api",
+            "--hostname",
+            &repo.host,
+            &at,
+            "--jq",
+            ".default_branch",
+        ]);
+        let name = (setup::run(&mut command, GH_SECS).ok())
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+            .filter(|name| !name.is_empty() && name != "null" && !name.starts_with('-'))
+            .unwrap_or_default();
+        if let Some(path) = path.filter(|_| !name.is_empty()) {
+            kept[repo.key()] = json!(name);
+            keep(&path, &kept);
+        }
+        name
     }
 
     /// The host's page comparing `head` to `base` [D169].

@@ -160,7 +160,7 @@ fn writes(data: &Path, id: &str, args: &[String]) -> io::Result<Option<Value>> {
     let word = |i: usize| arg(args, i);
     let mut done = match verb {
         "create" => create(data, id, args)?,
-        "base" => json!({"base": host::pr(data, id)?.landing()}),
+        "base" => json!({"base": host::pr(data, id)?.learn(data)}),
         "compare" => json!({"url": host::pr(data, id)?.compare(word(3)?, word(4)?)?}),
         "attach" | "detach" => {
             let (at, n) = named(args)?;
@@ -315,7 +315,12 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
     if changes {
         busy()?;
     }
-    let base = super::flag(args, "--base");
+    // Asked of GitHub when git can't name it, before the fence: a send never waits on it [D168].
+    let base = match super::flag(args, "--base") {
+        Some(base) => base.to_string(),
+        None => pr.learn(data),
+    };
+    let base = Some(base.as_str());
     let mut title = super::flag(args, "--title")
         .unwrap_or("")
         .trim()
@@ -327,7 +332,7 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
     let wrote = title.is_empty() || message.is_empty();
     let seen = (wrote && changes).then(|| pr.fingerprint());
     if wrote {
-        let (t, m) = written(data, id, &pr.changes(base))?;
+        let (t, m) = written(data, id, &pr.changes(super::flag(args, "--base")))?;
         if title.is_empty() {
             title = t;
         }
