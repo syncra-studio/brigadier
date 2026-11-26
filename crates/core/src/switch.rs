@@ -122,6 +122,10 @@ pub fn switch(
     if let Some(name) = to.name {
         switch["to"]["name"] = name.into();
     }
+    // A fresh one measures what its CLI adds from its first reading, as a renewal's does [§2.6].
+    if fresh {
+        switch["sent"] = crate::handoff::estimate::tokens(&text).into();
+    }
     if let Some(m) = to.model {
         run.model = Some(m.into());
     }
@@ -192,18 +196,16 @@ pub fn picked(
         Some(model),
         text,
     )?;
-    let switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
+    let mut switch = json!({"from": {"backend": from, "account": f.accounts.get(from)},
         "to": {"backend": to, "account": f.accounts.get(to).map_or("", String::as_str), "model": model, "name": p.name, "effort": p.effort, "fast": p.fast},
         "auto": false, "fresh": true, "why": "picked", "note": format!("Switched to {to_label} · {}", p.name),
         "from_label": from_label, "to_label": to_label});
-    Ok((
-        switch,
-        if text.is_empty() {
-            seed
-        } else {
-            format!("{seed}\n\n{text}")
-        },
-    ))
+    let sent = match text.is_empty() {
+        true => seed,
+        false => format!("{seed}\n\n{text}"),
+    };
+    switch["sent"] = crate::handoff::estimate::tokens(&sent).into();
+    Ok((switch, sent))
 }
 
 /// A fork's first message with no conversation of its own: the hand-off from its inherited copy,
