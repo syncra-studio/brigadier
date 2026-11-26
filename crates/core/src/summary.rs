@@ -19,13 +19,12 @@ pub fn flag(dir: &Path) -> PathBuf {
     dir.join("summarizing")
 }
 
-/// Whether a summary turn holds the session's tools now. A flag older than the turn's own limit,
-/// and a little more, is one a crash left: it holds nothing.
+/// Whether a summary turn holds the session's tools now: its flag is there and the log has no
+/// end for it, however long it ran with the daemon away. One its end left behind holds nothing;
+/// a host that died in it is ended by the next. A log that can't be read holds them.
 pub fn running(dir: &Path) -> bool {
-    let age = std::fs::metadata(flag(dir)).and_then(|m| m.modified());
-    age.ok()
-        .and_then(|t| t.elapsed().ok())
-        .is_some_and(|age| age < LIMIT + Duration::from_secs(60))
+    let open = |f: crate::Folded| f.fold.turns.first().is_some_and(|t| t.origin == "summary");
+    flag(dir).exists() && crate::fold(dir, true).map_or(true, open)
 }
 
 /// The tool hook's answer [D92]: refused, with the reason, while the summary turn runs.
