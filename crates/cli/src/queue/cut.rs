@@ -134,7 +134,7 @@ pub fn recover(data: &Path, id: &str, queued: bool) -> io::Result<Value> {
     let live = fold::live(&f.fold, Owner::Alive, &spec.dir, &procs::all());
     let call = crate::call_fn(data, id);
     // The user's Resume takes what's held for the session, as their next message would [D329].
-    let mut more = String::new();
+    let mut more = core::message::Message::default();
     let held = match queued {
         true => workers::with_next(data, id, None, &mut more),
         false => vec![],

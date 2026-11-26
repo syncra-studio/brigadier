@@ -203,7 +203,7 @@ pub(crate) fn own(
     };
     let mut msg = core::message::Message::plain(text);
     let held = match more {
-        true => crate::workers::with_next(data, id, Some(cid), &mut msg.agent),
+        true => crate::workers::with_next(data, id, Some(cid), &mut msg),
         false => vec![],
     };
     let reply = core::send(&spec, &f, child, &call, cid, "system", &msg, None, None);

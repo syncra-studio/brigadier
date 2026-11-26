@@ -4,7 +4,7 @@
 use super::{Res, all, fresh, holds, path_of, unsaid, unsent, woken, write, write_ended};
 use crate::workers::{Link, link, read_json, write_json};
 use crate::{owner, queue};
-use brigadier_core::{self as core, fold::Fold};
+use brigadier_core::{self as core, fold::Fold, message::Message};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -68,8 +68,9 @@ fn take_if(data: &Path, me: &str, wid: &str, pick: impl Fn(&Res) -> bool) -> Opt
 /// or the parent ended come last, the agent told to mention them only if something matters [D330]. Call under
 /// the parent's queue lock; `went_with` once the message is in.
 /// `cid`: the message's own id, which what the user told its workers goes with first, as it came
-/// first [D303]; a Resume's, unknown here, takes none.
-pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, agent: &mut String) -> Vec<PathBuf> {
+/// first [D303]; a Resume's, unknown here, takes none. Its input says it took one but those ended [D84].
+pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, msg: &mut Message) -> Vec<PathBuf> {
+    let agent = &mut msg.agent;
     if let Some(cid) = cid {
         super::told::with(data, pid, cid, agent);
     }
@@ -84,6 +85,7 @@ pub fn with_next(data: &Path, pid: &str, cid: Option<&str>, agent: &mut String) 
     }
     for (_, r) in due.iter().filter(|(_, r)| !r.ended) {
         *agent += &format!("\n\n{}", r.text);
+        msg.took = true;
     }
     if due.iter().any(|(_, r)| r.ended) {
         *agent += "\n\nThese workers were ended, by the user or by you. Mention them only if something matters (say, a file one left uncommitted), in one short line of your reply:";
@@ -116,7 +118,7 @@ pub fn went_with(data: &Path, pid: &str, taken: Vec<PathBuf>) {
         results.push(r);
     }
     for r in results.iter().filter(|r| !r.ended) {
-        let note = json!({"event": "worker", "phase": "result", "result": said(data, pid, r), "took": true});
+        let note = json!({"event": "worker", "phase": "result", "result": said(data, pid, r)});
         let _ = owner::call(data, pid, json!({"op": "note", "data": note}));
     }
 }

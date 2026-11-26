@@ -254,8 +254,10 @@ impl Fold {
             _ => {
                 let t = self.turns.first_mut().filter(|t| t.began);
                 let joins = item["steer"] == true && t.is_some();
-                if let Some(t) = t.filter(|_| joins && item["origin"] == "user") {
-                    t.quiet = false;
+                if let Some(t) = t.filter(|_| joins) {
+                    // The results that went with it join it too [D48].
+                    t.took |= item["took"] == true;
+                    t.quiet &= item["origin"] != "user";
                 }
                 joins
             }

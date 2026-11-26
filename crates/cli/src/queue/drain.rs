@@ -156,7 +156,7 @@ fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
             msg.agent += REPLY;
         }
         // What's held for the parent's next message goes with it [D329].
-        let held = crate::workers::with_next(data, id, Some(&item.id), &mut msg.agent);
+        let held = crate::workers::with_next(data, id, Some(&item.id), &mut msg);
         let reply = core::send(
             &crate::routing::told(data, &spec),
             &f.fold,

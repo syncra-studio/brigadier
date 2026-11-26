@@ -23,7 +23,7 @@ const IMAGES: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 
 /// One message: `text` as the thread shows it, `parts` the composer's draft (Null for plain text),
 /// `agent` what the agent reads, `images` the images going with it, `commands` the agent's own
-/// commands its chips name.
+/// commands its chips name; `took`: a worker's result goes with it [D48].
 #[derive(Clone, Default)]
 pub struct Message {
     pub text: String,
@@ -31,6 +31,7 @@ pub struct Message {
     pub agent: String,
     pub images: Vec<PathBuf>,
     pub commands: Vec<Value>,
+    pub took: bool,
 }
 
 impl Message {
@@ -269,6 +270,7 @@ fn compose_on(
         agent,
         images,
         commands,
+        took: false,
     })
 }
 

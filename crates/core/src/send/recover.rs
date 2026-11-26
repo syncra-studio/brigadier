@@ -49,7 +49,7 @@ pub fn recover(
     live: &Live,
     child: Running,
     call: Call,
-    more: &str,
+    more: &Message,
 ) -> Value {
     let status = fold::status(f, live);
     let state = status["state"].as_str().unwrap_or("");
@@ -177,7 +177,8 @@ pub fn recover(
                     msg.parts = json!({"back": m.parts["back"]});
                 }
             }
-            msg.agent += more;
+            msg.agent += &more.agent;
+            msg.took = more.took;
             let mut reply = with_back(
                 spec,
                 f,
@@ -249,7 +250,7 @@ fn left(spec: &Spec, f: &Fold, child: Running, call: Call) -> Value {
 
 /// Its agent's record shows it took `cid` before it was cut off: noted as such, and its turn goes
 /// on in the same Recover, never sending it twice [D66].
-fn taken(spec: &Spec, child: Running, call: Call, more: &str, cid: &str) -> Value {
+fn taken(spec: &Spec, child: Running, call: Call, more: &Message, cid: &str) -> Value {
     let took = json!({"event": "confirmed", "cid": cid, "how": "accepted"});
     let cut = json!({"event": "interrupted", "reason": {"accepted": cid}});
     for note in [took, cut] {

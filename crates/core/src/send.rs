@@ -174,6 +174,9 @@ pub fn send(
     if spec.review {
         base["review"] = true.into();
     }
+    if msg.took {
+        base["took"] = true.into();
+    }
     if held {
         base["setup"]["held"] = true.into();
     }

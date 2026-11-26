@@ -228,6 +228,7 @@ impl Fold {
             // A worker's ask its parent answers, or a summary turn: no news of its own [D119, D92].
             quiet: str_of("origin").starts_with("result:asks:") || item["origin"] == "summary",
             direct,
+            took: item["took"] == true,
             ..Default::default()
         });
     }
