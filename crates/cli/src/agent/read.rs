@@ -123,6 +123,8 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
         if let Some(m) = list.last_mut() {
             m["cut"] = raw.as_str().into();
         }
+        // It filled the page: the next reference starts the next.
+        sent = page;
     }
     if text.is_empty() {
         text = "[nothing in this range]\n".into();
