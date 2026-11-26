@@ -73,6 +73,10 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     // spawn after it is guarded too.
     let call = |mut req: Value| {
         let writes = matches!(req["op"].as_str(), Some("input" | "spawn"));
+        // Turned off meanwhile (a setup's confirm can wait): nothing goes. The log can't say so.
+        if writes && crate::settings::get(data, "carry_on") != "true" {
+            return Ok(json!({"ok": false, "error": "off", "message": "Carry on was turned off."}));
+        }
         let guard = req["if_len"].is_null() && writes && first.get();
         if guard {
             req["if_len"] = len.into();
