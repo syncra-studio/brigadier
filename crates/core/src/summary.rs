@@ -130,6 +130,8 @@ pub fn settle(
             if inside && !past {
                 match s("kind") {
                     "tool" => (tools, reply) = (true, String::new()),
+                    // Its text blocks joined, as `Turn::output` joins them.
+                    "text" if !reply.is_empty() => reply = format!("{reply}\n\n{}", s("text")),
                     "text" => reply = s("text").into(),
                     _ => {}
                 }
