@@ -196,6 +196,15 @@ fn attempt(
             );
         }
         target = Some((a, pick.to_string(), None, None));
+        // A worker's receipt and outcome name the account the user moved it to [D3018].
+        if let Some(l) = link.as_ref().filter(|l| l.ran.is_object()) {
+            ran = l.ran.clone();
+            ran["account"] = Some(pick).filter(|p| !p.is_empty()).into();
+            (ran["label"], ran["quota"]) = (
+                crate::routing::account_label(&v, b, pick).into(),
+                Value::Null,
+            );
+        }
     } else if why == "unresumable" && (!auto || listed(&v, "auto", b)) {
         target = Some((a, cur.clone(), None, None));
     } else if !auto {
@@ -226,9 +235,10 @@ fn attempt(
     let to_label = label(&v, to, &account);
     let name = (model.as_deref()).and_then(|m| crate::routing::name_of(data, id, to.name(), m));
     // "Opus 5.5 had no account with room, so the next in Write code ran: Codex · GPT-6.1-Sol · High".
+    // Only a move this switch made: a user's account pick keeps the start's note in the receipt.
     let moved = ran["note"]
         .as_str()
-        .filter(|_| ran["job"].is_string())
+        .filter(|_| kind == "job" && ran["job"].is_string())
         .map(|n| {
             let words = [
                 Some(to.short_label().to_string()),
