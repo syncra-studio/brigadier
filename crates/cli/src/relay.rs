@@ -461,10 +461,12 @@ pub(crate) fn read(
         .collect();
     if from > 0 && at.is_none() {
         let flag = if user { " --user" } else { "" };
-        text = format!(
-            "[{from} earlier; brigadier read {id} --last {}{flag}]\n\n{text}",
-            last + from as u64
-        );
+        let (want, most) = (last + from as u64, crate::agent::LAST_MOST);
+        let n = want.min(most);
+        let more = (n > last).then(|| format!("; brigadier read {id} --last {n}{flag}"));
+        let older = (want > most).then_some("; `brigadier search` finds older ones");
+        let (more, older) = (more.unwrap_or_default(), older.unwrap_or_default());
+        text = format!("[{from} earlier{more}{older}]\n\n{text}");
     }
     let list: Vec<Value> = (shown.iter())
         .map(|e| json!({"ref": format!("{id}#{}", e.at), "from": sender(e), "text": e.text, "files": e.files}))

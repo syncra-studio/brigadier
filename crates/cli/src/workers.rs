@@ -252,12 +252,19 @@ pub fn stop(data: &Path, me: &str, id: &str) -> Value {
         return refuse(&e.to_string());
     }
     ended(data, me, &[id.to_string()], "agent");
-    let branch = core::worktrees::branch(&core::session_dir(data, id))
-        .ok()
-        .flatten();
-    let kept = branch.map_or(String::new(), |b| {
-        format!(" Its branch {b} keeps its commits.")
-    });
+    let dir = core::session_dir(data, id);
+    let branch = core::worktrees::branch(&dir).ok().flatten();
+    // Only a branch past where it began has commits to keep.
+    let made = || {
+        let start = core::worktrees::lands(&dir).ok()??.base_commit;
+        let cwd = core::load(data, id).ok()?.cwd;
+        git(&cwd, &["rev-list", "--count", &format!("{start}..HEAD")])
+    };
+    let kept = branch
+        .filter(|_| made().is_some_and(|n| n != "0"))
+        .map_or(String::new(), |b| {
+            format!(" Its branch {b} keeps its commits.")
+        });
     json!({"ok": true, "text": format!("Stopped {} ({id}).{kept}", r.title)})
 }
 

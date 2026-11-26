@@ -17,6 +17,9 @@ pub(crate) const CAP: usize = 16 << 10;
 /// Proposed: `wait`'s default and longest timeout, in seconds.
 pub(crate) const WAIT: u64 = 60;
 const WAIT_MAX: u64 = 600;
+/// The most `read --last`/`--around` and `sessions --limit` take.
+pub(crate) const LAST_MOST: u64 = 1000;
+const LIMIT_MOST: u64 = 100;
 
 const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
 
@@ -270,7 +273,7 @@ pub fn run(
     }
     let reply = match call.cmd {
         "sessions" => call
-            .number("--limit", 20, 100)
+            .number("--limit", 20, LIMIT_MOST)
             .map(|n| sessions(data, me, n, &rows())),
         "read" => {
             let (n, default) = match at {
@@ -281,7 +284,7 @@ pub fn run(
                 .into_iter()
                 .find(|r| r["id"] == id)
                 .unwrap_or_default();
-            call.number(n, default, 1000)
+            call.number(n, default, LAST_MOST)
                 .map(|n| crate::relay::read(data, id, &row, at, n, call.has("--user")))
         }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
@@ -291,7 +294,7 @@ pub fn run(
         }),
         "stop" => Ok(workers::stop(data, me, id)),
         "send" if crate::routing::held(data, id) => {
-            Err(refuse(&workers::for_user(data, id).unwrap_or_default()))
+            Err(refuse(&workers::for_user(data, me, id).unwrap_or_default()))
         }
         "send"
             if call.has("--allow")
@@ -422,10 +425,11 @@ fn sessions(data: &Path, me: &str, limit: u64, rows: &[Value]) -> Value {
         })
         .collect();
     if more > 0 {
-        text += &format!(
-            "… {more} older; brigadier sessions --limit {}\n",
-            limit + more as u64
-        );
+        let n = (limit + more as u64).min(LIMIT_MOST);
+        text += &match n > limit {
+            true => format!("… {more} older; brigadier sessions --limit {n}\n"),
+            false => format!("… {more} older, past the most it lists\n"),
+        };
     }
     json!({"ok": true, "sessions": list, "more": more, "text": text})
 }

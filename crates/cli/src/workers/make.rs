@@ -227,8 +227,14 @@ pub fn start(
             model.as_deref().unwrap_or("")
         ),
         Some(why) => format!(
-            "Held worker {} ({}): {why}, so the user decides on its card whether it runs on a model from another job or waits. Go on with your work; its result comes to you when it runs.",
-            r.title, r.wid
+            "Held worker {} ({}): {why}, so {}. Go on with your work; its result comes to you when it runs.",
+            r.title,
+            r.wid,
+            match r.hold["use"].is_object() {
+                true =>
+                    "the user decides on its card whether it runs on a model from another job or waits",
+                false => "it waits for the user's answer on its card, which offers only Wait",
+            }
         ),
         None => format!(
             "Started worker {} ({}) on {receipt}, {place}. Its result comes to you by itself when it finishes, so end your turn.",

@@ -67,7 +67,7 @@ fn until(
                     return json!({"ok": true, "done": true, "id": id, "state": state, "last": last, "result": result, "text": result});
                 }
                 let text = (state == "waiting_answer")
-                    .then(|| workers::for_user(data, id))
+                    .then(|| workers::for_user(data, me, id))
                     .flatten()
                     .unwrap_or_else(|| {
                         format!("{id} is {state}. Its last message:\n{}", last.trim_end())

@@ -66,7 +66,8 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
         return Ok(());
     }
     let id = format!("hold-{}", &adapters::uuid()[..8]);
-    let until = hold["resets"].as_u64().unwrap_or(log::now_ms() + SKIP_MS);
+    let known = hold["resets"].as_u64();
+    let until = known.unwrap_or(log::now_ms() + SKIP_MS);
     let when = clock(until);
     let to = &hold["use"];
     let why = str_of(hold, "why");
@@ -100,17 +101,25 @@ pub(crate) fn ask(data: &Path, wid: &str, hold: &Value) -> io::Result<()> {
     let out = hold["out"]
         .as_str()
         .filter(|o| !o.is_empty() && job.is_some());
-    let text = format!(
-        "{why} until {when}{}. How should it go on?",
-        out.map_or(String::new(), |o| format!(": {o}"))
-    );
+    let out = out.map_or(String::new(), |o| format!(": {o}"));
+    // No account gave a reset time: Wait's is Brigadier's own, not the provider's.
+    let text = match known {
+        Some(_) => format!("{why} until {when}{out}. How should it go on?"),
+        None => format!(
+            "{why}{out}. No reset time is known; Wait starts it at {when}. How should it go on?"
+        ),
+    };
     let item = json!({"text": text, "options": options, "recommended": null, "multiSelect": false});
     // `held`: its card offers only these answers, no words of the user's and no Skip.
     let request = json!({"id": id, "title": "Out of quota", "items": [item], "held": true});
     let note = json!({"event": "hold", "phase": "asked", "id": id, "why": why, "resets": until,
         "use": to, "job": job, "request": request});
     owner::call(data, wid, json!({"op": "note", "data": note}))?;
-    workers::told_held(data, wid, &id, &format!("{why}, resets {when}"))
+    let resets = match known {
+        Some(_) => format!("resets {when}"),
+        None => format!("no reset time is known (if the user picks Wait, it starts at {when})"),
+    };
+    workers::told_held(data, wid, &id, &format!("{why}, {resets}"))
 }
 
 /// The user's answer on a hold's card: "Use …" runs its model now, "Wait …" waits for
