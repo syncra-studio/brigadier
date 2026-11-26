@@ -2,7 +2,7 @@ import { type ReactNode, useContext, useEffect, useMemo, useState, useSyncExtern
 
 import { doingWords, VERBS } from "../components/thread/tool";
 import { ParentName } from "../components/thread/cards";
-import { ask, type Row, useDaemon, useThread } from "../daemon";
+import { ask, type Row, useDaemon, useThread, view } from "../daemon";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { CardSection } from "../panel/card";
 import { Line } from "../panel/source/rows";
@@ -121,8 +121,11 @@ const stop = (parent: string, ids: readonly string[]) =>
 /** The Workers tab, the session's own workers, or the Subagents tab, its agent CLI's own [D80]. */
 export type TeamKind = "workers" | "subagents";
 
-/** Opens a worker of `owner` in its Workers tab: its chip in a message, or a message just sent to it [D81]. */
-export const openWorker = (owner: string, worker: string) => openTab(owner, "workers", worker);
+/**
+ * Opens a worker in its Workers tab: its chip in a message, or a message just sent to it [D81]. However deep, that's
+ * its family's first session's, the tab on screen, since a worker's own view sits in it.
+ */
+export const openWorker = (owner: string, worker: string) => openTab(view.rows?.find((each) => each.id === worker)?.worker?.root ?? owner, "workers", worker);
 
 /** A worker named anywhere opens it in its parent's Workers tab, `tab`'s; null opens the list [D81]. */
 export function Opens({ owner, tab = "workers", children }: { owner: string; tab?: TeamKind; children: ReactNode }) {
@@ -207,8 +210,10 @@ export function SessionWorkersStrip({ id }: { id: string }) {
  */
 export function TeamTab({ owner, kind, target }: { owner: string; kind: TeamKind; target?: string }) {
   const workers = useWorkers(owner);
+  const family = useFamily(owner);
   const agents = useAgents(owner);
-  const worker = kind === "workers" ? workers.find((each) => each.id === target) : undefined;
+  // Its list is its own workers; a chip opens any worker under it, theirs too [D81].
+  const worker = kind === "workers" ? family.find((each) => each.worker.id === target)?.worker : undefined;
   const agent = kind === "subagents" ? agents.find((each) => each.id === target) : undefined;
   const back = () => openTab(owner, kind);
   return (
@@ -237,7 +242,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   const row = rows?.find((row) => row.id === worker.id) as ComposerRow | undefined;
   const updated = row?.updated;
   // Its asks name the session that answers them [D131].
-  const parent = rows?.find((row) => row.id === owner)?.title || "Its parent";
+  const parent = rows?.find((each) => each.id === (row?.worker?.parent ?? owner))?.title || "Its parent";
   const source = useMemo(() => {
     let session: Session | null = null;
     const listeners = new Set<() => void>();
