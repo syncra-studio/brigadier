@@ -68,12 +68,14 @@ let running = null
 const stopAgent = (signal = 'SIGKILL') => {
   if (!running) return
   const at = starts()
-  if (running.start_us && at[running.pid] === running.start_us) {
+  // The group outlives its leader; a live replacement leader belongs to another run.
+  // shortcut: an exited replacement leader hides group-id reuse; record members if runs span PID reuse.
+  if (running.start_us && (!at[running.pid] || at[running.pid] === running.start_us)) {
     const groups = spawnSync('ps', ['-axo', 'pid=,pgid='], { encoding: 'utf8' }).stdout.trim().split('\n').map((l) => l.trim().split(/\s+/).map(Number))
-    for (const [pid, pgid] of groups) if (pgid === running.pid) stop({ pid, start_us: at[pid] }, signal)
+    for (const [pid, pgid] of groups) if (pgid === running.pid && at[pid] >= running.start_us) stop({ pid, start_us: at[pid] }, signal)
   } else console.error(`skip group ${running.pid}: missing or changed process start time`)
   // Its background calls have groups of their own: those the shim recorded and that haven't ended.
-  for (const c of calls(running.raw)) if (!c.to && commandOf(c.pid).includes(bin)) stop(c, signal)
+  for (const c of calls(running.raw)) if (!c.to && commandOf(c.pid).includes(bin)) stop(c, 'SIGTERM')
 }
 process.on('exit', () => { stopAgent(); if (fs.existsSync(lock) && fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.rmSync(lock); fs.rmSync(bin, { recursive: true, force: true }) })
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(1))
@@ -133,15 +135,16 @@ const ARM = {
     args: ['--allowedTools', 'Bash(brigadier computer:*)', 'Read'],
     // Chrome starts afresh on the start page alone: no tab or window from before.
     clear: async () => {
-      // A profile of the bench's own, as its tabs are deleted: never one that was there.
-      if (!made(PROFILE)) make(PROFILE)
       // The Chrome the last setup started, this bench's or one cut short.
       const saved = fs.existsSync(CHROME_PID) ? JSON.parse(fs.readFileSync(CHROME_PID, 'utf8')) : null
+      if (saved !== null && (!saved.pid || !saved.start_us)) throw new Error(`Cannot safely identify the saved Chrome in ${CHROME_PID}; use a fresh CHROME_PROFILE`)
+      // A profile of the bench's own, as its tabs are deleted: never one that was there.
+      if (!made(PROFILE)) make(PROFILE)
       const pid = saved?.pid
       const up = () => pid > 0 && commandOf(pid).includes(`user-data-dir=${PROFILE}`)
-      if (saved && !saved.start_us) console.error('skip saved Chrome pid: no recorded process start time')
-      else if (up()) stop(saved)
+      if (up()) stop(saved)
       for (let i = 0; i < 40 && up(); i++) await sleep(250)
+      if (up()) throw new Error(`Chrome for ${PROFILE} is still running; use a fresh CHROME_PROFILE`)
       fs.rmSync(path.join(PROFILE, 'Default', 'Sessions'), { recursive: true, force: true })
     },
     async setup(url) {
