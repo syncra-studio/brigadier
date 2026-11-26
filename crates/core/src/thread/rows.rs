@@ -40,7 +40,7 @@ impl Thread {
 
     pub(super) fn content(&mut self, item: &Value, kind: &str, ts: u64) {
         // Before any turn: a held worker's card [D2028], a new chat's account note [C38].
-        let early = ["hold", "mockup", "left", "account"];
+        let early = ["hold", "mockup", "left", "account", "unsummarized"];
         if kind == "note" && (item["event"].as_str()).is_some_and(|e| early.contains(&e)) {
             return self.hold(item, ts);
         }

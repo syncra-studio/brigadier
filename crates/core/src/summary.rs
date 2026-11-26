@@ -50,7 +50,8 @@ pub fn headings() -> impl Iterator<Item = &'static str> {
 /// adapter method once a second does.
 pub fn vetoes(spec: &crate::Spec, backend: &str) -> bool {
     match backend {
-        "fake" => true,
+        // The drills' stand-in for an agent that failed the proof.
+        "fake" => std::env::var_os("BRIGADIER_FAKE_NO_VETO").is_none(),
         "claude" => crate::adapters::claude::veto::vetoes(spec),
         _ => false,
     }
@@ -88,7 +89,7 @@ pub fn settle(
 ) -> io::Result<Option<u64>> {
     use crate::handoff::check::{self, Source};
     let Some(turn) = f.renewing.as_ref().and_then(|r| r["turn"].as_str()) else {
-        return Ok(None);
+        return told(spec, f, call, len);
     };
     let (mut sources, mut from) = (Vec::<Source>::new(), None);
     let (mut inside, mut hit, mut past, mut noted, mut tools) = (false, false, false, false, false);
@@ -210,4 +211,32 @@ pub fn settle(
             reply["error"]
         ))),
     }
+}
+
+/// With summaries on, an agent that can't be held to no tools renews without one: the session
+/// says so once, as the design wants the owner told [D92]. The log's new length when written.
+fn told(
+    spec: &crate::Spec,
+    f: &crate::fold::Fold,
+    call: crate::send::Call,
+    len: Option<u64>,
+) -> io::Result<Option<u64>> {
+    let b = crate::rebirth::backend(spec, f);
+    if !on() || vetoes(spec, b) {
+        return Ok(None);
+    }
+    let mut said = false;
+    crate::archive::each(&spec.dir, |item, _| {
+        said |= item["event"] == "unsummarized" && item["backend"] == b;
+    })?;
+    if said {
+        return Ok(None);
+    }
+    let label = crate::adapters::get(b).map_or(b, |a| a.label());
+    let text = format!(
+        "{label} renews this chat without a written summary: it can't be held to no tools while it writes one. Each fresh conversation starts from the records and the last summary, if any."
+    );
+    let data = serde_json::json!({"event": "unsummarized", "backend": b, "id": format!("unsummarized:{b}"), "text": text});
+    let reply = call(serde_json::json!({"op": "note", "data": data, "if_len": len}))?;
+    Ok(reply["len"].as_u64().filter(|_| reply["ok"] == true))
 }
