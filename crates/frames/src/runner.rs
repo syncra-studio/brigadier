@@ -5,6 +5,7 @@
 use crate::log::{self, Reader, Writer};
 
 mod input;
+mod redact;
 mod spawn;
 mod stop;
 mod term;

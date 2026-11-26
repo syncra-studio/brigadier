@@ -116,7 +116,7 @@ impl Runner {
         crash_at("after_fork:", cid.unwrap_or(""));
         let pid = child.id() as i32;
         let start_us = procs::info(pid).map_or(0, |p| p.start_us);
-        let mut record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": argv, "backend": req["backend"], "cli_version": req["cli_version"],
+        let mut record = json!({"pid": pid, "pgid": pid, "start_us": start_us, "argv": super::redact::argv(&argv), "backend": req["backend"], "cli_version": req["cli_version"],
                             "mode": if pty { "pty" } else { "pipe" }, "cid": cid, "owner_build": wire::build(),
                             "cwd": std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.into()), "temp_dir": req["env"]["TMPDIR"],
                             "dir": std::fs::canonicalize(&self.dir).unwrap_or_else(|_| self.dir.clone())});
