@@ -295,7 +295,7 @@ impl Adapter for Fake {
             "check" => vec![Event::Checking(v["on"] == true)],
             "context" => vec![Event::Context(
                 v["used"].as_u64().unwrap_or(0),
-                None,
+                v["window"].as_u64(),
                 v["opens"] == true,
             )],
             "deny" => vec![Event::Denied],

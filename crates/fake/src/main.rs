@@ -239,6 +239,19 @@ impl Agent {
             emit(json!({"t": "turn"}));
             emit(json!({"t": "mark", "start": self.conv().len().to_string()}));
             append(&self.home.join(format!("{}.conv", self.sid)), text);
+            // `FAKE_OVERHEAD`: a CLI's own reading each turn, what it adds by itself plus a third of
+            // the conversation's bytes, in a `FAKE_WINDOW` window.
+            if let Some(over) = env::var("FAKE_OVERHEAD")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+            {
+                let conv = fs::metadata(self.home.join(format!("{}.conv", self.sid)));
+                let window = env::var("FAKE_WINDOW")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok());
+                let used = over + conv.map_or(0, |m| m.len()) / 3;
+                emit(json!({"t": "context", "used": used, "window": window}));
+            }
             // A changed setup shows on the turn it reached, as a CLI's own banner would.
             if !self.told {
                 self.told = true;

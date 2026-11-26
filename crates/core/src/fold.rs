@@ -411,8 +411,9 @@ impl Fold {
                 let account = self.accounts.get(&backend).cloned().unwrap_or_default();
                 self.convs.insert((backend.clone(), account, id.clone()));
                 self.branched(&backend, &id);
+                // A new conversation has no reading; a renewal's estimate waits for its first.
                 if self.resume.get(&backend) != Some(&id) {
-                    self.context = None;
+                    self.context = self.context.take().filter(|c| c["start"].is_null());
                 }
                 self.resume.insert(backend, id);
             }

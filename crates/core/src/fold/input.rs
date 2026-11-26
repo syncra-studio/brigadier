@@ -180,7 +180,9 @@ impl Fold {
             if switch["fresh"] == true {
                 self.resume.remove(to);
                 self.pin.remove(to);
-                self.context = None;
+                // What a renewal sent, for its overhead once the first reading comes [§2.6].
+                let sent = json!({"sent": switch["sent"], "redo": switch["redo"]});
+                self.context = switch["sent"].is_u64().then_some(sent);
             } else if let Some(id) = self.resume.get(to) {
                 self.convs.insert((to.into(), account.into(), id.clone()));
             }

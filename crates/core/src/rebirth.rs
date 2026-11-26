@@ -48,13 +48,27 @@ fn listed(spec: &Spec, f: &Fold) -> Option<u64> {
 
 /// A context reading, `{used, window, start}`: the window kept from an earlier one where its CLI
 /// leaves it out, and `start` its conversation's first reading, so one that began past its
-/// threshold isn't reborn again and again.
+/// threshold isn't reborn again and again. A renewal's conversation also keeps what Brigadier sent
+/// it, whether it's a redo, and its `overhead`: what its CLI added by itself [§2.6].
 pub fn reading(was: Option<&Value>, item: &Value) -> Value {
-    let (window, start) = was.map_or((Value::Null, item["used"].clone()), |c| {
-        (c["window"].clone(), c["start"].clone())
-    });
-    let window = item["window"].as_u64().map_or(window, Value::from);
-    json!({"used": item["used"], "window": window, "start": start})
+    let was = was.cloned().unwrap_or_default();
+    let first = was["start"].is_null();
+    let start = if first { &item["used"] } else { &was["start"] };
+    let window = item["window"]
+        .as_u64()
+        .map_or(was["window"].clone(), Value::from);
+    let mut c = json!({"used": item["used"], "window": window, "start": start,
+        "sent": was["sent"], "redo": was["redo"], "overhead": was["overhead"]});
+    if let Some(sent) = was["sent"].as_u64().filter(|_| first) {
+        c["overhead"] = (item["used"].as_u64().unwrap_or(0).saturating_sub(sent)).into();
+    }
+    c
+}
+
+/// The renewal line of the conversation's window, as the fold last read it.
+pub fn line(spec: &Spec, f: &Fold) -> u64 {
+    let c = f.context.clone().unwrap_or_default();
+    threshold(c["window"].as_u64().or_else(|| listed(spec, f)))
 }
 
 /// Whether the conversation has passed its threshold, having begun below it.
@@ -62,10 +76,11 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
     let Some(c) = &f.context else {
         return false;
     };
-    let window = c["window"].as_u64().or_else(|| listed(spec, f));
-    let at = threshold(window);
-    // One that began past it can't get smaller by starting again [D88].
-    c["used"].as_u64().unwrap_or(0) >= at && c["start"].as_u64().unwrap_or(0) < at
+    let at = line(spec, f);
+    // One that began past it can't get smaller by starting again [D88], but for one redo with
+    // the overhead it measured: a redo isn't renewed again by this rule [§2.6].
+    let began = c["start"].as_u64().unwrap_or(0) < at || c["redo"] != true;
+    c["used"].as_u64().is_some_and(|u| u >= at) && began
 }
 
 /// Why the session needs a rebirth on its own, now: "cut" for a running turn past its threshold
@@ -170,8 +185,11 @@ pub fn goes_on(f: &Fold) -> bool {
 }
 
 /// The switch a rebirth's input carries: the same agent, account, model, effort and speed, in a
-/// fresh conversation [D88].
-pub fn record(spec: &Spec, f: &Fold, why: &str) -> Value {
+/// fresh conversation [D88]; the estimate of the first message `sent`, and `redo` when the one it
+/// ends began past its line [§2.6].
+pub fn record(spec: &Spec, f: &Fold, why: &str, sent: &str) -> Value {
+    let c = f.context.clone().unwrap_or_default();
+    let redo = c["start"].as_u64().is_some_and(|s| s >= line(spec, f));
     let b = backend(spec, f);
     let run = as_run(spec, f, b, None);
     // A cut carries the guard's count on; the user's message starts it over. One whose input
@@ -188,6 +206,7 @@ pub fn record(spec: &Spec, f: &Fold, why: &str) -> Value {
     };
     let empty = (why == "cut").then_some(empty);
     json!({"why": why, "fresh": true, "auto": true, "empty": empty,
+        "sent": crate::handoff::estimate::tokens(sent), "redo": redo,
         "to": {"backend": b, "account": f.accounts.get(b).map_or("", String::as_str),
                "model": run.model, "effort": run.effort, "fast": run.fast}})
 }

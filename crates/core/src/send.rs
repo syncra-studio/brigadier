@@ -122,15 +122,20 @@ pub fn send(
     } else if reborn {
         let why = if cut { "cut" } else { "rebirth" };
         let last = f.last.clone().unwrap_or_default();
+        // What goes after the hand-off: the user's message, or on a cut the night's line.
+        let after = if cut {
+            night.as_deref().unwrap_or("")
+        } else {
+            text
+        };
         match crate::handoff::build(spec, f, why, &last, a.label()) {
-            Ok(seed) if cut => (
-                Some(crate::rebirth::record(spec, f, why)),
-                night.map_or(seed.clone(), |night| format!("{seed}\n\n{night}")),
-            ),
-            Ok(seed) => (
-                Some(crate::rebirth::record(spec, f, why)),
-                format!("{seed}\n\n{text}"),
-            ),
+            Ok(seed) => {
+                let sent = match after.is_empty() {
+                    true => seed,
+                    false => format!("{seed}\n\n{after}"),
+                };
+                (Some(crate::rebirth::record(spec, f, why, &sent)), sent)
+            }
             Err(e) => return json!({"ok": false, "result": "refused", "error": e.to_string()}),
         }
     } else if handoff {
