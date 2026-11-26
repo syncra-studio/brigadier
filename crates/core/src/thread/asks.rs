@@ -90,6 +90,9 @@ impl Thread {
     /// A worker's routing hold [D2028, D342]: Rust's question card for the user, closed by the
     /// user's answer.
     pub(super) fn hold(&mut self, item: &Value, ts: u64) {
+        if item["event"] == "account" {
+            return self.account_note(item);
+        }
         // A mockup's one row in its lead's chat, out of the turn's fold; the app reads its moment
         // from the mockup [D560]. And each send of the user's notes: "You → mockup · 3 notes on A
         // and B · round 2 drawing". And each round's every variant in: "Mockup · round 1 ready".

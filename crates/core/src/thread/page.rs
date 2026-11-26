@@ -82,11 +82,13 @@ impl Thread {
     fn slice(&self, start: usize, end: usize) -> Value {
         let turn = |at: usize| &self.items[at]["turnId"];
         // Its turns run from its first row's to the next page's, so a turn with no rows yet comes too.
+        // A row from before any turn (a held worker's card, a new chat's account note) is before
+        // the first.
         let place = |at: usize| {
-            self.turns
-                .iter()
+            let none = if turn(at) == "" { 0 } else { self.turns.len() };
+            (self.turns.iter())
                 .position(|t| t["id"] == *turn(at))
-                .unwrap_or(self.turns.len())
+                .unwrap_or(none)
         };
         let first = if start < end { place(start) } else { 0 };
         let last = if end < self.items.len() {

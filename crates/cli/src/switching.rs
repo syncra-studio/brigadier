@@ -62,7 +62,7 @@ pub fn set(data: &Path, args: &[String]) -> io::Result<Value> {
 
 /// "Work (Claude Code)", "this computer's login (Claude Code)", or just the agent for one that
 /// keeps one login.
-fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
+pub(crate) fn label(v: &Value, a: &dyn Adapter, id: &str) -> String {
     if a.accounts().is_none() {
         return a.label().into();
     }

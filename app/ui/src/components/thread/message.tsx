@@ -77,6 +77,7 @@ export function UserBubble({
   text,
   time,
   failed,
+  signIn,
   onRetry,
   onDiscard,
   rewind,
@@ -95,6 +96,8 @@ export function UserBubble({
   time?: number;
   /** Why it wasn't sent. */
   failed?: string;
+  /** It failed for want of a signed-in account: Sign in goes to Providers [C36]. */
+  signIn?: boolean;
   onRetry?: () => void;
   onDiscard?: () => void;
   /** Going back to this message, where it's offered [D384]. */
@@ -223,11 +226,18 @@ export function UserBubble({
             error={failed && `Not sent · ${failed}`}
             className={side === "items-end" ? "justify-end" : undefined}
             actions={
-              onRetry ? (
-                <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
-                  Try again
-                </button>
-              ) : null
+              <>
+                {failed && signIn && (
+                  <a href="#settings/providers" className="rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                    Sign in
+                  </a>
+                )}
+                {onRetry && (
+                  <button type="button" onClick={onRetry} className="cursor-pointer rounded-control text-link hover:text-link-hover focus-visible:focus-ring">
+                    Try again
+                  </button>
+                )}
+              </>
             }
           />
         )}

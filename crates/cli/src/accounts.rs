@@ -15,6 +15,9 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::{fs, thread};
 
+mod start;
+pub(crate) use start::{check_as, fell_back, picked, starting, tell};
+
 pub(crate) static STORE: Mutex<()> = Mutex::new(());
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -90,35 +93,6 @@ pub(crate) fn accounts_of(v: &Value, agent: &str) -> Vec<(String, String)> {
 /// Signed in with a kind its home keeps apart: an account work can run on.
 pub(crate) fn usable(c: &Value) -> bool {
     c["signed_in"] == true && c["kept_apart"] == true
-}
-
-/// A new session's spec with the account it starts on [D2082]: the one picked with Use while it is
-/// still added and usable, else the computer's login. A session already made never moves.
-pub(crate) fn starting(data: &Path, spec: Spec) -> Spec {
-    let v = load(data);
-    let id = v["use"][&spec.backend].as_str().unwrap_or("");
-    let home = adapters::home_path("").display().to_string();
-    let added = !id.is_empty() && accounts_of(&v, &spec.backend).iter().any(|(x, _)| x == id);
-    let starts_on = (added.then(|| agent(&spec.backend).ok()).flatten())
-        .filter(|a| usable(&check(*a, data, id, &home)))
-        .map(|_| id.to_string());
-    Spec { starts_on, ..spec }
-}
-
-/// What Home's agent check runs as: the account new sessions start on [D2082], so the models offered
-/// are the ones a session there gets; the computer's login ("") otherwise.
-pub(crate) fn check_as(data: &Path, a: &dyn Adapter, cwd: &Path) -> (String, Spec) {
-    let spec = Spec {
-        backend: a.name().into(),
-        ..Default::default()
-    };
-    match starting(data, spec).starts_on {
-        Some(id) => (
-            id.clone(),
-            on_account(a, data, &id, &cwd.display().to_string()),
-        ),
-        None => (String::new(), Spec::default()),
-    }
 }
 
 fn on_account(a: &dyn Adapter, data: &Path, id: &str, cwd: &str) -> Spec {

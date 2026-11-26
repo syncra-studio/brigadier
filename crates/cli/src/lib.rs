@@ -233,10 +233,17 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 core::level(&spec, a, false).map_err(io::Error::other)?;
             }
             let fresh = !core::session_dir(data, id).join("session.json").exists();
+            let mut told = None;
             let spec = if fresh {
+                let (spec, c) = accounts::picked(data, spec);
+                // Its Use pick unusable: on the login while Providers shows it, else not at all [C36].
+                if let Err(why) = accounts::fell_back(data, &spec, c.as_ref()).map(|why| told = why)
+                {
+                    return Ok(json!({"ok": false, "error": "sign_in", "message": why}));
+                }
                 plugins::sync(data);
                 core::share::one_local(data, project.as_ref(), &spec)?;
-                core::create(data, &accounts::starting(data, spec))?
+                core::create(data, &spec)?
             } else {
                 core::load(data, id)?
             };
@@ -271,6 +278,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             }
             drop(projects_lock);
             owner::ensure(data, &spec)?;
+            accounts::tell(data, id, told);
             match flag(args, "--text") {
                 Some(text) => control::send(
                     data,

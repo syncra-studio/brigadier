@@ -15,6 +15,11 @@ impl Thread {
     }
 
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
+    /// Why a new chat didn't start on the account picked with Use, said once [C38].
+    pub(super) fn account_note(&mut self, item: &Value) {
+        self.kept_row(json!({"kind": "notice", "level": "info", "text": item["text"]}));
+    }
+
     pub(super) fn kept_row(&mut self, row: Value) -> usize {
         self.kept_as(row, None)
     }

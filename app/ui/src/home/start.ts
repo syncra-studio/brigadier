@@ -163,6 +163,8 @@ export type Starting = {
   args: string[];
   sent: number;
   outcome?: "delivered" | "logged";
+  /** Refused because no account it could start on is signed in: its line offers Sign in [C36]. */
+  signIn?: boolean;
   asking: boolean;
   /** The link dropped before an answer: asked again on reconnect. */
   unknown?: boolean;
@@ -208,7 +210,7 @@ function land(id: string, reply: Record<string, any>): void {
     return;
   }
   if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
-  put(id, { asking: false, unknown: false, error: reason(reply) });
+  put(id, { asking: false, unknown: false, error: reason(reply), signIn: reply.error === "sign_in" });
   if (!get(id)!.fork) sendFailed(get(id)!.cid);
   rereadTabs(get(id)!.draft ?? HOME_DRAFT);
 }

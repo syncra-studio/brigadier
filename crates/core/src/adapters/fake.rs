@@ -54,10 +54,11 @@ impl Adapter for Fake {
     }
 
     fn check(&self, spec: &Spec, exe: &Path, _cwd: &Path) -> Result<Check, String> {
-        let signed_in = spec
-            .account
-            .as_ref()
-            .is_none_or(|(_, home)| home.join("login").exists());
+        // The computer's login is signed in unless a drill left `accounts/signed-out` [C36].
+        let signed_in = spec.account.as_ref().map_or_else(
+            || !crate::data_of(spec).join("accounts/signed-out").exists(),
+            |(_, home)| home.join("login").exists(),
+        );
         Ok(Check {
             version: "fake 1".into(),
             signed_in: Some(signed_in),

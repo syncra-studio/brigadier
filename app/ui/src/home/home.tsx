@@ -254,6 +254,7 @@ export function StartingBubble({ id }: { id: string }) {
       parts={entry.parts ? (JSON.parse(entry.parts) as Draft).parts : undefined}
       unconfirmed={entry.unknown}
       failed={entry.error}
+      signIn={entry.signIn}
       onRetry={entry.asking ? undefined : () => retry(id)}
       onDiscard={entry.asking ? undefined : () => discard(id)}
     />
