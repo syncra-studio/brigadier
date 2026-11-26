@@ -1,7 +1,7 @@
 //! A worker held for the user's call, its job out of quota: Rust's question on its card, the
 //! parent told once, and the answer that lets it go on [D2028, D342, D388 Q7].
 
-use super::pick::{account_for, place};
+use super::place::{account_for, place};
 use super::receipt::label;
 use super::*;
 use brigadier_frames::procs;

@@ -1,7 +1,7 @@
 //! What each job would run now, for Settings › Routing: each model's quota or why it can't run, on
 //! the account new work starts on. Only shown: nothing is reserved and no CLI is asked.
 
-use super::pick::place;
+use super::place::place;
 use super::*;
 
 /// "Weekly 43%, resets 14:05", "Full until 15:10", "Barred by your rule", and whether it can't run.

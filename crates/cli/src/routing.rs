@@ -18,6 +18,7 @@ mod jobs;
 mod now;
 mod offers;
 mod pick;
+mod place;
 mod receipt;
 mod renamed;
 mod retry;
