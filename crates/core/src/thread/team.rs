@@ -16,8 +16,17 @@ impl Thread {
 
     /// A row that stays out of its turn's work fold, as the user's words do [D99].
     /// Why a new chat didn't start on the account picked with Use, said once [C38].
+    /// Why a session isn't on its Use pick [C38]: one with an id is drawn once, however often it
+    /// was written.
     pub(super) fn account_note(&mut self, item: &Value) {
-        self.kept_row(json!({"kind": "notice", "level": "info", "text": item["text"]}));
+        let row = json!({"kind": "notice", "level": "info", "text": item["text"]});
+        let Some(key) = item["id"].as_str().map(|k| format!("account:{k}")) else {
+            self.kept_row(row);
+            return;
+        };
+        if !self.named.contains_key(&key) {
+            self.kept_as(row, Some(key));
+        }
     }
 
     pub(super) fn kept_row(&mut self, row: Value) -> usize {

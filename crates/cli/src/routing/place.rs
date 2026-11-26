@@ -20,6 +20,36 @@ pub(super) fn account_for(data: &Path, parent: &Spec, f: &Fold, agent: &str) -> 
     .unwrap_or_default()
 }
 
+/// Why work on `agent` that `place` put on `placed` is on this computer's login when the user
+/// picked another account with Use [C36, C38, D2040]: Ok(Some) for its note, Err where that login
+/// can't be used either, which only switching off lets through (`place` takes the D2040 account
+/// unchecked then). The parent's own account, or an added one placed, is no fallback.
+pub(super) fn fell_back(
+    data: &Path,
+    parent: &Spec,
+    f: &Fold,
+    agent: &str,
+    placed: &str,
+) -> Result<Option<String>, String> {
+    if !placed.is_empty() || agent == models::next_agent(parent, f) {
+        return Ok(None);
+    }
+    let spec = Spec {
+        backend: agent.into(),
+        ..Default::default()
+    };
+    let (spec, c) = accounts::picked(data, spec);
+    if spec.starts_on.is_none() {
+        return accounts::fell_back(data, &spec, c.as_ref(), "worker");
+    }
+    // Its Use pick usable since `place` chose the login: nothing to tell, but the login it runs on
+    // must still be one Providers shows [C36].
+    match adapters::get(agent).is_none_or(|a| accounts::login_ok(data, a)) {
+        true => Ok(None),
+        false => Err("This computer's login is signed out. Sign in to start this worker.".into()),
+    }
+}
+
 /// Reservations go when their worker ends, a newer sample of their account arrives, or after
 /// C1's hour, whichever is first.
 fn prune(data: &Path, held: &mut Value) {

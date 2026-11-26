@@ -1,7 +1,7 @@
 //! A worker held for the user's call, its job out of quota: Rust's question on its card, the
 //! parent told once, and the answer that lets it go on [D2028, D342, D388 Q7].
 
-use super::place::{account_for, place};
+use super::place::{account_for, fell_back, place};
 use super::receipt::label;
 use super::*;
 use brigadier_frames::procs;
@@ -45,7 +45,8 @@ pub(super) fn other(
             let has = |w: &&str| (m["efforts"].as_array().into_iter().flatten()).any(|x| x == w);
             let (effort, _) = effort_of(&rules, a, m, want.filter(has)).ok()?;
             let base = account_for(data, parent, f, a);
-            place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0", true).ok()?;
+            let (x, _) = place(data, adapters::get(a)?, id, &base, &parent.cwd, "", "\0", true).ok()?;
+            fell_back(data, parent, f, a, &x).ok()?;
             let effort = effort.or(m["default_effort"].as_str().map(String::from));
             // Passed by in its own job (an effort it lacks) is still in it, at another effort.
             let ours = mine.iter().any(|x| x["agent"] == a && x["model"] == id);
@@ -329,29 +330,57 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>, card: Option<&Value>) -> io
                     json!({"label": label(&accounts::load(data), &backend, &base)}),
                 )
             });
+            let why = match fell_back(data, &parent, &pf, &backend, &account) {
+                Ok(why) => why,
+                Err(why) => return Ok(json!({"ok": false, "error": "sign_in", "message": why})),
+            };
             // It keeps its job (or a row from before jobs), its retry and what failed.
             let effort_ran = effort
                 .clone()
                 .or(m["default_effort"].as_str().map(String::from));
             let now = json!({"agent": backend, "model": e["model"], "effort": effort_ran, "account": account,
                 "name": m.get("name").unwrap_or(&e["model"]), "label": kept["label"], "quota": kept["quota"],
-                "capped": capped, "note": "the user chose this model"});
+                "capped": capped, "note": "the user chose this model", "fell_back": why});
             for (k, v) in now.as_object().into_iter().flatten() {
                 ran[k] = v.clone();
             }
             (e["model"].as_str().map(String::from), effort, account)
         }
-        None => (
-            ran["model"].as_str().map(String::from),
-            l.ran["effort"].as_str().map(String::from),
-            ran["account"].as_str().unwrap_or("").to_string(),
-        ),
+        None => {
+            let account = ran["account"].as_str().unwrap_or("").to_string();
+            // Waited out on the login, signed out since: it stays held, said once, till Providers
+            // finds it signed in [C36] (proposed).
+            let out = usage::usable(data, &backend, "") == Some(false);
+            if account.is_empty() && a.accounts().is_some() && out {
+                let why = format!(
+                    "This computer's login ({}) is signed out, so this worker waits. Sign in and it goes on.",
+                    a.label()
+                );
+                let key = format!("held:{}", f.hold.as_ref().map_or("", |h| str_of(h, "id")));
+                if ran["signed_out"] != key.as_str() {
+                    accounts::told(data, wid, Some(&why), &key)?;
+                    ran["signed_out"] = key.into();
+                    set_ran(data, wid, ran)?;
+                }
+                return Ok(json!({"ok": false, "error": "sign_in", "message": why}));
+            }
+            let effort = l.ran["effort"].as_str().map(String::from);
+            (ran["model"].as_str().map(String::from), effort, account)
+        }
     };
     if core::fold::switchable(&f).is_some() {
         let to = (a, account, model, effort);
         let reply = crate::switching::switch_to(data, wid, to)?;
         if reply["ok"] == true {
+            // Only what this Use just placed: a wait goes on where it was, already told.
+            let why = entry.and(ran["fell_back"].as_str()).map(String::from);
             set_ran(data, wid, ran)?;
+            accounts::told(
+                data,
+                wid,
+                why.as_deref(),
+                &format!("moved:{}", log::now_ms()),
+            )?;
         }
         return Ok(reply);
     }

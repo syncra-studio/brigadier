@@ -112,6 +112,13 @@ pub(crate) fn written_for(
     };
     let a = adapters::get(&backend).ok_or_else(|| format!("no agent {backend}"))?;
     let account = f.accounts.get(&backend).cloned().unwrap_or_default();
+    // Never on a login Providers doesn't show [C36]; a writer has no thread to say it fell back to it.
+    if account.is_empty() && !crate::accounts::login_ok(data, a) {
+        return Err(format!(
+            "this computer's login ({}) is signed out. Sign in to it in Providers.",
+            a.label()
+        ));
+    }
     let mut run = core::as_run(spec, f, &backend, None);
     let mut listed = models(data, &backend);
     let cheap = |listed: &mut Vec<ModelInfo>| loop {

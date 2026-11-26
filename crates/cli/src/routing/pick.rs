@@ -1,7 +1,7 @@
 //! The resolver: a worker's model and account from its job, by quota where the user lets it
 //! [D2037, D2040, D2041, D51, D375, D387].
 
-use super::place::{account_for, place};
+use super::place::{account_for, fell_back, place};
 use super::receipt::label;
 use super::*;
 
@@ -180,6 +180,15 @@ pub(crate) fn resolve(
         }
         match place(data, adapter, id, &base, &parent.cwd, wid, "\0", true) {
             Ok((account, kept)) => {
+                // Decided by where it was placed, so a switch onto another account says nothing [C36].
+                match fell_back(data, parent, f, a, &account) {
+                    Err(why) if model.is_some() => return Err(refuse(&why)),
+                    Err(_) => {
+                        by_why.push((shown.as_str().unwrap_or(id).into(), NO_LOGIN));
+                        continue;
+                    }
+                    Ok(why) => pick.ran["fell_back"] = why.into(),
+                }
                 pick.account = Some(account).filter(|x| !x.is_empty());
                 (pick.ran["label"], pick.ran["quota"]) =
                     (kept["label"].clone(), kept["quota"].clone());
@@ -193,6 +202,11 @@ pub(crate) fn resolve(
                 out.push(shown.as_str().unwrap_or(id).to_string());
                 by_why.push((shown.as_str().unwrap_or(id).into(), FULL));
                 soonest = at.map_or(soonest, |at| Some(soonest.map_or(at, |s| s.min(at))));
+                if first.is_none() {
+                    // Held on its D2040 account: a Wait goes on there, and says why then.
+                    pick.ran["fell_back"] =
+                        fell_back(data, parent, f, a, &base).ok().flatten().into();
+                }
                 first.get_or_insert(pick);
             }
         }
@@ -220,8 +234,13 @@ pub(crate) fn resolve(
             true => String::new(),
             false => format!(" {}.", jobs::reasons(&by_why)),
         };
+        // Signed out everywhere is Providers' to fix, not Routing's.
+        let fix = match !by_why.is_empty() && by_why.iter().all(|w| w.1 == NO_LOGIN) {
+            true => "has a signed-in account: Providers signs you in",
+            false => "is one you may use: Settings › Routing sets it",
+        };
         return Err(refuse(&format!(
-            "No model in your {} job is one you may use: Settings › Routing sets it.{why}",
+            "No model in your {} job {fix}.{why}",
             name.unwrap_or_default()
         )));
     };
@@ -308,8 +327,16 @@ pub(crate) fn next(
         };
         let base = account_for(data, &parent, &pf, a);
         let skip = if same { cur } else { "\0" };
-        match place(data, adapter, id, &base, &spec.cwd, wid, skip, true) {
-            Ok((account, kept)) => {
+        let placed = place(data, adapter, id, &base, &spec.cwd, wid, skip, true);
+        // A move onto the login its Use pick fell back to says so, as a start does (proposed).
+        let placed = placed.map(|(x, kept)| (fell_back(data, &parent, &pf, a, &x), x, kept));
+        if let Ok((Err(_), ..)) = placed {
+            let name = m.get("name").unwrap_or(&m["id"]).as_str().unwrap_or(id);
+            by_why.push((name.into(), NO_LOGIN));
+            continue;
+        }
+        match placed {
+            Ok((why, account, kept)) => {
                 let name = m.get("name").unwrap_or(&m["id"]).clone();
                 let note = match same {
                     true => format!(
@@ -333,6 +360,7 @@ pub(crate) fn next(
                 if images {
                     ran["images"] = true.into();
                 }
+                ran["fell_back"] = why.ok().flatten().into();
                 return Ok(Some(((adapter, account, Some(id.into()), effort), ran)));
             }
             Err(r) => {

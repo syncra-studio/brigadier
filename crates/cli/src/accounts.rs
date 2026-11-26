@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use std::{fs, thread};
 
 mod start;
-pub(crate) use start::{check_as, fell_back, picked, starting, tell};
+pub(crate) use start::{check_as, fell_back, login_ok, picked, starting, tell, told};
 
 pub(crate) static STORE: Mutex<()> = Mutex::new(());
 

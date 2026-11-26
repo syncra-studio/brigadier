@@ -160,6 +160,10 @@ pub(super) const FULL: &str = "had no account with room";
 /// Why the switch's next reviewer passed an entry by [D3026].
 pub(super) const TRIED_REVIEW: &str = "failed or met its limit reviewing this";
 
+/// Why an entry was passed by when its agent has no account it may use: its Use pick and this
+/// computer's login signed out, with switching off [C36] (proposed).
+pub(super) const NO_LOGIN: &str = "had no signed-in account";
+
 /// Why an entry was passed by when it lacks the effort the start asked for.
 pub(super) const NO_EFFORT: &str = "can't run at the effort asked for";
 

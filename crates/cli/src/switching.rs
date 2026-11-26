@@ -211,6 +211,8 @@ fn attempt(
         if let Some(l) = link.as_ref().filter(|l| l.ran.is_object()) {
             ran = l.ran.clone();
             ran["account"] = Some(pick).filter(|p| !p.is_empty()).into();
+            // The user's own pick is no fallback [C38].
+            ran["fell_back"] = Value::Null;
             (ran["label"], ran["quota"]) = (
                 crate::routing::account_label(&v, b, pick).into(),
                 Value::Null,
@@ -294,7 +296,10 @@ fn attempt(
     let mut reply = switch::switch(&told, &f, &ping, &call, &target, auto, &still);
     // The turn it carries on reports in place of the one cut, by the log [D2041].
     if reply["ok"] == true && worker && !ran.is_null() {
+        let why = ran["fell_back"].as_str().map(String::from);
         crate::routing::set_ran(data, id, ran)?;
+        let key = format!("moved:{}", log::now_ms());
+        crate::accounts::told(data, id, why.as_deref(), &key)?;
     }
     reply["to"] = to_label.into();
     Ok(reply)

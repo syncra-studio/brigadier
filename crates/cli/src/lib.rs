@@ -237,7 +237,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let spec = if fresh {
                 let (spec, c) = accounts::picked(data, spec);
                 // Its Use pick unusable: on the login while Providers shows it, else not at all [C36].
-                if let Err(why) = accounts::fell_back(data, &spec, c.as_ref()).map(|why| told = why)
+                if let Err(why) =
+                    accounts::fell_back(data, &spec, c.as_ref(), "chat").map(|why| told = why)
                 {
                     return Ok(json!({"ok": false, "error": "sign_in", "message": why}));
                 }

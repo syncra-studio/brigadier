@@ -420,6 +420,9 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
         outcome[k] = v.clone();
     }
     owner::call(data, &r.wid, json!({"op": "note", "data": outcome}))?;
+    // Why it isn't on its Use pick, before its brief; made again after a restart, drawn once [C38].
+    let key = format!("start:{}", r.cid);
+    crate::accounts::told(data, &r.wid, ran["fell_back"].as_str(), &key)?;
     // A mockup's rounds stay on its branch: it merges only after Use wires the pick in [D560].
     let merge = (branch.as_deref().zip(r.base.as_deref()))
         .filter(|_| r.asked["mockup"].is_null())

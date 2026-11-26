@@ -24,43 +24,77 @@ pub(crate) fn picked(data: &Path, spec: Spec) -> (Spec, Option<Value>) {
     (Spec { starts_on, ..spec }, c)
 }
 
-/// What a new session on `spec` says when the account picked with Use, checked `c`, can't take it
-/// [C36, C38]: it starts on the computer's login, which Providers shows while its last check found
-/// it signed in [D2065], and its thread says why (words proposed); with that login signed out it
-/// doesn't start (Err, its words).
+/// What a new session on `spec`, a "chat" or a "worker", says when the account picked with Use,
+/// checked `c`, can't take it [C36, C38]: it starts on the computer's login, which Providers shows
+/// while it is signed in [D2065], and its thread says why (words proposed). With that login
+/// signed out, or no Use pick and the login signed out, it doesn't start (Err, its words).
 pub(crate) fn fell_back(
     data: &Path,
     spec: &Spec,
     c: Option<&Value>,
+    what: &str,
 ) -> Result<Option<String>, String> {
     let v = load(data);
     let id = v["use"][&spec.backend].as_str().unwrap_or("");
     let a = match agent(&spec.backend) {
-        Ok(a) if !id.is_empty() && spec.starts_on.is_none() => a,
+        Ok(a) if spec.starts_on.is_none() => a,
         _ => return Ok(None),
     };
+    if id.is_empty() {
+        return match login_ok(data, a) {
+            true => Ok(None),
+            false => Err(format!(
+                "This computer's login ({}) is signed out. Sign in to start this {what}.",
+                a.label()
+            )),
+        };
+    }
     let why = match c.map(|c| &c["signed_in"]) {
         Some(Value::Bool(true)) => "can't be used for chats",
         Some(Value::Bool(false)) => "is signed out",
         _ => "couldn't be checked",
     };
     let name = switching::label(&v, a, id);
-    match usage::usable(data, a.name(), "") {
-        Some(false) => Err(format!(
-            "{name} {why}, and this computer's login is signed out. Sign in to start this chat."
+    match login_ok(data, a) {
+        false => Err(format!(
+            "{name} {why}, and this computer's login is signed out. Sign in to start this {what}."
         )),
-        _ => Ok(Some(format!(
-            "{name} {why}, so this chat started on this computer's login."
+        true => Ok(Some(format!(
+            "{name} {why}, so this {what} started on this computer's login."
         ))),
+    }
+}
+
+/// Whether the computer's login of `a` may run work [C36, D2065]: Providers shows it only while a
+/// check finds it signed in, so one not known signed in is checked now (as a worker's pick does);
+/// a check that failed isn't taken as signed out, nor as signed in. An agent that keeps one login isn't held to it:
+/// OpenCode's free models run with no sign-in (proposed).
+pub(crate) fn login_ok(data: &Path, a: &dyn Adapter) -> bool {
+    let last = usage::usable(data, a.name(), "");
+    if a.accounts().is_none() || last == Some(true) {
+        return true;
+    }
+    let home = adapters::home_path("").display().to_string();
+    // A check with no answer keeps the last one: signed out stays so until a check says otherwise.
+    match check(a, data, "", &home)["signed_in"].as_bool() {
+        Some(signed_in) => signed_in,
+        None => last != Some(false),
     }
 }
 
 /// The thread's one note of why, once its host is up; the chat starts without it if it fails.
 pub(crate) fn tell(data: &Path, id: &str, why: Option<String>) {
-    if let Some(text) = why {
-        let note = json!({"event": "account", "text": text});
-        let _ = crate::owner::call(data, id, json!({"op": "note", "data": note}));
-    }
+    let _ = told(data, id, why.as_deref(), "start");
+}
+
+/// The same note by its id `key`, drawn once however often it's written: a worker's start made
+/// again after a restart writes it again [C38].
+pub(crate) fn told(data: &Path, id: &str, why: Option<&str>, key: &str) -> std::io::Result<()> {
+    let Some(text) = why else {
+        return Ok(());
+    };
+    let note = json!({"event": "account", "text": text, "id": key});
+    crate::owner::call(data, id, json!({"op": "note", "data": note})).map(drop)
 }
 
 /// What Home's agent check runs as: the account new sessions start on [D2082], so the models offered
