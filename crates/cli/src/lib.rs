@@ -299,8 +299,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 }
                 let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
                 let reply = control::steer_as(data, id, text, &parts, Some(&cid), "user", false)?;
-                // Its agent's reply is waited for here, with no lock held [D66].
-                return Ok(core::applied(&core::session_dir(data, id), &cid, reply));
+                // A summary turn takes no steer: as a message, it waits in the queue [rev 3 §2.2].
+                if reply["error"] != "busy" {
+                    // Its agent's reply is waited for here, with no lock held [D66].
+                    return Ok(core::applied(&core::session_dir(data, id), &cid, reply));
+                }
             }
             let spec = core::load(data, id)?;
             core::message::take(data, &spec.dir, &parts, flag(args, "--from"))?;
