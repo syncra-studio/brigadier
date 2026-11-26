@@ -1,6 +1,6 @@
 //! What came of a command that took a message, by one rule [D54, C58]: it went once its id is in
-//! the queue or the log; it's given back only on the word of the command that holds its lock
-//! (`draft-<cid>.lock`): a queue add that finds nothing once it ran, or a send's own definite
+//! the queue's items or the log; it's given back only on the word of the command that holds its
+//! lock (`draft-<cid>.lock`): a queue add that finds nothing once it ran, or a send's own definite
 //! refusal on a first attempt. Anything else stays unsettled in the book.
 
 use super::unsent::is_unsent;
@@ -16,13 +16,14 @@ pub(super) enum How {
     Unknown,
 }
 
-/// Whether message `cid` is in session `dir`: waiting in its queue or being edited there, else in
-/// its log. The queue first: a drain drops an item only once the log has it, so a read between the
-/// two still finds it.
+/// Whether message `cid` is in session `dir`: waiting in its queue, else in its log. The queue
+/// first: a drain drops an item only once the log has it, so a read between the two still finds
+/// it. Never the edit slot: an edited item added again keeps its id, so the old one there proves
+/// nothing of the new; a lost edit stays unsettled, with Try again [C67].
 pub(super) fn present(dir: &Path, cid: &str) -> bool {
     let q = crate::queue::row(dir);
-    let items = q["items"].as_array().into_iter().flatten();
-    items.chain([&q["editing"]]).any(|i| i["id"] == cid)
+    let mut items = q["items"].as_array().into_iter().flatten();
+    items.any(|i| i["id"] == cid)
         || core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid))
 }
 
