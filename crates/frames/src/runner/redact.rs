@@ -18,13 +18,15 @@ pub(super) fn argv(words: &[&str]) -> Vec<String> {
             } else {
                 text(word, 0)
             };
-            hide = i > 0
-                && word.starts_with('-')
-                && !word.contains('=')
-                && (secret(word) || container(word));
+            hide = i > 0 && flag(word);
             logged
         })
         .collect()
+}
+
+fn flag(word: &str) -> bool {
+    let word = word.trim().trim_matches(['\'', '"']);
+    word.starts_with('-') && !word.contains('=') && (secret(word) || container(word))
 }
 
 fn name(key: &str) -> String {
@@ -67,8 +69,14 @@ fn text(word: &str, depth: usize) -> String {
     if depth >= 32 {
         return HIDDEN.into();
     }
-    let trimmed = word.trim_start();
-    if trimmed.starts_with(['{', '[']) {
+    let trimmed = word.trim();
+    if let Some(inner) = trimmed.strip_prefix('\'') {
+        return match inner.strip_suffix('\'') {
+            Some(inner) => format!("'{}'", text(inner, depth + 1)),
+            None => HIDDEN.into(),
+        };
+    }
+    if trimmed.starts_with(['{', '[', '"']) {
         // serde_json's default nesting limit still exceeds the host thread's small stack.
         let (mut nesting, mut quoted, mut escaped) = (depth, false, false);
         for byte in word.bytes() {
@@ -95,7 +103,7 @@ fn text(word: &str, depth: usize) -> String {
             Err(_) => HIDDEN.into(),
         };
     }
-    if word.split_once("://").is_some_and(|(scheme, _)| {
+    if trimmed.split_once("://").is_some_and(|(scheme, _)| {
         scheme
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
@@ -103,19 +111,21 @@ fn text(word: &str, depth: usize) -> String {
     {
         return HIDDEN.into();
     }
-    if word.starts_with(['/', '.']) {
-        return word.into();
+    if let Some((key, _)) = trimmed.split_once(char::is_whitespace)
+        && !key.contains(['=', ':'])
+    {
+        if key.eq_ignore_ascii_case("bearer") || key.eq_ignore_ascii_case("basic") {
+            return HIDDEN.into();
+        }
+        if secret(key) || container(key) {
+            return format!("{key} {HIDDEN}");
+        }
     }
     if let Some((key, _)) = word.split_once(':')
         && !key.contains('=')
-        && secret(key)
+        && (secret(key) || container(key))
     {
         return format!("{key}: {HIDDEN}");
-    }
-    if trimmed.to_ascii_lowercase().starts_with("bearer ")
-        || trimmed.to_ascii_lowercase().starts_with("basic ")
-    {
-        return HIDDEN.into();
     }
     if let Some((key, value)) = word.split_once('=') {
         return format!(
@@ -153,9 +163,7 @@ fn scrub(value: &mut Value, depth: usize) {
         Value::Array(items) => {
             let mut hide = false;
             for item in items {
-                let next = item.as_str().is_some_and(|s| {
-                    s.starts_with('-') && !s.contains('=') && (secret(s) || container(s))
-                });
+                let next = item.as_str().is_some_and(flag);
                 if hide {
                     *item = HIDDEN.into();
                 } else {
