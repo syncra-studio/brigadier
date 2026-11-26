@@ -1,7 +1,7 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
 import type { Chip } from "../panel/chips";
 import type { Runner } from "./composer";
-import { forget, fromBook, tellDrops } from "./uncertain";
+import { flagOf, forget, fromBook, keptOf, tellDrops } from "./uncertain";
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -26,7 +26,7 @@ const errors = new Map<string, string>();
 const setOf = (map: Map<string, Set<string>>, id: string) => map.get(id) ?? map.set(id, new Set()).get(id)!;
 const fills = new Map<string, (back: Given) => Draft>();
 // The chip store's, set by it: imported here, it would reach the tab store, which reads HOME_DRAFT as it loads.
-let chipsBack: (id: string, chips: readonly Chip[]) => void = () => {};
+let chipsBack: (id: string, chips: readonly Chip[], ids?: readonly string[]) => void = () => {};
 export const onChipsBack = (back: typeof chipsBack) => void (chipsBack = back);
 /** Chips Rust has waiting again: in the composer again. */
 export const giveChips = (id: string, chips: readonly Chip[]) => chipsBack(id, chips);
@@ -60,10 +60,11 @@ export function resyncDraft(run: Runner, id: string): void {
 /** Takes a message given back into session `id`'s draft, open or not, once per message; saved at once. */
 export function takeBack(run: Runner, id: string, back: Given): void {
   setOf(took, id).add(back.cid);
+  const kept = keptOf(id, back.cid);
   forget(id, back.cid);
   if (setOf(applied, id).has(back.cid)) return;
   setOf(applied, id).add(back.cid);
-  chipsBack(id, back.chips ?? []);
+  chipsBack(id, back.chips ?? [], (kept && flagOf(kept.op, "--chips")?.split(",")) || []);
   const fill = fills.get(id);
   if (fill) drafts.set(id, fill(back));
   else {
@@ -143,7 +144,10 @@ async function readDraft(run: Runner, id: string): Promise<Draft | null> {
   for (const cid of (reply.cids as string[] | undefined) ?? []) {
     setOf(took, id).add(cid);
     setOf(applied, id).add(cid);
+    // Kept here, its chips Rust has waiting again were held back from the chip read: they show now.
+    const kept = keptOf(id, cid);
     forget(id, cid);
+    if (kept) chipsBack(id, kept.chips ?? [], flagOf(kept.op, "--chips")?.split(",") ?? []);
   }
   let saved: unknown = null;
   try {

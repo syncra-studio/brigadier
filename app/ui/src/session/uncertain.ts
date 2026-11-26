@@ -64,6 +64,7 @@ function put(session: string, next: readonly Going[]): void {
 }
 
 export const keepGoing = (session: string, entry: Going) => (put(session, [...of(session).filter((each) => each.cid !== entry.cid), entry]), entry);
+export const keptOf = (session: string, cid: string) => of(session).find((each) => each.cid === cid);
 export const forget = (session: string, cid: string) => of(session).some((each) => each.cid === cid) && put(session, of(session).filter((each) => each.cid !== cid));
 export const markGoing = (session: string, cid: string, change: Partial<Going>) => put(session, of(session).map((each) => (each.cid === cid ? { ...each, ...change } : each)));
 

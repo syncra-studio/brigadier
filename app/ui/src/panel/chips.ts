@@ -37,6 +37,8 @@ const gone = new Set<string>();
 const dropped = new Set<string>();
 // The connection each session's chips were last read on: a new one reads them again.
 const loaded = new Map<string, unknown>();
+// Rust's chips a read held back for a message kept here (uncertain.ts): they wait again if Rust gave it back.
+const withheld = new Map<string, readonly Chip[]>();
 // Each session's handover under way, which a later message waits for.
 const handing = new Map<string, Promise<void>>();
 // One change at a time per session, in order: the daemon runs each on its own thread.
@@ -69,6 +71,7 @@ function load(session: string): void {
     // One a message kept here carries (uncertain.ts) is its own, though Rust may not have it yet.
     const held = heldChips(session);
     const kept = theirs.filter((chip) => !gone.has(chip.id) && !held.has(chip.id) && !now.some((each) => each.id === chip.id));
+    withheld.set(session, theirs.filter((chip) => held.has(chip.id)));
     // The comment being written as it is here reaches Rust again, a save made while it was away included.
     const mine = drafts.get(session);
     if (drafts.has(session)) void tell(session, ["draft", mine ? JSON.stringify(mine) : "-"]);
@@ -133,8 +136,9 @@ export const leaveChips = (session: string, sent: readonly Chip[]) => {
   set(session, (chips.get(session) ?? NONE).filter((chip) => !sent.some((each) => each.id === chip.id)));
 };
 
-/** Chips waiting again, before any added since: Rust has them back already. */
-const chipsBack = (session: string, back: readonly Chip[]) => {
+/** Chips waiting again, before any added since: Rust has them back already; `ids`, a given-back message's chips a read held back. */
+const chipsBack = (session: string, given: readonly Chip[], ids: readonly string[] = []) => {
+  const back = [...given, ...(withheld.get(session) ?? NONE).filter((chip) => ids.includes(chip.id) && !given.some((each) => each.id === chip.id))];
   if (back.length === 0) return;
   for (const chip of back) gone.delete(chip.id);
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
