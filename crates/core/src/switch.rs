@@ -194,7 +194,8 @@ pub fn picked(
         spec,
         f,
         why,
-        &f.last.clone().unwrap_or_default(),
+        // The turn a held renewal serves, not its summary turn.
+        &(crate::summary::served(f).or(f.last.clone())).unwrap_or_default(),
         &from_label,
         to,
         Some(model),

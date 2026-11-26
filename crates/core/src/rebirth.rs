@@ -128,10 +128,12 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     // input provably never reached a CLI; one that may have, isn't sent twice [D54]. The user's
     // Continue carries a stalled one on.
     let last = f.last.as_ref()?;
-    // Its summary turn ended, however: a cut or a Switch now renews at once, a turn ended done or
-    // an agent picked between turns at the next message.
+    // Its summary turn ended, however: a cut or a Switch now renews at once, said before it or
+    // while it ran; a turn ended done or an agent picked between turns at the next message.
     if let Some(r) = f.renewing.as_ref().filter(|r| r["turn"] == last["id"]) {
-        return ["cut", "switch"].into_iter().find(|w| r["why"] == *w);
+        let now = f.picked.as_ref().is_some_and(|p| p.now).then_some("switch");
+        let why = ["cut", "switch"].into_iter().find(|w| r["why"] == *w);
+        return why.or(now);
     }
     // A cut its turn beat by ending on its own is none: it rebirths at the next message [D108].
     let stopped = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";

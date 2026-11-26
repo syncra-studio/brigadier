@@ -430,7 +430,8 @@ pub fn build(
 
     // The next step, by a fixed rule.
     let step = match why {
-        "cut" | "switched" => {
+        // A Switch now its served turn's summary waited for, that turn done: said as done.
+        "cut" | "switched" if why == "cut" || last["outcome"] != "done" => {
             let tool = p.entries.iter().rev().find(|e| e.from == "tool" && !e.who.is_empty());
             let at = tool.map_or(String::new(), |t| format!(", its last step {} ({id}#{})", t.who, t.at));
             let asked = newest.map_or(String::new(), |n| format!(" of the newest message ({id}#{})", n.at));
