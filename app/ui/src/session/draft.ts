@@ -74,6 +74,13 @@ export function takeBack(run: Runner, id: string, back: Given): void {
   void write(run, id);
 }
 
+/** A message deleted where it waited, unshown: one Rust gave back for it is taken without coming in, and saved so. */
+export function dropGiven(run: Runner, id: string, cid: string): void {
+  setOf(took, id).add(cid);
+  setOf(applied, id).add(cid);
+  resyncDraft(run, id);
+}
+
 /** One write at a time per session, so the last words typed are the last written; whether they were. */
 function write(run: Runner, id: string): Promise<boolean> {
   const job = writing.get(id) ?? save(run, id);
