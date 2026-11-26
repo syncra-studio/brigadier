@@ -222,13 +222,12 @@
     return null;
   };
 
-  /** What a control submits with: its form, else the nearest few levels around it. */
+  /** What a control submits with: its form, else the nearest that holds it and a filled private field, however far. */
   const scopeOf = (element) => {
     const form = element.form || element.closest("form");
     if (form) return form;
-    let around = element.parentElement;
-    for (let level = 0; around && level < 4; level++, around = around.parentElement) {
-      if (filledKind(around)) return around;
+    if (filledKind(element.getRootNode())) {
+      for (let around = element.parentElement; around; around = around.parentElement) if (filledKind(around)) return around;
     }
     return element.parentElement || document;
   };
