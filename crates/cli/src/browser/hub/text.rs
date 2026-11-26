@@ -75,6 +75,10 @@ fn changes(before: &str, after: &str) -> String {
                 new[..new.len() - end].join("\n")
             )
         }
+        // A read cut at agent.ts's READ_MOST: what's past it isn't known.
+        true if (new.last()).is_some_and(|l| l.starts_with("(The page goes on: ")) => {
+            "No change within the first 15 000 characters; the page goes on.".into()
+        }
         true => "No change on the page.".into(),
         false => format!("Changed since your last read:\n{}", lines.join("\n")),
     }
