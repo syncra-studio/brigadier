@@ -160,26 +160,10 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                 };
                 records::end(&mut p.turns, &mut running, how);
             }
-            // One its CLI never ended: a stop, or the agent's process gone, ends it, as the fold
-            // does; done only where a process a turn exits cleanly.
             Some("spawned") => agent = (item["pid"].as_i64(), cid("backend")),
-            Some("stopped") if running => {
-                let by = item["by"].as_str().unwrap_or("");
-                let how = if matches!(by, "" | "user" | "pause") {
-                    "stopped"
-                } else {
-                    "cut"
-                };
-                records::end(&mut p.turns, &mut running, how);
-            }
-            Some("exited") if running && item["pid"].as_i64() == agent.0 => {
-                let per_turn = crate::adapters::get(&agent.1).is_some_and(|a| a.per_turn());
-                let how = if per_turn && item["code"] == 0 {
-                    "done"
-                } else {
-                    "failed"
-                };
-                records::end(&mut p.turns, &mut running, how);
+            // One its CLI never ended: what else ends a turn in the fold ends it here.
+            _ if let Some(how) = records::ended(item, &agent).filter(|_| running) => {
+                records::end(&mut p.turns, &mut running, how)
             }
             // A step's output stays in the log: the hand-off gives its size, end and reference.
             Some("tool_done") if item["ok"] != false => {

@@ -49,6 +49,32 @@ pub(super) fn end(turns: &mut [Turn], running: &mut bool, how: &'static str) {
     *running = false;
 }
 
+/// How a frame that isn't its CLI's end ends the running turn, as the fold closes it: a stop, the
+/// agent's process gone (done only where a process a turn exits cleanly), a limit, a sign-in or a
+/// refused resume, or a lost host, said or a new host's start. `agent`: its pid and backend.
+pub(super) fn ended(
+    item: &serde_json::Value,
+    agent: &(Option<i64>, String),
+) -> Option<&'static str> {
+    let per_turn = || crate::adapters::get(&agent.1).is_some_and(|a| a.per_turn());
+    Some(match item["kind"].as_str()? {
+        "stopped" if matches!(item["by"].as_str(), None | Some("" | "user" | "pause")) => "stopped",
+        "stopped" => "cut",
+        "exited" if item["pid"].as_i64() != agent.0 => return None,
+        "exited" if per_turn() && item["code"] == 0 => "done",
+        "exited" | "limited" | "sign_in" | "unresumable" => "failed",
+        "note"
+            if matches!(
+                item["event"].as_str(),
+                Some("interrupted" | "owner_started")
+            ) =>
+        {
+            "failed"
+        }
+        _ => return None,
+    })
+}
+
 /// A message the running turn takes, steered in, or else the next turn.
 pub(super) fn took(turns: &mut [Turn], waiting: &mut Vec<String>, running: bool, at: &str) {
     match turns.last_mut().filter(|_| running) {
