@@ -10,7 +10,6 @@ impl Thread {
     /// agent says ended well finished before the Stop took. One its host or agent dropped says
     /// so, a line that stays once another turn runs [D92].
     pub(super) fn turn_ended(&mut self, t: &Turn, item: &Value, outcome: &str, ts: u64) {
-        self.summary_ended(t);
         if t.stopping && !(item["kind"] == "turn_end" && item["ok"] != false) {
             self.user_stopped(ts);
         } else if outcome == "interrupted" && t.delivered.is_some() {
@@ -19,6 +18,7 @@ impl Thread {
             // Its agent couldn't start: one line, the CLI's own words under it [D476].
             self.add(json!({"kind": "notice", "reason": "failed", "why": "start-failed", "cause": null, "text": self.startup.failed()}));
         }
+        self.summary_ended(t);
     }
 
     /// A steer's bubble goes where the turn is now: its steps still running move below it, the

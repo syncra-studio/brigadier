@@ -46,7 +46,7 @@ impl Thread {
 
     /// A summary turn's end: a renewal at the next message leaves its divider done till then, a
     /// cut's renews at once, and one the user's Stop cancelled fails it, the Stop's line shown in
-    /// the hidden turn as `user_stopped` draws it [rev 3 §2.2].
+    /// the hidden turn as `user_stopped` draws it, so called after it [rev 3 §2.2].
     pub(super) fn summary_ended(&mut self, t: &crate::fold::Turn) {
         let Some(at) = self.cutting.filter(|_| t.origin == "summary") else {
             return;
