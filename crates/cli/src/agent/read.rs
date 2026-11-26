@@ -6,6 +6,7 @@ use super::{CAP, Call, LAST_MOST, refuse};
 use crate::relay::{archive, opened, sender};
 use brigadier_core::{self as core, archive::Entry};
 use serde_json::{Value, json};
+use std::io::Write;
 use std::path::Path;
 
 /// One entry as every read shows it, under its reference.
@@ -157,10 +158,37 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
         );
     }
     let dir = core::session_dir(data, me).join("tmp");
-    let path = dir.join(format!("read-{id}-{at}.txt"));
-    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, &out)) {
+    let name = format!("read-{id}-{at}.txt");
+    let path = dir.join(&name);
+    let wrote = create(&dir, &name).and_then(|mut file| file.write_all(out.as_bytes()));
+    if let Err(e) = wrote {
         return refuse(&format!("Couldn't write {}: {e}", path.display()));
     }
     let path = path.display().to_string();
     json!({"ok": true, "path": path, "bytes": out.len(), "text": format!("{id}#{at}, whole: {path} ({} bytes)\n", out.len())})
+}
+
+/// `name` made new in `dir`, neither followed as a link: the agent can write its own `tmp/`, and a
+/// link it put there must not send the daemon's write outside its session (ARCHITECTURE).
+fn create(dir: &Path, name: &str) -> std::io::Result<std::fs::File> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+    let c = |b: &[u8]| std::ffi::CString::new(b).map_err(std::io::Error::other);
+    let _ = std::fs::create_dir(dir);
+    let (dir, name) = (c(dir.as_os_str().as_bytes())?, c(name.as_bytes())?);
+    let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    // SAFETY: plain calls on NUL-terminated paths; each fd returned is owned once, below.
+    let fd = unsafe { libc::open(dir.as_ptr(), flags) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let dir = unsafe { OwnedFd::from_raw_fd(fd) };
+    // An earlier copy, or a link put in its place: only the name goes, never what it points at.
+    unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) };
+    let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+    let fd = unsafe { libc::openat(dir.as_raw_fd(), name.as_ptr(), flags, 0o600 as libc::c_uint) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { std::fs::File::from_raw_fd(fd) })
 }
