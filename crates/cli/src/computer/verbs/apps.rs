@@ -194,6 +194,28 @@ pub(super) fn past_app(w: &Words, s: &Sess) -> bool {
                         || (c.role.starts_with("AXMenu") && past(&c.name))
                 })
         }
+        // The Apple menu's own keys: Force Quit, Lock Screen, Log Out.
+        "key" => {
+            let mut keys: Vec<&str> = (w.rest.join("").split('+'))
+                .map(|k| match k.trim().to_lowercase().as_str() {
+                    "command" | "cmd" => "cmd",
+                    "control" | "ctrl" => "ctrl",
+                    "alt" | "option" => "option",
+                    "shift" => "shift",
+                    "q" => "q",
+                    "escape" | "esc" => "escape",
+                    _ => "",
+                })
+                .collect();
+            keys.sort_unstable();
+            [
+                &["cmd", "escape", "option"][..],
+                &["cmd", "ctrl", "q"],
+                &["cmd", "q", "shift"],
+                &["cmd", "option", "q", "shift"],
+            ]
+            .contains(&keys.as_slice())
+        }
         _ => false,
     }
 }
