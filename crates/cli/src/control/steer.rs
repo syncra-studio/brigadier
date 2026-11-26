@@ -27,14 +27,21 @@ pub fn steer_as(
         .fold
         .turns
         .is_empty();
+    let mut unanswered = false;
     if origin == "user" && idle {
         let (p, c) = (parts.clone(), Some(cid.as_str()));
         let reply = send(data, &spec, text, p, c, None, None, queued)?;
         if reply["error"] != "busy: a turn is running" {
             return Ok(reply);
         }
+        unanswered = reply["answered"] == false;
     }
-    steer_turn(data, &spec, text, parts, &cid, origin)
+    let mut reply = steer_turn(data, &spec, text, parts, &cid, origin)?;
+    // A send before it that got no answer may still be logged: this refusal proves nothing [D54].
+    if unanswered && reply["ok"] != true {
+        reply["answered"] = false.into();
+    }
+    Ok(reply)
 }
 
 /// The same, its files taken, into a running turn alone: it never starts one.

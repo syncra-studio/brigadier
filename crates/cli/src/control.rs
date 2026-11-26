@@ -455,6 +455,15 @@ pub(crate) fn send(
     .map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = call_fn(data, &spec.id);
+    // Drill hook: the first input or spawn gets no answer, as from a host that stalled on it.
+    let stall = std::cell::Cell::new(
+        std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == "send:stall"),
+    );
+    let call =
+        |req: Value| match matches!(req["op"].as_str(), Some("input" | "spawn")) && stall.take() {
+            true => Err(io::Error::other("no answer (drill)")),
+            false => call(req),
+        };
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
@@ -470,10 +479,15 @@ pub(crate) fn send(
     // Retry a busy race or moving host only when the log proves the command never got in;
     // an uncertain delivery is never sent again by itself [D54].
     if reply["result"].is_null() && !logged() {
+        let unanswered = reply["answered"] == false;
         thread::sleep(Duration::from_millis(200));
         // If no host answers, the resend fails too and the log decides the result below.
         let _ = owner::ensure(data, spec);
         reply = go()?;
+        // The first may still reach its host and be logged: a refusal now proves nothing [D54].
+        if unanswered && reply["ok"] != true && !logged() {
+            reply["answered"] = false.into();
+        }
     }
     // A dropped connection says nothing about the log: the log itself does.
     if reply["result"].is_null() {
@@ -483,10 +497,6 @@ pub(crate) fn send(
             (false, false) => "not_logged",
         }
         .into();
-        // No host answered: whether it went is unknown, so Try again keeps its id [D54].
-        if reply["result"] == "not_logged" {
-            reply["answered"] = false.into();
-        }
     }
     if matches!(
         reply["result"].as_str(),

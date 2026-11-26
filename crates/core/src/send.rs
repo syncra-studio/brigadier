@@ -261,7 +261,7 @@ pub fn send(
             if let Some(spawn) = child.filter(|spawn| *spawn > 0) {
                 req["spawn"] = spawn.into();
             }
-            let reply = call(req).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+            let reply = call(req).unwrap_or_else(unanswered);
             // "sent", to an agent that acks: its caller waits for the reply once it holds no lock.
             if reply["error"] != "no_child" {
                 return reply;
@@ -323,14 +323,19 @@ pub fn send(
         req["replace"] = true.into();
         req["if_len"] = len.into();
     }
-    let mut reply = crate::host::accounts::launch(&run, call, req)
-        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+    let mut reply = crate::host::accounts::launch(&run, call, req).unwrap_or_else(unanswered);
     if picking && reply["error"] == "changed" {
         reply["message"] = "The session changed while switching. Try again.".into();
     }
     // "sent", as an input's: its caller waits for the agent's reply once it holds no lock, so a
     // Stop never waits behind a slow start [D66].
     reply
+}
+
+/// A call that carried the message and got no answer: its host may still take it and log it, so
+/// what a later call answers proves nothing of it [D54].
+fn unanswered(e: std::io::Error) -> Value {
+    json!({"ok": false, "error": e.to_string(), "answered": false})
 }
 
 /// An input written to an agent that acks is applied only once its reply names the command id
