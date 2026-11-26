@@ -281,9 +281,10 @@ fn state(fold: &Fold, live: &Live) -> (&'static str, Value) {
             _ if outcome == "failed" && reconnect(fold, false).is_some() => {
                 ("reconnecting", reconnect(fold, false).unwrap_or_default())
             }
+            // A failed turn says so though a job it left runs: its notice, mark and Try again.
+            _ if outcome == "failed" => ("failed", Value::Null),
             _ if live.jobs > 0 => ("idle_jobs", live.jobs.into()),
             _ if outcome == "stopped" => ("stopped", Value::Null),
-            _ if outcome == "failed" => ("failed", Value::Null),
             _ if fold.items == 0 => ("new", Value::Null),
             _ => ("idle", Value::Null),
         };
