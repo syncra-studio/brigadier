@@ -7,7 +7,7 @@ import { sendFailed } from "../thread/follow";
 import type { Source } from "../thread/thread";
 import type { Chip } from "../panel/chips";
 import { daemonRun, failure, type Runner } from "./composer";
-import { resyncDraft, takeBack } from "./draft";
+import { keptChipsBack, resyncDraft, takeBack } from "./draft";
 import { inThread } from "./queued";
 import { newId } from "./store";
 import { flagOf, forget, type Going, keepGoing, markGoing, tellDrops, UNCONFIRMED, useGoingOf } from "./uncertain";
@@ -64,6 +64,8 @@ export function answered(run: Runner, id: string, entry: Going, reply: Record<st
 /** The app's copy to Rust (`adopt`): Rust's from now on, unless the draft or the session has it already. */
 function adopt(run: Runner, id: string, entry: Going): Promise<Record<string, any>> {
   return run(["draft", id, "adopt", entry.cid, "--kind", entry.kind, "--op", JSON.stringify(entry.op), "--draft", JSON.stringify(entry.draft)]).then((reply) => {
+    // Given back, its chips wait again: the draft's read can't release them once it's forgotten.
+    if (reply.given_back) keptChipsBack(id, entry);
     if (reply.ok && !reply.kept) forget(id, entry.cid);
     if (reply.given_back) resyncDraft(run, id);
     if (reply.kept) markGoing(id, entry.cid, { booked: true, reached: reply.reached === true, stuck: entry.stuck || UNCONFIRMED });

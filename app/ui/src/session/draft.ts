@@ -1,7 +1,7 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
 import type { Chip } from "../panel/chips";
 import type { Runner } from "./composer";
-import { flagOf, forget, fromBook, keptOf, tellDrops } from "./uncertain";
+import { flagOf, forget, fromBook, type Going, keptOf, tellDrops } from "./uncertain";
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -30,6 +30,9 @@ let chipsBack: (id: string, chips: readonly Chip[], ids?: readonly string[]) => 
 export const onChipsBack = (back: typeof chipsBack) => void (chipsBack = back);
 /** Chips Rust has waiting again: in the composer again. */
 export const giveChips = (id: string, chips: readonly Chip[]) => chipsBack(id, chips);
+/** Message `kept`, kept here, Rust gave back: its chips wait again, Rust's `given` or the app's copy, and any a chip read held back for it. */
+export const keptChipsBack = (id: string, kept: Going | undefined, given?: readonly Chip[]) =>
+  chipsBack(id, given?.length ? given : (kept?.chips ?? []), (kept && flagOf(kept.op, "--chips")?.split(",")) || []);
 
 export const draftOf = (id: string) => drafts.get(id);
 /** The revision of session `id`'s draft this view last saw: a message sent now carries it. */
@@ -52,7 +55,8 @@ export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
 
 /** Asks Rust for what it gave back that this view may not have: a save, stale if it missed any, or a first read. */
 export function resyncDraft(run: Runner, id: string): void {
-  if (!drafts.has(id)) return void loadDraft(run, id);
+  // Never read (the first read failed): what's read now goes into the open field above what's typed, as a give-back does.
+  if (!drafts.has(id)) return void readDraft(run, id).then((saved) => saved && fills.has(id) && drafts.set(id, fills.get(id)!({ cid: "", ...saved })));
   clearTimeout(timers.get(id));
   void write(run, id);
 }
@@ -64,7 +68,7 @@ export function takeBack(run: Runner, id: string, back: Given): void {
   forget(id, back.cid);
   if (setOf(applied, id).has(back.cid)) return;
   setOf(applied, id).add(back.cid);
-  chipsBack(id, back.chips ?? [], (kept && flagOf(kept.op, "--chips")?.split(",")) || []);
+  keptChipsBack(id, kept, back.chips);
   const fill = fills.get(id);
   if (fill) drafts.set(id, fill(back));
   else {
@@ -147,7 +151,7 @@ async function readDraft(run: Runner, id: string): Promise<Draft | null> {
     // Kept here, its chips Rust has waiting again were held back from the chip read: they show now.
     const kept = keptOf(id, cid);
     forget(id, cid);
-    if (kept) chipsBack(id, kept.chips ?? [], flagOf(kept.op, "--chips")?.split(",") ?? []);
+    if (kept) keptChipsBack(id, kept);
   }
   let saved: unknown = null;
   try {

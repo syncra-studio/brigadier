@@ -145,10 +145,12 @@ fn read(path: &Path) -> Book {
     }
 }
 
-/// The draft as the composer shows it: what was given back, newest first, above the UI's own.
-fn shown(book: &Book) -> Words {
+/// The draft as the composer shows it: what was given back, newest first, above the UI's own;
+/// `done`, only those whose files and chips are back too.
+fn shown(book: &Book, done: bool) -> Words {
     let mut out = Words::default();
-    let all = book.given.iter().rev().map(|g| &g.words);
+    let given = book.given.iter().rev().filter(|g| g.done || !done);
+    let all = given.map(|g| &g.words);
     for w in all.chain([&book.ui.words]).filter(|w| !w.blank()) {
         if !out.parts.is_empty() && !w.parts.is_empty() {
             out.parts.push("\n\n".into());
@@ -188,7 +190,7 @@ fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> io::Result<T>) -> io::Resu
     replay(dir, &mut book)?;
     let out = f(&mut book)?;
     if serde_json::to_vec(&book)? != was {
-        let mut file = serde_json::to_value(shown(&book))?;
+        let mut file = serde_json::to_value(shown(&book, false))?;
         file["book"] = serde_json::to_value(&book)?;
         core::write_atomic(&path, &serde_json::to_vec(&file)?)?;
     }
@@ -292,7 +294,9 @@ fn crash_at(point: &str) {
 pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
     let Some(text) = args.get(2) else {
         return change(dir, |book| {
-            let cids: Vec<&String> = book.given.iter().map(|g| &g.cid).collect();
+            // One still bringing its files and chips back reaches the UI with its next save, stale.
+            let given = book.given.iter().filter(|g| g.done);
+            let cids: Vec<&String> = given.map(|g| &g.cid).collect();
             let going: Vec<Value> = (book.inflight.iter().map(|g| (false, g)))
                 .chain(book.adding.iter().map(|g| (true, g)))
                 .map(|(queue, g)| {
@@ -300,7 +304,7 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
                     json!({"cid": g.cid, "kind": kind, "op": g.op, "draft": g.words, "reached": g.reached})
                 })
                 .collect();
-            let draft = serde_json::to_string(&shown(book))?;
+            let draft = serde_json::to_string(&shown(book, true))?;
             Ok(json!({"ok": true, "draft": draft, "rev": book.rev, "cids": cids, "going": going}))
         });
     };
