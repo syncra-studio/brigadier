@@ -31,6 +31,7 @@ pub mod rules;
 mod send;
 pub mod session;
 pub mod share;
+pub mod summary;
 pub mod switch;
 pub mod thread;
 pub mod title;

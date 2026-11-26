@@ -16,7 +16,8 @@ impl Runner {
         // A worker's result names it and how it ended: `result:<how>:<worker>` [D3006]; another
         // session's message names its sender: `peer:<id>` [D2034].
         let named = origin.starts_with("result:") || origin.starts_with("peer:");
-        if origin != "user" && origin != "system" && !named {
+        // `summary`: Brigadier's own, like `system`, the turn that writes a renewal's summary.
+        if !matches!(origin, "user" | "system" | "summary") && !named {
             return Some(fail(
                 "origin must be user, system, a worker's result or another session",
             ));

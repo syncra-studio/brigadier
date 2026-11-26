@@ -31,6 +31,16 @@ fn main() {
     let hook = args
         .get(1)
         .filter(|_| args.first().is_some_and(|a| a == "hook"));
+    // Every tool call's hook on an agent that can veto it: refused while a summary turn runs [D92].
+    if hook.is_some_and(|h| h == "tool") {
+        let _ = std::io::copy(&mut std::io::stdin(), &mut std::io::sink());
+        let dir = env::var_os(brigadier_core::agent::SESSION).map(std::path::PathBuf::from);
+        if let Some(why) = brigadier_core::summary::tool_hook(dir.as_deref()) {
+            eprintln!("{why}");
+            process::exit(2);
+        }
+        return;
+    }
     if let Some(hook @ ("stop" | "edit")) = hook.map(String::as_str) {
         let input = serde_json::from_reader(std::io::stdin()).unwrap_or_default();
         let dir = env::var_os(brigadier_core::agent::SESSION).map(std::path::PathBuf::from);
