@@ -18,7 +18,7 @@ mod web;
 mod window;
 
 use super::{Fail, HUB, lock, tool};
-use crate::agent::{cap, refuse};
+use crate::agent::refuse;
 use act::{act, key, need, token};
 use apps::{apps, find, menu_path};
 use open::press;
@@ -206,6 +206,24 @@ pub fn agent(
         Ok(text) => json!({"ok": true, "text": cap(&text)}),
         Err(e) => e,
     }
+}
+
+/// Cuts a reply to the agent's cap from its end: its first line names the window and says what
+/// was done, so that stays.
+fn cap(text: &str) -> String {
+    const ROOM: usize = crate::agent::CAP - 100;
+    if text.len() <= crate::agent::CAP {
+        return text.to_string();
+    }
+    let mut to = ROOM;
+    while !text.is_char_boundary(to) {
+        to -= 1;
+    }
+    format!(
+        "{}\n[cut: {} more bytes; read less with --query]",
+        &text[..to],
+        text.len() - to
+    )
 }
 
 /// What `brigadier computer` does, as its calls log names them.
