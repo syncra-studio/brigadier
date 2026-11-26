@@ -19,7 +19,15 @@ fn walk(dir: &Path, skip: &[PathBuf], one: bool) -> Vec<PathBuf> {
         }
         let entries = match fs::read_dir(&next) {
             Ok(entries) => entries,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            // A file (a transcript a delete takes) holds none.
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                continue;
+            }
             Err(_) => {
                 found.push(next);
                 continue;

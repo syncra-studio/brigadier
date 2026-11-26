@@ -136,7 +136,7 @@ export function LostLine({ lost: { files, repos, error }, whose, more = "" }: { 
       {whose}
       {repos ? (
         <>
-          {repos.length === 1 ? "The repository in it is" : "The repositories in it are"} deleted for good, even if a branch is kept: <span className="text-foreground">{repos.join(", ")}</span>.
+          {repos.length === 1 ? "The repository in it is" : `The ${repos.length} repositories in it are`} deleted for good, even if a branch is kept: <span className="text-foreground">{named(repos)}</span>.
         </>
       ) : (
         <>
