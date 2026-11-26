@@ -157,6 +157,11 @@ pub(crate) fn pending(dir: &Path, cid: &str) -> bool {
     lock_held(&cid_lock(dir, cid))
 }
 
+/// Whether message `cid` was given back to the draft, what was cut short settled first.
+pub(crate) fn given_back(dir: &Path, cid: &str) -> io::Result<bool> {
+    change(dir, false, |book| Ok(book.refused.iter().any(|c| c == cid)))
+}
+
 /// Changes session `dir`'s book under its lock, in one write, what was cut short settled first.
 fn change<T>(
     dir: &Path,

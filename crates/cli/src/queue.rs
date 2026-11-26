@@ -306,10 +306,14 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         // its add is still under way [D54].
         "has" => {
             let qid = qid()?;
+            // Given back, it's in the draft: never added again under its id, which is refused.
+            let given = crate::attach::book::given_back(&dir, &qid)?;
             let pending = crate::attach::book::pending(&dir, &qid);
             let queued = crate::attach::book::queued(&dir, &qid);
             let logged = went(&dir, &Value::Null, &qid);
-            return Ok(json!({"ok": true, "pending": pending, "queued": queued, "logged": logged}));
+            return Ok(
+                json!({"ok": true, "pending": pending, "queued": queued, "logged": logged, "given": given}),
+            );
         }
         "restore" => change(&dir, |q| {
             restore(q);

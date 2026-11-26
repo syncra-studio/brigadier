@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
-import { dropGiven } from "./draft";
+import { dropGiven, resyncDraft } from "./draft";
 import type { Chip } from "../panel/chips";
 import type { QueuedMessage } from "../components/composer/queue";
 import type { Runner } from "./composer";
@@ -88,7 +88,9 @@ export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (
         if (each.removing && reply.queued) remove(each.qid);
         // Deleted, what Rust gave back for it goes too, never into the draft [D363].
         else if (each.removing) dropGiven(run, id, each.qid);
-        if (each.removing || reply.queued || reply.logged) dropUncertain(id, each.qid);
+        // Rust gave it back: it comes into the draft, as a refused add's does.
+        else if (reply.given) resyncDraft(run, id);
+        if (each.removing || reply.queued || reply.logged || reply.given) dropUncertain(id, each.qid);
         else mark(id, each.qid, { unadded: true });
       });
     }
