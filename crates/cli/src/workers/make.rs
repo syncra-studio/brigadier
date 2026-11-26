@@ -110,7 +110,12 @@ pub fn start(
         Ok(f) => f.fold,
         Err(e) => return refuse(&e.to_string()),
     };
-    routing::check_unchecked(data, &parent.cwd);
+    // A review Brigadier itself starts takes the slot of the work that waits on it.
+    let own = |r: &super::review::Plan| r.mark["switch"] == true || r.mark["plan"].is_string();
+    // Not on the daemon's pass, where Brigadier's own reviews start: it never waits on a probe [C66].
+    if !review.as_ref().is_some_and(own) {
+        routing::check_unchecked(data, &parent.cwd);
+    }
     let held = models::held(data, parent.project.as_deref());
     let project = parent
         .project
@@ -144,8 +149,6 @@ pub fn start(
                 "This session is being deleted, so it starts no workers.",
             ));
         }
-        // A review Brigadier itself starts takes the slot of the work that waits on it.
-        let own = |r: &super::review::Plan| r.mark["switch"] == true || r.mark["plan"].is_string();
         if !review.as_ref().is_some_and(own)
             && let Some(no) = full(data, &root, running)
         {

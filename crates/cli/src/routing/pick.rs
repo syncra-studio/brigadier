@@ -232,13 +232,15 @@ pub(crate) fn resolve(
         }
         // Proposed: no agent listed any model, so Routing has nothing to set: a check is missing [C66].
         let none = |g: &Value, k: &str| g[k].as_array().is_none_or(|m| m.is_empty());
+        // Agents turned off or not set up are left out of groups: their own words stand then.
         if let Some(j) = &name
+            && !groups.is_empty()
             && groups
                 .iter()
                 .all(|g| none(g, "models") && none(g, "hidden"))
         {
             return Err(refuse(&format!(
-                "No agent listed a model when it was last checked, so your {j} job has none: Providers › Check again checks them."
+                "No agent that's on listed a model when it was last checked, so your {j} job has none: Providers › Check again checks them."
             )));
         }
         let why = match by_why.is_empty() {
