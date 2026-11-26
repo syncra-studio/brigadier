@@ -170,13 +170,20 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
             "text" => s("text").to_string(),
             "failed" => s("message").to_string(),
             _ if item["event"] == "summary" => s("text").to_string(),
-            _ => serde_json::to_string_pretty(item).unwrap_or_default(),
+            // Only the kinds a read shows: no other record leaves its log, as a launch's argv may
+            // hold an MCP server's credentials: no command prints a secret [D2026].
+            _ => continue,
         };
         let name = [s("kind"), s("name"), s("event")].join(" ");
         out += &format!(
             "[{id}#{at} {}]\n{body}\n",
             name.split_whitespace().collect::<Vec<_>>().join(" ")
         );
+    }
+    if out.is_empty() {
+        return refuse(&format!(
+            "{id}#{at} is no message, step or summary: `brigadier search` gives those."
+        ));
     }
     let dir = core::session_dir(data, me).join("tmp");
     let name = format!("read-{id}-{at}.txt");
