@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Proposed: the most any reply prints.
-const CAP: usize = 16 << 10;
+pub(crate) const CAP: usize = 16 << 10;
 /// Proposed: `wait`'s default and longest timeout, in seconds.
 pub(crate) const WAIT: u64 = 60;
 const WAIT_MAX: u64 = 600;

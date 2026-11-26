@@ -256,6 +256,8 @@ fn head(mut text: String, rest: &str) -> String {
     text
 }
 
+const FOOT: &str = "`brigadier skill <name>` prints one.";
+
 /// `skill`: the list, or one whole.
 fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
     let (all, hidden) = skills(data, me);
@@ -265,19 +267,24 @@ fn skill(data: &Path, me: &str, name: Option<&str>) -> Value {
         let list: Vec<Value> = (all.iter())
             .map(|k| json!({"name": k["name"], "description": described(&read(k)), "path": k["path"]}))
             .collect();
-        let text: String = match list.is_empty() {
+        let name = |k: &Value| k["name"].as_str().unwrap_or("").to_string();
+        let mut text: String = match list.is_empty() {
             true => "No skills.\n".into(),
             false => (list.iter())
-                .map(|k| {
-                    format!(
-                        "{}  {}\n",
-                        k["name"].as_str().unwrap_or(""),
-                        k["description"].as_str().unwrap_or("")
-                    )
-                })
+                .map(|k| format!("{}  {}\n", name(k), k["description"].as_str().unwrap_or("")))
                 .collect(),
         };
-        return json!({"ok": true, "skills": list, "text": text + "`brigadier skill <name>` prints one."});
+        // The reply's cap cuts from the start, so past it the names alone: none goes unseen.
+        // shortcut: thousands of names still pass the cap; page the list if a library gets there.
+        if text.len() + FOOT.len() > crate::agent::CAP {
+            let names: Vec<String> = list.iter().map(name).collect();
+            text = format!(
+                "{} skills; too many to describe here:\n{}\n",
+                names.len(),
+                names.join(", ")
+            );
+        }
+        return json!({"ok": true, "skills": list, "text": text + FOOT});
     };
     // A plugin's skill by its own name too, when one plugin has it: `ponytail` is `ponytail:ponytail`.
     let own = |k: &&Value| {
