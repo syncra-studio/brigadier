@@ -118,6 +118,8 @@ pub(crate) fn again(root: &Path, entries: &[String], all: &Modes) -> io::Result<
 /// How a write-back leaves the permissions of what it writes.
 pub(super) struct Back {
     files: BTreeMap<String, u32>,
+    /// The folders its target names, as `<dir>/`: one it held nothing tracked in was there empty.
+    dirs: Vec<String>,
     /// The folders the files go in, with their permissions where those are known.
     homes: BTreeMap<PathBuf, Option<u32>>,
     /// What this process's umask leaves a new file.
@@ -129,12 +131,78 @@ impl Back {
     pub(super) fn home(&self, dir: &Path) -> bool {
         self.homes.contains_key(dir)
     }
+
+    /// Whether a restore leaves folder `rel`: the target names it, or one above it that held
+    /// nothing tracked, as git names a folder holding only empty ones [C37 D35]. `there`: the
+    /// target's entries; `folds`: the disk takes two letter cases for one [D26].
+    pub(super) fn kept(&self, rel: &str, there: &BTreeMap<&str, &str>, folds: bool) -> bool {
+        let low = |s: &str| if folds { s.to_lowercase() } else { s.into() };
+        let rel = low(&format!("{rel}/"));
+        self.dirs.iter().any(|k| {
+            let under = there.range(k.as_str()..).next();
+            let empty = under.is_none_or(|(p, _)| !p.starts_with(k.as_str()));
+            rel == low(k) || empty && rel.starts_with(&low(k))
+        })
+    }
 }
 
 impl Store {
     /// The folder's permissions now, for the index's `entries`, as a blob; empty where none stands out.
+    /// The folders that hold nothing tracked go in too, as git keeps none, so a restore leaves
+    /// them [C37]: on the store's index, all else being in it.
     pub(super) fn keep_modes(&self, entries: &[String]) -> io::Result<String> {
-        self.save_modes(&stand_out(self.cwd(), entries))
+        let mut all = stand_out(self.cwd(), entries);
+        let args = ["ls-files", "-z", "-o", "--directory", "--exclude-standard"];
+        for dir in split(self.run(&self.git.join("index"), &args)?)? {
+            let mode = dir.ends_with('/').then(|| of(&self.cwd().join(&dir), true));
+            if let Some(mode) = mode.flatten() {
+                all.entry(dir).or_insert(mode);
+            }
+        }
+        self.save_modes(&all)
+    }
+
+    /// The folders that came between `end` and `next`, the user's: there at `next` and not at
+    /// `end` [C37].
+    pub(super) fn dirs_made(&self, end: &Shot, next: &Shot) -> io::Result<Modes> {
+        if end.modes == next.modes {
+            return Ok(Modes::new());
+        }
+        let (Some(a), Some(mut b)) = (self.modes(end)?, self.modes(next)?) else {
+            return Ok(Modes::new());
+        };
+        let index = self.git.join("index");
+        b.retain(|k, _| k.ends_with('/') && !a.contains_key(k));
+        for dir in b.keys().cloned().collect::<Vec<_>>() {
+            let tree = self.run(
+                &index,
+                &["ls-tree", &end.tree, "--", dir.trim_end_matches('/')],
+            )?;
+            if !tree.is_empty() {
+                b.remove(&dir);
+            }
+        }
+        Ok(b)
+    }
+
+    /// `modes`, a blob as `stricter` gives it, with the folders `made` names that it lacks, so a
+    /// restore leaves them too [C37]. None, from before permissions were kept, stays None.
+    pub(super) fn with_dirs(
+        &self,
+        modes: Option<String>,
+        made: &Modes,
+    ) -> io::Result<Option<String>> {
+        let all = match made.is_empty() {
+            true => None,
+            false => self.modes(&Shot::at("", &modes))?,
+        };
+        let Some(mut all) = all else {
+            return Ok(modes);
+        };
+        for (dir, mode) in made {
+            all.entry(dir.clone()).or_insert(*mode);
+        }
+        Ok(Some(self.save_modes(&all)?))
     }
 
     pub(super) fn save_modes(&self, all: &Modes) -> io::Result<String> {
@@ -204,6 +272,8 @@ impl Store {
     ) -> io::Result<Back> {
         let modes = self.modes(to)?;
         let made = made(index)?;
+        let dirs = (modes.iter().flatten()).filter(|(k, _)| k.ends_with('/'));
+        let dirs = dirs.map(|(k, _)| k.clone()).collect();
         let (mut want, mut homes) = (BTreeMap::new(), BTreeMap::new());
         for (path, plain) in files {
             let mode = plain.and_then(|plain| match &modes {
@@ -222,6 +292,7 @@ impl Store {
         }
         Ok(Back {
             files: want,
+            dirs,
             homes,
             made,
         })

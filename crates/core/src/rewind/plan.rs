@@ -52,6 +52,8 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     let (folds, lower) = (store.folds(), |p: &String| p.to_lowercase());
     // The same for permissions alone.
     let (mut bits, mut since) = (BTreeSet::new(), BTreeSet::new());
+    // The folders the user made between them, which a restore leaves [C37].
+    let mut made = BTreeMap::new();
     for (i, (before, end)) in shots.iter().enumerate() {
         agent.extend(store.diff(before, end).map_err(unread)?);
         let next = shots.get(i + 1).map_or(&pre, |s| &s.0);
@@ -63,6 +65,7 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
         between.push((gap, next));
         bits.extend(store.modes_differ(before, end).map_err(unread)?);
         since.extend(store.modes_differ(end, next).map_err(unread)?);
+        made.extend(store.dirs_made(end, next).map_err(unread)?);
     }
     let mut gaps: BTreeSet<String> = between.iter().flat_map(|b| b.0.clone()).collect();
     let alone = bits.difference(&agent).filter(|p| since.contains(*p));
@@ -121,6 +124,7 @@ pub(super) fn plan(store: &Store, turns: &[Boundary]) -> Result<Files, &'static 
     // A file whose permissions alone were changed since goes back no more open than it is now.
     let eased = paths.intersection(&since);
     let modes = store.stricter(&target, eased).map_err(unread)?;
+    let modes = store.with_dirs(modes, &made).map_err(unread)?;
     hand.extend(blocked);
     let left_out: Vec<String> = (out.iter())
         .filter(|p| target.out.get(*p) != pre.out.get(*p))

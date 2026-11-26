@@ -398,6 +398,13 @@ impl Store {
             .filter_map(|p| Some((p, plain(there.get(p.as_str())?.split(' ').next()?))))
             .collect();
         let back = self.back(to, &index, &files)?;
+        let rel = |d: &Path| {
+            d.strip_prefix(&self.cwd)
+                .unwrap_or(d)
+                .to_string_lossy()
+                .into_owned()
+        };
+        let folds = self.folds();
         for path in paths.iter().filter(|p| !there.contains_key(p.as_str())) {
             let file = self.cwd.join(path);
             match fs::remove_file(&file) {
@@ -405,9 +412,11 @@ impl Store {
                 _ => {}
             }
             let mut up = file.parent();
-            // A folder a file goes back in stays, with its permissions.
+            // A folder a file goes back in stays, with its permissions, and so does one that was
+            // there at `to`, empty [C37].
+            let mine = |d: &Path| !back.home(d) && !back.kept(&rel(d), &there, folds);
             while let Some(dir) =
-                up.filter(|d| *d != self.cwd && !back.home(d) && fs::remove_dir(d).is_ok())
+                up.filter(|d| *d != self.cwd && mine(d) && fs::remove_dir(d).is_ok())
             {
                 up = dir.parent();
             }
