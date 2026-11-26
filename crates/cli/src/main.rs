@@ -144,7 +144,11 @@ fn agent_call(data: &Path, args: &[String]) -> Option<Value> {
         Some("signin" | "wait" | "cancel" | "signout")
     );
     // So does computer use's helper connection [D913].
-    let held = args.first().is_some_and(|a| a == "computer");
+    // So do computer use's and the browser's cards: answered elsewhere, they'd go without a decision.
+    let held = args.first().is_some_and(|a| a == "computer")
+        || args.first().is_some_and(|a| a == "answer")
+            && (args.get(2))
+                .is_some_and(|r| r.starts_with("computer-") || r.starts_with("browser-"));
     if who["app"] == true && (held || args.first().is_some_and(|a| a == "plugins") && signing) {
         let _ = conn.set_timeout(Some(Duration::from_secs(660)));
         let reply = conn.call(&json!({"id": 2, "op": "run", "args": args}));
