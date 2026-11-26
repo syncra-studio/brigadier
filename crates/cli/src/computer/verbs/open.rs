@@ -105,6 +105,7 @@ pub(super) fn open(
         launch.arg("--args").args(windowed(bundle));
     }
     super::still::start(data, me, asked.as_deref())?;
+    super::sent();
     let sent = launch.output();
     if !sent.as_ref().is_ok_and(|o| o.status.success()) {
         let why = sent.map(|o| {
@@ -315,6 +316,7 @@ pub(super) fn press(
     what["pid"] = s.pid.into();
     what["no_paste"] = (!s.secure.is_empty()).into();
     let read_again = format!("`brigadier computer read {}` shows its menus.", s.app);
+    super::sent();
     let chose = match crate::computer::own(data, "menu", what, &|| !here()) {
         Err(Fail::Unknown) if s.batch => {
             return Err(refuse(

@@ -33,6 +33,7 @@ pub(super) fn act(
     if s.batch && name != "drag" {
         args["post_action_wait"] = "none".into();
     }
+    super::sent();
     let done = match tool(data, name, args, &|| !here()) {
         // A run stops at a step it can't vouch for: the next one may depend on it.
         Err(Fail::Unknown) if s.batch => {

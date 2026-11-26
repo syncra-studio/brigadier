@@ -24,10 +24,11 @@ use apps::{apps, find, menu_path};
 use open::press;
 use serde_json::{Value, json};
 use shot::{drag, screenshot};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use web::web_page;
@@ -221,7 +222,48 @@ pub(crate) const VERBS: [&str; 10] = [
     "screenshot",
 ];
 
+thread_local! {
+    /// This call's line for the calls log, until it is written.
+    static UNLOGGED: RefCell<Option<(PathBuf, &'static str)>> = const { RefCell::new(None) };
+}
+
+/// Brigadier's own count of the calls that went through or reached the app, not those it refused,
+/// which a worker's result carries so its lead needn't take its word [D2032]. Written as the
+/// action leaves, so a turn stopped while it waits still counts it.
+pub(super) fn sent() {
+    let Some((calls, verb)) = UNLOGGED.take() else {
+        return;
+    };
+    let _ = fs::create_dir_all(&calls).and_then(|()| {
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(calls.join("calls"))?;
+        writeln!(f, "{} {verb}", brigadier_frames::log::now_ms())
+    });
+}
+
 fn verb(
+    data: &Path,
+    me: &str,
+    w: &Words,
+    rows: &dyn Fn() -> Vec<Value>,
+    here: &dyn Fn() -> bool,
+) -> Result<String, Value> {
+    let verb = VERBS.iter().find(|v| **v == w.verb).copied().unwrap_or("");
+    UNLOGGED.set(Some((
+        brigadier_core::session_dir(data, me).join("computer"),
+        verb,
+    )));
+    let done = checked(data, me, w, rows, here);
+    if done.is_ok() {
+        sent();
+    }
+    UNLOGGED.set(None);
+    done
+}
+
+fn checked(
     data: &Path,
     me: &str,
     w: &Words,
@@ -272,16 +314,6 @@ fn verb(
         return Err(refuse(&no));
     }
     asks::check(data, me, w, &s, rows, here)?;
-    // Brigadier's own count of what went past its refusals, which a worker's result carries so its lead needn't take the
-    // worker's word for it [D2032].
-    let calls = brigadier_core::session_dir(data, me).join("computer");
-    let _ = fs::create_dir_all(&calls).and_then(|()| {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(calls.join("calls"))?;
-        writeln!(f, "{} {}", brigadier_frames::log::now_ms(), w.verb)
-    });
     let text = match w.verb {
         "apps" => apps(data, here)?,
         "open" => open::open(data, me, &mut s, w, rows, here)?,
@@ -489,6 +521,10 @@ fn said(f: Fail) -> Value {
 }
 
 fn call(data: &Path, name: &str, args: Value, here: &dyn Fn() -> bool) -> Result<Value, Value> {
+    // Past a lookup, the call reaches the app's window.
+    if !["list_apps", "list_windows", "check_permissions"].contains(&name) {
+        sent();
+    }
     tool(data, name, args, &|| !here())
         .map_err(said)?
         .map_err(|e| refuse(&cap(&ours(&e))))
