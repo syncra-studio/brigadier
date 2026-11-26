@@ -1,7 +1,8 @@
 //! The hand-off a new conversation starts from [D103, D104, D110; repo-merge D86]: built at once
 //! from records alone, the whole conversation oldest first, growing with it (b1). A rebirth, a
 //! limit switch, a picked agent and a fork all start from it; anything else, the agent reads with
-//! `brigadier search` and `brigadier read`, under the references every line here carries.
+//! `brigadier search` and `brigadier read`, under the references every line here carries. It
+//! opens with the newest good summary the old conversation wrote, checked [repo-merge D85].
 
 use crate::archive::{self, Entry};
 use crate::{Spec, fold::Fold};

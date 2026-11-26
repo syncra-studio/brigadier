@@ -2,7 +2,8 @@
 //! its threshold Brigadier carries the session on in a fresh conversation of the same agent,
 //! account, model and effort, started from the hand-off. A turn that ended past it rebirths with
 //! the next input; a running one is stopped once no tool runs, and one whose window filled
-//! rebirths at once ("cut").
+//! rebirths at once ("cut"). With summaries on, the old conversation first writes one in a
+//! tool-free turn, which the renewal carries [repo-merge D92; rev 3 §2.2].
 
 use crate::fold::Fold;
 use crate::{Spec, as_run};
