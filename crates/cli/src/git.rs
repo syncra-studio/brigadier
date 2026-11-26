@@ -153,13 +153,10 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 }
             }
         }
-        // A file of a chat that works in a plain folder still opens [D388].
-        _ => match git::checkout(data, &target) {
-            Err(e) if matches!(arg(args, at)?, "file" | "image") => {
-                (git::plain(data, &target).map_err(|_| e)?, args)
-            }
-            checkout => (checkout?, args),
-        },
+        // A file opens where its links point: a plain folder's too, a no-project worker's in the
+        // folder its edits go to [D388, C70].
+        _ if matches!(arg(args, at)?, "file" | "image") => (git::files_of(data, &target)?, args),
+        _ => (git::checkout(data, &target)?, args),
     };
     let word = |i: usize| arg(args, at + i);
     let from = |i: usize| args.get(at + i).map(String::as_str).filter(|w| *w != "-");

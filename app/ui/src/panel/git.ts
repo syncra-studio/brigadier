@@ -323,8 +323,9 @@ export function useFileRead(owner: string, path: string): FileRead {
   // window shows; a watch of the file itself would be instant.
   // Kept once seen, so a file a build deletes and writes again is still followed.
   const [ignored, setIgnored] = useState(false);
-  // A folder chat's watch follows one repo, or none (it fails), and a chat with no project has none: its tabs look again
-  // themselves too [D776].
+  // A folder chat's watch follows one repo, or none (it fails): its tabs look again themselves too [D776].
+  // shortcut: a chat with no project (and its workers) has no watch (no panel, D1039), so its file tabs read again every
+  // few seconds too; watch the folder itself if many such tabs stay open.
   const unwatched = ignored || watched === null || ("session" in watched && (watched.session.includes("@") || error !== null));
   useEffect(() => {
     if (!unwatched) return;

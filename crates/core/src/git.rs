@@ -84,9 +84,32 @@ pub fn checkout(data: &Path, target: &Target) -> io::Result<Checkout> {
 
 /// A session's folder with no git in it or above it, as a checkout whose files the viewer reads
 /// inside it: a chat with no project may work in one [D388]. Nothing of git works on it.
-pub fn plain(data: &Path, target: &Target) -> io::Result<Checkout> {
-    let root = fs::canonicalize(folder(data, target)?)?;
-    if !matches!(target, Target::Session(_)) || root.ancestors().any(|a| a.join(".git").exists()) {
+fn plain(data: &Path, target: &Target) -> io::Result<Checkout> {
+    if !matches!(target, Target::Session(_)) {
+        return err("Only a session's folder opens without git.");
+    }
+    plain_in(&folder(data, target)?)
+}
+
+/// The checkout whose files a session's links and file tabs open: a no-project worker's is the
+/// folder its edits go to (`writes`, C70), not its own; a plain folder as `plain` [D388].
+pub fn files_of(data: &Path, target: &Target) -> io::Result<Checkout> {
+    let writes = match target {
+        Target::Session(id) => {
+            check_id(id)?;
+            load(data, id)?.opts.get("writes").map(PathBuf::from)
+        }
+        _ => None,
+    };
+    match writes {
+        Some(dir) => at(data, &dir).or_else(|e| plain_in(&dir).map_err(|_| e)),
+        None => checkout(data, target).or_else(|e| plain(data, target).map_err(|_| e)),
+    }
+}
+
+fn plain_in(folder: &Path) -> io::Result<Checkout> {
+    let root = fs::canonicalize(folder)?;
+    if root.ancestors().any(|a| a.join(".git").exists()) {
         return err(format!("{} isn't a git checkout", root.display()));
     }
     let git_dir = root.join(".git");

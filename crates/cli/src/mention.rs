@@ -154,35 +154,50 @@ pub fn run(data: &Path, rows: &BTreeMap<String, Value>, req: &Value) -> Value {
 /// counts too, as `outside` [D290]; each hit says where it is on disk (`at`) and whether it's an image.
 pub fn paths(data: &Path, req: &Value) -> Value {
     let target = Target::Session(req["owner"].as_str().unwrap_or(""));
-    let checkout = git::checkout(data, &target).ok();
-    let all = (checkout.as_ref())
-        .and_then(|c| files::mention(c, "", &AtomicBool::new(false)).ok())
-        .unwrap_or_default();
-    let root = checkout.map_or_else(String::new, |c| format!("{}/", c.root.display()));
+    // Where a tab of the file reads it: a plain folder too, a no-project worker's edit folder [C70].
+    let checkout = git::files_of(data, &target).ok();
+    let listed =
+        (checkout.as_ref()).and_then(|c| files::mention(c, "", &AtomicBool::new(false)).ok());
+    // A plain folder has no listing: a path in it counts when it's there [D388].
+    let plain = checkout.as_ref().filter(|_| listed.is_none());
+    let all = listed.unwrap_or_default();
+    let root = (checkout.as_ref()).map_or_else(String::new, |c| format!("{}/", c.root.display()));
     let home = std::env::var("HOME").unwrap_or_default();
     let mut found = serde_json::Map::new();
     for asked in (req["paths"].as_array().into_iter().flatten()).filter_map(Value::as_str) {
         let whole = asked
             .strip_prefix("~/")
             .map_or_else(|| asked.to_string(), |rest| format!("{home}/{rest}"));
-        if whole.starts_with('/') && (root.is_empty() || !whole.starts_with(&root)) {
+        // Under the root as it is, links followed: `/tmp/a` is in `/private/tmp/`.
+        let real = (whole.starts_with('/'))
+            .then(|| std::fs::canonicalize(&whole).ok())
+            .flatten()
+            .map_or_else(|| whole.clone(), |p| p.display().to_string());
+        if whole.starts_with('/') && (root.is_empty() || !real.starts_with(&root)) {
             if let Ok(meta) = std::fs::metadata(&whole) {
                 let image = !meta.is_dir() && is_image(Path::new(&whole));
                 found.insert(asked.into(), json!({"path": whole, "at": whole, "folder": meta.is_dir(), "image": image, "outside": true}));
             }
             continue;
         }
-        let want = asked
+        let want = real
             .strip_prefix(&root)
-            .unwrap_or(asked)
+            .unwrap_or(&real)
             .trim_end_matches('/');
         let mut named = all
             .iter()
             .filter(|f| !f.2 && f.1.rsplit('/').next() == Some(want));
         let alone = named.next().filter(|_| named.next().is_none());
-        if let Some((_, path, folder)) = all.iter().find(|f| f.1 == want).or(alone) {
+        let there = || {
+            let at = git::inside(plain?, want).ok()?;
+            Some((want.to_string(), std::fs::metadata(at).ok()?.is_dir()))
+        };
+        let hit = (all.iter().find(|f| f.1 == want).or(alone))
+            .map(|(_, path, folder)| (path.clone(), *folder))
+            .or_else(there);
+        if let Some((path, folder)) = hit {
             let at = format!("{root}{path}");
-            let image = !folder && is_image(Path::new(path));
+            let image = !folder && is_image(Path::new(&path));
             found.insert(
                 asked.into(),
                 json!({"path": path, "at": at, "folder": folder, "image": image}),
