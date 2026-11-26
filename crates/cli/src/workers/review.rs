@@ -383,7 +383,11 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
                     Err(why) => off(data, &mut a, of, &why),
                 }
             }
-            (Some(why), ..) => off(data, &mut a, of, &why),
+            // Stopped or out of context, it ran: its review didn't finish (proposed) [NH-A11].
+            (Some(why), ..) => {
+                off(data, &mut a, of, &why);
+                a.review["line"] = format!("Review didn't finish: {why}").into();
+            }
             (None, Some(0), _) => {
                 a.review["state"] = "done".into();
                 (a.review["head"], a.review["at"]) = task::heads(data, of);

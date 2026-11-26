@@ -128,7 +128,13 @@ impl Fold {
                     .push(json!({"findings": r["findings"], "fixed": null, "rejected": null}));
                 reviewed(HEAD, &r, None, None)
             }
-            Some("off") => format!("Review didn't run: {}", item["why"].as_str().unwrap_or("")),
+            Some("off") => {
+                let word = if item["ran"] == true { "finish" } else { "run" };
+                format!(
+                    "Review didn't {word}: {}",
+                    item["why"].as_str().unwrap_or("")
+                )
+            }
             _ => return,
         };
         self.plans.now = json!({"state": "done", "line": line});

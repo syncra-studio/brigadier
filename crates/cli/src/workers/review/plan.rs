@@ -181,6 +181,16 @@ pub(super) fn reviewed(
         }
         ("finished", _, Some(said)) => said,
         ("finished", _, None) => return off("the reviewer ended without a message"),
+        // Stopped or out of context, it ran: the plan's line says it didn't finish [NH-A11].
+        (how @ ("stopped" | "context"), ..) => {
+            let why = format!("the reviewer {}", word(how));
+            return plan_note(
+                data,
+                of,
+                request,
+                json!({"phase": "off", "why": why, "ran": true}),
+            );
+        }
         (how, ..) => return off(&format!("the reviewer {}", word(how))),
     };
     let n = json!({"phase": "sent", "findings": findings, "name": name});
