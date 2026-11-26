@@ -349,6 +349,9 @@ impl Fold {
             self.plans.now = Value::Null;
             if !turn.quiet {
                 self.finished = ts;
+                if turn.origin.starts_with("result:") {
+                    self.dealt = ts;
+                }
             }
             let end = End {
                 at: ts,

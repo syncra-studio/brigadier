@@ -104,9 +104,10 @@ impl Queue {
     /// Whether its item `at` may go to this session now: the one rule of the drain, a worker's
     /// result and the judge. While a command runs the user's messages wait, and the commands behind
     /// it; a command's report and another session's message don't. While workers or subagents hold
-    /// its block open, `held` is when its agent's last turn ended: one that fits goes as the block's
-    /// next turn, the rest of the user's, all decided, at the end of the next turn it takes or of
-    /// the block (repo-merge D39, D48); a command that is first goes at once.
+    /// its block open, `held` is when its agent last dealt with a worker's result: one that fits goes
+    /// as the block's next turn, the rest of the user's, all decided, at the end of the turn that
+    /// deals with the next worker's result, or of the block (repo-merge D39, D48, C29); a command
+    /// that is first goes at once.
     fn goes(&self, at: usize, held: Option<u64>) -> bool {
         let i = &self.items[at];
         let open = held.is_none_or(|ended| {

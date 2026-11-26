@@ -24,7 +24,7 @@ pub fn drain(data: &Path, rows: &BTreeMap<String, Value>) {
         let Ok(q) = serde_json::from_value::<Queue>(q.clone()) else {
             continue;
         };
-        let held = (row["holding"] == true).then(|| row["finished"].as_u64().unwrap_or(0));
+        let held = (row["holding"] == true).then(|| row["dealt"].as_u64().unwrap_or(0));
         let first = (q.items.iter().enumerate()).find(|(at, i)| {
             q.goes(*at, held)
                 && (!cut || cut::parents(&core::session_dir(data, id), i.origin.as_deref()))
@@ -85,7 +85,7 @@ fn try_first(data: &Path, id: &str, last: bool) -> io::Result<bool> {
     locked(&dir, |q| {
         let (f, state) = cut::now(data, id)?;
         let cut = state == "interrupted";
-        let held = crate::workers::holding(data, id).then_some(f.finished);
+        let held = crate::workers::holding(data, id).then_some(f.dealt);
         let goes = |at: &usize| {
             let origin = q.items[*at].origin.as_deref();
             q.goes(*at, held) && (!cut || cut::carries(&dir, &f, origin))
@@ -191,7 +191,7 @@ pub fn will_go(data: &Path, id: &str, row: &Value) -> bool {
     let Ok(q) = read(&core::session_dir(data, id)) else {
         return false;
     };
-    let held = (row["holding"] == true).then(|| row["finished"].as_u64().unwrap_or(0));
+    let held = (row["holding"] == true).then(|| row["dealt"].as_u64().unwrap_or(0));
     let first = (q.items.iter().enumerate()).find(|(at, _)| q.goes(*at, held));
     let state = row["state"].as_str().unwrap_or("");
     !q.paused

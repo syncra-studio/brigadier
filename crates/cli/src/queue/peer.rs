@@ -94,7 +94,7 @@ pub fn waits_for(data: &Path, from: &str, id: &str, mid: &str, held: bool) -> St
     }
     let carries = state == "interrupted" && cut::carries(&dir, &f, Some(&origin));
     // What goes before it: past a cut-off run only its parent's do.
-    let block = workers::holding(data, id).then_some(f.finished);
+    let block = workers::holding(data, id).then_some(f.dealt);
     let goes = |n: &usize| {
         q.goes(*n, block) && (!carries || cut::parents(&dir, q.items[*n].origin.as_deref()))
     };

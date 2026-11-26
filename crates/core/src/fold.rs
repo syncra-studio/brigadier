@@ -132,6 +132,9 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
+    /// When a turn a worker's result started last ended (ms): what releases a held follow-up [D48].
+    #[serde(default)]
+    pub dealt: u64,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
     /// delivered), withdrawn, or the outcome of the turn they ended with.
     #[serde(default)]
