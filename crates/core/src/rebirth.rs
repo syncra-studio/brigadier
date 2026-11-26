@@ -78,7 +78,7 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
         // behind it would be stopped with it.
         let calm = !t.stopping && t.question.is_none() && t.began;
         let calm = calm && t.asks.is_empty() && f.turns.len() == 1;
-        // A stricter level the user picked doesn't wait for the running tool [D166, C16].
+        // A stricter level, picked, held or a night ended, doesn't wait for the running tool [D166, C39].
         if calm && switching(spec, f, &t.backend) && (t.tools.is_empty() || stricter(spec, f, t)) {
             return Some("switch");
         }
@@ -105,17 +105,14 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     (refused || stopped || lost || going).then_some("cut")
 }
 
-/// Whether the session's own level, its project's trust aside, is stricter than the one the
-/// running turn was given. A night that ended during the turn gave that level back: it, and an
-/// untrusted project, keep the safe point (O6).
+/// Whether the session's level, its project's trust included, is stricter than the one the
+/// running turn was given: the user's pick, an untrusted project and a night's end alike [C16, C39].
 fn stricter(spec: &Spec, f: &Fold, t: &crate::fold::Turn) -> bool {
     let rank = |l: Option<&str>| ["ask", "auto", "full"].iter().position(|x| Some(*x) == l);
-    let own = crate::adapters::get(&t.backend).and_then(|a| crate::level(spec, a, false).ok());
+    let held = crate::projects::held(&crate::data_of(spec), spec);
+    let now = crate::adapters::get(&t.backend).and_then(|a| crate::level(spec, a, held).ok());
     let given = rank(f.given.as_ref().and_then(|g| g["level"].as_str()));
-    let night = crate::overnight::load(&spec.dir)
-        .morning
-        .is_some_and(|m| m.at >= t.ts);
-    !t.unchecked && !night && rank(own.flatten()).zip(given).is_some_and(|(o, g)| o < g)
+    !t.unchecked && rank(now.flatten()).zip(given).is_some_and(|(o, g)| o < g)
 }
 
 /// Whether the user picked another agent and said Switch now [D557], or another model of `backend`
