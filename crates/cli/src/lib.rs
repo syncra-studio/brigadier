@@ -70,7 +70,7 @@ pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id>... --check | delete <id> [--branch keep|delete] [--delete-in <repo>]... | owner <id> | up <id>...
        brigadier jobs <id> history | servers | stop <pid> <start_us>
        brigadier workers <id> [stop [<wid>...] | pause|resume <wid>] | peers <id> send <mid> | mockup <wid> [draft '<notes>' | send '<notes>' | use <letter> '<notes>']
-       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] [--draft JSON --draft-rev R] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
+       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] [--draft JSON --draft-rev R] | move <qid> <to> | remove|edit|steer|has <qid> | restore | resume | background <command id>
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id>|--project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]

@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import type { KeptPrs } from "./panel/types";
 import type { Mark, Reset } from "./sidebar/words";
 import type { Item, Session, Turn, Work } from "./thread/item";
+import { pruneUncertain } from "./session/uncertain";
 import { asStopped, markStop } from "./thread/stopping";
 import type { Source } from "./thread/thread";
 
@@ -318,6 +319,7 @@ function onFrame(frame: Record<string, any>): void {
     set({ daemon: null, refused: frame.error }); // an app a session's agent opened: told by the list's answer, with no rows then
   } else if (frame.re === listId) {
     rows = new Map(frame.rows.map((row: Row) => [row.id, row]));
+    pruneUncertain(new Set(rows.keys()));
     projects = new Map(frame.projects.map((project: Project) => [project.id, project]));
     n = frame.n;
     set({ rows: [...rows.values()], projects: [...projects.values()], lid: frame.lid });

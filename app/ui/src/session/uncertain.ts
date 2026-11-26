@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
 import type { QueuedMessage } from "../components/composer/queue";
-import type { RustQueued } from "./queued";
+import type { Runner } from "./composer";
 
 /*
  * A queue add whose reply never came (Brigadier went away): Rust may have it or not [D54]. It waits in the renderer's
@@ -12,11 +12,12 @@ import type { RustQueued } from "./queued";
  */
 export type Uncertain = { qid: string; text: string; draft: Draft; parts?: string; at: number; unadded?: boolean; removing?: boolean };
 
-const key = (session: string) => `brigadier.uncertain.${session}`;
+const PREFIX = "brigadier.uncertain.";
+const key = (session: string) => PREFIX + session;
 const all = new Map<string, readonly Uncertain[]>();
 const listeners = new Set<() => void>();
 const NONE: readonly Uncertain[] = [];
-// The connection each add was lost on, this run: only an answer on a later one settles it.
+// The connection each add was lost on, or last asked about, this run: only a later one asks again.
 const lostOn = new Map<string, unknown>();
 
 function of(session: string): readonly Uncertain[] {
@@ -51,22 +52,32 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
+/** A session gone from Rust's list takes its uncertain adds with it [D35]. */
+export function pruneUncertain(ids: ReadonlySet<string>): void {
+  for (const at of Object.keys(localStorage).filter((each) => each.startsWith(PREFIX) && !ids.has(each.slice(PREFIX.length)))) {
+    localStorage.removeItem(at);
+    all.delete(at.slice(PREFIX.length));
+  }
+}
+
 /**
- * Session `id`'s uncertain adds as the queue card's rows, settled on each of its rows while Rust answers: in its queue,
- * an ordinary item; in its thread, delivered; in neither, not added. A Delete waits to tell Rust until it answers.
+ * Session `id`'s uncertain adds as the queue card's rows, each asked about once Rust answers on a new connection: in
+ * its queue, an ordinary item (Rust's row shows it); in its log, delivered; in neither, not added. A Delete waits to
+ * tell Rust until it answers.
  */
-export function useUncertain(id: string, queue: { items: readonly RustQueued[]; editing?: { id: string } | null } | null | undefined, delivered: ReadonlySet<string | undefined>, daemon: unknown, remove: (qid: string) => void) {
+export function useUncertain(id: string, daemon: unknown, run: Runner, remove: (qid: string) => void) {
   const mine = useSyncExternalStore(subscribe, () => of(id));
-  const answering = Boolean(daemon) && queue !== undefined;
+  const answering = Boolean(daemon);
   useEffect(() => {
     if (!answering) return;
     for (const each of mine.filter((one) => lostOn.get(one.qid) !== daemon)) {
-      const queued = queue?.items.some((item) => item.id === each.qid) || queue?.editing?.id === each.qid;
-      if (each.removing) {
-        if (queued) remove(each.qid);
-        dropUncertain(id, each.qid);
-      } else if (queued || delivered.has(each.qid)) dropUncertain(id, each.qid);
-      else if (!each.unadded) mark(id, each.qid, { unadded: true });
+      lostOn.set(each.qid, daemon);
+      void run(["queue", id, "has", each.qid]).then((reply) => {
+        if (!reply.ok) return;
+        if (each.removing && reply.queued) remove(each.qid);
+        if (each.removing || reply.queued || reply.logged) dropUncertain(id, each.qid);
+        else mark(id, each.qid, { unadded: true });
+      });
     }
   });
   const rows: QueuedMessage[] = mine.filter((each) => !each.removing).map((each) => ({ id: each.qid, draft: each.draft, state: each.unadded ? "unadded" : "uncertain" }));

@@ -148,7 +148,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     return turn !== undefined && thread!.items.some((item) => item.kind === "question" && item.turnId === turn);
   });
   const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
-  const uncertain = useUncertain(id, row ? (row.queue ?? null) : undefined, delivered, daemon, (qid) => act({ kind: "remove", qid }, ["remove", qid]));
+  const uncertain = useUncertain(id, daemon, run, (qid) => act({ kind: "remove", qid }, ["remove", qid]));
   let paused = row?.queue?.paused === true;
   // A `!` command that ended shows only while its report can't go.
   const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
