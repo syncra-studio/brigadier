@@ -1486,12 +1486,16 @@ async function rewindOne(k) {
   const agent = new Set(range.flatMap((x) => differ(x.before.files, x.end.files)))
   const gaps = new Set(range.flatMap((x, i) => differ(x.end.files, (range[i + 1]?.before ?? now_).files)))
   const out = outAll([...range.flatMap((x) => [x.before, x.end]), now_])
+  // Where the disk takes two letter cases for one, a name the user left is theirs under any case of its letters.
+  const folds = fs.existsSync(dir.toUpperCase()), low = (p) => (folds ? p.toLowerCase() : p)
+  const theirsLow = new Set([...gaps].map(low)), nowLow = new Set(Object.keys(now_.files).map(low))
   const expect = { ...now_.files }
-  for (const p of agent) if (!gaps.has(p) && !ignoredName(p) && !inside(out, p)) { if (range[0].before.files[p] === undefined) delete expect[p]; else expect[p] = range[0].before.files[p] }
+  for (const p of agent) if (!theirsLow.has(low(p)) && !ignoredName(p) && !inside(out, p)) { if (range[0].before.files[p] === undefined) delete expect[p]; else expect[p] = range[0].before.files[p] }
   // One the user changed and the agent then took away goes back as the user's last change left it.
   const theirs = {}
-  range.forEach((x, i) => { const next = range[i + 1]?.before ?? now_; for (const p of differ(x.end.files, next.files)) theirs[p] = { file: next.files[p], mode: next.modes[p] } })
-  for (const p of Object.keys(theirs)) { if (!agent.has(p) || now_.files[p] !== undefined || theirs[p].file === undefined || ignoredName(p) || inside(out, p)) delete theirs[p]; else expect[p] = theirs[p].file }
+  range.forEach((x, i) => { const next = range[i + 1]?.before ?? now_; const gap = differ(x.end.files, next.files); for (const q of Object.keys(theirs)) if (gap.some((p) => low(p) === low(q))) delete theirs[q]; for (const p of gap) theirs[p] = { file: next.files[p], mode: next.modes[p] } })
+  for (const p of Object.keys(theirs)) { if (!agent.has(p) || nowLow.has(low(p)) || theirs[p].file === undefined || ignoredName(p) || inside(out, p)) delete theirs[p]; else expect[p] = theirs[p].file }
+  for (const p of Object.keys(expect)) if (folds && Object.keys(theirs).some((q) => q !== p && low(q) === low(p))) delete expect[p]
   res.theirs = Object.keys(theirs)
   const rewind = (extra, env) => cliAsync(['rewind', id, range[0].cid, '--op', op, ...extra], env)
   const same = (a, b) => differ(a.files, b.files).length === 0
