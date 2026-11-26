@@ -259,3 +259,23 @@ pub fn section(id: &str, at: &str, note: &Value, ago: usize) -> String {
     }
     format!("\n## Summary, {head}\n{}\n", body.trim_end())
 }
+
+/// A fork's copy, `refs` each item's reference in its source: each summary note's references
+/// become the copy's own `i<line>`, a fork's of a fork's too; one past the fork point is none
+/// [rev 3 §3]. shortcut: a frame of several items maps to its first line; key cites by item if a
+/// step's call and output ever share a frame.
+pub fn copied(items: &mut [Value], refs: Vec<String>) {
+    let mut line = std::collections::HashMap::new();
+    for (n, r) in refs.into_iter().enumerate() {
+        line.entry(r).or_insert(format!("i{n}"));
+    }
+    let to = |v: &Value| v.as_str().and_then(|r| line.get(r)).cloned().into();
+    for item in items.iter_mut().filter(|i| i["event"] == "summary") {
+        (item["from"], item["to"]) = (to(&item["from"]), to(&item["to"]));
+        for k in ["cites", "marks"] {
+            (item[k].as_array_mut().into_iter().flatten())
+                .filter(|c| !c["ref"].is_null())
+                .for_each(|c| c["ref"] = to(&c["ref"]));
+        }
+    }
+}

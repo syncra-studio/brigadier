@@ -213,13 +213,18 @@ fn order(dir: &Path, f: &Fold) -> Vec<String> {
 
 /// The thread up to the end of turn `at`'s answer: the inherited copy, then what still stands.
 fn copy_of(dir: &Path, order: &[String], at: &str) -> io::Result<Vec<Value>> {
-    let mut items = inherited(dir);
-    crate::rewind::read_active(dir, |item| items.push(item.clone()))?;
+    let (mut items, mut refs) = (vec![], vec![]);
+    crate::archive::each(dir, |item, at| {
+        items.push(item.clone());
+        refs.push(at);
+    })?;
     let next = order.iter().skip_while(|c| *c != at).nth(1);
     let input = |i: &Value| i["kind"] == "input" && next.is_some_and(|n| i["cid"] == n.as_str());
     if let Some(cut) = items.iter().position(input) {
         items.truncate(cut);
+        refs.truncate(cut);
     }
+    crate::handoff::check::copied(&mut items, refs);
     Ok(items)
 }
 
