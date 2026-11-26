@@ -285,7 +285,9 @@ impl Agent {
         }
         // A continuation Brigadier wrote ("[Your last turn stopped early…]") gets a plain reply,
         // not an echo of its first word, which reads as a cut-off answer.
-        if first.starts_with('[') || body.is_empty() {
+        if let Some(summary) = self.summary_text(text) {
+            self.say(&summary);
+        } else if first.starts_with('[') || body.is_empty() {
             self.say("Carried on from where I stopped. All done.");
         } else if let Some(last) = text
             .trim_end()

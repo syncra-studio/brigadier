@@ -55,6 +55,13 @@ impl Agent {
         summary.then(|| format!("{text} {mark}"))
     }
 
+    /// A summary turn's reply: the `summary.md` in its home, as the drills plant it, true lines
+    /// and false ones [repo-merge D85].
+    pub(super) fn summary_text(&self, text: &str) -> Option<String> {
+        let summary = text.starts_with("Brigadier renews this conversation next.");
+        summary.then(|| fs::read_to_string(self.home.join("summary.md")).ok())?
+    }
+
     /// Acts out one directive. False when the turn ended inside it.
     pub(super) fn directive(&mut self, name: &str, n: u64, word: &str, done_before: u64) -> bool {
         let left = n.saturating_sub(done_before);
