@@ -1,9 +1,10 @@
 //! `chips <id>`: what waits above a session's composer for the agent, and the comment being
 //! written on its diff, kept in its folder so an app restart drops neither [D35, D1040, D1195].
-//! A send hands chips to its message first (`take`, by the message's command or queue id, and the
-//! session it goes to); a refused send gives them back (`back`). Reading settles any handed-off
-//! chip by the logs: its message reached the log or the queue, so it's gone; else it's back. So a
-//! crash anywhere neither loses a comment nor sends one twice [D1174]. Every change is safe to
+//! A send or queue add takes its chips for its message as it goes (`--chips`, attach/book.rs), Send
+//! as new first (`take`, by the message's command id, and the session it goes to); a refused one
+//! gives them back (`back`). Reading settles any taken chip: while the draft's book has its message
+//! on its way it stays its own; else its message reached the log or the queue, so it's gone, or
+//! it's back. So a crash anywhere neither loses a comment nor sends one twice [D1174, C58]. Every change is safe to
 //! send twice and answers the whole state.
 
 use crate::{USAGE, arg, queue};
@@ -84,17 +85,38 @@ fn untake(state: &mut Chips, msg: &str) -> Vec<Value> {
     back
 }
 
-/// A refused message's chips back, as `back` does, for a give-back (attach/book.rs).
-pub(crate) fn back(dir: &Path, msg: &str) -> io::Result<Vec<Value>> {
+/// Changes the chips of session `dir` under their lock, for the draft's book (attach/book.rs).
+fn change<T>(dir: &Path, f: impl FnOnce(&mut Chips) -> T) -> io::Result<T> {
     let _lock = worktrees::lock(dir)?;
     let path = dir.join(FILE);
-    let mut state: Chips =
-        serde_json::from_slice(&fs::read(&path).unwrap_or_default()).unwrap_or_default();
-    let back = untake(&mut state, msg);
-    if !back.is_empty() {
-        core::write_atomic(&path, &serde_json::to_vec(&state)?)?;
+    let was = fs::read(&path).unwrap_or_default();
+    let mut state: Chips = serde_json::from_slice(&was).unwrap_or_default();
+    let out = f(&mut state);
+    let now = serde_json::to_vec(&state)?;
+    if now != was {
+        core::write_atomic(&path, &now)?;
     }
-    Ok(back)
+    Ok(out)
+}
+
+/// A refused or discarded message's chips back, as `back` does.
+pub(crate) fn back(dir: &Path, msg: &str) -> io::Result<Vec<Value>> {
+    change(dir, |state| untake(state, msg))
+}
+
+/// Chips `ids` handed to message `msg` of session `into`, by the send or queue add that carries
+/// them; one taken already stays its own message's.
+pub(crate) fn take(dir: &Path, msg: &str, into: &str, ids: &[&str]) -> io::Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    change(dir, |state| {
+        for kept in state.chips.iter_mut().filter(|k| k.taken.is_none()) {
+            if ids.iter().any(|each| kept.chip["id"] == *each) {
+                kept.taken = Some((msg.into(), into.into()));
+            }
+        }
+    })
 }
 
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
@@ -110,13 +132,18 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let mut state: Chips = serde_json::from_slice(&was).unwrap_or_default();
     let ids = || args.iter().skip(3).map(String::as_str);
     match args.get(2).map(String::as_str) {
-        None => state.chips.retain_mut(|kept| match &kept.taken {
-            Some(taken) if went(data, id, taken) => false,
-            _ => {
-                kept.taken = None;
-                true
-            }
-        }),
+        None => {
+            // Its message still on its way, or its give-back still to bring it back: its own.
+            let held = crate::attach::book::holding(&dir);
+            state.chips.retain_mut(|kept| match &kept.taken {
+                Some((msg, _)) if held.contains(msg) => true,
+                Some(taken) if went(data, id, taken) => false,
+                _ => {
+                    kept.taken = None;
+                    true
+                }
+            })
+        }
         Some("add") => {
             let chip = json_arg(arg(args, 3)?)?;
             let Some(chip_id) = chip["id"].as_str() else {

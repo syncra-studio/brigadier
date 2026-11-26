@@ -2,16 +2,16 @@
 //! draft as the composer shows it (`parts`, `attachmentIds`), and its `book`. The book keeps the
 //! composer's own last save (`ui`), what Rust gave back to it (`given`) until a save shows the
 //! composer has it, and the messages on their way (`inflight`, `adding` for a queue add) until they
-//! settle. A send, steer, queue add or chip hand-off from the composer carries its draft
-//! (`--draft`, `--draft-rev`): one that surely never reached the log comes back here, its files and
-//! chips with it, whatever the UI does meanwhile; one cut short by a crash is settled by the log
-//! the next time anything here is read or changed [D54].
+//! settle by one rule (verdict.rs). A send or queue add from the composer carries its draft
+//! (`--draft`, `--draft-rev`) and its chips (`--chips`), kept with the command as it ran; one its own
+//! command proves never went comes back here, its files and chips with it, whatever the UI does
+//! meanwhile [D54, C58].
 
-mod outcome;
 mod unsent;
+mod verdict;
 
-use outcome::{answer, how};
 pub(crate) use unsent::unsent;
+use verdict::{How, answer, present, verdict};
 
 use crate::{arg, flag};
 use brigadier_core::{self as core, message};
@@ -49,20 +49,28 @@ struct Ui {
     rev: u64,
 }
 
-/// A message on its way: the draft it was sent from, the UI's revision when it was, and its files
-/// not sent before, which a give-back moves back.
+/// A message on its way: the draft it was sent from, the UI's revision when it was, its files not
+/// sent before, which a give-back moves back, and its command as it ran, which a retry runs again.
 #[derive(Serialize, Deserialize, Clone)]
 struct Going {
     cid: String,
-    /// None: not taken from the field (an Add again), so never the UI's own words.
+    /// None: not taken from the field (a retry), so never the UI's own words.
     rev: Option<u64>,
     #[serde(flatten)]
     words: Words,
     files: Vec<String>,
-    /// Its chips handed to it, the message itself still to come: the send that follows settles it,
-    /// else a read of the draft (a reload), as a chip handed off is settled on a read [D1174].
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    handed: bool,
+    /// Without its draft, its chips (`--chips`) still named. Empty in a book from before: such a
+    /// message can only be discarded or edited.
+    #[serde(default)]
+    op: Vec<String>,
+    /// An attempt may have reached a host; false only for one adopted from the app's copy. Before
+    /// it was kept, any may have.
+    #[serde(default = "yes")]
+    reached: bool,
+}
+
+const fn yes() -> bool {
+    true
 }
 
 /// A message given back; `done` once its files and chips are back too.
@@ -91,11 +99,23 @@ struct Book {
     adding: Vec<Going>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum How {
-    Went,
-    Refused,
-    Unknown,
+impl Book {
+    /// The messages on their way of one kind: queue adds, or sends and steers.
+    fn list(&mut self, queue: bool) -> &mut Vec<Going> {
+        match queue {
+            true => &mut self.adding,
+            false => &mut self.inflight,
+        }
+    }
+
+    /// `cid` given back or discarded: never run again under it.
+    fn refuse(&mut self, cid: &str) {
+        if !self.refused.iter().any(|c| c == cid) {
+            self.refused.push(cid.into());
+        }
+        let over = self.refused.len().saturating_sub(REFUSED);
+        self.refused.drain(..over);
+    }
 }
 
 fn read(path: &Path) -> Book {
@@ -116,13 +136,10 @@ fn read(path: &Path) -> Book {
     }
 }
 
-/// The draft as the composer shows it: what was given back, newest first, above the UI's own;
-/// none of `hid`, deleted where they waited.
-fn shown(book: &Book, hid: &[&str]) -> Words {
+/// The draft as the composer shows it: what was given back, newest first, above the UI's own.
+fn shown(book: &Book) -> Words {
     let mut out = Words::default();
-    let all = (book.given.iter().rev())
-        .filter(|g| !hid.contains(&g.cid.as_str()))
-        .map(|g| &g.words);
+    let all = book.given.iter().rev().map(|g| &g.words);
     for w in all.chain([&book.ui.words]).filter(|w| !w.blank()) {
         if !out.parts.is_empty() && !w.parts.is_empty() {
             out.parts.push("\n\n".into());
@@ -147,73 +164,46 @@ fn hold(path: &Path) -> io::Result<File> {
     Ok(lock)
 }
 
-/// Held by the command sending `cid` until it has settled it: free, that command is gone.
+/// Held by the command for `cid` until it has settled it: free, that command is gone. Its file
+/// stays: a retry already waiting on it, and replay, must see the same one.
 fn cid_lock(dir: &Path, cid: &str) -> PathBuf {
     dir.join(format!("draft-{cid}.lock"))
 }
 
-/// Whether a command for `cid` is still under way here.
-pub(crate) fn pending(dir: &Path, cid: &str) -> bool {
-    lock_held(&cid_lock(dir, cid))
-}
-
-/// Whether message `cid` was given back to the draft, what was cut short settled first.
-pub(crate) fn given_back(dir: &Path, cid: &str) -> io::Result<bool> {
-    change(dir, false, |book| Ok(book.refused.iter().any(|c| c == cid)))
-}
-
 /// Changes session `dir`'s book under its lock, in one write, what was cut short settled first.
-fn change<T>(
-    dir: &Path,
-    reading: bool,
-    f: impl FnOnce(&mut Book) -> io::Result<T>,
-) -> io::Result<T> {
+fn change<T>(dir: &Path, f: impl FnOnce(&mut Book) -> io::Result<T>) -> io::Result<T> {
     let _lock = hold(&dir.join("draft.lock"))?;
     let path = dir.join("draft");
     let mut book = read(&path);
     let was = serde_json::to_vec(&book)?;
-    replay(dir, &mut book, reading)?;
+    replay(dir, &mut book)?;
     let out = f(&mut book)?;
     if serde_json::to_vec(&book)? != was {
-        let mut file = serde_json::to_value(shown(&book, &[]))?;
+        let mut file = serde_json::to_value(shown(&book))?;
         file["book"] = serde_json::to_value(&book)?;
         core::write_atomic(&path, &serde_json::to_vec(&file)?)?;
     }
     Ok(out)
 }
 
-/// What a command cut short left, settled: a send by the log, a queue add by the queue and the
-/// log, a give-back by bringing its files and chips back. Every command on the session's draft,
-/// files or chips runs it first.
+/// What a command cut short left, settled: a message by its presence alone, as nothing else
+/// proves where it is; a give-back already written by bringing its files and chips back. Every
+/// command on the session's draft, files or chips runs it first.
 pub fn settle_cut(dir: &Path) -> io::Result<()> {
-    change(dir, false, |_| Ok(()))
+    change(dir, |_| Ok(()))
 }
 
-fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
+/// Under draft.lock, so presence is read without the queue's lock, the queue first [§5.2]. A
+/// message absent stays: a host outlives its sender, and an adopted one no writer has run [C58].
+fn replay(dir: &Path, book: &mut Book) -> io::Result<()> {
     let gone = |cid: &str| !lock_held(&cid_lock(dir, cid));
     for queue in [false, true] {
-        let list = match queue {
-            true => &mut book.adding,
-            false => &mut book.inflight,
-        };
-        let cut = |g: &Going| gone(&g.cid) && (read || !g.handed);
-        let (cut, live) = std::mem::take(list).into_iter().partition(cut);
-        *list = live;
-        // A host outlives its sender and may log a message it was asked to take however late, so
-        // while it holds the session a send not in the log yet stays unsettled; a hand-off alone
-        // never reached a host [D54].
-        let host = !queue && lock_held(&dir.join("owner.lock"));
-        let may_log = |g: &Going| host && !g.handed;
-        for g in cut {
-            // A send a busy turn put in the queue went there. The queue first: a drain drops an item
-            // only once the log has it, so one read between the two is in the log.
-            let went = queued(dir, &g.cid) || logged(dir, &g.cid);
-            if !went && may_log(&g) {
-                book.inflight.push(g);
-                continue;
-            }
-            let how = if went { How::Went } else { How::Refused };
-            settle(book, g, how, Value::Null);
+        let all = std::mem::take(book.list(queue));
+        let (went, kept): (Vec<Going>, _) =
+            (all.into_iter()).partition(|g| gone(&g.cid) && present(dir, &g.cid));
+        *book.list(queue) = kept;
+        for g in went {
+            settle(book, g, How::Went, Value::Null);
         }
     }
     for g in book.given.iter_mut().filter(|g| !g.done && gone(&g.cid)) {
@@ -222,15 +212,14 @@ fn replay(dir: &Path, book: &mut Book, read: bool) -> io::Result<()> {
     Ok(())
 }
 
-fn logged(dir: &Path, cid: &str) -> bool {
-    core::fold(dir, true).is_ok_and(|f| f.fold.cids.contains_key(cid))
-}
-
-/// Whether `qid` waits in the session's queue, or is being edited there.
-pub(crate) fn queued(dir: &Path, qid: &str) -> bool {
-    let q = crate::queue::row(dir);
-    let items = q["items"].as_array().into_iter().flatten();
-    items.chain([&q["editing"]]).any(|i| i["id"] == qid)
+/// The messages session `dir` holds chips for: on their way, or given back with their chips still
+/// to come back. Read without draft.lock, which a give-back holds while it takes the chips' lock;
+/// the file is written whole.
+pub(crate) fn holding(dir: &Path) -> Vec<String> {
+    let book = read(&dir.join("draft"));
+    let going = book.inflight.iter().chain(&book.adding).map(|g| &g.cid);
+    let given = book.given.iter().filter(|g| !g.done).map(|g| &g.cid);
+    going.chain(given).cloned().collect()
 }
 
 /// Settles message `g`: gone into the log or the queue, or refused and given back above the draft.
@@ -245,9 +234,7 @@ fn settle(book: &mut Book, g: Going, how: How, error: Value) -> Option<Given> {
         return None;
     }
     book.rev += 1;
-    book.refused.push(g.cid.clone());
-    let over = book.refused.len().saturating_sub(REFUSED);
-    book.refused.drain(..over);
+    book.refuse(&g.cid);
     let (cid, rev, words, files) = (g.cid, book.rev, g.words, g.files);
     let given = Given {
         cid,
@@ -288,32 +275,34 @@ fn crash_at(point: &str) {
     }
 }
 
-/// `draft <id> [--took <cid,…>]`: the shown draft, its revision and the ids given back into it
-/// since the UI last saved, which a reloaded UI holds already; those it took, deleted where they
-/// waited, aren't in it. `draft <id> <json|""> --base R --took <cid,…>`: the UI's save, taken only
+/// `draft <id>`: the shown draft, its revision, the ids given back into it since the UI last saved,
+/// which a reloaded UI holds already, and the messages on their way (`going`), which its bubbles and
+/// queue rows show. `draft <id> <json|""> --base R --took <cid,…>`: the UI's save, taken only
 /// from a UI that saw revision R and every message given back since; else nothing is written, and
 /// the reply is stale with what it missed. Without `--base`, as before.
 pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
-    let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
-    let Some(text) = args.get(2).filter(|a| *a != "--took") else {
-        return change(dir, true, |book| {
-            let hid = |g: &Given| took.contains(&g.cid.as_str());
-            book.given.retain(|g| !(g.done && hid(g)));
-            let cids: Vec<&String> = (book.given.iter())
-                .filter(|g| !hid(g))
-                .map(|g| &g.cid)
+    let Some(text) = args.get(2) else {
+        return change(dir, |book| {
+            let cids: Vec<&String> = book.given.iter().map(|g| &g.cid).collect();
+            let going: Vec<Value> = (book.inflight.iter().map(|g| (false, g)))
+                .chain(book.adding.iter().map(|g| (true, g)))
+                .map(|(queue, g)| {
+                    let kind = if queue { "queue" } else { "send" };
+                    json!({"cid": g.cid, "kind": kind, "op": g.op, "draft": g.words, "reached": g.reached})
+                })
                 .collect();
-            let draft = serde_json::to_string(&shown(book, &took))?;
-            Ok(json!({"ok": true, "draft": draft, "rev": book.rev, "cids": cids}))
+            let draft = serde_json::to_string(&shown(book))?;
+            Ok(json!({"ok": true, "draft": draft, "rev": book.rev, "cids": cids, "going": going}))
         });
     };
+    let took: Vec<&str> = flag(args, "--took").map_or(vec![], |t| t.split(',').collect());
     let words: Words = match text.as_str() {
         "" => Words::default(),
         text => serde_json::from_str(text)?,
     };
     let base = flag(args, "--base").map(|b| b.parse::<u64>().map_err(io::Error::other));
     let base = base.transpose()?;
-    change(dir, false, |book| {
+    change(dir, |book| {
         let missed: Vec<&Given> = (book.given.iter())
             // One still bringing its files and chips back is offered once it has.
             .filter(|g| base.is_some() && g.done && !took.contains(&g.cid.as_str()))
@@ -328,8 +317,6 @@ pub fn kept(dir: &Path, args: &[String]) -> io::Result<Value> {
             rev: book.rev,
         };
         book.given.retain(|g| !g.done);
-        // A hand-off the UI gave back itself (its reply lost) is in what it saved.
-        (book.inflight).retain(|g| !(g.handed && took.contains(&g.cid.as_str())));
         Ok(json!({"ok": true, "rev": book.rev}))
     })
 }
@@ -338,113 +325,113 @@ fn reply_of(g: &Given) -> Value {
     json!({"cid": g.cid, "rev": g.rev, "parts": g.words.parts, "attachmentIds": g.words.attachment_ids, "chips": g.chips, "error": g.error})
 }
 
-/// `send`, `chips take` and `queue add`. With `--draft`, what goes is kept in the book first, and a
-/// refusal gives it back (`given_back`); one given back before is refused again (`again`), never
-/// sent. A reply that isn't `ok` says whether the message reached the log (`logged`): after any
-/// host's answer the log alone decides; before any host was asked, it didn't; with no answer, or
-/// an error after a host may have taken it, it's unknown and `logged` is absent, so Try again goes
-/// under the same id, which the host's dedupe holds [D54].
+/// `args` without the draft it carries, and without its chips unless `chips`: what runs, or with
+/// its chips what's kept.
+fn bare(args: &[String], chips: bool) -> Vec<String> {
+    let mut out = vec![];
+    let mut each = args.iter();
+    while let Some(a) = each.next() {
+        match a.as_str() {
+            "--draft" | "--draft-rev" => drop(each.next()),
+            "--chips" if !chips => drop(each.next()),
+            _ => out.push(a.clone()),
+        }
+    }
+    out
+}
+
+/// `send` and `queue add`. With `--draft`, what goes is kept in the book first, its chips taken
+/// for it, and settled by its verdict (verdict.rs); one given back or discarded before is refused
+/// again (`again`), never sent. A reply that isn't `ok` says whether the message reached the log
+/// (`logged`), or that it's unsettled, so Try again goes under the same id, which the host's dedupe
+/// holds [D54]. A message for a worker (`--to`) isn't kept: its hand-over is out of the book's reach.
 pub fn going(
     dir: &Path,
     args: &[String],
     run: impl FnOnce(&[String]) -> io::Result<Value>,
 ) -> io::Result<Value> {
-    let kind = arg(args, 0)?;
-    let cid = match kind {
-        "chips" => args
-            .get(3)
-            .filter(|_| args[2] == "take")
-            .map(String::as_str),
-        "queue" => flag(args, "--qid"),
-        _ => flag(args, "--cid"),
-    };
-    let draft = flag(args, "--draft").filter(|_| dir.is_dir());
+    let queue = arg(args, 0)? == "queue";
+    let cid = flag(args, if queue { "--qid" } else { "--cid" });
+    let draft = (flag(args, "--draft")).filter(|_| dir.is_dir() && flag(args, "--to").is_none());
     let (Some(cid), Some(draft)) = (cid, draft) else {
         if dir.is_dir() {
             settle_cut(dir)?;
         }
-        let out = run(args);
-        return match (kind, cid) {
-            ("send", Some(cid)) => {
-                let how = how(dir, kind, cid, &out);
-                answer(out, how)
-            }
-            _ => out,
-        };
+        return run(&bare(args, false));
     };
     core::check_id(cid)?;
-    let words: Words = serde_json::from_str(draft)?;
-    let rev = flag(args, "--draft-rev").and_then(|r| r.parse().ok());
-    let held = hold(&cid_lock(dir, cid))?;
-    let sent = message::sent(dir);
-    let files = (message::ids(&serde_json::to_value(&words)?).into_iter())
-        .filter(|f| message::file_in(&sent, f).is_none())
-        .collect();
-    let mut g = Going {
+    let g = Going {
         cid: cid.into(),
-        rev,
-        words,
-        files,
-        handed: false,
+        rev: flag(args, "--draft-rev").and_then(|r| r.parse().ok()),
+        words: serde_json::from_str(draft)?,
+        files: vec![],
+        op: bare(args, true),
+        reached: true,
     };
-    let queue = kind == "queue";
-    let again = change(dir, false, |book| {
-        if book.refused.iter().any(|c| c == cid) {
-            return Ok(true);
+    let _held = hold(&cid_lock(dir, cid))?;
+    attempt(dir, queue, g, run)
+}
+
+/// Message `g`'s draft files not sent before: the ones a give-back moves back.
+fn files_of(dir: &Path, words: &Words) -> io::Result<Vec<String>> {
+    let sent = message::sent(dir);
+    Ok((message::ids(&serde_json::to_value(words)?).into_iter())
+        .filter(|f| message::file_in(&sent, f).is_none())
+        .collect())
+}
+
+/// One attempt at message `g`, its lock held: kept in the book as reached, before anything can
+/// reach a host, its chips taken, run, then settled by its verdict; given back, its files and chips
+/// come back once.
+fn attempt(
+    dir: &Path,
+    queue: bool,
+    mut g: Going,
+    run: impl FnOnce(&[String]) -> io::Result<Value>,
+) -> io::Result<Value> {
+    let cid = g.cid.clone();
+    g.files = files_of(dir, &g.words)?;
+    let first = change(dir, |book| {
+        if book.refused.contains(&cid) {
+            return Ok(None);
         }
-        // Its hand-off's entry, or a try cut short, is this one now: files that try took are its.
-        let old = (book.inflight.iter().chain(&book.adding)).filter(|each| each.cid == cid);
-        let taken = old
-            .flat_map(|each| &each.files)
-            .filter(|f| !g.files.contains(f));
-        g.files.extend(taken.cloned().collect::<Vec<_>>());
-        book.inflight.retain(|each| each.cid != cid);
-        book.adding.retain(|each| each.cid != cid);
-        match queue {
-            true => book.adding.push(g),
-            false => book.inflight.push(g),
+        if book.list(!queue).iter().any(|each| each.cid == cid) {
+            return Err(io::Error::other("Another kind of message has this id"));
         }
-        Ok(false)
+        let list = book.list(queue);
+        let old = (list.iter().position(|each| each.cid == cid)).map(|at| list.remove(at));
+        // A try cut short, or the one before this: the files it took are this one's.
+        let taken = old.iter().flat_map(|o| &o.files);
+        let taken: Vec<String> = taken.filter(|f| !g.files.contains(f)).cloned().collect();
+        g.files.extend(taken);
+        list.push(g.clone());
+        Ok(Some(old.is_none_or(|o| !o.reached)))
     })?;
-    if again {
-        let error = "This message was given back to the draft.";
+    let Some(first) = first else {
+        let error = "This message was given back or discarded.";
         return Ok(
             json!({"ok": false, "logged": false, "given_back": true, "again": true, "cid": cid, "error": error}),
         );
-    }
+    };
     crash_at("send:inflight");
-    let mut bare = vec![];
-    let mut each = args.iter();
-    while let Some(a) = each.next() {
-        match a.as_str() {
-            "--draft" | "--draft-rev" => drop(each.next()),
-            _ => bare.push(a.clone()),
-        }
-    }
-    let out = run(&bare);
+    let chips: Vec<&str> = flag(&g.op, "--chips").map_or(vec![], |c| c.split(',').collect());
+    let out = match crate::chips::take(dir, &cid, arg(&g.op, 1)?, &chips) {
+        Ok(()) => run(&bare(&g.op, false)),
+        Err(e) => Err(unsent(e)),
+    };
     if queue {
         crash_at("queue-add:after");
     }
-    let how = how(dir, kind, cid, &out);
+    let how = verdict(dir, queue, &cid, first, &out);
     let error = match &out {
         Ok(r) => r["message"].as_str().or(r["error"].as_str()).into(),
         Err(e) => e.to_string().into(),
     };
-    let given = change(dir, false, |book| {
-        let list = if queue {
-            &mut book.adding
-        } else {
-            &mut book.inflight
-        };
+    let given = change(dir, |book| {
+        let list = book.list(queue);
         let Some(at) = list.iter().position(|each| each.cid == cid) else {
             return Ok(None);
         };
-        if kind == "chips" && how == How::Went {
-            list[at].handed = true;
-            return Ok(None);
-        }
-        // Whether it went is unknown: kept, for replay to settle by the log once its host can't
-        // still log it; its bubble's Try again goes meanwhile under the same id.
         if how == How::Unknown {
             return Ok(None);
         }
@@ -455,21 +442,17 @@ pub fn going(
     let mut reply = answer(out, how);
     if let Some(mut g) = given {
         finish(dir, &mut g)?;
-        change(dir, false, |book| {
+        change(dir, |book| {
             if let Some(kept) = book.given.iter_mut().find(|each| each.cid == g.cid) {
                 (kept.chips, kept.done) = (g.chips.clone(), true);
             }
             Ok(())
         })?;
-        if let Ok(reply) = &mut reply {
-            let back = reply_of(&g);
-            reply["given_back"] = true.into();
-            for key in ["cid", "rev", "parts", "attachmentIds", "chips"] {
-                reply[key] = back[key].clone();
-            }
+        let back = reply_of(&g);
+        reply["given_back"] = true.into();
+        for key in ["cid", "rev", "parts", "attachmentIds", "chips"] {
+            reply[key] = back[key].clone();
         }
     }
-    // Its lock file stays: a retry already waiting on it, and replay, must see the same one.
-    drop(held);
-    reply
+    Ok(reply)
 }

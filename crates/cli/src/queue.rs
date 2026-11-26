@@ -181,7 +181,7 @@ fn missing(what: &str) -> io::Error {
 }
 
 /// `queue <id> add <text> --qid Q [--at N] [--to W | --shell] | move <qid> <to> | remove <qid> | edit <qid> |
-/// has <qid> | restore | steer <qid> | resume | background <command id>`. Each answers the folder's time after
+/// restore | steer <qid> | resume | background <command id>`. Each answers the folder's time after
 /// its write, which the row reaches once it shows the change [D30].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let id = arg(args, 1)?;
@@ -301,19 +301,6 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 });
                 Ok(())
             })?;
-        }
-        // A reply that never came: whether the message waits here or reached the log, by its id, or
-        // its add is still under way [D54].
-        "has" => {
-            let qid = qid()?;
-            // Given back, it's in the draft: never added again under its id, which is refused.
-            let given = crate::attach::book::given_back(&dir, &qid)?;
-            let pending = crate::attach::book::pending(&dir, &qid);
-            let queued = crate::attach::book::queued(&dir, &qid);
-            let logged = went(&dir, &Value::Null, &qid);
-            return Ok(
-                json!({"ok": true, "pending": pending, "queued": queued, "logged": logged, "given": given}),
-            );
         }
         "restore" => change(&dir, |q| {
             restore(q);

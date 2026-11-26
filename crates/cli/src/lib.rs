@@ -55,13 +55,13 @@ use std::path::Path;
 use std::{env, fs};
 
 pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the test agent, if none) [--project P | --scratch] [--local] [--base B] [--cwd D] [--model M] [--effort E] [--fast] [--level L] [--opt K=V] [--text T] [--cid C] [--parts JSON] [--from F] [--carry-tabs] [--overnight]
-       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] [--draft JSON --draft-rev R] | side <id> <new-id> --text T --cid C [--qid Q]
+       brigadier send <id> <text> [--cid C] [--backend B] [--steer] [--from F] [--parts JSON] [--retry-of C] [--draft JSON [--draft-rev R] [--chips <id,…>]] | side <id> <new-id> --text T --cid C [--qid Q]
        brigadier answer <id> <request> allow|allowSession|deny [--reason R] | answer <id> <request> --answers JSON
        brigadier status [<id>...|--all] | seen <id> <ms>
        brigadier rename <id> <title> [--preview] [--branch <name|->] | pin <id> [--off] | label <id> <name> [--off]
-       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R]] [--took <cid,…>] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
+       brigadier draft <@home|@home:P|id> [<json>|\"\" [--base R] [--took <cid,…>]] | command <id> <name> | commands <id> [reveal <name>] | commands @home --backend B [--project P]
        brigadier attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) [--in IDS] | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path> | back <session> <parts JSON|null> [--carry-tabs] (back: @home only)
-       brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] [--draft JSON --draft-rev R] <chip>… | back <msg> | draft <json|->]
+       brigadier chips <id> [add <chip-json> | drop <chip>… | take <msg> [--in <id>] <chip>… | back <msg> | draft <json|->]
        brigadier tabs <@home|@home:P|id> [open|replace <tab> <kind> [<target>] | url <tab> <url> | drive <tab> <url> <driver> | user <tab> | profile <tab> <profile> | ungroup <driver> | file <tab> <path> <line|-> <keep|preview> | keep <tab> | scope <tab> <scope> | select|close|close-others|close-right <tab> | move <tab> <to> | reopen | take <@home…> <tab>…] [--behind]
        brigadier terminal <owner> start|restart <tab> [cols] [rows] [--run <line>] | terminal sweep | shell <session> stop|output <command id> | shell settle
        brigadier note <@home|id> [--project P] read <note> [--first] | write <note> <head> <body> [--base R] [--from <note>] | image <note> <name> (--path P | --from <note>/<name> | --data BASE64) | list [--q Q] | pin <note> on|off | rename <note> <name> | delete <note> | chat <note> <chat> [--new | --open] [--backend B --model M --effort E --project P] | chats
@@ -70,7 +70,7 @@ pub const USAGE: &str = "usage: brigadier start <id> [--backend B] (B: fake, the
        brigadier stop <id> | recover <id> | archive <id>... [--check] | restore <id> | delete <id>... --check | delete <id> [--branch keep|delete] [--delete-in <repo>]... | owner <id> | up <id>...
        brigadier jobs <id> history | servers | stop <pid> <start_us>
        brigadier workers <id> [stop [<wid>...] | pause|resume <wid>] | peers <id> send <mid> | mockup <wid> [draft '<notes>' | send '<notes>' | use <letter> '<notes>']
-       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] [--draft JSON --draft-rev R] | move <qid> <to> | remove|edit|steer|has <qid> | restore | resume | background <command id>
+       brigadier level <id> [ask|auto|full] [--op OP] | overnight <id> on|start|off [--op OP] | queue <id> add <text> --qid Q [--at N] [--from F] [--origin O] [--parts JSON] [--to W | --shell] [--draft JSON [--draft-rev R] [--chips <id,…>]] | move <qid> <to> | remove|edit|steer <qid> | restore | resume | background <command id>
        brigadier read <id> [--follow] [--hash] [--tail N] | audit <id> [--recall] [--json]
        brigadier git <id>|--project P [--watch]
        brigadier source <id> | source --project P [review <scope> | review-file <scope> <path> [<from>] | review-file last <before> <after> <path> [<from>] | file <path> | image <path>]
@@ -358,10 +358,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "tabs" | "terminal" | "shell" => tabs::run(data, args),
         "browser" => browser::run(data, args),
         "computer" => computer::run(data, args),
-        "chips" => {
-            let dir = core::session_dir(data, arg(args, 1)?);
-            attach::book::going(&dir, args, |a| chips::run(data, a))
-        }
+        "chips" => chips::run(data, args),
         "queue" if args.get(2).is_some_and(|a| a == "add") => {
             let dir = core::session_dir(data, arg(args, 1)?);
             attach::book::going(&dir, args, |a| queue::run(data, a))
