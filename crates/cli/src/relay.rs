@@ -377,12 +377,13 @@ fn search(
 }
 
 /// An archive entry's sender as `read` names it.
-fn sender(e: &core::archive::Entry) -> String {
+pub(crate) fn sender(e: &core::archive::Entry) -> String {
     match e.from {
         "worker" => format!("result from {}", e.who),
         "peer" => format!("message from {}", e.who),
         "tool" if e.who.is_empty() => "files changed".into(),
         "tool" => format!("tool {}", e.who),
+        "summary" => format!("summary written by {}", e.who),
         f => f.into(),
     }
 }
@@ -446,18 +447,7 @@ pub(crate) fn read(
     };
     let shown = &all[from..to];
     let mut text: String = (shown.iter())
-        .map(|e| {
-            let files = match e.files.is_empty() {
-                true => String::new(),
-                false => format!("\n(files: {})", e.files.join(", ")),
-            };
-            format!(
-                "[{id}#{} {}]\n{}{files}\n\n",
-                e.at,
-                sender(e),
-                e.text.trim_end()
-            )
-        })
+        .map(|e| crate::agent::read::shown(id, e))
         .collect();
     if from > 0 && at.is_none() {
         let flag = if user { " --user" } else { "" };
@@ -475,7 +465,7 @@ pub(crate) fn read(
 }
 
 /// What `read` opened, under a line naming the session's agent and project.
-fn opened(
+pub(crate) fn opened(
     data: &Path,
     id: &str,
     row: &Value,

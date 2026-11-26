@@ -83,6 +83,10 @@ pub fn entry(item: &Value, at: String) -> Option<Entry> {
             paths(&item["changes"]),
         ),
         "failed" => ("error", String::new(), s("message").into(), vec![]),
+        // A summary the conversation wrote of itself, as it ended [repo-merge D85].
+        "note" if item["event"] == "summary" => {
+            ("summary", s("model").into(), s("text").into(), vec![])
+        }
         _ => return None,
     };
     if text.trim().is_empty() && files.is_empty() {
@@ -106,20 +110,42 @@ pub fn at(item: &Value) -> String {
     item["f"].as_u64().unwrap_or(0).to_string()
 }
 
-/// A step's tool and whole output, from the log, by its `tool_done` frame: what a hand-off's step
-/// reference opens [D485]. Nothing indexes it; only the log keeps it.
+/// Every item under its reference, oldest first: a fork's inherited copy, then what still stands of
+/// its own log.
+fn each(dir: &Path, mut f: impl FnMut(&Value, String)) -> io::Result<()> {
+    let text = std::fs::read_to_string(dir.join("inherited.jsonl")).unwrap_or_default();
+    for (n, l) in text.lines().enumerate() {
+        if let Ok(item) = serde_json::from_str(l) {
+            f(&item, format!("i{n}"));
+        }
+    }
+    crate::rewind::read_active(dir, |item| f(item, at(item)))
+}
+
+/// The items under a reference, own or inherited, whole: what `read --raw` writes out.
+pub fn items(dir: &Path, at: &str) -> io::Result<Vec<Value>> {
+    let mut found = vec![];
+    each(dir, |item, here| {
+        if here == at {
+            found.push(item.clone())
+        }
+    })?;
+    Ok(found)
+}
+
+/// A step's tool and whole output, from the log or a fork's copy, by its `tool_done` reference:
+/// what a hand-off's step reference opens [D485]. Nothing indexes it; only the log keeps it.
 pub fn output(dir: &Path, at: &str) -> Option<(String, String)> {
-    let f = at.parse::<u64>().ok()?;
     let (mut names, mut found) = (std::collections::HashMap::new(), None);
     // shortcut: steps that end in one shared frame open as its last; key by step if an agent does so.
-    crate::rewind::read_active(dir, |item| match item["kind"].as_str() {
+    each(dir, |item, here| match item["kind"].as_str() {
         Some("tool") => {
             names.insert(
                 item["id"].to_string(),
                 item["name"].as_str().unwrap_or("").to_string(),
             );
         }
-        Some("tool_done") if item["f"].as_u64() == Some(f) && item["ok"] != false => {
+        Some("tool_done") if here == at && item["ok"] != false => {
             let name = names
                 .get(&item["id"].to_string())
                 .cloned()
@@ -181,7 +207,7 @@ pub fn inherited(dir: &Path) -> Vec<Entry> {
 
 /// The whole archive, oldest first: the inherited copy, then what still stands of its own log.
 pub fn read(dir: &Path) -> io::Result<Vec<Entry>> {
-    let mut all = inherited(dir);
-    crate::rewind::read_active(dir, |item| all.extend(entry(item, at(item))))?;
+    let mut all = vec![];
+    each(dir, |item, at| all.extend(entry(item, at)))?;
     Ok(all)
 }

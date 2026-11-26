@@ -1,9 +1,13 @@
 brigadier read <id> [--last N] [--user] [--json]
 brigadier read <id>#<n> [--around N] [--json]
+brigadier read <id>#<a> --to <b> [--user] [--json]
+brigadier read <id>#<n> --raw
 
 A session's last N messages (10 by default), the user's and its agent's, oldest first, each under its
 reference, after a line naming its agent and project. --user keeps only the user's own words. A reference (from `search` or an earlier read)
-opens that message, step or error with N entries on each side (3 by default), tool calls and errors
+opens that message, step or error with N entries on each side (3 by default, 0 for it alone), tool calls and errors
 included; a step's output reference, as a hand-off gives it, opens that step's whole output. A fork's
 messages from before it was forked are its own. Long output is cut from the oldest; --last or
---around reads fewer.
+--around reads fewer. --to reads every entry from <a> to <b>, steps included (--user: only the user's),
+a page at a time; each page ends with the command for the next. --raw writes everything under one
+reference whole, a tool's input or output uncut, to a file in your session's tmp folder, and prints its path.

@@ -6,6 +6,7 @@
 
 mod keep;
 pub(crate) mod new;
+pub(crate) mod read;
 mod wait;
 use crate::{models, peers, workers};
 use brigadier_core::{self as core, agent::COMMANDS};
@@ -59,8 +60,8 @@ fn spec(cmd: &str) -> Option<crate::relay::Spec> {
         ),
         "read" => (
             include_str!("agent/read.txt"),
-            &["--last", "--around"],
-            &["--user"],
+            &["--last", "--around", "--to"],
+            &["--user", "--raw"],
         ),
         "send" => (
             "brigadier send <id> \"<message>\" [--wait] [--timeout S] [--json]
@@ -136,11 +137,13 @@ impl Call<'_> {
         self.flags.contains(&name)
     }
     fn number(&self, name: &str, default: u64, max: u64) -> Result<u64, Value> {
+        // `--around 0` opens the one reference alone.
+        let min = u64::from(name != "--around");
         match self.value(name).map(str::parse::<u64>) {
             None => Ok(default),
-            Some(Ok(n)) if n >= 1 => Ok(n.min(max)),
+            Some(Ok(n)) if n >= min => Ok(n.min(max)),
             _ => Err(refuse(&format!(
-                "{name} takes a whole number from 1 to {max}."
+                "{name} takes a whole number from {min} to {max}."
             ))),
         }
     }
@@ -277,16 +280,8 @@ pub fn run(
             .number("--limit", 20, LIMIT_MOST)
             .map(|n| sessions(data, me, n, &rows())),
         "read" => {
-            let (n, default) = match at {
-                Some(_) => ("--around", 3),
-                None => ("--last", 10),
-            };
-            let row = rows()
-                .into_iter()
-                .find(|r| r["id"] == id)
-                .unwrap_or_default();
-            call.number(n, default, LAST_MOST)
-                .map(|n| crate::relay::read(data, id, &row, at, n, call.has("--user")))
+            let row = rows().into_iter().find(|r| r["id"] == id);
+            read::run(data, me, id, at, &call, &row.unwrap_or_default())
         }
         "wait" if id == me => Err(refuse("You can't wait for yourself.")),
         "wait" => workers::waited(data, me, id).and_then(|ids| {

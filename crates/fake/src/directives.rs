@@ -81,6 +81,14 @@ impl Agent {
                     self.say(String::from_utf8_lossy(&text).trim_end());
                 }
             }
+            // `out:N`: a passing shell step with N KiB of numbered output, for reads that give it whole.
+            "out" => {
+                self.tools += 1;
+                let id = format!("tl{}-{}", self.tools, now());
+                emit(json!({"t": "tool", "id": id, "name": "shell", "command": "cat big.log"}));
+                let output: String = (0..n * 16).map(|i| format!("{i:063}\n")).collect();
+                emit(json!({"t": "tool_done", "id": id, "ok": true, "output": output}));
+            }
             // `test:N`: a test run whose CLI reports exit N [D1188].
             "test" => {
                 self.tools += 1;
