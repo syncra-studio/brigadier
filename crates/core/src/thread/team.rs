@@ -135,6 +135,7 @@ impl Thread {
                 if self.asking.iter().any(|w| self.fold.workers.contains(w)) {
                     self.worker_waits(ts);
                 }
+                self.review_waits();
             }
             Some("waited") => {
                 (ids.as_array()
@@ -145,6 +146,7 @@ impl Thread {
                     self.asking.remove(w);
                 });
                 self.end_wait(ts);
+                self.review_waits();
             }
             // The user's own message to it, in its tab or by its To chip [D293, D303].
             Some("messaged") => {
@@ -233,6 +235,24 @@ impl Thread {
                 self.items[at][k] = item[k].clone();
             }
             self.changed_items.insert(at);
+        }
+    }
+
+    /// Each held plan's card says whether its reviewer waits on the user, read from the workers
+    /// known to wait, so it holds whatever order the notes came in and after a reload (proposed,
+    /// C71); the composer's cards go again when it changes.
+    pub(super) fn review_waits(&mut self) {
+        for at in self.pending.clone() {
+            let review = &self.items[at]["request"]["review"];
+            let Some(by) = review["by"].as_str() else {
+                continue;
+            };
+            let waits = self.asking.contains(by);
+            if review["waits"].as_bool().unwrap_or(false) != waits {
+                self.items[at]["request"]["review"]["waits"] = waits.into();
+                self.pending_changed = true;
+                self.changed_items.insert(at);
+            }
         }
     }
 }

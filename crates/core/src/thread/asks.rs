@@ -80,6 +80,7 @@ impl Thread {
         }
         self.pending_changed = true;
         self.changed_items.insert(at);
+        self.review_waits();
         match r["to"].as_str() {
             Some("review") => {}
             Some(to) => self.items[at]["to"] = to.into(),

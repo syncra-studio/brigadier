@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
 import { Commit, Cursor, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
-import { MentionedWorker } from "../../workers/live";
+import { MentionedWorker, openWorker } from "../../workers/live";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Kbd } from "../kbd";
@@ -39,7 +39,7 @@ export type PendingApproval = {
   /** The subagent that asks, by its title. */
   agent?: string;
   /** A plan its adversarial review holds: the reviewer, a worker, and its model's name (§6). */
-  review?: { by: string; name: string };
+  review?: { by: string; name: string; /** Its reviewer waits on the user (proposed, C71). */ waits?: boolean };
   /** A plan's review line: "Plan reviewed by ‹model›: 5 findings, 4 fixed, 1 rejected", or "Review didn't run: ‹why›". */
   reviewed?: string;
   /** A plan sent back, kept while its agent revises it: its next plan takes this card (D401). */
@@ -227,6 +227,7 @@ export function ApprovalCard({
   onReason,
   step,
   dismiss,
+  session = "",
 }: {
   approval: PendingApproval;
   /** `reason`: what the user typed with a deny, trimmed; none when empty. */
@@ -239,6 +240,8 @@ export function ApprovalCard({
   step?: ApprovalStep;
   /** Nothing waits on it any more: Dismiss beside its error puts it away. */
   dismiss?: () => void;
+  /** Whose card it is: a held plan's reviewer chip opens that worker's tab from it. */
+  session?: string;
 }) {
   const [typed, setTyped] = useState(reason);
   const answer = (decision: ApprovalDecision) => {
@@ -298,7 +301,8 @@ export function ApprovalCard({
             {reviewing && (
               <>
                 {" "}
-                <MentionedWorker id={reviewing.by} />
+                <MentionedWorker id={reviewing.by} onOpen={() => openWorker(session, reviewing.by)} />
+                {reviewing.waits && " · waiting for you"}
               </>
             )}
           </ActionCardTitle>
@@ -459,6 +463,7 @@ export function ApprovalSlot({
         onReason={denyReason ? (text) => reasons.set(cardKey(session, id), text) : undefined}
         dismiss={dismiss?.(id)}
         step={{ index: at, total: approvals.length, onStep: (index) => setShown({ id: approvals[index]?.id ?? null, index }) }}
+        session={session}
       />
     </div>
   );
