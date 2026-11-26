@@ -160,6 +160,8 @@ impl Store {
                 "core.hooksPath=/dev/null",
             ])
             .args(["-c", "core.fsmonitor=false"])
+            // The working folder's disk may handle case differently from the store's.
+            .args(["-c", &format!("core.ignorecase={}", self.folds())])
             .args(args)
             .env("GIT_DIR", &self.git)
             .env("GIT_WORK_TREE", &self.cwd)
