@@ -211,8 +211,10 @@ function land(id: string, reply: Record<string, any>): void {
   if (!entry) return;
   if (reply.error === "disconnected") return put(id, { asking: false, unknown: true });
   const key = entry.draft ?? HOME_DRAFT;
-  // Rust's book has it now, or what came of it: the app's copy goes.
-  if (!entry.fork) forget(key, entry.cid);
+  // Rust's book has it now, or what came of it: the app's copy goes. An error before the book took it (its lock,
+  // its write) says neither: the copy stays for Try again, as a session's send keeps its own (sent.tsx).
+  const owned = reply.ok || reply.given_back || reply.unsettled === true || reply.logged !== undefined || reply.went || reply.result === "went" || reply.result === "settled";
+  if (!entry.fork && owned) forget(key, entry.cid);
   if (reply.given_back) {
     // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
     if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : reason(reply), signIn: reply.error === "sign_in" });
