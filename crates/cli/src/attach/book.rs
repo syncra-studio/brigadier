@@ -3,13 +3,15 @@
 //! composer's own last save (`ui`), what Rust gave back to it (`given`) until a save shows the
 //! composer has it, and the messages on their way (`inflight`, `adding` for a queue add) until they
 //! settle by one rule (verdict.rs). A send or queue add from the composer carries its draft
-//! (`--draft`, `--draft-rev`) and its chips (`--chips`), kept with the command as it ran; one its own
-//! command proves never went comes back here, its files and chips with it, whatever the UI does
-//! meanwhile [D54, C58].
+//! (`--draft`, `--draft-rev`) and its chips (`--chips`): kept with the command as it ran, it can be
+//! tried again, adopted from the app's own copy or dropped (ops.rs); one its own command proves never
+//! went comes back here, its files and chips with it, whatever the UI does meanwhile [D54, C58].
 
+mod ops;
 mod unsent;
 mod verdict;
 
+pub use ops::ops;
 pub(crate) use unsent::unsent;
 use verdict::{How, answer, present, verdict};
 
@@ -106,6 +108,13 @@ impl Book {
             true => &mut self.adding,
             false => &mut self.inflight,
         }
+    }
+
+    /// Message `cid` on its way, and whether it's a queue add.
+    fn find(&self, cid: &str) -> Option<(bool, &Going)> {
+        let mine = |g: &&Going| g.cid == cid;
+        (self.inflight.iter().find(mine).map(|g| (false, g)))
+            .or_else(|| self.adding.iter().find(mine).map(|g| (true, g)))
     }
 
     /// `cid` given back or discarded: never run again under it.

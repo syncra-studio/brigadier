@@ -166,6 +166,20 @@ fn locked<T>(dir: &Path, f: impl FnOnce(&mut Queue) -> io::Result<T>) -> io::Res
     Ok(out)
 }
 
+/// Takes message `qid` out, waiting or being edited, in the lock a drain sends under, so never one
+/// midway (attach/book/ops.rs); whether it was there.
+pub(crate) fn pull(dir: &Path, qid: &str) -> io::Result<bool> {
+    change(dir, |q| {
+        let was = q.items.len();
+        q.items.retain(|i| i.id != qid);
+        let editing = q.editing.as_ref().is_some_and(|e| e.id == qid);
+        if editing {
+            q.editing = None;
+        }
+        Ok(editing || q.items.len() != was)
+    })
+}
+
 /// What a row shows: the queue, or null when nothing waits, runs or is being edited.
 pub fn row(dir: &Path) -> Value {
     match read(dir) {
