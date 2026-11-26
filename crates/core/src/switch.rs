@@ -221,7 +221,7 @@ pub const LIMIT_RESET: &str = "[Your usage limit has reset. Carry on from where 
 
 /// A chat's carry-on at its usage limit's reset [C34, C54], worked out from its last turn alone:
 /// `{cid, due, of, backend}`, its cid `lr<limited end's ms>` (never parsed), due a minute after the
-/// reset; or `{held}` where it won't go on by itself: `unknown` (no reset was given), `stuck` (a
+/// reset, `resend` where the user's own message goes again; or `{held}` where it won't go on by itself: `unknown` (no reset was given), `stuck` (a
 /// carry-on that said nothing and whose limit kept its reset), `unconfirmed` (the limited turn's
 /// receipt wasn't confirmed: `accepted` asks its CLI, as Recover does [D66, D80]). None at no limit.
 pub fn reset_due(f: &Fold, accepted: impl FnOnce(&Value) -> bool) -> Option<Value> {
@@ -233,7 +233,8 @@ pub fn reset_due(f: &Fold, accepted: impl FnOnce(&Value) -> bool) -> Option<Valu
         return Some(json!({"held": "unknown"}));
     };
     let began = last["began_at"].as_u64().unwrap_or(0);
-    let again = last["origin"] == "system" && last["text"] == LIMIT_RESET && last["said"] != true;
+    let ours = last["cid"].as_str().is_some_and(|c| c.starts_with("lr"));
+    let again = ours && last["said"] != true;
     if again && resets <= began {
         return Some(json!({"held": "stuck"}));
     }
@@ -241,8 +242,10 @@ pub fn reset_due(f: &Fold, accepted: impl FnOnce(&Value) -> bool) -> Option<Valu
         return Some(json!({"held": "unconfirmed"}));
     }
     let ended = last["ts"].as_u64().unwrap_or(0);
+    // A message the limit refused before its turn began goes again as the user's, as a switch's [D74].
+    let resend = last["delivered"] == true && last["began"] == false && last["origin"] == "user";
     Some(
-        json!({"cid": format!("lr{ended}"), "due": resets.max(ended) + 60_000,
+        json!({"cid": format!("lr{ended}"), "due": resets.max(ended) + 60_000, "resend": resend,
         "of": last["cid"].as_str().or(last["id"].as_str()), "backend": last["backend"]}),
     )
 }

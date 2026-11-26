@@ -68,11 +68,12 @@ const STATE_WORDS: Record<string, string | null> = {
 // A state this build has no words for yet still says what its mark means.
 const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
 
-/** A chat's carry-on at its usage limit's reset: due then, or held (no reset time given, the limit didn't lift at its reset time, or its receipt wasn't confirmed) [C34, C54]. */
-export type Reset = { due?: number; held?: "unknown" | "stuck" | "unconfirmed" };
+/** A chat's carry-on at its usage limit's reset: due then, or held (no reset time given, the limit didn't lift at its reset time, or its receipt wasn't confirmed); `error`, a try refused, tried again each minute [C34, C54]. */
+export type Reset = { due?: number; held?: "unknown" | "stuck" | "unconfirmed"; error?: string };
 
 /** A limit's carry-on in words, where Brigadier carries it on or says why not (proposed) [C34, C54]. */
 export function resetWords(reset: Reset | null | undefined): string | null {
+  if (reset?.error) return `couldn’t carry on by itself: ${reset.error}`;
   if (reset?.due) return `carries on at ${hhmm(reset.due)}`;
   if (reset?.held === "stuck") return "the limit didn’t lift at its reset time";
   if (reset?.held === "unconfirmed") return "receipt wasn’t confirmed, so it won’t carry on by itself";

@@ -308,7 +308,9 @@ impl Agent {
             }
         }
         // Directives are lowercase words, so a prompt's own "Retry …" is prose, not a scripted retry.
-        for word in words {
+        // Brigadier's carry-on at a limit's reset is prose too: its "limit" is no directive [C54].
+        let carry_on = text.starts_with("[Your usage limit has reset.");
+        for word in words.into_iter().filter(|_| !carry_on) {
             let (name, n) = word
                 .split_once(':')
                 .map_or((word, 0u64), |(a, b)| (a, b.parse().unwrap_or(0)));

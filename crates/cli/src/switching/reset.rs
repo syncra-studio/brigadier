@@ -22,7 +22,7 @@ pub fn row(data: &Path, spec: &Spec, f: &Fold, worker: bool) -> Option<Value> {
     if off {
         return None;
     }
-    core::switch::reset_due(f, |last| {
+    let mut due = core::switch::reset_due(f, |last| {
         let b = last["backend"].as_str().unwrap_or(&spec.backend);
         let (Some(a), Some(id)) = (adapters::get(b), f.resume.get(b)) else {
             return false;
@@ -32,8 +32,17 @@ pub fn row(data: &Path, spec: &Spec, f: &Fold, worker: bool) -> Option<Value> {
             id,
             last["cid"].as_str().unwrap_or(""),
         )
-    })
+    })?;
+    // A try refused (a rule, the project's trust, a level): its words, while it tries each minute.
+    let refused: Value = crate::workers::read_json(&spec.dir.join(REFUSED)).unwrap_or_default();
+    if refused["cid"] == due["cid"] {
+        due["error"] = refused["error"].clone();
+    }
+    Some(due)
 }
+
+/// The last carry-on refused, `{cid, error}`, for the row's words.
+const REFUSED: &str = "reset.json";
 
 pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     let not_due = json!({"ok": false, "error": "not_due"});
@@ -59,12 +68,29 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     }
     let child = (ping["child"].as_i64()).map(|_| ping["spawn"].as_u64().unwrap_or(0));
     let first = std::cell::Cell::new(true);
+    // Every write till one lands: an input finding no child leaves the log as it was, so the
+    // spawn after it is guarded too.
     let call = |mut req: Value| {
         let writes = matches!(req["op"].as_str(), Some("input" | "spawn"));
-        if req["if_len"].is_null() && writes && first.replace(false) {
+        let guard = req["if_len"].is_null() && writes && first.get();
+        if guard {
             req["if_len"] = len.into();
         }
-        owner::call(data, id, req)
+        let reply = owner::call(data, id, req)?;
+        if guard && reply["error"] != "no_child" {
+            first.set(false);
+        }
+        Ok(reply)
+    };
+    let (origin, text) = match due["resend"] == true {
+        true => (
+            "user",
+            f.last
+                .as_ref()
+                .and_then(|l| l["text"].as_str())
+                .unwrap_or(""),
+        ),
+        false => ("system", core::switch::LIMIT_RESET),
     };
     let spec = crate::routing::told(data, &spec);
     let mut reply = core::send(
@@ -73,11 +99,19 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
         child,
         &call,
         cid,
-        "system",
-        &Message::plain(core::switch::LIMIT_RESET),
+        origin,
+        &Message::plain(text),
         due["backend"].as_str().filter(|b| !b.is_empty()),
         due["of"].as_str(),
     );
+    let error = reply["message"].as_str().or(reply["error"].as_str());
+    match error.filter(|_| reply["ok"] != true && reply["error"] != "changed") {
+        Some(e) => core::write_atomic(
+            &spec.dir.join(REFUSED),
+            json!({"cid": cid, "error": e}).to_string().as_bytes(),
+        )?,
+        None => _ = std::fs::remove_file(spec.dir.join(REFUSED)),
+    }
     reply["recovered"] = "reset".into();
     Ok(reply)
 }
