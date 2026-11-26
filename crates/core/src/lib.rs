@@ -371,6 +371,20 @@ pub fn read(dir: &Path, mut each: impl FnMut(&Value)) -> io::Result<u64> {
     Ok(hash)
 }
 
+/// `f` of each of `ids`, 16 at a time, in their order: a check of many sessions, each a few git
+/// processes and a log, takes about its slowest one's time instead of their sum.
+pub fn at_once<T: Send>(ids: &[String], f: impl Fn(&String) -> T + Sync) -> Vec<T> {
+    let f = &f;
+    (ids.chunks(16))
+        .flat_map(|chunk| {
+            std::thread::scope(|s| {
+                let each: Vec<_> = chunk.iter().map(|id| s.spawn(move || f(id))).collect();
+                (each.into_iter().map(|h| h.join().unwrap())).collect::<Vec<_>>()
+            })
+        })
+        .collect()
+}
+
 /// Roughly the last `n` items, read from the end only: what a long thread shows when opened.
 pub fn tail(dir: &Path, spec: &Spec, n: usize) -> io::Result<Vec<Value>> {
     let path = dir.join("log");

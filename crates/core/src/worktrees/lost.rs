@@ -217,73 +217,110 @@ fn lost_in(dir: &Path, picks: &[String], built: &dyn Fn(&str) -> bool) -> io::Re
 /// folders, whose work goes whatever becomes of the branch.
 pub fn losses(data: &Path, ids: &[String], delete: bool) -> Vec<Value> {
     let (mut seen, mut named, mut out) = (BTreeSet::new(), BTreeSet::new(), vec![]);
-    for id in ids {
-        let Ok(spec) = load(data, id) else { continue };
-        let picks = session::picks(data, &spec);
-        let may = session::guarded(&spec, Guard::Named);
-        // Whether the folder `users` share goes. `alone`: only with them all.
-        let goes = |users: &[Spec], rec: &Path, alone: bool| {
-            let batch = |u: &Spec| ids.contains(&u.id);
-            let gone = |u: &Spec| batch(u) || session::lifecycle(&u.dir).0.is_some();
-            (delete && users.iter().all(batch))
-                || (!(alone && !users.is_empty()) && users.iter().all(gone) && may(rec))
-        };
-        // Where the delete finds no repository: worktrees' own `.git`, and folders that stay.
-        let folder_of = |rec: &Path| super::folder(rec).map(|f| share::key(&f));
-        let (mut skip, mut roots) = (vec![], session::takes(&spec));
-        // A folder chat's claims, each its own worktree, named by repo [D494].
-        for (name, rec) in crate::folder::claims(&spec.dir) {
-            let Some(folder) = folder_of(&rec) else {
-                continue;
-            };
-            if !goes(&share::in_folder(data, &folder, Some(id)), &rec, !delete) {
-                skip.push(folder);
-                continue;
-            }
-            skip.push(folder.join(".git"));
-            match lost_in(&rec, &picks, &built) {
-                Ok(files) if files.is_empty() => {}
-                Ok(files) => {
-                    let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
-                    out.push(json!({"ids": [id], "files": files}));
-                }
-                Err(e) => out.push(json!({"ids": [id], "error": e.to_string()})),
-            }
-        }
-        let users = share::in_folder(data, Path::new(&spec.cwd), None);
-        if let Some(holder) = share::holder(data, &spec)
-            && let Some(folder) = folder_of(&holder.dir)
+    // Read at once, then told in order: a folder two of them share is named once, by the first.
+    for (id, claims, holder, mut found) in crate::at_once(ids, |id| one(data, ids, id, delete))
+        .into_iter()
+        .flatten()
+    {
+        out.extend(claims);
+        if let Some((holder, walked)) = holder
+            && seen.insert(holder)
+            && let Some((line, repos)) = walked
         {
-            match goes(&users, &holder.dir, false) {
-                true => skip.push(folder.join(".git")),
-                false => skip.push(folder.clone()),
-            }
-            if seen.insert(holder.id.clone()) && skip.last() != Some(&folder) {
-                roots.push(folder);
-                let ids: Vec<&String> = (users.iter().map(|u| &u.id))
-                    .filter(|u| ids.contains(u))
-                    .collect();
-                match lost_in(&holder.dir, &picks, &built) {
-                    Ok(files) if files.is_empty() => {}
-                    Ok(files) => out.push(json!({"ids": ids, "files": files})),
-                    Err(e) => out.push(json!({"ids": ids, "error": e.to_string()})),
-                }
-            }
+            out.extend(line);
+            found.extend(repos);
         }
-        if delete {
-            let (dir, cwd) = (share::key(&spec.dir), share::key(Path::new(&spec.cwd)));
-            let repos: Vec<String> = (roots.iter().filter_map(|r| fs::canonicalize(r).ok()))
-                .flat_map(|root| inner::repos(&root, &skip))
-                .filter(|repo| named.insert(repo.clone()))
-                .map(|repo| {
-                    let rel = repo.strip_prefix(&cwd).or(repo.strip_prefix(&dir));
-                    rel.unwrap_or(&repo).display().to_string()
-                })
-                .collect();
-            if !repos.is_empty() {
-                out.push(json!({"ids": [id], "repos": repos}));
-            }
+        let repos: Vec<String> = (found.into_iter())
+            .filter(|(repo, _)| named.insert(repo.clone()))
+            .map(|(_, rel)| rel)
+            .collect();
+        if !repos.is_empty() {
+            out.push(json!({"ids": [id], "repos": repos}));
         }
     }
     out
+}
+
+/// Repositories found, each with its name as told.
+type Repos = Vec<(PathBuf, String)>;
+/// A shared folder's holder, and what it loses unless another of the batch named it first.
+type Held = Option<(String, Option<(Option<Value>, Repos)>)>;
+
+/// One of `ids`' losses: its claims' lines, its folder's holder's, and a delete's repositories, each
+/// with its name as told.
+fn one(
+    data: &Path,
+    ids: &[String],
+    id: &String,
+    delete: bool,
+) -> Option<(String, Vec<Value>, Held, Repos)> {
+    let spec = load(data, id).ok()?;
+    let picks = session::picks(data, &spec);
+    let may = session::guarded(&spec, Guard::Named);
+    // Whether the folder `users` share goes. `alone`: only with them all.
+    let goes = |users: &[Spec], rec: &Path, alone: bool| {
+        let batch = |u: &Spec| ids.contains(&u.id);
+        let gone = |u: &Spec| batch(u) || session::lifecycle(&u.dir).0.is_some();
+        (delete && users.iter().all(batch))
+            || (!(alone && !users.is_empty()) && users.iter().all(gone) && may(rec))
+    };
+    // Where the delete finds no repository: worktrees' own `.git`, and folders that stay.
+    let folder_of = |rec: &Path| super::folder(rec).map(|f| share::key(&f));
+    let (mut skip, roots, mut out) = (vec![], session::takes(&spec), vec![]);
+    // A folder chat's claims, each its own worktree, named by repo [D494].
+    for (name, rec) in crate::folder::claims(&spec.dir) {
+        let Some(folder) = folder_of(&rec) else {
+            continue;
+        };
+        if !goes(&share::in_folder(data, &folder, Some(id)), &rec, !delete) {
+            skip.push(folder);
+            continue;
+        }
+        skip.push(folder.join(".git"));
+        match lost_in(&rec, &picks, &built) {
+            Ok(files) if files.is_empty() => {}
+            Ok(files) => {
+                let files: Vec<String> = files.iter().map(|f| format!("{name}/{f}")).collect();
+                out.push(json!({"ids": [id], "files": files}));
+            }
+            Err(e) => out.push(json!({"ids": [id], "error": e.to_string()})),
+        }
+    }
+    let (dir, cwd) = (share::key(&spec.dir), share::key(Path::new(&spec.cwd)));
+    let repos = |roots: &[PathBuf], skip: &[PathBuf]| -> Repos {
+        if !delete {
+            return vec![];
+        }
+        (roots.iter().filter_map(|r| fs::canonicalize(r).ok()))
+            .flat_map(|root| inner::repos(&root, skip))
+            .map(|repo| {
+                let rel = repo.strip_prefix(&cwd).or(repo.strip_prefix(&dir));
+                let rel = rel.unwrap_or(&repo).display().to_string();
+                (repo, rel)
+            })
+            .collect()
+    };
+    let users = share::in_folder(data, Path::new(&spec.cwd), None);
+    let mut held = None;
+    if let Some(holder) = share::holder(data, &spec)
+        && let Some(folder) = folder_of(&holder.dir)
+    {
+        match goes(&users, &holder.dir, false) {
+            true => skip.push(folder.join(".git")),
+            false => skip.push(folder.clone()),
+        }
+        let walked = (skip.last() != Some(&folder)).then(|| {
+            let ids: Vec<&String> = (users.iter().map(|u| &u.id))
+                .filter(|u| ids.contains(u))
+                .collect();
+            let line = match lost_in(&holder.dir, &picks, &built) {
+                Ok(files) if files.is_empty() => None,
+                Ok(files) => Some(json!({"ids": ids, "files": files})),
+                Err(e) => Some(json!({"ids": ids, "error": e.to_string()})),
+            };
+            (line, repos(std::slice::from_ref(&folder), &skip))
+        });
+        held = Some((holder.id.clone(), walked));
+    }
+    Some((id.clone(), out, held, repos(&roots, &skip)))
 }

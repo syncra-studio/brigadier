@@ -197,6 +197,8 @@ pub struct Reader {
     file: BufReader<File>,
     pub pos: u64,
     pub seq: u64,
+    /// The file's length when last looked: a skip past it looks again.
+    len: u64,
 }
 
 impl Reader {
@@ -207,6 +209,7 @@ impl Reader {
             file: BufReader::with_capacity(1 << 16, file),
             pos,
             seq,
+            len: 0,
         })
     }
 
@@ -229,7 +232,10 @@ impl Reader {
         let end = head.end(self.pos);
         let mut data = vec![];
         if !want(head.kind) {
-            if end > self.file.get_ref().metadata()?.len() {
+            if end > self.len {
+                self.len = self.file.get_ref().metadata()?.len();
+            }
+            if end > self.len {
                 return self.rewind();
             }
             self.file.seek_relative(head.len as i64)?;

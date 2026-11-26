@@ -4,6 +4,7 @@ use super::Claude;
 use crate::Spec;
 use crate::adapters::{Cut, Failed, Fork, Forked, Rewound, cli_home, drop_lines, home_path, s};
 use crate::fold::Boundary;
+use brigadier_frames::log;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
@@ -23,15 +24,21 @@ fn recorded(spec: &Spec, resume: &str) -> io::Result<Vec<PathBuf>> {
 /// Claude's temp roots for this session: each folder a host recorded, then the defaults.
 fn temp_roots(spec: &Spec) -> BTreeSet<(PathBuf, PathBuf)> {
     let mut roots = BTreeSet::new();
-    let _ = crate::read(&spec.dir, |item| {
-        if item["kind"] == "spawned" && item["backend"] == "claude" {
-            let temp = s(item, &["temp_dir"]);
-            let cwd = s(item, &["cwd"]);
+    // Its spawn frames alone: normalizing a long log's every line, once per conversation, took seconds.
+    let mut reader = log::Reader::open(&spec.dir.join("log"), 0, 0).ok();
+    while let Some(Ok(Some(frame))) = reader.as_mut().map(|r| r.next_with(|k| k == log::SPAWNED)) {
+        let item = match frame.kind == log::SPAWNED {
+            true => serde_json::from_slice(&frame.data).unwrap_or(serde_json::Value::Null),
+            false => continue,
+        };
+        if item["backend"] == "claude" {
+            let temp = s(&item, &["temp_dir"]);
+            let cwd = s(&item, &["cwd"]);
             if !temp.is_empty() && !cwd.is_empty() {
                 roots.insert((PathBuf::from(temp), PathBuf::from(cwd)));
             }
         }
-    });
+    }
     // Older hosts did not record TMPDIR; macOS also documents /private/tmp as its default.
     roots.insert((std::env::temp_dir(), PathBuf::from(&spec.cwd)));
     #[cfg(target_os = "macos")]

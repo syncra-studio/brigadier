@@ -146,8 +146,12 @@ fn check_delete(data: &Path, args: &[String]) -> io::Result<Value> {
             }
         }
     }
-    let mut reply = check(data, &ids, true);
-    let asked = session::branches(data, &ids)?;
+    // Side by side: each is a few git processes per session.
+    let (mut reply, asked) = std::thread::scope(|s| {
+        let asked = s.spawn(|| session::branches(data, &ids));
+        (check(data, &ids, true), asked.join().unwrap())
+    });
+    let asked = asked?;
     for part in ["branches", "kept", "stays"] {
         reply[part] = asked[part].clone();
     }
@@ -159,8 +163,12 @@ fn check_delete(data: &Path, args: &[String]) -> io::Result<Value> {
 fn check(data: &Path, ids: &[String], delete: bool) -> Value {
     let ids: Vec<String> = (ids.iter().filter(|a| !a.starts_with("--")).cloned()).collect();
     let all = procs::all();
-    let running: Vec<&String> = (ids.iter())
-        .filter(|s| workers::at_work(data, s, &all))
+    let at_work = core::at_once(&ids, |s| workers::at_work(data, s, &all));
+    let running: Vec<&String> = ids
+        .iter()
+        .zip(at_work)
+        .filter(|(_, w)| *w)
+        .map(|(s, _)| s)
         .collect();
     // Their finished workers' folders go too.
     let mut gone = ids.clone();
@@ -270,7 +278,7 @@ pub(crate) fn busy(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
 /// which a turn start holds until its turn is logged (`session::fence`).
 pub(crate) fn working(data: &Path, id: &str, all: &[procs::Proc]) -> bool {
     let dir = core::session_dir(data, id);
-    core::fold(&dir, false).is_ok_and(|f| {
+    core::fold(&dir, true).is_ok_and(|f| {
         let live = fold::live(&f.fold, owner::state(data, id), &dir, all);
         session::busy(&f.fold, &live)
     })
