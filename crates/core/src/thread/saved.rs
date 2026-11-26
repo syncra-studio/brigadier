@@ -293,6 +293,10 @@ impl Saved {
             return Ok(());
         }
         self.inode = meta.ino();
+        // The account it starts on, as the status fold takes it, so its limit row names that one [D2082].
+        if self.thread.fold.cids.is_empty() {
+            crate::starts_on(dir, &mut self.thread.fold);
+        }
         let mut reader = Reader::open(&log, self.pos, self.seq)?;
         let mut items = vec![];
         while let Some(frame) = reader.frame()? {
