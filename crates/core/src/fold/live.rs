@@ -67,6 +67,9 @@ pub struct Pending {
     /// The turn the wake on its way carries on: the one whose work ended, where it's known.
     #[serde(default)]
     pub woke: String,
+    /// A subagent's end is what it wakes for: that wake deals with it, as a result's turn does [D48].
+    #[serde(default)]
+    pub agent: bool,
 }
 
 impl Pending {

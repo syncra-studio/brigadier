@@ -104,7 +104,8 @@ pub struct Turn {
     /// asked for: its asks are the user's [D293, D305].
     #[serde(default)]
     pub direct: bool,
-    /// It took a worker's result in, by a wait or with its message: its end has dealt with it [D48].
+    /// It took a worker's result in, by a wait or with its message, or woke for a subagent's end:
+    /// its end has dealt with it [D48].
     #[serde(default)]
     pub took: bool,
     /// Opened only for an ask a subagent made while its parent's ended turn was held for it: it

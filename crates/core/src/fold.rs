@@ -132,7 +132,8 @@ pub struct Fold {
     /// When a turn last ended, however it ended (ms): later than the seen time, it's unread [D173].
     #[serde(default)]
     pub finished: u64,
-    /// When a turn a worker's result started last ended (ms): what releases a held follow-up [D48].
+    /// When a turn that dealt with a worker's result or a subagent's end last ended (ms): what
+    /// releases a held follow-up [D48].
     #[serde(default)]
     pub dealt: u64,
     /// Requests no longer pending, by id, and why: answered, uncertain (an answer never proven
@@ -289,6 +290,7 @@ impl Fold {
             "exited" => self.exited(item, ts),
             "turn_start" => {
                 let of = self.woke_of();
+                let agent = std::mem::take(&mut self.pending.agent);
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
                     self.close("withdrawn", Value::Null, ts);
@@ -302,6 +304,7 @@ impl Fold {
                         ts,
                         delivered: Some(ts),
                         began: true,
+                        took: agent,
                         ..Default::default()
                     });
                 }
@@ -367,6 +370,7 @@ impl Fold {
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
                     self.pending.ended(&str_of("id"), self.turns.is_empty());
+                    self.pending.agent |= self.turns.is_empty();
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
