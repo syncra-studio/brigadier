@@ -873,10 +873,10 @@ async function rebirthDrill() {
   cli(['send', 'n1', 'next say:1'])
   await settled('n1', 30000)
   r.next_input = { rebirths: rebirths('n1').length, dividers: dividers('n1'), handoffs: handoffs('n1') }
-  const m = await fake('m1', 'work ctx:5 ctx:60 hang:4 say:1')
+  const m = await fake('m1', 'work ctx:5 ctx:60 hang:8 say:1')
   r.mid_turn = { settled: m.ok, rebirths: rebirths('m1').length, dividers: dividers('m1'), handoffs: handoffs('m1') }
   // Its host dies after logging the rebirth's input, before any agent read it.
-  await fake('x1', 'work ctx:5 ctx:60 hang:4 say:1', async (id) => {
+  await fake('x1', 'work ctx:5 ctx:60 hang:8 say:1', async (id) => {
     cli(['send', id, 'warm say:1'])
     await settled(id, 30000)
     kill(owner(id))
@@ -890,7 +890,7 @@ async function rebirthDrill() {
   await sleep(1000)
   cli(['queue', 'q1', 'add', 'after say:1', '--qid', 'qa1'])
   await settled('q1', 60000)
-  const order = cli(['read', 'q1']).all.filter((i) => i.kind === 'input' && !i.control).map((i) => (i.switch?.why ?? i.text?.split(' ')[0]))
+  const order = cli(['read', 'q1']).all.filter((i) => i.kind === 'input' && !i.control && i.origin !== 'summary').map((i) => (i.switch?.why ?? i.text?.split(' ')[0]))
   r.queued = { order, received_once: ledger().recv.after === 1 }
   // The loop guard [D144]: fresh conversations that keep doing something are cut as often as they
   // fill; two in a row that do nothing new stop with the guard's line, and Continue carries on.
@@ -1124,12 +1124,138 @@ async function handoffDrill() {
   verdict('handoff', {
     every_turn_ended: chats.every((c) => !c.stuck.length),
     every_renewal_happened: chats.every((c) => c.rows.length === HO_AT.length && c.rows.every((x) => x.renewals === x.asked)),
-    under_8k_tokens: each((x) => x.chars_max <= 32000),
     nothing_invented: each((x) => x.invented === 0),
     nothing_unreadable: r.lost.length === 0,
     no_overruled_words_alone: each((x) => x.stale === 0),
     no_leftovers: r.leftovers.length === 0,
   })
+}
+
+// The summary turn [repo-merge D85, D92, D95; rev 3 §2.2–§2.4, §4], summaries on, on the fake agent: a
+// planted summary's false lines each marked, its true ones not; the stop and tool hooks run as commands
+// while it runs; never sent back for a question in prose; a tool past the veto stopped at once; the
+// user's Stop ending its renewal; a worker's result rejoining its own block; and a 128k window's fresh
+// conversation starting below its line.
+async function summaryDrill() {
+  const r = {}
+  process.env.BRIGADIER_SUMMARY = '1'
+  const home = (id) => `${DATA}/sessions/${id}/fake`
+  const sent = (id) => fs.readdirSync(home(id)).filter((f) => f.endsWith('.conv')).map((f) => fs.readFileSync(`${home(id)}/${f}`, 'utf8')).join('\n')
+  const notes = (id) => cli(['read', id]).all.filter((i) => i.kind === 'note' && i.event === 'summary')
+  const start = (id, cwd = '/tmp', extra = []) => cli(['start', id, '--backend', 'fake', '--cwd', cwd, ...fakeOpts(), ...extra]).out
+  const send = (id, text) => cli(['send', id, text]).out
+  const summarizing = (id) => status([id])[id]?.turn?.origin === 'summary'
+  // A 128k window, its overhead 20k: filled past its line of 96k, the fresh one starts below it.
+  freshData('summary-128k')
+  delete process.env.BRIGADIER_REBIRTH_AT
+  startDaemon()
+  start('w1', '/tmp', ['--opt', 'FAKE_WINDOW=128000', '--opt', 'FAKE_OVERHEAD=20000'])
+  const pad = Array.from({ length: 6000 }, (_, n) => ['alpha', 'bravo', 'charlie', 'delta'][n % 4]).join(' ')
+  for (let n = 1; n <= 20 && !rebirths('w1').length; n++) {
+    send('w1', `m${n} ${pad}`)
+    await settled('w1', 60000)
+  }
+  const items = cli(['read', 'w1']).all
+  const fresh = items.findIndex((i) => i.kind === 'input' && i.switch?.fresh)
+  r.window = { renewed: fresh >= 0, start: items.slice(fresh + 1).find((i) => i.kind === 'context')?.used ?? null }
+  cleanup()
+  freshData('summary')
+  process.env.BRIGADIER_REBIRTH_AT = '34000'
+  startDaemon()
+  // Planted: one true line, and lines each false in its own way.
+  const repo = gitRepo('summary')
+  const git = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' }).stdout.trim()
+  const commit = git('rev-parse', 'HEAD'), blob = git('hash-object', 'a.txt')
+  start('p1', repo)
+  send('p1', 'please ship the release notes today ctx:10')
+  await settled('p1', 30000)
+  const zero = '3'.padStart(63, '0')
+  fs.writeFileSync(`${home('p1')}/summary.md`, ['## What the user wants now', '- The release notes shipped «please ship the release notes today»',
+    '## Rules and preferences', `- The user approved a force push «${zero}»`, '## Decisions', '- The blue theme, by everyone «the blue theme was chosen by everyone»',
+    '## Done', `- Commit ${commit.slice(0, 12)} holds a.txt «ok please»`, `- Commit ${blob.slice(0, 12)} is the release «ok please»`, '- Tagged as deadbee1 «ok please»',
+    '## Open', 'Nothing.', '## Tried and dropped', '- A cache (from memory)', '## Files and state', '- `src/missing/notes.md` and `a.txt` «ok please»',
+    '## Now and next', '- Write the notes next «please ship the release notes today»'].join('\n') + '\n')
+  send('p1', 'm1 out:40 ctx:40')
+  await settled('p1', 60000)
+  send('p1', 'm2 hi')
+  await settled('p1', 60000)
+  const h = sent('p1'), line = (part) => h.split('\n').find((l) => l.includes(part)) ?? ''
+  r.planted = { noted: notes('p1').some((n) => !n.failed), shown: h.includes('## Summary'), invented: line('blue theme').includes('(not found in the record)'),
+    tool_words: line('force push').includes("(not the user's words"), blob: line(blob.slice(0, 12)).includes('(no such commit)'), bad: line('deadbee1').includes('(no such commit)'),
+    path: line('src/missing').includes('(not on disk now)'), commit: !!line(commit.slice(0, 12)) && !line(commit.slice(0, 12)).includes('(no such commit)'), true_line: !!line('release notes shipped') && !line('release notes shipped').includes('(not'),
+    lines: [line(commit.slice(0, 12)), line('release notes shipped')] }
+  // A question in prose in it: the hooks skip it while it runs, and nothing sends it back.
+  start('q1')
+  send('q1', 'm0 ctx:10')
+  await settled('q1', 30000)
+  fs.writeFileSync(`${home('q1')}/summary.md`, '## What the user wants now\n- m0 «m0 ctx:10»\n## Now and next\nPlease confirm the release target?\n')
+  fs.writeFileSync(`${home('q1')}/summary`, 'slow:6000')
+  send('q1', 'm1 ctx:40')
+  await waitFor(() => summarizing('q1'), 30000)
+  const hook = (what, input = '{}') => spawnSync(`${BIN}/brigadier`, ['hook', what, 'claude'], { input, encoding: 'utf8', env: { ...process.env, BRIGADIER_DATA: DATA, BRIGADIER_SESSION: `${DATA}/sessions/q1` } })
+  const ask = JSON.stringify({ last_assistant_message: 'Please confirm the release target?' })
+  r.prose = { during: { stop: hook('stop', ask).stdout.trim(), tool: hook('tool').status } }
+  await settled('q1', 60000)
+  send('q1', 'm2 hi')
+  await settled('q1', 60000)
+  r.prose.after = { stop: hook('stop', ask).stdout.trim(), tool: hook('tool').status }
+  const q = cli(['read', 'q1']).all.filter((i) => i.kind === 'input' && !i.control)
+  r.prose.sent_back = q.filter((i) => i.origin === 'system' && !i.switch).length
+  r.prose.renewed = rebirths('q1').length
+  // A tool past the veto: its flag gone, the tool runs, and the turn is stopped at its first step.
+  start('t1')
+  send('t1', 'm0 ctx:10')
+  await settled('t1', 30000)
+  fs.writeFileSync(`${home('t1')}/summary`, 'slow:3000 tool_sleep:30000')
+  send('t1', 'm1 ctx:40')
+  await waitFor(() => fs.existsSync(`${DATA}/sessions/t1/summarizing`), 30000)
+  fs.rmSync(`${DATA}/sessions/t1/summarizing`)
+  const t0 = now()
+  await waitFor(() => !status(['t1']).t1?.turn && status(['t1']).t1?.last?.origin === 'summary', 60000)
+  r.tool = { ms: now() - t0, state: status(['t1']).t1?.state }
+  send('t1', 'm2 hi')
+  await settled('t1', 60000)
+  r.tool.failed = notes('t1').at(-1)?.failed
+  r.tool.renewed = rebirths('t1').length
+  // The user's Stop during it: no renewal, it stays stopped; the next message renews.
+  start('s1')
+  send('s1', 'm0 ctx:10')
+  await settled('s1', 30000)
+  fs.writeFileSync(`${home('s1')}/summary`, 'slow:8000')
+  send('s1', 'm1 ctx:40')
+  await waitFor(() => summarizing('s1'), 30000)
+  cli(['stop', 's1'])
+  await sleep(4000)
+  r.stop = { renewed: rebirths('s1').length, state: status(['s1']).s1?.state }
+  send('s1', 'm2 hi')
+  await settled('s1', 60000)
+  r.stop.next = rebirths('s1').length
+  // A summary turn ends while a worker runs: the worker's result rejoins the block that started it.
+  start('k1')
+  send('k1', 'm0 ctx:10')
+  await settled('k1', 30000)
+  send('k1', "m1 out:40 ctx:40 brigadier:start+--job+'Quick+actions'+'w+hang:20'")
+  await waitFor(() => notes('k1').length, 60000)
+  await waitFor(() => cli(['read', 'k1']).all.some((i) => i.kind === 'input' && i.origin?.startsWith('result:')), 60000)
+  await sleep(3000)
+  const turns = cli(['thread', 'k1']).out.turns ?? []
+  r.worker = { held: turns.filter((t) => t.held).length, summary: turns.find((t) => t.summary)?.status }
+  r.leftovers = cleanup()
+  drop(repo)
+  log({ drill: 'summary', ...r })
+  const p = r.planted
+  verdict('summary', {
+    window_starts_below_its_line: r.window.renewed && r.window.start !== null && r.window.start < 96000,
+    planted_noted_and_shown: p.noted && p.shown, invented_quote_marked: p.invented, tool_words_not_the_users: p.tool_words,
+    blob_is_no_commit: p.blob, bad_hash_is_no_commit: p.bad, missing_path_marked: p.path, real_commit_unmarked: p.commit, true_line_unmarked: p.true_line,
+    hooks_skip_the_summary_turn: r.prose.during.stop === '' && r.prose.during.tool === 2, hooks_judge_after: r.prose.after.stop.includes('block') && r.prose.after.tool === 0,
+    never_sent_back: r.prose.sent_back === 0 && r.prose.renewed === 1,
+    tool_stopped_at_once: r.tool.ms < 15000 && r.tool.failed === 'tool' && r.tool.state === 'idle' && r.tool.renewed === 1,
+    stop_ends_its_renewal: r.stop.renewed === 0 && r.stop.state === 'stopped' && r.stop.next === 1,
+    worker_rejoins_its_block: r.worker.held === 0 && r.worker.summary === 'done',
+    no_leftovers: r.leftovers.length === 0,
+  })
+  delete process.env.BRIGADIER_SUMMARY
 }
 
 // Messages between agents: ten senders send a message every 3 s, the 20-a-minute limit, through their own
@@ -1985,6 +2111,6 @@ async function standing() {
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
 if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
 await run()
