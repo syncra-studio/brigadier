@@ -141,8 +141,18 @@ fn decided(dir: &Path, call: &Call) -> io::Result<String> {
         why: call.need("--why")?,
         other: call.need("--other")?,
     };
+    // Its log note names the turn it was made in, so a rewind past that turn drops it [§8].
+    let f = core::fold(dir, true)?.fold;
+    let turn = f.turns.first().map(|t| t.id.clone());
     change(dir, |o| {
         in_night(o)?;
+        let id = format!(
+            "decided:{}:{}",
+            turn.as_deref().unwrap_or(""),
+            o.decided.len()
+        );
+        let decided = json!({"title": d.title, "why": d.why, "other": d.other});
+        (o.notes).push(json!({"id": id, "decided": decided, "turn": turn}));
         o.decided.push(d);
         Ok("Logged for the morning.".into())
     })

@@ -45,7 +45,8 @@ impl Thread {
     /// Overnight's moments, each written to the log till it's there: drawn once, by its id.
     pub(super) fn overnight(&mut self, item: &Value) {
         let id = format!("overnight:{}", item["id"].as_str().unwrap_or(""));
-        if self.named.contains_key(&id) {
+        // A decision's own note is for the hand-off: the morning report shows it.
+        if self.named.contains_key(&id) || item["row"].is_null() {
             return;
         }
         let mut row = item["row"].clone();

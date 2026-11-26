@@ -142,11 +142,26 @@ fn range(id: &str, refs: &[String]) -> String {
 fn answered_by(by: &str) -> &'static str {
     match by {
         "overnight" => "answered by Overnight, not the user",
+        "decided" => "decided by Overnight, not the user",
         "review" => "answered by the reviewer, not the user",
         "parent" => "answered by your parent session, not the user",
         "brigadier" => "answered by Brigadier, not the user",
         _ => "the user's answer to your question",
     }
+}
+
+/// An Overnight decision's note, in place among the answers, as Overnight's [repo-merge §8].
+pub(super) fn decided(item: &serde_json::Value, at: &str) -> Option<(String, String, String)> {
+    let note = item["kind"] == "note" && item["event"] == "overnight";
+    let d = item["decided"].as_object().filter(|_| note)?;
+    let s = |k: &str| d.get(k).and_then(|v| v.as_str()).unwrap_or("");
+    let text = format!(
+        "{}. Why: {}. The other option: {}",
+        s("title"),
+        s("why"),
+        s("other")
+    );
+    Some((at.into(), text, "decided".into()))
 }
 
 /// A numbered list item's line: `1.` or `1)` first.

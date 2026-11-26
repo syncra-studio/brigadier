@@ -199,6 +199,7 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                     }
                 }
             }
+            _ if let Some(d) = records::decided(item, &at) => p.answers.push(d),
             _ => {}
         }
         let before = p.entries.len();
