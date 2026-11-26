@@ -174,9 +174,13 @@ pub(super) fn render(id: &str, units: &[Unit], key: impl Fn(&str) -> (u8, u64)) 
             .unwrap_or_default();
         let n: usize = run.iter().map(|u| u.entries).sum();
         let k = run.iter().filter(|u| u.user).count();
-        out += &format!(
-            "- {id}#{a}–{b}: {n} entries ({k} of the user's): `brigadier read {id}#{a} --to {b}`\n"
-        );
+        out += &match (a == b, n) {
+            (true, 1) => format!("- {id}#{a}: 1 entry: `brigadier read {id}#{a} --around 0`\n"),
+            (true, _) => format!("- {id}#{a}: {n} entries: `brigadier read {id}#{a} --around 0`\n"),
+            _ => format!(
+                "- {id}#{a}–{b}: {n} entries ({k} of the user's): `brigadier read {id}#{a} --to {b}`\n"
+            ),
+        };
         i += run.len();
     }
     out

@@ -243,39 +243,6 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
     Ok(p)
 }
 
-/// One entry as the last exchange shows it: messages whole, steps on one short line, then where
-/// their output is.
-fn line(id: &str, e: &Entry) -> String {
-    let at = format!("{id}#{}", e.at);
-    match e.from {
-        "user" => format!("\n[{at} the user]\n{}\n", e.text.trim_end()),
-        "worker" => format!(
-            "\n[{at} worker {}'s result]\n{}\n",
-            e.who,
-            e.text.trim_end()
-        ),
-        "peer" => format!(
-            "\n[{at} session {}'s message]\n{}\n",
-            e.who,
-            e.text.trim_end()
-        ),
-        "agent" => format!("\n[{at} you]\n{}\n", e.text.trim_end()),
-        "cut" => "- stopped mid-way by Brigadier, not refused: redo it if still needed\n".into(),
-        "stopped" => "- stopped by the user's Stop after any approval it had, not refused: it may have run, so check before redoing it\n".into(),
-        "error" => format!(
-            "- failed: {}\n",
-            head(e.text.lines().next().unwrap_or(""), 200)
-        ),
-        _ if e.who.is_empty() => format!("- changed {}\n", e.files.join(", ")),
-        _ => format!(
-            "- {}: {}\n{}",
-            e.who,
-            head(e.text.lines().next().unwrap_or(""), 200),
-            e.out
-        ),
-    }
-}
-
 /// The hand-off for session `spec` with fold `f`. `why`: rebirth (the next message follows), cut
 /// (its last turn was stopped mid-way for a fresh context, or its window filled), limited,
 /// unresumable, picked, switched (picked mid-turn, which it carries on) or forked; `from` names where it came from; `last` is its last turn.
@@ -318,7 +285,14 @@ pub fn build(
         );
     }
 
+    // Where each section the small hand-off leaves out sits, and the line that stands for it.
+    let mut spans = vec![];
+    let mut span = |out: &String, start: usize, line: String| {
+        (out.len() > start).then(|| spans.push((start..out.len(), line)));
+    };
+    let start = out.len();
     out += &skills::section(spec, &p);
+    span(&out, start, "- The skills the user's messages invoked: `brigadier skill --json` lists them; load any one asks for.\n".into());
 
     // The agent's own kept lines, whole: `brigadier keep` caps them [D87].
     let kept = crate::keeps::shown(&spec.dir);
@@ -334,18 +308,33 @@ pub fn build(
     let sent = (p.entries.iter().rev())
         .flat_map(|e| (e.sent.iter()).map(move |file| format!("- {id}#{}: {file}\n", e.at)));
     let sent = fill(sent, FILES, "they're in that folder");
+    let folder = crate::message::sent(&spec.dir);
+    let start = out.len();
     if !sent.is_empty() {
-        let folder = crate::message::sent(&spec.dir);
         out += &format!(
             "\n## Files sent with the messages, in {}\n{sent}",
             folder.display()
         );
     }
 
+    span(
+        &out,
+        start,
+        format!("- Files sent with the messages: in {}\n", folder.display()),
+    );
+    // The steps after the newest message: the open ones and the last exchange.
+    let at = (p.entries.iter())
+        .rposition(|e| said(&e))
+        .map_or(0, |i| i + 1);
+    let steps = (p.entries.get(at).zip(p.entries.last())).map_or(String::new(), |(a, b)| {
+        format!("`brigadier read {id}#{} --to {}`", a.at, b.at)
+    });
     let open = open::items(spec, &p.entries);
+    let start = out.len();
     if !open.is_empty() {
         out += &format!("\n## Open\n{open}");
     }
+    span(&out, start, String::new());
 
     // The work's state: branch, uncommitted files, last commits, files this conversation touched.
     let cwd = spec.cwd.as_str();
@@ -390,9 +379,15 @@ pub fn build(
             touched.join(", ")
         );
     }
+    let start = out.len();
     if !work.is_empty() {
         out += &format!("\n## The work\n{}", tail(&work, WORK));
     }
+    span(
+        &out,
+        start,
+        format!("- The work: `git status` and `git log` in {cwd}\n"),
+    );
 
     // The agent's own last to-do list, as it wrote it [D104].
     if let Some(steps) = f
@@ -416,12 +411,11 @@ pub fn build(
     }
 
     // The last exchange, after the last message (the conversation has it), cut from its start.
-    let at = p
-        .entries
+    let exchange: String = p.entries[at..]
         .iter()
-        .rposition(|e| said(&e))
-        .map_or(0, |i| i + 1);
-    let exchange: String = p.entries[at..].iter().map(|e| line(id, e)).collect();
+        .map(|e| records::line(id, e))
+        .collect();
+    let start = out.len();
     if !exchange.is_empty() {
         let cut = if exchange.len() > EXCHANGE { "…" } else { "" };
         out += &format!(
@@ -429,6 +423,7 @@ pub fn build(
             tail(&exchange, EXCHANGE)
         );
     }
+    span(&out, start, String::new());
 
     // The next step, by a fixed rule.
     let step = match why {
@@ -461,7 +456,25 @@ pub fn build(
     out += &format!("\n## Next\n{step}\n");
     let room = room::room(spec, f, to, pending);
     let less = |n: usize| n.saturating_sub(estimate::tokens(&out));
-    let (conv, _) = records::conversation(id, &p, Some((less(room), less(room / 2))));
-    out.insert_str(conv_at, &conv);
+    let (conv, fits) = records::conversation(id, &p, Some((less(room), less(room / 2))));
+    if fits {
+        out.insert_str(conv_at, &conv);
+        return Ok(out);
+    }
+    // The small hand-off [§2.6]: what the room can't hold is one line each, one command away; the
+    // conversation its first and newest messages and range lines.
+    let (mut at, mut lines) = (conv_at, String::new());
+    for (r, line) in spans.into_iter().rev() {
+        at -= if r.start < at { r.len() } else { 0 };
+        out.replace_range(r, "");
+        lines.insert_str(0, &line);
+    }
+    if !steps.is_empty() {
+        lines +=
+            &format!("- Open steps and the last exchange, after the newest message: {steps}\n");
+    }
+    let (conv, _) = records::conversation(id, &p, None);
+    let left = format!("\n## Left out to fit the room, each one command away\n{lines}");
+    out.insert_str(at, &(conv + &left));
     Ok(out)
 }

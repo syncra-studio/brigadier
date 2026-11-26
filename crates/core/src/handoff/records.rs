@@ -303,3 +303,36 @@ pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -
     }
     (heading + &render(id, &units, key), fits)
 }
+
+/// One entry as the last exchange shows it: messages whole, steps on one short line, then where
+/// their output is.
+pub(super) fn line(id: &str, e: &Entry) -> String {
+    let at = format!("{id}#{}", e.at);
+    match e.from {
+        "user" => format!("\n[{at} the user]\n{}\n", e.text.trim_end()),
+        "worker" => format!(
+            "\n[{at} worker {}'s result]\n{}\n",
+            e.who,
+            e.text.trim_end()
+        ),
+        "peer" => format!(
+            "\n[{at} session {}'s message]\n{}\n",
+            e.who,
+            e.text.trim_end()
+        ),
+        "agent" => format!("\n[{at} you]\n{}\n", e.text.trim_end()),
+        "cut" => "- stopped mid-way by Brigadier, not refused: redo it if still needed\n".into(),
+        "stopped" => "- stopped by the user's Stop after any approval it had, not refused: it may have run, so check before redoing it\n".into(),
+        "error" => format!(
+            "- failed: {}\n",
+            head(e.text.lines().next().unwrap_or(""), 200)
+        ),
+        _ if e.who.is_empty() => format!("- changed {}\n", e.files.join(", ")),
+        _ => format!(
+            "- {}: {}\n{}",
+            e.who,
+            head(e.text.lines().next().unwrap_or(""), 200),
+            e.out
+        ),
+    }
+}
