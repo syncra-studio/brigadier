@@ -56,6 +56,11 @@ const VOICE: &str = include_str!("standing/voice.txt");
 /// rule and the user's jobs [D387], a folder chat's repos [D494], then the ask rule [D484] and
 /// the voice.
 pub fn standing(spec: &Spec) -> String {
+    // A run with no tools (the message writer, the queue's judge) gets the commit style alone: the
+    // rest is about tools it hasn't, and would only end it (proposed) [D771].
+    if spec.opts.contains_key("no_tools") {
+        return COMMITS.trim().to_string();
+    }
     let repos = crate::folder::standing(spec).map_or(String::new(), |r| format!("{r}\n\n"));
     let lead = match (spec.naked, &spec.jobs) {
         (true, _) => String::new(),

@@ -343,7 +343,7 @@ fn create(data: &Path, id: &str, args: &[String]) -> io::Result<Value> {
             Ok(text) => text,
             // A failed write leaves git's text to edit, and the commit and push to the user [D1222].
             Err(e) => {
-                let (t, m) = pr.fill(learned);
+                let (t, m) = pr.fill(learned, new);
                 let pick =
                     |given: &str, git: String| if given.is_empty() { git } else { given.into() };
                 return Ok(json!({"written": false, "why": e.to_string(),

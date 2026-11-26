@@ -35,9 +35,16 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     } else {
         format!(" {ESCALATE}")
     };
+    // A run with no tools gets none of Brigadier's, and no rule about them [D771].
+    let tools = !spec.opts.contains_key("no_tools");
+    let asks = if tools {
+        format!("\n\n{ASK}{escalate}")
+    } else {
+        String::new()
+    };
     // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025].
     let mut open = json!({"cwd": spec.cwd, "approvalPolicy": policy, "approvalsReviewer": reviewer, "sandbox": sandbox,
-        "developerInstructions": format!("{}\n\n{ASK}{escalate}", crate::agent::standing(spec))});
+        "developerInstructions": format!("{}{asks}", crate::agent::standing(spec))});
     if let Some(model) = &spec.model {
         open["model"] = model.as_str().into();
     }
@@ -64,10 +71,12 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
         }
     }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
-    let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
-    open["config"]["mcp_servers.brigadier.command"] = me.display().to_string().into();
-    open["config"]["mcp_servers.brigadier.args"] = json!(["mcp-server"]);
-    open["config"]["mcp_servers.brigadier.tools.show_draft.approval_mode"] = "approve".into();
+    if tools {
+        let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        open["config"]["mcp_servers.brigadier.command"] = me.display().to_string().into();
+        open["config"]["mcp_servers.brigadier.args"] = json!(["mcp-server"]);
+        open["config"]["mcp_servers.brigadier.tools.show_draft.approval_mode"] = "approve".into();
+    }
     // Its memory as the switch says; `generate_memories` off keeps the thread out of its later
     // extraction too (codex-rs `thread_persistence_metadata`) [D2049].
     let memory = super::super::memory(spec);

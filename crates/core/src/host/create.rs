@@ -309,8 +309,9 @@ impl Pr {
     }
 
     /// What Create PR's fields get when the writer fails, as `gh pr create --fill` [D1164, D1222]:
-    /// one commit's subject and body, else the branch's name and its commits' subjects.
-    pub fn fill(&self, base: &str) -> (String, String) {
+    /// one commit's subject and body, else the branch's name (`branch`, a new one asked for) and
+    /// its commits' subjects.
+    pub fn fill(&self, base: &str, branch: Option<&str>) -> (String, String) {
         let never = AtomicBool::new(false);
         let range = format!(
             "{}..HEAD",
@@ -326,7 +327,8 @@ impl Pr {
             [(subject, body)] => (subject.trim().into(), body.trim().into()),
             _ => {
                 let list = commits.iter().map(|(s, _)| format!("- {}", s.trim()));
-                (self.branch.clone(), list.collect::<Vec<_>>().join("\n"))
+                let branch = branch.unwrap_or(&self.branch).to_string();
+                (branch, list.collect::<Vec<_>>().join("\n"))
             }
         }
     }
