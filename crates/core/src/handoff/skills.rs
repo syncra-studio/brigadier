@@ -8,10 +8,16 @@ use std::path::Path;
 /// The section, or nothing when no message invoked one.
 pub(super) fn section(spec: &Spec, p: &Past) -> String {
     let id = spec.id.as_str();
-    let hidden = crate::library::hidden(&crate::data_of(spec), spec.project.as_deref());
-    let mut names: Vec<String> = (crate::adapters::all().iter())
-        .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
-        .filter(|k| k["kind"] == "skill" && !hidden.has(k))
+    let (data, project) = (crate::data_of(spec), spec.project.as_deref());
+    let hidden = crate::library::hidden(&data, project);
+    // The library's on for the project, then each agent's not hidden, as relay's `skills` [D407].
+    let mut names: Vec<String> = (crate::library::on_for(&data, project).into_iter())
+        .filter(|i| i["kind"] == "skill")
+        .chain(
+            (crate::adapters::all().iter())
+                .flat_map(|a| a.fixed_commands(Some(Path::new(&spec.cwd)), None))
+                .filter(|k| k["kind"] == "skill" && !hidden.has(k)),
+        )
         .filter_map(|k| k["name"].as_str().map(String::from))
         .collect();
     names.sort();
