@@ -1,5 +1,7 @@
 import { type Draft, EMPTY_DRAFT, isEmpty } from "../components/composer/draft";
+import { type Chip, chipsBack } from "../panel/chips";
 import type { Runner } from "./composer";
+import { dropUncertain } from "./uncertain";
 
 /*
  * Each session's unsent words [D363]. Rust keeps them in the session's folder, so they outlive a restart and go with
@@ -13,8 +15,54 @@ const drafts = new Map<string, Saved>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const writing = new Map<string, Promise<boolean>>();
 const loading = new Map<string, Promise<Draft | null>>();
+/*
+ * A session's draft is revised in Rust, which gives a refused message back into it [D363]: a save names the revision
+ * it last saw and every message given back it has taken since, or it's stale and Rust says what it missed.
+ */
+const revs = new Map<string, number>();
+const took = new Map<string, Set<string>>();
+const applied = new Map<string, Set<string>>();
+const errors = new Map<string, string>();
+const setOf = (map: Map<string, Set<string>>, id: string) => map.get(id) ?? map.set(id, new Set()).get(id)!;
+const fills = new Map<string, (back: Given) => Draft>();
 
 export const draftOf = (id: string) => drafts.get(id);
+/** The revision of session `id`'s draft this view last saw: a message sent now carries it. */
+export const revOf = (id: string) => revs.get(id) ?? 0;
+/** Why the last message given back to a session that wasn't open was refused, once. */
+export function givenError(id: string): string | null {
+  const error = errors.get(id) ?? null;
+  errors.delete(id);
+  return error;
+}
+
+/** A message Rust gave back: its words and files above the draft, its chips waiting again. */
+export type Given = { cid: string; parts: Draft["parts"]; attachmentIds: string[]; chips?: readonly Chip[]; error?: string };
+
+/** Fills session `id`'s open composer with a message given back, answering the draft it holds then. */
+export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
+  fills.set(id, fill);
+  return () => fills.get(id) === fill && fills.delete(id);
+}
+
+/** Takes a message given back into session `id`'s draft, open or not, once per message; saved at once. */
+export function takeBack(run: Runner, id: string, back: Given): void {
+  setOf(took, id).add(back.cid);
+  dropUncertain(id, back.cid);
+  if (setOf(applied, id).has(back.cid)) return;
+  setOf(applied, id).add(back.cid);
+  chipsBack(id, back.chips ?? []);
+  const fill = fills.get(id);
+  if (fill) drafts.set(id, fill(back));
+  else {
+    const now = drafts.get(id) ?? EMPTY_DRAFT;
+    const parts = isEmpty({ parts: now.parts, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...now.parts];
+    drafts.set(id, { parts, attachmentIds: [...new Set([...back.attachmentIds, ...now.attachmentIds])] });
+    if (back.error) errors.set(id, back.error);
+  }
+  clearTimeout(timers.get(id));
+  void write(run, id);
+}
 
 /** One write at a time per session, so the last words typed are the last written; whether they were. */
 function write(run: Runner, id: string): Promise<boolean> {
@@ -25,8 +73,14 @@ function write(run: Runner, id: string): Promise<boolean> {
 
 async function save(run: Runner, id: string): Promise<boolean> {
   const draft = drafts.get(id) ?? EMPTY_DRAFT;
-  const reply = await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft)]);
-  if ((drafts.get(id) ?? EMPTY_DRAFT) !== draft) return save(run, id);
+  const acked = [...setOf(took, id)];
+  const revised = id.startsWith(HOME_DRAFT) ? [] : ["--base", String(revOf(id)), ...(acked.length > 0 ? ["--took", acked.join(",")] : [])];
+  const reply = await run(["draft", id, isEmpty(draft) ? "" : JSON.stringify(draft), ...revised]);
+  if (typeof reply.rev === "number") revs.set(id, reply.rev);
+  if (reply.ok) for (const cid of acked) took.get(id)?.delete(cid);
+  // Stale: what it missed comes in above, and it's saved again.
+  for (const back of reply.stale ? (reply.given as Given[]) : []) takeBack(run, id, back);
+  if (reply.stale || (drafts.get(id) ?? EMPTY_DRAFT) !== draft) return save(run, id);
   writing.delete(id);
   return Boolean(reply.ok);
 }
@@ -65,6 +119,13 @@ export function loadDraft(run: Runner, id: string): Promise<Draft | null> {
 async function readDraft(run: Runner, id: string): Promise<Draft | null> {
   const reply = await run(["draft", id]);
   if (!reply.ok || drafts.has(id)) return null;
+  // What Rust gave back since the last save is in the draft it read already.
+  if (typeof reply.rev === "number") revs.set(id, reply.rev);
+  for (const cid of (reply.cids as string[] | undefined) ?? []) {
+    setOf(took, id).add(cid);
+    setOf(applied, id).add(cid);
+    dropUncertain(id, cid);
+  }
   let saved: unknown = null;
   try {
     saved = reply.draft ? JSON.parse(reply.draft) : null;

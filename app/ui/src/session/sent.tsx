@@ -5,16 +5,23 @@ import { ThinkingLine, UserBubble, datedAfter } from "../components/thread/messa
 import { threadSource } from "../daemon";
 import { sendFailed } from "../thread/follow";
 import type { Source } from "../thread/thread";
+import type { Chip } from "../panel/chips";
 import { daemonRun, failure, type Runner } from "./composer";
+import { revOf, takeBack } from "./draft";
 import { inThread } from "./queued";
 import { newId } from "./store";
 
 /*
  * Messages sent at once or steered, shown in the thread at once [D30]. A message goes under its command id, so trying
  * it again can't send it twice (the host drops a repeated id). It settles when Rust's thread has it under that id: a
- * sent one's turn, a steer's message. A refusal stays, with Try again.
+ * sent one's turn, a steer's message. One that surely never reached the log Rust gives back into the draft, with the
+ * field's draft it was sent from (`draft`, its revision then `rev`) and its chips; any other refusal stays, with Try
+ * again [D363, D54].
  */
-export type Sent = { cid: string; text: string; parts?: string; steer: boolean; at: number; retryOf?: string; error?: string };
+export type Sent = { cid: string; text: string; parts?: string; steer: boolean; at: number; retryOf?: string; error?: string; draft?: Draft; rev?: number | null; chips?: readonly Chip[] };
+
+/** What a message carries for Rust to give it back by. */
+export const draftArgs = (draft: Draft | undefined, rev: number | null) => (draft ? ["--draft", JSON.stringify(draft), ...(rev === null ? [] : ["--draft-rev", String(rev)])] : []);
 let sent = new Map<string, Sent[]>();
 const sentListeners = new Set<() => void>();
 export function setSent(id: string, change: (list: Sent[]) => Sent[]): void {
@@ -30,17 +37,23 @@ export function deliver(run: Runner, id: string, message: Sent): Promise<void> {
   const args = ["send", id, message.text, "--cid", message.cid];
   if (message.retryOf) args.push("--retry-of", message.retryOf);
   if (message.parts) args.push("--parts", message.parts);
+  args.push(...draftArgs(message.draft, message.rev ?? null));
   const fail = (error: string) => {
     setSent(id, (list) => list.map((each) => (each.cid === message.cid ? { ...each, error } : each)));
     sendFailed(message.cid);
   };
+  const given = (reply: Record<string, any>) => {
+    setSent(id, (list) => list.filter((each) => each.cid !== message.cid));
+    // Given back before (`again`), it's in the draft already, or comes with the next save.
+    if (!reply.again) takeBack(run, id, { cid: message.cid, parts: reply.parts, attachmentIds: reply.attachmentIds, chips: message.chips?.length ? message.chips : reply.chips, error: failure(reply) });
+  };
   // Logged: the thread shows the turn and how it ended, so the message has its place there.
-  return run(message.steer ? [...args, "--steer"] : args).then((reply) => void (reply.ok || reply.result === "logged" || fail(failure(reply))), (cause) => fail(String(cause)));
+  return run(message.steer ? [...args, "--steer"] : args).then((reply) => void (reply.ok || reply.result === "logged" || (reply.given_back ? given(reply) : fail(failure(reply)))), (cause) => fail(String(cause)));
 }
 
 /** A message sent from outside the composer, with its pending bubble and command-id recovery: the retry after a rewind (`retryOf`). */
 export function sendMessage(run: Runner, id: string, text: string, retryOf?: string, draft?: Draft | null): Promise<void> {
-  const entry: Sent = { cid: newId(), text, parts: draft ? JSON.stringify(draft) : undefined, steer: false, at: Date.now(), retryOf };
+  const entry: Sent = { cid: newId(), text, parts: draft ? JSON.stringify(draft) : undefined, steer: false, at: Date.now(), retryOf, draft: draft ?? { parts: [text], attachmentIds: [] }, rev: revOf(id) };
   setSent(id, (list) => [...list, entry]);
   return deliver(run, id, entry);
 }

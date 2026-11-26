@@ -22,13 +22,14 @@ import { answeringSource, SessionApprovals, SessionQuestions, useApprovalWaiting
 import { SessionLevel } from "./level";
 import { takesImages, useSessionModel } from "./model";
 import { SessionNotices } from "./notices";
-import { draftOf, keepDraft, loadDraft } from "./draft";
+import { draftOf, givenError, keepDraft, loadDraft, onGiven, revOf, takeBack } from "./draft";
 import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
 import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
-import { deliver, type Sent, setSent, useOnItsWay } from "./sent";
+import { deliver, draftArgs, type Sent, setSent, useOnItsWay } from "./sent";
+import { addUncertain, dropUncertain, useUncertain } from "./uncertain";
 import { useTurn } from "./turn";
 import { OVERNIGHT, overnight, useOvernight } from "../sessions/overnight";
 import { NightReady, nightLook, nightPlaceholder, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
@@ -58,6 +59,9 @@ const blank = (parts: Draft["parts"]) => isEmpty({ parts: isShell(parts) ? [plai
 let hadKeyboard = false;
 
 /** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
+/** The field's draft a message was sent from, its revision then, and its chips: what Rust gives back if it's refused. */
+type Sub = { draft: Draft; rev: number | null; chips: readonly Chip[] };
+
 type Op = { key: string; kind: "add" | "command" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; shell?: boolean; at?: number; done?: () => void };
 
 /**
@@ -79,7 +83,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   const typed = useRef(initial?.parts ?? []);
   const files = useComposerFiles({ owner: id, run, field, backend: row?.backend, project: null, images: takesImages(row?.backend, row?.model), onTiles: (tiles) => keepDraft(run, id, { parts: field.current?.parts() ?? [], attachmentIds: tiles }) });
   const [ops, setOps] = useState<Op[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => givenError(id));
   const [stopError, setStopError] = useState<string | null>(null);
   // A queued message pulled back to edit, which Rust keeps meanwhile (`queue.editing`): sending puts it back in its slot under its id, emptying the field puts the original back.
   const editing = useRef<{ qid: string; slot: number; text: string; to?: string; shell?: boolean } | null>(null);
@@ -91,7 +95,8 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   // The To: the worker the next message goes to alone (@ › Message directly); leaving the session takes it away.
   const [to, setTo] = useState<string | null>(null);
   const [toSending, setToSending] = useState(false);
-  const rows = useDaemon().rows ?? [];
+  const { daemon, rows: shown } = useDaemon();
+  const rows = shown ?? [];
   const toWorker = useWorkers(id).find((each) => each.id === to) ?? null;
   useLayoutEffect(() => () => void (hadKeyboard = document.activeElement?.closest("[data-slot=composer-field]") != null), []);
   useEffect(() => {
@@ -110,8 +115,10 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     files.restore(kept.parts?.attachmentIds ?? []);
     setEmpty(!kept.text.trim());
   }, [kept?.id]);
-  // After a restart the draft is Rust's alone: it comes back unless something was typed first.
+  // After a restart the draft is Rust's alone: it comes back unless something was typed first. One given back while
+  // the session was closed brings its tiles.
   useEffect(() => {
+    if (initial?.attachmentIds.some((tile) => !files.tileIds.includes(tile))) files.restore(initial.attachmentIds);
     void loadDraft(run, id).then((saved) => {
       const now = field.current;
       if (!saved || !now) return;
@@ -141,6 +148,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     return turn !== undefined && thread!.items.some((item) => item.kind === "question" && item.turnId === turn);
   });
   const delivered = inThread(useSyncExternalStore(source.subscribe, source.get)); // It leaves the queue as the thread shows it.
+  const uncertain = useUncertain(id, row ? (row.queue ?? null) : undefined, delivered, daemon, (qid) => act({ kind: "remove", qid }, ["remove", qid]));
   let paused = row?.queue?.paused === true;
   // A `!` command that ended shows only while its report can't go.
   const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
@@ -152,6 +160,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local", shell: op.shell });
     }
   }
+  items = [...items, ...uncertain.rows.filter((each) => !delivered.has(each.id) && !items.some((one) => one.id === each.id))];
   const text = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
 
   const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void) => {
@@ -165,35 +174,39 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       fail?.(reply);
     });
   };
-  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string) =>
-    act({ kind: "add", qid, text: message, slot }, [...(slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]), ...(parts ? ["--parts", parts] : [])], fail);
-  /** The chips a message carries leave with it, and come back if Rust refused to queue it; a lost connection may have
-   * queued it, so they stay in its message rather than go twice. */
-  const carry = (sent: readonly Chip[], msg: string) => {
+  /** With `sub`, a refusal gives it back (`carry`), and one whose reply never came waits marked in the queue (uncertain.ts). */
+  const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) =>
+    act({ kind: "add", qid, text: message, slot }, [...(slot === undefined ? ["add", message, "--qid", qid] : ["add", message, "--qid", qid, "--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...draftArgs(sub?.draft, sub?.rev ?? null)], (reply) => {
+      if (sub && reply.error === "disconnected") addUncertain(id, { qid, text: message, draft: sub.draft, parts, at: Date.now() }, daemon);
+      fail?.(reply);
+    });
+  /** The chips a message carries leave with it. Refused, Rust gives the message back with them (an edited one's kept
+   * copy goes: it comes back as a new draft); a lost connection may have queued it, so they stay in its message rather
+   * than go twice. */
+  const carry = (sent: readonly Chip[], msg: string, pulled: typeof editing.current = null, sub?: Sub) => {
     leaveChips(id, sent);
-    return (reply: Record<string, any>) => reply.error !== "disconnected" && restoreChips(id, msg, sent);
+    return (reply: Record<string, any>) => {
+      if (reply.error === "disconnected") return;
+      if (!reply.given_back || !sub) return restoreChips(id, msg, sent);
+      if (!reply.again) takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
+      if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
+    };
   };
   /** The field and the chips leave at once; Rust takes the chips for message `msg`, then it goes. Refused, nothing goes
    * and both come back [D30, D1174, D1195]. `into`: the session it starts. */
-  const going = (sent: readonly Chip[], msg: string, go: (pulled: typeof editing.current, back: (reply: Record<string, any>) => void) => void, into?: string) => {
-    const parts = field.current?.parts() ?? [];
-    const tiles = files.tileIds;
+  const going = (sent: readonly Chip[], msg: string, go: (pulled: typeof editing.current, back: (reply: Record<string, any>) => void, sub: Sub) => void, into?: string) => {
+    const sub: Sub = { draft: { parts: field.current?.parts() ?? [], attachmentIds: [...files.tileIds] }, rev: revOf(id), chips: sent };
     const pulled = take();
-    files.sent(into ? [] : parts);
-    const back = carry(sent, msg);
-    handOff(id, sent, msg, () => go(pulled, back), (reply) => {
-      restoreChips(id, msg, sent);
-      files.restore(tiles);
+    files.sent(into ? [] : sub.draft.parts);
+    const back = carry(sent, msg, pulled, sub);
+    // Refused, its words, files and chips come back above what's typed since, Rust's give-back or not [D363].
+    handOff(id, sent, msg, () => go(pulled, back, sub), (reply) => {
       editing.current ??= pulled;
-      // The refused words go back above anything typed meanwhile, never over it, as a put-back does [D363].
-      const typed = field.current?.parts() ?? [];
-      field.current?.set(isEmpty({ parts: typed, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...typed]);
-      setEmpty(isEmpty({ parts, attachmentIds: [] }) && isEmpty({ parts: typed, attachmentIds: [] }));
-      setError(failure(reply));
-    }, into);
+      takeBack(run, id, { cid: msg, ...sub.draft, chips: sent, error: failure(reply) });
+    }, into, into ? [] : draftArgs(sub.draft, sub.rev));
   };
-  const now = (message: string, steer = false, cid = newId(), parts?: string) => {
-    const entry: Sent = { cid, text: message, parts, steer, at: Date.now() };
+  const now = (message: string, steer = false, cid = newId(), parts?: string, sub?: Sub) => {
+    const entry: Sent = { cid, text: message, parts, steer, at: Date.now(), ...sub };
     onSent?.(entry.cid);
     setSent(id, (list) => [...list, entry]);
     deliver(run, id, entry);
@@ -216,6 +229,9 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (!waits) onSent?.(qid);
   };
   const edit = (qid: string) => {
+    // One not added goes above what's typed, as a message given back [D363].
+    const lost = uncertain.find(qid);
+    if (lost) return takeBack(run, id, { cid: qid, ...lost.draft });
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
     const { parts: draft, to: worker, shell: command } = row?.queue?.items.find((each) => each.id === qid) ?? {};
@@ -255,6 +271,18 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     const parts = body(rest, tiles, chips);
     going(chips, made.cid, (pulled) => sendAsNew(id, text, pulled?.qid, made, parts), made.id);
   };
+  // A message Rust gave back goes above what's typed since, never over it, with its files [D363].
+  useEffect(() =>
+    onGiven(id, (back) => {
+      const typed = field.current?.parts() ?? [];
+      const parts = isEmpty({ parts: typed, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...typed];
+      field.current?.set(parts);
+      files.restore(back.attachmentIds);
+      setEmpty(isEmpty({ parts, attachmentIds: back.attachmentIds }));
+      if (back.error) setError(back.error);
+      return { parts, attachmentIds: [...new Set([...back.attachmentIds, ...files.tileIds])] };
+    }),
+  );
   usePutBack(id, (message, above, draft, swap) => {
     const swapped = swap && swapWords(field.current?.parts() ?? [], swap.was, swap.now);
     if (swapped) {
@@ -324,11 +352,11 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     }
     const msg = (mode === "queue" && editing.current?.qid) || newId();
     const draft = body(parts, tiles, chips);
-    going(chips, msg, (pulled, back) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, draft) : sendNow(message, pulled, mode === "steer", msg, draft)));
+    going(chips, msg, (pulled, back, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, back, draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
   };
   // Sent at once or steered, an edited message's kept copy goes.
-  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string, parts?: string) => {
-    now(message, steer, cid, parts);
+  const sendNow = (message: string, pulled: typeof editing.current, steer = false, cid?: string, parts?: string, sub?: Sub) => {
+    now(message, steer, cid, parts, sub);
     if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
   };
   const changed = (blank: boolean) => {
@@ -365,8 +393,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
             onResume={resume}
             onSteer={steerQueued}
-            onRemove={(qid) => act({ kind: "remove", qid }, ["remove", qid])}
+            onRemove={(qid) => (uncertain.find(qid) ? uncertain.drop(qid) : act({ kind: "remove", qid }, ["remove", qid]))}
             onEdit={edit}
+            onAddAgain={(qid) => {
+              const lost = uncertain.find(qid)!;
+              const sub = { draft: lost.draft, rev: null, chips: [] };
+              dropUncertain(id, qid);
+              queue(lost.text, qid, undefined, carry([], qid, null, sub), lost.parts, sub);
+            }}
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
@@ -414,14 +448,14 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
           onSendNow={() => {
             if (asking !== null) {
               const [text, msg, draft] = [asking, newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-              going(askingChips.current, msg, (pulled) => sendNow(text, pulled, false, msg, draft));
+              going(askingChips.current, msg, (pulled, _, sub) => sendNow(text, pulled, false, msg, draft, sub));
             }
             setAsking(null);
           }}
           onKeepPaused={() => {
             if (asking !== null) {
               const [text, msg, draft] = [asking, editing.current?.qid ?? newId(), body(field.current?.parts() ?? [], files.tiles(), askingChips.current)];
-              going(askingChips.current, msg, (pulled, back) => queue(text, msg, pulled?.slot, back, draft));
+              going(askingChips.current, msg, (pulled, back, sub) => queue(text, msg, pulled?.slot, back, draft, sub));
             }
             setAsking(null);
           }}

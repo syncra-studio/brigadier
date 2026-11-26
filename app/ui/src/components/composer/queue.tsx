@@ -18,12 +18,13 @@ import { RailItem } from "./rail";
 /**
  * A message waiting for the running turn, as Rust holds it. PROPOSED to the owning runs. `local`: just sent,
  * not yet confirmed (its actions wait); `deciding`: the session is judging whether it joins the work in
- * progress; `delivered`: the session has it, so it can't be pulled back to edit.
+ * progress; `delivered`: the session has it, so it can't be pulled back to edit. `uncertain`: its add's reply never
+ * came, so it may not be there; `unadded`: Rust answered without it (Add again, Edit). PROPOSED.
  */
 export type QueuedMessage = {
   id: string;
   draft: Draft;
-  state: "local" | "queued" | "deciding" | "delivered";
+  state: "local" | "queued" | "deciding" | "delivered" | "uncertain" | "unadded";
   /** Another session's message: who sent it (null once that session is gone). It's never the user's to edit. */
   peer?: { title: string | null };
   /** The user's message for one of the session's workers, held until its turn is over: that worker's name; `ended`:
@@ -85,6 +86,7 @@ export function QueueCard({
   onEdit,
   onToSession,
   onMove,
+  onAddAgain,
 }: {
   items: readonly QueuedMessage[];
   paused?: boolean;
@@ -104,6 +106,8 @@ export function QueueCard({
   onToSession: (id: string) => void;
   /** Moves it to `to` in the new order; settles when Rust has it. */
   onMove: (id: string, to: number) => Promise<unknown> | void;
+  /** A message not added goes again under its id. */
+  onAddAgain?: (id: string) => void;
 }) {
   // The order the user made, held by id until every move has settled, so Rust's order never undoes one in flight.
   const [held, setHeld] = useState<{ order: readonly string[]; moving: number } | null>(null);
@@ -143,7 +147,7 @@ export function QueueCard({
               key={item.id}
               item={item}
               index={index}
-              draggable={items.length > 1 && item.state !== "local"}
+              draggable={items.length > 1 && !["local", "uncertain", "unadded"].includes(item.state)}
               last={shown.length - 1}
               steer={steer}
               canEdit={canEdit}
@@ -152,6 +156,7 @@ export function QueueCard({
               onEdit={onEdit}
               onToSession={onToSession}
               onMove={move}
+              onAddAgain={onAddAgain}
             />
           ))}
         </ol>
@@ -194,6 +199,7 @@ function QueueRow({
   onEdit,
   onToSession,
   onMove,
+  onAddAgain,
 }: {
   item: QueuedMessage;
   index: number;
@@ -207,8 +213,11 @@ function QueueRow({
   onEdit: (id: string) => void;
   onToSession: (id: string) => void;
   onMove: (id: string, to: number) => void;
+  onAddAgain?: (id: string) => void;
 }) {
   const local = item.state === "local";
+  const unadded = item.state === "unadded";
+  const lost = unadded || item.state === "uncertain";
   const deciding = item.state === "deciding";
   const { ref, handleRef, isDragging, isDropping } = useSortable({ id: item.id, index, disabled: !draggable });
   // Grabbed, the grip stays up until the drop or Esc has settled, wherever the pointer goes (D127).
@@ -263,7 +272,9 @@ function QueueRow({
       </span>
       <Words draft={item.draft} shell={item.shell} />
       {item.peer && <FromPeer title={item.peer.title} />}
-      {deciding ? (
+      {lost ? (
+        <span className="shrink-0 text-xs text-muted-foreground">{unadded ? "Not added" : "May not have been added"}</span>
+      ) : deciding ? (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
           Deciding
         </span>
@@ -273,7 +284,12 @@ function QueueRow({
         item.to && <ToWorker name={item.to.name} />
       )}
       {/* One for a worker steers into that worker's turn, while it has one. */}
-      {(steer || item.to) && !item.to?.ended && !item.shell && (
+      {unadded && onAddAgain && (
+        <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onAddAgain(item.id)}>
+          Add again
+        </Button>
+      )}
+      {(steer || item.to) && !item.to?.ended && !item.shell && !lost && (
         <TooltipIconButton
           tooltip="Submit without interrupting the model"
           side="top"
@@ -294,7 +310,7 @@ function QueueRow({
           <DotsHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={!canEdit || local || item.state === "delivered" || !!item.peer} onClick={() => onEdit(item.id)}>
+          <DropdownMenuItem disabled={!unadded && (!canEdit || local || lost || item.state === "delivered" || !!item.peer)} onClick={() => onEdit(item.id)}>
             <EditPencil />
             Edit
           </DropdownMenuItem>

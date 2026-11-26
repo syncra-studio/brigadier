@@ -107,14 +107,14 @@ export const dropChips = (session: string, ids: readonly string[]) => {
 
 /**
  * Hands `sent` to message `msg` (going to session `into`) in Rust, then runs `go`; with none, `go` runs at once. If
- * Rust couldn't take them nothing is sent, and `refused` says why.
+ * Rust couldn't take them nothing is sent, and `refused` says why; `draft` (`--draft`), Rust gave the message back.
  */
-export function handOff(session: string, sent: readonly Chip[], msg: string, go: () => void, refused: (reply: Record<string, any>) => void, into = session): void {
+export function handOff(session: string, sent: readonly Chip[], msg: string, go: () => void, refused: (reply: Record<string, any>) => void, into = session, draft: string[] = []): void {
   const before = handing.get(session);
   // Messages go in the order they were sent [D237]: one without chips waits for an earlier one's handover.
   if (sent.length === 0 && !before) return go();
   const next = (before ?? Promise.resolve()).then(() =>
-    sent.length === 0 ? go() : tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply))),
+    sent.length === 0 ? go() : tell(session, ["take", msg, ...(into === session ? [] : ["--in", into]), ...draft, ...sent.map((chip) => chip.id)]).then((reply) => (reply.ok ? go() : refused(reply))),
   );
   handing.set(session, next);
   void next.finally(() => handing.get(session) === next && handing.delete(session));
@@ -126,11 +126,17 @@ export const leaveChips = (session: string, sent: readonly Chip[]) => {
   set(session, (chips.get(session) ?? NONE).filter((chip) => !sent.some((each) => each.id === chip.id)));
 };
 
-/** Puts back chips a send couldn't take, before any added since. */
-export const restoreChips = (session: string, msg: string, back: readonly Chip[]) => {
+/** Chips waiting again, before any added since: Rust has them back already. */
+export const chipsBack = (session: string, back: readonly Chip[]) => {
   if (back.length === 0) return;
   for (const chip of back) gone.delete(chip.id);
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
+};
+
+/** Puts back chips a send couldn't take, before any added since. */
+export const restoreChips = (session: string, msg: string, back: readonly Chip[]) => {
+  if (back.length === 0) return;
+  chipsBack(session, back);
   void tell(session, ["back", msg]);
 };
 
