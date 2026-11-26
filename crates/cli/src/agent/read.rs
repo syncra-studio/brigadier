@@ -96,16 +96,32 @@ fn range(data: &Path, id: &str, row: &Value, at: &str, to: &str, user: bool) -> 
         let raw = format!("brigadier read {id}#{at} --raw");
         one = format!("{}…\n[cut: {raw} writes it whole]\n\n", start(&one, page));
         text += &one;
+        // Measured as sent, escapes and all: each text shrinks till its message fits what's left,
+        // and once nothing fits, the rest is the --raw file's alone.
         let mut left = page;
         for e in group {
-            // shortcut: 160 bytes a message for its fields and escapes; measure each if texts run past it.
-            let words = start(&e.text, left.saturating_sub(160));
-            left = left.saturating_sub(words.len() + 160);
-            let mut m = msg(e, words);
-            if words.len() < e.text.len() {
-                m["cut"] = raw.as_str().into();
+            let mut words = start(&e.text, left);
+            let m = loop {
+                let mut m = msg(e, words);
+                if words.len() < e.text.len() {
+                    m["cut"] = raw.as_str().into();
+                }
+                let bytes = m.to_string().len() + 1;
+                if bytes <= left || words.is_empty() {
+                    break m;
+                }
+                // In proportion: escapes make a byte of text cost more than one.
+                words = start(words, words.len() * left / bytes);
+            };
+            let bytes = m.to_string().len() + 1;
+            if bytes > left {
+                break;
             }
+            left -= bytes;
             list.push(m);
+        }
+        if let Some(m) = list.last_mut() {
+            m["cut"] = raw.as_str().into();
         }
     }
     if text.is_empty() {
