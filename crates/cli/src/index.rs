@@ -336,8 +336,11 @@ impl Index {
             row["noteChat"] = json!(e.spec.as_ref().is_some_and(|s| s.opts.contains_key("note"))); // in its note's tab, not the sidebar [D281]
             row["limits"] = json!(f.fold.limits); // its CLI's newest usage report, for the store [D2039]
             row["context"] = json!(f.fold.context); // how full its context is; a rebirth due now below [D88, D108]
-            let lost = state == "undelivered"
-                && (f.fold.turns.first()).is_some_and(|t| t.switch["why"] == "cut");
+            // A cut's input lost before its CLI read it, or a summary turn whose host died: the new
+            // host ends that one failed, never sent again, and the renewal goes ahead [rev 3 §2.2].
+            let first = f.fold.turns.first();
+            let lost = (state == "undelivered" && first.is_some_and(|t| t.switch["why"] == "cut"))
+                || (state == "interrupted" && first.is_some_and(|t| t.origin == "summary"));
             let due = e.spec.as_ref().and_then(|s| core::rebirth::due(s, &f.fold));
             row["rebirth"] = json!(due.or(lost.then_some("cut")));
             // A turn the network cut, resumed by itself once its agent's API answers [D339].
