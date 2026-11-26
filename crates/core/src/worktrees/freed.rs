@@ -40,10 +40,10 @@ fn based(dir: &Path, owned: &Owned, branch: &str) -> bool {
     kept::others(dir).any(|o| o.repo == owned.repo && o.base == branch && live(&o).is_some())
 }
 
-/// Whether the session's kept PRs (`prs.json`) have an open one from `branch`, as its last read saw.
+/// Whether the record's kept PRs (`prs.json`, a claim's beside it) have an open one from `branch`,
+/// as its last read saw.
 fn open_pr(dir: &Path, branch: &str) -> bool {
-    let session = (dir.ancestors().find(|d| d.join("session.json").exists())).unwrap_or(dir);
-    (crate::host::kept(session)["prs"].as_array()).is_some_and(|prs| {
+    (crate::host::kept(dir)["prs"].as_array()).is_some_and(|prs| {
         prs.iter()
             .any(|p| p["branch"] == branch && p["repo"].is_null() && p["state"] == "open")
     })
