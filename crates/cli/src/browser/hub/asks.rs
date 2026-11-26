@@ -320,8 +320,8 @@ fn said(reason: &str) -> String {
 }
 
 /// Asks the user about an action on a card in session `me`'s thread and waits for the answer.
-/// Ok on a yes, the yes kept for the call, or given back for the retry alone when a yes for the
-/// session covers it; else what the agent hears.
+/// Ok(None) on the user's yes on this card, the yes kept for the call; Ok(Some) given back for the
+/// retry alone when a yes for the session covers it, with no card; else what the agent hears.
 pub(super) fn ask(
     data: &Path,
     me: &str,

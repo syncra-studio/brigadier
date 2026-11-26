@@ -273,6 +273,8 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
     // Asked first, the call goes on once the user says yes; the page may have moved by then, and
     // then it asks again.
     let mut next = None;
+    // The user said yes on a card while this call waited: the agent hears it was asked.
+    let mut asked = false;
     for _ in 0..3 {
         let mut sent = op.clone();
         // A yes the user gave this very call goes with it, taken: one yes lets one call through.
@@ -290,14 +292,24 @@ pub fn agent(data: &Path, me: &str, args: &[String], here: &dyn Fn() -> bool) ->
             }
             Some("needsApproval") => {
                 match asks::ask(data, me, &op, &result, key.clone(), granted, here) {
-                    Ok(yes) => next = yes,
+                    Ok(yes) => (asked, next) = (asked || yes.is_none(), yes),
                     Err(reply) => return reply,
                 }
                 continue;
             }
             _ => {}
         }
-        return text::reply(data, me, &w, &op, result);
+        let mut reply = text::reply(data, me, &w, &op, result);
+        match reply["text"].as_str().filter(|_| asked) {
+            Some(t) => {
+                reply["text"] =
+                    format!("The user was asked first, on a card, and said yes.\n{t}").into()
+            }
+            // `--json`: the same, as a field.
+            None if asked && reply["action"].is_string() => reply["userSaidYes"] = true.into(),
+            None => {}
+        }
+        return reply;
     }
     refuse(
         "The page kept asking for the user's yes again; nothing more was done. Read it and try once more.",
