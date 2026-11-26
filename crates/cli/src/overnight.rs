@@ -206,7 +206,7 @@ fn end(o: &mut Overnight, user: bool, why: Option<&str>) {
         .collect();
     o.notes.push(
         json!({"id": format!("report:{since}"), "row": {"moment": "report", "at": now,
-        "ms": now.saturating_sub(since), "summary": summary, "facts": said.facts, "url": said.url,
+        "ms": now.saturating_sub(since), "back": user, "summary": summary, "facts": said.facts, "url": said.url,
         "done": done, "left": left, "decided": decided}}),
     );
     o.morning = Some(core_night::Morning {

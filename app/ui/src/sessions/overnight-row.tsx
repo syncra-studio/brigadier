@@ -78,7 +78,7 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
   return (
     <>
       <ThreadLine icon={Sun}>
-        Back at {hhmm(item.at)}, after {duration(item.ms)}
+        {item.back === false ? "Ended" : "Back"} at {hhmm(item.at)}, after {duration(item.ms)}
       </ThreadLine>
       <SettingsCard className="mt-5 rounded-overlay">
         <div className="sunrise flex flex-col gap-3 px-4 pt-6 pb-5">

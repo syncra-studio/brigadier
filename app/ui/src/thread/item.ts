@@ -306,6 +306,8 @@ export type Item = Base &
         moment: "report";
         at: number;
         ms: number;
+        /** The user's I'm back ended it; false where the night ended by itself. Absent on an older report: theirs. */
+        back?: boolean;
         summary: string;
         /** The facts under the summary, each in a few words: the diff, the research, the usage spent. */
         facts: string[];
