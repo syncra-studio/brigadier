@@ -22,20 +22,23 @@ pub struct Reviews {
     pub done: Vec<Value>,
 }
 
-/// The number on the last line saying `key` ("findings: 4", any case); none when it isn't said
-/// [D74].
+/// The number said after `key` on the last line that says one ("Findings: 4", "**Findings:** 4",
+/// any case); none when no line does [D74]. A later line naming the key with no number ("no
+/// findings: all passed") doesn't hide it.
 pub fn count(text: &str, key: &str) -> Option<u64> {
     let text = text.to_lowercase();
-    let rest = text
-        .lines()
-        .rev()
-        .find_map(|l| l.split_once(key).map(|(_, r)| r))?;
-    let digits: String = rest
-        .trim_start()
-        .chars()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
+    let key = key.trim_end_matches(':');
+    text.lines().rev().find_map(|l| {
+        let rest = l.split_once(key)?.1;
+        // Markdown's marks around the key, but its colon said.
+        let marks = |c: char| matches!(c, '*' | '_' | '`' | ':' | ' ' | '\t');
+        let num = rest.trim_start_matches(marks);
+        if !rest[..rest.len() - num.len()].contains(':') {
+            return None;
+        }
+        let digits: String = num.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    })
 }
 
 /// "‹head› ‹model›: 4 findings, 3 fixed, 1 rejected", each count only where it was said.
