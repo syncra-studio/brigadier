@@ -83,7 +83,7 @@ export function SwitchRow({ item }: { item: Switch }) {
         change={row}
         from={named(item.account ?? "")}
         actions={actions}
-        carries={item.state === "limit" ? session?.reset : null}
+        carries={live ? session?.reset : null}
         onRetry={() => (pending ? go(pending.account, pending.to, pending.auto) : go(undefined, item.to ?? "", true))}
       />
       {live && agents === undefined && <ErrorLine error={error} />}
