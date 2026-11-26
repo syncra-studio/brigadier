@@ -279,7 +279,13 @@ function switchLine(change: Switch, state: Switch["state"], from: string, action
         </>
       );
     case "over":
-      return status;
+      // History: no "try again", which a carry-on or a later message has settled (proposed) [C54].
+      return (
+        <>
+          <Warning className="size-icon-sm shrink-0" />
+          <span>{hit}</span>
+        </>
+      );
   }
 }
 
