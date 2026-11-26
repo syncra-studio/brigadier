@@ -225,6 +225,13 @@ fn main() -> io::Result<()> {
             Err(e) => eprintln!("brigadierd: {e}"),
         }
         switch::auto_switch(&data, &index.rows, &mut seen);
+        // A switch begun shows at once, one that failed tells its limit, whatever the log says.
+        let again: Vec<Value> = (switch::again().iter())
+            .filter_map(|id| index.rows.get(id).cloned())
+            .collect();
+        if !again.is_empty() {
+            publish(&state, &data, again, vec![], None);
+        }
         switch::rebirth(&data, &index.rows);
         switch::reconnect(&data, &index.rows);
         brigadier::rewind::ends(&data, &index.rows, &mut finished);
@@ -329,7 +336,14 @@ fn stop(data: &Path, pid: libc::pid_t) {
 /// subscriber. Requests that came before the first pass get their snapshot now.
 // shortcut: reads `projects.json` every pass, a small file (proposed); stat it first if many
 // projects ever make that show in a profile.
-fn publish(state: &Shared, data: &Path, rows: Vec<Value>, gone: Vec<String>, lid: Option<Value>) {
+fn publish(
+    state: &Shared,
+    data: &Path,
+    mut rows: Vec<Value>,
+    gone: Vec<String>,
+    lid: Option<Value>,
+) {
+    switch::hold(data, &mut rows);
     let mut s = state.lock().unwrap();
     let (mut projects, mut projects_gone) = (vec![], vec![]);
     match projects::list(data) {

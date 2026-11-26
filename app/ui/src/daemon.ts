@@ -19,6 +19,8 @@ export type Row = {
   resets: number | null;
   sent: number;
   finished: number;
+  /** The daemon's own switch of its limit is due or under way: it stays working meanwhile [C6, D51] (proposed). */
+  switching?: boolean;
   project: string | null;
   /** When it was pinned (ms), or null [D185]. */
   pinned?: number | null;

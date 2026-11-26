@@ -17,6 +17,8 @@ export type SessionRow = {
   mark: Mark;
   /** When a usage limit resets (ms), if its CLI said; null otherwise [D74]. */
   resets: number | null;
+  /** The daemon's own switch of its limit is due or under way (proposed) [C6, D51]. */
+  switching?: boolean;
   /** The user's last send, else when the session was made (ms): the list's order. */
   sent: number;
   /** Its last activity, the user's or an agent's (ms): View's other order [D655]. */
@@ -70,6 +72,8 @@ const resetAhead = (resets: number | null): resets is number => resets !== null 
 /** What a row's mark means, in plain words ("Needs you · sign-in", "Usage limit · resets 14:10"); null for nothing. */
 export function statusWords(row: SessionRow): string | null {
   if (row.mark === "unread") return MARK_WORDS.unread;
+  // A worker may move to another model, not only another account [D2037].
+  if (row.switching) return "Switching automatically";
   if (row.state === "limited") {
     // Spinning, an automatic switch waits it out [D51]; otherwise it's stuck until you act.
     const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";

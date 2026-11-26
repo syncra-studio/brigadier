@@ -3,45 +3,122 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
 /// Moves a session at its limit on by itself, only where the user turned that on [D51]. Off costs
 /// one small read a pass while a session is at its limit, and does nothing else. The switch runs off this loop; the host and
-/// the limit's fixed cid keep it to one, whoever else acts on the same limit [D54, D82].
+/// the limit's fixed cid keep it to one, whoever else acts on the same limit.
 pub fn auto_switch(data: &Path, rows: &BTreeMap<String, Value>, seen: &mut HashMap<String, Value>) {
     seen.retain(|id, _| rows.contains_key(id));
     let mut settings = None; // read once a pass, and only with a session at its limit
     for (id, row) in rows {
-        // A worker's limit moves follow its own routing row, whatever the session settings
-        // [D2037, D2041]; nothing else moves it.
-        let worker = !row["worker"].is_null();
-        let Some(why) = row["switchable"]
-            .as_str()
-            .filter(|w| !worker || *w == "limited")
-        else {
+        let Some(why) = switchable(row) else {
             seen.remove(id);
             continue;
         };
         let settings = settings.get_or_insert_with(|| brigadier::switch_settings(data));
         // Asked again at a new limit or a settings change; a failure's own note isn't one.
-        let at = json!([row["finished"], settings]);
+        let at = key(row, settings);
         if seen.get(id) == Some(&at) {
             continue;
         }
-        seen.insert(id.clone(), at);
-        if !worker && !brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why) {
+        seen.insert(id.clone(), at.clone());
+        if !moves(data, row, why) {
             continue;
         }
+        // This attempt is the row's now, whatever an earlier one still running ends with; its row
+        // goes out again with the hold, also when nothing in it changed (a settings change).
+        let n = ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+        SETTLED
+            .lock()
+            .unwrap()
+            .insert(id.clone(), (n, at.clone(), None));
+        AGAIN.lock().unwrap().push(id.clone());
         let (data, id) = (data.to_path_buf(), id.clone());
         thread::spawn(move || {
             let args = ["switch", &id, "--auto"].map(String::from);
-            match brigadier::run(&data, &args) {
-                Ok(r) if r["ok"] == true => {}
-                Ok(r) => eprintln!("brigadierd: switch {id}: {}", r["error"]),
-                Err(e) => eprintln!("brigadierd: switch {id}: {e}"),
+            let ok = match brigadier::run(&data, &args) {
+                Ok(r) if r["ok"] == true => true,
+                Ok(r) => {
+                    eprintln!("brigadierd: switch {id}: {}", r["error"]);
+                    false
+                }
+                Err(e) => {
+                    eprintln!("brigadierd: switch {id}: {e}");
+                    false
+                }
+            };
+            if let Some(e) = SETTLED.lock().unwrap().get_mut(&id).filter(|e| e.0 == n) {
+                e.2 = Some(ok);
+            }
+            if !ok {
+                AGAIN.lock().unwrap().push(id);
             }
         });
+    }
+}
+
+/// Why a row's limit could move on: a worker's only at its usage limit, by its own routing row
+/// whatever the session settings [D2037, D2041]; nothing else moves it.
+fn switchable(row: &Value) -> Option<&str> {
+    let worker = !row["worker"].is_null();
+    (row["switchable"].as_str()).filter(|w| !worker || *w == "limited")
+}
+
+/// Whether the daemon moves this limit on itself.
+fn moves(data: &Path, row: &Value, why: &str) -> bool {
+    !row["worker"].is_null() || brigadier::wants(data, row["backend"].as_str().unwrap_or(""), why)
+}
+
+/// One limit as `auto_switch` looks at it: its turn's end and the switching settings.
+fn key(row: &Value, settings: &Value) -> Value {
+    json!([row["finished"], settings])
+}
+
+/// Each session's latest automatic switch: its number, its key, and once it settled whether it
+/// moved on.
+static SETTLED: Mutex<BTreeMap<String, Attempt>> = Mutex::new(BTreeMap::new());
+type Attempt = (u64, Value, Option<bool>);
+static ATTEMPTS: AtomicU64 = AtomicU64::new(0);
+/// Sessions whose automatic switch started or failed since the loop last asked: their rows go out again.
+static AGAIN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The sessions whose automatic switch started or failed since the last call, to publish again:
+/// neither a settings change nor a refusal that writes nothing to the log changes their rows.
+pub fn again() -> Vec<String> {
+    std::mem::take(&mut *AGAIN.lock().unwrap())
+}
+
+/// While the daemon's own switch of a limit is due or under way, its row says so and stays
+/// working, and its "stopped with an error" notice waits: told once if the switch fails, never if
+/// the work goes on (proposed) [C6, D51]. A question or a sign-in still goes out [D2028].
+pub fn hold(data: &Path, rows: &mut [Value]) {
+    let mut settings = None;
+    for row in rows {
+        let Some(why) = switchable(row).map(String::from) else {
+            continue;
+        };
+        if !moves(data, row, &why) {
+            continue;
+        }
+        let settings = settings.get_or_insert_with(|| brigadier::switch_settings(data));
+        let id = row["id"].as_str().unwrap_or("");
+        let settled = SETTLED.lock().unwrap().get(id).cloned();
+        if settled.is_some_and(|(_, at, ok)| ok == Some(false) && at == key(row, settings)) {
+            continue;
+        }
+        // Kept, so an app opening now knows it as told before; it goes out once it isn't held.
+        if row["notice"]["kind"] == "failed" {
+            row["notice"]["held"] = true.into();
+        }
+        if row["mark"] == "amber" {
+            row["mark"] = "working".into();
+        }
+        if row["state"] != "waiting_answer" {
+            row["switching"] = true.into();
+        }
     }
 }
 

@@ -12,7 +12,7 @@ import { getSettings, setSetting, useSettings } from "./api";
  * rows, goes as one that needs you, and is sent once per discharge even when the app opens after it.
  */
 
-type Notice = { id: string; kind: "question" | "approval" | "sign_in" | "done" | "failed"; text: string | null };
+type Notice = { id: string; kind: "question" | "approval" | "sign_in" | "done" | "failed"; text: string | null; held?: boolean };
 
 const seen = new Set<string>();
 let started = false;
@@ -66,6 +66,8 @@ export function useNotices(open: string | null): void {
       if (!notice) continue;
       const key = `${row.id} ${notice.id}`;
       if (seen.has(key)) continue;
+      // Held while Rust's automatic switch may still carry the work on: it goes once it isn't.
+      if (notice.held && started) continue;
       seen.add(key);
       // What was already there when the app opened was told before, or happened while it was shut.
       if (started) deliver(row, notice, open);
