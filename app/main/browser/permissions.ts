@@ -5,7 +5,7 @@ import type { Session, WebContents } from "electron";
 
 import { handleFromApp, isAppPage } from "./appPage";
 import { openOsSettings, type OsDevice, refusedByOs } from "./browserPermissionsOs";
-import { answerFromOs, cardAllows, type CardAnswer, checkAllows, decideRequest } from "./browserPermissionsRules";
+import { answerFromOs, cardAllows, type CardAnswer, checkAllows, decideRequest, type LocationWhy } from "./browserPermissionsRules";
 import { profileOfStorage, type SiteAsk, type SiteChoice } from "./profiles";
 
 const ALLOWED = new Set<string>(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
@@ -15,6 +15,8 @@ type Question = { profileId: string; guest: WebContents; origin: string; asked: 
 let nextQuestion = 1;
 const questions = new Map<number, Question>();
 const watched = new WeakSet<WebContents>();
+/** The site each tab was last told about a location refusal with no card (a store finder's timer): once, until it leaves. */
+const toldLocation = new WeakMap<WebContents, string>();
 
 /** Each profile's Allow while visiting the site and Don't allow, until Brigadier quits: nothing saves them, as Settings has no page for them [D731]. */
 const siteAnswers = new Map<string, Map<string, SiteChoice>>();
@@ -29,15 +31,19 @@ function originOf(url: string): string | null {
   }
 }
 
+/** Tells the tab why the site can't have it; not once the tab has left the site (macOS may answer minutes later). */
+function tell(guest: WebContents, origin: string, refused: OsDevice[], why: LocationWhy | undefined, carded: boolean): void {
+  if (guest.isDestroyed() || originOf(guest.getURL()) !== origin) return;
+  if (!carded && refused.includes("location")) {
+    if (toldLocation.get(guest) === origin) return;
+    toldLocation.set(guest, origin);
+  }
+  guest.hostWebContents?.send("brigadier:guest-permission-refused", { from: guest.id, origin, refused, ...(why ? { why } : {}) });
+}
+
 /** The system's own question comes only after the person's yes to ours: the first thing they see is ours. */
-function grant(guest: WebContents, origin: string, asked: SiteAsk, answer: (allowed: boolean) => void): void {
-  void answerFromOs({
-    refusedByOs: () => refusedByOs(asked),
-    tell: (refused) => {
-      if (!guest.isDestroyed()) guest.hostWebContents?.send("brigadier:guest-permission-refused", { from: guest.id, origin, refused });
-    },
-    answer,
-  });
+function grant(guest: WebContents, origin: string, asked: SiteAsk, answer: (allowed: boolean) => void, carded: boolean): void {
+  void answerFromOs({ refusedByOs: () => refusedByOs(asked), tell: (refused, why) => tell(guest, origin, refused, why, carded), answer });
 }
 
 function dropQuestions(guest: WebContents, unlessOrigin: string | null): void {
@@ -54,7 +60,9 @@ function watchGuest(guest: WebContents): void {
   watched.add(guest);
   guest.on("did-start-navigation", (details) => {
     if (!details.isMainFrame) return;
-    dropQuestions(guest, originOf(details.url));
+    const to = originOf(details.url);
+    if (toldLocation.get(guest) !== to) toldLocation.delete(guest);
+    dropQuestions(guest, to);
   });
   guest.once("destroyed", () => dropQuestions(guest, null));
 }
@@ -69,20 +77,20 @@ function request(permission: string, profileId: string, guest: WebContents, requ
     answer(false);
     return;
   }
+  watchGuest(guest);
   if (decided === "no-location") {
-    host.send("brigadier:guest-permission-refused", { from: guest.id, origin, refused: ["location"] });
+    tell(guest, origin, ["location"], undefined, false);
     answer(false);
     return;
   }
   if (decided === "grant") {
-    grant(guest, origin, asked, answer);
+    grant(guest, origin, asked, answer, false);
     return;
   }
   if (decided === "deny") {
     answer(false);
     return;
   }
-  watchGuest(guest);
   const number = nextQuestion++;
   questions.set(number, { profileId, guest, origin, asked, answer });
   host.send("brigadier:guest-permission", { from: guest.id, request: number, origin, ...asked });
@@ -100,7 +108,7 @@ export function installPermissionAnswers(): void {
       kept.set(origin, { ...kept.get(origin), ...Object.fromEntries(devices.map((device) => [device, choice === "visiting" ? "allow" : "block"])) });
       siteAnswers.set(profileId, kept);
     }
-    if (cardAllows(choice)) grant(guest, origin, asked, answer);
+    if (cardAllows(choice)) grant(guest, origin, asked, answer, true);
     else answer(false);
   });
   handleFromApp("brigadier:permission-open-settings", (_event, device: OsDevice) => openOsSettings(device));

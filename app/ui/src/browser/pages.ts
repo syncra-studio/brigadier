@@ -29,12 +29,13 @@ export type BrowserPage = {
   zoom?: number;
   /** The page's question for the camera, microphone or location, waiting for an answer. */
   asking?: BrowserAsking | null;
-  /** What the system refused or has off, after the person allowed it here. */
-  osRefused?: { origin: string; refused: OsRefused[] } | null;
+  /** What the system refused or has off, after the person allowed it here; for location, why when it isn't a plain no. */
+  osRefused?: { origin: string; refused: OsRefused[]; why?: LocationWhy } | null;
 };
 
 export type BrowserAsking = { request: number; origin: string; camera: boolean; microphone: boolean; location?: boolean };
 export type OsRefused = "camera" | "microphone" | "location";
+export type LocationWhy = "off" | "restricted" | "unanswered" | "unavailable";
 export type PermissionAnswer = "once" | "visiting" | "never" | "dismiss";
 
 const pages = new Map<string, BrowserPage>();
@@ -154,7 +155,7 @@ export async function openPage(owner: string, id: string, url: string, bounds: B
       } else if (event.type === "permission") {
         const { request, origin, camera, microphone, location } = event;
         update(id, { asking: { request, origin, camera, microphone, ...(location ? { location } : {}) } });
-      } else if (event.type === "permissionRefused") update(id, { osRefused: { origin: event.origin, refused: event.refused as OsRefused[] } });
+      } else if (event.type === "permissionRefused") update(id, { osRefused: { origin: event.origin, refused: event.refused as OsRefused[], ...(event.why ? { why: event.why as LocationWhy } : {}) } });
       else if (event.type === "blocked") update(id, { blocked: event.url, loading: false });
       else if (event.type === "failed") update(id, { failed: event.url });
     });

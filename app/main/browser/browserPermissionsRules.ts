@@ -29,21 +29,48 @@ export function checkAllows(origin: string | null, asked: SiteAsk, site: SiteCho
   return origin !== null && siteAnswer(site, asked) === "grant";
 }
 
+export type LocationStatus = "off" | "undetermined" | "denied" | "restricted" | "allowed" | "unavailable";
+/** Why macOS gave no location, for the tab's words; a plain refusal (denied) has none. */
+export type LocationWhy = "off" | "restricted" | "unanswered" | "unavailable";
+
+/**
+ * macOS's answer about location, asked when it has none yet (the old app's wait, D516): Location Services is read once,
+ * then only the app's answer, every `readMs` until `answerMs`. Still undetermined then is unanswered.
+ */
+export async function locationRefusal(
+  read: () => LocationStatus,
+  poll: () => LocationStatus,
+  ask: () => void,
+  { answerMs = 120_000, readMs = 250 }: { answerMs?: number; readMs?: number } = {},
+): Promise<LocationWhy | "denied" | null> {
+  let status = read();
+  if (status === "undetermined") {
+    ask();
+    const until = Date.now() + answerMs;
+    while (status === "undetermined" && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, readMs));
+      status = poll();
+    }
+  }
+  if (status === "allowed") return null;
+  return status === "undetermined" ? "unanswered" : status;
+}
+
 export const cardAllows = (choice: CardAnswer): boolean => choice === "once" || choice === "visiting";
 
-/** After the person's yes: a refusal goes to the page at once, and to the tab by name. */
+/** After the person's yes: a refusal goes to the page at once, and to the tab by name, with location's why. */
 export async function answerFromOs<Device extends string>({ refusedByOs, tell, answer }: {
-  refusedByOs: () => Promise<Device[]>;
-  tell: (refused: Device[]) => void;
+  refusedByOs: () => Promise<{ refused: Device[]; why?: LocationWhy }>;
+  tell: (refused: Device[], why?: LocationWhy) => void;
   answer: (allowed: boolean) => void;
 }): Promise<void> {
-  let refused: Device[];
+  let result: { refused: Device[]; why?: LocationWhy };
   try {
-    refused = await refusedByOs();
+    result = await refusedByOs();
   } catch {
     answer(false);
     return;
   }
-  if (refused.length > 0) tell(refused);
-  answer(refused.length === 0);
+  if (result.refused.length > 0) tell(result.refused, result.why);
+  answer(result.refused.length === 0);
 }

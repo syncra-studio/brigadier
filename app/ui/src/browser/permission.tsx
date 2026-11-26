@@ -5,7 +5,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent } from "../components/popover";
 import { X } from "../icons";
 import { Camera, MapPin, Mic } from "../icons/browser";
-import { answerPermission, type BrowserAsking, closeOsRefused, type OsRefused } from "./pages";
+import { answerPermission, type BrowserAsking, closeOsRefused, type LocationWhy, type OsRefused } from "./pages";
 
 const ARM_MS = 500;
 const MAC = window.brigadier?.platform === "darwin";
@@ -80,13 +80,22 @@ export function PermissionPrompt({ id, asking, anchor }: { id: string; asking: B
 
 const REFUSED_NAMES: Record<OsRefused, string> = { camera: "the camera", microphone: "the microphone", location: "location" };
 
+/** Why macOS gave a page no location when it isn't a plain no; only Location Services being off is System Settings' to fix. */
+const LOCATION_WHY: Record<LocationWhy, string> = {
+  off: "Location Services is off on this Mac, so the site can't have your location.",
+  restricted: "This Mac doesn't let Brigadier use location, so the site can't have it.",
+  unanswered: "macOS's location question wasn't answered, so the site can't have it this time.",
+  unavailable: "Brigadier can't get your location on this Mac, so the site can't have it.",
+};
+
 /**
  * After a yes in the card: the system refused, or has off, what the person just allowed. The page hears the
  * refusal too; this says why, and where to change it.
  */
-export function OsRefusedNotice({ id, refused, anchor }: { id: string; refused: { origin: string; refused: OsRefused[] } | null | undefined; anchor: RefObject<HTMLDivElement | null> }) {
+export function OsRefusedNotice({ id, refused, anchor }: { id: string; refused: { origin: string; refused: OsRefused[]; why?: LocationWhy } | null | undefined; anchor: RefObject<HTMLDivElement | null> }) {
   const devices = refused?.refused ?? [];
   const names = devices.map((device) => REFUSED_NAMES[device]).join(" and ");
+  const why = refused?.why;
   return (
     <Popover open={devices.length > 0} onOpenChange={keepOpen(() => closeOsRefused(id))}>
       <PopoverContent
@@ -100,12 +109,12 @@ export function OsRefusedNotice({ id, refused, anchor }: { id: string; refused: 
         className="w-browser-site-info p-3"
       >
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 pt-1 text-label break-words">{MAC ? `macOS isn't giving Brigadier ${names}` : `Brigadier can't get ${names} on this system yet`}, so the site can't have it.</p>
+          <p className="min-w-0 flex-1 pt-1 text-label break-words">{why ? LOCATION_WHY[why] : `${MAC ? `macOS isn't giving Brigadier ${names}` : `Brigadier can't get ${names} on this system yet`}, so the site can't have it.`}</p>
           <TooltipIconButton tooltip="Close" size="icon-xs" onClick={() => closeOsRefused(id)}>
             <X />
           </TooltipIconButton>
         </div>
-        {MAC && (
+        {MAC && (!why || why === "off") && (
           <Button
             className="mt-3 w-full"
             size="sm"

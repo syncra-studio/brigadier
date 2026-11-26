@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 
 import { installBrowserHost } from "./browser/browserHost";
 import { holdForIntro } from "./intro";
+import { type LocationAddon, useLocationAddon } from "./browser/browserPermissionsOs";
 import { serveNotices } from "./notices";
 import { type ScrollAddon, useScrollAddon, watchScrolls } from "./scrolls";
 import { keepOnClose, serveTray } from "./tray";
@@ -56,7 +57,7 @@ protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: t
 // The app's addon (crates/panel), loaded once. Loading it readies the folder picker: the first open panel of a run
 // loads its frameworks, about half a second, paid off the user's click so Choose folder and Change open at once (the
 // old app's warm_folder_picker) [D389]. It also tells Settings what macOS lets notices do [D611].
-let addon: ({ notifications?: () => string | null } & ScrollAddon) | undefined;
+let addon: ({ notifications?: () => string | null } & ScrollAddon & LocationAddon) | undefined;
 function panel(): typeof addon {
   if (addon || process.platform !== "darwin") return addon;
   addon = {};
@@ -482,6 +483,7 @@ app.on("open-file", (event, file) => {
 void app.whenReady().then(() => {
   setMenu();
   serveNotices(panel);
+  useLocationAddon(panel);
   serveTray();
   startDaemon();
   serveUi();

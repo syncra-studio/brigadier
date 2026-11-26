@@ -4,7 +4,9 @@
 //! It also answers `notifications()`: what macOS lets Brigadier's notices do, which only the app's
 //! own process can ask and Electron can't [D611]. And it watches the app's scroll-wheel events
 //! for swiping Back and Forward [D3110]: whether a scroll is a trackpad's (a mouse's wheel is never a
-//! swipe) and when the fingers lift, before any momentum; Electron tells neither.
+//! swipe) and when the fingers lift, before any momentum; Electron tells neither. And it asks macOS
+//! about location for a web page the person allowed (the old app's `location_status` and
+//! `location_ask`) [D516, C68]: Electron never does, and Chromium waits on macOS's answer.
 
 #[cfg(target_os = "macos")]
 mod mac {
@@ -18,6 +20,9 @@ mod mac {
     unsafe extern "C" {}
 
     #[link(name = "UserNotifications", kind = "framework")]
+    unsafe extern "C" {}
+
+    #[link(name = "CoreLocation", kind = "framework")]
     unsafe extern "C" {}
 
     #[link(name = "objc")]
@@ -82,10 +87,13 @@ mod mac {
             send(objc_getClass(c"NSOpenPanel".as_ptr()), c"openPanel");
             watch_scrolls();
             objc_autoreleasePoolPop(pool);
-            let calls: [(&std::ffi::CStr, unsafe extern "C" fn(Id, Id) -> Id); 3] = [
+            let calls: [(&std::ffi::CStr, unsafe extern "C" fn(Id, Id) -> Id); 6] = [
                 (c"notifications", notifications),
                 (c"trackpadScroll", trackpad_scroll),
                 (c"scrollLifts", scroll_lifts),
+                (c"locationStatus", location_status),
+                (c"locationAuthorization", location_authorization),
+                (c"locationAsk", location_ask),
             ];
             for (name, call) in calls {
                 let mut function = std::ptr::null_mut();
@@ -305,6 +313,99 @@ mod mac {
             // macOS may still answer after the wait gives up, and must find it there.
             Box::leak(answer);
             None
+        }
+    }
+
+    fn text(env: Id, words: &std::ffi::CStr) -> Id {
+        let mut value = std::ptr::null_mut();
+        unsafe { napi_create_string_utf8(env, words.as_ptr(), usize::MAX, &mut value) };
+        value
+    }
+
+    /// What macOS says about this app and location, read without asking. Any value it may add later is no yes.
+    unsafe fn authorization() -> &'static std::ffi::CStr {
+        unsafe {
+            let status: unsafe extern "C" fn(Id, Id) -> i32 =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            // The class method, as the old app read it: deprecated since macOS 11, still answered.
+            match status(
+                objc_getClass(c"CLLocationManager".as_ptr()),
+                sel_registerName(c"authorizationStatus".as_ptr()),
+            ) {
+                0 => c"undetermined",
+                1 => c"restricted",
+                2 => c"denied",
+                3 | 4 => c"allowed",
+                _ => c"unavailable",
+            }
+        }
+    }
+
+    /// `locationStatus()`: "unavailable" when the app has no NSLocationUsageDescription (macOS would never
+    /// ask), "off" when Location Services is off for the whole Mac, else `locationAuthorization()`'s.
+    unsafe extern "C" fn location_status(env: Id, _info: Id) -> Id {
+        unsafe {
+            let pool = objc_autoreleasePoolPush();
+            let string: unsafe extern "C" fn(Id, Id, *const c_char) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let lookup: unsafe extern "C" fn(Id, Id, Id) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let key = string(
+                objc_getClass(c"NSString".as_ptr()),
+                sel_registerName(c"stringWithUTF8String:".as_ptr()),
+                c"NSLocationUsageDescription".as_ptr(),
+            );
+            let keyed = !lookup(
+                send(objc_getClass(c"NSBundle".as_ptr()), c"mainBundle"),
+                sel_registerName(c"objectForInfoDictionaryKey:".as_ptr()),
+                key,
+            )
+            .is_null();
+            objc_autoreleasePoolPop(pool);
+            let enabled: unsafe extern "C" fn(Id, Id) -> bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let words = if !keyed {
+                c"unavailable"
+            } else if !enabled(
+                objc_getClass(c"CLLocationManager".as_ptr()),
+                sel_registerName(c"locationServicesEnabled".as_ptr()),
+            ) {
+                c"off"
+            } else {
+                authorization()
+            };
+            text(env, words)
+        }
+    }
+
+    /// `locationAuthorization()`: "undetermined", "restricted", "denied", "allowed" or "unavailable"; read
+    /// while waiting on macOS's question, without asking about Location Services again.
+    unsafe extern "C" fn location_authorization(env: Id, _info: Id) -> Id {
+        text(env, unsafe { authorization() })
+    }
+
+    // The manager the question is asked through, kept for the run: macOS drops a question whose manager is gone.
+    static MANAGER: std::sync::atomic::AtomicPtr<c_void> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+    /// `locationAsk()`: macOS asks the person now if it has no answer yet; it answers nothing back.
+    /// Node calls it on the main thread, which the manager needs; it has no delegate.
+    unsafe extern "C" fn location_ask(env: Id, _info: Id) -> Id {
+        unsafe {
+            let mut manager = MANAGER.load(Ordering::Acquire);
+            if manager.is_null() {
+                manager = send(
+                    send(objc_getClass(c"CLLocationManager".as_ptr()), c"alloc"),
+                    c"init",
+                );
+                MANAGER.store(manager, Ordering::Release);
+            }
+            if !manager.is_null() {
+                send(manager, c"requestWhenInUseAuthorization");
+            }
+            let mut value = std::ptr::null_mut();
+            napi_get_null(env, &mut value);
+            value
         }
     }
 }

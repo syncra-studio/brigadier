@@ -26,7 +26,7 @@ declare global {
       onGuestPopup(listener: (details: { from: number; url: string }) => void): void;
       onGuestWindow(listener: (details: WindowSeen) => void): void;
       onGuestPermission(listener: (details: { from: number; request: number; origin: string; camera: boolean; microphone: boolean; location: boolean }) => void): void;
-      onGuestPermissionRefused(listener: (details: { from: number; origin: string; refused: string[] }) => void): void;
+      onGuestPermissionRefused(listener: (details: { from: number; origin: string; refused: string[]; why?: string }) => void): void;
       onGuestEscape(listener: (details: { from: number }) => void): void;
       onGuestKey(listener: () => void): void;
       /** A swipe over a tab's page so far, and at its end (main's browser/guestSwipe.ts) [D3110]. */
@@ -66,7 +66,7 @@ export type BrowserEvent =
   | { type: "escape" }
   | { type: "popup"; id: string; url: string }
   | { type: "closed" }
-  | { type: "permissionRefused"; origin: string; refused: string[] }
+  | { type: "permissionRefused"; origin: string; refused: string[]; why?: string }
   | { type: "permission"; request: number; origin: string; camera: boolean; microphone: boolean; location: boolean };
 
 /** Electron's <webview> element, as far as the layer uses it. */
@@ -197,7 +197,7 @@ export function installTabLayer(): void {
     if (page) windowSeen(page.id, seen);
   });
   window.brigadierShell.onGuestPermission(({ from, ...question }) => pageOf(from)?.emit({ type: "permission", ...question }));
-  window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused }));
+  window.brigadierShell.onGuestPermissionRefused(({ from, origin, refused, why }) => pageOf(from)?.emit({ type: "permissionRefused", origin, refused, why }));
   window.brigadierShell.onGuestEscape(({ from }) => pageOf(from)?.emit({ type: "escape" }));
   window.brigadierShell.onGuestShortcut(pressGuestKey);
   window.brigadierShell.onBrowserDates(recordDates);
