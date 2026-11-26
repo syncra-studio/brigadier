@@ -89,10 +89,14 @@ pub fn run(data: &Path, id: &str) -> io::Result<Value> {
     };
     // A turn ended done past its line, or one this cut stopped, first writes its summary in the
     // old conversation, once per renewal [D92; rev 3 §2.2].
+    // Another agent picked and Switch now: its summary too; another model of this one, none.
     let cut = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";
+    let other = (f.picked.as_ref()).is_some_and(|p| p.backend != core::rebirth::backend(&spec, &f));
+    let fresh = cut && f.renewing.is_none() && core::summary::applies(&spec, &f);
     let summary = match why {
         "summary" => Some("rebirth"),
-        "cut" if cut && f.renewing.is_none() && core::summary::applies(&spec, &f) => Some("cut"),
+        "cut" if fresh => Some("cut"),
+        "switch" if fresh && other => Some("switch"),
         _ => None,
     };
     // The turn the renewal serves, past its summary turn.

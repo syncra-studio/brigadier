@@ -128,25 +128,29 @@ pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     // input provably never reached a CLI; one that may have, isn't sent twice [D54]. The user's
     // Continue carries a stalled one on.
     let last = f.last.as_ref()?;
-    // Its summary turn ended, however: a cut renews at once, a turn ended done at the next message.
+    // Its summary turn ended, however: a cut or a Switch now renews at once, a turn ended done or
+    // an agent picked between turns at the next message.
     if let Some(r) = f.renewing.as_ref().filter(|r| r["turn"] == last["id"]) {
-        return (r["why"] == "cut").then_some("cut");
+        return ["cut", "switch"].into_iter().find(|w| r["why"] == *w);
     }
-    // A turn ended done past its line writes its summary at once, while the user reads; not one a
-    // summary turn was, nor one whose renewal the user stopped [D92].
-    if last["outcome"] == "done"
-        && last["origin"] != "summary"
-        && crate::summary::applies(spec, f)
-        && full(spec, f)
-    {
-        return Some("summary");
-    }
-    let refused = last["outcome"] == "failed" && last["why"] == "context" && again_last(f, last);
     // A cut its turn beat by ending on its own is none: it rebirths at the next message [D108].
     let stopped = f.cut.as_deref() == last["id"].as_str() && last["outcome"] != "done";
     if stopped && f.switched {
         return Some("switch");
     }
+    // A turn ended done past its line, or another agent picked, writes its summary at once while
+    // the user reads; not one a summary turn was, nor one whose renewal the user stopped [D92].
+    let other = f
+        .picked
+        .as_ref()
+        .is_some_and(|p| p.backend != backend(spec, f));
+    if (other || last["outcome"] == "done" && full(spec, f))
+        && last["origin"] != "summary"
+        && crate::summary::applies(spec, f)
+    {
+        return Some("summary");
+    }
+    let refused = last["outcome"] == "failed" && last["why"] == "context" && again_last(f, last);
     let lost = last["switch"]["why"] == "cut" && last["never_ran"] == true;
     let going = f.go_on.is_some() && f.go_on.as_deref() == last["id"].as_str();
     (refused || stopped || lost || going).then_some("cut")
