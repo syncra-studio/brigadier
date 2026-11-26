@@ -140,9 +140,10 @@ pub(super) fn conversation(id: &str, p: &Past) -> String {
                     _ if !e.who.is_empty() => format!("the user, with `!`, {}", when(e.ts)),
                     _ => format!("the user, {}", when(e.ts)),
                 };
-                let text = match e.who.is_empty() {
-                    true => e.text.trim_end().to_string(),
-                    false => head(e.text.trim_end(), SHELL),
+                // Only a `!` command's report is held to its own cap first.
+                let text = match e.from == "user" && !e.who.is_empty() {
+                    true => head(e.text.trim_end(), SHELL),
+                    false => e.text.trim_end().to_string(),
                 };
                 (e.at.as_str(), who, text, asked(id, &p.entries, i, e))
             }
