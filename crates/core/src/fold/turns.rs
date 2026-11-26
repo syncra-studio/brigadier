@@ -104,6 +104,9 @@ pub struct Turn {
     /// asked for: its asks are the user's [D293, D305].
     #[serde(default)]
     pub direct: bool,
+    /// It took a worker's result in, by a wait or with its message: its end has dealt with it [D48].
+    #[serde(default)]
+    pub took: bool,
     /// Opened only for an ask a subagent made while its parent's ended turn was held for it: it
     /// lasts while that ask waits, and leaves no end of its own [D118, D131].
     #[serde(default)]
@@ -266,7 +269,15 @@ impl Fold {
                 self.workers.remove(w);
             }),
             Some("result") => {
-                if let Some(w) = item["result"].as_str().and_then(result_of) {
+                let said = item["result"].as_str().unwrap_or("");
+                if let Some(t) = self
+                    .turns
+                    .first_mut()
+                    .filter(|_| !said.starts_with("asks:"))
+                {
+                    t.took = true;
+                }
+                if let Some(w) = result_of(said) {
                     self.workers.remove(w);
                 }
             }
@@ -349,7 +360,7 @@ impl Fold {
             self.plans.now = Value::Null;
             if !turn.quiet {
                 self.finished = ts;
-                if turn.origin.starts_with("result:") {
+                if turn.took || turn.origin.starts_with("result:") {
                     self.dealt = ts;
                 }
             }
