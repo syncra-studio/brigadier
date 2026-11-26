@@ -91,8 +91,9 @@ export function BrowserTab({ owner, tab, active, children, onNavigate }: { owner
     openPage(owner, id, initialUrl, boundsOf(area.current)).catch(failed);
   }, [owner, id, initialUrl, made, active]);
 
-  // The page goes with its tab, not when the session's tabs are no longer on screen.
-  useEffect(() => () => void (tabOpenAnywhere(id) || closeBrowserPage(id)), [id]);
+  // The page goes with its tab, not when the session's tabs are no longer on screen; a paused one is handed back as closed.
+  const closed = useEffectEvent(() => handBack(id, true, tab.driver ?? ""));
+  useEffect(() => () => void (tabOpenAnywhere(id) || (closed(), closeBrowserPage(id))), [id]);
 
   // Keep the page over this tab's area, and hide it when the tab goes.
   useEffect(() => {

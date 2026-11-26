@@ -26,10 +26,14 @@ const holdChangeFailed = (error: unknown) => console.error("changing an agent's 
 
 /** Runs the daemon's calls in this window, and gives the agent its hold back or takes it as the user does. */
 export function installBrowserAgent(): void {
+  // A call right after its session's turn ended waits for that end's void, 2 s at most; a slower end stops at the call.
+  const ending = new Map<string, Promise<unknown>>();
+  const begun = new Map<string, number>();
   setBrowserHandler((frame) => {
     const call = frame as Call;
-    if (call.op.op === "end") return void endTurn(call).catch(holdChangeFailed);
-    void runCall(call).then((result) => run(["browser", "answer", call.id, JSON.stringify(result)])).catch(holdChangeFailed);
+    const before = ending.get(call.driver) ?? Promise.resolve();
+    if (call.op.op === "end") return void ending.set(call.driver, before.then(() => Promise.race([endTurn(call, begun), wait(2000)])).catch(holdChangeFailed));
+    void before.then(() => (begun.set(call.driver, (begun.get(call.driver) ?? 0) + 1), runCall(call))).then((result) => run(["browser", "answer", call.id, JSON.stringify(result)])).catch(holdChangeFailed);
   });
   // The user took a tab over: the agent's hold of its page goes at once, so what they do is their own. Continue gives
   // it back as it was, except that refs from before the user's turn are void.
@@ -48,12 +52,12 @@ export function installBrowserAgent(): void {
  * The agent's turn ended (crates/cli/src/browser/hub.rs): it lets go of its tabs, which stay open in its group, the
  * user's to use until its next turn, as Claude in Chrome's [D894 D901].
  */
-async function endTurn({ owner, driver }: Call): Promise<void> {
+async function endTurn({ owner, driver }: Call, begun: Map<string, number>): Promise<void> {
+  const calls = begun.get(driver), stale = () => begun.get(driver) !== calls;
   await tabsRead(owner);
-  for (const tab of browserTabs(owner)) {
-    // A tab with no driver now was ungrouped as it ended, as an archive does: its hold goes too.
-    if (tab.driver === driver || !tab.driver) agentDrive(tab.id, false).catch(holdChangeFailed);
-  }
+  // A tab with no driver now was ungrouped as it ended, as an archive does: its hold goes too.
+  const mine = browserTabs(owner).filter((tab) => tab.driver === driver || !tab.driver);
+  await Promise.all(mine.map((tab) => agentDrive(tab.id, false, false, stale).catch(holdChangeFailed)));
 }
 
 /** Its page goes with it: a tab of a session not on screen has no view whose unmount would close it. */
@@ -189,7 +193,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
       } else {
         await agentDrive(tab, true);
       }
-      return await page(tab, owner);
+      return await page(tab, owner, driver);
     } finally {
       agentDoing(tab, null);
     }
@@ -233,7 +237,7 @@ async function perform({ op, owner, driver, label }: Call): Promise<Result> {
     agentDoing(tab.id, DOING[op.op] ?? null);
     await agentDrive(tab.id, true);
   }
-  const result = await act(opened ?? tab.id, op, owner, label);
+  const result = await act(opened ?? tab.id, op, owner, label, driver);
   return !tab.driver && result.result === "page" ? { ...result, user: true } : result;
 }
 
@@ -245,13 +249,13 @@ const TABS_ONLY = new Set(["navigate", "go", "eval", "ask", "show", "close"]);
 const WAIT_MOST_MS = 20_000;
 
 /** The page after a `wait` for `op.text` to show, or `op.gone` to go; said so when it didn't. */
-async function waited(tab: string, op: Op, owner: string): Promise<Result> {
+async function waited(tab: string, op: Op, owner: string, driver: string): Promise<Result> {
   const ms = Math.min(Number(op.ms) || WAIT_MOST_MS, WAIT_MOST_MS);
   const wanted = String(op.text ?? op.gone ?? "");
   if (!wanted) {
     if (op.ms) await wait(ms);
     else await loaded(tab);
-    return page(tab, owner);
+    return page(tab, owner, driver);
   }
   const deadline = Date.now() + ms;
   const needle = wanted.toLowerCase();
@@ -259,34 +263,41 @@ async function waited(tab: string, op: Op, owner: string): Promise<Result> {
     if (isPaused(tabOf(tab))) return { result: "paused", tab };
     const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
     const there = String((answer as { text?: unknown } | null)?.text ?? "").toLowerCase().includes(needle);
-    if (there === Boolean(op.text)) return page(tab, owner);
+    if (there === Boolean(op.text)) return page(tab, owner, driver);
     if (Date.now() >= deadline) {
       const note = `Waited ${Math.round(ms / 1000)} s: ${JSON.stringify(wanted)} ${op.text ? "didn't show" : "is still there"}.`;
-      return { ...(await page(tab, owner)), note };
+      return { ...(await page(tab, owner, driver)), note };
     }
     await wait(250);
   }
 }
 
-async function act(tab: string, op: Op, owner: string, label: string): Promise<Result> {
+async function act(tab: string, op: Op, owner: string, label: string, driver: string): Promise<Result> {
   switch (op.op) {
     case "events": {
       const { lines, next, dropped } = await agentEvents(tab, Number(op.since), op.kinds) as Record<string, unknown>;
       return { result: "events", tab, lines, next, dropped };
     }
     case "navigate":
-      loadStarts(tab);
-      agentLoad(tab, op.url);
-      await loaded(tab);
-      return page(tab, owner);
-    case "go":
-      go(tab, op.action);
-      await settled(tab);
-      return page(tab, owner);
+    case "go": {
+      // A page's beforeunload may keep it (main's browserAgentActivity.ts tells so among its navigations).
+      const since = Number((await agentEvents(tab, Number.MAX_SAFE_INTEGER, []) as { next?: unknown }).next);
+      if (op.op === "navigate") {
+        loadStarts(tab);
+        agentLoad(tab, op.url);
+        await loaded(tab);
+      } else {
+        go(tab, op.action);
+        await settled(tab);
+      }
+      const { lines } = await agentEvents(tab, since, ["navigation"]) as { lines?: string[] };
+      const stayed = lines?.some((line) => line.endsWith("the page asked to stay (unsaved changes), so it didn't leave"));
+      return stayed ? failed("The page asked to stay (unsaved changes); nothing was done.") : page(tab, owner, driver);
+    }
     case "read":
-      return page(tab, owner);
+      return page(tab, owner, driver);
     case "wait":
-      return waited(tab, op, owner);
+      return waited(tab, op, owner, driver);
     case "hover":
     case "scroll": {
       const answer = await agentRun(tab, { kind: op.op, label, target: op.target, way: op.way });
@@ -295,7 +306,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       const error = errorOf(answer);
       if (error) return withDialogs(failed(error), answer);
       await settled(tab);
-      return withDialogs(await page(tab, owner), answer);
+      return withDialogs(await page(tab, owner, driver), answer);
     }
     case "click":
     case "type":
@@ -332,8 +343,13 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
       }
       const error = errorOf(answer);
       if (error) return withDialogs(failed(error), answer);
-      const left = await settled(tab);
-      const after = withDialogs(await withPopups(await page(left, owner), owner, before), answer);
+      const first = await settled(tab);
+      const read = await page(first, owner, driver);
+      // A page may go on to another a moment later, as one that waits on its server first does: that one is the answer.
+      // shortcut: a second settle on every action (~0.75 s); upgrade: wait only while a request it started is in flight.
+      const left = await settled(first);
+      const on = left !== first || (read.result === "page" && agentPage(left).generation !== (read.page as { generation: number }).generation);
+      const after = withDialogs(await withPopups(on ? await page(left, owner, driver) : read, owner, before), answer);
       return left === tab ? after : { ...after, note: [after.note, `The window ${tab} closed; this is its tab.`].filter(Boolean).join(" ") };
     }
     case "eval": {
@@ -351,7 +367,7 @@ async function act(tab: string, op: Op, owner: string, label: string): Promise<R
     case "screenshot": {
       const shot = await agentCapture(tab);
       const { url } = await agentShown(tab, shot.url);
-      return { result: "shot", tab, url, png: base64(shot.png) };
+      return { result: "shot", tab, url, png: shot.png };
     }
     case "ask": {
       // The tab is the user's until Done, in front within its session only: no window moves and no focus goes.
@@ -445,8 +461,8 @@ async function settled(tab: string): Promise<string> {
 }
 
 /** The tab's page, read for the agent. */
-async function page(tab: string, owner: string): Promise<Result> {
-  const stopped = await stoppedAt(tab);
+async function page(tab: string, owner: string, driver: string): Promise<Result> {
+  const stopped = await stoppedAt(tab, driver);
   if (stopped) return stopped;
   const answer = await agentRun(tab, { kind: "read", max: READ_MOST });
   if (devToolsOpen(tabOf(tab))) return failed(PAUSED_DEVTOOLS);
@@ -461,11 +477,12 @@ async function page(tab: string, owner: string): Promise<Result> {
 
 /**
  * What the agent hears on a page that stops it: the action it asked for is done, so this is its answer and not `paused`,
- * which the daemon would run again after Continue. Its next call on the tab waits.
+ * which the daemon would run again after Continue. Its next call on the tab waits. Only the tab's own agent, `driver`,
+ * stops there: another's read of it leaves the tab as it is.
  */
-async function stoppedAt(id: string): Promise<Result | null> {
+async function stoppedAt(id: string, driver: string): Promise<Result | null> {
   const tab = tabOf(id);
-  if (!driverOf(tab)) return null;
+  if (driverOf(tab)?.driver !== driver) return null;
   let stop = askedOf(tab);
   if (!stop && !isPaused(tab)) {
     const found = await signInStopOf(id);
@@ -480,13 +497,4 @@ async function stoppedAt(id: string): Promise<Result | null> {
   const { generation } = agentPage(at);
   const read = { ...(await agentShown(at, shown?.url ?? "", shown?.title)), generation, loading: shown?.loading ?? false, text: stoppedWords(stop, tab) };
   return { result: "page", tab: at, page: read, user: false, stopped: true };
-}
-
-/** `bytes` as base64. */
-function base64(bytes: Uint8Array): string {
-  let text = "";
-  for (let at = 0; at < bytes.length; at += 0x8000) {
-    text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-  }
-  return btoa(text);
 }

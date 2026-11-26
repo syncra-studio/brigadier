@@ -248,12 +248,19 @@ async function press(id: string, op: Answer, wait: Wait): Promise<unknown> {
   }
 }
 
-/** An agent has the tab now (the shield goes up), or doesn't (it comes down, and the debugger goes). */
-export async function agentDrive(id: string, on: boolean, resumed = false): Promise<void> {
+/**
+ * An agent has the tab now (the shield goes up), or doesn't (it comes down, and the debugger goes). A let-go that
+ * turns `stale` (its agent's next turn began) stops there, so it can't undo that turn's hold or refs.
+ */
+export async function agentDrive(id: string, on: boolean, resumed = false, stale = () => false): Promise<void> {
   if (!on) {
     dropOverlay(id, true);
     const page = maybePage(id);
-    if (page) await agent({ call: "release", guest: page.guest });
+    if (!page || stale()) return;
+    await agent({ call: "release", guest: page.guest });
+    if (stale()) return;
+    // What the user does meanwhile changes the page: refs from before mean nothing on the agent's return.
+    await Promise.all([page.guest, ...windowsOf(id).map(({ guest }) => guest)].map((guest) => script(guest, { kind: "void" }).catch(() => null)));
     return;
   }
   const page = maybePage(id);
@@ -298,6 +305,10 @@ export function agentEvents(id: string, since: number, kinds: readonly string[])
   return agent({ call: "events", guest: agentPage(id).guest, since, kinds });
 }
 
-export async function agentCapture(id: string): Promise<{ png: Uint8Array; url: string }> {
-  return await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as { png: Uint8Array; url: string };
+/** A picture of the page, as base64. */
+export async function agentCapture(id: string): Promise<{ png: string; url: string }> {
+  const shot = await whilePainting(id, () => agent({ call: "capture", guest: agentPage(id).guest })) as { png: Uint8Array; url: string };
+  let text = "";
+  for (let at = 0; at < shot.png.length; at += 0x8000) text += String.fromCharCode(...shot.png.subarray(at, at + 0x8000));
+  return { png: btoa(text), url: shot.url };
 }

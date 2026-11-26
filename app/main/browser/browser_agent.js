@@ -9,7 +9,7 @@
 //      { kind: "type", target, text, submit, declared, approved } -> the same
 // A password field, seen by its type, its autocomplete, its computed text security or its names, shows only as a line
 // with no ref and nothing goes into it, yes or no: only the user fills those in. An action that pays, sends or signs in
-// (declared by the agent), a click on a button or link named or showing Buy, Pay, Send, Delete and the like, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
+// (declared by the agent), a click on a button or link named or showing Buy, Pay, Send, Delete and the like, or Enter in a field whose form's button is one, or one that enters or submits a card or a one-time code or submits a password (seen here), or any at Ask (`always`),
 // returns `ask` and does nothing unless the user said yes to it on this page (`approved`: the address the yes was given at, which the app
 // passes only while the tab is still on the page it was given on; `approvedFor`: what the control asked for then, none for any).
 //
@@ -222,13 +222,12 @@
     return null;
   };
 
-  /** What a control submits with: its form, else the nearest few levels around it. */
+  /** What a control submits with: its form, else the nearest that holds it and a filled private field, however far. */
   const scopeOf = (element) => {
     const form = element.form || element.closest("form");
     if (form) return form;
-    let around = element.parentElement;
-    for (let level = 0; around && level < 4; level++, around = around.parentElement) {
-      if (filledKind(around)) return around;
+    if (filledKind(element.getRootNode())) {
+      for (let around = element.parentElement; around; around = around.parentElement) if (filledKind(around)) return around;
     }
     return element.parentElement || document;
   };
@@ -242,7 +241,8 @@
     }
   };
 
-  const refs = () => (window.__brigadierRefs ??= { next: 1, byRef: new Map(), of: new WeakMap() });
+  /** `seen`: each ref's control as the last read said it, which a page reusing the node for another mustn't pass for. */
+  const refs = () => (window.__brigadierRefs ??= { next: 1, byRef: new Map(), of: new WeakMap(), seen: new Map() });
 
   const find = (ref) => {
     if (op.isolated) return refs().byRef.get(ref)?.deref() ?? null;
@@ -283,7 +283,10 @@
       line = "";
     };
     const describe = (element, role) => {
-      let text = `[${refOf(element)}] ${role} ${quoted(nameOf(element))}`;
+      const ref = refOf(element);
+      const said = `${role} ${quoted(nameOf(element))}`;
+      if (op.isolated) refs().seen.set(ref, said);
+      let text = `[${ref}] ${said}`;
       if (role === "textbox" || role === "searchbox" || role === "combobox" || role === "slider" || role === "spinbutton") {
         const value = element.isContentEditable ? element.innerText
           : element.localName === "select" ? element.selectedOptions?.[0]?.text : element.value;
@@ -369,6 +372,9 @@
     if (!element || !element.isConnected) {
       return { error: `There is no ${op.target} on the page now: read it again for its controls' refs.` };
     }
+    const was = op.isolated && refs().seen.get(op.target);
+    const now = `${controlOf(element) || element.localName} ${quoted(nameOf(element))}`;
+    if (was && was !== now) return { error: `${op.target} is now ${now}, not ${was}, so nothing was done: read it again for its controls' refs.` };
     return { element };
   };
 
@@ -451,6 +457,8 @@
   /** What a click on the control is refused or asked for, as it is now. */
   const clickStop = (element) => {
     if (isPassword(element)) return { error: HANDS_OFF };
+    // A click on the frame itself lands on whatever it draws there.
+    if (FRAMES.has(element.localName)) return { error: `${op.target} is a frame, which agents can't see into, so nothing was clicked: use another control, or ask the user.` };
     // A control with no role acts as a button does, whatever it's made of, so it asks as one.
     const role = controlOf(element) || "clickable";
     const kind = role === "button" || role === "clickable" ? filledKind(scopeOf(element)) : null;
@@ -458,10 +466,19 @@
     return ask([op.declared, kind, ...(said?.kinds ?? []), op.always && "action"], element, said?.words) ?? unready(element);
   };
 
+  /** What Enter in a field presses, as its click would say: its form's default button, else the first button it submits with. */
+  const submitKinds = (element) => {
+    const form = element.form || element.closest("form");
+    const button = form ? [...form.elements].find((each) => each.type === "submit" || each.type === "image")
+      : scopeOf(element).querySelector("button, input[type=submit], input[type=image], [role=button]");
+    return button ? saidBy(button).kinds : [];
+  };
+
   /** What typing in the field asks for, as it is now: a card or code field as what it is, whatever the agent declared, so the card never shows the secret typed into it. */
   const typeAsk = (element) => {
     const own = fieldKind(element);
-    return ask([own, op.declared, own || (op.submit ? filledKind(scopeOf(element), element) : null), op.always && "action"], element);
+    const submits = op.submit ? submitKinds(element) : [];
+    return ask([own, op.declared, own || (op.submit ? filledKind(scopeOf(element), element) : null), ...submits, op.always && "action"], element);
   };
 
   const point = (element, type) => {
@@ -566,6 +583,9 @@
       said = saidBy(element);
     } else if (op.key === "Enter" && element !== document.body) {
       kind = fieldKind(element) || filledKind(scopeOf(element), element);
+      // Shift+Enter in a text area is a new line; a plain Enter there may send, as a composer's does by its script.
+      const newline = op.modifiers?.includes("shift") && (element.localName === "textarea" || element.isContentEditable);
+      said = { kinds: newline ? [] : submitKinds(element) };
     } else if (op.key !== "Tab" && op.key !== "Escape") {
       // A key into a card or code field asks as typing there does: presses mustn't fill it by the character.
       kind = fieldKind(element);

@@ -1,13 +1,14 @@
 //! What an agent's browser call asks of the page, and the user's yes first where it needs one, on
 //! one "Go ahead in the browser?" card [D503, D518, D533]: Ask asks before every click and typing;
 //! Ask and Auto before an action that pays, sends, deletes, signs in or fills a card, a code or
-//! beside a password; Auto also before a script; Full runs them all. Password fields stay closed
+//! beside a password, and before a script; Full runs them all. Password fields stay closed
 //! at every level (the page's script).
 
 use super::keys::{key_of, keys};
 use super::{HUB, Words, lock, tab_of};
 use crate::agent::refuse;
 use crate::owner;
+use brigadier_core as core;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
@@ -61,8 +62,8 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         Some("sign-in") => "signIn".into(),
         Some(_) => return Err(refuse("--asks takes pay, send or sign-in.")),
     };
-    // Full runs every action; Ask and Auto ask before a sensitive one, Ask before any, and Auto
-    // before a script.
+    // Full runs every action; Ask and Auto ask before a sensitive one and a script, Ask before
+    // any.
     let (asks, always) = (level != "full", level == "ask");
     Ok(match w.action {
         "open" => {
@@ -145,7 +146,7 @@ pub(super) fn op(w: &Words, me: &str, owner: &str, level: &str) -> Result<Value,
         }
         "screenshot" => none().and_then(|()| Ok(json!({"op": "screenshot", "tab": tab()?})))?,
         "eval" => {
-            json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": level == "auto"})
+            json!({"op": "eval", "tab": tab()?, "script": shown_script(&one("a script, in quotes")?)?, "asks": asks})
         }
         "events" => {
             none()?;
@@ -382,7 +383,7 @@ pub(super) fn ask(
         return Ok(Some(yes));
     }
     let question = question(op, sensitive, what, url);
-    let id = format!("browser-{}", &core_uuid()[..8]);
+    let id = format!("browser-{}", &core::adapters::uuid()[..8]);
     let grant = site.map(|s| json!({"scope": "site", "pattern": s}));
     let request = json!({"id": id, "action": "browser", "reason": question, "body": details(op, sensitive, what, url), "grant": grant});
     let (to, answer) = mpsc::channel();
@@ -436,10 +437,6 @@ pub(super) fn ask(
     )
 }
 
-fn core_uuid() -> String {
-    brigadier_core::adapters::uuid()
-}
-
 /// The answer on browser card `request` of session `id`, the user's or a worker's parent's: its
 /// card settles, and the call that asked goes on, or hears it as a message if it stopped waiting.
 pub(crate) fn answered(
@@ -450,10 +447,24 @@ pub(crate) fn answered(
 ) -> std::io::Result<Value> {
     let allow = matches!(control["decision"].as_str(), Some("allow" | "allowSession"));
     let reason = control["reason"].as_str().unwrap_or("");
-    let decision = if allow { "approved" } else { "denied" };
+    // Another session's isn't this one's to answer. One a daemon before this one left has no call:
+    // nothing is allowed, and while it's open in the turn that runs, the agent hears so.
+    let mine = lock(&CARDS).get(request).map(|c| c.session == id);
+    if mine == Some(false) {
+        return Ok(crate::control::refused("not_pending", Value::Null));
+    }
+    let open =
+        |f: core::Folded| (f.fold.turns.first()).is_some_and(|t| t.asks.contains_key(request));
+    let lost =
+        mine.is_none() && allow && core::fold(&core::session_dir(data, id), true).is_ok_and(open);
+    let decision = mine.map(|_| if allow { "approved" } else { "denied" });
     let note = json!({"event": "browser", "item": {"kind": "resolved", "id": request, "decision": decision}});
     owner::call(data, id, json!({"op": "note", "data": note}))?;
-    let Some(card) = lock(&CARDS).remove(request).filter(|c| c.session == id) else {
+    let Some(card) = lock(&CARDS).remove(request) else {
+        if lost {
+            let text = "[decision] The user said yes on a browser card, but Brigadier restarted after you asked, so the yes was lost and nothing was done. Make that browser call again if you still need it: it asks them once more.";
+            let _ = crate::control::steer_as(data, id, text, &Value::Null, None, "system", false);
+        }
         return Ok(json!({"ok": true}));
     };
     if allow && let Some(key) = card.key.clone() {
