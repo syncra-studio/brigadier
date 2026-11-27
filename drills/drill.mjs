@@ -321,6 +321,7 @@ async function killloop(minutes) {
   if (!viaDaemon?.ok) throw new Error(`start through the daemon failed: ${JSON.stringify(viaDaemon)}`)
   startFake('chat')
   for (const id of fakes) send(id, work(id))
+  send('chat', 'say:1')
   // The real CLIs start in the same second.
   const real = REAL
   const starts = real.map(([id, b]) => spawn(`${BIN}/brigadier`, ['start', id, '--backend', b, '--cwd', gitRepo(id), '--level', 'full', '--text', realPrompt(cid('r'))], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: 'ignore' }))
@@ -329,6 +330,10 @@ async function killloop(minutes) {
   let followers = followed.map((id) => ({ id, ...follow(id, 0) }))
   const builds = [orig, ...BUILDS]
   fs.cpSync(BIN, orig, { recursive: true })
+  // The list each restart is checked against starts once the index has read every message above:
+  // a title still coming in isn't a list the restart changed.
+  const untitled = (l) => !l || l.ids.some((x) => [...fakes, 'chat', ...real.map(([id]) => id)].includes(x.split(' ')[0]) && x.endsWith(' '))
+  for (const t = now(); now() - t < 30000 && untitled(await daemonList(5000)); ) await sleep(250)
   const events = []
   const pidsBefore = () => Object.fromEntries(fakes.map((id) => [id, agentsOf(id).map((p) => p.pid)]))
   for (let k = 1; k <= minutes; k++) {
