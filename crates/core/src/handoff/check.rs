@@ -235,12 +235,16 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
             }
             marks.push(mark);
         }
-        // `paths` as the agent would read them; a fork's moved ones under its own folder.
+        // `paths` as the agent would read them, `~/` the home folder; a fork's moved ones under its
+        // own folder.
         let mut ticks = body.split('`');
         let mut off = base + ticks.next().map_or(0, str::len) + 1;
         while let (Some(p), Some(after)) = (ticks.next(), ticks.next()) {
             let path = named(p).map(|p| {
-                let p = Path::new(cwd).join(p);
+                let p = match p.strip_prefix("~/") {
+                    Some(rest) => crate::adapters::home_path(rest),
+                    None => Path::new(cwd).join(p),
+                };
                 let real = std::fs::canonicalize(&p).unwrap_or_default();
                 let inside = (was.iter())
                     .flat_map(|w| [p.strip_prefix(w), real.strip_prefix(w)])
