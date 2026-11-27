@@ -203,6 +203,9 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     let effort = flag(args, "--effort");
     let spec = core::load(data, id)?;
     // The check the pickers read for this folder (checked.rs) [C27].
+    if core::checked::kept(data, b, Path::new(&spec.cwd)).is_none() {
+        setup::run(data, &["agents", b, "--cwd", &spec.cwd].map(String::from))?;
+    }
     let check = ["agents", b, "--cached", "--cwd", &spec.cwd].map(String::from);
     let checks = setup::run(data, &check)?;
     let g = group(&checks["agents"][0], false, "", &[]);
