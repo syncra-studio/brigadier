@@ -101,7 +101,7 @@ fn spawn(
     let note = json!({"event": "shell", "phase": "start", "id": cmd, "command": line});
     owner::call(data, &spec.id, json!({"op": "note", "data": note}))?;
     fs::write(mark, format!("!{line}"))?;
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let shell = core::adapters::setup::shell();
     let run = Spec {
         id: format!("{TERM}{cmd}"),
         backend: "shell".into(),

@@ -106,6 +106,30 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 }
 
 /// A message's `--parts`: the composer's draft as its JSON, chips and files; Null for plain text [D109].
+/// Opens a file, folder or URL with its default app: `open` on macOS, `xdg-open` on Linux.
+pub(crate) fn open(target: impl AsRef<std::ffi::OsStr>) -> io::Result<std::process::ExitStatus> {
+    let opener = if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else {
+        "open"
+    };
+    std::process::Command::new(opener).arg(target).status()
+}
+
+/// Shows a file or folder in the file manager, selected in its folder.
+/// shortcut: Linux opens the folder it's in without selecting it; use the file manager's D-Bus
+/// ShowItems if users miss it.
+pub(crate) fn reveal(path: impl AsRef<Path>) -> io::Result<std::process::ExitStatus> {
+    let path = path.as_ref();
+    if cfg!(target_os = "linux") {
+        return open(path.parent().unwrap_or(path));
+    }
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+}
+
 pub(crate) fn parts(args: &[String]) -> io::Result<Value> {
     flag(args, "--parts").map_or(Ok(Value::Null), |p| Ok(serde_json::from_str(p)?))
 }

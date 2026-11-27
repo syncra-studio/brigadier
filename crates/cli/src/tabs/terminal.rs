@@ -71,7 +71,7 @@ fn start(
     if exists && (!again || live(data, &id)) {
         return Ok(json!({"ok": true, "id": id, "live": live(data, &id)}));
     }
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let shell = core::adapters::setup::shell();
     let spec = Spec {
         id: id.clone(),
         backend: "terminal".into(),

@@ -288,6 +288,8 @@ fn list(data: &Path) -> io::Result<Value> {
     Ok(json!({"ok": true, "free": disk_free(data), "chats": chats}))
 }
 
+// f_bavail is 32 bits on macOS, 64 on Linux.
+#[allow(clippy::unnecessary_cast)]
 fn disk_free(data: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
     let path = std::ffi::CString::new(data.as_os_str().as_bytes()).ok()?;

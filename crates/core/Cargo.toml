@@ -22,3 +22,6 @@ security-framework = "=3.7.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Security_Cryptography"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+secret-service = { version = "=6.0.0", features = ["crypto-rust"] }

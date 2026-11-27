@@ -201,12 +201,7 @@ fn source_of(data: &Path, args: &[String]) -> io::Result<Value> {
                 "" => checkout.root.clone(),
                 rel => git::inside(&checkout, rel)?,
             };
-            if !std::process::Command::new("open")
-                .arg("-R")
-                .arg(&path)
-                .status()?
-                .success()
-            {
+            if !crate::reveal(&path)?.success() {
                 return Err(io::Error::other(format!("Couldn't reveal {}", word(1)?)));
             }
             done

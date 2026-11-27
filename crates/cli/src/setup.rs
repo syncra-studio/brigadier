@@ -172,7 +172,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                 "put-branches" => return branches::put_branches(arg(2), args),
                 "reveal" => {
                     let folder = projects::get(data, arg(2))?.folder;
-                    let status = std::process::Command::new("open").arg(&folder).status()?;
+                    let status = crate::open(&folder)?;
                     if !status.success() {
                         return Err(io::Error::other(format!("Couldn't open {folder}")));
                     }

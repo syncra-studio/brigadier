@@ -21,7 +21,9 @@ use std::fs::{self, File};
 use std::io;
 use std::os::unix::fs::symlink;
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 use std::process::{self, Command};
 use std::thread;
 use std::time::{Duration, Instant};

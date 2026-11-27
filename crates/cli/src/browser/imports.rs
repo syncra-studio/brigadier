@@ -88,14 +88,17 @@ fn key_state(source: &Source) -> Option<&'static str> {
     {
         return None;
     }
-    match reader::chromium_password_exists(
+    #[cfg(target_os = "macos")]
+    return match reader::chromium_password_exists(
         profile.keychain_service.as_deref()?,
         profile.keychain_account.as_deref(),
     ) {
         Ok(true) => None,
         Ok(false) => Some("noKeychainKey"),
         Err(_) => Some("unavailable"),
-    }
+    };
+    #[cfg(not(target_os = "macos"))]
+    None
 }
 
 /// One browser as the page lists it.

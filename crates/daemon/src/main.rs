@@ -47,9 +47,8 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, Permissions};
 use std::io::{self, Write};
-use std::mem::size_of;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::io::{AsFd, AsRawFd};
+use std::os::unix::io::AsFd;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -196,8 +195,14 @@ fn main() -> io::Result<()> {
     {
         let (data, store) = (data.clone(), store.clone());
         thread::spawn(move || {
+            #[cfg(target_os = "macos")]
             unsafe {
                 libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_BACKGROUND, 0)
+            };
+            // Linux's nice is per thread.
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::setpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t, 19)
             };
             for id in queue {
                 store.catch_up(&data, &id);
@@ -316,18 +321,8 @@ fn answering(data: &Path) -> io::Result<Option<(libc::pid_t, Option<u64>)>> {
         return Ok(None);
     }
     // The kernel names the listener, whatever version it is.
-    let mut pid: libc::pid_t = 0;
-    let mut len = size_of::<libc::pid_t>() as libc::socklen_t;
-    let got = unsafe {
-        libc::getsockopt(
-            stream.as_raw_fd(),
-            libc::SOL_LOCAL,
-            libc::LOCAL_PEERPID,
-            (&raw mut pid).cast(),
-            &mut len,
-        )
-    };
-    if got != 0 || pid <= 0 {
+    let pid = wire::peer_pid(&stream).unwrap_or(0);
+    if pid <= 0 {
         return Ok(None);
     }
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;

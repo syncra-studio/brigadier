@@ -23,7 +23,9 @@ const ORIGIN = `app://${APP_ID}`;
 const uiDir = path.join(__dirname, "../../ui");
 const uiDist = path.join(uiDir, "dist");
 // BRIGADIER_DATA points the app and its daemon at another data folder, as it does for the CLI.
-const dataDir = process.env.BRIGADIER_DATA ?? path.join(app.getPath("appData"), APP_NAME);
+// Linux keeps it with data, not config (Electron's appData), as the daemon does (proposed).
+const dataRoot = process.platform === "linux" ? process.env.XDG_DATA_HOME || path.join(app.getPath("home"), ".local/share") : app.getPath("appData");
+const dataDir = process.env.BRIGADIER_DATA ?? path.join(dataRoot, APP_NAME);
 const socketPath = path.join(dataDir, "daemon.sock");
 // Packaged, the bundle's daemon installs its build outside the bundle and execs it there [D40].
 const [daemonPath, daemonArgs] = app.isPackaged

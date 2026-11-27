@@ -106,10 +106,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             .and_then(|each| each["path"].as_str())
             .filter(|path| path.starts_with('/'))
             .ok_or_else(|| io::Error::other(format!("/{name} has no file to show")))?;
-        let shown = std::process::Command::new("open")
-            .arg("-R")
-            .arg(path)
-            .status()?;
+        let shown = crate::reveal(path)?;
         return match shown.success() {
             true => Ok(json!({"ok": true})),
             false => Err(io::Error::other(format!("Couldn't reveal {path}"))),

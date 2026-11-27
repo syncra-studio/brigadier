@@ -181,9 +181,16 @@ pub fn data_dir() -> PathBuf {
         .unwrap_or_else(default_data_dir)
 }
 
-/// The data folder when BRIGADIER_DATA doesn't name another.
+/// The data folder when BRIGADIER_DATA doesn't name another. Linux's is with data, not config:
+/// `$XDG_DATA_HOME/Brigadier`, `~/.local/share/Brigadier` by default (proposed).
 #[cfg(not(windows))]
 pub fn default_data_dir() -> PathBuf {
+    if cfg!(target_os = "linux") {
+        return (std::env::var_os("XDG_DATA_HOME").map(PathBuf::from))
+            .filter(|d| d.is_absolute())
+            .unwrap_or_else(|| adapters::home_path(".local/share"))
+            .join("Brigadier");
+    }
     adapters::home_path("Library/Application Support/Brigadier")
 }
 

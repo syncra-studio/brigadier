@@ -14,7 +14,11 @@ pub(super) fn latest() -> Option<String> {
         let bytes = std::fs::read(path).unwrap_or_default();
         serde_json::from_slice(&bytes).unwrap_or_default()
     };
-    let managed = read("/Library/Application Support/ClaudeCode/managed-settings.json".into());
+    let managed = match cfg!(target_os = "linux") {
+        true => "/etc/claude-code/managed-settings.json",
+        false => "/Library/Application Support/ClaudeCode/managed-settings.json",
+    };
+    let managed = read(managed.into());
     let both = [managed, read(home_path(".claude/settings.json"))];
     let off = |v: &Value| {
         v["env"]["DISABLE_UPDATES"]

@@ -3,10 +3,13 @@
 //! carries `v` (the pairing version), `pk` (the Mac's Noise key, base64url) and `o=1` while an
 //! offer is open, so a phone with only the typed code finds the Mac (remote design §4 "Typed code").
 
+#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+
 use std::ffi::{c_char, c_void};
 use std::io;
 use std::ptr;
 
+#[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn DNSServiceRegister(
         sd_ref: *mut *mut c_void,
@@ -54,7 +57,14 @@ pub(super) fn txt(public: &[u8], open: bool) -> Vec<u8> {
     out
 }
 
+/// Remote access stays macOS's (proposed).
+#[cfg(not(target_os = "macos"))]
+pub(super) fn register(_port: u16, _txt: &[u8]) -> io::Result<Registration> {
+    Err(io::Error::other("Remote access is only on macOS."))
+}
+
 /// Announces `port` under the Mac's own name, on every interface.
+#[cfg(target_os = "macos")]
 pub(super) fn register(port: u16, txt: &[u8]) -> io::Result<Registration> {
     let mut sd = ptr::null_mut();
     let err = unsafe {
@@ -84,13 +94,21 @@ pub(super) fn register(port: u16, txt: &[u8]) -> io::Result<Registration> {
 impl Registration {
     /// Replaces the TXT record (a null record names the registration's own).
     pub(super) fn update(&self, txt: &[u8]) {
+        #[cfg(target_os = "macos")]
         let len = txt.len() as u16;
-        unsafe { DNSServiceUpdateRecord(self.0, ptr::null_mut(), 0, len, txt.as_ptr().cast(), 0) };
+        #[cfg(target_os = "macos")]
+        unsafe {
+            DNSServiceUpdateRecord(self.0, ptr::null_mut(), 0, len, txt.as_ptr().cast(), 0)
+        };
+        let _ = txt;
     }
 }
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        unsafe { DNSServiceRefDeallocate(self.0) };
+        #[cfg(target_os = "macos")]
+        unsafe {
+            DNSServiceRefDeallocate(self.0)
+        };
     }
 }

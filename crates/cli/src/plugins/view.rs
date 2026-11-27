@@ -5,7 +5,6 @@ use brigadier_core::library;
 use serde_json::{Map, Value, json};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// What View draws, the old app's Open [D582, D600]: each skill's SKILL.md, `own` where the user
 /// added it; or a server's settings as `<name>.json`, every header and env value hidden.
@@ -60,10 +59,7 @@ pub(super) fn reveal(data: &Path, key: &str) -> io::Result<Value> {
     let i = (items.iter())
         .find(|i| i["key"] == key && i["kind"] == "skill" && catalog::id(i).is_null())
         .ok_or_else(|| refuse("Only a skill you added shows in Finder."))?;
-    let shown = Command::new("open")
-        .arg("-R")
-        .arg(skill_md(data, i))
-        .status()?;
+    let shown = crate::reveal(skill_md(data, i))?;
     match shown.success() {
         true => Ok(json!({"ok": true})),
         false => Err(refuse(&format!(

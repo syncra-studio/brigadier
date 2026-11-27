@@ -455,13 +455,17 @@ fn details(data: &Path) -> (String, Vec<String>) {
         b => format!("{} (build {b})", env!("CARGO_PKG_VERSION")),
     };
     let mut out = vec![format!("Brigadier {version}")];
+    let chip = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        arch => arch,
+    };
     let macos = Command::new("sw_vers").arg("-productVersion").output();
     if let Ok(v) = macos.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
-        let chip = match std::env::consts::ARCH {
-            "aarch64" => "arm64",
-            arch => arch,
-        };
         out.push(format!("macOS {v} ({chip})"));
+    }
+    let release = fs::read_to_string("/etc/os-release").unwrap_or_default();
+    if let Some(name) = release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")) {
+        out.push(format!("{} ({chip})", name.trim_matches('"')));
     }
     for a in adapters::all() {
         let checks: Value = fs::read(data.join("agents").join(format!("{}.json", a.name())))

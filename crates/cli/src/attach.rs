@@ -194,13 +194,7 @@ pub fn run(data: &Path, args: &[String], device: Option<&str>) -> io::Result<Val
                 .flatten()
                 .and_then(|mut found| Some(found.next()?.ok()?.path().display().to_string()));
             let path = kept.as_deref().unwrap_or(path);
-            if !path.starts_with('/')
-                || !std::process::Command::new("open")
-                    .arg("-R")
-                    .arg(path)
-                    .status()?
-                    .success()
-            {
+            if !path.starts_with('/') || !crate::reveal(path)?.success() {
                 return Err(io::Error::other(format!("Couldn't reveal {path}")));
             }
             Ok(json!({"ok": true}))

@@ -30,10 +30,22 @@ pub fn login() -> Login {
     refresh()
 }
 
+/// The user's shell: `$SHELL`, else the system's default, zsh on macOS, bash then sh on Linux.
+pub fn shell() -> String {
+    let fallback = match cfg!(target_os = "linux") {
+        true if !std::path::Path::new("/bin/bash").exists() => "/bin/sh",
+        true => "/bin/bash",
+        false => "/bin/zsh",
+    };
+    (std::env::var("SHELL").ok())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| fallback.into())
+}
+
 /// Reads the login shell's environment again (an install may have changed it). A shell that
 /// fails or hangs leaves the system PATH and no variables.
 pub fn refresh() -> Login {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let shell = shell();
     let mut command = Command::new(shell);
     // Interactive too: many users export PATH and keys only in .zshrc.
     command.args(["-l", "-i", "-c", &format!("printf {MARK}; /usr/bin/env -0")]);

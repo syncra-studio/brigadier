@@ -324,6 +324,8 @@ pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live 
     }
 }
 
+// f_bavail is 32 bits on macOS, 64 on Linux.
+#[allow(clippy::unnecessary_cast)]
 fn free_bytes(path: &std::path::Path) -> u64 {
     let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
         return u64::MAX;
