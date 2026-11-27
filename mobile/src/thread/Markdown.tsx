@@ -60,7 +60,7 @@ function blocks(text: string): Block[] {
 }
 
 // Code spans, bold, links, italics and bare web addresses, in that order of precedence.
-const INLINE = /`([^`\n]+)`|\*\*(.+?)\*\*|__(.+?)__|\[([^\[\]\n]+)\]\(<?([^()\s<>\[\]]+)>?(?:\s+"[^"]*")?\)|\*([^*\s](?:[^*\n]*[^*\s])?)\*|\b_([^_\n]+?)_\b|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])/g;
+const INLINE = /`([^`\n]+)`|\*\*(.+?)\*\*|__(.+?)__|\[([^\[\]\n]+)\]\(<?([^()\s<>]+)>?(?:\s+"[^"]*")?\)|\*([^*\s](?:[^*\n]*[^*\s])?)\*|\b_([^_\n]+?)_\b|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])/g;
 
 function inline(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
