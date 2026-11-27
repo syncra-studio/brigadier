@@ -1,0 +1,87 @@
+{
+  "items": [
+    {
+      "kind": "notice",
+      "level": "info",
+      "text": "Resumed from the saved conversation.",
+      "id": "notice-1"
+    },
+    {
+      "kind": "notice",
+      "level": "warning",
+      "text": "The working tree has uncommitted changes.",
+      "id": "notice-2"
+    },
+    {
+      "kind": "notice",
+      "level": "error",
+      "text": "The agent's process ended unexpectedly.",
+      "id": "notice-3"
+    },
+    {
+      "kind": "notice",
+      "reason": "untrusted",
+      "id": "notice-4"
+    },
+    {
+      "kind": "notice",
+      "reason": "blocked",
+      "text": "This reply was withheld by a safety check.",
+      "id": "notice-5"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "turn-failed",
+      "cause": null,
+      "text": "exit status 1",
+      "id": "notice-6"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "turn-failed",
+      "cause": "capacity",
+      "text": "overloaded",
+      "id": "notice-7"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "start-failed",
+      "cause": null,
+      "text": "command not found",
+      "id": "notice-8"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "model-unavailable",
+      "cause": null,
+      "text": null,
+      "id": "notice-9"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "ended-for-safety",
+      "cause": null,
+      "text": null,
+      "id": "notice-10"
+    },
+    {
+      "kind": "notice",
+      "reason": "failed",
+      "why": "context-full",
+      "cause": null,
+      "text": null,
+      "id": "notice-11"
+    },
+    {
+      "kind": "notice",
+      "reason": "sign-in",
+      "text": "Not signed in",
+      "id": "notice-12"
+    }
+  ]
+}

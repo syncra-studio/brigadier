@@ -1,8 +1,11 @@
 // The thread on fake data: `pnpm thread`. Pick a size, stream replies, jump around.
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import { ApprovalCard, type PendingApproval } from "../components/composer/approval";
+import { type PendingQuestion, QuestionCard } from "../components/composer/question";
 import { WorkingLine } from "../components/thread/work";
 import { FakeThread, fakeSession } from "./fake";
+import type { Item, Session, Turn } from "./item";
 import { Thread, type Source, type ThreadHandle } from "./thread";
 
 const SIZES = [1_000, 10_000, 100_000];
@@ -11,6 +14,41 @@ const FLING_PX = 1_500;
 const FLING_MS = 2_000;
 /** Before the first session arrives: the thread's loading state. */
 const LOADING: Source = { subscribe: () => () => {}, get: () => null };
+
+// The shared samples, one file per item kind and card [D58]: each file's rows under a done turn of its own, its `n`
+// counted on from the file before, so a group's span reaches its own steps.
+const files = import.meta.glob<{ items: Item[] }>("../../../shared/samples/*.json", { eager: true, import: "default" });
+const cards = (name: string) => files[`../../../shared/samples/${name}.json`] as unknown as unknown[];
+const SAMPLES: Source = (() => {
+  const [turns, items]: [Turn[], Item[]] = [[], []];
+  for (const [path, file] of Object.entries(files)) {
+    if (path.endsWith("-cards.json")) continue;
+    const turnId = `sample:${path.slice(path.lastIndexOf("/") + 1, -5)}`;
+    const base = items.length;
+    turns.push({ id: turnId, status: "done", startedAt: 0, endedAt: 0 });
+    for (const [at, item] of file.items.entries()) {
+      const moved = { ...item, turnId, n: base + at + 1 } as Item;
+      if (moved.kind === "group") Object.assign(moved, { span: moved.span.map((n) => n + base), steps: moved.steps.map((step) => ({ ...step, n: step.n + base })) });
+      items.push(moved);
+    }
+  }
+  const session: Session = { id: "samples", title: "Samples", turns, items };
+  return { subscribe: () => () => {}, get: () => session };
+})();
+
+/** The cards, as the composer shows them, their answers going nowhere. */
+function SampleCards() {
+  return (
+    <div className="flex flex-col gap-4 pt-8">
+      {(cards("approval-cards") as PendingApproval[]).map((approval) => (
+        <ApprovalCard key={approval.id} approval={approval} onAnswer={() => {}} busy={false} error={null} session="samples" />
+      ))}
+      {(cards("question-cards") as PendingQuestion[]).map((question) => (
+        <QuestionCard key={question.id} question={question} onAnswer={async () => {}} onDismiss={() => {}} session="samples" run={async () => ({ ok: true })} />
+      ))}
+    </div>
+  );
+}
 
 /** Scrolls up, then back down, at the bench's speed, to show the rows that aren't drawn in time. */
 function fling(handle: ThreadHandle) {
@@ -28,6 +66,7 @@ export function Demo() {
   const [size, setSize] = useState(10_000);
   const [huge, setHuge] = useState(false);
   const [streaming, setStreaming] = useState(true);
+  const [samples, setSamples] = useState(false);
   // Each send starts a new turn with a new user message now (one still running is stopped); `id` when sent from here.
   const [sent, setSent] = useState<{ id?: string }>({});
   const thread = useRef<ThreadHandle>(null);
@@ -43,7 +82,7 @@ export function Demo() {
   }, [size, huge]);
   const store = shown?.store;
   useEffect(() => (streaming ? store?.stream(undefined, undefined, sent.id) : undefined), [store, streaming, sent]);
-  const source = store ?? LOADING;
+  const source = samples ? SAMPLES : (store ?? LOADING);
   const running = useSyncExternalStore(source.subscribe, () => source.get()?.turns.at(-1)?.status === "running");
   return (
     <main className="fixed inset-0 flex flex-col">
@@ -51,10 +90,13 @@ export function Demo() {
       <header className="flex h-titlebar shrink-0 items-center gap-1 text-sm">
         <div className="app-drag h-full w-traffic-lights shrink-0" />
         {SIZES.map((each) => (
-          <Toggle key={each} on={size === each} onClick={() => setSize(each)}>
+          <Toggle key={each} on={!samples && size === each} onClick={() => (setSize(each), setSamples(false))}>
             {each.toLocaleString()} items
           </Toggle>
         ))}
+        <Toggle on={samples} onClick={() => setSamples(!samples)}>
+          Samples
+        </Toggle>
         <Toggle on={huge} onClick={() => setHuge(!huge)}>
           Huge outputs
         </Toggle>
@@ -85,7 +127,7 @@ export function Demo() {
         <div className="app-drag h-full flex-1" />
       </header>
       <div className="min-h-0 flex-1">
-        <Thread key={shown?.key} source={source} ref={thread} footer={running && store ? <Working store={store} /> : null} />
+        <Thread key={samples ? "samples" : shown?.key} source={source} ref={thread} footer={samples ? <SampleCards /> : running && store ? <Working store={store} /> : null} />
       </div>
       {/* Stands in for the composer, keeping its height and gap to the window's bottom. */}
       <div className="mx-auto w-full max-w-reading shrink-0 px-6 pb-3">

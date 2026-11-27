@@ -1,0 +1,51 @@
+{
+  "items": [
+    {
+      "kind": "approval",
+      "request": {
+        "id": "ap1",
+        "action": "command",
+        "reason": "Install the test browser",
+        "command": "pnpm exec playwright install"
+      },
+      "decision": "approved",
+      "id": "approval-1"
+    },
+    {
+      "kind": "approval",
+      "request": {
+        "id": "ap2",
+        "action": "network",
+        "reason": null,
+        "host": "registry.npmjs.org"
+      },
+      "decision": "denied",
+      "id": "approval-2"
+    },
+    {
+      "kind": "approval",
+      "request": {
+        "id": "ap3",
+        "action": "plan",
+        "reason": null,
+        "body": "1. Fix the test\n2. Add a retry"
+      },
+      "decision": "withdrawn",
+      "id": "approval-3"
+    },
+    {
+      "kind": "approval",
+      "request": {
+        "id": "ap4",
+        "action": "message",
+        "reason": null,
+        "to": "s-api",
+        "body": "Is the endpoint live?"
+      },
+      "decision": "approved",
+      "to": "parent",
+      "by": "parent",
+      "id": "approval-4"
+    }
+  ]
+}

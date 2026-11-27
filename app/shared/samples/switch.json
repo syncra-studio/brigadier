@@ -1,0 +1,91 @@
+{
+  "items": [
+    {
+      "reason": "usage-limit",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": true,
+      "text": "Usage limit reached",
+      "backend": "a",
+      "account": "work",
+      "resets": 1793003600000,
+      "kind": "switch",
+      "state": "limit",
+      "id": "switch-1"
+    },
+    {
+      "reason": "usage-limit",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": true,
+      "text": "Usage limit reached",
+      "backend": "a",
+      "account": "work",
+      "resets": 1793003600000,
+      "kind": "switch",
+      "state": "switching",
+      "id": "switch-2"
+    },
+    {
+      "reason": "usage-limit",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": true,
+      "text": "Usage limit reached",
+      "backend": "a",
+      "account": "work",
+      "resets": 1793003600000,
+      "kind": "switch",
+      "state": "switched",
+      "id": "switch-3"
+    },
+    {
+      "reason": "usage-limit",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": true,
+      "text": "Usage limit reached",
+      "backend": "a",
+      "account": "work",
+      "resets": 1793003600000,
+      "kind": "switch",
+      "state": "failed",
+      "id": "switch-4"
+    },
+    {
+      "reason": "usage-limit",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": true,
+      "text": "Usage limit reached",
+      "backend": "a",
+      "account": "work",
+      "resets": 1793003600000,
+      "kind": "switch",
+      "state": "over",
+      "id": "switch-5"
+    },
+    {
+      "kind": "switch",
+      "state": "switched",
+      "reason": "picked",
+      "from": "Agent A",
+      "to": "Agent B",
+      "model": "model-b",
+      "handoff": true,
+      "automatic": false,
+      "text": "",
+      "id": "switch-6"
+    }
+  ]
+}

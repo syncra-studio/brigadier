@@ -1,0 +1,33 @@
+{
+  "items": [
+    {
+      "kind": "shell",
+      "cmd": "c-sh1",
+      "command": "git status",
+      "progress": "done",
+      "output": "nothing to commit, working tree clean",
+      "exitCode": 0,
+      "ms": 120,
+      "id": "shell-1"
+    },
+    {
+      "kind": "shell",
+      "cmd": "c-sh2",
+      "command": "pnpm test",
+      "progress": "running",
+      "output": "running 12 tests",
+      "exitCode": null,
+      "id": "shell-2"
+    },
+    {
+      "kind": "shell",
+      "cmd": "c-sh3",
+      "command": "make deploy",
+      "progress": "failed",
+      "output": "make: *** No rule",
+      "exitCode": 2,
+      "error": null,
+      "id": "shell-3"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "items": [
+    {
+      "kind": "fileChange",
+      "changes": [
+        {
+          "path": "src/login.test.ts",
+          "change": "modified",
+          "from": null,
+          "diff": "@@ -10,3 +10,4 @@\n test(\"login\", async () => {\n   await login(page);\n+  await page.waitForURL(\"/home\");\n   expect(page.url()).toContain(\"/home\");\n",
+          "added": 1,
+          "removed": 0
+        }
+      ],
+      "progress": "done",
+      "id": "file-change-1"
+    },
+    {
+      "kind": "fileChange",
+      "changes": [
+        {
+          "path": "src/new.ts",
+          "change": "added",
+          "from": null,
+          "diff": "@@ -0,0 +1 @@\n+export const x = 1;\n",
+          "added": 1,
+          "removed": 0
+        },
+        {
+          "path": "src/old.ts",
+          "change": "deleted",
+          "from": null,
+          "diff": null,
+          "added": null,
+          "removed": null
+        },
+        {
+          "path": "src/b.ts",
+          "change": "renamed",
+          "from": "src/a.ts",
+          "diff": null,
+          "added": 0,
+          "removed": 0
+        }
+      ],
+      "progress": "done",
+      "id": "file-change-2"
+    },
+    {
+      "kind": "fileChange",
+      "changes": [
+        {
+          "path": "src/config.ts",
+          "change": "modified",
+          "from": null,
+          "diff": null,
+          "added": null,
+          "removed": null
+        }
+      ],
+      "progress": "failed",
+      "id": "file-change-3"
+    }
+  ]
+}

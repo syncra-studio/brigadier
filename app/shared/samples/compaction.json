@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "kind": "compaction",
+      "summary": "Fixed the login test; logout left to check.",
+      "progress": "done",
+      "id": "compaction-1"
+    },
+    {
+      "kind": "compaction",
+      "summary": null,
+      "progress": "running",
+      "id": "compaction-2"
+    },
+    {
+      "kind": "compaction",
+      "summary": null,
+      "progress": "failed",
+      "id": "compaction-3"
+    }
+  ]
+}
