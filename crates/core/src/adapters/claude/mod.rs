@@ -16,7 +16,7 @@ pub mod veto;
 use super::setup::{first_field, newest};
 use super::{
     Accounts, Adapter, Can, Check, Cut, Delivery, Done, Event, Failed, Fork, Launch, ModelInfo,
-    Retune, Rewound, Seed, Timing, Who, base_env, home_path, probe_as, s, version,
+    Retune, Rewound, Seed, Timing, Who, home_path, probe_as, s, version,
 };
 use crate::Spec;
 use serde_json::Value;
@@ -32,6 +32,11 @@ impl Adapter for Claude {
 
     fn label(&self) -> &'static str {
         "Claude Code"
+    }
+
+    /// Read from the login shell, so a user's own tag stands.
+    fn keys(&self) -> Vec<String> {
+        vec![control::ENTRYPOINT.into()]
     }
 
     fn short_label(&self) -> &'static str {
@@ -235,7 +240,7 @@ impl Adapter for Claude {
             }
         }
         let input = text.map(|t| control::user(t, &spec.images, spec.cid.as_deref()));
-        let mut env = base_env(spec, &exe, &self.keys());
+        let mut env = control::env(spec, &exe);
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
         // The queue's judge has no tools (code.claude.com/docs/en/cli-reference) [D771].

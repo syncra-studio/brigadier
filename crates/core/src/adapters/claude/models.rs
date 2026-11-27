@@ -3,9 +3,7 @@
 //! folded into the model it runs, and older models of a family marked legacy; and its usage limits
 //! as it answers `get_usage` in the same run, the old app's way [D28].
 
-use super::super::{
-    Check, Event, Limit, ModelInfo, Who, base_env, home_path, iso_ms, mark_superseded, s,
-};
+use super::super::{Check, Event, Limit, ModelInfo, Who, home_path, iso_ms, mark_superseded, s};
 use super::commands;
 use crate::Spec;
 use serde_json::{Value, json};
@@ -71,7 +69,7 @@ fn asked<T>(
     let mut child = Command::new(exe)
         .args(args)
         .env_clear()
-        .envs(base_env(spec, exe, &[]))
+        .envs(super::control::env(spec, exe))
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

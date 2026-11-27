@@ -117,6 +117,19 @@ pub fn naked(argv: &mut Vec<String>, servers: Map<String, Value>) {
     argv.extend(flags.into_iter().chain(more).map(String::from));
 }
 
+/// The tag on every `claude` Brigadier starts, unless the user's login shell sets its own: untagged,
+/// it calls itself sdk-cli and its 5-hour limit drains about twice as fast [beat-competitors D28, D53].
+pub const ENTRYPOINT: &str = "CLAUDE_CODE_ENTRYPOINT";
+
+/// A `claude` process's environment: the one every agent gets, tagged as Brigadier's.
+pub fn env(spec: &Spec, exe: &Path) -> Vec<(String, String)> {
+    let mut env = super::super::base_env(spec, exe, &[ENTRYPOINT.into()]);
+    if !env.iter().any(|(k, _)| k == ENTRYPOINT) {
+        env.push((ENTRYPOINT.into(), "brigadier".into()));
+    }
+    env
+}
+
 /// Every launch's own env: no compaction, as Brigadier's rebirth stands in for it and `/compact`
 /// still works [D88]; its to-do tool on every model, as TodoWrite's whole list
 /// (code.claude.com/docs/en/tools-reference) [D104, D116]; its auto memory as the switch says, `0`
