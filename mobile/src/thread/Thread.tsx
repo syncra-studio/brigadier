@@ -1,8 +1,9 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import type { Session } from "../../vendor/brigadier-shared/thread";
 import { datedMessages } from "../../vendor/brigadier-shared/words";
-import { older, thread } from "../mac/mac";
+import { lists, older, thread } from "../mac/mac";
+import { request, streamNow } from "../link";
 import { Composer } from "../compose/Composer";
 import { color, text } from "../theme";
 import { Cards } from "./Cards";
@@ -12,6 +13,7 @@ import { Row } from "./Row";
 /** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */
 export function Thread() {
   const open = useSyncExternalStore(thread.subscribe, thread.get);
+  useSeen(open?.status === "missing" ? undefined : open?.id);
   if (!open || (!open.session && open.status === "loading")) return <Centered><ActivityIndicator color={color.foreground} /></Centered>;
   const problem = open.status === "missing" ? "This session is no longer on your Mac." : open.status === "error" ? "Couldn't open this session." : null;
   if (!open.session) return <Centered><Text style={styles.muted}>{problem}</Text></Centered>;
@@ -23,6 +25,27 @@ export function Thread() {
       {open.status !== "missing" && <Composer key={open.id} id={open.id} />}
     </View>
   );
+}
+
+/**
+ * The open session is read up to the end its row shows, as the desktop's sidebar/seen.ts: on opening it, on each
+ * later end while it stays open, and again once signed in after a lost stream. That clears its dot here and on the Mac.
+ */
+function useSeen(id: string | undefined) {
+  const finished = useSyncExternalStore(lists.subscribe, () => {
+    const row = id ? lists.get().rows.find((each) => each.id === id) : undefined;
+    // A mockup's news counts as an end [D560]; the shared row type doesn't name it.
+    return row ? Math.max(row.finished ?? 0, (row as { news?: number }).news ?? 0) : -1;
+  });
+  const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
+  useEffect(() => {
+    if (!id || finished < 0 || conn < 0) return;
+    try {
+      request({ op: "run", args: ["seen", id, String(finished)] }, () => {});
+    } catch {
+      // Not connected: sent again once signed in.
+    }
+  }, [id, finished, conn]);
 }
 
 /** Rows of a session, newest at the bottom; scrolling up past the first loads the page before it. */
