@@ -10,7 +10,7 @@ import type { Runner } from "../../vendor/brigadier-shared/session/run";
 import { forMac, newId } from "./state";
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
-const effortLabel = (effort: string) => (effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1));
+export const effortLabel = (effort: string) => (effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1));
 
 // The Mac answers `models --fresh` at most once a minute for each phone.
 let freshAt = 0;

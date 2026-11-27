@@ -4,16 +4,17 @@ import { useSyncExternalStore } from "react";
 import { Pressable, Text } from "react-native";
 import { Sessions } from "../lists/Sessions";
 import { Samples } from "../samples/Samples";
+import { Start } from "../start/Start";
 import { color, text } from "../theme";
 import { Thread } from "../thread/Thread";
 import { closeThread, lists, openThread } from "./mac";
 
-type Screens = { sessions: undefined; thread: { id: string; title: string }; samples: undefined };
+export type Screens = { sessions: undefined; thread: { id: string; title: string }; samples: undefined; start: { project: string; name: string } };
 const Stack = createNativeStackNavigator<Screens>();
 
 const theme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: color.background, card: color.background, text: color.foreground, border: color.border, primary: color.primary } };
 
-/** A signed-in Mac: its sessions, a session's thread, and the samples screen. */
+/** A signed-in Mac: its sessions, a session's thread, a new chat, and the samples screen. */
 /** `open`: a screen to start on (simulator screenshots only). */
 export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () => void; open?: "thread" | "samples" }) {
   const ready = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
@@ -45,10 +46,23 @@ export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () =>
                 navigation.navigate("thread", { id: row.id, title: row.title || "New session" });
               }}
               onSamples={() => navigation.navigate("samples")}
+              onNew={(project) => navigation.navigate("start", { project: project.id, name: project.name })}
             />
           )}
         </Stack.Screen>
         <Stack.Screen name="thread" component={Thread} initialParams={open === "thread" ? { id: "s1", title: "Fix the failing login test" } : undefined} options={({ route }) => ({ title: route.params?.title ?? "" })} listeners={{ beforeRemove: closeThread }} />
+        <Stack.Screen name="start" options={{ title: "New chat" }}>
+          {({ navigation, route }) => (
+            <Start
+              project={route.params.project}
+              name={route.params.name}
+              onStarted={(id, title) => {
+                openThread(id);
+                navigation.replace("thread", { id, title });
+              }}
+            />
+          )}
+        </Stack.Screen>
         <Stack.Screen name="samples" component={Samples} options={{ title: "Samples" }} />
       </Stack.Navigator>
     </NavigationContainer>
