@@ -54,7 +54,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
       .catch(() => {}) // the failure comes back as `error`
       .finally(() => setHeld((now) => (now && now.moving > 1 ? { ...now, moving: now.moving - 1 } : null)));
   };
-  if (items.length === 0 && !pulled) return null;
+  if (items.length === 0 && running.length === 0 && !pulled) return null;
   return (
     <View style={st.card} accessibilityLabel="Message queue">
       {paused ? (

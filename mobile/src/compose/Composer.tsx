@@ -130,6 +130,8 @@ export function Composer({ id }: { id: string }) {
   const [stopping, setStopping] = useState(false);
   /** The Face ID sheet for a `!` command or Run in background, and what its reply does. */
   const [power, setPower] = useState<(Power & { then: (reply: Frame) => void }) | null>(null);
+  /** A `!` command whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once. */
+  const lostShell = useRef<{ line: string; qid: string } | null>(null);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
   // A message pulled back to edit that this phone can't prove is its own (another device's, or from before a relaunch)
@@ -298,7 +300,20 @@ export function Composer({ id }: { id: string }) {
       if (!line) return;
       if (line.startsWith("--")) return setError("A command can't start with --");
       const pulled = editing.get();
-      return setPower({ ...shellPower(id, line, pulled?.qid ?? `c-${newId()}`, pulled?.slot), then: (reply) => (reply.ok ? void take() : setError(refusal(reply))) });
+      const qid = pulled?.qid ?? (lostShell.current?.line === line ? lostShell.current.qid : `c-${newId()}`);
+      const typed = words$.current;
+      return setPower({
+        ...shellPower(id, line, qid, pulled?.slot),
+        then: (reply) => {
+          lostShell.current = reply.error === "closed" ? { line, qid } : null;
+          if (!reply.ok) return setError(refusal(reply));
+          if (editing.get()?.qid === qid) editing.set(null);
+          // Only the command leaves the field: a message given back above it while the sheet was open stays.
+          const now = words$.current;
+          if (now === typed) setField([]);
+          else if (now.endsWith(`\n\n${typed}`)) setField(partsOf(now.slice(0, -typed.length - 2), named$.current));
+        },
+      });
     }
     if (waitsFor()) return;
     if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {

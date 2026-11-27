@@ -97,7 +97,8 @@ export function OvernightStrip({ id, row, connected }: Props) {
     const timer = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [night !== null]);
-  if (!now) return null;
+  // Off now (maybe from the Mac meanwhile): a sheet already open and its refusal stay.
+  if (!now) return <>{error ? <Text style={st.error}>{error}</Text> : null}{sheet}</>;
   return (
     <View style={st.strip} accessibilityLabel="Overnight">
       {night ? (
