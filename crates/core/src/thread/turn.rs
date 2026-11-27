@@ -373,7 +373,7 @@ impl Thread {
             }
             self.changed_items.insert(at);
             self.switching = live.then_some(at);
-            if t.origin != "user" {
+            if t.origin != "user" && t.parts["brief"] != true {
                 return;
             }
         } else {
