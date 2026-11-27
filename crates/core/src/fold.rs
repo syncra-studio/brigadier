@@ -370,10 +370,17 @@ impl Fold {
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
                     self.pending.ended(&str_of("id"), self.turns.is_empty());
-                    // The turn open now deals with its end, unless it started it; else its wake does [D48].
-                    match self.turns.first_mut() {
-                        Some(t) => t.took |= !t.tools.contains(&str_of("id")),
-                        None => self.pending.agent = true,
+                    // The turn open now deals with its end, unless it started it; else the next one,
+                    // not a held one [D48].
+                    let open = self.turns.first_mut();
+                    if open
+                        .as_ref()
+                        .is_none_or(|t| !t.tools.contains(&str_of("id")))
+                    {
+                        match open.filter(|t| !t.held) {
+                            Some(t) => t.took = true,
+                            None => self.pending.agent = true,
+                        }
                     }
                 }
                 self.run_done(item, ts);
