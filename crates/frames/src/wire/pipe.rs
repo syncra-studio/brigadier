@@ -28,8 +28,8 @@ use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 use windows_sys::Win32::Security::{
-    EqualSid, GetTokenInformation, PSECURITY_DESCRIPTOR, RevertToSelf, SECURITY_ATTRIBUTES,
-    TOKEN_QUERY, TOKEN_USER, TokenUser,
+    EqualSid, GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
+    TOKEN_USER, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
@@ -38,12 +38,11 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
-    ImpersonateNamedPipeClient, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
+    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
+    PIPE_WAIT, WaitNamedPipeW,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateEventW, GetCurrentProcess, GetCurrentThread, INFINITE, OpenProcessToken, OpenThreadToken,
-    WaitForSingleObject,
+    CreateEventW, GetCurrentProcess, INFINITE, OpenProcessToken, WaitForSingleObject,
 };
 
 /// The pipe a socket path stands for.
@@ -227,26 +226,25 @@ fn sid(buf: &[u8]) -> *mut core::ffi::c_void {
 }
 
 fn my_user() -> io::Result<Vec<u8>> {
+    process_user(unsafe { GetCurrentProcess() })
+}
+
+/// The user a process runs as, by its token.
+fn process_user(process: HANDLE) -> io::Result<Vec<u8>> {
     let mut token = std::ptr::null_mut();
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
         return Err(last());
     }
     user_of(Handle(token).0)
 }
 
-/// The client runs as this user: its token, read while impersonating it, names our SID.
+/// The client runs as this user: its process's token names our SID. Impersonating it would say
+/// the same, but only once something has been read from the pipe, and the daemon checks first.
 pub fn same_user(stream: &Stream) -> io::Result<bool> {
-    if unsafe { ImpersonateNamedPipeClient(stream.pipe.0) } == 0 {
-        return Err(last());
-    }
-    let mut token = std::ptr::null_mut();
-    let opened = unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token) };
-    unsafe { RevertToSelf() };
-    if opened == 0 {
-        return Err(last());
-    }
-    let theirs = user_of(Handle(token).0)?;
-    let mine = my_user()?;
+    use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+    let pid = peer_pid(stream)? as u32;
+    let process = crate::win::open(pid, PROCESS_QUERY_LIMITED_INFORMATION).ok_or_else(last)?;
+    let (theirs, mine) = (process_user(process.0)?, my_user()?);
     Ok(unsafe { EqualSid(sid(&theirs), sid(&mine)) } != 0)
 }
 
