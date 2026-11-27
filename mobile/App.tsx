@@ -2,6 +2,9 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import Link, { type Mac } from "./modules/link";
 import { close, onClosed } from "./src/link";
+import { start, stop } from "./src/mac/mac";
+import { MacScreens } from "./src/mac/MacScreens";
+import { loadSample } from "./src/mac/sample";
 import { Confirm } from "./src/act/Confirm";
 import { Lock } from "./src/Lock";
 import { Macs, type Status } from "./src/macs/Macs";
@@ -15,7 +18,8 @@ import { Scan } from "./src/pair/Scan";
 type At =
   | { at: "connect" | "scan" | "code" | "macs" }
   | { at: "finishing"; check?: string }
-  | { at: "connected"; name: string }
+  | { at: "connected"; mac: Mac }
+  | { at: "mac"; mac: Mac }
   | { at: "notice"; problem: Problem; retry?: () => void };
 
 // `-screen <name>` opens one screen with sample data and no network, for simulator screenshots (no Face ID there).
@@ -23,7 +27,11 @@ const sample = Link.screen;
 const SAMPLE_MAC: Mac = { pk: "sample", name: "MacBook Pro", device: "", addresses: [] };
 function sampleAt(): At {
   if (sample === "finishing") return { at: "finishing", check: "042917" };
-  if (sample === "connected") return { at: "connected", name: SAMPLE_MAC.name };
+  if (sample === "connected") return { at: "connected", mac: SAMPLE_MAC };
+  if (sample === "sessions" || sample === "thread" || sample === "samples") {
+    loadSample();
+    return { at: "mac", mac: SAMPLE_MAC };
+  }
   if (sample?.startsWith("notice-")) return { at: "notice", problem: sample.slice(7) as Problem };
   if (sample === "scan" || sample === "code" || sample === "macs" || sample === "act") return { at: sample === "act" ? "macs" : sample };
   return { at: "connect" };
@@ -44,6 +52,9 @@ export default function App() {
     setStatus({ [mac.pk]: "connecting" });
     const r = await signIn(mac);
     setStatus({ [mac.pk]: r === "ok" ? "connected" : r });
+    if (r !== "ok") return;
+    start();
+    setAt({ at: "mac", mac });
   }
 
   async function run(how: { offer: Offer } | { code: string }) {
@@ -59,7 +70,8 @@ export default function App() {
       }
       setMacs(await Link.macs());
       setStatus({ [r.pk]: "connected" });
-      setAt({ at: "connected", name: r.name });
+      start();
+      setAt({ at: "connected", mac: r });
     } catch {
       setAt({ at: "notice", problem: "lost" });
     }
@@ -71,7 +83,10 @@ export default function App() {
       setMacs(list);
       setAt(home(list));
     });
-    return onClosed(() => setStatus((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "connected" ? "lost" : v]))));
+    return onClosed(() => {
+      stop();
+      setStatus((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "connected" ? "lost" : v])));
+    });
   }, []);
 
   // Once unlocked, sign in to the first Mac (one stream at a time in this step).
@@ -121,7 +136,7 @@ export default function App() {
         />
       )}
       {at.at === "connected" && (
-        <Notice title="You're connected" body={`${at.name} is ready on this iPhone.`} action="Done" onPress={() => setAt({ at: "macs" })} />
+        <Notice title="You're connected" body={`${at.mac.name} is ready on this iPhone.`} action="Done" onPress={() => setAt({ at: "mac", mac: at.mac })} />
       )}
       {at.at === "notice" && (
         <Notice
@@ -134,7 +149,7 @@ export default function App() {
         <Macs
           macs={macs}
           status={status}
-          onConnect={(mac) => void reach(mac)}
+          onConnect={(mac) => (status[mac.pk] === "connected" ? setAt({ at: "mac", mac }) : void reach(mac))}
           onAdd={() => setAt({ at: "connect" })}
           onForget={async (mac) => {
             if (status[mac.pk] === "connected" || status[mac.pk] === "connecting") close();
@@ -146,6 +161,7 @@ export default function App() {
           }}
         />
       )}
+      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : undefined} />}
       {sample === "act" && (
         <Confirm
           title="Run this on your Mac?"

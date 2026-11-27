@@ -24,14 +24,22 @@ let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
 const closed = new Set<() => void>();
 
+// Once signed in, the Mac's pushes go here instead of to `next`.
+let pushes: ((f: Frame) => void) | null = null;
+
 const wire = client(
   (frame) => Link.write(toBase64(frame)),
   (frame) => {
     const w = waiting;
     waiting = null;
-    w ? w(frame) : frames.push(frame);
+    w ? w(frame) : pushes ? pushes(frame) : frames.push(frame);
   },
 );
+
+/** Where the Mac's pushes go from now on; null hands them to `next` again. */
+export function onPush(f: ((f: Frame) => void) | null) {
+  pushes = f;
+}
 
 function lost() {
   live = false;
@@ -70,20 +78,26 @@ export function close() {
 /** A frame with no reply id (pairing's `sig`; the Mac ignores the id the client adds). */
 export const send = (frame: object) => wire.send(frame);
 
-/** A request and its reply; `{ok: false, error: "closed"}` if the stream ends first or no reply comes in 30 s. */
-export function ask(request: object): Promise<Frame> {
-  return new Promise((done) => {
-    const timer = setTimeout(close, 30_000);
-    try {
-      wire.ask(request, (reply) => {
-        clearTimeout(timer);
-        done(reply);
-      });
-    } catch (e) {
+/**
+ * Sends a request; `onReply` gets its reply, or `{ok: false, error: "closed"}` if the stream ends first or no reply
+ * comes in 30 s. Returns its id, which the Mac's pushes for it carry (a thread's `watch`). Throws when not connected.
+ */
+export function request(req: object, onReply: (f: Frame) => void): number {
+  const timer = setTimeout(close, 30_000);
+  try {
+    return wire.ask(req, (reply) => {
       clearTimeout(timer);
-      throw e;
-    }
-  });
+      onReply(reply);
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
+
+/** A request and its reply, as `request`. */
+export function ask(req: object): Promise<Frame> {
+  return new Promise((done) => void request(req, done));
 }
 
 /** The next frame that isn't a reply, or null once the stream is closed; after `ms` the stream is closed. */

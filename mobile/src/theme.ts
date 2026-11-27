@@ -8,7 +8,21 @@ export const color = {
   primary: "#ffffff",
   primaryFg: "#0d0d0d",
   border: "rgba(255,255,255,0.084)",
+  // The thread's: rows at 60% and their objects at 40%, the user's bubble, code and shell boxes, and the status colours.
+  row: "rgba(223,223,223,0.6)",
+  rowObject: "rgba(223,223,223,0.4)",
+  faint: "rgba(255,255,255,0.5)",
+  bubble: "#2f2f2e",
+  chat: "#ffffff",
+  fill: "rgba(255,255,255,0.078)",
+  codeSurface: "#1f1f1f",
+  link: "#83c3ff",
+  destructive: "#ff6764",
+  warning: "#e25507",
+  success: "#54ce88",
 };
+
+export const mono = "Menlo";
 
 export const text = {
   sm: { fontSize: 14, lineHeight: 20 },

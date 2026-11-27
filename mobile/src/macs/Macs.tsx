@@ -31,6 +31,7 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
             </Text>
             <Text style={styles.status}>{said(s)}</Text>
             <View style={styles.actions}>
+              {s === "connected" && <Action title="Open" onPress={() => onConnect(mac)} />}
               {s !== "connected" && s !== "connecting" && <Action title="Try again" onPress={() => onConnect(mac)} />}
               <Action title="Forget this Mac" onPress={() => onForget(mac)} />
             </View>
