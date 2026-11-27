@@ -362,7 +362,7 @@ export function Composer({ id }: { id: string }) {
   const add = (picked: Picked[]) => picked.forEach((each) => fileStore.attach(id, each, row?.backend));
   const pick = () =>
     ActionSheetIOS.showActionSheetWithOptions({ options: ["Photo Library", "Files", "Cancel"], cancelButtonIndex: 2 }, (at) => {
-      if (at === 0) void ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.fileName || `Image.${each.mimeType?.split("/")[1] ?? "jpg"}`, mime: each.mimeType, size: each.fileSize }))), () => setError("Couldn't open your photos"));
+      if (at === 0) void ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.fileName || `Image.${each.mimeType?.split("/")[1] ?? "jpg"}`, mime: each.mimeType, size: each.fileSize }))), () => setError("Couldn't open your photos"));
       if (at === 1) void DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.name, mime: each.mimeType, size: each.size }))), () => setError("Couldn't open Files"));
     });
 
