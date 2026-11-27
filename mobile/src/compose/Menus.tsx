@@ -24,6 +24,10 @@ export const TOOLS: Command[] = [
   ["workers", "Split the job across workers in parallel"],
 ].map(([id, line]): Command => ({ id, kind: "tool", label: `/${id}`, description: line, instant: false }));
 
+/** The desktop's session/side.tsx NEW_SESSION and sessions/overnight.ts OVERNIGHT. */
+export const NEW_SESSION: Command = { id: "new-session", kind: "command", label: "/new", description: "Send the message as a new session, and stay here", instant: false };
+export const OVERNIGHT: Command = { id: "overnight", kind: "command", label: "/overnight", description: "Finish the job while you’re away", instant: true };
+
 const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 /** A command's colour by kind, for its icon and its chip's name (kind-icons.tsx COMMAND_TONES). */
 export const COMMAND_TONES = { command: color.link, tool: color.success, skill: color.magenta, mcp: color.cyan, prompt: color.cyan };
@@ -110,10 +114,14 @@ export function MenuRow({ icon, title, detail, hint, disabled, onPress }: { icon
   );
 }
 
-/** The agent's commands from Rust for the `/` menu, asked again as a turn starts or ends (`fresh`) and as it opens (`opened`); null while not read yet. */
+/**
+ * The agent's commands from Rust and this session's chats, for the `/` and + menus, asked again as a turn starts or
+ * ends (`fresh`) and as a menu opens (`opened`); null while not read yet.
+ */
 export function useCommands(id: string, fresh: unknown, opened: number) {
   const { run } = forMac();
   const [listed, setListed] = useState<Command[] | null>(null);
+  const [chats, setChats] = useState<Mention[]>([]);
   useEffect(() => {
     let live = true;
     void run(["commands", id]).then((reply) => {
@@ -123,14 +131,21 @@ export function useCommands(id: string, fresh: unknown, opened: number) {
       const kindOf = (each: (typeof list)[number]) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
       setListed(list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, instant: each.instant })));
     });
+    try {
+      request({ op: "mention", owner: id, q: "" }, (reply) => {
+        if (live && reply.ok) setChats(reply.groups.flatMap((group: MentionGroup) => group.items.filter((item) => item.type === "chat")));
+      });
+    } catch {
+      // Not connected: no chats in the + menu.
+    }
     return () => void (live = false);
   }, [id, fresh, opened]);
-  return { listed };
+  return { listed, chats };
 }
 
-/** The `/` menu: Brigadier's tools first, then the agent's commands, under their kinds' headings. */
-export function Commands({ listed, query, onPick }: { listed: Command[] | null; query: string; onPick: (command: Command) => void }) {
-  const shown = listed ? commandMatches([...TOOLS, ...listed], query) : [];
+/** The `/` menu: Brigadier's tools first, then the agent's commands and `extra`, under their kinds' headings. */
+export function Commands({ listed, extra, query, onPick }: { listed: Command[] | null; extra: Command[]; query: string; onPick: (command: Command) => void }) {
+  const shown = listed ? commandMatches([...TOOLS, ...listed, ...extra], query) : [];
   return (
     <Panel>
       {shown.map((each, at) => (
@@ -187,13 +202,32 @@ export function Mentions({ id, query, onPick, onDirect }: { id: string; query: s
   );
 }
 
-/** The + menu: "Add" with this phone's Photo Library and Files. */
-export function PlusMenu({ onPhotos, onFiles }: { onPhotos: () => void; onFiles: () => void }) {
+/** The chats the + lists, as the old app's menu kept them to a few. */
+const CHAT_ROWS = 5;
+
+/**
+ * The + menu: "Add" with this phone's Photo Library and Files, then the `/` menu's tools, skills, MCP servers and
+ * prompts, and up to five chats, each picked in at the end of the text.
+ */
+export function PlusMenu({ listed, chats, onPhotos, onFiles, onCommand, onChat }: { listed: Command[] | null; chats: readonly Mention[]; onPhotos: () => void; onFiles: () => void; onCommand: (command: Command) => void; onChat: (chat: Mention) => void }) {
+  const kind = (wanted: "tool" | "skill" | "mcp" | "prompt") => {
+    const of = [...TOOLS, ...(listed ?? [])].filter((command) => command.kind === wanted);
+    if (of.length === 0) return null;
+    return (
+      <View key={wanted}>
+        <MenuHeading>{KIND_HEADINGS[wanted]}</MenuHeading>
+        {of.map((command) => <MenuRow key={command.id} icon={<CommandIcon command={command} />} title={command.label} detail={command.description} onPress={() => onCommand(command)} />)}
+      </View>
+    );
+  };
   return (
     <Panel>
       <MenuHeading>Add</MenuHeading>
       <MenuRow icon={<Glyph name="photo" color={color.mutedForeground} />} title="Photo Library" onPress={onPhotos} />
       <MenuRow icon={<Glyph name="document" color={color.mutedForeground} />} title="Files" onPress={onFiles} />
+      {(["tool", "skill", "mcp", "prompt"] as const).map(kind)}
+      {chats.length > 0 ? <MenuHeading>Chats</MenuHeading> : null}
+      {chats.slice(0, CHAT_ROWS).map((chat) => <MenuRow key={chat.id} icon={<MentionIcon item={chat} />} title={chat.label} hint="Chat" onPress={() => onChat(chat)} />)}
     </Panel>
   );
 }

@@ -3,7 +3,7 @@
 // the tiles, the field and the footer (+, the level pill, Overnight, To ‹worker›, then status, the model and Send). Send,
 // or while a turn runs Queue (hold Send to Steer, where the agent can); Stop and Resume; messages on their way with Try
 // again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/`, `@` and +; `!` commands,
-// Run in background, the level pill and Overnight, each signed with Face ID [D57].
+// Run in background, the level pill, Overnight and /new, each signed with Face ID [D57].
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -13,7 +13,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
 import { type Chip, type Draft, EMPTY_DRAFT, isEmpty, plainText, sendMode } from "../../vendor/brigadier-shared/draft";
 import type { ModelRow } from "../../vendor/brigadier-shared/session/model";
-import { inThread, type QueuedMessage, queuedOf, type RustQueued } from "../../vendor/brigadier-shared/session/queued";
+import { inThread, type QueuedMessage, queuedOf, type RustQueued, toArgs } from "../../vendor/brigadier-shared/session/queued";
 import { failure } from "../../vendor/brigadier-shared/session/run";
 import { chipArgs, draftArgs, sendOp, sends } from "../../vendor/brigadier-shared/session/sent";
 import type { Going } from "../../vendor/brigadier-shared/session/uncertain";
@@ -28,8 +28,9 @@ import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight
 import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
 import { Boxed, Glyph, Shimmer, Spinner, usePulse } from "./Glyph";
-import { chipTone, type Command, Commands, Mentions, PlusMenu, useCommands } from "./Menus";
+import { chipTone, type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, useCommands } from "./Menus";
 import { ModelPill } from "./Model";
+import { Pill, PillDivider } from "./Pill";
 import { QueueCard } from "./Queue";
 import { ThreadImage } from "../thread/Image";
 import { type Attachment, forMac, newId, type Picked, withChips } from "./state";
@@ -85,6 +86,10 @@ const payload = (parts: Draft["parts"], tiles: readonly string[]) => (parts.some
 const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly string[]) =>
   payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
 
+/** The desktop's home/start.ts sessionId: a new session's id, made here. */
+const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
+
 export function Composer({ id }: { id: string }) {
   const mac = forMac();
   const header = useHeaderHeight();
@@ -110,10 +115,15 @@ export function Composer({ id }: { id: string }) {
   /** The + menu is open; `opened` counts the menus opened, each asking for the commands again. */
   const [plus, setPlus] = useState(false);
   const [opened, setOpened] = useState(0);
+  /** The To: the worker the next message goes to alone (@ › Message directly); leaving the session takes it away. */
+  const [to, setTo] = useState<string | null>(null);
+  const [toSending, setToSending] = useState(false);
+  const toRow = useSyncExternalStore(lists.subscribe, () => (to ? lists.get().rows.find((each) => each.id === to && each.worker?.parent === id) : undefined));
+  const toWorker = toRow ? { id: toRow.id, name: toRow.title || "New session" } : null;
   const worker = Boolean(row?.worker);
   const partsNow = () => partsOf(words$.current, named$.current);
-  // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's.
-  const shell = !worker && shellOf(partsOf(words, named$.current)) !== null;
+  // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's, nor with a To:.
+  const shell = !worker && !toWorker && shellOf(partsOf(words, named$.current)) !== null;
   const empty = isEmpty({ parts: shell ? [words.slice(1)] : partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
   /** Keeps what the field holds, its files' ids too, as this phone's draft on the Mac. */
   const keep = (parts: Draft["parts"]) => drafts.keepDraft(run, id, { parts, attachmentIds: [...tilesNow()] });
@@ -211,7 +221,9 @@ export function Composer({ id }: { id: string }) {
   // Its turn's last questions are in the thread already, waiting or answered.
   const lastTurn = session?.turns.at(-1)?.id;
   const asked = lastTurn !== undefined && (session?.items.some((item) => item.kind === "question" && item.turnId === lastTurn) ?? false);
-  const { listed } = useCommands(id, running, opened);
+  const inProject = Boolean(row?.project) && !worker;
+  const { listed, chats } = useCommands(id, running, opened);
+  const extra: Command[] = worker ? [] : [...(inProject ? [NEW_SESSION] : []), OVERNIGHT];
 
   // Rust's queue, with this phone's actions on it shown at once and its adds Rust may not hold.
   const touched = row?.touched ?? 0;
@@ -307,7 +319,7 @@ export function Composer({ id }: { id: string }) {
     const tiles = readyNow();
     // A `!` line runs on the Mac's shell, through the queue: shown whole and signed, the field kept till the Mac has it.
     // A worker's is a message, as on the desktop.
-    const line = worker ? null : shellOf(parts);
+    const line = worker || toWorker ? null : shellOf(parts);
     if (line !== null) {
       if (!line) return;
       if (line.startsWith("--")) return setPowerError("A command can't start with --");
@@ -336,6 +348,8 @@ export function Composer({ id }: { id: string }) {
       });
     }
     if (waitsFor()) return;
+    if (toWorker && !isEmpty({ parts, attachmentIds: tiles })) return sendTo(toWorker.id, parts, tiles, other);
+    if (inProject && parts.some(isNew)) return submitNew(parts, tiles);
     if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued" && !items[0].shell) steerQueued(items[0].id);
@@ -357,6 +371,60 @@ export function Composer({ id }: { id: string }) {
     }
     const msg = (mode === "queue" && editing.get()?.qid) || newId();
     goes(parts, sent, (pulled, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, gave(pulled), draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
+  };
+  /**
+   * To the worker alone, as the user's own message: steered (Send held, where it can) into its turn; else Rust gives it
+   * now or holds it in this session's queue, "To ‹name›", till that worker's turn is over. Taken, the To: goes; refused,
+   * the message and its To: come back [D3006, D3013, D3050].
+   */
+  const sendTo = (target: string, parts: Draft["parts"], tiles: string[], other: boolean) => {
+    if (toSending) return;
+    const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
+    if (message.startsWith("--")) return setError("A message can't start with --");
+    const steer = sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target) as ComposerRow | undefined)?.steer === true) === "steer";
+    // A message pulled back to edit is never one for a worker here: it goes back to its place.
+    const pulled = take();
+    if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
+    fileStore.sent(id);
+    setToSending(true);
+    setError(null);
+    void run(toArgs(id, target, message, { qid: cid }, steer, draft)).then((reply) => {
+      setToSending(false);
+      if (reply.ok || reply.result === "logged") return setTo((now) => (now === target ? null : now));
+      const since = partsNow();
+      setField(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
+      fileStore.restore(id, tiles);
+      setTo(target);
+      setError(failure(reply));
+    });
+  };
+  /**
+   * Send as new, from a project's session (the /new chip): the message starts a new session there and the user stays.
+   * Signed with Face ID (`side`), the field kept till the Mac has it; a new session takes no files from here [allow.rs].
+   */
+  const submitNew = (parts: Draft["parts"], tiles: readonly string[]) => {
+    const rest = parts.filter((part) => !isNew(part));
+    if (tiles.length > 0) return setError("Remove the files to send this as a new session");
+    if (isEmpty({ parts: rest, attachmentIds: [] })) return;
+    const message = plainText(rest);
+    if (message.startsWith("--")) return setError("A message can't start with --");
+    const made = { id: sessionId(), cid: newId() };
+    const pulled = editing.get();
+    const draft = payload(rest, []);
+    const was = words$.current;
+    setPowerError(null);
+    setPower({
+      title: "Start as a new session?",
+      body: NEW_SESSION.description,
+      shown: message.trim(),
+      args: ["side", id, made.id, "--text", message, "--cid", made.cid, ...(pulled ? ["--qid", pulled.qid] : []), ...(draft ? ["--parts", draft] : [])],
+      then: (reply) => {
+        // With `session`, Rust logged it and this thread says how it went; without, nothing was made.
+        if (!reply.ok || !reply.session) return setPowerError(reply.ok ? String(reply.message ?? "Refused") : refusal(reply));
+        if (pulled && editing.get()?.qid === pulled.qid) editing.set(null);
+        if (words$.current === was) setField([]);
+      },
+    });
   };
   const stop = () => {
     setStopping(true);
@@ -413,8 +481,28 @@ export function Composer({ id }: { id: string }) {
     setPlus(false);
     void run(["command", id, command.label.slice(1)]).then((reply) => !reply.ok && setError(String(reply.error ?? `Couldn't run ${command.label}`)));
   };
-  /** A `/` pick: an instant command runs, any other goes in the text as its chip. */
-  const pickCommand = (command: Command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }));
+  /** A `/` or + pick: /overnight turns it on or off, an instant command runs, any other goes in the text as its chip. */
+  const pickCommand = (command: Command, put: (chip: Named) => void) => {
+    if (command.id === OVERNIGHT.id) {
+      replace("");
+      setPlus(false);
+      return night.ask(night.now ? "off" : "on");
+    }
+    if (command.instant) return runCommand(command);
+    put({ kind: "command", id: command.id, type: command.kind, label: command.label });
+  };
+  /** A chip from the + menu where the caret last was, spaced off what's around it. */
+  const insert = (chip: Named) => {
+    const now = words$.current;
+    const at = Math.min(cursor.current, now.length);
+    const put = `${at > 0 && !/\s$/.test(now.slice(0, at)) ? " " : ""}${chip.label} `;
+    named$.current = [...named$.current, chip];
+    words$.current = now.slice(0, at) + put + now.slice(at);
+    cursor.current = at + put.length;
+    setWords(words$.current);
+    setPlus(false);
+    keep(partsNow());
+  };
 
   /** Why Send waits now, in the desktop's words; none when it can go. */
   const waitsFor = () => {
@@ -441,16 +529,16 @@ export function Composer({ id }: { id: string }) {
   const blank = empty && panel.length === 0;
   const state = canStop && blank && !shell ? "stop" : !running && blank && resumable && !worker && !shell ? "resume" : "send";
   const press = () => (state === "stop" ? stop() : state === "resume" ? resume() : submit(false));
-  // Held, Send steers into the running turn; always set, so the release after a long press isn't also a tap (a steer
-  // turns the button into Stop meanwhile).
-  const steers = state === "send" && !shell && running && canSteer;
+  // Held, Send steers, into the running turn or a To: worker's; always set, so the release after a long press isn't
+  // also a tap (a steer turns the button into Stop meanwhile).
+  const steers = state === "send" && !shell && (toWorker !== null || (running && canSteer));
   const hold = () => (steers ? submit(true) : press());
   const verb = running && !blank ? "Queue" : "Send message";
   // Why Send waits, in the desktop's words: offline it says so, as it does.
   const held = connected ? undefined : "Reconnecting…";
-  const blocked = held ?? waits;
+  const blocked = held ?? waits ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined);
   const runs = state === "send" && shell;
-  const tip = state === "stop" ? "Stop" : state === "resume" ? "Resume" : (blocked ?? (runs ? (running || commands ? "Run when the turn ends" : "Run command") : verb));
+  const tip = state === "stop" ? "Stop" : state === "resume" ? "Resume" : (blocked ?? (runs ? (running || commands ? "Run when the turn ends" : "Run command") : toWorker ? `Send to ${toWorker.name}` : verb));
   const off = (state === "send" && (blank || blocked !== undefined)) || (state === "stop" && stopping) || (state === "resume" && (resuming || !connected));
   const shownSends = sends(going).filter((each) => !delivered.has(each.cid));
   const pulled = foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null;
@@ -488,22 +576,27 @@ export function Composer({ id }: { id: string }) {
   // The night's look, but not on a command [D316].
   const look = shell ? st.shell : night.now ? st.night : null;
   const shownError = powerError ?? night.error ?? (items.length === 0 ? error : null);
-  const placeholder = shell ? "Run a command" : (nightPlaceholder(night.now, busy, asked) ?? "Do anything");
+  const placeholder = shell ? "Run a command" : toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night.now, busy, asked) ?? "Do anything");
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
       <SafeAreaView edges={{ bottom: "maximum" }} style={st.column}>
         {shownSends.map((each) => <OnItsWay key={each.cid} entry={each} id={id} />)}
         {/* A menu takes the rail's place, just over the card. */}
         {menu?.kind === "/" ? (
-          <Commands listed={listed} query={menu.query} onPick={pickCommand} />
+          <Commands listed={listed} extra={extra} query={menu.query} onPick={(command) => pickCommand(command, (chip) => replace(`${chip.label} `, chip))} />
         ) : menu?.kind === "@" ? (
           <Mentions
             id={id}
             query={menu.query}
             onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })}
+            onDirect={(target) => {
+              // Message directly leaves no mention in the text: only the To: chip.
+              replace("");
+              setTo(target);
+            }}
           />
         ) : plus ? (
-          <PlusMenu onPhotos={photos} onFiles={documents} />
+          <PlusMenu listed={listed} chats={chats} onPhotos={photos} onFiles={documents} onCommand={(command) => pickCommand(command, insert)} onChat={(chat) => insert({ kind: "mention", id: chat.id, type: "chat", label: chat.label })} />
         ) : rail.length > 0 ? (
           <View style={st.rail}>{rail.map((item, at) => <View key={at} style={at > 0 && st.ruled}>{item}</View>)}</View>
         ) : null}
@@ -529,6 +622,7 @@ export function Composer({ id }: { id: string }) {
                   accessibilityState={{ expanded: plus }}
                   onPress={() => {
                     setMenu(null);
+                    if (!plus) setOpened((times) => times + 1);
                     setPlus(!plus);
                   }}
                   hitSlop={(size.touch - size.controlSm) / 2}
@@ -538,6 +632,15 @@ export function Composer({ id }: { id: string }) {
                 </Pressable>
                 {!worker ? <LevelPill id={id} row={row} connected={connected} /> : null}
                 {!worker ? <OvernightPill night={night} connected={connected} /> : null}
+                {toWorker ? (
+                  <>
+                    <PillDivider />
+                    <Pill label={`To ${toWorker.name}: send to this session instead`} selected disabled={toSending} onPress={() => setTo(null)} style={{ maxWidth: 192 }}>
+                      <Text style={st.toDot}>●</Text>
+                      <Text style={st.pillText} numberOfLines={1}>To {toWorker.name}</Text>
+                    </Pill>
+                  </>
+                ) : null}
               </>
             )}
             {/* The end's parts wrap under the tools as one, short of room. */}
