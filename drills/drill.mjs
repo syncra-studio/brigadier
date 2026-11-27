@@ -258,8 +258,10 @@ function cleanup() {
 
 function swapTo(dir) {
   // An app update: each binary is replaced by rename, so running processes keep their old file.
+  // Windows won't replace a running exe, but moves it aside: the new one goes in its place.
   for (const b of ['brigadier', OWNER_BIN, 'brigadierd']) {
     fs.copyFileSync(`${dir}/${b}${EXE}`, `${BIN}/.${b}.new`)
+    if (WIN) fs.renameSync(`${BIN}/${b}${EXE}`, `${BIN}/.${b}.${cid('old')}${EXE}`)
     fs.renameSync(`${BIN}/.${b}.new`, `${BIN}/${b}${EXE}`)
   }
 }
