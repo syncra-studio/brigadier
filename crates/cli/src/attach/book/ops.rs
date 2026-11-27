@@ -33,7 +33,7 @@ pub fn ops(
     match (arg(args, 2)?, place) {
         ("retry", _) => retry(place, id, cid, run),
         ("adopt", _) => adopt(place, args, id, cid),
-        ("drop", Place::Session(dir)) => discard(place, dir, cid),
+        ("drop", Place::Session(dir, _)) => discard(place, dir, cid),
         ("drop", _) => place::discard(place, cid),
         _ => Err(io::Error::other(USAGE)),
     }
@@ -54,10 +54,10 @@ fn may_have_reached(place: &Place, cid: &str) -> io::Result<bool> {
 fn valid(place: &Place, op: &[String], id: &str, cid: &str, queue: bool) -> bool {
     let at = |i: usize| op.get(i).map(String::as_str);
     let mine = match (queue, place) {
-        (true, Place::Session(_)) => {
+        (true, Place::Session(..)) => {
             at(0) == Some("queue") && at(2) == Some("add") && opt(opts(op), "--qid") == Some(cid)
         }
-        (false, Place::Session(_)) => at(0) == Some("send") && opt(opts(op), "--cid") == Some(cid),
+        (false, Place::Session(..)) => at(0) == Some("send") && opt(opts(op), "--cid") == Some(cid),
         (false, Place::Home { .. }) => {
             at(0) == Some("start") && opt(opts(op), "--cid") == Some(cid) && place.at(op).is_some()
         }
@@ -72,7 +72,7 @@ fn valid(place: &Place, op: &[String], id: &str, cid: &str, queue: bool) -> bool
         }
     };
     let to = match place {
-        Place::Session(_) => at(1),
+        Place::Session(..) => at(1),
         Place::Home { .. } => opt(opts(op), "--home"),
     };
     mine && to == Some(id)

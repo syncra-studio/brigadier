@@ -1,10 +1,12 @@
 //! `attach <@home|id> add <aid> <name> --backend B (--path P | --data BASE64) | read <aid> | write <aid> <text> | remove <aid> | list | view <path> | reveal <path>`
 //! and `draft <@home|id> [<json>|""]`: the composer's files and its unsent draft, kept by Rust
 //! under the session's folder (book.rs), or Home's until Send makes its session [D35, D127, D363,
-//! D2022]; and `note`, the session's notes (note.rs).
+//! D2022]; and `note`, the session's notes (note.rs). A paired device's own draft and files are
+//! its slot's (`--slot`, slot.rs) [D51].
 
 pub(crate) mod book;
 pub(crate) mod note;
+pub(crate) mod slot;
 
 use super::{HOME_DRAFT, arg, flag};
 use brigadier_core::git::{self, Target};
@@ -16,16 +18,25 @@ use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
+/// `device`: a paired device's, whose files are its slot's alone, never the Mac's [D51].
+pub fn run(data: &Path, args: &[String], device: Option<&str>) -> io::Result<Value> {
     if args[0] == "note" {
         return note::run(data, args);
     }
     let owner = arg(args, 1)?;
+    let slot = device.map(String::from);
     if owner != HOME_DRAFT {
-        core::load(data, owner)?;
-        book::settle_cut(&book::Place::Session(core::session_dir(data, owner)))?;
+        let dir = core::load(data, owner)?.dir;
+        if device.is_some() {
+            slot::made(&dir.join("drafts"))?;
+        }
+        book::settle_cut(&book::Place::Session(dir, slot))?;
     }
-    let folder = draft_of(data, owner)?;
+    let folder = match device {
+        Some(d) if owner == HOME_DRAFT => book::slot_files(data, d),
+        Some(d) => book::slot_files(&core::session_dir(data, owner), d),
+        None => draft_of(data, owner)?,
+    };
     match arg(args, 2)? {
         // Checked as it's added, so a file that can't go shows failed with why [D487, D492].
         "add" => {
@@ -109,6 +120,11 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "remove" => {
             let id = arg(args, 3)?;
             check_id(id)?;
+            if device.is_some()
+                && draft_of(data, owner).is_ok_and(|mac| file_in(&mac, id).is_some())
+            {
+                return Ok(json!({"ok": false, "error": "This file isn't in this draft."}));
+            }
             match fs::remove_dir_all(folder.join(id)) {
                 Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
                 _ => Ok(json!({"ok": true})),
@@ -288,9 +304,19 @@ fn named(data: &Path, owner: &str, asked: &str) -> Option<PathBuf> {
 /// What a start took from its draft goes back: its tabs, and its files copied, so a session that
 /// can't go keeps its own.
 pub fn back(data: &Path, spec: &core::Spec, parts: &Value, carried: bool) -> io::Result<()> {
-    let folder = message::home(data);
+    back_into(&message::home(data), data, spec, parts, carried)
+}
+
+/// The same, its files into `folder`: Home's, or a device's own [D51].
+pub fn back_into(
+    folder: &Path,
+    data: &Path,
+    spec: &core::Spec,
+    parts: &Value,
+    carried: bool,
+) -> io::Result<()> {
     for id in message::ids(parts) {
-        if let (Some(file), None) = (file_in(&sent(&spec.dir), &id), file_in(&folder, &id)) {
+        if let (Some(file), None) = (file_in(&sent(&spec.dir), &id), file_in(folder, &id)) {
             copy_whole(&file, &folder.join(&id))?;
         }
     }
@@ -322,20 +348,35 @@ fn too_large() -> Value {
 }
 
 /// Where draft `id`'s book is: a session's, or Home's, a file of its own for each project's draft
-/// and Chats' (`@home:<p>`, `p` checked as an id); a deleted session refuses.
-pub fn place(data: &Path, id: &str) -> io::Result<book::Place> {
+/// and Chats' (`@home:<p>`, `p` checked as an id); a deleted session refuses. A device's is its
+/// slot's: `drafts/<device>` in the session's folder, `drafts/home-<device>[-<p>]` in Home's [D51].
+pub fn place(data: &Path, id: &str, device: Option<&str>) -> io::Result<book::Place> {
     let file = match id.strip_prefix("@home:") {
         _ if id == HOME_DRAFT => "home-draft".into(),
         Some(p) => check_id(p).map(|()| format!("home-draft-{p}"))?,
-        None => return Ok(book::Place::Session(core::load(data, id)?.dir)),
+        None => {
+            let dir = core::load(data, id)?.dir;
+            if device.is_some() {
+                slot::made(&dir.join("drafts"))?;
+            }
+            return Ok(book::Place::Session(dir, device.map(String::from)));
+        }
     };
-    let (data, file) = (data.to_path_buf(), data.join(file));
-    Ok(book::Place::Home { data, file })
+    let file = match device {
+        Some(d) => slot::made(&data.join("drafts"))?.join(file.replacen(
+            "home-draft",
+            &format!("home-{d}"),
+            1,
+        )),
+        None => data.join(file),
+    };
+    let (data, device) = (data.to_path_buf(), device.map(String::from));
+    Ok(book::Place::Home { data, file, device })
 }
 
 /// What the composer holds unsent, as the UI's own JSON [D109, D237], in its book (book.rs).
-pub fn kept(data: &Path, args: &[String]) -> io::Result<Value> {
-    let place = place(data, arg(args, 1)?)?;
+pub fn kept(data: &Path, args: &[String], device: Option<&str>) -> io::Result<Value> {
+    let place = place(data, arg(args, 1)?, device)?;
     let mut reply = book::kept(&place, args)?;
     // New chat's draft of before each project had its own names the project it was in, read once.
     let old: Option<Value> = (args.len() == 2 && place.home().is_some())
@@ -386,4 +427,5 @@ pub fn sweep_home(data: &Path) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
+    slot::sweep(data);
 }

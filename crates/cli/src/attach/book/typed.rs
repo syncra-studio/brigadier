@@ -81,10 +81,12 @@ fn said(chips: &[Value], writing: &Value) -> String {
 /// its draft or its chips, and what an earlier pass carried of them stays [C80].
 pub(super) fn carry(place: &Place, data: &Path, cid: &str, session: &str) -> io::Result<()> {
     let dir = core::session_dir(data, session);
-    let draft = dir.join("draft");
+    // A device's new chat, typed into on that device: its own slot there [D51].
+    let own = Place::Session(dir.clone(), place.device().map(String::from));
+    let draft = own.file();
     let words = match draft.is_file() {
         true => {
-            let _lock = hold(&Place::Session(dir.clone()).lock())?;
+            let _lock = hold(&own.lock())?;
             Some(shown(&read(&draft), true))
         }
         false => None,
@@ -111,7 +113,7 @@ pub(super) fn carry(place: &Place, data: &Path, cid: &str, session: &str) -> io:
         Ok(())
     })?;
     let Some(words) = words else { return Ok(()) };
-    let (from, home) = (message::draft(&dir), message::home(data));
+    let (from, home) = (own.unsent(), place.unsent());
     // Copied again on every pass: a paste edited since an earlier pass keeps its id [C80].
     for id in message::ids(&serde_json::to_value(&words)?) {
         if let Some(file) = message::file_in(&from, &id) {

@@ -140,6 +140,7 @@ fn status_of(data: &Path, id: &str, all: &[procs::Proc]) -> io::Result<Value> {
     Ok(s)
 }
 
+pub use attach::slot::forget_device;
 pub use out::heard;
 use start::start;
 pub use switching::{switch_settings, wants};
@@ -174,18 +175,26 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             .filter(|_| matches!(cmd, "tabs" | "draft"));
         core::check_id(bare.unwrap_or(id))?;
     }
+    // A paired device's own draft and files, its slot named last, by the daemon alone [D51].
+    if let [rest @ .., slot, device] = args
+        && slot == "--slot"
+    {
+        return attach::slot::run(data, rest, device);
+    }
     match cmd {
         // A new chat from Home's draft (`--home`) is kept in its book until it settles [C65].
         "start" => match attach::book::opt(args, "--home") {
             Some(key) if key == HOME_DRAFT || key.starts_with("@home:") => {
-                attach::book::going(&attach::place(data, key)?, args, |a| start(data, a))
+                attach::book::going(&attach::place(data, key, None)?, args, |a| start(data, a))
             }
             Some(_) => Err(io::Error::other(USAGE)),
             None => start(data, args),
         },
         "send" => {
             let dir = core::session_dir(data, arg(args, 1)?);
-            attach::book::going(&attach::book::Place::Session(dir), args, |a| send(data, a))
+            attach::book::going(&attach::book::Place::Session(dir, None), args, |a| {
+                send(data, a)
+            })
         }
         // The user saw the session up to `at`, the end time its row showed; it only moves on [D173].
         "seen" => {
@@ -220,15 +229,15 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         }
         "label" => labels::run(data, args),
         "draft" if matches!(arg(args, 2), Ok("retry" | "adopt" | "drop")) => {
-            let place = attach::place(data, arg(args, 1)?)?;
+            let place = attach::place(data, arg(args, 1)?, None)?;
             attach::book::ops(&place, args, |a| match a[0].as_str() {
                 "send" => send(data, a),
                 "start" => start(data, a),
                 _ => queue::run(data, a),
             })
         }
-        "draft" => attach::kept(data, args),
-        "attach" | "note" => attach::run(data, args),
+        "draft" => attach::kept(data, args, None),
+        "attach" | "note" => attach::run(data, args, None),
         "command" => command::run(data, args),
         "commands" => commands::run(data, args),
         "status" => {
@@ -261,7 +270,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         "chips" => chips::run(data, args),
         "queue" if args.get(2).is_some_and(|a| a == "add") => {
             let dir = core::session_dir(data, arg(args, 1)?);
-            attach::book::going(&attach::book::Place::Session(dir), args, |a| {
+            attach::book::going(&attach::book::Place::Session(dir, None), args, |a| {
                 queue::run(data, a)
             })
         }

@@ -1,5 +1,7 @@
 //! Where a draft's book is [C65]: a session's folder (`draft`, `draft.lock`, `draft-<cid>.lock`),
-//! or one of Home's drafts (`home-draft[-<p>]`, its locks beside it). Home's keeps the new chats it
+//! or one of Home's drafts (`home-draft[-<p>]`, its locks beside it). A paired device's are its own
+//! slot's (`drafts/<device>` in the session's folder, `drafts/home-<device>[-<p>]` in the data
+//! folder), its unsent files in `drafts/<device>-attachments/` beside them [D51]. Home's keeps the new chats it
 //! starts (`start`), as the session one makes may never be, or may go. A start refused on its first
 //! try is undone in stages, each saved before the next, so a crash goes on from the last one saved:
 //! its files and tabs back, then its session deleted, then its words shown [D35, D363].
@@ -16,19 +18,46 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 pub enum Place {
-    Session(PathBuf),
-    /// Home's draft file, and the data folder the sessions it starts are in.
+    /// A session's folder, and the device whose slot it is: None, the Mac's own draft.
+    Session(PathBuf, Option<String>),
+    /// Home's draft file, the data folder the sessions it starts are in, and the device whose
+    /// slot it is: None, the Mac's.
     Home {
         data: PathBuf,
         file: PathBuf,
+        device: Option<String>,
     },
+}
+
+/// Device `device`'s unsent files under `base`, a session's folder or the data folder [D51].
+pub(crate) fn slot_files(base: &Path, device: &str) -> PathBuf {
+    base.join("drafts").join(format!("{device}-attachments"))
 }
 
 impl Place {
     pub(crate) fn file(&self) -> PathBuf {
         match self {
-            Place::Session(dir) => dir.join("draft"),
+            Place::Session(dir, None) => dir.join("draft"),
+            Place::Session(dir, Some(device)) => dir.join("drafts").join(device),
             Place::Home { file, .. } => file.clone(),
+        }
+    }
+
+    /// Where this draft's unsent files are, and a give-back puts its files.
+    pub(crate) fn unsent(&self) -> PathBuf {
+        match self {
+            Place::Session(dir, None) => message::draft(dir),
+            Place::Session(dir, Some(device)) => slot_files(dir, device),
+            Place::Home { data, device, .. } => match device {
+                Some(device) => slot_files(data, device),
+                None => message::home(data),
+            },
+        }
+    }
+
+    pub(crate) fn device(&self) -> Option<&str> {
+        match self {
+            Place::Session(_, device) | Place::Home { device, .. } => device.as_deref(),
         }
     }
 
@@ -51,14 +80,14 @@ impl Place {
     /// Whether the book has a place: a session's folder must be there.
     pub(super) fn there(&self) -> bool {
         match self {
-            Place::Session(dir) => dir.is_dir(),
+            Place::Session(dir, _) => dir.is_dir(),
             Place::Home { .. } => true,
         }
     }
 
     pub(crate) fn home(&self) -> Option<&Path> {
         match self {
-            Place::Session(_) => None,
+            Place::Session(..) => None,
             Place::Home { data, .. } => Some(data),
         }
     }
@@ -67,7 +96,7 @@ impl Place {
     /// start makes. The book is a file anything can write, so its id is checked first.
     pub(super) fn at(&self, op: &[String]) -> Option<PathBuf> {
         match self {
-            Place::Session(dir) => Some(dir.clone()),
+            Place::Session(dir, _) => Some(dir.clone()),
             Place::Home { data, .. } => (op.get(1))
                 .filter(|id| core::check_id(id).is_ok())
                 .map(|id| core::session_dir(data, id)),
@@ -78,7 +107,7 @@ impl Place {
     pub(super) fn files(&self, words: &Value) -> Vec<String> {
         let ids = message::ids(words).into_iter();
         match self {
-            Place::Session(dir) => {
+            Place::Session(dir, _) => {
                 let sent = message::sent(dir);
                 ids.filter(|f| message::file_in(&sent, f).is_none())
                     .collect()
@@ -86,6 +115,28 @@ impl Place {
             Place::Home { .. } => ids.collect(),
         }
     }
+}
+
+/// The messages session `dir` holds chips for, in the Mac's book and each device's: on their way,
+/// or given back with their chips still to come back. Read without draft.lock, which a give-back
+/// holds while it takes the chips' lock; the file is written whole.
+pub(crate) fn holding(dir: &Path) -> Vec<String> {
+    let slots = fs::read_dir(dir.join("drafts"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    let slots =
+        slots.filter(|e| crate::attach::slot::check(&e.file_name().to_string_lossy()).is_ok());
+    let books = [dir.join("draft")]
+        .into_iter()
+        .chain(slots.map(|e| e.path()));
+    let mut held = vec![];
+    for book in books.map(|b| read(&b)) {
+        let going = book.inflight.iter().chain(&book.adding).map(|g| &g.cid);
+        let given = book.given.iter().filter(|g| !g.done).map(|g| &g.cid);
+        held.extend(going.chain(given).cloned());
+    }
+    held
 }
 
 pub(super) fn hold(path: &Path) -> io::Result<File> {
@@ -191,10 +242,10 @@ pub(super) fn left(why: &str) -> String {
 /// Given-back message `g` brought home, its lock held: a session's files and chips back, or a
 /// start's undo. Its words, or why its session stays.
 pub(super) fn give(place: &Place, mut g: Given) -> io::Result<Result<Given, String>> {
-    let Place::Session(dir) = place else {
+    let Place::Session(dir, _) = place else {
         return undo(place, &g.cid, false);
     };
-    finish(dir, &mut g)?;
+    finish(dir, &place.unsent(), &mut g)?;
     change(place, |book| {
         if let Some(kept) = book.given.iter_mut().find(|each| each.cid == g.cid) {
             (kept.chips, kept.done) = (g.chips.clone(), true);
@@ -204,13 +255,13 @@ pub(super) fn give(place: &Place, mut g: Given) -> io::Result<Result<Given, Stri
     Ok(Ok(g))
 }
 
-/// A given-back message's files back in the draft's folder, then its chips waiting again; each
-/// step is safe to repeat.
-pub(super) fn finish(dir: &Path, g: &mut Given) -> io::Result<()> {
-    let (sent, draft) = (message::sent(dir), message::draft(dir));
+/// A given-back message's files back in its draft's folder `draft`, then its chips waiting again;
+/// each step is safe to repeat.
+pub(super) fn finish(dir: &Path, draft: &Path, g: &mut Given) -> io::Result<()> {
+    let sent = message::sent(dir);
     for id in &g.files {
         if message::file_in(&sent, id).is_some() && !draft.join(id).exists() {
-            fs::create_dir_all(&draft)?;
+            fs::create_dir_all(draft)?;
             fs::rename(sent.join(id), draft.join(id))?;
         }
     }
@@ -247,7 +298,8 @@ pub(super) fn undo(place: &Place, cid: &str, replay: bool) -> io::Result<Result<
     if u.stage == "intent" {
         if dir.join("session.json").exists() {
             let spec = core::load(data, &u.session);
-            if let Err(e) = spec.and_then(|s| crate::attach::back(data, &s, &u.parts, u.tabs)) {
+            let back = |s| crate::attach::back_into(&place.unsent(), data, &s, &u.parts, u.tabs);
+            if let Err(e) = spec.and_then(back) {
                 return fail(e.to_string());
             }
         }

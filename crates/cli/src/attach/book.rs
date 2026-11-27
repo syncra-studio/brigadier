@@ -21,8 +21,9 @@ pub use ops::ops;
 pub use place::Place;
 use place::{Undo, finish, hold};
 pub(crate) use place::{crash_at, stalls};
+pub(crate) use place::{holding, slot_files};
 use typed::Typed;
-pub(crate) use unsent::unsent;
+pub(crate) use unsent::{is_unsent, unsent};
 use verdict::{How, answer, present, verdict};
 
 use crate::{arg, flag};
@@ -240,22 +241,12 @@ fn replay(place: &Place, book: &mut Book) -> io::Result<()> {
             settle(book, g, How::Went, Value::Null, None);
         }
     }
-    if let Place::Session(dir) = place {
+    if let Place::Session(dir, _) = place {
         for g in book.given.iter_mut().filter(|g| !g.done && gone(&g.cid)) {
-            finish(dir, g)?;
+            finish(dir, &place.unsent(), g)?;
         }
     }
     Ok(())
-}
-
-/// The messages session `dir` holds chips for: on their way, or given back with their chips still
-/// to come back. Read without draft.lock, which a give-back holds while it takes the chips' lock;
-/// the file is written whole.
-pub(crate) fn holding(dir: &Path) -> Vec<String> {
-    let book = read(&dir.join("draft"));
-    let going = book.inflight.iter().chain(&book.adding).map(|g| &g.cid);
-    let given = book.given.iter().filter(|g| !g.done).map(|g| &g.cid);
-    going.chain(given).cloned().collect()
 }
 
 /// Settles message `g`: gone into the log or the queue, or refused and given back above the draft.

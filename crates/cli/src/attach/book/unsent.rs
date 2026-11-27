@@ -18,6 +18,6 @@ pub(crate) fn unsent(e: io::Error) -> io::Error {
     io::Error::new(e.kind(), Unsent(e.to_string()))
 }
 
-pub(super) fn is_unsent(e: &io::Error) -> bool {
+pub(crate) fn is_unsent(e: &io::Error) -> bool {
     e.get_ref().is_some_and(|inner| inner.is::<Unsent>())
 }
