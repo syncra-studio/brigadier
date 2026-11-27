@@ -33,6 +33,20 @@ pub(crate) fn has_opt(o: &[String], name: &str) -> bool {
     at(o, name).is_some()
 }
 
+/// `args` without option `name` and its value.
+pub(super) fn without(args: &[String], name: &str) -> Vec<String> {
+    let mut out = args[..args.len() - opts(args).len()].to_vec();
+    let mut each = opts(args).iter();
+    while let Some(a) = each.next() {
+        match a.as_str() {
+            a if a == name => drop(each.next()),
+            "--text" => out.extend([a].into_iter().chain(each.next()).cloned()),
+            _ => out.push(a.clone()),
+        }
+    }
+    out
+}
+
 /// `args` without the draft it carries, and without its chips unless `chips`: what runs, or with
 /// its chips what's kept.
 pub(super) fn bare(args: &[String], chips: bool) -> Vec<String> {

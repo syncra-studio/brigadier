@@ -217,7 +217,7 @@ function land(id: string, reply: Record<string, any>): void {
   if (!entry.fork && owned) forget(key, entry.cid);
   if (reply.given_back) {
     // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
-    if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : reason(reply), signIn: reply.error === "sign_in" });
+    if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : reason(reply), signIn: reply.error === "sign_in", typed: reply.typed });
     else resyncDraft(daemonRun, key);
     put(id, null);
     rereadTabs(key);

@@ -291,15 +291,25 @@ pub fn back(data: &Path, spec: &core::Spec, parts: &Value, carried: bool) -> io:
     let folder = message::home(data);
     for id in message::ids(parts) {
         if let (Some(file), None) = (file_in(&sent(&spec.dir), &id), file_in(&folder, &id)) {
-            let to = folder.join(&id);
-            fs::create_dir_all(&to)?;
-            fs::copy(&file, to.join(file.file_name().unwrap()))?;
+            copy_whole(&file, &folder.join(&id))?;
         }
     }
     match carried {
         true => crate::tabs::back(data, spec),
         false => Ok(()),
     }
+}
+
+/// File `file` into draft folder entry `to`, whole or not at all: copied under another name, then
+/// renamed, so a copy cut short is never taken for one done [C80].
+pub(crate) fn copy_whole(file: &Path, to: &Path) -> io::Result<()> {
+    let name = to.file_name().unwrap_or_default().to_string_lossy();
+    let part = to.with_file_name(format!(".{name}.part"));
+    let _ = fs::remove_dir_all(&part);
+    fs::create_dir_all(&part)?;
+    fs::copy(file, part.join(file.file_name().unwrap_or_default()))?;
+    book::crash_at("start:copying");
+    fs::rename(&part, to)
 }
 
 /// The old app's words for a file over the app's ceiling [D2022 #14].

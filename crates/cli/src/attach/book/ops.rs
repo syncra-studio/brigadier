@@ -125,7 +125,8 @@ fn retry(
         return Ok(json!({"ok": true, "result": "went", "cid": cid}));
     }
     if !valid(place, &g.op, id, cid, queue) {
-        let error = "This message can't be tried again here: discard or edit it.";
+        // PROPOSED words.
+        let error = "This message can't be tried again here.";
         return Ok(json!({"ok": false, "unsettled": true, "cid": cid, "error": error}));
     }
     // Tried again it's no longer the field's words: a save of them, none since, goes with it.

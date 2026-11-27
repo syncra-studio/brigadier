@@ -258,6 +258,9 @@ pub(super) fn undo(place: &Place, cid: &str, replay: bool) -> io::Result<Result<
     if replay && !u.asked && !undoable(&dir) {
         return fail("it was used meanwhile".into());
     }
+    if let Err(e) = super::typed::carry(place, data, cid, &u.session) {
+        return fail(e.to_string());
+    }
     let args = ["delete", &u.session].map(String::from);
     match crate::sessions::run(data, &args) {
         Ok(r) if r["ok"] == true => {}
@@ -274,7 +277,7 @@ pub(super) fn undo(place: &Place, cid: &str, replay: bool) -> io::Result<Result<
     Ok(done.ok_or_else(|| left("it isn't here any more")))
 }
 
-fn mine<'a>(book: &'a mut Book, cid: &str) -> Option<&'a mut Given> {
+pub(super) fn mine<'a>(book: &'a mut Book, cid: &str) -> Option<&'a mut Given> {
     book.given.iter_mut().find(|g| g.cid == cid)
 }
 
@@ -373,7 +376,7 @@ fn given_back(g: &Given) -> Value {
 }
 
 /// Drill hook: the command dies at `point`.
-pub(super) fn crash_at(point: &str) {
+pub(crate) fn crash_at(point: &str) {
     if std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == point) {
         std::process::abort();
     }

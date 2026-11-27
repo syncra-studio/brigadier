@@ -45,8 +45,10 @@ export function givenRefused(id: string): Given | null {
 }
 export const givenError = (id: string) => givenRefused(id)?.error ?? null;
 
-/** A message Rust gave back: its words and files above the draft, its chips waiting again. */
-export type Given = { cid: string; parts: Draft["parts"]; attachmentIds: string[]; chips?: readonly Chip[]; error?: string; signIn?: boolean };
+/** A message Rust gave back: its words and files above the draft, its chips waiting again; a start's, its chat's own draft (`typed`). */
+export type Given = { cid: string; parts: Draft["parts"]; attachmentIds: string[]; chips?: readonly Chip[]; error?: string; signIn?: boolean; typed?: Typed };
+/** A refused new chat's own draft as Rust took it before its session went; what waited above its composer as words (`said`) [C80]. */
+type Typed = { session: string; parts: Draft["parts"]; attachmentIds: string[]; said?: string };
 
 /** Fills session `id`'s open composer with a message given back, answering the draft it holds then. */
 export function onGiven(id: string, fill: (back: Given) => Draft): () => void {
@@ -63,7 +65,8 @@ export function resyncDraft(run: Runner, id: string): void {
 }
 
 /** Takes a message given back into session `id`'s draft, open or not, once per message; saved at once. */
-export function takeBack(run: Runner, id: string, back: Given): void {
+export function takeBack(run: Runner, id: string, given: Given): void {
+  const back = withTyped(given);
   setOf(took, id).add(back.cid);
   const kept = keptOf(id, back.cid);
   forget(id, back.cid);
@@ -80,6 +83,24 @@ export function takeBack(run: Runner, id: string, back: Given): void {
   }
   clearTimeout(timers.get(id));
   void write(run, id);
+}
+
+/**
+ * A start's message with its chat's own draft under it: the app's copy when it has one, never older than Rust's, with
+ * only the tiles Rust copied home; its chips as words [C80].
+ */
+function withTyped(back: Given): Given {
+  const typed = back.typed;
+  if (!typed) return back;
+  const mine = drafts.get(typed.session);
+  // shortcut: an image or paste put in after Rust read the draft has no file at Home, so its chip shows broken; upgrade if it's seen.
+  const tiles = mine ? mine.attachmentIds.filter((each) => typed.attachmentIds.includes(each)) : typed.attachmentIds;
+  const own = mine?.parts ?? typed.parts;
+  const said = typed.said;
+  const words = !said ? own : isEmpty({ parts: own, attachmentIds: [] }) ? [said] : [...own, "\n\n", said];
+  if (isEmpty({ parts: words, attachmentIds: tiles })) return back;
+  const parts = isEmpty({ parts: back.parts, attachmentIds: [] }) ? words : [...back.parts, "\n\n", ...words];
+  return { ...back, parts, attachmentIds: [...new Set([...back.attachmentIds, ...tiles])] };
 }
 
 /** One write at a time per session, so the last words typed are the last written; whether they were. */

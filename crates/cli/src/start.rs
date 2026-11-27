@@ -128,8 +128,10 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
         );
         let made = core::folder::ensure(&spec, &project, base, &title);
         // A fresh session it undid goes too, what it took back with its draft; on a retry it
-        // keeps its log and first message [D35].
-        if made.is_err() && fresh && !spec.dir.join(core::worktrees::RECORD).exists() {
+        // keeps its log and first message [D35]. Home's book undoes its own, its chat's draft
+        // taken first [C80].
+        let undone = fresh && !has(args, "--home");
+        if made.is_err() && undone && !spec.dir.join(core::worktrees::RECORD).exists() {
             attach::back(data, &spec, &parts, has(args, "--carry-tabs"))?;
             fs::remove_dir_all(&spec.dir)?;
         }

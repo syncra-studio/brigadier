@@ -11,6 +11,7 @@
 mod args;
 mod ops;
 mod place;
+mod typed;
 mod unsent;
 mod verdict;
 
@@ -18,7 +19,9 @@ use args::bare;
 pub(crate) use args::{has_opt, opt, opts};
 pub use ops::ops;
 pub use place::Place;
-use place::{Undo, crash_at, finish, hold};
+pub(crate) use place::crash_at;
+use place::{Undo, finish, hold};
+use typed::Typed;
 pub(crate) use unsent::unsent;
 use verdict::{How, answer, present, verdict};
 
@@ -69,7 +72,8 @@ struct Going {
     words: Words,
     files: Vec<String>,
     /// Without its draft, its chips (`--chips`) still named. Empty in a book from before: such a
-    /// message can only be discarded or edited.
+    /// send or start is never tried again, nor discarded, as it may have reached a host [C75]; it
+    /// shows as may have been sent. A queue add from before can only be deleted.
     #[serde(default)]
     op: Vec<String>,
     /// An attempt may have reached a host; false for one adopted from the app's copy, or refused
@@ -101,6 +105,9 @@ struct Given {
     /// A start's undo still under way (place.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     undo: Option<Undo>,
+    /// A start's: its chat's own draft, shown under it [C80].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typed: Option<Typed>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -171,9 +178,15 @@ fn shown(book: &Book, read: bool) -> Words {
             .iter()
             .chain(&book.adding)
             .any(|g| book.holds(g));
+    let typed = |g: &Given| {
+        g.typed
+            .iter()
+            .flat_map(|t| [t.words.clone(), t.said()])
+            .collect()
+    };
     let all = given
-        .map(|g| &g.words)
-        .chain((!held).then_some(&book.ui.words));
+        .flat_map(|g| [vec![g.words.clone()], typed(g)].concat())
+        .chain((!held).then(|| book.ui.words.clone()));
     for w in all.filter(|w| !w.blank()) {
         if !out.parts.is_empty() && !w.parts.is_empty() {
             out.parts.push("\n\n".into());
@@ -267,6 +280,7 @@ fn settle(book: &mut Book, g: Going, how: How, error: Value, undo: Option<Undo>)
         error,
         done: false,
         undo,
+        typed: None,
     };
     book.given.push(given.clone());
     Some(given)
@@ -330,7 +344,7 @@ pub fn kept(place: &Place, args: &[String]) -> io::Result<Value> {
 }
 
 fn reply_of(g: &Given) -> Value {
-    json!({"cid": g.cid, "rev": g.rev, "parts": g.words.parts, "attachmentIds": g.words.attachment_ids, "chips": g.chips, "error": g.error})
+    json!({"cid": g.cid, "rev": g.rev, "parts": g.words.parts, "attachmentIds": g.words.attachment_ids, "chips": g.chips, "error": g.error, "typed": g.typed})
 }
 
 /// `send`, `queue add` and Home's `start` (`--home`). With `--draft`, what goes is kept in the book
@@ -352,7 +366,8 @@ pub fn going(
         if place.there() {
             settle_cut(place)?;
         }
-        return run(&bare(args, false));
+        // Not kept, so a start undoes itself (start.rs), never left to the book.
+        return run(&args::without(&bare(args, false), "--home"));
     };
     core::check_id(cid)?;
     let g = Going {
@@ -463,7 +478,7 @@ fn attempt(
             Ok(g) => {
                 let back = reply_of(&g);
                 reply["given_back"] = true.into();
-                for key in ["cid", "rev", "parts", "attachmentIds", "chips"] {
+                for key in ["cid", "rev", "parts", "attachmentIds", "chips", "typed"] {
                     reply[key] = back[key].clone();
                 }
                 if home {
