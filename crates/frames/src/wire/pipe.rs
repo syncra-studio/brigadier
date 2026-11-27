@@ -38,8 +38,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeClientProcessId,
-    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES,
-    PIPE_WAIT, WaitNamedPipeW,
+    GetNamedPipeServerProcessId, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
+    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, INFINITE, OpenProcessToken, WaitForSingleObject,
@@ -238,7 +238,7 @@ fn process_user(process: HANDLE) -> io::Result<Vec<u8>> {
     user_of(Handle(token).0)
 }
 
-/// The client runs as this user: its process's token names our SID. Impersonating it would say
+/// The other end runs as this user: its process's token names our SID. Impersonating it would say
 /// the same, but only once something has been read from the pipe, and the daemon checks first.
 pub fn same_user(stream: &Stream) -> io::Result<bool> {
     use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
@@ -248,10 +248,14 @@ pub fn same_user(stream: &Stream) -> io::Result<bool> {
     Ok(unsafe { EqualSid(sid(&theirs), sid(&mine)) } != 0)
 }
 
-/// The pid of the process that connected.
+/// The pid of the other end: the client that connected, or on a client's stream the listener.
 pub fn peer_pid(stream: &Stream) -> io::Result<i32> {
     let mut pid = 0;
-    if unsafe { GetNamedPipeClientProcessId(stream.pipe.0, &mut pid) } == 0 {
+    let of = match stream.server {
+        true => GetNamedPipeClientProcessId,
+        false => GetNamedPipeServerProcessId,
+    };
+    if unsafe { of(stream.pipe.0, &mut pid) } == 0 {
         return Err(last());
     }
     Ok(pid as i32)
