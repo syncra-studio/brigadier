@@ -81,7 +81,8 @@ pub(super) fn after(
         "A worker's result is waiting: {}.",
         said.trim_end_matches('.')
     );
-    if rule.as_deref() == Some(why) {
+    // Models that couldn't be read say their own way out: another model can't clear it [C96].
+    if rule.as_deref() == Some(why) && !why.ends_with("Check it in Providers.") {
         text += &format!(
             " It goes once you pick another {agent} model or lift the rule in Settings › Routing."
         );

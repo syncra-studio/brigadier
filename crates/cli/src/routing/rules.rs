@@ -38,6 +38,13 @@ pub(crate) fn launch(
     if listed.is_empty() {
         listed = listed_in("");
     }
+    // Nothing to check a rule naming it against: refused, never run unchecked [C96].
+    if listed.is_empty() && rules.iter().any(|r| r["agent"] == agent) {
+        let name = adapters::get(agent).map_or(agent, |a| a.label());
+        return Err(format!(
+            "Couldn't read {name}'s models to check your rules. Check it in Providers."
+        ));
+    }
     // Unpicked, it runs its CLI's default model.
     let id = model
         .or_else(|| (listed.iter().find(|m| m["default"] == true)).and_then(|m| m["id"].as_str()));
