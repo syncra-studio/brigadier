@@ -3,7 +3,7 @@ import { Button } from "../Button";
 import { color, text } from "../theme";
 
 /** The first screen: pairing starts on the Mac, in Settings › Connections. */
-export function Connect({ onScan, onCode }: { onScan?: () => void; onCode?: () => void }) {
+export function Connect({ onScan, onCode, onBack }: { onScan?: () => void; onCode?: () => void; onBack?: () => void }) {
   return (
     <View style={styles.page}>
       <View style={styles.top}>
@@ -15,6 +15,7 @@ export function Connect({ onScan, onCode }: { onScan?: () => void; onCode?: () =
       <View style={styles.actions}>
         <Button title="Scan QR code" onPress={onScan} />
         <Button title="Enter code manually" onPress={onCode} secondary />
+        {onBack && <Button title="Back" onPress={onBack} secondary />}
       </View>
     </View>
   );

@@ -19,7 +19,14 @@ export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
     body: "On your Mac, open Brigadier › Settings › Connections, choose Add, then Enter code manually.",
   },
   wrongCode: { title: "That code didn't match", body: "Check the 16 characters your Mac shows and try again." },
-  notPaired: { title: "Your Mac doesn't know this iPhone any more", body: "Its access may have been revoked. Forget this Mac and pair again." },
+  notPaired: {
+    title: "Your Mac doesn't know this iPhone any more",
+    body: "Its access may have been revoked, or Face ID changed on this iPhone. Forget this Mac and pair again.",
+  },
+  localNetwork: {
+    title: "Brigadier can't use the local network",
+    body: "Allow it in Settings › Privacy & Security › Local Network, then try again.",
+  },
   updatePhone: { title: "Update Brigadier on this iPhone", body: "Your Mac runs a newer Brigadier than this app. Install the latest build from TestFlight." },
   updateMac: { title: "Update Brigadier on your Mac", body: "This app is newer than your Mac's Brigadier. Update Brigadier on your Mac, then try again." },
   lost: { title: "The connection was lost", body: "Try again in a moment." },

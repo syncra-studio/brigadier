@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link, { type Mac } from "./modules/link";
 import { close, onClosed } from "./src/link";
 import { Lock } from "./src/Lock";
@@ -34,6 +34,8 @@ export default function App() {
   const [status, setStatus] = useState<Record<string, Status>>(sample ? { sample: "connected" } : {});
   const [at, setAt] = useState<At>(sample ? sampleAt() : { at: "connect" });
   const home = (list = macs): At => ({ at: list?.length ? "macs" : "connect" });
+  // Each pairing attempt's number; Cancel moves it on, so the cancelled attempt's result is dropped.
+  const attempt = useRef(0);
 
   async function reach(mac: Mac) {
     setStatus({ [mac.pk]: "connecting" });
@@ -42,8 +44,10 @@ export default function App() {
   }
 
   async function run(how: { offer: Offer } | { code: string }) {
+    const mine = ++attempt.current;
     setAt({ at: "finishing" });
-    const r = await pair(how, (check) => setAt({ at: "finishing", check }));
+    const r = await pair(how, (check) => mine === attempt.current && setAt({ at: "finishing", check }));
+    if (mine !== attempt.current) return;
     if (r === "cancelled") return setAt(home());
     if (typeof r === "string") {
       if (r === "updatePhone" || r === "updateMac") setMacs(await Link.macs());
@@ -74,6 +78,7 @@ export default function App() {
       <StatusBar style="light" />
       {at.at === "connect" && (
         <Connect
+          onBack={macs?.length ? () => setAt({ at: "macs" }) : undefined}
           onScan={() => {
             // Asks for the local network now, while the camera is being aimed, not when the code is read.
             if (!sample) void Link.browse(1000);
@@ -96,7 +101,16 @@ export default function App() {
         />
       )}
       {at.at === "code" && <Code onBack={() => setAt(home())} onCode={(code) => void run({ code })} />}
-      {at.at === "finishing" && <Finishing check={at.check} />}
+      {at.at === "finishing" && (
+        <Finishing
+          check={at.check}
+          onCancel={() => {
+            attempt.current++;
+            close();
+            setAt(home());
+          }}
+        />
+      )}
       {at.at === "connected" && (
         <Notice title="You're connected" body={`${at.name} is ready on this iPhone.`} action="Done" onPress={() => setAt({ at: "macs" })} />
       )}
@@ -112,6 +126,7 @@ export default function App() {
           macs={macs}
           status={status}
           onConnect={(mac) => void reach(mac)}
+          onAdd={() => setAt({ at: "connect" })}
           onForget={async (mac) => {
             if (status[mac.pk] === "connected" || status[mac.pk] === "connecting") close();
             await Link.forget(mac.pk);

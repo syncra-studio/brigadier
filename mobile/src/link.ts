@@ -11,6 +11,8 @@ function toBase64(b: Uint8Array): string {
 }
 
 let live = false;
+// The open stream's number; the native module's events for any other are stale.
+let stream = -1;
 let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
 const closed = new Set<() => void>();
@@ -26,6 +28,7 @@ const wire = client(
 
 function lost() {
   live = false;
+  stream = -1;
   wire.reset();
   for (const reply of wire.drop()) reply({ ok: false, error: "closed" });
   frames = [];
@@ -33,8 +36,9 @@ function lost() {
   waiting = null;
 }
 
-Link.addListener("data", ({ b }) => wire.receive(fromBase64(b)));
-Link.addListener("closed", () => {
+Link.addListener("data", ({ b, n }) => n === stream && wire.receive(fromBase64(b)));
+Link.addListener("closed", ({ n }) => {
+  if (n !== stream) return;
   lost();
   for (const f of closed) f();
 });
@@ -42,7 +46,8 @@ Link.addListener("closed", () => {
 export async function connect(...args: Parameters<typeof Link.connect>) {
   lost();
   const r = await Link.connect(...args);
-  live = !r.error;
+  live = r.stream !== undefined;
+  stream = r.stream ?? -1;
   return r;
 }
 
@@ -54,13 +59,28 @@ export function close() {
 /** A frame with no reply id (pairing's `sig`; the Mac ignores the id the client adds). */
 export const send = (frame: object) => wire.send(frame);
 
-export const ask = (request: object) => new Promise<Frame>((done) => wire.ask(request, done));
+/** A request and its reply; `{ok: false, error: "closed"}` if the stream ends first or no reply comes in 30 s. */
+export function ask(request: object): Promise<Frame> {
+  return new Promise((done) => {
+    const timer = setTimeout(close, 30_000);
+    wire.ask(request, (reply) => {
+      clearTimeout(timer);
+      done(reply);
+    });
+  });
+}
 
-/** The next frame that isn't a reply, or null once the stream is closed. */
-export function next(): Promise<Frame | null> {
+/** The next frame that isn't a reply, or null once the stream is closed; after `ms` the stream is closed. */
+export function next(ms = 30_000): Promise<Frame | null> {
   if (frames.length) return Promise.resolve(frames.shift()!);
   if (!live) return Promise.resolve(null);
-  return new Promise((done) => (waiting = done));
+  return new Promise((done) => {
+    const timer = setTimeout(close, ms);
+    waiting = (f) => {
+      clearTimeout(timer);
+      done(f);
+    };
+  });
 }
 
 /** Called when the open stream ends; returns the unsubscribe. */

@@ -105,7 +105,7 @@ final class Channel {
         }
     }
 
-    private final class Flag: @unchecked Sendable { var set = false }
+    final class Flag: @unchecked Sendable { var set = false }
 
     private static func read(_ conn: NWConnection, _ n: Int) async throws -> [UInt8] {
         try await withCheckedThrowingContinuation { done in
@@ -122,10 +122,18 @@ final class Channel {
         return try await read(conn, n)
     }
 
-    /// The Macs offering themselves on this network after `ms`: their service name, `pk` and whether an offer is open.
-    static func browse(_ ms: Int) async -> [[String: String]] {
+    /// The Macs offering themselves on this network after `ms`: their service name, `pk` and whether an offer is open;
+    /// `denied` when this phone may not use the local network.
+    static func browse(_ ms: Int) async -> [String: Any] {
         let queue = DispatchQueue(label: "sh.brigadier.browse")
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: service, domain: nil), using: .tcp)
+        let denied = Flag()  // only touched on `queue`
+        browser.stateUpdateHandler = { state in
+            switch state {
+            case .waiting(.dns(let e)), .failed(.dns(let e)): denied.set = denied.set || e == DNSServiceErrorType(kDNSServiceErr_PolicyDenied)
+            default: break
+            }
+        }
         browser.start(queue: queue)
         try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
         let found = queue.sync { browser.browseResults }.compactMap { result -> [String: String]? in
@@ -134,6 +142,6 @@ final class Channel {
             return ["name": name, "pk": pk, "open": txt["o"] == "1" ? "1" : "0"]
         }
         browser.cancel()
-        return found
+        return ["found": found, "denied": queue.sync { denied.set }]
     }
 }

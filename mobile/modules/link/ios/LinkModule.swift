@@ -4,8 +4,11 @@ import LocalAuthentication
 import UIKit
 
 public class LinkModule: Module {
-    /// The one stream to a Mac the app has open.
+    /// The one stream to a Mac the app has open, and its number: events carry it, so JS drops a superseded
+    /// stream's. Both only under `lock` (JS calls come on several executors; the stream's own on its queue).
     private var channel: Channel?
+    private var stream = 0
+    private let lock = NSLock()
 
     public func definition() -> ModuleDefinition {
         Name("Link")
@@ -21,9 +24,10 @@ public class LinkModule: Module {
         AsyncFunction("browse") { (ms: Int) in await Channel.browse(ms) }
 
         // mode "qr" (secret: the QR's `s`), "code" (secret: the normalised code) or "device" (the saved psk). Returns
-        // `check`, the 6 digits, or `error`: "unreachable" or "refused" (a Mac answered, but not with this psk).
-        AsyncFunction("connect") { (mode: String, mac: String, targets: [String], secret: String?) -> [String: String] in
-            self.drop()
+        // `check`, the 6 digits, and `stream`, or `error`: "unreachable", "refused" (a Mac answered, but not with this
+        // psk) or "closed" (`close` or another `connect` came first).
+        AsyncFunction("connect") { (mode: String, mac: String, targets: [String], secret: String?) -> [String: Any] in
+            let n = self.drop()
             guard let macKey = Derive.base64url(mac), macKey.count == 32 else { throw Exception(name: "Mac", description: "bad key") }
             let psk: [UInt8]
             var payload: [String: Any] = ["mode": mode]
@@ -55,34 +59,43 @@ public class LinkModule: Module {
             } catch Channel.Failure.unreachable {
                 return ["error": "unreachable"]
             }
-            channel.onData = { data in self.sendEvent("data", ["b": data.base64EncodedString()]) }
-            channel.onClosed = { [weak channel] in
-                guard self.channel === channel else { return }
-                self.channel = nil
-                self.sendEvent("closed")
+            channel.onData = { data in self.sendEvent("data", ["b": data.base64EncodedString(), "n": n]) }
+            // Strong: `drop` clears both callbacks, which ends the cycle.
+            channel.onClosed = {
+                self.lock.withLock { if self.stream == n { self.channel = nil } }
+                self.sendEvent("closed", ["n": n])
             }
-            self.channel = channel
+            let mine = self.lock.withLock { () -> Bool in
+                guard self.stream == n else { return false }
+                self.channel = channel
+                return true
+            }
+            guard mine else {
+                channel.onClosed = nil
+                channel.close()
+                return ["error": "closed"]
+            }
             channel.run()
-            return ["check": Derive.check(channel.noise.h)]
+            return ["check": Derive.check(channel.noise.h), "stream": n]
         }
 
         // Synchronous, so writes keep the order JS made them in.
         Function("write") { (b64: String) in
-            guard let channel = self.channel, let plain = Data(base64Encoded: b64) else { throw Exception(name: "Mac", description: "not connected") }
+            guard let channel = self.current(), let plain = Data(base64Encoded: b64) else { throw Exception(name: "Mac", description: "not connected") }
             try channel.write(Array(plain))
         }
 
-        Function("close") { self.drop() }
+        Function("close") { _ = self.drop() }
 
         // U's signature over this stream's handshake hash, after Face ID: the `sig` of pairing and signing in.
         AsyncFunction("sign") { () -> String in
-            guard let channel = self.channel else { throw Exception(name: "Mac", description: "not connected") }
+            guard let channel = self.current() else { throw Exception(name: "Mac", description: "not connected") }
             return try Enclave.sign("brigadier/hello/v1", Data(channel.noise.h)).base64EncodedString()
         }
 
         // Keeps the Mac this stream paired with: its psk from the handshake hash, and its record in the list.
         AsyncFunction("save") { (name: String, device: String, addresses: [String]) -> String in
-            guard let channel = self.channel else { throw Exception(name: "Mac", description: "not connected") }
+            guard let channel = self.current() else { throw Exception(name: "Mac", description: "not connected") }
             let pk = Self.base64url(channel.mac)
             try Keys.put("psk:" + pk, Data(Derive.device(channel.noise.h)))
             let mac: [String: Any] = ["pk": pk, "name": name, "device": device,
@@ -99,11 +112,19 @@ public class LinkModule: Module {
         }
     }
 
-    private func drop() {
-        channel?.onClosed = nil
-        channel?.close()
-        channel = nil
+    /// Ends the open stream and voids any `connect` still running; returns the next stream's number.
+    private func drop() -> Int {
+        lock.withLock {
+            channel?.onClosed = nil
+            channel?.onData = nil
+            channel?.close()
+            channel = nil
+            stream += 1
+            return stream
+        }
     }
+
+    private func current() -> Channel? { lock.withLock { channel } }
 
     /// The phone's Noise static key, made once.
     private static func staticKey() throws -> Curve25519.KeyAgreement.PrivateKey {

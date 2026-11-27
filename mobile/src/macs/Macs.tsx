@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Mac } from "../../modules/link";
+import { Button } from "../Button";
 import { page, PROBLEMS } from "../Notice";
 import type { Problem } from "../pair/pair";
 import { color, text } from "../theme";
@@ -10,11 +11,12 @@ const said = (s: Status) =>
   s === "connected" ? "Connected" : s === "connecting" ? "Connecting…" : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
 
 /** The paired Macs: "● <name>", how each stands, and Forget this Mac. */
-export function Macs({ macs, status, onConnect, onForget }: {
+export function Macs({ macs, status, onConnect, onForget, onAdd }: {
   macs: Mac[];
   status: Record<string, Status>;
   onConnect: (mac: Mac) => void;
   onForget: (mac: Mac) => void;
+  onAdd: () => void;
 }) {
   return (
     <View style={styles.page}>
@@ -35,6 +37,9 @@ export function Macs({ macs, status, onConnect, onForget }: {
           </View>
         );
       })}
+      <View style={styles.add}>
+        <Button title="Add a Mac" onPress={onAdd} secondary />
+      </View>
     </View>
   );
 }
@@ -55,4 +60,5 @@ const styles = StyleSheet.create({
   status: { ...text.sm, color: color.mutedForeground },
   actions: { flexDirection: "row", gap: 20, marginTop: 8 },
   link: { ...text.sm, fontWeight: "600", color: color.foreground },
+  add: { marginTop: "auto" },
 });
