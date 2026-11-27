@@ -797,9 +797,12 @@ function kindOf(name: string, mime: string): string {
 
 const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
 
-/** A tile's ✕: a dark dot inside its corner, with a finger's reach. */
-const Remove = ({ label, onPress }: { label: string; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={14} style={st.remove}>
+/**
+ * A tile's ✕: a dark dot inside its corner. Its reach grows out to the corner, and on a card down and in too; on an
+ * image it stops short of the middle, which opens the image.
+ */
+const Remove = ({ label, onPress, image }: { label: string; onPress: () => void; image: boolean }) => (
+  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={image ? { top: 6, right: 6, left: 4, bottom: 4 } : 14} style={st.remove}>
     <Glyph name="x" size={9} color={color.background} weight="700" />
   </Pressable>
 );
@@ -824,8 +827,9 @@ function Card({ icon, title, detail, invalid, children }: { icon: React.ReactNod
  */
 function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: Attachment; onOpen: () => void; onRemove: () => void }) {
   const name = baseName(file.name);
-  const remove = <Remove label={`Remove ${name}`} onPress={onRemove} />;
-  if (file.mime.startsWith("image/") && file.state !== "failed") {
+  const image = file.mime.startsWith("image/") && file.state !== "failed";
+  const remove = <Remove label={`Remove ${name}`} onPress={onRemove} image={image} />;
+  if (image) {
     return (
       <View style={st.thumb}>
         {file.state === "ready" ? (
