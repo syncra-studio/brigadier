@@ -50,7 +50,6 @@ use std::io::{self, Write};
 use std::mem::size_of;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{AsFd, AsRawFd};
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -309,7 +308,7 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
 /// The pid and build (none before build numbers) of the daemon answering on the socket, if one does.
 fn answering(data: &Path) -> io::Result<Option<(libc::pid_t, Option<u64>)>> {
     // Nothing answering means a daemon still starting up: leave it be.
-    let Ok(mut stream) = UnixStream::connect(data.join("daemon.sock")) else {
+    let Ok(mut stream) = wire::connect_socket(&data.join("daemon.sock")) else {
         return Ok(None);
     };
     if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {

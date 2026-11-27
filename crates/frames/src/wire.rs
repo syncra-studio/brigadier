@@ -10,9 +10,10 @@
 use serde_json::{Value, json};
 use std::fs::{self, Permissions};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::os::unix::io::AsRawFd;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::{SocketAddr, UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -37,9 +38,44 @@ pub fn bind(path: &Path) -> io::Result<UnixListener> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
         _ => {}
     }
-    let listener = UnixListener::bind(path)?;
+    let listener = at_path(path, |p| UnixListener::bind(p))?;
     fs::set_permissions(path, Permissions::from_mode(0o600))?;
     Ok(listener)
+}
+
+/// A temporary alias keeps the kernel's socket address short, while the socket itself stays in
+/// its owning folder. No process-wide cwd changes: other threads may be opening files too.
+fn at_path<T>(path: &Path, run: impl FnOnce(&Path) -> io::Result<T>) -> io::Result<T> {
+    if SocketAddr::from_pathname(path).is_ok() {
+        return run(path);
+    }
+    let short = || -> io::Result<T> {
+        let name = path
+            .file_name()
+            .ok_or_else(|| io::Error::other("A local socket needs a file name."))?;
+        let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+        let parent = fs::canonicalize(parent.unwrap_or(Path::new(".")))?;
+        let mut template = b"/tmp/brigadier-socket-XXXXXX\0".to_vec();
+        if unsafe { libc::mkdtemp(template.as_mut_ptr().cast()) }.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let dir = Path::new(std::ffi::OsStr::from_bytes(&template[..template.len() - 1]));
+        let alias = dir.join("d");
+        let result = symlink(parent, &alias).and_then(|()| run(&alias.join(name)));
+        let cleaned = fs::remove_dir_all(dir);
+        result.and_then(|value| cleaned.map(|()| value))
+    };
+    short().map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("Couldn't open the local socket through a short path in /tmp: {e}"),
+        )
+    })
+}
+
+/// Opens a socket without a handshake, including one whose owning folder has a long path.
+pub fn connect_socket(path: &Path) -> io::Result<UnixStream> {
+    at_path(path, |p| UnixStream::connect(p))
 }
 
 pub fn serve<F>(listener: UnixListener, handler: Arc<F>)
@@ -140,7 +176,7 @@ pub fn connect(path: &Path, timeout: Duration) -> io::Result<Conn> {
 }
 
 fn connect_as(path: &Path, timeout: Duration, version: u32) -> io::Result<Conn> {
-    let mut stream = UnixStream::connect(path)?;
+    let mut stream = connect_socket(path)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
     stream.write_all(&version.to_be_bytes())?;
