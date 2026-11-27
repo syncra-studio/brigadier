@@ -29,7 +29,9 @@ export function SessionMenu({ id }: { id: string }) {
   const open = (each: Open) => sheet.set({ ...each, id });
   const session = () => (thread.get()?.id === id ? thread.get()?.session : null);
   const fork = () => {
-    // The latest answer, as the CLI's `--latest` finds it, read here so the check needs no Face ID.
+    // The latest answer's turn, read here so the check needs no Face ID.
+    // shortcut: a wake that carried that turn on forks from the turn's start, not the wake (the thread names no wake's
+    // boundary, and `fork --latest` needs a signature); use `--latest`'s `at` once the Mac takes it unsigned.
     const answer = (session()?.items ?? []).filter((item) => item.kind === "message" && item.role === "assistant" && item.final).pop();
     answer ? open({ kind: "fork", at: answer.turnId }) : Alert.alert("No answer to fork from yet.");
   };

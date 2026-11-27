@@ -1,13 +1,13 @@
 // The rewind dialog, as the desktop's session/rewind.tsx and components/thread/rewind.tsx [D384, D481]: Rust's
 // preview first, then the chat back to just before the message, its files kept or the agent's changes undone, and the
 // message back in the composer; after an undo, Redo file changes puts them back.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { Draft } from "../../vendor/brigadier-shared/draft";
 import { REWIND_CANT } from "../../vendor/brigadier-shared/words";
 import { Button } from "../Button";
 import { forMac, newId } from "../compose/state";
-import { lists } from "../mac/mac";
+import { lists, thread } from "../mac/mac";
 import { color } from "../theme";
 import { Sheet, st } from "../sheets/Sheet";
 
@@ -39,15 +39,37 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
   const [busy, setBusy] = useState(false);
   // One id for all of this dialog's tries: a reply lost after the rewind landed is answered as already done.
   const [op] = useState(newId);
-  useEffect(() => void run(["rewind", id, cid, "--preview"]).then((reply) => (reply.ok ? setPreview(previewOf(reply)) : setError(why(reply)))), []);
+  // A restore undoes every turn from here as they are when it runs: a turn starting or ending reads the preview again,
+  // and a choice made on the old one is made again.
+  const turns = useSyncExternalStore(thread.subscribe, () => {
+    const session = thread.get()?.id === id ? thread.get()?.session : null;
+    return (session?.turns ?? []).map((turn) => `${turn.id}:${turn.status}`).join(" ");
+  });
+  // One request at a time, taps before the spinner shows included; none once it's done.
+  const going = useRef(false);
+  useEffect(() => {
+    if (going.current) return;
+    let live = true;
+    setPreview(null);
+    setRestore(false);
+    setError(null);
+    void run(["rewind", id, cid, "--preview"]).then((reply) => live && (reply.ok ? setPreview(previewOf(reply)) : setError(why(reply))));
+    return () => void (live = false);
+  }, [turns]);
   const go = () => {
+    if (going.current || !preview) return;
+    going.current = true;
     setBusy(true);
     setError(null);
     void run(["rewind", id, cid, "--op", op, ...(restore ? ["--restore"] : [])]).then((reply) => {
       setBusy(false);
-      if (!reply.ok) return setError(why(reply));
-      // The message back in the composer, above what's typed there; a `!` command's report as the command.
-      drafts.takeBack(run, id, { cid: newId(), parts: draft?.shell ? [`!${draft.shell}`] : (draft?.parts ?? [text]), attachmentIds: [] });
+      if (!reply.ok) {
+        going.current = false;
+        return setError(why(reply));
+      }
+      // The message back in the composer, above what's typed there, its files with it; a `!` command's report as the
+      // command. Under the dialog's one id, so it comes back once.
+      drafts.takeBack(run, id, { cid: op, parts: draft?.shell ? [`!${draft.shell}`] : (draft?.parts ?? [text]), attachmentIds: draft?.shell ? [] : (draft?.attachmentIds ?? []) });
       setDone({ words: said(reply, restore), redo: restore && reply.restored > 0 });
     });
   };
