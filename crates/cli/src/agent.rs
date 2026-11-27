@@ -48,7 +48,7 @@ const HELP: &str = "brigadier: your tools for the other sessions in Brigadier.
   brigadier help [command]    this, or one command's help
 
 Every command takes --help, and --json for JSON. Output is capped; each says how to read less.
-A separate job (a build, a live run, a change across files, research, an audit) goes to a worker with `start`; your own subagents are for read-only look-ups. If the user says who does a job, that wins.";
+Do small work yourself, code changes of a few files with their checks too; start no worker for it. A worker (`start`) is for independent parallel parts, long jobs (a build, a live run, research, an audit), work needing its own worktree or another agent, and computer use, web pages aside (`brigadier browser`). Your own subagents are for read-only look-ups. If the user says who does a job, that wins.";
 
 /// Each command's help, its value flags and its plain flags.
 fn spec(cmd: &str) -> Option<crate::relay::Spec> {

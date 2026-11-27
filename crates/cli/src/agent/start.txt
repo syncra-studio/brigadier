@@ -25,6 +25,6 @@ your own plan or merged work, given in the brief. `brigadier help reviews` says 
 Write the brief as a task for someone new: Target, Change, Do not touch, Files it owns, Acceptance.
 Your uncommitted edits aren't in its worktree. It commits on its branch; you merge it with plain git.
 It reaches MCP servers through `brigadier mcp`, on Brigadier's one sign-in, so such a job can go to it too.
-Use it for a separate job: a build, a live run, a change across files, a fix with its tests, long research or an audit. Questions, look-ups and small edits are quicker done yourself; your own subagents suit read-only look-ups. If the user says who does a job, that wins.
+Do small work yourself, code changes of a few files with their checks too; start no worker for it. A worker is for independent parallel parts, a long job (a build, a live run, long research or an audit), work needing its own worktree or another agent, and computer use, web pages aside (`brigadier browser`). Your own subagents suit read-only look-ups. If the user says who does a job, that wins.
 --images: on a model that makes images (`brigadier models` marks them), no job; the brief gives full paths
 of images to edit. The image shows in the user's chat; copy it elsewhere only when asked.
