@@ -280,11 +280,14 @@ export function StartingSetup({ id }: { id: string }) {
   const setup = (mine && session.setup) || (entry.worktree && !entry.error && !entry.outcome ? { state: "running" as const, after: null, steps: [{ kind: "worktree" as const, state: "running" as const, branch: null, base: entry.worktree.base, error: null }] } : null);
   if (!setup) return null;
   // Its turn's header is there from the start, as the thread draws it, so nothing moves when the turn comes [D85]; its clock starts with Rust's turn.
+  // A start that failed or can't be confirmed has no turn coming: no "Working" over it.
   return (
     <>
-      <div className="pt-6">
-        <WorkHeader turn={{ id: entry.cid, status: "running", startedAt: Infinity, endedAt: null }} work={undefined} open={null} onToggle={() => {}} />
-      </div>
+      {!entry.error && !entry.unknown && (
+        <div className="pt-6">
+          <WorkHeader turn={{ id: entry.cid, status: "running", startedAt: Infinity, endedAt: null }} work={undefined} open={null} onToggle={() => {}} />
+        </div>
+      )}
       <div className="pt-4">
         <SetupRow keep={`${id}:setup`} setup={setup} />
       </div>
