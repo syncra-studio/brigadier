@@ -154,6 +154,7 @@ fn rename(
     s.moved = true;
     // A run's later steps would act on the old numbers: it stops here for a read.
     if s.batch {
+        super::act::moved(me);
         return Err(refuse(&format!(
             "{line}: sent. A renamed file can move in Finder's list, so the steps after it weren't sent: read again."
         )));

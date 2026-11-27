@@ -4,7 +4,7 @@
 use super::diff::{Seen, baseline, changes};
 use super::open::{front, own};
 use super::window::ours;
-use super::{BUSY, Fail, PAUSE_WAIT, Sess, cap, refuse, said, tool};
+use super::{BUSY, Fail, PAUSE_WAIT, SESSIONS, Sess, cap, lock, refuse, said, tool};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::thread;
@@ -71,8 +71,13 @@ pub(super) fn act(
         Ok(Ok(done)) => done,
     };
     // A background drag drops only through a macOS drag-and-drop session: without one, the file
-    // it meant to drop wasn't moved, whatever the window shows [D129].
-    let undropped = drop && done["drag_session"] != true && done["effect"] != "refused";
+    // it meant to drop wasn't moved, whatever the window shows [D129]. Cua 0.54 says a drop only in
+    // its text (and `summary`, its copy): its structured result has no drag_session.
+    let dropped = ["_text", "summary"].iter().any(|k| {
+        (done[*k].as_str())
+            .is_some_and(|t| t.contains("held the drop point until the session ended"))
+    });
+    let undropped = drop && !dropped && done["effect"] != "refused";
     if s.batch {
         return match done["effect"].as_str() {
             Some(e @ ("refused" | "partial")) => Err(refuse(&format!(
@@ -82,9 +87,12 @@ pub(super) fn act(
             // The steps after it may count on the drop: the run stops here.
             _ if undropped => Err(refuse(&format!("{line}: {NO_DROP}"))),
             // A file dropped leaves its list, and the rows after it move: the run stops for a read.
-            _ if drop => Err(refuse(&format!(
-                "{line}: sent. A file dropped in Finder moves the rows after it, so the steps after it weren't sent: read again."
-            ))),
+            _ if drop => {
+                moved(me);
+                Err(refuse(&format!(
+                    "{line}: sent. A file dropped in Finder moves the rows after it, so the steps after it weren't sent: read again."
+                )))
+            }
             _ => Ok(format!("{line}: sent.")),
         };
     }
@@ -107,6 +115,12 @@ pub(super) fn act(
         false => how,
     };
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
+}
+
+/// The window's numbers are void for `me`, kept even though the step stops its run with an error:
+/// `verb` saves its copy of the session only on success.
+pub(super) fn moved(me: &str) {
+    lock(&SESSIONS).entry(me.to_string()).or_default().moved = true;
 }
 
 const NO_DROP: &str = "No drag-and-drop session started, so nothing was dropped. To move a file in Finder: select it, `menu \"Edit > Copy “<file>”\"`, open the folder, then `menu \"Edit > Move Item Here\"`.";
