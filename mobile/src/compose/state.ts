@@ -92,6 +92,9 @@ function fileState(run: Runner) {
   const change = (owner: string, next: (files: Files) => Files) => owners.set(new Map(owners.get()).set(owner, next(of(owner))));
   const set = (owner: string, file: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(file.id, file) }));
   const listed = new Set<string>();
+  // Moves on at each list asked and each file attached: a list answers only for files attached before it was asked.
+  let tick = 0;
+  const began = new Map<string, number>();
   /**
    * After a restart, a draft's files' names come back from Rust's folder, by their ids; `again` reads it again (a new
    * connection). A tile Rust's folder hasn't (one that was still uploading, or failed) shows failed, to be removed.
@@ -99,10 +102,20 @@ function fileState(run: Runner) {
   function load(owner: string, again = false) {
     if (listed.has(owner) && !again) return;
     listed.add(owner);
+    const at = ++tick;
     void run(["attach", owner, "list"]).then((reply) => {
       if (!reply.ok) return void listed.delete(owner);
-      for (const each of reply.files ?? []) if (!of(owner).all.has(each.id)) set(owner, { id: each.id, name: each.name, mime: each.mime, state: "ready" });
-      for (const id of of(owner).tiles) if (!of(owner).all.has(id)) set(owner, { id, name: "File", mime: "application/octet-stream", state: "failed", error: "This file is no longer on your Mac" });
+      const there = new Map<string, { id: string; name: string; mime: string }>((reply.files ?? []).map((each: { id: string; name: string; mime: string }) => [each.id, each]));
+      for (const each of there.values()) if (!of(owner).all.has(each.id)) set(owner, { ...each, state: "ready" });
+      // Each settled tile as Rust's folder has it: listed is ready (an add whose reply was lost), missing is failed.
+      for (const id of of(owner).tiles) {
+        const now = of(owner).all.get(id);
+        if ((began.get(id) ?? 0) > at || now?.state === "uploading") continue;
+        const listed = there.get(id);
+        if (listed) set(owner, { id, name: now?.name ?? listed.name, mime: now?.mime ?? listed.mime, state: "ready" });
+        // One that failed here keeps its own why (too large, refused).
+        else if (now?.state !== "failed") set(owner, { id, name: now?.name ?? "File", mime: now?.mime ?? "application/octet-stream", state: "failed", error: "This file is no longer on your Mac" });
+      }
     });
   }
   // One store at a time, so each counts the files before it (`--in`), as Rust holds a message to 20.
@@ -116,6 +129,7 @@ function fileState(run: Runner) {
     const name = picked.name.replace(/\//g, "_").replace(/^[.-]+/, "") || "File";
     const mime = picked.mime || "application/octet-stream";
     const fail = (error: string) => set(owner, { id, name, mime, state: "failed", error });
+    began.set(id, ++tick);
     set(owner, { id, name, mime, state: "uploading" });
     change(owner, (files) => ({ ...files, tiles: [...files.tiles, id] }));
     const file = new File(picked.uri);
