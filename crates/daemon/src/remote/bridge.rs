@@ -115,6 +115,7 @@ pub(super) fn request(
         device,
         host,
         data: &data,
+        resolved: Default::default(),
     };
     if req["op"] == "attachment" {
         let mut answer = super::files::attachment(&cx, req);
@@ -124,7 +125,10 @@ pub(super) fn request(
     let checked = match allow::check(&cx, req) {
         Ok(checked) => checked,
         Err(why) => {
-            let refused = serde_json::json!({"re": req["id"], "ok": false, "error": why});
+            let mut refused = serde_json::json!({"re": req["id"], "ok": false, "error": why});
+            if why == super::rows::NOT_CANONICAL {
+                refused["path"] = cx.resolved.take().into();
+            }
             return link::reply(s, id, &refused).map_err(|e| e.to_string());
         }
     };

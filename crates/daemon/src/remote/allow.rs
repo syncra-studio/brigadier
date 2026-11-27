@@ -7,6 +7,7 @@
 use super::Host;
 use super::fresh::{self, Need};
 use serde_json::{Map, Value, json};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
@@ -35,6 +36,8 @@ pub(super) struct Ctx<'a> {
     pub(super) device: &'a str,
     pub(super) host: &'a Host,
     pub(super) data: &'a Path,
+    /// The resolved path a [`super::rows::NOT_CANONICAL`] refusal tells the phone.
+    pub(super) resolved: Cell<Option<String>>,
 }
 
 pub(super) type Fail = &'static str;
@@ -334,7 +337,8 @@ fn run(
                         serde_json::from_str(f.get("--op").ok_or(REFUSED)?).map_err(|_| REFUSED)?;
                     // A kept command is tried again with no one to sign it: none that needs a signature.
                     let mut signed = None;
-                    let kept = run(cx, op.clone(), false, &mut signed)?;
+                    // Refused as itself: a kept command's own answer (a path to sign) isn't given.
+                    let kept = run(cx, op.clone(), false, &mut signed).map_err(|_| REFUSED)?;
                     if !top
                         || signed.is_some()
                         || op.first().map(String::as_str) != Some(kind)

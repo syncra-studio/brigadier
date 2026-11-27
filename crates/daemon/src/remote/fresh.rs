@@ -19,7 +19,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub(super) const NEEDS: &str = "Needs Face ID";
-const OFF: &str = "Turned off for this iPhone on your Mac";
+pub(super) const OFF: &str = "Turned off for this iPhone on your Mac";
 const LIFE: Duration = Duration::from_secs(60);
 /// Proposed: nonces a stream may hold at once; the oldest goes first.
 const HELD: usize = 16;

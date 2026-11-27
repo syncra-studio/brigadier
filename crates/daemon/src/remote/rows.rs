@@ -7,8 +7,12 @@ use super::allow::{
     Ctx, Fail, Flags, REFUSED, draft_target, has_files, json_of, number, parts, plain, words,
 };
 use super::fresh::{self, Need};
+use super::{devices, powers};
 use brigadier_core::git::{self, Target};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
+
+/// Power (e)'s image named other than as its resolved path; the answer carries that path.
+pub(super) const NOT_CANONICAL: &str = "not_canonical";
 
 /// `MAX_BYTES` (`crates/core/src/message.rs`): the most one file may be, as base64.
 const MAX_B64: usize = (10 << 20) / 3 * 4 + 4;
@@ -30,6 +34,30 @@ fn inside(path: &str) -> Result<(), Fail> {
     (!path.is_empty() && !path.starts_with('~') && !path.starts_with("--") && down)
         .then_some(())
         .ok_or(REFUSED)
+}
+
+/// Power (e)'s image: an absolute path, as the CLI takes it (`attach::named`), its switch on, and
+/// never in the data folder but for the session's own checkout: the Mac's drafts, the devices'
+/// records and its pairing keys are there. One that isn't its own resolved form is answered with
+/// that form, which the phone can't work out, to show and sign; the answer grants nothing.
+fn outside(cx: &Ctx, path: &str, own: Option<PathBuf>) -> Result<(), Fail> {
+    if !path.starts_with('/') {
+        return Err(REFUSED);
+    }
+    let device = devices::find(cx.data, cx.device).ok_or(REFUSED)?;
+    if !powers::on(&device, "paths") {
+        return Err(fresh::OFF);
+    }
+    let real = std::fs::canonicalize(path).map_err(|_| REFUSED)?;
+    let data = std::fs::canonicalize(cx.data).map_err(|_| REFUSED)?;
+    if real.starts_with(&data) && !own.is_some_and(|c| real.starts_with(c)) {
+        return Err(REFUSED);
+    }
+    if real != Path::new(path) {
+        cx.resolved.set(Some(real.to_str().ok_or(REFUSED)?.into()));
+        return Err(NOT_CANONICAL);
+    }
+    Ok(())
 }
 
 pub(super) fn row(
@@ -141,14 +169,12 @@ pub(super) fn row(
                 // (power (e), step 1), so the CLI's search by name never reaches past it.
                 ("view", 4) if !owner.starts_with('@') => {
                     let path = a(3)?;
-                    let found = git::checkout(cx.data, &Target::Session(owner))
-                        .and_then(|c| git::inside(&c, path.trim_start_matches("./")));
+                    let checkout = git::checkout(cx.data, &Target::Session(owner)).ok();
+                    let found = (checkout.as_ref())
+                        .and_then(|c| git::inside(c, path.trim_start_matches("./")).ok());
                     // The CLI reads `~/…` as the home folder before the checkout (`attach::named`).
-                    if path.starts_with("~/") || !found.is_ok_and(|at| at.is_file()) {
-                        let real = std::fs::canonicalize(path).map_err(|_| REFUSED)?;
-                        if real != Path::new(path) {
-                            return Err(REFUSED);
-                        }
+                    if path.starts_with("~/") || !found.is_some_and(|at| at.is_file()) {
+                        outside(cx, path, checkout.map(|c| c.root))?;
                         *need = fresh::power("paths", args);
                     }
                 }
