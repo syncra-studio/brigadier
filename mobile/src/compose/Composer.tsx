@@ -220,8 +220,8 @@ export function Composer({ id }: { id: string }) {
     return pulled;
   };
   /** The field and the chips leave at once, the message kept first, so nothing is lost [D30, D363]. */
-  const goes = (sent: readonly PanelChip[], send: (pulled: Pulled, sub: Sub) => void) => {
-    const sub: Sub = { draft: { parts: partsNow(), attachmentIds: [] }, rev: drafts.revOf(id), chips: sent };
+  const goes = (parts: Draft["parts"], sent: readonly PanelChip[], send: (pulled: Pulled, sub: Sub) => void) => {
+    const sub: Sub = { draft: { parts, attachmentIds: [] }, rev: drafts.revOf(id), chips: sent };
     send(editing.get(), sub);
     take();
     waitingChips.leave(id, sent);
@@ -248,32 +248,32 @@ export function Composer({ id }: { id: string }) {
       if (words$.current === put) setField([]);
     });
   };
-  const submit = (other: boolean) => {
+  /** Sends the field as it is now; `chosen`, the paused queue's answer, read again from the field when it comes. */
+  const submit = (other: boolean, chosen?: "now" | "queue"): void => {
     if (!connected) return;
     const parts = partsNow();
-    if (isEmpty({ parts, attachmentIds: [] }) && panel.length === 0) {
+    const sent = waitingChips.of(id);
+    if (isEmpty({ parts, attachmentIds: [] }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued" && !items[0].shell) steerQueued(items[0].id);
       return;
     }
     // The chips go after the words, and leave once it's sent or queued; a failed send keeps them in its message.
-    const message = withChips(plainText(parts), panel);
+    const message = withChips(plainText(parts), sent);
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
-    const sent = panel;
     const draft = body(parts, sent);
-    const go = (mode: "now" | "queue" | "steer") => {
-      const msg = (mode === "queue" && editing.get()?.qid) || newId();
-      goes(sent, (pulled, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, gave(pulled), draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
-    };
     // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188].
-    const mode = sendMode(running || commands, "queue", other, canSteer && running);
-    if (mode !== "now" || !paused || items.length === 0) return go(mode);
-    const count = items.length === 1 ? "One message waits" : `${items.length} messages wait`;
-    Alert.alert("Send message?", `The queue is paused. ${count} until you resume it. Send this one now, or keep it in the queue with them.`, [
-      { text: "Keep paused", onPress: () => go("queue") },
-      { text: "Send now", style: "default", onPress: () => go("now") },
-    ]);
+    const mode = chosen ?? sendMode(running || commands, "queue", other, canSteer && running);
+    if (!chosen && mode === "now" && paused && items.length > 0) {
+      const count = items.length === 1 ? "One message waits" : `${items.length} messages wait`;
+      return Alert.alert("Send message?", `The queue is paused. ${count} until you resume it. Send this one now, or keep it in the queue with them.`, [
+        { text: "Keep paused", onPress: () => submit(other, "queue") },
+        { text: "Send now", style: "default", onPress: () => submit(other, "now") },
+      ]);
+    }
+    const msg = (mode === "queue" && editing.get()?.qid) || newId();
+    goes(parts, sent, (pulled, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, gave(pulled), draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
   };
   const stop = () => {
     setStopping(true);
@@ -328,17 +328,9 @@ export function Composer({ id }: { id: string }) {
   // Nothing to send: no words, and nothing waiting above the field.
   const blank = empty && panel.length === 0;
   const state = busy && connected && blank ? "stop" : !running && blank && resumable ? "resume" : "send";
-  // A steer empties the field, which turns the button into Stop before the finger lifts: that release is swallowed.
-  const held = useRef(false);
-  const press = () => {
-    if (held.current) return void (held.current = false);
-    state === "stop" ? stop() : state === "resume" ? resume() : submit(false);
-  };
-  const hold = () => {
-    if (state !== "send" || !running || !canSteer) return press();
-    held.current = true;
-    submit(true);
-  };
+  const press = () => (state === "stop" ? stop() : state === "resume" ? resume() : submit(false));
+  // Always set, so the release after a long press isn't also a tap (a steer turns the button into Stop meanwhile).
+  const hold = () => (state === "send" && running && canSteer ? submit(true) : press());
   const verb = running && !blank ? "Queue" : "Send message";
   const shownSends = sends(going).filter((each) => !delivered.has(each.cid));
   return (
