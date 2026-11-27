@@ -304,14 +304,18 @@ fn automation(app: &CFType, pid: i32, p: &Value) -> Value {
         let status = if scripted { "none" } else { "" };
         return json!({"scripted": scripted, "status": status});
     };
-    // errAEEventNotPermitted, errAEEventWouldRequireUserConsent; else it may ask.
-    let status = match apple_events(&id, false) {
-        0 => "granted",
-        -1743 => "denied",
-        _ => "ask",
-    };
     static ASKING: Mutex<Vec<String>> = Mutex::new(Vec::new());
     let mut asking = ASKING.lock().unwrap_or_else(PoisonError::into_inner);
+    // errAEEventNotPermitted, errAEEventWouldRequireUserConsent; else it may ask. While our prompt
+    // for it is up, macOS's answer waits for the user, past the CLI's wait [C130].
+    let status = match asking.contains(&id) {
+        true => "ask",
+        false => match apple_events(&id, false) {
+            0 => "granted",
+            -1743 => "denied",
+            _ => "ask",
+        },
+    };
     if status == "ask" && !asking.contains(&id) {
         asking.push(id.clone());
         thread::spawn(move || {

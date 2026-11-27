@@ -37,6 +37,8 @@ pub(super) fn act(
     if s.batch && name != "drag" {
         args["post_action_wait"] = "none".into();
     }
+    // Alive now: only then can the app's going be this click's doing.
+    let alive = name == "click" && !quit(s.pid, false);
     super::sent();
     let done = tool(data, name, args, &|| !here());
     // Once sent, whatever came back (an answer, none in time, an error), the numbers are void,
@@ -45,6 +47,25 @@ pub(super) fn act(
     if (drop || voids) && !refused && !matches!(done, Err(Fail::NotSent(_))) {
         s.moved = true;
         moved(me);
+    }
+    // A click that ends its app (a dialog's OK) gets an AX error or no answer from it: the app's
+    // process gone, by our own read, is the change [C130]. Any other error stays a failure.
+    let errored = !matches!(done, Ok(Ok(_)));
+    if alive && !refused && !matches!(done, Err(Fail::NotSent(_))) && quit(s.pid, errored) {
+        *s = Sess {
+            batch: s.batch,
+            ..Sess::default()
+        };
+        // A run's error isn't saved by `verb`: the void session is, here.
+        if s.batch {
+            lock(&SESSIONS).insert(me.to_string(), s.clone());
+        }
+        return match s.batch {
+            true => Err(refuse(&format!(
+                "{line}: done, the app quit, so the steps after it weren't sent."
+            ))),
+            false => Ok(format!("{line}: done, the app quit.")),
+        };
     }
     let done = match done {
         // A run stops at a step it can't vouch for: the next one may depend on it.
@@ -123,6 +144,26 @@ pub(super) fn act(
         false => how,
     };
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
+}
+
+/// Whether `pid`'s process is confirmed gone; `wait`, a moment for it to exit, as an answer can
+/// beat it. Unsure (no pid, or no way to ask) is not gone.
+fn quit(pid: i64, wait: bool) -> bool {
+    let Some(pid) = i32::try_from(pid).ok().filter(|p| *p > 0) else {
+        return false;
+    };
+    let start = Instant::now();
+    loop {
+        #[cfg(unix)]
+        let gone = unsafe { libc::kill(pid, 0) } == -1
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+        #[cfg(not(unix))]
+        let gone = false;
+        if gone || !wait || start.elapsed() >= Duration::from_secs(1) {
+            return gone;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// The window's numbers are void for `me`, kept even when the step ends in an error: `verb` saves
