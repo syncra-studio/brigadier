@@ -4,10 +4,11 @@
 
 use super::act::{CLICK, MODIFIER, act, idle, wait_for_user};
 use super::apps::{blocked, blocked_path};
-use super::apps::{find, named, running};
+use super::apps::{find, named};
 use super::diff::{Seen, baseline, changes};
 use super::window::read;
 use super::{Fail, SESSIONS, Sess, Words, call, lock, refuse, said};
+use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
@@ -363,7 +364,8 @@ pub(super) fn press(
         let opened = now.iter().find(|w| !before.contains(w)).copied();
         let closed = s.window != 0 && !now.contains(&s.window);
         if opened.is_some() || closed {
-            let gone = !running(data, here)?.iter().any(|a| a["pid"] == s.pid);
+            // By its process: an app with no bundle id leaves the list with its last window [C113].
+            let gone = i32::try_from(s.pid).ok().and_then(procs::exe).is_none();
             if gone {
                 *s = Sess::default();
                 return Ok(format!("Chose {chose}: done, the app quit."));

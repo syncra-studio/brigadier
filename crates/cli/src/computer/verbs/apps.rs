@@ -75,13 +75,54 @@ pub(super) fn menus(
 
 pub(super) fn running(data: &Path, here: &dyn Fn() -> bool) -> Result<Vec<Value>, Value> {
     let found = call(data, "list_apps", json!({}), here)?;
-    Ok((found["apps"]
+    let mut all: Vec<Value> = (found["apps"]
         .as_array()
         .cloned()
         .unwrap_or_default()
         .into_iter())
     .filter(|a| a["running"] != false)
-    .collect())
+    .collect();
+    // Cua lists no app without a bundle id (its read_app_plist needs one): such an app is listed by
+    // its name while it has a window, as Cua lists a bundle outside the app folders [C113].
+    let windows = call(data, "list_windows", json!({"on_screen_only": false}), here);
+    let mut pids: Vec<i64> = (windows.ok().iter())
+        .flat_map(|w| w["windows"].as_array().cloned().unwrap_or_default())
+        .filter(|w| w["layer"].as_i64() == Some(0))
+        .filter_map(|w| w["pid"].as_i64())
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    for pid in pids {
+        if !all.iter().any(|a| a["pid"] == pid)
+            && let Some(name) = unbundled(pid)
+        {
+            all.push(json!({"name": name, "pid": pid, "running": true}));
+        }
+    }
+    Ok(all)
+}
+
+/// The name of the app `pid` runs from when its bundle has no id and isn't a background agent,
+/// as Cua names apps: its display name, else its name, else its file's.
+fn unbundled(pid: i64) -> Option<String> {
+    let app = app_of(pid).ok().filter(|a| is_app(a))?;
+    let out = std::process::Command::new("/usr/bin/plutil")
+        .args(["-convert", "json", "-o", "-"])
+        .arg(app.join("Contents/Info.plist"))
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let info: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let on = |k: &str| info[k] == true || info[k] == "1" || info[k] == "YES";
+    if !info["CFBundleIdentifier"].is_null() || on("LSUIElement") || on("LSBackgroundOnly") {
+        return None;
+    }
+    let name = ["CFBundleDisplayName", "CFBundleName"]
+        .iter()
+        .find_map(|k| info[k].as_str().filter(|n| !n.trim().is_empty()))
+        .map(str::to_string)
+        .or_else(|| Some(app.file_stem()?.to_string_lossy().into_owned()))?;
+    (!name.is_empty()).then_some(name)
 }
 
 pub(super) fn apps(data: &Path, here: &dyn Fn() -> bool) -> Result<String, Value> {
