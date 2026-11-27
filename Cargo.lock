@@ -141,6 +141,7 @@ dependencies = [
  "pbkdf2",
  "plist",
  "rusqlite",
+ "secret-service",
  "security-framework",
  "serde",
  "serde_json",
@@ -245,6 +246,8 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "snow",
+ "zbus",
+ "zruntime",
 ]
 
 [[package]]

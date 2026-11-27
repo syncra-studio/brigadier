@@ -149,14 +149,35 @@ pub fn chromium_keys(profile: &Profile) -> Result<ChromiumKeys, Error> {
     }
     #[cfg(target_os = "linux")]
     {
-        let _ = profile;
-        // shortcut: Linux Secret Service is not ported; add it with the Linux build.
-        ChromiumKeys::from_linux_secret(Err(SecretError::NoStore))
+        // Never this crate's own engine's item, even to see whether it's there.
+        if crate::key_off_limits(profile) {
+            return Err(Error::Secret(SecretError::Denied));
+        }
+        let secret = (profile.linux_secret_application.as_deref())
+            .ok_or(SecretError::NotFound)
+            .and_then(linux_secret);
+        ChromiumKeys::from_linux_secret(secret.as_deref().map_err(Clone::clone))
     }
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
         let _ = profile;
         Err(Error::Secret(SecretError::NoStore))
+    }
+}
+
+/// The browser's Safe Storage password from the Secret Service, found by its `application`
+/// attribute as Chromium saves it. A locked keyring is never unlocked here: that would prompt.
+#[cfg(target_os = "linux")]
+fn linux_secret(application: &str) -> Result<Vec<u8>, SecretError> {
+    use secret_service::{EncryptionType, blocking::SecretService};
+    let other = |e: secret_service::Error| SecretError::Other(e.to_string());
+    let store = SecretService::connect(EncryptionType::Dh).map_err(|_| SecretError::NoStore)?;
+    let attributes = std::collections::HashMap::from([("application", application)]);
+    let found = store.search_items(attributes).map_err(other)?;
+    match found.unlocked.first() {
+        Some(item) => item.get_secret().map_err(other),
+        None if found.locked.is_empty() => Err(SecretError::NotFound),
+        None => Err(SecretError::Locked),
     }
 }
 
