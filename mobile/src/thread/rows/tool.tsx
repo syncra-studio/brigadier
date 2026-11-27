@@ -5,6 +5,8 @@ import type { PendingApproval } from "../../../vendor/brigadier-shared/cards";
 import type { Item, Progress, StepKind, Turn } from "../../../vendor/brigadier-shared/thread";
 import { connectorName, VERBS } from "../../../vendor/brigadier-shared/words";
 import { running, type Group } from "../../../vendor/brigadier-shared/lines";
+import { thread } from "../../mac/mac";
+import { sheet } from "../../sheets/Sheets";
 import { color } from "../../theme";
 import { Box, Capped, ErrorLine, Glyph, Line, Opening, s, useKept, Words } from "./parts";
 import { GroupLine } from "./work";
@@ -198,12 +200,19 @@ function ToolDetail({ keep, name, what, input, output, failed }: { keep: string;
   );
 }
 
-/** A `!` command the user ran [D316]: as a command's row; Stop and Open in terminal are the Mac's. */
+/** A `!` command the user ran [D316]: as a command's row, with its output (and Stop while it runs) in a sheet; Open in terminal is the Mac's. */
 export function ShellRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
+  const output = () => {
+    const id = thread.get()?.id;
+    if (id) sheet.set({ id, kind: "shell", cmd: item.cmd, command: item.command });
+  };
   return (
     <View>
       <ToolRow keep={item.id} kind="run" name="" input={item.command} output={item.output} progress={item.progress} exitCode={item.exitCode} line={item.command} />
       {item.error ? <Text style={[s.row, { color: color.destructive, paddingLeft: 24 }]}>{item.error}</Text> : null}
+      <Pressable accessibilityRole="button" onPress={output} hitSlop={8} style={{ paddingLeft: 24, paddingTop: 2 }}>
+        <Text style={[s.small, { color: color.link }]}>{item.progress === "running" ? "Output · Stop" : "Output"}</Text>
+      </Pressable>
     </View>
   );
 }

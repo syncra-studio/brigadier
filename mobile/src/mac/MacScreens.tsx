@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { Pressable, Text } from "react-native";
 import { Sessions } from "../lists/Sessions";
 import { Samples } from "../samples/Samples";
+import { SessionMenu } from "../sheets/Sheets";
 import { Start } from "../start/Start";
 import { color, text } from "../theme";
 import { Thread } from "../thread/Thread";
@@ -50,7 +51,7 @@ export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () =>
             />
           )}
         </Stack.Screen>
-        <Stack.Screen name="thread" component={Thread} initialParams={open === "thread" ? { id: "s1", title: "Fix the failing login test" } : undefined} options={({ route }) => ({ title: route.params?.title ?? "" })} listeners={{ beforeRemove: closeThread }} />
+        <Stack.Screen name="thread" component={Thread} initialParams={open === "thread" ? { id: "s1", title: "Fix the failing login test" } : undefined} options={({ route }) => ({ title: route.params?.title ?? "", headerRight: () => (route.params?.id ? <SessionMenu id={route.params.id} /> : null) })} listeners={{ beforeRemove: closeThread }} />
         <Stack.Screen name="start" options={{ title: "New chat" }}>
           {({ navigation, route }) => (
             <Start

@@ -2,16 +2,19 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import type { Session } from "../../vendor/brigadier-shared/thread";
 import { datedMessages } from "../../vendor/brigadier-shared/words";
-import { lists, older, thread } from "../mac/mac";
+import { lists, older, openThread, thread } from "../mac/mac";
 import { request, streamNow } from "../link";
 import { Composer } from "../compose/Composer";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { Screens } from "../mac/MacScreens";
+import { Sheets } from "../sheets/Sheets";
 import { color, text } from "../theme";
 import { Cards } from "./Cards";
 import { type Line, lineMaker, workKey } from "../../vendor/brigadier-shared/lines";
 import { Row } from "./Row";
 
 /** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */
-export function Thread() {
+export function Thread({ navigation }: NativeStackScreenProps<Screens, "thread">) {
   const open = useSyncExternalStore(thread.subscribe, thread.get);
   useSeen(open?.status === "missing" ? undefined : open?.id);
   if (!open || (!open.session && open.status === "loading")) return <Centered><ActivityIndicator color={color.foreground} /></Centered>;
@@ -23,6 +26,13 @@ export function Thread() {
       {problem && <Text style={[styles.muted, styles.banner]}>{problem}</Text>}
       <Rows session={open.session} />
       {open.status !== "missing" && <Composer key={open.id} id={open.id} />}
+      <Sheets
+        id={open.id}
+        onOpen={(id, title) => {
+          openThread(id);
+          navigation.setParams({ id, title });
+        }}
+      />
     </View>
   );
 }
