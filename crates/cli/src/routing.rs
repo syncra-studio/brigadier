@@ -70,9 +70,10 @@ fn str_of<'a>(v: &'a Value, k: &str) -> &'a str {
 }
 
 /// Whether Settings › Routing's Adversarial review is on [D3026, C4]: on unless the user turned it
-/// off, so it's on by default; a saved choice stands [beat-competitors D46].
+/// off, so it's on by default; a saved choice stands [beat-competitors D46]. Saved as `reviews`, not
+/// the old `review`, so every install starts on once [beat-competitors D49].
 pub(crate) fn review_on(data: &Path) -> bool {
-    read(&data.join(FILE))["review"] != false
+    read(&data.join(FILE))["reviews"] != false
 }
 
 /// An effort as the picker words it: "Extra high" for "xhigh", "High" for "high".
@@ -182,7 +183,7 @@ pub(crate) fn name_of(data: &Path, me: &str, agent: &str, id: &str) -> Option<St
 fn table(data: &Path, groups: &[Value]) -> Value {
     let saved = renamed::settled(data, groups);
     let rules = rules_of(&saved);
-    json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["review"] != false,
+    json!({"jobs": jobs::of(&saved, groups), "rules": rules, "review": saved["reviews"] != false,
         "images": saved["images"]})
 }
 
@@ -284,7 +285,10 @@ fn checked(groups: &[Value], v: &Value, now: &Value, saved: &Value) -> Result<Va
     }
     // Left out, the switch stays as it is.
     let review = v.get("review").unwrap_or(&now["review"]) == true;
-    (out["rules"], out["review"]) = (rules.into(), review.into());
+    (out["rules"], out["reviews"]) = (rules.into(), review.into());
+    if let Some(o) = out.as_object_mut() {
+        o.remove("review"); // the old key, no longer read [beat-competitors D49]
+    }
     // The model images go to first: one that makes them, or none for automatic [D298].
     // Left out, it stays as it was.
     if let Some(images) = v.get("images") {
