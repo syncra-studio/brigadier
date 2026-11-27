@@ -1,0 +1,81 @@
+{
+  "items": [
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Fix the flaky login test, and tell me why it failed.",
+      "streaming": false,
+      "origin": "user",
+      "sentAt": 1793000000000,
+      "cid": "c1",
+      "draft": {
+        "parts": [
+          "Fix the flaky login test"
+        ],
+        "attachmentIds": []
+      },
+      "id": "message-1"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "The test raced the session cookie. **Fixed** by waiting for the redirect:\n\n```ts\nawait page.waitForURL(\"/home\");\n```",
+      "streaming": false,
+      "final": true,
+      "id": "message-2"
+    },
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Also check the logout path",
+      "streaming": false,
+      "origin": "user",
+      "sentAt": 1793000060000,
+      "cid": "c2",
+      "steer": true,
+      "id": "message-3"
+    },
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Here is the screenshot",
+      "streaming": false,
+      "origin": "user",
+      "sentAt": 1793000120000,
+      "cid": "c3",
+      "files": [
+        {
+          "id": "a1",
+          "name": "login.png",
+          "mime": "image/png",
+          "bytes": 48213
+        },
+        {
+          "id": "a2",
+          "name": "Pasted text",
+          "mime": "text/plain",
+          "bytes": 9120,
+          "pasted": true
+        }
+      ],
+      "id": "message-4"
+    },
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "The API is ready on my side.",
+      "streaming": false,
+      "origin": "peer",
+      "from": "s-api",
+      "sentAt": 1793000180000,
+      "id": "message-5"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "Looking at the logout path now",
+      "streaming": true,
+      "id": "message-6"
+    }
+  ]
+}

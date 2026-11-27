@@ -1,12 +1,13 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 import { color, text } from "./theme";
 
-export function Button({ title, onPress, secondary }: { title: string; onPress?: () => void; secondary?: boolean }) {
+export function Button({ title, onPress, secondary, disabled }: { title: string; onPress?: () => void; secondary?: boolean; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, secondary && styles.secondary, pressed && { opacity: 0.8 }]}
+      accessibilityState={{ disabled }}
+      onPress={disabled ? undefined : onPress}
+      style={({ pressed }) => [styles.button, secondary && styles.secondary, (pressed || disabled) && { opacity: disabled ? 0.4 : 0.8 }]}
     >
       <Text style={[styles.title, secondary && { color: color.foreground }]}>{title}</Text>
     </Pressable>

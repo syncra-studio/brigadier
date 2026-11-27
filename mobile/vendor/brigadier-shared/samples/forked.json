@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "kind": "forked",
+      "source": "s-src",
+      "where": "worktree",
+      "summary": false,
+      "leftOut": [],
+      "id": "forked-1"
+    },
+    {
+      "kind": "forked",
+      "source": "s-src",
+      "where": null,
+      "summary": true,
+      "leftOut": [
+        "notes.md"
+      ],
+      "id": "forked-2"
+    }
+  ]
+}

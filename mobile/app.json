@@ -3,7 +3,9 @@
     "name": "Brigadier",
     "slug": "brigadier",
     "version": "1.0.0",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios"
+    ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,8 +19,20 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Face ID keeps Brigadier locked and confirms what you ask your Mac to do.",
         "NSLocalNetworkUsageDescription": "Brigadier finds and connects to your Mac on this Wi-Fi.",
-        "NSBonjourServices": ["_brigadier._tcp"]
+        "NSBonjourServices": [
+          "_brigadier._tcp"
+        ]
       }
-    }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Brigadier uses the camera to scan the code your Mac shows.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
   }
 }

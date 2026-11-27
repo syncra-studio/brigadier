@@ -1,0 +1,97 @@
+{
+  "items": [
+    {
+      "kind": "tool",
+      "name": "shell",
+      "input": "pnpm test",
+      "output": "FAIL src/login.test.ts\n  expected /home, got /login",
+      "progress": "failed",
+      "exitCode": 1,
+      "step": "run",
+      "command": "pnpm test",
+      "description": "Run the tests",
+      "startedAt": 1793000000000,
+      "endedAt": 1793000008000,
+      "id": "tool-1"
+    },
+    {
+      "kind": "tool",
+      "name": "shell",
+      "input": "pnpm build",
+      "output": "building…",
+      "progress": "running",
+      "exitCode": null,
+      "step": "run",
+      "command": "pnpm build",
+      "startedAt": 1793000000000,
+      "id": "tool-2"
+    },
+    {
+      "kind": "tool",
+      "name": "search_issues",
+      "input": "{\"query\":\"login flaky\"}",
+      "output": "2 issues",
+      "progress": "done",
+      "exitCode": null,
+      "step": "other",
+      "server": "tracker",
+      "id": "tool-3"
+    },
+    {
+      "kind": "tool",
+      "name": "code-review",
+      "input": "#42",
+      "output": "",
+      "progress": "done",
+      "exitCode": null,
+      "step": "skill",
+      "logSteps": [
+        {
+          "kind": "read",
+          "n": 1
+        }
+      ],
+      "log": [
+        {
+          "id": "tool-4-1",
+          "turnId": "",
+          "kind": "tool",
+          "name": "read",
+          "input": "src/login.ts",
+          "output": "",
+          "progress": "done",
+          "exitCode": null,
+          "step": "read"
+        }
+      ],
+      "id": "tool-4"
+    },
+    {
+      "kind": "tool",
+      "name": "web_search",
+      "input": "playwright waitForURL",
+      "output": "",
+      "progress": "done",
+      "exitCode": null,
+      "step": "web",
+      "id": "tool-5"
+    },
+    {
+      "kind": "tool",
+      "name": "shell",
+      "input": "rm -rf dist",
+      "output": "",
+      "progress": "done",
+      "exitCode": 0,
+      "step": "run",
+      "command": "rm -rf dist",
+      "approval": {
+        "id": "ap-t",
+        "action": "command",
+        "reason": null,
+        "command": "rm -rf dist"
+      },
+      "id": "tool-6"
+    }
+  ]
+}

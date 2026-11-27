@@ -1,0 +1,12 @@
+{
+  "items": [
+    {
+      "kind": "unknown",
+      "raw": {
+        "type": "some_future_event",
+        "data": 1
+      },
+      "id": "unknown-1"
+    }
+  ]
+}

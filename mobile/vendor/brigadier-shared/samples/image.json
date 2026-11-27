@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "kind": "image",
+      "progress": "running",
+      "prompt": "A login screen icon",
+      "id": "image-1"
+    },
+    {
+      "kind": "image",
+      "progress": "failed",
+      "prompt": "A login screen icon",
+      "error": "The image tool isn't available",
+      "id": "image-2"
+    }
+  ]
+}
