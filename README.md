@@ -4,7 +4,7 @@
 
 <h1 align="center">Brigadier</h1>
 
-<p align="center">A Mac app where your coding agents work as a team, under your own sign-ins.</p>
+<p align="center">A desktop app where your coding agents work as a team, under your own sign-ins.</p>
 
 <p align="center">
   <a href="https://github.com/syncra-studio/brigadier/actions/workflows/ci.yml"><img src="https://github.com/syncra-studio/brigadier/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
