@@ -3,28 +3,34 @@
 // daemon's socket and the kernel (signals, ps), never the host's internals, so it sees what any
 // client sees.
 //
-//   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
-//   killloop: BUILDS=<dir>:<dir> rotates in more builds; OLD_BIN=<dir> adds hosts and the first
+//   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
+//   drills: killloop, hang, procs, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
+//   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
 // Every child runs in a home of its own, never the owner's (home.mjs). Real CLIs (REAL, AGENTS) must be signed in
 // in it: HOME=<scratch, outside the owner's>.
 //
 // Results print as JSON lines; the last line is the summary. Scratch lives under $DRILL_ROOT
-// (default /tmp/brigadier-drill) and is removed at the end unless KEEP=1.
+// (default /tmp/brigadier-drill, or under the system's temp folder off macOS) and is removed at the end unless KEEP=1.
 
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
 import path from 'node:path'
 import { isolate } from './home.mjs'
 import { drop, made, make } from './made.mjs'
 
-const BIN = process.env.BIN
-const ROOT = process.env.DRILL_ROOT ?? '/tmp/brigadier-drill'
-const BUILDS = (process.env.BUILDS ?? '').split(':').filter(Boolean) // extra build dirs to rotate in
+const WIN = process.platform === 'win32'
+const EXE = WIN ? '.exe' : ''
+// Paths with / on Windows too, so the drill's matches read the same on every system.
+const BIN = process.env.BIN && (WIN ? path.resolve(process.env.BIN).replaceAll('\\', '/') : process.env.BIN)
+// macOS keeps /tmp: its os.tmpdir() is a long per-user folder, which would change socket paths and results.
+const TMP = process.platform === 'darwin' ? '/tmp' : fs.realpathSync.native(os.tmpdir()).replaceAll('\\', '/')
+const ROOT = process.env.DRILL_ROOT ?? `${TMP}/brigadier-drill`
+const BUILDS = (process.env.BUILDS ?? '').split(path.delimiter).filter(Boolean) // extra build dirs to rotate in
 const OWNER_BIN = 'brigadier-host'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const now = () => Date.now()
@@ -54,19 +60,24 @@ const cliAsync = (args, env = {}) => new Promise((res) => {
 const status = (ids) => Object.fromEntries(cli(['status', ...ids]).all.map((s) => [s.id, s]))
 const statusAll = () => Object.fromEntries(cli(['status', '--all']).all.map((s) => [s.id, s]))
 
+// Windows' command lines as the matches below expect them: / for \\, no quotes, no .exe.
+const unwin = (c) => c.replaceAll('\\', '/').replaceAll('"', '').replace(/\.exe(?=\s|$)/gi, '')
 function ps() {
   // Read identities before arguments: a pid reused during the snapshot then fails the signal check.
-  const starts = JSON.parse(spawnSync(`${BIN}/brigadier-fake`, ['procs'], { encoding: 'utf8' }).stdout)
-  const r = spawnSync('ps', ['-axo', 'pid=,pgid=,ppid=,stat=,command='], { encoding: 'utf8' })
+  const starts = JSON.parse(spawnSync(`${BIN}/brigadier-procs`, [], { encoding: 'utf8' }).stdout)
+  const r = WIN ? spawnSync(`${BIN}/brigadier-procs`, ['ps'], { encoding: 'utf8', maxBuffer: 1 << 26 })
+    : spawnSync('ps', [process.platform === 'linux' ? '-eo' : '-axo', 'pid=,pgid=,ppid=,stat=,command='], { encoding: 'utf8' })
   return r.stdout.trim().split('\n').map((l) => {
     const m = l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
-    return m && { pid: +m[1], start_us: starts[m[1]], pgid: +m[2], ppid: +m[3], stat: m[4], cmd: m[5] }
+    // The program: its first word, or on Windows its quoted path, which may hold spaces.
+    const q = m?.[5].match(/^"([^"]*)"|^\S*/)
+    return m && { pid: +m[1], start_us: starts[m[1]], pgid: +m[2], ppid: +m[3], stat: m[4], cmd: WIN ? unwin(m[5]) : m[5], prog: WIN ? unwin(q[1] ?? q[0]) : q[0] }
   }).filter(Boolean)
 }
 const alive = (pid) => { try { process.kill(pid, 0); return true } catch { return false } }
 // Whether there was one to kill.
 const kill = (p, sig = 'SIGKILL') => {
-  const ok = !!p?.start_us && spawnSync(`${BIN}/brigadier-fake`, ['procs', String(p.pid), String(p.start_us), sig], { encoding: 'utf8' }).stdout?.trim() === 'true'
+  const ok = !!p?.start_us && spawnSync(`${BIN}/brigadier-procs`, [String(p.pid), String(p.start_us), sig], { encoding: 'utf8' }).stdout?.trim() === 'true'
   if (!ok) log({ skipped_pid: p?.pid, reason: p?.start_us ? 'process gone or start time changed; not signalled' : 'no recorded start time; not signalled' })
   return ok
 }
@@ -74,7 +85,7 @@ const record = (pid) => ps().find((p) => p.pid === pid)
 const ownerPid = (id) => cli(['owner', id]).out.pid
 const owner = (id) => record(ownerPid(id))
 // Only processes of this run: its own data folder or its own binaries, never a shell or this script.
-const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsWith(DATA) || p.cmd.startsWith(`${BIN}/`)) && !/drill\.mjs|^\S*(zsh|bash|node)\b/.test(p.cmd))
+const mine = () => ps().filter((p) => (p.cmd.includes(`${DATA}/`) || p.cmd.endsWith(DATA) || p.cmd.startsWith(`${BIN}/`)) && !/drill\.mjs/.test(p.cmd) && !/(zsh|bash|node)\b/.test(p.prog))
 const agentsOf = (id) => ps().filter((p) => p.cmd.includes('brigadier-fake agent') && p.cmd.includes(`${DATA}/sessions/${id}/fake`))
 
 // The fake agent's ledger: ground truth kept outside Brigadier.
@@ -99,11 +110,11 @@ function freshData(name) {
 
 function fakeOpts(ledgerName = 'ledger') {
   const home = process.env.HOME
-  return ['--opt', `FAKE_LEDGER=${DATA}/${ledgerName}`, '--opt', `FAKE_CARGO=${home}/.cargo/bin/cargo`, '--opt', `FAKE_CARGO_MANIFEST=${process.env.CARGO_MANIFEST ?? ''}`]
+  return ['--opt', `FAKE_LEDGER=${DATA}/${ledgerName}`, '--opt', `FAKE_CARGO=${home}/.cargo/bin/cargo${EXE}`, '--opt', `FAKE_CARGO_MANIFEST=${process.env.CARGO_MANIFEST ?? ''}`]
 }
 
 function startFake(id, extra = [], env = {}, ledgerName) {
-  return cli(['start', id, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts(ledgerName), ...extra], env).out
+  return cli(['start', id, '--backend', 'fake', '--cwd', TMP, ...fakeOpts(ledgerName), ...extra], env).out
 }
 
 // A fixture's shell line: one that fails is the drill's failure, not the product's.
@@ -149,10 +160,12 @@ function stopDaemon() {
   return hit
 }
 process.on('exit', stopDaemon) // a drill that threw part way too
+// The daemon's socket, or on Windows its pipe, named by the data folder's path as given (proposed, port.md).
+const daemonAddr = () => WIN ? `\\\\.\\pipe\\brigadier-${crypto.createHash('sha256').update(DATA).digest('hex').slice(0, 16)}-daemon` : `${DATA}/daemon.sock`
 // The running daemon's first frame (hello or refusal): its pid and build number.
 function daemonHello(ms = 2000) {
   return new Promise((resolve) => {
-    const s = net.connect(`${DATA}/daemon.sock`)
+    const s = net.connect(daemonAddr())
     const done = (v) => { clearTimeout(timer); s.destroy(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
     s.on('error', () => done(null))
@@ -168,7 +181,7 @@ const ownerJson = (id) => { try { return { ...JSON.parse(fs.readFileSync(`${DATA
 // One request on a fresh daemon connection: the reply, or null if nothing answers in time.
 function daemonCall(request, ms = 3000) {
   return new Promise((resolve) => {
-    const s = net.connect(`${DATA}/daemon.sock`)
+    const s = net.connect(daemonAddr())
     let buf = Buffer.alloc(0)
     const done = (v) => { clearTimeout(timer); s.destroy(); resolve(v) }
     const timer = setTimeout(() => done(null), ms)
@@ -207,7 +220,7 @@ function cleanup() {
   stopDaemon()
   stopAll()
   // Give exiting processes a moment before calling them leftovers.
-  for (let i = 0; i < 30 && mine().length; i++) spawnSync('sleep', ['0.1'])
+  for (let i = 0; i < 30 && mine().length; i++) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
   // Tool processes carry no path of ours: find them from the ledger's recorded pids instead.
   const all = ps(), roots = new Set()
   for (const [pid, child] of Object.entries(ledger().children)) {
@@ -226,8 +239,8 @@ function cleanup() {
 function swapTo(dir) {
   // An app update: each binary is replaced by rename, so running processes keep their old file.
   for (const b of ['brigadier', OWNER_BIN, 'brigadierd']) {
-    fs.copyFileSync(`${dir}/${b}`, `${BIN}/.${b}.new`)
-    fs.renameSync(`${BIN}/.${b}.new`, `${BIN}/${b}`)
+    fs.copyFileSync(`${dir}/${b}${EXE}`, `${BIN}/.${b}.new`)
+    fs.renameSync(`${BIN}/.${b}.new`, `${BIN}/${b}${EXE}`)
   }
 }
 
@@ -317,7 +330,7 @@ async function killloop(minutes) {
   for (const id of olds) startFake(id, [], { BRIGADIER_HOST: `${OLD}/brigadier-host` })
   for (const id of idles) startFake(id, [], {}, 'ledger-idle')
   for (const id of idles) idleTurn(id)
-  const viaDaemon = await daemonCall({ op: 'run', args: ['start', 'd01', '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()] }, 10000)
+  const viaDaemon = await daemonCall({ op: 'run', args: ['start', 'd01', '--backend', 'fake', '--cwd', TMP, ...fakeOpts()] }, 10000)
   if (!viaDaemon?.ok) throw new Error(`start through the daemon failed: ${JSON.stringify(viaDaemon)}`)
   startFake('chat')
   for (const id of fakes) send(id, work(id))
@@ -461,6 +474,27 @@ async function killloop(minutes) {
   })
 }
 
+// The drill's own process lister and checked signals, on any system [D97 D100] (proposed): a child of
+// this script is listed with its parent; a wrong start time touches nothing; a freeze stops it, a
+// thaw lets it go on; the right start time ends it.
+async function procsDrill() {
+  freshData('procs')
+  const file = `${DATA}/ticks`
+  const child = spawn(process.execPath, ['-e', `setInterval(() => require('fs').appendFileSync(${JSON.stringify(file)}, '.'), 20)`], { stdio: 'ignore' })
+  await waitFor(() => fs.existsSync(file), 5000)
+  const grows = async () => { await sleep(100); const a = fs.statSync(file).size; await sleep(400); return fs.statSync(file).size > a }
+  const p = record(child.pid)
+  const r = { listed: !!p?.start_us && p.ppid === process.pid }
+  r.wrong_start_refused = !kill({ ...p, start_us: (p?.start_us ?? 0) + 1 }) && alive(child.pid)
+  r.runs = await grows()
+  r.frozen = kill(p, 'SIGSTOP') && !(await grows())
+  r.thawed = kill(p, 'SIGCONT') && (await grows())
+  r.killed = kill(p) && (await waitFor(() => !alive(child.pid), 5000)).ok
+  r.leftovers = cleanup()
+  log({ drill: 'procs', ...r })
+  verdict('procs', { listed: r.listed, wrong_start_refused: r.wrong_start_refused, runs: r.runs, frozen: r.frozen, thawed: r.thawed, killed: r.killed, no_leftovers: r.leftovers.length === 0 })
+}
+
 // Drill 2 ------------------------------------------------------------------------------------------
 async function hang() {
   freshData('hang')
@@ -557,8 +591,8 @@ async function hang() {
   await sleep(2500)
   const h6 = owner('h6')
   const dog6 = ps().find((p) => p.ppid === h6?.pid && p.cmd.includes('--watchdog'))?.pid
-  fs.copyFileSync(`${BIN}/${OWNER_BIN}`, `${BIN}/.${OWNER_BIN}.new`)
-  fs.renameSync(`${BIN}/.${OWNER_BIN}.new`, `${BIN}/${OWNER_BIN}`)
+  fs.copyFileSync(`${BIN}/${OWNER_BIN}${EXE}`, `${BIN}/.${OWNER_BIN}.new`)
+  fs.renameSync(`${BIN}/.${OWNER_BIN}.new`, `${BIN}/${OWNER_BIN}${EXE}`)
   const t6 = now()
   const moved6 = await waitFor(() => ownerJson('h6').mtime > t6, 10000, 50)
   await sleep(300)
@@ -745,7 +779,7 @@ async function scale() {
   // Live sessions next to the big ones, for command latency during the rebuild.
   const ids = Array.from({ length: live }, (_, i) => `l${i}`)
   // The first start includes any owner start-up over the 100 big sessions (B folds them all).
-  r.first_start_ms = Math.round(cli(['start', ids[0], '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()]).ms)
+  r.first_start_ms = Math.round(cli(['start', ids[0], '--backend', 'fake', '--cwd', TMP, ...fakeOpts()]).ms)
   for (const id of ids.slice(1)) startFake(id)
   for (const id of ids) cli(['send', id, `${cid()} tree:600`])
   const t0 = now()
@@ -780,7 +814,7 @@ async function scale() {
   if (process.env.OLD_BIN) {
     const old = ['o1', 'o2']
     const env = { BRIGADIER_HOST: `${process.env.OLD_BIN}/brigadier-host` }
-    for (const id of old) cli(['start', id, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()], env)
+    for (const id of old) cli(['start', id, '--backend', 'fake', '--cwd', TMP, ...fakeOpts()], env)
     const res = old.map((id) => cli(['send', id, `${cid()} say:2`]).out.result)
     await sleep(500)
     r.old_owner = { builds: old.map((id) => cli(['owner', id]).out.pid && JSON.parse(fs.readFileSync(`${DATA}/sessions/${id}/owner.json`, 'utf8')).build), send: res, states: old.map((id) => status([id])[id].state), stop: old.map((id) => cli(['stop', id]).out.ok) }
@@ -1036,7 +1070,7 @@ async function handoffChat(seed, long) {
   const turn = async (text) => { cli(['send', id, text]); if (!(await settledFast(id, 30000)).ok) stuck.push(text.slice(0, 80)) }
   const of = (where) => items.filter((x) => x.where === where)
   cli(['start', id, '--backend', 'fake', '--cwd', dir, ...fakeOpts()])
-  cli(['start', peer, '--backend', 'fake', '--cwd', '/tmp', ...fakeOpts()])
+  cli(['start', peer, '--backend', 'fake', '--cwd', TMP, ...fakeOpts()])
   // Planted early, the first message first; then one thing a message, mixed with plain asks.
   await turn(`Refactor the panel. ${of('goal').map((x) => x.text).join(' ')} ctx:5 say:2`)
   for (const x of of('user')) { await turn(`${x.text} say:1`); await turn(`please ${prose(long ? 120 : 12)} say:1`) }
@@ -1142,14 +1176,14 @@ async function summaryDrill() {
   const home = (id) => `${DATA}/sessions/${id}/fake`
   const sent = (id) => fs.readdirSync(home(id)).filter((f) => f.endsWith('.conv')).map((f) => fs.readFileSync(`${home(id)}/${f}`, 'utf8')).join('\n')
   const notes = (id) => cli(['read', id]).all.filter((i) => i.kind === 'note' && i.event === 'summary')
-  const start = (id, cwd = '/tmp', extra = []) => cli(['start', id, '--backend', 'fake', '--cwd', cwd, ...fakeOpts(), ...extra]).out
+  const start = (id, cwd = TMP, extra = []) => cli(['start', id, '--backend', 'fake', '--cwd', cwd, ...fakeOpts(), ...extra]).out
   const send = (id, text) => cli(['send', id, text]).out
   const summarizing = (id) => status([id])[id]?.turn?.origin === 'summary'
   // A 128k window, its overhead 20k: filled past its line of 96k, the fresh one starts below it.
   freshData('summary-128k')
   delete process.env.BRIGADIER_REBIRTH_AT
   startDaemon()
-  start('w1', '/tmp', ['--opt', 'FAKE_WINDOW=128000', '--opt', 'FAKE_OVERHEAD=20000'])
+  start('w1', TMP, ['--opt', 'FAKE_WINDOW=128000', '--opt', 'FAKE_OVERHEAD=20000'])
   const pad = Array.from({ length: 6000 }, (_, n) => ['alpha', 'bravo', 'charlie', 'delta'][n % 4]).join(' ')
   for (let n = 1; n <= 20 && !rebirths('w1').length; n++) {
     send('w1', `m${n} ${pad}`)
@@ -1861,7 +1895,7 @@ async function speed() {
       startDaemon(bin(arm))
       const up = await daemonList(20000)
       if (!up) bad.push({ size, arm, error: 'no daemon for search' })
-      spawnSync(`${bin(arm)}/brigadier`, ['start', 's', '--backend', 'fake', '--cwd', '/tmp', '--opt', `FAKE_LEDGER=${DATA}/ledger`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
+      spawnSync(`${bin(arm)}/brigadier`, ['start', 's', '--backend', 'fake', '--cwd', TMP, '--opt', `FAKE_LEDGER=${DATA}/ledger`], { env: { ...process.env, BRIGADIER_DATA: DATA } })
       const readS = () => spawnSync(`${bin(arm)}/brigadier`, ['read', 's'], { env: { ...process.env, BRIGADIER_DATA: DATA }, encoding: 'utf8', maxBuffer: 1 << 28 }).stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l))
       for (let k = 0; k < n && up; k++) {
         const t = performance.now()
@@ -2111,6 +2145,6 @@ async function standing() {
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
 await run()

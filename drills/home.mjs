@@ -10,7 +10,7 @@ import { drop, mark } from './made.mjs'
 
 // By the account, not $HOME, which any shell may set.
 export const OWNER = fs.realpathSync.native(os.userInfo().homedir)
-const within = (p, dir) => p === dir || p.startsWith(`${dir}/`)
+const within = (p, dir) => p === dir || p.startsWith(`${dir}${path.sep}`)
 const at = (p, see = fs.statSync) => see(p, { throwIfNoEntry: false })
 
 export function isolate(root) {
@@ -26,10 +26,10 @@ export function isolate(root) {
   if (own) {
     fs.writeFileSync(`${home}/.gitconfig`, '[user]\n\tname = drill\n\temail = drill@example.invalid\n')
     // killloop's cargo child builds with the owner's toolchain.
-    for (const d of ['.cargo', '.rustup']) if (at(`${OWNER}/${d}`) && !at(`${home}/${d}`)) fs.symlinkSync(`${OWNER}/${d}`, `${home}/${d}`)
+    for (const d of ['.cargo', '.rustup']) if (at(`${OWNER}/${d}`) && !at(`${home}/${d}`)) fs.symlinkSync(`${OWNER}/${d}`, `${home}/${d}`, 'junction')
     process.on('exit', () => { if (process.env.KEEP !== '1') drop(home) })
   }
-  Object.assign(process.env, { HOME: home, CLAUDE_CONFIG_DIR: `${home}/.claude`, CODEX_HOME: `${home}/.codex` })
+  Object.assign(process.env, { HOME: home, CLAUDE_CONFIG_DIR: `${home}/.claude`, CODEX_HOME: `${home}/.codex` }, process.platform === 'win32' ? { USERPROFILE: home } : {})
   // The login shell reads this home's files, and no CLI its settings from the owner's.
   for (const k of ['ZDOTDIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME']) delete process.env[k]
   return own ? home : null
