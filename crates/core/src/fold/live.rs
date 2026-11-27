@@ -149,6 +149,9 @@ fn left_running(
             })
     };
     // One of those, or what it handed its own pipes to, as a launcher does to the program it runs.
+    // shortcut: a job an MCP server starts on its very stdin and stdout passes too, as nothing seen
+    // from outside tells it from a launcher's server (npx, uvx); its stdout is the protocol, so a
+    // server can't let one write there. Upgrade if a CLI names its servers' pids.
     let kept = |p: &procs::Proc| {
         let pipes = procs::stdio(p.pid);
         let mut at = *p;
