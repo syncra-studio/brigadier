@@ -49,7 +49,7 @@ export function ImageRow({ item }: { item: Extract<Item, { kind: "image" }> }) {
       {making && <Text style={[s.row, { color: color.foreground }]}>Creating image</Text>}
       {named ? <Text style={s.small}>{named}</Text> : null}
       {!making && item.attachment ? (
-        <ThreadImage attachment={item.attachment} owner={item.from} label={item.prompt ?? item.name ?? "Image"} style={st.picture} />
+        <ThreadImage attachment={item.attachment} label={item.prompt ?? item.name ?? "Image"} style={st.picture} />
       ) : (
         <View accessibilityRole="image" accessibilityLabel={making ? "Creating image" : (item.prompt ?? item.name ?? "Image")} style={st.picture} />
       )}

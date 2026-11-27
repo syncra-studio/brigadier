@@ -50,15 +50,17 @@ export function ThreadImage({ attachment, owner, mime, label, style }: { attachm
   // Signed in again: a read that failed meanwhile is tried again.
   const ready = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
   const from = owner ?? open;
-  const [uri, setUri] = useState<string | null>(null);
+  // The image drawn, by what it is: a lost stream keeps it; another image starts grey.
+  const [got, setGot] = useState<{ key: string; uri: string | null }>({ key: "", uri: null });
+  const key = `${macNow()}\n${from}\n${attachment}`;
+  const uri = got.key === key ? got.uri : null;
   useEffect(() => {
     let live = true;
-    setUri(null);
-    if (from && ready) void imageUri(from, attachment, mime).then((got) => live && setUri(got));
+    if (from && ready && !uri) void imageUri(from, attachment, mime).then((read) => live && read && setGot({ key, uri: read }));
     return () => {
       live = false;
     };
-  }, [from, attachment, mime, ready]);
+  }, [key, mime, ready, uri]);
   if (!uri) return <View accessibilityRole="image" accessibilityLabel={label} style={[style as object, { backgroundColor: color.fill }]} />;
   return <Native accessibilityLabel={label} source={{ uri }} style={style} resizeMode="cover" />;
 }
