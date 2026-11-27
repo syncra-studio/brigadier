@@ -185,7 +185,8 @@ await build({
       icon: "app/main/icons/icon.icns",
       // Electron's helpers keep one id, as @electron/packager gave them.
       ...Object.fromEntries(["", "Renderer", "Plugin", "GPU", "EH", "NP"].map((k) => [`helper${k}BundleId`, `${appId}.helper`])),
-      identity,
+      // electron-builder takes the name without its certificate type, and finds a Developer ID certificate by it.
+      identity: identity.replace(/^Developer ID Application: /, ""),
       hardenedRuntime,
       notarize: hardenedRuntime,
       sign: (options) => signAsync({ ...options, keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || options.keychain, optionsForFile }),

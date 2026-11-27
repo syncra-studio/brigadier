@@ -26,14 +26,15 @@ jobs:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - run: rustup show active-toolchain || rustup toolchain install
       # The Intel build is cross-compiled [D168].
       - run: rustup target add x86_64-apple-darwin
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -79,7 +80,7 @@ jobs:
           signed=false
           if [ -n "${BRIGADIER_SIGN_IDENTITY:-}" ] && xcrun stapler validate out/Brigadier-darwin-arm64/Brigadier.app && xcrun stapler validate out/Brigadier-darwin-x64/Brigadier.app; then signed=true; fi
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: mac
           path: |
@@ -91,18 +92,23 @@ jobs:
 
   windows:
     runs-on: windows-2025
+    # SignPath reads this job and downloads its artifacts with the job's token.
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         shell: bash
     env:
       SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -114,12 +120,12 @@ jobs:
       # them, sign the installer, then give latest.yml the signed installer's hash.
       - id: unpacked
         if: env.SIGNPATH == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: win-unpacked
           path: out/win-unpacked
       - if: env.SIGNPATH == 'true'
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -133,12 +139,12 @@ jobs:
         run: rm out/*.exe out/*.blockmap out/latest.yml && PREPACKAGED=out/win-signed scripts/package
       - id: installer
         if: env.SIGNPATH == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: win-installer
           path: out/*.exe
       - if: env.SIGNPATH == 'true'
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -160,7 +166,7 @@ jobs:
             yml = yml.replace(/sha512: .*/g, "sha512: " + sha).replace(/size: \d+/, "size: " + data.length);
             fs.writeFileSync("out/latest.yml", yml);
             fs.rmSync("out/" + exe + ".blockmap", { force: true });'
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: windows
           path: |
@@ -172,14 +178,15 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       # rpmbuild, for the rpm.
       - run: sudo apt-get update && sudo apt-get install -y rpm
       - run: rustup show active-toolchain || rustup toolchain install
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -193,7 +200,7 @@ jobs:
           wc -l out/contents-*.txt
           grep -E 'applications|icons|resources/bin/|THIRD_PARTY' out/contents-deb.txt out/contents-rpm.txt
           dpkg-deb --fsys-tarfile out/*.deb | tar -xO ./usr/share/applications/sh.brigadier.app.desktop
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: linux
           path: |
@@ -205,14 +212,15 @@ jobs:
 
   publish:
     needs: [mac, windows, linux]
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    # A tag's push, or a dispatch with publish on: a dispatch run on a tag with publish off never publishes.
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    env:
-      GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Ready to publish
         run: |
           version=$(node -p 'require("./package.json").version')
@@ -220,9 +228,13 @@ jobs:
           [ -n "$GPG_KEY" ] || { echo "::error::The checksums must be GPG-signed: GPG_PRIVATE_KEY is not set"; exit 1; }
           case "$GITHUB_REF" in refs/tags/*) [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::Tag $GITHUB_REF_NAME isn't v$version"; exit 1; } ;; esac
           echo "VERSION=$version" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v8
+        env:
+          GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        # Only the final packages: SignPath's win-unpacked and win-installer are steps on the way.
         with:
           path: dist
+          pattern: "{mac,windows,linux}"
           merge-multiple: true
       - name: Checksums
         run: |
@@ -232,6 +244,7 @@ jobs:
           printf '%s' "$GPG_KEY" | gpg --batch --import
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign SHA256SUMS
         env:
+          GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       - run: gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Brigadier $VERSION" --notes "" dist/*
         env:
