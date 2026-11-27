@@ -210,20 +210,40 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
 
 /// `name` made new in `dir`, neither followed as a link: the agent can write its own `tmp/`, and a
 /// link it put there must not send the daemon's write outside its session (ARCHITECTURE).
-/// Windows has no openat: the new file's own final path must be `dir`'s, else it's refused.
+/// Windows has no openat: `dir` is held open without delete sharing, so it can't be renamed or
+/// swapped for a junction meanwhile, and the new file's own final path must be in it.
 #[cfg(windows)]
 fn create(dir: &Path, name: &str) -> std::io::Result<std::fs::File> {
-    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_OPEN_REPARSE_POINT, FILE_NAME_NORMALIZED, GetFinalPathNameByHandleW,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_NAME_NORMALIZED, FILE_SHARE_READ, FILE_SHARE_WRITE, GetFinalPathNameByHandleW,
     };
     let refused = || std::io::Error::other(format!("{} isn't a plain folder", dir.display()));
+    let final_path = |f: &std::fs::File| {
+        let mut buf = vec![0u16; 32768];
+        let n = unsafe {
+            GetFinalPathNameByHandleW(
+                f.as_raw_handle(),
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                FILE_NAME_NORMALIZED,
+            )
+        } as usize;
+        (n > 0 && n < buf.len())
+            .then(|| std::path::PathBuf::from(String::from_utf16_lossy(&buf[..n])))
+    };
     let _ = std::fs::create_dir(dir);
-    if std::fs::symlink_metadata(dir)?.file_type().is_symlink() {
+    let pinned = (std::fs::OpenOptions::new().read(true))
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(dir)?;
+    let meta = pinned.metadata()?;
+    if !meta.is_dir() || meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
         return Err(refused());
     }
-    let want = std::fs::canonicalize(dir)?.join(name);
+    let want = final_path(&pinned).ok_or_else(refused)?.join(name);
     // An earlier copy, or a link put in its place: only the name goes, never what it points at.
     let at = dir.join(name);
     if std::fs::symlink_metadata(&at).is_ok_and(|m| m.is_dir()) {
@@ -234,17 +254,7 @@ fn create(dir: &Path, name: &str) -> std::io::Result<std::fs::File> {
     let file = (std::fs::OpenOptions::new().write(true).create_new(true))
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(&at)?;
-    let mut buf = vec![0u16; 32768];
-    let n = unsafe {
-        GetFinalPathNameByHandleW(
-            file.as_raw_handle(),
-            buf.as_mut_ptr(),
-            buf.len() as u32,
-            FILE_NAME_NORMALIZED,
-        )
-    } as usize;
-    let is = std::path::PathBuf::from(String::from_utf16_lossy(&buf[..n.min(buf.len())]));
-    match n > 0 && is == want {
+    match final_path(&file) == Some(want) {
         true => Ok(file),
         false => Err(refused()),
     }
