@@ -25,8 +25,13 @@ if (!g.localStorage) {
 export const newId = (): string => crypto.randomUUID();
 
 /** A `brigadier` command on the connected Mac, answered with its reply, a refusal included; with no stream, refused with why. */
+/** The sample screens' replies, set by mac/sample.ts: no Mac there. */
+export const canned: { reply?: (args: string[]) => Record<string, any> | undefined } = {};
+
 const ask: Runner = (args) =>
   new Promise((done) => {
+    const sample = canned.reply?.(args);
+    if (sample) return done(sample);
     const closed = { ok: false, error: "closed", message: "Not connected to your Mac" };
     try {
       request({ op: "run", args }, (reply) => done(reply.error === "closed" && !reply.message ? closed : reply));

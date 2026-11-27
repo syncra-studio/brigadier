@@ -8,7 +8,7 @@ import { color, mono } from "../theme";
 import { Sheet, st } from "./Sheet";
 
 type Scope = "last" | "uncommitted" | "branch";
-type File = { path: string; from: string | null; status: string; insertions: number; deletions: number; binary?: boolean };
+export type File = { path: string; from: string | null; status: string; insertions: number; deletions: number; binary?: boolean };
 type Review = { files: File[]; insertions: number; deletions: number; base?: string | null; none?: string; turn?: { before: string; after: string } };
 type Hunk = { id: string; header: string };
 
@@ -22,13 +22,14 @@ const NO_TURN: Record<string, string> = {
   noSnapshot: "The last turn's start wasn't captured, so there's nothing to compare.",
 };
 
-export function Changes({ id, onClose }: { id: string; onClose: () => void }) {
+/** `file`: one opened from the start (a sample screen). */
+export function Changes({ id, file: opened, onClose }: { id: string; file?: File; onClose: () => void }) {
   const { run } = forMac();
   const [scope, setScope] = useState<Scope>("last");
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [branch, setBranch] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(opened ?? null);
   useEffect(() => void run(["source", id, "status"]).then((reply) => reply.ok && setBranch(reply.git?.head?.branch ?? null)), [id]);
   useEffect(() => {
     let live = true;

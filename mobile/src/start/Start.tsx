@@ -14,7 +14,7 @@ import { Confirm } from "../act/Confirm";
 import { Button } from "../Button";
 import { streamNow } from "../link";
 import { effortLabel } from "../compose/Model";
-import { forMac, newId } from "../compose/state";
+import { canned, forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
 import { color, text } from "../theme";
 
@@ -47,7 +47,8 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   const key = `@home:${project}`;
   const header = useHeaderHeight();
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
-  const connected = conn >= 0;
+  // A sample screen's canned replies stand in for the Mac.
+  const connected = conn >= 0 || !!canned.reply;
   const [words, setWords] = useState(() => plainText(drafts.draftOf(key)?.parts ?? []));
   const words$ = useRef(words);
   // What the field holds beyond its words, kept through edits and sent with it (`--parts`): a draft's files and its

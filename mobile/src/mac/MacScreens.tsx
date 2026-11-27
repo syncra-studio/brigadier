@@ -17,7 +17,7 @@ const theme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: color.b
 
 /** A signed-in Mac: its sessions, a session's thread, a new chat, and the samples screen. */
 /** `open`: a screen to start on (simulator screenshots only). */
-export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () => void; open?: "thread" | "samples" }) {
+export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () => void; open?: "thread" | "samples" | "start" }) {
   const ready = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
   return (
     <NavigationContainer theme={theme}>
@@ -52,7 +52,7 @@ export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () =>
           )}
         </Stack.Screen>
         <Stack.Screen name="thread" component={Thread} initialParams={open === "thread" ? { id: "s1", title: "Fix the failing login test" } : undefined} options={({ route }) => ({ title: route.params?.title ?? "", headerRight: () => (route.params?.id ? <SessionMenu id={route.params.id} /> : null) })} listeners={{ beforeRemove: closeThread }} />
-        <Stack.Screen name="start" options={{ title: "New chat" }}>
+        <Stack.Screen name="start" options={{ title: "New chat" }} initialParams={open === "start" ? { project: "p1", name: "brigadier" } : undefined}>
           {({ navigation, route }) => (
             <Start
               project={route.params.project}

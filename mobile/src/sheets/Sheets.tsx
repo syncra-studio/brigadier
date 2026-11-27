@@ -10,12 +10,13 @@ import { macNow } from "../link";
 import { type Lost, lostRewinds, Rewind } from "../rewind/Rewind";
 import { color, text } from "../theme";
 import { Background } from "./Background";
-import { Changes } from "./Changes";
+import { Changes, type File } from "./Changes";
 import { Plan } from "./Plan";
 import { ShellOutput } from "./Shell";
 
 type Open =
-  | { kind: "changes" | "background" | "plan" }
+  | { kind: "changes"; file?: File }
+  | { kind: "background" | "plan" }
   | { kind: "shell"; cmd: string; command: string }
   | { kind: "rewind"; cid: string; text: string; draft?: Draft | null; lost?: Lost }
   | { kind: "fork"; at: string };
@@ -27,6 +28,15 @@ const choose = (actions: [string, () => void][], title?: string) =>
 
 /** The thread header's ⋯. */
 export function SessionMenu({ id }: { id: string }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="More" hitSlop={12} onPress={() => sessionMenu(id)}>
+      <Text style={{ ...text.lg, color: color.foreground }}>⋯</Text>
+    </Pressable>
+  );
+}
+
+/** Its menu: the sheets, Fork and Rewind. */
+export function sessionMenu(id: string) {
   const open = (each: Open) => sheet.set({ ...each, id });
   const session = () => (thread.get()?.id === id ? thread.get()?.session : null);
   const fork = () => {
@@ -52,11 +62,7 @@ export function SessionMenu({ id }: { id: string }) {
       "Rewind to this message",
     );
   };
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel="More" hitSlop={12} onPress={() => choose([["Changes", () => open({ kind: "changes" })], ["Background", () => open({ kind: "background" })], ["Plan", () => open({ kind: "plan" })], ["Fork", fork], ["Rewind", rewind]])}>
-      <Text style={{ ...text.lg, color: color.foreground }}>⋯</Text>
-    </Pressable>
-  );
+  choose([["Changes", () => open({ kind: "changes" })], ["Background", () => open({ kind: "background" })], ["Plan", () => open({ kind: "plan" })], ["Fork", fork], ["Rewind", rewind]]);
 }
 
 /** Session `id`'s sheet, under its thread; `onOpen` opens another session in its place (a fork). */
@@ -66,7 +72,7 @@ export function Sheets({ id, onOpen }: { id: string; onOpen: (id: string, title:
   const close = () => sheet.set(null);
   switch (open.kind) {
     case "changes":
-      return <Changes id={id} onClose={close} />;
+      return <Changes id={id} file={open.file} onClose={close} />;
     case "background":
       return <Background id={id} onClose={close} />;
     case "plan":

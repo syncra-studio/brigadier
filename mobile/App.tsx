@@ -4,7 +4,7 @@ import Link, { type Mac } from "./modules/link";
 import { close, onClosed } from "./src/link";
 import { start, stop } from "./src/mac/mac";
 import { MacScreens } from "./src/mac/MacScreens";
-import { loadSample } from "./src/mac/sample";
+import { loadSample, loadSheets, SHEETS } from "./src/mac/sample";
 import { Confirm } from "./src/act/Confirm";
 import { FULL_ACCESS } from "./src/powers/Level";
 import { nightWords } from "./src/powers/Overnight";
@@ -29,19 +29,21 @@ type At =
 // `-screen <name>` opens one screen with sample data and no network, for simulator screenshots (no Face ID there).
 const sample = Link.screen;
 const SAMPLE_MAC: Mac = { pk: "sample", name: "MacBook Pro", device: "", addresses: [] };
-/** `-screen power-…`: each power's Face ID sheet over the sample thread (`-screen powers`), with sample args. */
+/** `-screen power-…`: each power's Face ID sheet over the sample thread (`-screen powers`), with sample args; `start-confirm`, a new chat's over New chat. */
 const POWER_SHEETS: Record<string, { title: string; body?: string; shown: string; args: string[] }> = {
   "power-shell": shellPower("s1", 'npm test -- --watch=false && rm -rf "build/tmp"', "c-1"),
   "power-full": { ...FULL_ACCESS, args: ["level", "s1", "full", "--op", "o1"] },
   "power-overnight": { ...nightWords("start", false), shown: "Fix the failing login test", args: ["overnight", "s1", "start", "--op", "o1"] },
+  "start-confirm": { title: "Start this chat on your Mac?", body: "In brigadier, on Opus 4.5 High.", shown: "Add a dark mode switch to Settings, and remember the choice", args: [] },
   "power-view": { ...VIEW_WORDS, shown: "/private/tmp/screenshots/login-page.png", args: ["attach", "s1", "view", "/private/tmp/screenshots/login-page.png"] },
 };
 const powers = sample === "powers" || (sample !== null && sample in POWER_SHEETS);
 function sampleAt(): At {
   if (sample === "finishing") return { at: "finishing", check: "042917" };
   if (sample === "connected") return { at: "connected", mac: SAMPLE_MAC };
-  if (sample === "sessions" || sample === "thread" || sample === "samples" || powers) {
+  if (sample === "sessions" || sample === "thread" || sample === "samples" || powers || SHEETS.includes(sample!)) {
     loadSample(powers);
+    if (SHEETS.includes(sample!)) loadSheets(sample!);
     return { at: "mac", mac: SAMPLE_MAC };
   }
   if (sample?.startsWith("notice-")) return { at: "notice", problem: sample.slice(7) as Problem };
@@ -173,7 +175,7 @@ export default function App() {
           }}
         />
       )}
-      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : powers ? "thread" : undefined} />}
+      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : sample?.startsWith("start") ? "start" : powers || SHEETS.includes(sample!) ? "thread" : undefined} />}
       {sample && POWER_SHEETS[sample] && <Confirm {...POWER_SHEETS[sample]} onDone={() => {}} />}
       {sample === "act" && (
         <Confirm
