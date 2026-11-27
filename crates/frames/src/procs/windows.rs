@@ -44,7 +44,8 @@ fn pgids() -> HashMap<u32, (i32, u64)> {
     of
 }
 
-/// The processes every thread of which waits suspended: Windows' stopped, as a freeze leaves one.
+/// The processes whose threads all wait suspended, or in the kernel: Windows' stopped, as a freeze
+/// leaves one.
 fn suspended() -> HashSet<u32> {
     use windows_sys::Wdk::System::SystemInformation::{
         NtQuerySystemInformation, SystemProcessInformation,
@@ -52,8 +53,10 @@ fn suspended() -> HashSet<u32> {
     use windows_sys::Win32::System::WindowsProgramming::{
         SYSTEM_PROCESS_INFORMATION as P, SYSTEM_THREAD_INFORMATION as T,
     };
-    // KTHREAD_STATE's Waiting, for KWAIT_REASON's Suspended; the list grew, for the mismatch.
+    // KTHREAD_STATE's Waiting, for KWAIT_REASON's Executive or Suspended; the list grew, for the
+    // mismatch.
     const WAITING: u32 = 5;
+    const EXECUTIVE: u32 = 0;
     const SUSPENDED: u32 = 5;
     const LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
     // u64s, so every entry the kernel lays out is aligned.
@@ -78,9 +81,10 @@ fn suspended() -> HashSet<u32> {
         let p = unsafe { &*base.add(at).cast::<P>() };
         let first = unsafe { base.add(at + size_of::<P>()).cast::<T>() };
         let threads = unsafe { std::slice::from_raw_parts(first, p.NumberOfThreads as usize) };
-        if !threads.is_empty()
-            && (threads.iter()).all(|t| t.ThreadState == WAITING && t.WaitReason == SUSPENDED)
-        {
+        // A thread in a kernel wait, as a pipe's read, takes its suspension only once it returns.
+        let held = |t: &T| t.ThreadState == WAITING && t.WaitReason == SUSPENDED;
+        let kernel = |t: &T| t.ThreadState == WAITING && t.WaitReason == EXECUTIVE;
+        if threads.iter().any(held) && threads.iter().all(|t| held(t) || kernel(t)) {
             out.insert(p.UniqueProcessId as usize as u32);
         }
         if p.NextEntryOffset == 0 {
