@@ -21,6 +21,8 @@ const platform = process.argv.find((arg) => arg.startsWith("--brigadier-platform
 
 contextBridge.exposeInMainWorld("brigadier", {
   platform,
+  // Settings › Connections while remote access is being built (app/ui/src/settings/pages.ts).
+  remote: process.env.BRIGADIER_REMOTE === "1",
   trafficLights: (x: number) => ipcRenderer.send("traffic-lights", x),
   pickFolder: () => ipcRenderer.invoke("pick-folder"),
   pickFolders: (options?: { at?: string; multi?: boolean }) => ipcRenderer.invoke("pick-folders", options),

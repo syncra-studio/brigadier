@@ -1,12 +1,13 @@
 import type { ComponentType } from "react";
 
 import { PROVIDERS_ROWS, ProvidersPage } from "../accounts/providers";
-import { Archive, Branch, Cursor, Download, Globe, type IconProps, KeyboardShortcut, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle, Storage } from "../icons";
+import { Archive, Branch, Cursor, Download, Globe, type IconProps, KeyboardShortcut, Plug, Plugin, RobotHead, SettingsCog, SettingsSlider, Shuffle, Storage } from "../icons";
 import { BROWSER_ROWS, BrowserPage } from "./browser";
 import { BROWSER_IMPORT_ROWS, BrowserImportPage } from "./browser-import";
 import { ARCHIVED_ROWS, ArchivedPage } from "./archived";
 import { COMPUTER_USE_ROWS, ComputerUsePage } from "./computer-use";
 import { CONFIGURATION_ROWS, ConfigurationPage } from "./configuration";
+import { CONNECTIONS_ROWS, ConnectionsPage } from "./connections";
 import { GENERAL_ROWS, GeneralPage } from "./general";
 import { GIT_ROWS, GitPage } from "./git";
 import { PLUGINS_ROWS, PluginsSettings } from "./plugins";
@@ -25,7 +26,7 @@ export type SettingsRowCopy = { readonly label: string; readonly description?: s
 /** A group of the nav; "end" is the last, set apart by its gap alone. */
 type SettingsGroup = "Personal" | "Agents" | "Browser & Data" | "end";
 
-export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "computerUse" | "browser" | "browserImport" | "storage" | "archived";
+export type SettingsPageId = "general" | "configuration" | "shortcuts" | "providers" | "plugins" | "routing" | "git" | "computerUse" | "connections" | "browser" | "browserImport" | "storage" | "archived";
 
 type SettingsPageEntry = {
   id: SettingsPageId;
@@ -52,6 +53,10 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
   // The helper drives macOS apps through Accessibility: macOS only.
   ...(window.brigadier?.platform === "darwin"
     ? [{ id: "computerUse", label: "Computer use", icon: Cursor, group: "Agents", component: ComputerUsePage, rows: Object.values(COMPUTER_USE_ROWS) } as const]
+    : []),
+  // Phones controlling this Mac, while remote access is being built: only with BRIGADIER_REMOTE=1 (preload.ts).
+  ...((window.brigadier as { remote?: boolean } | undefined)?.remote
+    ? [{ id: "connections", label: "Connections", icon: Plug, group: "Agents", component: ConnectionsPage, rows: Object.values(CONNECTIONS_ROWS) } as const]
     : []),
   { id: "browser", label: "Browser", icon: Globe, group: "Browser & Data", component: BrowserPage, rows: Object.values(BROWSER_ROWS) },
   // Importing reads other browsers' macOS profiles: macOS only.
