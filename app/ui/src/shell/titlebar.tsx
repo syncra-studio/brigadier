@@ -207,11 +207,11 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
 }
 
 /**
- * Dev only: the Windows layout drawn on a Mac (BRIGADIER_FAKE_PLATFORM=win32) gets stand-ins for the caption buttons
+ * Dev only: the Windows or Linux layout drawn on a Mac (BRIGADIER_FAKE_PLATFORM=win32 or linux) gets stand-ins for the caption buttons
  * Windows draws over its titlebar overlay, the board's three 46×56 at the window's end.
  */
 export function FakeCaption() {
-  if (window.brigadier?.platform !== "win32" || !/Mac/.test(navigator.platform)) return null;
+  if ((window.brigadier?.platform !== "win32" && window.brigadier?.platform !== "linux") || !/Mac/.test(navigator.platform)) return null;
   return (
     <div aria-hidden className="pointer-events-none fixed end-0 top-0 z-50 flex h-tab-bar text-foreground">
       {[<Minus key="min" />, <span key="max" className="size-3 rounded-xs ring-1 ring-current" />, <X key="close" />].map((glyph) => (

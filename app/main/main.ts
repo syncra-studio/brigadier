@@ -41,7 +41,7 @@ const [daemonPath, daemonArgs] = app.isPackaged
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
 const themeForeground = /--color-foreground:\s*([^;]+);/.exec(theme)![1];
-// Dev only: BRIGADIER_FAKE_PLATFORM=win32 draws the Windows layout on a Mac, with stand-in caption buttons in the page.
+// Dev only: BRIGADIER_FAKE_PLATFORM=win32 (or linux) draws that layout on a Mac, with stand-in caption buttons in the page.
 const platform = (!app.isPackaged && process.env.BRIGADIER_FAKE_PLATFORM) || process.platform;
 // The titlebar row's height, the theme's, and the traffic lights' top: their centre (y + 7) on its middle line, with
 // its controls and tabs' [D823 D832].
@@ -253,8 +253,8 @@ function openWindow(): void {
     // acceptFirstMouse: a click on the window while another app is in front acts as well as bringing it forward;
     // without it a click on the chat's "…" over a window already showing its tooltip did nothing [D211].
     ...(process.platform === "darwin" ? { trafficLightPosition: { x: 16, y: 13 }, acceptFirstMouse: true } : {}),
-    // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design].
-    ...(process.platform === "win32" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
+    // Windows draws its own caption buttons over the tab bar's end, in the theme's colours [new-design]; Linux the same.
+    ...(process.platform === "win32" || process.platform === "linux" ? { titleBarOverlay: { height: TAB_BAR, color: themeBackground, symbolColor: themeForeground } } : {}),
     webPreferences: {
       additionalArguments: [`--brigadier-platform=${platform}`],
       preload: path.join(__dirname, "preload.js"),
@@ -331,7 +331,7 @@ function openWindow(): void {
     window.once("ready-to-show", show);
     setTimeout(show, FIRST_PAINT_MS);
   }
-  // The Windows stand-in on a Mac has no traffic lights; the page draws its caption buttons.
+  // The Windows or Linux stand-in on a Mac has no traffic lights; the page draws its caption buttons.
   if (process.platform === "darwin" && platform !== "darwin") window.setWindowButtonVisibility(false);
   keepOnClose(window);
   void window.loadURL(`${ORIGIN}/`);

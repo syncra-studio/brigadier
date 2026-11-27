@@ -1067,9 +1067,9 @@
 @custom-variant has-kbd (&:has([data-slot="kbd"]));
 /* The toolbar pill's button while it is the only one there. */
 @custom-variant lone-toggle (& > :only-child > button);
-/* The Windows window (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
+/* The Windows window, and Linux's, which has the same layout (main sets data-platform on the root from window.brigadier.platform) [new-design]. */
 
-@custom-variant win (:where([data-platform="win32"]) &);
+@custom-variant win (:where([data-platform="win32"], [data-platform="linux"]) &);
 /* The composer rail, while a menu (`@`, `/`, +) covers it from the card below. aria-expanded, not data-popup-open:
    the + is also a tooltip trigger, whose hover sets data-popup-open too [D681]. */
 /* What starts a composer menu's list: its first heading, 4px under the edge [D332]. */
@@ -1672,7 +1672,7 @@
 }
 
 /* Full screen takes the traffic lights away, and the toggle moves to the titlebar's start. */
-:root:is([data-fullscreen], [data-platform="win32"]) {
+:root:is([data-fullscreen], [data-platform="win32"], [data-platform="linux"]) {
   --spacing-toggle-start: var(--spacing-window-inset);
 }
 
