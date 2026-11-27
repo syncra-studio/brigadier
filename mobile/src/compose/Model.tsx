@@ -33,13 +33,13 @@ let freshAt = 0;
 const strict = (run: Runner) => (args: string[]) => run(args).then((reply) => (reply.ok ? reply : Promise.reject(failure(reply))));
 
 /** The pill in the footer, and "‹Agent› after this turn · Switch now" while another agent waits for the turn's end [D557]. */
-export function ModelPill({ id, row, connected }: { id: string; row: ModelRow | undefined; connected: boolean }) {
+export function ModelPill({ id, row, connected, open: opened = false }: { id: string; row: ModelRow | undefined; connected: boolean; /** Open at first (a sample screen). */ open?: boolean }) {
   const { models: lists, run } = forMac();
   const [groups, setGroups] = useState<ModelGroup[] | null>(lists.last());
   if (groups) lists.keep(groups);
   const [pending, setPending] = useState<{ op: string; choice: ModelChoice } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(opened);
   useEffect(() => {
     if (connected) void run(["models", "--session", id]).then((reply) => reply.ok && setGroups((now) => now ?? asGroups(reply.groups)));
   }, [id, connected]);

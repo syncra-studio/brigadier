@@ -27,6 +27,7 @@ import { LevelPill } from "../powers/Level";
 import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
+import { composerSample } from "../mac/sample";
 import { Boxed, Glyph, Shimmer, Spinner, usePulse } from "./Glyph";
 import { chipTone, type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, useCommands } from "./Menus";
 import { ModelPill } from "./Model";
@@ -96,7 +97,8 @@ export function Composer({ id }: { id: string }) {
   const { run, unsaved, drafts, sends: sending, uncertain, chips: waitingChips, edits, files: fileStore } = mac;
   const row = useSyncExternalStore(lists.subscribe, () => lists.get().rows.find((each) => each.id === id)) as ComposerRow | undefined;
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
-  const connected = conn >= 0;
+  // A sample screen draws as if connected: nothing it asks goes anywhere.
+  const connected = conn >= 0 || composerSample !== null;
   const session = useSyncExternalStore(thread.subscribe, () => (thread.get()?.id === id ? thread.get()?.session : null) ?? null);
   const going = useSyncExternalStore(uncertain.subscribe, () => uncertain.goingOf(id));
   const panel = useSyncExternalStore(waitingChips.chips.subscribe, () => waitingChips.of(id));
@@ -646,7 +648,7 @@ export function Composer({ id }: { id: string }) {
             {/* The end's parts wrap under the tools as one, short of room. */}
             <View style={st.end}>
               {row?.optimizing ? <Shimmer style={st.status}>{COMPACTION.running}</Shimmer> : shownError ? <Text style={[st.status, { color: color.destructive }]} numberOfLines={2}>{shownError}</Text> : null}
-              {!shell ? <ModelPill id={id} row={row} connected={connected} /> : null}
+              {!shell ? <ModelPill id={id} row={row} connected={connected} open={composerSample === "composer-model"} /> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={tip}

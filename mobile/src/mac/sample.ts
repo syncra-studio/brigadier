@@ -1,6 +1,8 @@
-// Sample lists and a thread for `-screen sessions`, `-screen thread`, the powers' and P4a's sheets (simulator
-// screenshots: no Mac, no network).
+// Sample lists and a thread for `-screen sessions`, `-screen thread`, the powers', P4a's sheets and the composer's
+// (simulator screenshots: no Mac, no network).
+import Link from "../../modules/link";
 import type { Row } from "../../vendor/brigadier-shared/rows";
+import type { ModelGroup } from "../../vendor/brigadier-shared/session/model";
 import approvals from "../../vendor/brigadier-shared/samples/approval-cards.json";
 import questions from "../../vendor/brigadier-shared/samples/question-cards.json";
 import type { PendingApproval, PendingQuestion } from "../../vendor/brigadier-shared/cards";
@@ -10,8 +12,9 @@ import message from "../../vendor/brigadier-shared/samples/message.json";
 import shell from "../../vendor/brigadier-shared/samples/shell.json";
 import tool from "../../vendor/brigadier-shared/samples/tool.json";
 import type { Item } from "../../vendor/brigadier-shared/thread";
-import { canned } from "../compose/state";
+import { canned, forMac } from "../compose/state";
 import { sessionMenu, sheet } from "../sheets/Sheets";
+import { keepImage } from "../thread/Image";
 import { lists, thread } from "./mac";
 
 const row = (id: string, title: string, project: string | null, mark: Row["mark"], ago: number): Row =>
@@ -80,4 +83,54 @@ export function loadSheets(screen: string) {
   if (screen === "plan") sheet.set({ ...at, kind: "plan" });
   if (screen === "fork") sheet.set({ ...at, kind: "fork" });
   if (screen === "rewind") sheet.set({ ...at, kind: "rewind", cid: "c1", text: "The login test fails on CI, can you fix it?" });
+}
+
+/** `-screen composer-…`: the composer as it looks, drawn as if connected; null otherwise. */
+export const composerSample = Link.screen?.startsWith("composer-") ? Link.screen : null;
+
+const GROUPS: ModelGroup[] = [
+  {
+    provider: "claude",
+    label: "Claude Code",
+    mark: null,
+    models: [
+      { id: "opus", name: "Opus 4.5", efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "high", fast: "Faster output at a higher cost" },
+      { id: "sonnet", name: "Sonnet 4.5", efforts: ["low", "medium", "high"], defaultEffort: "medium" },
+      { id: "haiku", name: "Haiku 4.5", efforts: [], legacy: true },
+    ],
+  },
+];
+const IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaqvAAAFOElEQVR42g3MsQpuUAAA4Ps4d7FYLBaLxWKxnIGSFIOBkhSDW0ckokiUIlGnSNQppZRSHuv+3wN8f/6CjwAvCR4K3DS4GHCyAHPg4MEmgAUAJIFZAaMGegN0FmgdUHugDEARgiwBSQ6iCsAW/PvzV/wI8SXFhxJvWrwY8WRFzIkHL26CuAARSeKsiKMm9obYWWLriLUnloFYhGKWiEkuRpUIW/EXyR8hv6T8UPJNyxcjn6yMOfng5U2QFyAjSZ4VedTk3pA7S24dufbkMpCLUM4SOcnlqJJhK/8i9SPUl1QfSr1p9WLUk1Uxpx68ugnqAlQkqbOijpraG2pnqa2j1p5aBmoRqlmiJrkaVSps1V+kf4T+kvpD6TetX4x+sjrm9IPXN0FfgI4kfVb0UdN7Q+8svXX02tPLQC9CPUv0JNejSoet/ouMjzBe0ngo46aNizFO1sCccfDGJhgLMJBkzIoxakZvGJ1ltI5Re0YZGEVoZImR5EZUGbA1fpH5EeZLmg9l3rR5MebJmpgzD97cBHMBJpLMWTFHzewNs7PM1jFrzywDswjNLDGT3IwqE7bmL7I/wn5J+6Hsm7Yvxj5ZG3P2wdubYC/ARpI9K/ao2b1hd5bdOnbt2WVgF6GdJXaS21Flw9b+Re5HuC/pPpR70+7FuCfrYs49eHcT3AW4SHJnxR01tzfcznJbx609twzcInSzxE1yN6pc2Lq/yP8I/yX9h/Jv2r8Y/2R9zPkH72+CvwAfSf6s+KPm94bfWX7r+LXnl4FfhH6W+EnuR5UPW/8XBR8RvGTwUMFNBxcTnGyAueDgg00IFhAgKZiVYNSC3gg6K2idoPaCMgiKMMiSIMmDqApgG/wi+BHwJeFDwZuGFwNPFmIOHjzcBLgAiCQ4K3DUYG/AzoKtA2sPlgEsQpglMMlhVEHYwl8Uf0T8kvFDxTcdX0x8sjHm4oOPNyFeQIykeFbiUYt7I+6suHXi2ovLIC7COEviJI+jKoZt/IvSj0hfMn2o9KbTi0lPNsVcevDpJqQLSJGUzko6amlvpJ2Vtk5ae2kZpEWYZkma5GlUpbBNf1HxEcVLFg9V3HRxMcXJFpgrDr7YhGIBBZKKWSlGreiNorOK1ilqryiDogiLLCmSvIiqArbFL6o+onrJ6qGqm64upjrZCnPVwVebUC2gQlI1K9WoVb1RdVbVOlXtVWVQFWGVJVWSV1FVwbb6Rc1HNC/ZPFRz083FNCfbYK45+GYTmgU0SGpmpRm1pjeazmpap6m9pgyaImyypEnyJqoa2Da/qPuI7iW7h+puuruY7mQ7zHUH321Ct4AOSd2sdKPW9UbXWV3rdLXXlUFXhF2WdEneRVUH2+4XDR8xvOTwUMNNDxcznOyAueHgh00YFjAgaZiVYdSG3hg6a2idofaGMhiKcMiSIcmHqBpgO/yi6SOml5wearrp6WKmk50wNx38tAnTAiYkTbMyjdrUG1NnTa0z1d5UBlMRTlkyJfkUVRNsp1+EPgK9JHoodNPoYtDJIsyhg0ebgBaAkIRmBY0a6g3UWah1UO2hMkBFiLIEJTmKKgRb9IvWj1hfcn2o9abXi1lPdsXcevDrJqwLWJG0zso6amtvrJ21ts5ae2sZrEW4Zsma5GtUrbBdf9H+EftL7g+13/R+MfvJ7pjbD37fhH0BO5L2WdlHbe+NvbP21tlrby+DvQj3LNmTfI+qHbb7L8IfgV8SPxS+aXwx+GQx5vDB403AC8BIwrOCRw33Bu4s3Dq49nAZ4CLEWYKTHEcVhi3+9x+XVoHuRE2ECAAAAABJRU5ErkJggg==";
+
+/**
+ * The composer's screens over the sample thread: `composer-empty`; `composer-typing`, words with a tool's chip;
+ * `composer-queue`, a turn running and two messages waiting; `composer-files`, an image's tile and a file's;
+ * `composer-model`, the model menu open.
+ */
+export function loadComposerSample(name: string) {
+  loadSample(false);
+  const mac = forMac();
+  mac.models.keep(GROUPS);
+  const queue = name === "composer-queue" ? { paused: false, items: [{ id: "q1", text: "Then update the changelog" }, { id: "q2", text: "And add a test for the expired session" }] } : null;
+  const s1 = { ...row("s1", "Fix the failing login test", "p1", name === "composer-queue" ? "working" : null, 2), model: "opus", effort: "high", fast: true, levels: ["ask", "auto", "full"], level: "auto", running: queue !== null, steer: true, queue } as Row;
+  lists.set({ ...lists.get(), rows: [s1, ...lists.get().rows.slice(1)] });
+  if (name === "composer-typing") mac.drafts.keepDraft(mac.run, "s1", { parts: ["Find out why the login test fails on CI, then fix it ", { kind: "command", id: "research", type: "tool", label: "/research" }, " "], attachmentIds: [] });
+  if (name === "composer-files") {
+    keepImage("s1", "a1", IMAGE);
+    mac.files.owners.set(
+      new Map([
+        [
+          "s1",
+          {
+            all: new Map([
+              ["a1", { id: "a1", name: "login-error.png", mime: "image/png", state: "ready" as const }],
+              ["a2", { id: "a2", name: "Release notes.pdf", mime: "application/pdf", state: "ready" as const }],
+            ]),
+            tiles: ["a1", "a2"],
+          },
+        ],
+      ]),
+    );
+    mac.drafts.keepDraft(mac.run, "s1", { parts: ["What's wrong in this screenshot?"], attachmentIds: ["a1", "a2"] });
+  }
 }
