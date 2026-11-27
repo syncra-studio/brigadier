@@ -58,7 +58,7 @@ const REPLIES: [string, Record<string, any>][] = [
   ["source s1 review-file", { ok: true, contents: { before: BEFORE, after: AFTER, hunks: [{ id: "h1", header: "@@ -3,4 +3,5 @@" }] } }],
   ["jobs s1 history", { ok: true, history: [{ label: "pnpm dev", startedAt: Date.now() - 40 * 60_000, endedAt: null, status: "running" }, { label: "pnpm test --watch", startedAt: Date.now() - 90 * 60_000, endedAt: Date.now() - 80 * 60_000, status: "stopped" }] }],
   ["shell s1 output", { ok: true, running: true, output: " RUN  v2.1.4 /Users/ada/brigadier\n\n ✓ src/auth/session.test.ts (4)\n ✓ src/auth/token.test.ts (7)\n ❯ src/auth/login.test.ts (3)\n   × logs in\n\nTest Files  1 failed | 2 passed (3)" }],
-  ["fork s1 --check", { ok: true, worktree: "snapshot", default: "worktree", agent: "claude", fingerprint: "f1" }],
+  ["fork s1 --latest", { ok: true, at: "t1", worktree: "snapshot", default: "worktree", agent: "claude", fingerprint: "f1" }],
   ["rewind s1", { ok: true, restore: true, paths: ["src/auth/login.ts", "src/auth/login.test.ts"], hand: [], leftOut: [], nested: [], stale: [], commits: false }],
 ];
 
@@ -78,6 +78,6 @@ export function loadSheets(screen: string) {
   if (screen === "background") sheet.set({ ...at, kind: "background" });
   if (screen === "shell-output") sheet.set({ ...at, kind: "shell", cmd: "c-sh2", command: "pnpm test" });
   if (screen === "plan") sheet.set({ ...at, kind: "plan" });
-  if (screen === "fork") sheet.set({ ...at, kind: "fork", at: "t1" });
+  if (screen === "fork") sheet.set({ ...at, kind: "fork" });
   if (screen === "rewind") sheet.set({ ...at, kind: "rewind", cid: "c1", text: "The login test fails on CI, can you fix it?" });
 }

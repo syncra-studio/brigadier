@@ -11,7 +11,7 @@ import { lists } from "../mac/mac";
 import { sessionId } from "../start/Start";
 
 /** What Rust's check offers on an answer; `worktree` null in a chat with no project, which forks its conversation only. */
-type Offer = { worktree: "snapshot" | "none" | "gone" | "sourceGone" | "repos" | null; repos?: { name: string; files: "snapshot" | "none" | "gone" | "later" }[]; fingerprint: string };
+type Offer = { at: string; worktree: "snapshot" | "none" | "gone" | "sourceGone" | "repos" | null; repos?: { name: string; files: "snapshot" | "none" | "gone" | "later" }[]; fingerprint: string };
 
 const named = (names: string[]) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more` : names.join(", "));
 const detailOf = (offer: Offer) =>
@@ -22,15 +22,17 @@ const detailOf = (offer: Offer) =>
         .join(" · ")
     : FORK_FILES[offer.worktree ?? "none"];
 
-/** Forks session `id` at answer `at` (its turn's message id); `onForked` opens the new session. */
-export function Fork({ id, at, onForked, onClose }: { id: string; at: string; onForked: (id: string, title: string) => void; onClose: () => void }) {
+/** Forks session `id` at its latest answer, as the Mac names it; `onForked` opens the new session. */
+export function Fork({ id, onForked, onClose }: { id: string; onForked: (id: string, title: string) => void; onClose: () => void }) {
   const { run } = forMac();
   const [offer, setOffer] = useState<Offer | null>(null);
   const [made] = useState(sessionId);
   useEffect(() => {
-    void run(["fork", id, "--check", at]).then((reply) => {
+    // Rust's check on its latest answer, `at` naming it (a wake's own end too), unsigned like `--check` [D87].
+    void run(["fork", id, "--latest"]).then((reply) => {
       if (reply.ok) return setOffer(reply as unknown as Offer);
-      Alert.alert("Couldn't check this answer", failure(reply));
+      if (reply.error === "none") Alert.alert(String(reply.message ?? "No answer to fork from yet."));
+      else Alert.alert("Couldn't check this answer", failure(reply));
       onClose();
     });
   }, []);
@@ -42,7 +44,7 @@ export function Fork({ id, at, onForked, onClose }: { id: string; at: string; on
       title={offer.worktree ? (offer.repos ? "Fork to new copies of its repos?" : "Fork to a new worktree?") : "Fork chat?"}
       body="A new session goes on from this answer; this one stays as it is."
       shown={offer.worktree ? detailOf(offer) : "The conversation up to this answer"}
-      args={["fork", id, made, "--at", at, "--where", where, "--fingerprint", offer.fingerprint]}
+      args={["fork", id, made, "--at", offer.at, "--where", where, "--fingerprint", offer.fingerprint]}
       onDone={(reply) => {
         // Told over the sheet, which goes with it: an alert can't show over a sheet going away.
         if (reply && !reply.ok) return Alert.alert("Couldn't fork", failure(reply), [{ text: "OK", onPress: onClose }]);

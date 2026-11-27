@@ -19,7 +19,7 @@ type Open =
   | { kind: "background" | "plan" }
   | { kind: "shell"; cmd: string; command: string }
   | { kind: "rewind"; cid: string; text: string; draft?: Draft | null; lost?: Lost }
-  | { kind: "fork"; at: string };
+  | { kind: "fork" };
 /** The sheet open over session `id`'s thread. */
 export const sheet = store<(Open & { id: string }) | null>(null);
 
@@ -39,13 +39,6 @@ export function SessionMenu({ id }: { id: string }) {
 export function sessionMenu(id: string) {
   const open = (each: Open) => sheet.set({ ...each, id });
   const session = () => (thread.get()?.id === id ? thread.get()?.session : null);
-  const fork = () => {
-    // The latest answer's turn, read here so the check needs no Face ID.
-    // shortcut: a wake that carried that turn on forks from the turn's start, not the wake (the thread names no wake's
-    // boundary, and `fork --latest` needs a signature); use `--latest`'s `at` once the Mac takes it unsigned.
-    const answer = (session()?.items ?? []).filter((item) => item.kind === "message" && item.role === "assistant" && item.final).pop();
-    answer ? open({ kind: "fork", at: answer.turnId }) : Alert.alert("No answer to fork from yet.");
-  };
   // The user's messages Rust says a rewind can go back to, newest first.
   const rewind = () => {
     const can = new Set(session()?.rewind ?? []);
@@ -62,7 +55,7 @@ export function sessionMenu(id: string) {
       "Rewind to this message",
     );
   };
-  choose([["Changes", () => open({ kind: "changes" })], ["Background", () => open({ kind: "background" })], ["Plan", () => open({ kind: "plan" })], ["Fork", fork], ["Rewind", rewind]]);
+  choose([["Changes", () => open({ kind: "changes" })], ["Background", () => open({ kind: "background" })], ["Plan", () => open({ kind: "plan" })], ["Fork", () => open({ kind: "fork" })], ["Rewind", rewind]]);
 }
 
 /** Session `id`'s sheet, under its thread; `onOpen` opens another session in its place (a fork). */
@@ -82,6 +75,6 @@ export function Sheets({ id, onOpen }: { id: string; onOpen: (id: string, title:
     case "rewind":
       return <Rewind key={open.lost?.op ?? open.cid} id={id} cid={open.cid} text={open.text} draft={open.draft} lost={open.lost} onClose={close} />;
     case "fork":
-      return <Fork key={open.at} id={id} at={open.at} onForked={onOpen} onClose={close} />;
+      return <Fork id={id} onForked={onOpen} onClose={close} />;
   }
 }
