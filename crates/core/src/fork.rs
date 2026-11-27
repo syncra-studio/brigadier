@@ -213,22 +213,22 @@ fn order(dir: &Path, f: &Fold) -> Vec<String> {
 
 /// The thread up to the end of turn `at`'s answer: the inherited copy, then what still stands.
 fn copy_of(dir: &Path, order: &[String], at: &str) -> io::Result<Vec<Value>> {
-    let (mut items, mut refs) = (vec![], vec![]);
+    // Each item with its place, its reference and its count under that reference in the source.
+    let mut all: Vec<((u8, u64), Value, String, usize)> = vec![];
     crate::archive::each(dir, |item, at| {
-        items.push(item.clone());
-        refs.push(at);
+        let nth = all.last().filter(|l| l.2 == at).map_or(0, |l| l.3 + 1);
+        all.push((crate::archive::place(item, &at), item.clone(), at, nth));
     })?;
     let next = order.iter().skip_while(|c| *c != at).nth(1);
     let input = |i: &Value| i["kind"] == "input" && next.is_some_and(|n| i["cid"] == n.as_str());
-    if let Some(cut) = items.iter().position(input) {
-        // A night's decision logged past the next message still goes with its turn [§8].
-        let late = crate::overnight::late(&items, cut);
-        let (tail, at) = (items.split_off(cut), refs.split_off(cut));
-        for i in late {
-            items.push(tail[i - cut].clone());
-            refs.push(at[i - cut].clone());
-        }
+    // A night's decision logged past the next message still goes with its turn, in place [§8].
+    if let Some(cut) = all.iter().position(|a| input(&a.1)) {
+        let to = all[cut].0;
+        let late = all.split_off(cut).into_iter().filter(|a| a.0 < to);
+        all.extend(late);
     }
+    all.sort_by_key(|a| a.0);
+    let (mut items, refs): (Vec<_>, _) = all.into_iter().map(|(_, i, r, n)| (i, (r, n))).unzip();
     crate::handoff::check::copied(&mut items, refs);
     Ok(items)
 }

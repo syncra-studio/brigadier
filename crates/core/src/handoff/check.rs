@@ -375,21 +375,15 @@ pub fn section(id: &str, at: &str, note: &Value, ago: usize, shown: usize) -> St
     format!("\n## Summary, {head}\n{}\n", body.trim_end())
 }
 
-/// A fork's copy, `refs` each item's reference in its source: each summary note's references
-/// become the copy's own `i<line>`, a fork's of a fork's too, a cite's the very item it cites in
-/// a frame of several; one past the fork point is none [rev 3 §3].
-pub fn copied(items: &mut [Value], refs: Vec<String>) {
-    // Each item by its reference and its place under it, as the summary's walk counts them; and
-    // each reference's last line, where a range under it ends.
+/// A fork's copy, `refs` each item's reference in its source and its count under it there: each
+/// summary note's references become the copy's own `i<line>`, a fork's of a fork's too, a cite's
+/// the very item it cites in a frame of several; one past the fork point is none [rev 3 §3].
+pub fn copied(items: &mut [Value], refs: Vec<(String, usize)>) {
+    // Each item by its reference and its place under it in the source, as the summary's walk
+    // counts them; and each reference's last line, where a range under it ends.
     let (mut line, mut last) = (HashMap::new(), HashMap::new());
-    let mut nth = 0;
-    for (n, r) in refs.iter().enumerate() {
-        nth = if n > 0 && refs[n - 1] == *r {
-            nth + 1
-        } else {
-            0
-        };
-        line.insert((r.as_str(), nth), format!("i{n}"));
+    for (n, (r, nth)) in refs.iter().enumerate() {
+        line.insert((r.as_str(), *nth), format!("i{n}"));
         last.insert(r.as_str(), format!("i{n}"));
     }
     let to = |v: &Value, nth: u64| {

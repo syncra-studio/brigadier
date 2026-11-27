@@ -215,21 +215,3 @@ pub(crate) fn led(dir: &Path) -> Option<String> {
 pub fn own_level(dir: &Path, level: &Option<String>) -> Option<String> {
     load(dir).before.map_or(level.clone(), |b| b.level)
 }
-
-/// Which of a log's `items` past the message at `cut` are a night's decisions its turns before
-/// that message made, logged late as one held for the next pass is: made at an earlier frame, or
-/// in a turn begun before it [§8].
-pub fn late(items: &[Value], cut: usize) -> Vec<usize> {
-    let to = items[cut]["f"].as_u64().unwrap_or(0);
-    let before: Vec<&str> = (items[..cut].iter())
-        .filter(|i| i["kind"] == "input")
-        .filter_map(|i| i["cid"].as_str())
-        .collect();
-    let late = |i: &Value| {
-        i["kind"] == "note"
-            && i["event"] == "overnight"
-            && (i["seq"].as_u64().is_some_and(|s| s < to)
-                || i["turn"].as_str().is_some_and(|t| before.contains(&t)))
-    };
-    (cut..items.len()).filter(|&n| late(&items[n])).collect()
-}
