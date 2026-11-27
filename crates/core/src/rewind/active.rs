@@ -13,6 +13,9 @@ use std::path::Path;
 pub struct Active {
     cuts: Vec<(String, u64)>,
     until: u64,
+    /// The inputs a rewind dropped: a note written later for a turn they began goes with it.
+    #[serde(default)]
+    dropped: Vec<String>,
     last: u64,
     /// Where the scan stopped in the log, and that frame's sequence number.
     scanned: (u64, u64),
@@ -53,17 +56,27 @@ impl Active {
                 .iter()
                 .filter(|(to, at)| item["cid"] == to.as_str() && *at > seq);
             self.until = found.map(|(_, at)| *at).max().unwrap_or(0).max(self.until);
+            if let Some(cid) = item["cid"].as_str().filter(|_| seq <= self.until) {
+                self.dropped.push(cid.into());
+            }
+        }
+        let ran = matches!(
+            item["event"].as_str(),
+            Some("overnight" | "kept" | "summary")
+        );
+        // One noted after the rewind, as a night's deferred decision is, still names its turn.
+        let turn = item["turn"].as_str();
+        if ran && turn.is_some_and(|t| self.dropped.iter().any(|d| d == t)) {
+            return false;
         }
         // A night's lines, the kept list's ops and a summary go with the turns they ran in; what else is noted
         // happened all the same [D87].
         seq > self.until
-            || !matches!(
-                item["event"].as_str(),
-                Some("overnight" | "kept" | "summary")
-            ) && matches!(
-                kind,
-                "spawned" | "exited" | "stopped" | "note" | "resume_id"
-            )
+            || !ran
+                && matches!(
+                    kind,
+                    "spawned" | "exited" | "stopped" | "note" | "resume_id"
+                )
     }
 
     /// Whether this item is a rewind newer than the scan: what was read before it is stale.
