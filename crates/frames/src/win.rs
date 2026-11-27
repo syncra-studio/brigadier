@@ -287,6 +287,26 @@ pub fn held_start(pid: u32) -> Option<u64> {
     held.iter().rev().find(|h| h.0 == pid).map(|h| h.1)
 }
 
+/// Every process in a group job this process holds now.
+pub fn held_members() -> Vec<u32> {
+    let held = HELD.lock().unwrap();
+    held.iter().flat_map(|h| members(&h.2)).collect()
+}
+
+/// Puts `pid`, if it's still the one that started at `start`, into the held group job that
+/// has `member` [D97 D100]. Windows only nests deeper: a process in some other job can enter only
+/// a job inside that one, so this never takes one out of a job it's in (proposed).
+pub fn rejoin(member: u32, pid: u32, start: u64) -> bool {
+    use windows_sys::Win32::System::Threading::{PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+    let access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA | PROCESS_TERMINATE;
+    let Some(p) = open(pid, access).filter(|p| live(p) && start_us(p) == Some(start)) else {
+        return false;
+    };
+    let held = HELD.lock().unwrap();
+    let job = held.iter().find(|h| members(&h.2).contains(&member));
+    job.is_some_and(|h| assign(&h.2, &p).is_ok())
+}
+
 pub const GROUP: &str = "g";
 pub const HOST: &str = "h";
 

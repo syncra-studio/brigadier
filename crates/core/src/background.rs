@@ -156,8 +156,10 @@ fn of(dir: &Path, fold: &Fold, all: &[Proc], fresh: Duration, links: &mut Links)
     );
     let (all, owned) = ours(dir, all, fresh);
     // What launchd started only inherited its mark; under a shared server it's the server's.
+    // Windows has no sessions: there a mark is what a tool started that left its jobs (proposed).
     let own = (owned.iter())
-        .filter(|p| p.sid > 1 && p.start_us > first && !under_shared(dir, p, &at))
+        .filter(|p| (cfg!(windows) || p.sid > 1) && p.start_us > first)
+        .filter(|p| !under_shared(dir, p, &at))
         .map(|p| (p.pid, p.start_us));
     seeds.extend(own);
     seeds.retain(|(pid, start)| at.get(pid).is_some_and(|p| p.start_us == *start));

@@ -4,6 +4,8 @@
 pub mod background;
 pub mod forks;
 pub mod log;
+#[cfg(windows)]
+pub mod place;
 pub mod procs;
 pub mod runner;
 pub mod spawn;

@@ -6,7 +6,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 /// Shared servers an agent only happened to start, never a session's. This list only excludes.
-const SHARED: [&str; 8] = [
+const SHARED: [&str; 9] = [
+    // Windows' console host for a console program started without one: it ends with its console.
+    "conhost.exe",
     "tmux",
     "screen",
     "zellij",

@@ -71,6 +71,9 @@ impl Runner {
                 .map(|&(g, s)| procs::group(&all, g, s).len())
                 .sum::<usize>()
         };
+        // What its tools ran that left its jobs goes back first, while their shells still run.
+        #[cfg(windows)]
+        crate::place::place(&self.dir, 0);
         #[cfg(windows)]
         self.polite();
         for &(g, s) in &groups {

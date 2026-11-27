@@ -116,12 +116,25 @@ impl Forks {
     /// Windows tells of no fork, but needs none: what a followed process starts is in its group
     /// job, which a look proves, unless it broke away. A look 250 ms after one more is followed or
     /// one goes, then each second while something's young.
+    /// Each second, what a tool ran that left its group's job is put back (`place`).
     #[cfg(windows)]
     fn run(&self, _kq: i32) {
-        let (mut due, mut was) = (Some(Instant::now()), 0);
+        let (mut due, mut was, mut placed) = (Some(Instant::now()), 0, Instant::now());
+        let dir = self.0.lock().unwrap().dir.clone();
         loop {
             thread::sleep(LOOK);
+            let mut detached = vec![];
+            if placed.elapsed() >= Duration::from_secs(1) {
+                detached = crate::place::place(&dir, 1_000_000);
+                placed = Instant::now();
+            }
             let mut state = self.0.lock().unwrap();
+            // Its detached work: Cygwin hides its mark, so its sightings prove it the session's.
+            for (pid, start) in detached {
+                if procs::info(pid).is_some_and(|p| p.start_us == start) {
+                    state.see(pid);
+                }
+            }
             let gone = state.known.keys().any(|k| !state.watch(k.0));
             if gone || state.known.len() != was {
                 due = Some(due.map_or(Instant::now(), |d| d.min(Instant::now())));
