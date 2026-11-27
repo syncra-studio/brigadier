@@ -105,11 +105,13 @@ pub fn full(spec: &Spec, f: &Fold) -> bool {
 pub fn due(spec: &Spec, f: &Fold) -> Option<&'static str> {
     if let Some(t) = f.turns.first() {
         // A summary turn is never cut: its own minutes bound it, then it's "late" [rev 3 §2.2]. A
-        // tool it called got past the veto, open or done since the last look: it's stopped at
-        // once, as a second line [§4].
+        // tool it called got past the veto, open or done since the last look, or one that asks
+        // (a question, an approval) and has no step of its own: it's stopped at once, as a
+        // second line [§4].
         if t.origin == "summary" {
             let ran = brigadier_frames::log::now_ms().saturating_sub(t.ts);
-            let late = ran > crate::summary::LIMIT.as_millis() as u64 || t.first_tool > 0;
+            let tool = t.first_tool > 0 || t.asked_at > 0;
+            let late = ran > crate::summary::LIMIT.as_millis() as u64 || tool;
             return late.then_some("late");
         }
         // A safe point: no tool runs, nothing waits on the user, and no turn its CLI queued

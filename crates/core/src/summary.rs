@@ -214,7 +214,8 @@ fn walk(
         if w.hit {
             if inside && !past {
                 match s("kind") {
-                    "tool" => (w.tools, w.reply) = (true, String::new()),
+                    // A question or an approval is a tool's too: Claude's ask has no step.
+                    "tool" | "question" | "approval" => (w.tools, w.reply) = (true, String::new()),
                     // Its text blocks joined, as `Turn::output` joins them.
                     "text" if !w.reply.is_empty() => {
                         w.reply = format!("{}\n\n{}", w.reply, s("text"))
