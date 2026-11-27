@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Frame } from "../../vendor/brigadier-shared/client";
 import { Button } from "../Button";
@@ -19,13 +19,19 @@ export function Confirm({ title, body, shown, args, onDone }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Taps before the spinner shows don't start a second signature.
+  const going = useRef(false);
   async function go() {
+    if (going.current) return;
+    going.current = true;
     setBusy(true);
     setError(null);
     const reply = await signed(args);
+    going.current = false;
     setBusy(false);
-    // Face ID cancelled: the sheet stays, so the user can try again or cancel.
+    // Nothing was sent: the sheet stays, so the user can try again or cancel.
     if (reply.error === "cancelled") return setError("Face ID didn't confirm it. Nothing was sent.");
+    if (reply.error === "notSigned") return setError("This iPhone couldn't sign it. Nothing was sent.");
     onDone(reply);
   }
   return (

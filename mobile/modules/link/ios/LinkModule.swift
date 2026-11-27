@@ -98,7 +98,20 @@ public class LinkModule: Module {
             guard let channel = self.current() else { throw Exception(name: "Mac", description: "not connected") }
             guard let n = Data(base64Encoded: nonce), n.count == 32 else { throw Exception(name: "Mac", description: "bad nonce") }
             let signed = Derive.act(h: channel.noise.h, nonce: Array(n), names: [session, request, action], argv: argv)
-            return try Enclave.sign("brigadier/act/v1", Data(signed)).base64EncodedString()
+            // Face ID first, so a cancel is told apart from a key that can't sign; U then signs with that context.
+            let context = LAContext()
+            do {
+                try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Confirm it on your Mac")
+            } catch let e as LAError where [.userCancel, .appCancel, .systemCancel, .userFallback].contains(e.code) {
+                throw Exception(name: "Act", description: "Face ID didn't confirm", code: "cancelled")
+            } catch {
+                throw Exception(name: "Act", description: "\(error)", code: "notSigned")
+            }
+            do {
+                return try Enclave.sign("brigadier/act/v1", Data(signed), context: context).base64EncodedString()
+            } catch {
+                throw Exception(name: "Act", description: "\(error)", code: "notSigned")
+            }
         }
 
         // Keeps the Mac this stream paired with: its psk from the handshake hash, and its record in the list.

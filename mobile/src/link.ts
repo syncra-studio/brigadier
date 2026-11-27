@@ -18,6 +18,8 @@ let attempt = 0;
 // How many times `close` was called: a flow that saw it change was cancelled.
 let closes = 0;
 export const closeCount = () => closes;
+/** The open stream's number, -1 when none: a flow that saw it change is on another stream, or none. */
+export const streamNow = () => stream;
 let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
 const closed = new Set<() => void>();

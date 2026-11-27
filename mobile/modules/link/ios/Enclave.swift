@@ -12,9 +12,10 @@ enum Enclave {
         try key().publicKey.x963Representation
     }
 
-    /// Signs `label ‖ data` (ECDSA P-256, SHA-256) as raw r‖s, after Face ID.
-    static func sign(_ label: String, _ data: Data) throws -> Data {
-        try key().signature(for: Data(label.utf8) + data).rawRepresentation
+    /// Signs `label ‖ data` (ECDSA P-256, SHA-256) as raw r‖s, after Face ID: the system's own, or `context`'s
+    /// when the caller has just asked it (once: a context is never kept).
+    static func sign(_ label: String, _ data: Data, context: LAContext? = nil) throws -> Data {
+        try key(context).signature(for: Data(label.utf8) + data).rawRepresentation
     }
 
     static func forget() {
@@ -30,14 +31,14 @@ enum Enclave {
         return context.evaluatedPolicyDomainState
     }
 
-    private static func key() throws -> SecureEnclave.P256.Signing.PrivateKey {
+    private static func key(_ context: LAContext? = nil) throws -> SecureEnclave.P256.Signing.PrivateKey {
         if let sealed = try Keys.get(name) {
             // U made with no record beside it is from before the record and may be void: made again. An empty record
             // (Face ID unreadable when U was made) takes today's; none read now (briefly unavailable) keeps U.
             let had = try Keys.get(name + ".enrolment"), now = enrolment()
             if let had, now == nil || had == now || had.isEmpty {
                 if had.isEmpty, let now { try Keys.put(name + ".enrolment", now) }
-                return try .init(dataRepresentation: sealed)
+                return try .init(dataRepresentation: sealed, authenticationContext: context)
             }
             forget()
         }
