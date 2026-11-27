@@ -76,7 +76,7 @@ export function adopt(run: Runner, id: string, entry: Going): Promise<Record<str
 /** Try again or Add again: Rust runs the message's own command again under its id (`retry`), once its book has it. */
 export async function again(run: Runner, id: string, entry: Going): Promise<void> {
   markGoing(id, entry.cid, { stuck: undefined });
-  if (entry.peer) return go(run, id, entry, null);
+  if (entry.peer) return go(run, id, { ...entry, stuck: undefined }, null);
   const adopted = entry.booked ? { kept: true } : await adopt(run, id, entry);
   if (adopted.kept) return answered(run, id, { ...entry, booked: true }, await run(["draft", id, "retry", entry.cid]));
   if (!adopted.ok) markGoing(id, entry.cid, { stuck: failure(adopted) });
