@@ -13,6 +13,7 @@ mod diff;
 mod holder;
 mod open;
 mod run;
+mod save;
 pub(super) mod shot;
 pub(super) mod still;
 mod typing;
@@ -341,6 +342,9 @@ fn checked(
                     return Err(act::no_keys(&s, &format!("{} not sent", w.rest[0])));
                 }
                 let line = format!("Pressed {}", w.rest[0]);
+                if let Some(no) = save::scripted(data, &s, &args, here) {
+                    return Err(refuse(&format!("{line}: not sent. {no}")));
+                }
                 act(data, me, &mut s, &line, name, args, here)?
             }
             _ => {

@@ -1,17 +1,20 @@
 //! The few calls the helper makes itself, under its own grants, where the driver has no route
 //! [D928]: an app's menu bar read and pressed by pid with no window (Cua #8055), Chromium's tree
 //! turned on for any app (Cua #7751 lists names), and the process in front read and given back
-//! through WindowServer, as Cua's own `key_focus_guard` does after an action. The daemon decides
-//! when; these only do.
+//! through WindowServer, as Cua's own `key_focus_guard` does after an action, and macOS's
+//! Automation answer for an app [C106]. The daemon decides when; these only do.
 
 use core_foundation::array::CFArray;
 use core_foundation::base::{CFType, CFTypeRef, TCFType};
 use core_foundation::boolean::CFBoolean;
+use core_foundation::bundle::{CFBundle, CFBundleRef};
 use core_foundation::number::CFNumber;
 use core_foundation::string::{CFString, CFStringRef};
+use core_foundation::url::CFURL;
 use serde_json::{Value, json};
 use std::ffi::{CStr, c_void};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
+use std::thread;
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
@@ -23,6 +26,7 @@ unsafe extern "C" {
     fn AXUIElementCopyElementAtPosition(app: CFTypeRef, x: f32, y: f32, out: *mut CFTypeRef)
     -> i32;
     fn AXValueGetValue(value: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
+    fn CFBundleGetIdentifier(bundle: CFBundleRef) -> CFStringRef;
 }
 
 /// One `brigadier/…` call: its result, or why not.
@@ -31,6 +35,7 @@ pub fn handle(method: &str, p: &Value) -> Result<Value, String> {
     match method {
         "brigadier/menus" => Ok(json!({"menus": menus(&app(pid)?)})),
         "brigadier/menu" => press(&app(pid)?, p),
+        "brigadier/automation" => Ok(automation(&app(pid)?, pid, p)),
         "brigadier/enable" => {
             let app = app(pid)?;
             let on = CFBoolean::true_value();
@@ -240,25 +245,7 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
                     .join(" > "),
             )
         }
-        (None, None) => {
-            let keys: Vec<String> = (p["keys"].as_array().into_iter().flatten())
-                .filter_map(|k| k.as_str().map(str::to_lowercase))
-                .collect();
-            let (last, mods) = keys.split_last().ok_or("No keys.")?;
-            let has = |m: &[&str]| mods.iter().any(|k| m.contains(&k.as_str()));
-            let want = (has(&["shift"]) as i64)
-                | (has(&["option", "alt"]) as i64) << 1
-                | (has(&["ctrl", "control"]) as i64) << 2
-                | (!has(&["cmd", "command"]) as i64) << 3;
-            let mut found = None;
-            for top in children(&bar).iter().skip(1) {
-                found = find_key(top, &text(top, "AXTitle"), last, want, 0);
-                if found.is_some() {
-                    break;
-                }
-            }
-            found.ok_or_else(|| format!("No menu item has {}.", keys.join("+")))?
-        }
+        (None, None) => by_key(&bar, p)?,
     };
     // D903: no paste into a window with a password field, the item found by its ⌘V in any language.
     let cmd_v = text(&item, "AXMenuItemCmdChar").eq_ignore_ascii_case("v")
@@ -278,6 +265,107 @@ fn press(app: &CFType, p: &Value) -> Result<Value, String> {
     match act("AXPress") == 0 || act("AXPick") == 0 {
         true => Ok(json!({"pressed": path})),
         false => Err(format!("{path} didn't take the press.")),
+    }
+}
+
+/// The menu bar's item whose key equivalent is `p`'s `keys` (["cmd", "n"]), and its path.
+fn by_key(bar: &CFType, p: &Value) -> Result<(CFType, String), String> {
+    let keys: Vec<String> = (p["keys"].as_array().into_iter().flatten())
+        .filter_map(|k| k.as_str().map(str::to_lowercase))
+        .collect();
+    let (last, mods) = keys.split_last().ok_or("No keys.")?;
+    let has = |m: &[&str]| mods.iter().any(|k| m.contains(&k.as_str()));
+    let want = (has(&["shift"]) as i64)
+        | (has(&["option", "alt"]) as i64) << 1
+        | (has(&["ctrl", "control"]) as i64) << 2
+        | (!has(&["cmd", "command"]) as i64) << 3;
+    (children(bar).iter().skip(1))
+        .find_map(|top| find_key(top, &text(top, "AXTitle"), last, want, 0))
+        .ok_or_else(|| format!("No menu item has {}.", keys.join("+")))
+}
+
+/// Whether Cua may carry out `keys` by Apple Events, as it does a plain ⌘S item the app greys in
+/// the background, and macOS's Automation answer for that app, read without asking [C106]. Where
+/// macOS hasn't asked yet, it asks now, once at a time, charged to this app. Cua first tries
+/// making the window key, which can enable the item: so this may say yes where Cua then presses.
+fn automation(app: &CFType, pid: i32, p: &Value) -> Value {
+    // As Cua's item_is_save: plain ⌘S, greyed, the app behind; in front, keys go as keys.
+    let save = |item: &CFType| {
+        text(item, "AXMenuItemCmdChar").eq_ignore_ascii_case("s")
+            && number(item, "AXMenuItemCmdModifiers").unwrap_or(0) == 0
+            && !enabled(item)
+    };
+    let scripted = front() != Some(pid)
+        && (attr(app, "AXMenuBar").and_then(|bar| by_key(&bar, p).ok()))
+            .is_some_and(|(item, _)| save(&item));
+    let Some(id) = scripted.then(|| bundle_id(pid)).flatten() else {
+        let status = if scripted { "none" } else { "" };
+        return json!({"scripted": scripted, "status": status});
+    };
+    // errAEEventNotPermitted, errAEEventWouldRequireUserConsent; else it may ask.
+    let status = match apple_events(&id, false) {
+        0 => "granted",
+        -1743 => "denied",
+        _ => "ask",
+    };
+    static ASKING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let mut asking = ASKING.lock().unwrap_or_else(PoisonError::into_inner);
+    if status == "ask" && !asking.contains(&id) {
+        asking.push(id.clone());
+        thread::spawn(move || {
+            apple_events(&id, true);
+            (ASKING.lock().unwrap_or_else(PoisonError::into_inner)).retain(|a| *a != id);
+        });
+    }
+    json!({"scripted": true, "status": status})
+}
+
+/// The id of the app bundle `pid` runs from, as the kernel names its file; none for a bare
+/// executable or a bundle without one.
+fn bundle_id(pid: i32) -> Option<String> {
+    let exe = brigadier_frames::procs::exe(pid)?;
+    let app = exe
+        .ancestors()
+        .find(|a| a.extension().is_some_and(|e| e.eq_ignore_ascii_case("app")))?;
+    let bundle = CFBundle::new(CFURL::from_path(app, true)?)?;
+    let id = unsafe { CFBundleGetIdentifier(bundle.as_concrete_TypeRef()) };
+    (!id.is_null()).then(|| unsafe { CFString::wrap_under_get_rule(id) }.to_string())
+}
+
+/// macOS's Automation answer for this app sending Apple Events to bundle `id`; with `ask`, its
+/// prompt where it hasn't asked yet, which waits for the user.
+fn apple_events(id: &str, ask: bool) -> i32 {
+    #[repr(C)]
+    struct AEDesc {
+        kind: u32,
+        data: *mut c_void,
+    }
+    #[link(name = "CoreServices", kind = "framework")]
+    unsafe extern "C" {
+        fn AECreateDesc(kind: u32, data: *const c_void, size: isize, out: *mut AEDesc) -> i16;
+        fn AEDisposeDesc(desc: *mut AEDesc) -> i16;
+        fn AEDeterminePermissionToAutomateTarget(
+            target: *const AEDesc,
+            class: u32,
+            id: u32,
+            ask: u8,
+        ) -> i32;
+    }
+    // typeApplicationBundleID, typeWildCard.
+    const BUND: u32 = 0x62756e64;
+    const ANY: u32 = 0x2a2a2a2a;
+    let mut desc = AEDesc {
+        kind: 0,
+        data: std::ptr::null_mut(),
+    };
+    unsafe {
+        let made = AECreateDesc(BUND, id.as_ptr().cast(), id.len() as isize, &mut desc);
+        if made != 0 {
+            return i32::from(made);
+        }
+        let status = AEDeterminePermissionToAutomateTarget(&desc, ANY, ANY, u8::from(ask));
+        AEDisposeDesc(&mut desc);
+        status
     }
 }
 
