@@ -130,8 +130,9 @@ export function SideLine({ item }: { item: Started }) {
     return <StartedLine title={item.title ?? ""} error={`${item.error ?? "Refused"}${left}`} onPutBack={source && item.text ? () => putBack(source, item.text!) : undefined} />;
   }
   const row = rows?.find((each) => each.id === item.session);
-  // PROPOSED: any mark but working, needs and amber reads Done; no row (deleted) shows no status [D204].
-  const status = item.state === "started" && row ? (STATUS[row.mark ?? ""] ?? "done") : undefined;
+  // PROPOSED: any mark but working, needs and amber reads Done, or Stopped once the user stopped it [C99]; no row
+  // (deleted) shows no status [D204].
+  const status = item.state === "started" && row ? (STATUS[row.mark ?? ""] ?? (row.state === "stopped" ? "stopped" : "done")) : undefined;
   return (
     <StartedLine
       title={row?.title || item.title || local?.title || ""}

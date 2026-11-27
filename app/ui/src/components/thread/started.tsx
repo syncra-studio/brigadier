@@ -3,8 +3,8 @@ import { ErrorLine } from "../error-line";
 import { LabeledDivider } from "../labeled-divider";
 
 /** The new session's live status, from its row's mark [D204]. */
-export type StartedStatus = "working" | "needs" | "done" | "failed";
-const STATUS: Record<StartedStatus, string> = { working: "Working", needs: "Needs you", done: "Done", failed: "Failed" };
+export type StartedStatus = "working" | "needs" | "done" | "stopped" | "failed";
+const STATUS: Record<StartedStatus, string> = { working: "Working", needs: "Needs you", done: "Done", stopped: "Stopped", failed: "Failed" };
 
 /**
  * The line a session gets when a message from it starts another session [D204, D206]: "Starting a new session" while
