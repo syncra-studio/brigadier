@@ -1976,7 +1976,8 @@ const CASES = [
   { id: 'G2', kind: 'guard', text: 'How many lines does a.txt have?', pass: (f) => !f.worker },
   { id: 'G3', kind: 'guard', text: 'Bob asked in #team: "Is it Friday yet?" Draft a one-line reply to him that asks "Who else loves Fridays?"',
     pass: (f) => f.fixed },
-  { id: 'G4', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it and make the test pass.', pass: (f) => f.worker },
+  // D34's lead does a small fix itself, so the brief hands it to a worker, as beat-competitors' D1 arm did [C117].
+  { id: 'G4', kind: 'guard', setup: fix, cards: true, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it and make the test pass.\n\nHand the whole job to one worker, started with `brigadier start`, wait for its result, make sure its work is merged into this branch and the tests pass here.', pass: (f) => f.worker },
   { id: 'G5', kind: 'guard', setup: fix, text: '`./test.sh` fails: `add.sh` subtracts instead of adding. Fix it yourself, no worker, and run the test.', pass: (f) => !f.worker },
   { id: 'G6', kind: 'guard', setup: fix, text: 'In `add.sh`, change `-` to `+`. Nothing else.', pass: (f) => !f.sent && !f.prose },
   { id: 'G7', kind: 'guard', setup: ui, text: 'In src/Sidebar.jsx, change the heading "Chats" to "Conversations".', pass: (f) => !f.mockup },
@@ -2036,7 +2037,8 @@ function facts(sd, id, repo, st) {
   const reply = said.at(-1)?.text ?? ''
   const fence = /```brigadier-message show_draft\n(.*)\n```/g
   const drafts = said.flatMap((m) => [...(m.text ?? '').matchAll(fence)].map((x) => { try { return JSON.parse(x[1]) } catch { return {} } }))
-  const tools = sd.cli(['read', id]).all.filter((i) => i.kind === 'tool').map((i) => JSON.stringify(i.input ?? ''))
+  // A shell call's line is its `command`: OpenCode's leaves `input` empty.
+  const tools = sd.cli(['read', id]).all.filter((i) => i.kind === 'tool').map((i) => `${JSON.stringify(i.input ?? '')} ${i.command ?? ''}`)
   const judged = spawnSync(`${BIN}/brigadier`, ['hook', 'stop', 'drill'], { input: JSON.stringify({ last_assistant_message: reply }), encoding: 'utf8', env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'BRIGADIER_SESSION')) })
   const rules = (() => { try { return JSON.parse(fs.readFileSync(`${sd.data}/sessions/${id}/rules.json`, 'utf8')) } catch { return {} } })()
   const git = (a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' }).stdout ?? ''
@@ -2088,6 +2090,18 @@ async function sample(c, sd, agent, k, b3) {
   const start = (b3 ?? sd).cli(['start', id, '--backend', agent, ...where, '--level', c.level ?? 'auto', ...(model ? ['--model', model] : []), '--text', first])
   if (!start.out.ok) return { id, pass: false, error: start.out.error }
   let st = await settle(b3 ?? sd, id)
+  // A lead's own card ("Fast-forward main?") gets a go-ahead, as beat-competitors' harness gave [C117].
+  // One go-ahead per item of a question; each card is tried once and its outcome kept.
+  const cards = []
+  for (; c.cards && st.state === 'waiting_answer'; st = await settle(sd, id)) {
+    const open = sd.cli(['read', id]).all.filter((i) => ['approval', 'question', 'plan'].includes(i.kind) && i.id && !cards.some((x) => x.id === i.id))
+    if (!open.length) break
+    for (const q of open) {
+      const go = Array(q.request?.items?.length || 1).fill('Go ahead, use your own judgment.')
+      const r = sd.cli(['answer', id, q.id, ...(q.kind === 'question' ? ['--answers', JSON.stringify(go)] : ['allow'])]).out
+      cards.push({ id: q.id, kind: q.kind, ok: !!r.ok, error: r.error })
+    }
+  }
   for (let i = 1; i < (c.filler ?? 0); i++) { (sd).cli(['send', id, 'Reply with only the word ok.']); st = await settle(sd, id) }
   const seen = []
   if (c.resume || c.filler) {
@@ -2103,7 +2117,7 @@ async function sample(c, sd, agent, k, b3) {
   f.fixed = !f.prose || f.cardLast
   if (c.resume && process.env.MARKER) f.marked = given(sd, id, agent, seen).includes(process.env.MARKER)
   sd.cli(['stop', id])
-  return { id, pass: !!c.pass(f), ...f }
+  return { id, pass: !!c.pass(f), ...f, ...(cards.length ? { cards } : {}) }
 }
 
 async function standing() {
