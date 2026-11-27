@@ -3,7 +3,7 @@ import { Component, memo, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { sentAt } from "../../vendor/brigadier-shared/words";
 import { color, text } from "../theme";
-import type { Gap, Line } from "./lines";
+import type { Gap, Line } from "../../vendor/brigadier-shared/lines";
 import { Body } from "./rows/body";
 import { AnswerMarks } from "./rows/message";
 import { ErrorLine } from "./rows/parts";

@@ -5,7 +5,7 @@ import { datedMessages } from "../../vendor/brigadier-shared/words";
 import { older, thread } from "../mac/mac";
 import { color, text } from "../theme";
 import { Cards } from "./Cards";
-import { type Line, lineMaker, workKey } from "./lines";
+import { type Line, lineMaker, workKey } from "../../vendor/brigadier-shared/lines";
 import { Row } from "./Row";
 
 /** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */

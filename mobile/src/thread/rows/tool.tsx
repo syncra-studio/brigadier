@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { PendingApproval } from "../../../vendor/brigadier-shared/cards";
 import type { Item, Progress, StepKind, Turn } from "../../../vendor/brigadier-shared/thread";
 import { connectorName, VERBS } from "../../../vendor/brigadier-shared/words";
-import { running, type Group } from "../lines";
+import { running, type Group } from "../../../vendor/brigadier-shared/lines";
 import { color } from "../../theme";
 import { Box, Capped, ErrorLine, Glyph, Line, Opening, s, useKept, Words } from "./parts";
 import { GroupLine } from "./work";

@@ -1,9 +1,6 @@
-// Copied from the desktop's app/ui/src/thread/lines.ts at 4d314765c (desktop main 512bc22eb), unchanged except this
-// header and the import: it is drawing logic with no DOM, and belongs in app/shared, where sync-shared will bring it.
-// shortcut: a copy, not shared; delete it once lane C moves lines.ts into app/shared.
 // Which rows the list draws, from the session and what the user has opened: drawing only, no thread rules.
 // Rust sends groups and work folds ready-made; this hides what a closed one covers and places the work header.
-import type { Item, Session, Turn, Work } from "../../vendor/brigadier-shared/thread";
+import type { Item, Session, Turn, Work } from "./thread";
 
 export type Group = Extract<Item, { kind: "group" }>;
 

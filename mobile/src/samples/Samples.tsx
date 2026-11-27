@@ -29,7 +29,7 @@ import tool from "../../vendor/brigadier-shared/samples/tool.json";
 import unknown from "../../vendor/brigadier-shared/samples/unknown.json";
 import { color, text } from "../theme";
 import { Cards } from "../thread/Cards";
-import { lineMaker } from "../thread/lines";
+import { lineMaker } from "../../vendor/brigadier-shared/lines";
 import { Row } from "../thread/Row";
 
 // The files' items carry no turn or `n`: each sample gets a done turn of its own, its rows counted from 1, so a group's span reaches its steps.
