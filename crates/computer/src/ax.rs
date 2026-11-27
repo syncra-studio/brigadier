@@ -288,6 +288,7 @@ fn by_key(bar: &CFType, p: &Value) -> Result<(CFType, String), String> {
 /// the background, and macOS's Automation answer for that app, read without asking [C106]. Where
 /// macOS hasn't asked yet, it asks now, once at a time, charged to this app. Cua first tries
 /// making the window key, which can enable the item: so this may say yes where Cua then presses.
+/// `scripts` is a caller that knows Cua scripts the app, as it renames a file in Finder [D129].
 fn automation(app: &CFType, pid: i32, p: &Value) -> Value {
     // As Cua's item_is_save: plain ⌘S, greyed, the app behind; in front, keys go as keys.
     let save = |item: &CFType| {
@@ -295,9 +296,10 @@ fn automation(app: &CFType, pid: i32, p: &Value) -> Value {
             && number(item, "AXMenuItemCmdModifiers").unwrap_or(0) == 0
             && !enabled(item)
     };
-    let scripted = front() != Some(pid)
-        && (attr(app, "AXMenuBar").and_then(|bar| by_key(&bar, p).ok()))
-            .is_some_and(|(item, _)| save(&item));
+    let scripted = p["scripts"] == true
+        || front() != Some(pid)
+            && (attr(app, "AXMenuBar").and_then(|bar| by_key(&bar, p).ok()))
+                .is_some_and(|(item, _)| save(&item));
     let Some(id) = scripted.then(|| bundle_id(pid)).flatten() else {
         let status = if scripted { "none" } else { "" };
         return json!({"scripted": scripted, "status": status});

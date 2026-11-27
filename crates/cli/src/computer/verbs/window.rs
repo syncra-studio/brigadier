@@ -128,6 +128,28 @@ pub(super) fn learn(s: &mut Sess, found: &Value) {
     }
 }
 
+/// The text fields whose parent row is an AXCell, by number, from the tree's indents. Finder's
+/// open rename field is none of them: it reads outside the window.
+pub(super) fn in_cells(md: &str) -> HashSet<u64> {
+    let (mut open, mut cells): (Vec<(usize, &str)>, _) = (vec![], HashSet::new());
+    for line in md.lines() {
+        let text = line.trim_start();
+        // Any other line is the rest of a value that has line breaks.
+        let Some(rest) = text.strip_prefix("- ") else {
+            continue;
+        };
+        let depth = line.len() - text.len();
+        open.retain(|o| o.0 < depth);
+        let rest = (rest.strip_prefix('[')).map_or(rest, |r| r.split_once("] ").map_or(r, |r| r.1));
+        let role = rest.split([' ', '"']).next().unwrap_or("");
+        if let (Some(n), "AXTextField", Some((_, "AXCell"))) = (row(text), role, open.last()) {
+            cells.insert(n);
+        }
+        open.push((depth, role));
+    }
+    cells
+}
+
 /// A control's value: the driver gives an empty field's placeholder as one.
 pub(super) fn value(e: &Value) -> Option<&str> {
     e["value"].as_str().filter(|v| e["placeholder"] != *v)

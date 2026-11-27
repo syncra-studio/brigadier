@@ -22,30 +22,60 @@ pub(super) fn scripted(
     if !matches!(keys[..], ["cmd" | "command", "s"]) {
         return None;
     }
+    let greyed = format!("{} greys Save while it's behind the user's window", s.app);
+    let lead = format!("{greyed}, so saving there goes through Apple Events");
+    let unsure = format!("whether {} would save it through Apple Events", s.app);
+    let none = format!(
+        "{greyed}, and {} has no bundle id for Brigadier to save it through. Ask the user to save it.",
+        s.app
+    );
+    let words = (
+        lead.as_str(),
+        unsure.as_str(),
+        none.as_str(),
+        "press it again",
+    );
+    consent(data, s, json!({"pid": s.pid, "keys": keys}), words, here)
+}
+
+/// Why a Finder rename isn't sent: Cua renames through Finder's scripting, which macOS hasn't let
+/// Brigadier do yet, and asking, it asks the user now [D129]. Proposed: the words.
+pub(super) fn renaming(data: &Path, s: &Sess, here: &dyn Fn() -> bool) -> Option<String> {
+    let words = (
+        "Renaming a file in Finder in the background goes through Apple Events",
+        "whether macOS lets Brigadier rename it through Finder's Apple Events",
+        "Finder can't be scripted for it. Ask the user to rename it.",
+        "type it again",
+    );
+    consent(data, s, json!({"pid": s.pid, "scripts": true}), words, here)
+}
+
+/// macOS's Automation answer, from the helper, for a call Cua would carry out by Apple Events:
+/// none needed, or why nothing is sent. The words are (what goes through Apple Events, what
+/// couldn't be told, what to say when the app can't be scripted, what to do again).
+fn consent(
+    data: &Path,
+    s: &Sess,
+    params: Value,
+    (lead, unsure, none, again): (&str, &str, &str, &str),
+    here: &dyn Fn() -> bool,
+) -> Option<String> {
     let app = &s.app;
     // Not knowing may mean a prompt, so nothing goes.
-    let Ok(a) = own(
-        data,
-        "automation",
-        json!({"pid": s.pid, "keys": keys}),
-        here,
-    ) else {
+    let Ok(a) = own(data, "automation", params, here) else {
         return Some(format!(
-            "Brigadier couldn't tell whether {app} would save it through Apple Events, which can make macOS ask the user. Read again, then press it again."
+            "Brigadier couldn't tell {unsure}, which can make macOS ask the user. Read again, then {again}."
         ));
     };
-    let greyed = format!("{app} greys Save while it's behind the user's window");
     match (a["scripted"] == true)
         .then(|| a["status"].as_str())
         .flatten()?
     {
         // Cua refuses a denied app itself, with no prompt.
         "granted" | "denied" => None,
-        "none" => Some(format!(
-            "{greyed}, and {app} has no bundle id for Brigadier to save it through. Ask the user to save it."
-        )),
+        "none" => Some(none.to_string()),
         _ => Some(format!(
-            "{greyed}, so saving there goes through Apple Events, and macOS is asking whether Brigadier may control {app}. Ask the user to answer macOS's prompt, then press it again."
+            "{lead}, and macOS is asking whether Brigadier may control {app}. Ask the user to answer macOS's prompt, then {again}."
         )),
     }
 }

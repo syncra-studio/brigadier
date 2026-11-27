@@ -2,7 +2,8 @@
 //! Return, which in an address bar says whether the page changed [D2032].
 
 use super::act::{act, no_keys, token, wait_for_user};
-use super::{Sess, Words, call, cap, refuse, still, window};
+use super::apps::app_of;
+use super::{Sess, Words, call, cap, refuse, save, still, window};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -34,6 +35,9 @@ pub(super) fn type_into(
             s,
             "Nothing typed, as Return can't follow (type without --submit fills the field)",
         ));
+    }
+    if (s.controls.iter()).any(|c| c.n == n && c.cell) && finder(s.pid) {
+        return rename(data, me, s, n, text, here);
     }
     // `type` replaces: the field is emptied first, else the text goes in at its caret. Not while
     // the user is in the app, and put back if the typing doesn't go through.
@@ -118,6 +122,56 @@ pub(super) fn type_into(
         out = format!("{typed}\n{out}");
     }
     Ok(out)
+}
+
+/// Finder itself, on the sealed system volume: no other app can be at its path.
+fn finder(pid: i64) -> bool {
+    app_of(pid).is_ok_and(|a| a == Path::new("/System/Library/CoreServices/Finder.app"))
+}
+
+/// A file's name in a Finder window: the driver renames the file through Finder, in the
+/// background, given the whole new name, and reads it back from disk. Emptying the field first
+/// would be a rename to "", and a Return opens Finder's rename field, which the driver can't reach.
+fn rename(
+    data: &Path,
+    me: &str,
+    s: &mut Sess,
+    n: u64,
+    text: &str,
+    here: &dyn Fn() -> bool,
+) -> Result<String, Value> {
+    let args = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": text, "session": me});
+    let line = format!("Renamed [{n}] to \"{text}\"");
+    if let Some(no) = save::renaming(data, s, here) {
+        return Err(refuse(&format!("[{n}] isn't renamed: {no}")));
+    }
+    let out = act(data, me, s, &line, "set_value", args, here)?;
+    let first = out.lines().next().unwrap_or("").to_string();
+    if s.batch || first.contains(": refused") || first.contains("the outcome is unknown") {
+        return Ok(out);
+    }
+    // A window sorted by name moves the file's row: it's found again by its new name, never by [n].
+    let found = call(data, "get_window_state", window::state_args(s, me), here);
+    s.moved = true;
+    let said = match found.ok().as_ref().map(|f| named(f, text)) {
+        Some(Some(m)) => {
+            format!("{line}: done, [{m}] reads it back. Read again before using the numbers.")
+        }
+        _ => format!(
+            "{line}: I can't find a file named \"{text}\" in the window to check it. Read it before going on."
+        ),
+    };
+    Ok(out.replacen(&first, &said, 1))
+}
+
+/// The one name cell of a read whose value is `name`.
+fn named(found: &Value, name: &str) -> Option<u64> {
+    let cells = window::in_cells(found["tree_markdown"].as_str().unwrap_or(""));
+    let mut of = (found["elements"].as_array().into_iter().flatten()).filter_map(|e| {
+        let n = e["element_index"].as_u64()?;
+        (cells.contains(&n) && window::value(e) == Some(name)).then_some(n)
+    });
+    of.next().filter(|_| of.next().is_none())
 }
 
 fn set(

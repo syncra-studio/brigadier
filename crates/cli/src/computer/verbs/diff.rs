@@ -3,7 +3,7 @@
 
 use super::open::windows;
 use super::window::{
-    chromium, learn, mask, no_page, page_missing, read, row, state_args, tidy, unresolved,
+    chromium, in_cells, learn, mask, no_page, page_missing, read, row, state_args, tidy, unresolved,
 };
 use super::{Sess, Words, call};
 use serde_json::{Value, json};
@@ -148,10 +148,13 @@ pub(super) struct Control {
     on: Option<bool>,
     at: Option<[f64; 2]>,
     pub(super) reads: Vec<u64>,
+    /// A text field in a table's cell, as a file's name is in Finder.
+    pub(super) cell: bool,
 }
 
 pub(super) fn controls(found: &Value) -> Vec<Control> {
-    let rows = reads(found["tree_markdown"].as_str().unwrap_or(""));
+    let md = found["tree_markdown"].as_str().unwrap_or("");
+    let (rows, cells) = (reads(md), in_cells(md));
     let all = found["elements"].as_array().into_iter().flatten();
     all.map(|e| {
         let s = |k: &str| e[k].as_str().unwrap_or("").to_string();
@@ -165,6 +168,7 @@ pub(super) fn controls(found: &Value) -> Vec<Control> {
             on,
             at: f.map(|f| ["x", "y"].map(|k| f.get(k).and_then(Value::as_f64).unwrap_or(0.0))),
             reads: (rows.get(&n).cloned()).unwrap_or_default(),
+            cell: cells.contains(&n),
         }
     })
     .collect()
