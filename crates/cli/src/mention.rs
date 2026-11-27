@@ -162,7 +162,10 @@ pub fn paths(data: &Path, req: &Value) -> Value {
     let plain = checkout.as_ref().filter(|_| listed.is_none());
     let all = listed.unwrap_or_default();
     let root = (checkout.as_ref()).map_or_else(String::new, |c| format!("{}/", c.root.display()));
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = std::env::home_dir()
+        .unwrap_or_default()
+        .display()
+        .to_string();
     let mut found = serde_json::Map::new();
     for asked in (req["paths"].as_array().into_iter().flatten()).filter_map(Value::as_str) {
         let whole = asked

@@ -287,7 +287,7 @@ fn named(data: &Path, owner: &str, asked: &str) -> Option<PathBuf> {
         return Some(asked.into());
     }
     if let Some(rest) = asked.strip_prefix("~/") {
-        return Some(Path::new(&std::env::var_os("HOME")?).join(rest));
+        return Some(std::env::home_dir()?.join(rest));
     }
     let asked = asked.trim_start_matches("./");
     let checkout = git::checkout(data, &Target::Session(owner)).ok()?;

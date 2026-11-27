@@ -267,7 +267,10 @@ fn named_inside(roots: &[PathBuf], word: &str) -> bool {
     }
     let path = match w.strip_prefix('~') {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => {
-            format!("{}{rest}", std::env::var("HOME").unwrap_or_default())
+            format!(
+                "{}{rest}",
+                std::env::home_dir().unwrap_or_default().display()
+            )
         }
         Some(_) => return false,
         None => w.into(),
