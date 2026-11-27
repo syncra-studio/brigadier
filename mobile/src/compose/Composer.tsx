@@ -91,6 +91,8 @@ const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly
 const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 /** A reply lost with the link: what it asked may have been done. */
 const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
+/** Stopped before the command ran: the Mac's Face ID gate turned it down, so what it asked wasn't done. */
+const unsigned = (reply: Record<string, any>) => ["Needs Face ID", "Turned off for this iPhone on your Mac", "no randomness"].includes(String(reply.error));
 /** The worker a To: sends to, its name as it was picked. */
 type To = { id: string; name: string };
 const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
@@ -434,6 +436,8 @@ export function Composer({ id }: { id: string }) {
   const submitNew = (parts: Draft["parts"], tiles: readonly string[]) => {
     const rest = parts.filter((part) => !isNew(part));
     if (tiles.length > 0) return setError("Remove the files to send this as a new session");
+    // `side` can't take what waits above the field from here [allow.rs], and they'd wait on here too.
+    if (waitingChips.of(id).length > 0) return setError("What waits above the field can't go to a new session from iPhone: send it here first");
     if (isEmpty({ parts: rest, attachmentIds: [] })) return;
     // One string, shown on the sheet and signed as it is.
     const message = plainText(rest).trim();
@@ -453,7 +457,8 @@ export function Composer({ id }: { id: string }) {
       shown: message,
       args,
       then: (reply) => {
-        if (lostReply(reply)) mac.sides.set(key, args);
+        // Only the command's own answer settles it: one lost, or stopped at the signature, keeps its ids.
+        if (lostReply(reply) || unsigned(reply)) mac.sides.set(key, args);
         else mac.sides.delete(key);
         // With `session`, Rust logged it and this thread says how it went; without, nothing was made.
         if (!reply.ok || !reply.session) return setPowerError(reply.ok ? String(reply.message ?? "Refused") : refusal(reply));
