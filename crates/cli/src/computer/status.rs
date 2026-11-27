@@ -84,7 +84,9 @@ pub(super) fn test(
         return Err(io::Error::other("Turn computer use on first."));
     }
     verbs::test_take(rows).map_err(io::Error::other)?;
-    let shot = json!({"pid": pid, "window_id": window, "include_accessibility_tree": false});
+    // Pixels only: a PNG read with no session would also mint the driver's capture, which needs a
+    // session ("capture binding is invalid", Cua 0.54.0) [C130].
+    let shot = json!({"pid": pid, "window_id": window, "include_accessibility_tree": false, "display_only": true});
     let (to, answer) = mpsc::channel();
     let data = data.to_path_buf();
     thread::spawn(move || {
@@ -100,11 +102,16 @@ pub(super) fn test(
     let found = answer.recv_timeout(CALL_WAIT).unwrap_or(Err(Fail::Unknown));
     let why = match found {
         Ok(Ok(found)) if !found["screenshot_file_path"].is_null() => return Ok(json!({"ok": true})),
-        Ok(Ok(found)) => format!(
-            "Couldn't capture Brigadier's window: {}.",
-            (found["screenshot_error"]["code"].as_str()).unwrap_or("no picture came back")
-        ),
-        Ok(Err(why)) | Err(Fail::NotSent(why)) => why,
+        // The driver's own words go to the log; the row gets plain ones (proposed) [C130].
+        Ok(found) => {
+            let raw = match found {
+                Ok(found) => found["screenshot_error"].to_string(),
+                Err(why) => why,
+            };
+            eprintln!("brigadierd: computer test: {raw}");
+            "Couldn't take a test picture of Brigadier's window. Test again in a moment.".into()
+        }
+        Err(Fail::NotSent(why)) => why,
         // Proposed: the capture may be waiting on macOS's own question; it goes on behind.
         Err(Fail::Unknown) => "Brigadier Computer Use didn't answer in time. If macOS asks you to allow it, choose Allow.".into(),
     };
