@@ -359,8 +359,7 @@ impl Fold {
                     self.calls.push(json!({"id": item["id"], "step": item["step"], "name": item["name"], "input": item["input"], "description": item["description"]}));
                 }
                 self.run_started(item, ts);
-                let again = item["step"] == "run"
-                    && (runs::looks(&str_of("input")) || !self.runs.ran.insert(str_of("input")));
+                let again = str_of("step").is_empty() || !self.new_call(item);
                 if let Some(t) = self.turns.first_mut() {
                     t.tool_started(item, ts, again);
                 }
@@ -445,7 +444,7 @@ impl Fold {
                 self.resume.insert(backend, id);
             }
             "context" => self.context = Some(crate::rebirth::reading(self.context.as_ref(), item)),
-            "plan" => self.plan.wrote(&item["steps"]),
+            "plan" => self.planned(&item["steps"]),
             "limits" => {
                 let account = self
                     .accounts

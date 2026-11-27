@@ -191,8 +191,8 @@ fn switching(spec: &Spec, f: &Fold, backend: &str) -> bool {
 }
 
 /// The fresh conversations in a row, this turn's the last, that a cut began and that did nothing
-/// new: no edit, nor a command that does more than look and wasn't run since the last message,
-/// nor a reply [D144]. The user's Continue starts it over.
+/// new: no edit, nor a tool call or to-do list not made since the last message, nor a reply [D144].
+/// The user's Continue starts it over.
 fn empty(f: &Fold, id: &str, switch: &Value, moved: bool) -> u64 {
     let n = switch["empty"].as_u64().unwrap_or(0);
     let going = f.go_on.as_deref() == Some(id);

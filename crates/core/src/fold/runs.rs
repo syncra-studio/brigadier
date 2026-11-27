@@ -5,8 +5,9 @@
 use super::Fold;
 use super::turns::paths_of;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Run {
@@ -86,51 +87,6 @@ pub fn tests_or_builds(line: &str) -> bool {
     })
 }
 
-/// Commands that only look: a line of nothing else is no progress to the rebirth guard, as a read
-/// isn't [D144].
-const LOOKS: &[&str] = &[
-    "git status",
-    "git log",
-    "git diff",
-    "git show",
-    "git branch",
-    "git rev-parse",
-    "ls",
-    "find",
-    "wc",
-    "cat",
-    "head",
-    "tail",
-    "grep",
-    "rg",
-    "echo",
-    "pwd",
-    "sort",
-    "cd",
-    "tree",
-    "file",
-    "stat",
-    "brigadier keep",
-];
-
-/// Whether every command in a line only looks; one that writes a file with `>` doesn't. Taking a
-/// write for a look only stalls sooner, with Continue.
-pub(super) fn looks(line: &str) -> bool {
-    let line = line
-        .replace("2>&1", "")
-        .replace("2>/dev/null", "")
-        .replace(">/dev/null", "");
-    line.split(['&', ';', '|', '\n']).all(|part| {
-        let part = part.trim();
-        part.is_empty()
-            || !part.contains('>')
-                && LOOKS.iter().any(|c| {
-                    part.strip_prefix(c)
-                        .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
-                })
-    })
-}
-
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Runs {
     /// Test and build steps still running, by id: their command.
@@ -142,12 +98,42 @@ pub struct Runs {
     /// them: your own folder's "From the agent" [D1192, D1213].
     #[serde(default)]
     pub agent: BTreeSet<String>,
-    /// The commands run since the last message: one run again is nothing new to the guard [D144].
+    /// The tool calls and to-do lists since the last message: one made again is nothing new to the
+    /// guard [D144].
     #[serde(default)]
     pub ran: BTreeSet<String>,
 }
 
 impl Fold {
+    /// Whether a tool call wasn't made since the last message, the same tool on the same input: one
+    /// made again is no new work to the guard [D144].
+    // shortcut: a search's input is its pattern alone, so one pattern over other paths reads as made
+    // before; key on the CLI's whole input if a long search job stalls.
+    pub(super) fn new_call(&mut self, item: &Value) -> bool {
+        self.new_work(json!([
+            item["name"],
+            item["step"],
+            item["input"],
+            item["command"]
+        ]))
+    }
+
+    /// The agent wrote its to-do list: one that moved is new work to the guard [D144].
+    pub(super) fn planned(&mut self, steps: &Value) {
+        self.plan.wrote(steps);
+        let new = self.new_work(json!(["plan", steps]));
+        if let Some(t) = self.turns.first_mut() {
+            t.moved |= new;
+        }
+    }
+
+    /// Kept as a hash, so a big input doesn't grow the checkpoint.
+    fn new_work(&mut self, work: Value) -> bool {
+        let mut hash = DefaultHasher::new();
+        work.to_string().hash(&mut hash);
+        self.runs.ran.insert(format!("{:016x}", hash.finish()))
+    }
+
     /// A step began: a test or build run waits for its end; an edit after the last run is watched.
     pub(super) fn run_started(&mut self, item: &Value, ts: u64) {
         let id = item["id"].as_str().unwrap_or_default().to_string();
