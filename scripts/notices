@@ -56,7 +56,8 @@ function obligations(expression) {
 }
 
 const run = (cmd, args, cwd, env) => execFileSync(cmd, args, { cwd, env: { ...process.env, ...env }, encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 28, shell: process.platform === "win32" });
+  // pnpm is a .cmd on Windows, which only a shell runs; cargo's `{p}|{l}` must never meet cmd's pipe.
+  stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 28, shell: process.platform === "win32" && cmd === "pnpm" });
 const LICENCE_FILE = /^(licen[cs]e|copying|notice|copyright|unlicense)/i;
 const texts = new Map();
 function licenceFiles(dir) {
