@@ -14,10 +14,11 @@ const preview = (draft: Draft) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** A message with files: the phone can't carry them, so it isn't pulled back to edit here. */
-const hasFiles = (draft: Draft) => draft.attachmentIds.length > 0 || draft.parts.some((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste"));
+/** A message with files, or a file or folder mention (a Mac path the phone may not send): not pulled back to edit here. */
+const hasFiles = (draft: Draft) =>
+  draft.attachmentIds.length > 0 || draft.parts.some((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste" || (part.kind === "mention" && (part.type === "file" || part.type === "folder"))));
 
-export function QueueCard({ items, paused, resuming, steer, canEdit, error, onResume, onSteer, onRemove, onEdit, onAddAgain, onMove }: {
+export function QueueCard({ items, paused, resuming, steer, canEdit, error, onResume, onSteer, onRemove, onEdit, onAddAgain, onMove, pulled }: {
   items: readonly QueuedMessage[];
   paused: boolean;
   /** Resume was asked and hasn't settled: its button waits. */
@@ -34,6 +35,8 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
   onAddAgain: (id: string) => void;
   /** Settles when Rust has the move. */
   onMove: (id: string, to: number) => Promise<void>;
+  /** A message pulled back to edit that isn't this phone's: Put back returns it to its place. */
+  pulled?: { text: string; onPutBack: () => void } | null;
 }) {
   // The order the user made, held by id until every move has settled, so Rust's order never undoes one in flight.
   const [held, setHeld] = useState<{ order: readonly string[]; moving: number } | null>(null);
@@ -47,7 +50,7 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
       .catch(() => {}) // the failure comes back as `error`
       .finally(() => setHeld((now) => (now && now.moving > 1 ? { ...now, moving: now.moving - 1 } : null)));
   };
-  if (items.length === 0) return null;
+  if (items.length === 0 && !pulled) return null;
   return (
     <View style={st.card} accessibilityLabel="Message queue">
       {paused ? (
@@ -55,6 +58,13 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
           <View style={st.dot} />
           <Text style={st.words} numberOfLines={1}>Queue paused because you interrupted</Text>
           <Small title="Resume" disabled={resuming} onPress={onResume} />
+        </View>
+      ) : null}
+      {pulled ? (
+        <View style={st.row}>
+          <Text style={st.words} numberOfLines={1}>{pulled.text.replace(/\s+/g, " ").trim()}</Text>
+          <Text style={st.note} numberOfLines={1}>Being edited</Text>
+          <Small title="Put back" disabled={resuming} onPress={pulled.onPutBack} />
         </View>
       ) : null}
       {shown.map((item, index) => {

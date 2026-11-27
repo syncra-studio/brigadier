@@ -114,15 +114,10 @@ export function Composer({ id }: { id: string }) {
   const [stopping, setStopping] = useState(false);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
-  // A message pulled back to edit that this phone has no record of (a relaunch, or another device): its words come
-  // back if the field is empty, and a send goes back under its id and in its slot, so it never goes twice. One for a
-  // worker or a `!` command isn't this phone's to send.
+  // A message pulled back to edit that this phone can't prove is its own (another device's, or from before a relaunch)
+  // is never claimed: the queue card offers Put back instead.
   const kept = row?.queue?.editing;
-  useEffect(() => {
-    if (!kept || kept.to || kept.shell !== undefined || editing.get()?.qid === kept.id) return;
-    editing.set({ qid: kept.id, slot: kept.slot, text: kept.text });
-    if (isEmpty({ parts: partsNow(), attachmentIds: [] })) setField(kept.parts?.parts ?? [kept.text], false);
-  }, [kept?.id]);
+  const foreign = kept && edits.get(id)?.qid !== kept.id ? kept : null;
   // After a restart the draft is Rust's alone: it comes back unless something was typed first.
   useEffect(() => {
     void drafts.loadDraft(run, id).then((saved) => {
@@ -333,6 +328,17 @@ export function Composer({ id }: { id: string }) {
   // Nothing to send: no words, and nothing waiting above the field.
   const blank = empty && panel.length === 0;
   const state = busy && connected && blank ? "stop" : !running && blank && resumable ? "resume" : "send";
+  // A steer empties the field, which turns the button into Stop before the finger lifts: that release is swallowed.
+  const held = useRef(false);
+  const press = () => {
+    if (held.current) return void (held.current = false);
+    state === "stop" ? stop() : state === "resume" ? resume() : submit(false);
+  };
+  const hold = () => {
+    if (state !== "send" || !running || !canSteer) return press();
+    held.current = true;
+    submit(true);
+  };
   const verb = running && !blank ? "Queue" : "Send message";
   const shownSends = sends(going).filter((each) => !delivered.has(each.cid));
   return (
@@ -352,6 +358,7 @@ export function Composer({ id }: { id: string }) {
           onEdit={edit}
           onAddAgain={(qid) => void sending.again(run, id, lost(qid)!)}
           onMove={move}
+          pulled={foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null}
         />
         {menu?.kind === "/" ? <Commands id={id} query={menu.query} fresh={running} onPick={(command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }))} /> : null}
         {menu?.kind === "@" ? <Mentions id={id} query={menu.query} onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })} /> : null}
@@ -379,8 +386,8 @@ export function Composer({ id }: { id: string }) {
               accessibilityLabel={state === "stop" ? "Stop" : state === "resume" ? "Resume" : verb}
               accessibilityHint={state === "send" && running && canSteer ? "Hold to steer it into the running turn" : undefined}
               disabled={!connected || (state === "send" && blank) || (state === "stop" && stopping) || (state === "resume" && resuming)}
-              onPress={() => (state === "stop" ? stop() : state === "resume" ? resume() : submit(false))}
-              onLongPress={state === "send" && running && canSteer ? () => submit(true) : undefined}
+              onPress={press}
+              onLongPress={hold}
               style={({ pressed }) => [st.send, (pressed || !connected || (state === "send" && blank)) && { opacity: 0.4 }]}
             >
               <Text style={st.sendGlyph}>{state === "stop" ? "■" : state === "resume" ? "▶" : "↑"}</Text>
