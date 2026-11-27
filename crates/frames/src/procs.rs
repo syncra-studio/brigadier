@@ -84,10 +84,14 @@ pub fn descendants(procs: &[Proc], pid: i32) -> Vec<Proc> {
             frontier.push(p.pid);
         }
     }
+    // Each once: a reused pid can name a process's own descendant as its parent.
+    let mut seen: std::collections::HashSet<i32> = frontier.iter().copied().collect();
     while let Some(parent) = frontier.pop() {
         for p in procs.iter().filter(|p| p.ppid == parent) {
-            found.push(*p);
-            frontier.push(p.pid);
+            if seen.insert(p.pid) {
+                found.push(*p);
+                frontier.push(p.pid);
+            }
         }
     }
     found
