@@ -14,7 +14,7 @@ BRIGADIER_BUILD=$BUILD cargo build --release --locked
 pnpm build
 rm -rf target/bin
 mkdir target/bin
-cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,brigadier-remote,libbrigadier_panel.dylib} target/bin/
+cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,brigadier-procs,brigadier-remote,libbrigadier_panel.dylib} target/bin/
 # The daemon's launcher is a small app of its own, so macOS's privacy prompts read as Brigadier and
 # keep their answers by its id, not by each build's path (crates/daemon/src/install.rs).
 LAUNCHER="target/bin/Brigadier.app/Contents"

@@ -201,6 +201,16 @@ name = "brigadier-panel"
 version = "0.1.0"
 
 [[package]]
+name = "brigadier-procs"
+version = "0.1.0"
+dependencies = [
+ "brigadier-frames",
+ "libc",
+ "serde_json",
+ "windows-sys",
+]
+
+[[package]]
 name = "brigadier-remote"
 version = "0.1.0"
 

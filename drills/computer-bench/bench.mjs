@@ -13,7 +13,7 @@
 // Every child but Chrome (a changed HOME has no keychain for it) runs in a home of its own, never the owner's (drills/home.mjs), so Claude's sign-in comes
 // with CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY, or from the .credentials.json of a scratch HOME.
 //
-// BIN=<dir with brigadier and brigadier-fake> (else beside the brigadier on PATH), with BRIGADIER_DATA/SESSION/GRANT.
+// BIN=<dir with brigadier and brigadier-procs> (else beside the brigadier on PATH), with BRIGADIER_DATA/SESSION/GRANT.
 // MODEL (default claude-haiku-5-5) and EFFORT (default medium) are the same for every tool. Each
 // run appends a JSON line to $OUT/<tool>.jsonl (default /tmp/computer-bench) and keeps everything
 // it was scored on in $OUT/raw/<tool>-<task>-<n>: the agent's stream, every `brigadier` call with
@@ -39,7 +39,7 @@ const CHROME = process.env.CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chro
 const PROFILE = process.env.CHROME_PROFILE ?? '/tmp/bcu/chrome'
 const CHROME_PID = `${PROFILE}.pid`
 const BRIGADIER = process.env.BIN ? path.join(process.env.BIN, 'brigadier') : spawnSync('which', ['brigadier'], { encoding: 'utf8' }).stdout.trim()
-const FAKE = path.join(path.dirname(BRIGADIER), 'brigadier-fake')
+const PROCS = path.join(path.dirname(BRIGADIER), 'brigadier-procs')
 const PW_MCP = process.env.PW_MCP // path to @playwright/mcp's cli.js
 // Chrome's headless shell, so the baseline never shows as a second Chrome for Testing to computer use.
 const PW_CHROME = process.env.PW_CHROME ?? `${OWNER}/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell`
@@ -47,10 +47,10 @@ const LIMIT = 6 * 60_000
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // A recorded pid's command now, empty once it's gone: checked before a kill, as a pid may be reused.
 const commandOf = (pid) => spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim()
-const starts = () => JSON.parse(spawnSync(FAKE, ['procs'], { encoding: 'utf8' }).stdout)
+const starts = () => JSON.parse(spawnSync(PROCS, [], { encoding: 'utf8' }).stdout)
 const record = (pid) => ({ pid, start_us: starts()[pid] })
 const stop = (p, signal = 'SIGTERM') => {
-  const ok = !!p?.start_us && spawnSync(FAKE, ['procs', String(p.pid), String(p.start_us), signal], { encoding: 'utf8' }).stdout?.trim() === 'true'
+  const ok = !!p?.start_us && spawnSync(PROCS, [String(p.pid), String(p.start_us), signal], { encoding: 'utf8' }).stdout?.trim() === 'true'
   if (!ok) console.error(`skip pid ${p?.pid}: missing or changed process start time`)
 }
 

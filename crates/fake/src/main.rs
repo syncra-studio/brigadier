@@ -7,7 +7,6 @@ mod control;
 mod directives;
 mod feedback;
 mod generate;
-mod processes;
 mod tool;
 
 use brigadier_frames::log;
@@ -413,7 +412,6 @@ fn main() {
             }
         }
         Some("agent") => agent(&args),
-        Some("procs") => processes::run(&args[1..]),
         Some("--version") => println!("fake 1"),
         Some("gen") => {
             let (dir, bytes) = (PathBuf::from(&args[1]), args[2].parse().unwrap_or(1 << 20));
@@ -426,8 +424,6 @@ fn main() {
                 process::exit(1);
             }
         }
-        _ => eprintln!(
-            "usage: brigadier-fake agent --home DIR [--resume ID] | gen DIR BYTES | procs [PID START_US SIGNAL]"
-        ),
+        _ => eprintln!("usage: brigadier-fake agent --home DIR [--resume ID] | gen DIR BYTES"),
     }
 }
