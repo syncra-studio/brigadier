@@ -119,11 +119,13 @@ pub fn model_ref(spec: &Spec) -> Option<Value> {
     Some(r)
 }
 
-/// Commands Auto still asks before: destructive ones and network installs [D130]. A plain curl
-/// runs; one piped into a shell asks, as OpenCode checks each part of a pipe [D152].
+/// Commands Auto still asks before: destructive ones, in any folder `-C` names, and network
+/// installs [D130, C82]. A plain curl runs; one piped into a shell asks, as OpenCode checks each
+/// part of a pipe [D152].
 const RISKY: &str = concat!(
     "rm *|rmdir *|sudo *|dd *|mkfs*|chmod -R *|chown *|kill *|pkill *|killall *|git push*|",
-    "git reset --hard*|git clean *|git checkout -- *|sh|bash|zsh|sh -s *|bash -s *|npx *|bunx *|bun x *|",
+    "git reset --hard*|git clean *|git checkout -- *|git -C * push*|git -C * reset --hard*|git -C * clean *|",
+    "git -C * checkout -- *|sh|bash|zsh|sh -s *|bash -s *|npx *|bunx *|bun x *|",
     "uvx *|pnpm dlx *|yarn dlx *|npm exec *|pipx *|uv tool *|npm install*|npm i *|npm add *|pnpm add *|pnpm install *|yarn add *|bun add *|pip install *|",
     "pip3 install *|uv add *|cargo install *|brew install *|gem install *",
 );
@@ -189,13 +191,16 @@ pub fn rules(spec: &Spec) -> Value {
     ];
     let mut all = vec![rule("*", "*", "ask")];
     all.extend(free);
+    // Its folders beyond its own, at every level as Claude's --add-dir and Codex's writableRoots
+    // [C73]: in them it asks what it asks in its own folder.
+    for tmp in crate::background::writable(spec) {
+        all.push(rule("external_directory", &format!("{tmp}/*"), "allow"));
+    }
     if spec.level.as_deref() == Some("auto") {
         all.extend(["edit", "shell", "webfetch", "subagent"].map(|a| rule(a, "*", "allow")));
-        for tmp in crate::background::writable(spec) {
-            all.push(rule("external_directory", &format!("{tmp}/*"), "allow"));
-        }
         // OpenCode checks only a command's folder (cd), not the paths it names: a command naming
-        // one asks, and the helper answers it when each resolves inside the project (`inside`).
+        // one asks, and the helper answers it when each resolves inside the project or a folder
+        // it may write (`inside`).
         all.extend(PATHS.map(|p| rule("shell", p, "ask")));
         all.extend(RISKY.split('|').map(|c| rule("shell", c, "ask")));
     }

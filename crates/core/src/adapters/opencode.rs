@@ -252,7 +252,8 @@ impl Adapter for OpenCode {
         let grants: Vec<Value> = (spec.grants.iter())
             .map(|g| json!({"action": g["cli"]["action"], "save": g["cli"]["save"]}))
             .collect();
-        let mut lines = vec![json!({"open": open, "grants": grants, "must": true})];
+        let w = crate::background::writable(spec);
+        let mut lines = vec![json!({"open": open, "grants": grants, "writes": w, "must": true})];
         // With none picked, OpenCode's own default.
         lines.extend(model_ref(spec).map(|m| json!({"model": m, "must": true})));
         lines.push(json!({"permissions": rules(spec), "must": true}));

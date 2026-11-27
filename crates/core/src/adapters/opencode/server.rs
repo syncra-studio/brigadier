@@ -38,6 +38,8 @@ pub(super) struct State {
     pub(super) rules: Value,
     /// Its folder, where its commands and skills are listed.
     dir: String,
+    /// The folders it may write beyond its own [C73].
+    writes: Vec<String>,
     /// Its commands running in the background, by shell id: each one's end wakes the session.
     shells: BTreeSet<String>,
     /// Shells that exited, as their exit can come before their call says it went to the background.
@@ -206,6 +208,7 @@ pub(super) fn command(server: &Server, state: &Shared, c: &Value) -> Result<(), 
         st.newest = super::super::s(&tail["data"][0], &["id"]).into();
         st.grants = c["grants"].as_array().cloned().unwrap_or_default();
         st.dir = super::super::s(&c["open"], &["location", "directory"]).into();
+        st.writes = serde_json::from_value(c["writes"].clone()).unwrap_or_default();
         let dir = st.dir.clone();
         drop(st);
         super::commands::list(server, &dir);
@@ -258,7 +261,9 @@ fn event(server: &Server, state: &Shared, mut v: Value) {
     let d = &v["data"];
     let kind = v["type"].as_str().unwrap_or("").to_string();
     match kind.as_str() {
-        "permission.asked" if granted(&st.grants, d) || inside(&st.rules, &st.dir, d) => {
+        "permission.asked"
+            if granted(&st.grants, d) || inside(&st.rules, &st.dir, &st.writes, d) =>
+        {
             let d = d.clone();
             drop(st);
             return allow(server, &d);

@@ -187,9 +187,10 @@ pub(super) fn granted(grants: &[Value], ask: &Value) -> bool {
     })
 }
 
-/// Whether a shell ask only the Auto path rules made names nothing outside the project: each path,
-/// resolved against it, stays inside [D130, D152]. A risky command's own later rule still asks.
-pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
+/// Whether a shell ask only the Auto path rules made names nothing outside the project and the
+/// folders it may write: each path, resolved against the project, stays inside one [D130, D152,
+/// C82]. A risky command's own later rule still asks.
+pub(super) fn inside(rules: &Value, dir: &str, writes: &[String], ask: &Value) -> bool {
     let rules = rules.as_array().map_or(&[][..], Vec::as_slice);
     let text = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
     let last = |r: &str| {
@@ -197,10 +198,15 @@ pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
             .find(|x| matches(&text(x, "action"), "shell") && matches(&text(x, "resource"), r))
     };
     let resources = ask["resources"].as_array().map_or(&[][..], Vec::as_slice);
-    let roots = [
-        PathBuf::from(dir),
-        std::fs::canonicalize(dir).unwrap_or_default(),
-    ];
+    // The project first: a relative word is joined to it alone; each folder as named and as real.
+    let roots: Vec<PathBuf> = (std::iter::once(dir).chain(writes.iter().map(String::as_str)))
+        .flat_map(|d| {
+            [
+                PathBuf::from(d),
+                std::fs::canonicalize(d).unwrap_or_default(),
+            ]
+        })
+        .collect();
     ask["action"] == "shell"
         && !dir.is_empty()
         && !resources.is_empty()
@@ -217,7 +223,7 @@ pub(super) fn inside(rules: &Value, dir: &str, ask: &Value) -> bool {
 
 /// A command's word, if it names a path, resolved against the project: `~` is home; a redirect's
 /// file (2>/dev/null) and an option's value (--out=/x) count; a word with a variable never is inside.
-fn named_inside(roots: &[PathBuf; 2], word: &str) -> bool {
+fn named_inside(roots: &[PathBuf], word: &str) -> bool {
     let w = word.trim_matches(['\'', '"']);
     let w = w
         .rfind(['<', '>'])
