@@ -10,6 +10,8 @@ import { EMPTY_DRAFT, plainText } from "../../vendor/brigadier-shared/draft";
 import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../../vendor/brigadier-shared/session/model";
 import { failure } from "../../vendor/brigadier-shared/session/run";
 import { Confirm } from "../act/Confirm";
+import { Button } from "../Button";
+import { streamNow } from "../link";
 import { effortLabel } from "../compose/Model";
 import { forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
@@ -19,10 +21,11 @@ import { color, text } from "../theme";
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 export function Start({ project, name, onStarted }: { project: string; name: string; onStarted: (id: string, title: string) => void }) {
-  const { run, drafts } = forMac();
+  const { run, drafts, unsaved } = forMac();
   const key = `@home:${project}`;
   const header = useHeaderHeight();
-  const connected = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
+  const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
+  const connected = conn >= 0;
   const [words, setWords] = useState(() => plainText(drafts.draftOf(key)?.parts ?? []));
   const words$ = useRef(words);
   const put = (next: string) => {
@@ -30,18 +33,26 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     setWords(next);
   };
   const [error, setError] = useState<string | null>(null);
-  const [asking, setAsking] = useState<string[] | null>(null);
-  // Kept while no answer says it went or came back, so Start again asks under the same ids.
-  const ids = useRef<{ id: string; cid: string } | null>(null);
+  // The start being signed, as it goes and as the sheet shows it; `field`: its words are the field's.
+  const [asking, setAsking] = useState<{ args: string[]; model: string; field: boolean } | null>(null);
+  // A start whose outcome the phone can't settle: `open`, its session holds the message; else Try again sends the same
+  // command under the same ids, or Discard takes it back. The field is free meanwhile.
+  const [held, setHeld] = useState<{ args: string[]; model: string; error: string; open: boolean; busy?: boolean } | null>(null);
 
   useEffect(() => {
     void drafts.loadDraft(run, key).then((saved) => saved && !words$.current.trim() && put(plainText(saved.parts)));
   }, []);
-  // Given back: the field held just what was sent (the sheet was over it), so the words take its place.
+  // A read or save refused while away goes now, as the session composer does.
+  useEffect(() => {
+    if (connected && unsaved.delete(key)) drafts.resyncDraft(run, key);
+  }, [conn]);
+  // Given back, its words go above what's typed since, never over it [D363].
   useEffect(() =>
     drafts.onGiven(key, (back) => {
-      put(plainText(back.parts));
-      return { parts: back.parts, attachmentIds: [] };
+      const typed = words$.current;
+      const next = typed.trim() ? `${plainText(back.parts)}\n\n${typed}` : plainText(back.parts);
+      put(next);
+      return { parts: next ? [next] : [], attachmentIds: [] };
     }),
   );
   const typed = (next: string) => {
@@ -79,29 +90,50 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
     setError(null);
-    ids.current ??= { id: sessionId(), cid: newId() };
-    const { id, cid } = ids.current;
     const draft = { parts: [words$.current], attachmentIds: [] };
-    setAsking(["start", id, "--project", project, "--cid", cid, "--draft", JSON.stringify(draft), "--draft-rev", String(drafts.revOf(key)), "--text", message, "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : [])]);
+    const args = ["start", sessionId(), "--project", project, "--cid", newId(), "--draft", JSON.stringify(draft), "--draft-rev", String(drafts.revOf(key)), "--text", message, "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : [])];
+    setAsking({ args, model: shown(choice), field: true });
   };
+  const textOf = (args: string[]) => args[args.indexOf("--text") + 1]!;
   /** The start's reply, read by its outcome as the desktop's `land`, never by the session merely existing. */
-  const land = (args: string[], reply: Record<string, any> | null) => {
+  const land = (sent: { args: string[]; model: string; field: boolean }, reply: Record<string, any> | null) => {
     setAsking(null);
     if (!reply) return;
+    const { args } = sent;
     const [id, cid] = [args[1]!, args[5]!];
+    // Refused before it ran (no Face ID, not from the phone, turned off): the field keeps its words.
+    const ran = reply.ok || reply.given_back || reply.went || reply.result !== undefined || "logged" in reply || reply.unsettled || reply.session || reply.left || reply.error === "closed";
+    if (!ran) return setError(failure(reply));
+    setError(null);
+    // It left the field: what's typed from now on is another message.
+    if (sent.field) put("");
     if (reply.given_back) {
-      // Its session is gone, Rust says: its words are this draft's again. New ids for the next try.
-      ids.current = null;
+      // Its session is gone, Rust says: its words are this draft's again, above what's typed.
+      setHeld(null);
       if (reply.again || !Array.isArray(reply.parts)) drafts.resyncDraft(run, key);
       else drafts.takeBack(run, key, { cid: reply.cid ?? cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: failure(reply), typed: reply.typed });
-      return setError(failure(reply));
+      // A Discard's give-back is no refusal: nothing to say then.
+      return setError(reply.message || reply.error ? failure(reply) : null);
     }
-    const went = reply.ok || reply.logged === true || reply.went || ["delivered", "logged", "went", "settled"].includes(reply.result);
-    if (!went) return setError(reply.error === "closed" ? "The connection to your Mac ended before it answered. Check your sessions before you start this again." : failure(reply));
-    ids.current = null;
-    put("");
-    drafts.keepDraft(run, key, EMPTY_DRAFT);
-    onStarted(id, args[args.indexOf("--text") + 1]!.split("\n")[0]!.slice(0, 80));
+    if (sent.field) drafts.keepDraft(run, key, EMPTY_DRAFT);
+    const delivered = reply.result === "delivered" || (reply.ok && reply.result === undefined) || reply.went || reply.result === "went" || reply.result === "settled";
+    if (delivered) {
+      setHeld(null);
+      return onStarted(id, textOf(args).split("\n")[0]!.slice(0, 80));
+    }
+    // In its session's log, its agent not confirming it, or refusing it: the session shows how it went.
+    const logged = reply.result === "logged" || reply.logged === true;
+    const why = reply.result === "logged" ? String(reply.error ?? "It reached the log, but not the agent.") : String(reply.why ?? failure(reply));
+    setHeld({ args, model: sent.model, open: logged, error: reply.error === "closed" ? "The connection to your Mac ended before it answered, so it may have started." : why });
+  };
+  /** Discard: Rust takes the start back (`drop`), its words into this draft, or says it went after all. */
+  const discard = (args: string[]) => {
+    setHeld((now) => now && { ...now, busy: true });
+    void run(["draft", key, "drop", args[5]!]).then((reply) => {
+      if (reply.given_back || reply.went) return land({ args, model: "", field: false }, reply);
+      if (reply.ok) return setHeld(null);
+      setHeld((now) => now && { ...now, busy: false, error: `Couldn't discard it: ${failure(reply)}` });
+    });
   };
 
   const ready = connected && !!choice && words.trim() !== "";
@@ -121,13 +153,29 @@ export function Start({ project, name, onStarted }: { project: string; name: str
           </View>
         </View>
         {error && <Text style={st.error}>{error}</Text>}
+        {held && (
+          <View style={st.held}>
+            <Text style={st.pillText} numberOfLines={2}>{textOf(held.args)}</Text>
+            <Text style={st.error}>{held.error}</Text>
+            <View style={{ gap: 8 }}>
+              {held.open ? (
+                <Button title="Open the session" secondary onPress={() => onStarted(held.args[1]!, textOf(held.args).split("\n")[0]!.slice(0, 80))} />
+              ) : (
+                <>
+                  <Button title="Try again" secondary disabled={held.busy || !connected} onPress={() => setAsking({ args: held.args, model: held.model, field: false })} />
+                  <Button title="Discard" secondary disabled={held.busy || !connected} onPress={() => discard(held.args)} />
+                </>
+              )}
+            </View>
+          </View>
+        )}
       </SafeAreaView>
-      {asking && choice && (
+      {asking && (
         <Confirm
           title="Start this chat on your Mac?"
-          body={`In ${name}, on ${shown(choice)}.`}
-          shown={asking[asking.indexOf("--text") + 1]!}
-          args={asking}
+          body={`In ${name}, on ${asking.model}.`}
+          shown={textOf(asking.args)}
+          args={asking.args}
           onDone={(reply) => land(asking, reply)}
         />
       )}
@@ -146,4 +194,5 @@ const st = StyleSheet.create({
   sendGlyph: { fontSize: 16, fontWeight: "700", color: color.primaryFg },
   muted: { ...text.sm, color: color.mutedForeground },
   error: { ...text.sm, color: color.destructive },
+  held: { gap: 8, borderRadius: 12, backgroundColor: color.fill, padding: 12 },
 });
