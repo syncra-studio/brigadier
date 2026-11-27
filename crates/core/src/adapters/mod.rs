@@ -337,6 +337,12 @@ pub trait Adapter: Sync {
     fn cheap(&self, _current: Option<&str>, _models: &[ModelInfo]) -> Option<String> {
         None
     }
+    /// The cheapest of `models` for a review's quick look, a one-shot whose launch with the
+    /// `sealed` opt blocks every tool, its CLI's own too. None: it can't, so there is no quick
+    /// look and the change gets a full review [beat-competitors D56].
+    fn glance(&self, _models: &[ModelInfo]) -> Option<String> {
+        None
+    }
     /// Its entries in the default jobs, as (job, model id or versionless family, effort), in its
     /// order; routing keeps the ones its list names [D392 P1].
     fn seeds(&self) -> &'static [Seed] {

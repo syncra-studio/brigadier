@@ -41,6 +41,15 @@ impl Adapter for Codex {
         ]
     }
 
+    /// Its newest GPT Luna, its small model; `sealed` turns its tools off at launch (control.rs).
+    fn glance(&self, models: &[super::ModelInfo]) -> Option<String> {
+        let luna = |m: &&super::ModelInfo| super::family(&m.name).filter(|f| f.0 == "gptluna");
+        let newest = models.iter().filter_map(|m| Some((luna(&m)?.1, m)));
+        newest
+            .max_by(|a, b| a.0.cmp(&b.0))
+            .map(|(_, m)| m.id.clone())
+    }
+
     // `agents.default_subagent_*` are defaults its `spawn_agent` overrides [D376].
     fn draws_first(&self) -> bool {
         true

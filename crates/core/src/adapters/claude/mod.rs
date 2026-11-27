@@ -244,7 +244,7 @@ impl Adapter for Claude {
         control::own(spec, &mut env);
         mcp::launch(spec, &mut argv, &mut env);
         // The queue's judge has no tools (code.claude.com/docs/en/cli-reference) [D771].
-        if spec.opts.contains_key("no_tools") {
+        if spec.opts.contains_key("no_tools") || spec.opts.contains_key("sealed") {
             argv.extend(["--tools".into(), "".into()]);
         }
         Launch {
@@ -464,6 +464,10 @@ impl Adapter for Claude {
     /// Its small model, by its family's name [D1029].
     fn cheap(&self, _current: Option<&str>, models: &[ModelInfo]) -> Option<String> {
         ModelInfo::of_family(models, "haiku").map(|m| m.id.clone())
+    }
+
+    fn glance(&self, models: &[ModelInfo]) -> Option<String> {
+        self.cheap(None, models)
     }
 
     fn forget(&self, spec: &Spec, resume: &str) -> Result<(), String> {

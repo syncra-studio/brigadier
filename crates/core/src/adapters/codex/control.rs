@@ -8,6 +8,10 @@ use serde_json::{Value, json};
 /// never in its config [D215]. Ask asks before every edit and command [D153]; Auto asks only to
 /// leave the sandbox, and its auto reviewer answers.
 fn level(spec: &Spec) -> (&'static str, &'static str, &'static str, &'static str) {
+    // A sealed one-shot asks nothing and may write nothing: its patch tool is refused [D56].
+    if spec.opts.contains_key("sealed") {
+        return ("never", "user", "read-only", "readOnly");
+    }
     match spec.level.as_deref() {
         Some("full") => ("never", "user", "danger-full-access", "dangerFullAccess"),
         Some("auto") => (
@@ -95,8 +99,34 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
             }
         }
     }
+    // Sealed: every tool its config can turn off is off; what's left (its patch tool, refused by
+    // the read-only sandbox, and image viewing) ends the run at its first use (writer.rs).
+    if spec.opts.contains_key("sealed") {
+        for f in SEALED {
+            open["config"][format!("features.{f}")] = false.into();
+        }
+        open["config"]["web_search"] = "disabled".into();
+        open["config"]["tools.update_plan.enabled"] = false.into();
+    }
     open
 }
+
+/// The tools a sealed one-shot turns off, by `codex features list` (0.172) [beat-competitors D56].
+const SEALED: &[&str] = &[
+    "shell_tool",
+    "image_generation",
+    "multi_agent",
+    "multi_agent_v2",
+    "computer_use",
+    "browser_use",
+    "browser_use_external",
+    "in_app_browser",
+    "goals",
+    "sleep_tool",
+    "tool_suggest",
+    "apps",
+    "plugins",
+];
 
 /// A worker's overrides: no plugins, apps, skills or MCP servers of its own [D89].
 /// Codex can't turn its compaction off, so it keeps its own late one [D98].
