@@ -155,13 +155,19 @@ pub fn switch(
     let resume = (!fresh)
         .then(|| f.resume.get(to.backend).map(String::as_str))
         .flatten();
-    let launch = a.launch(&run, resume, Some(&text));
+    // The message replayed goes with its own parts, as every resend of one does (O72).
+    let replay = (!fresh && proof).then(|| crate::message::again(spec, &text, &last["parts"]));
+    let agent = replay.as_ref().map_or(text.as_str(), |m| m.agent.as_str());
+    let launch = a.launch(&run, resume, Some(agent));
     let env: serde_json::Map<String, Value> =
         launch.env.into_iter().map(|(k, v)| (k, v.into())).collect();
-    let req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
+    let mut req = json!({"op": "spawn", "cid": format!("sw-{}", last["ts"]), "origin": origin, "text": text,
         "backend": to.backend, "retry_of": last["cid"], "switch": switch, "setup": setup, "review": spec.review, "argv": launch.argv, "env": env,
         "cwd": spec.cwd, "keep_stdin": launch.keep_stdin, "input": launch.input,
         "cli_version": cli_version(spec, a), "replace": true, "if_len": len});
+    if let Some(parts) = replay.map(|m| m.parts).filter(|p| !p.is_null()) {
+        req["parts"] = parts;
+    }
     if !still() {
         return json!({"ok": false, "error": "off", "message": "Automatic switching was turned off."});
     }

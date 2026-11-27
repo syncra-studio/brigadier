@@ -3,7 +3,7 @@
 
 use super::{Call, Running, send};
 use crate::fold::{self, Fold, Live};
-use crate::message::Message;
+use crate::message::{Message, again};
 use crate::{Spec, adapters, as_run, sweep};
 use brigadier_frames::{log, procs};
 use serde_json::{Value, json};
@@ -404,27 +404,6 @@ fn unconfirmed(spec: &Spec, f: &Fold, child: Running, call: Call) -> Result<Back
         }
     }
     Ok(back)
-}
-
-/// A message sent again as it was first sent, its files already in the session's folder, still
-/// naming the steers a Recover gave back with it [D66].
-fn again(spec: &Spec, text: &str, parts: &Value) -> Message {
-    let mut own = parts.clone();
-    if let Some(p) = own.as_object_mut() {
-        p.remove("back");
-        if p.is_empty() {
-            own = Value::Null;
-        }
-    }
-    let mut msg =
-        crate::message::compose(spec, text, own, None).unwrap_or_else(|_| Message::plain(text));
-    if parts["back"].is_array() {
-        if !msg.parts.is_object() {
-            msg.parts = json!({});
-        }
-        msg.parts["back"] = parts["back"].clone();
-    }
-    msg
 }
 
 /// `msg` with the steers it carries already and those `back` gives back now, in the order they

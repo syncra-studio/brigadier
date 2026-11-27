@@ -3,8 +3,10 @@
 //! an image in the agent's own form, any other file as its path, a long paste whole, a mention as
 //! the old app's line [D2007, D2008, D2021].
 
+mod again;
 pub mod answers;
 pub mod notes;
+pub use again::again;
 
 use crate::{Spec, check_id, data_of, session_dir};
 use serde_json::Value;
