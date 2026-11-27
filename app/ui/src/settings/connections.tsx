@@ -10,8 +10,8 @@ import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
 import { ChatCompose, CheckCircle, Desktop, Reload, Sparkle, Sun } from "../icons";
 import { errorText, run } from "../onboarding/api";
-import { ago } from "../panel/words";
 import { useSave } from "./general";
+import { type Device, DeviceRow } from "./connections-device";
 import { SettingsPage, SettingsSection } from "./parts";
 
 /** The Connections page's rows, for the page and for Settings search (the reference's words, design §1) [D45]. */
@@ -29,7 +29,7 @@ type Status = {
   offer: { url: string; code: string | null; svg: string; expires: number } | null;
   pending: { device: string; check: string } | null;
   warning: "reused" | null;
-  devices: { id: string; name: string; model: string; os: string; paired: number; seen: number | null }[];
+  devices: Device[];
   /** null until the daemon can hold the Mac awake for the phone (M5): the toggle hides. */
   awake: boolean | null;
 };
@@ -143,12 +143,7 @@ export function ConnectionsPage() {
               <Switch aria-label={CONNECTIONS_ROWS.allow.label} checked={on} disabled={wanted !== null} onCheckedChange={allow} />
             </SettingsRow>
             {devices.map((device) => (
-              <div key={device.id} data-slot="remote-device" className="flex items-center gap-3 px-4 py-3">
-                <RowText title={device.name} line={`${device.os} ${device.model} · Last connected ${ago(device.seen ?? device.paired, Date.now())}`} />
-                <Button variant="soft" size="sm" onClick={() => revoke(device.id)}>
-                  Revoke access
-                </Button>
-              </div>
+              <DeviceRow key={device.id} device={device} revoke={() => revoke(device.id)} load={load} />
             ))}
           </SettingsCard>
         )}
