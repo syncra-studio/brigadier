@@ -72,7 +72,8 @@ fn accept(listener: TcpListener, daemon: &Daemon, peers: &Peers) {
             continue;
         }
         // A peer that stops reading holds up no one else for long.
-        let _ = conn.set_write_timeout(Some(Duration::from_secs(5)));
+        // Well under the daemon's 5 s, so one slow phone is dropped before the daemon gives up on us.
+        let _ = conn.set_write_timeout(Some(Duration::from_secs(1)));
         let Ok(writer) = conn.try_clone() else {
             continue;
         };

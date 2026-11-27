@@ -11,6 +11,13 @@ brigadier = { path = "../cli" }
 brigadier-core = { path = "../core" }
 brigadier-frames = { path = "../frames" }
 libc.workspace = true
+base64 = "=0.23.1"
+getrandom = "=0.4.3"
+hkdf = "=0.13.0"
+p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "std"] }
+qrcode = { version = "=0.15.0", default-features = false, features = ["svg"] }
+sha2 = "=0.11.1"
+snow = { version = "=0.10.0", default-features = false, features = ["use-chacha20poly1305", "use-sha2", "use-curve25519", "use-getrandom"] }
 serde_json.workspace = true
 
 [[bin]]

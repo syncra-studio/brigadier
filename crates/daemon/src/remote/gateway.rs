@@ -1,10 +1,12 @@
 //! Starts `brigadier-remote` beside this daemon's program, under its Seatbelt profile, with fd 3
 //! its end of a socket pair and fd 4 the TCP listener bound here on every interface, at the port
 //! last used (`data/remote/port`) or a free one. Frames on the pair are `[stream u32][kind u8]
-//! [len u16][bytes]`: kind 0 data, 1 a peer's opening (its address), 2 a close.
+//! [len u16][bytes]`: kind 0 data, 1 a peer's opening (its address), 2 a close; each goes to
+//! `link` under the remote state's lock.
 
-use super::bonjour;
+use super::{STATE, State, bonjour, link};
 use std::io::{self, Read, Write};
+use std::net::Shutdown;
 use std::net::TcpListener;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -12,15 +14,21 @@ use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use std::{fs, thread};
 
 const PROFILE: &str = include_str!("../../../remote-gateway/sandbox.sb");
-const DATA: u8 = 0;
-const CLOSE: u8 = 2;
+pub(super) const DATA: u8 = 0;
+pub(super) const OPEN: u8 = 1;
+pub(super) const CLOSE: u8 = 2;
+/// Proposed: a gateway that takes no frame for this long is stuck, and is started again: the
+/// daemon never waits on it with the remote state locked for longer.
+const STUCK: Duration = Duration::from_secs(5);
 
 pub(super) struct Gateway {
     child: Child,
     pub(super) port: u16,
+    pub(super) out: Arc<Mutex<UnixStream>>,
     _bonjour: bonjour::Registration,
 }
 
@@ -83,26 +91,36 @@ pub(super) fn start(data: &Path) -> io::Result<Gateway> {
     };
     let child = command.spawn()?;
     let bonjour = bonjour::register(port)?;
-    let writer = Arc::new(Mutex::new(ours.try_clone()?));
-    thread::spawn(move || pump(ours, &writer));
+    let out = ours.try_clone()?;
+    out.set_write_timeout(Some(STUCK))?;
+    let out = Arc::new(Mutex::new(out));
+    thread::spawn(move || pump(ours));
     Ok(Gateway {
         child,
         port,
+        out,
         _bonjour: bonjour,
     })
 }
 
-fn send(to: &Mutex<UnixStream>, stream: u32, kind: u8, bytes: &[u8]) -> io::Result<()> {
+/// One frame to the gateway; a gateway that's gone or stuck drops it and is cut off, and the
+/// pass starts another.
+pub(super) fn send(s: &State, stream: u32, kind: u8, bytes: &[u8]) {
     let mut frame = Vec::with_capacity(7 + bytes.len());
     frame.extend(stream.to_be_bytes());
     frame.push(kind);
     frame.extend((bytes.len() as u16).to_be_bytes());
     frame.extend(bytes);
-    to.lock().unwrap().write_all(&frame)
+    if let Some(out) = &s.out {
+        let out = out.lock().unwrap();
+        if (&*out).write_all(&frame).is_err() {
+            let _ = out.shutdown(Shutdown::Both);
+        }
+    }
 }
 
-/// The gateway's frames, until it goes. Nothing is served yet: every peer is told "not yet".
-fn pump(mut from: UnixStream, to: &Mutex<UnixStream>) {
+/// The gateway's frames, until it goes.
+fn pump(mut from: UnixStream) {
     let mut head = [0; 7];
     while from.read_exact(&mut head).is_ok() {
         let stream = u32::from_be_bytes([head[0], head[1], head[2], head[3]]);
@@ -110,9 +128,6 @@ fn pump(mut from: UnixStream, to: &Mutex<UnixStream>) {
         if from.read_exact(&mut bytes).is_err() {
             break;
         }
-        if head[4] == DATA {
-            let _ = send(to, stream, DATA, b"not yet");
-            let _ = send(to, stream, CLOSE, &[]);
-        }
+        link::frame(&mut STATE.lock().unwrap(), stream, head[4], &bytes);
     }
 }
