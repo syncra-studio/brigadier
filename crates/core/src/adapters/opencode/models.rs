@@ -192,3 +192,45 @@ fn keep_keys(integrations: &Value) {
         }
     }
 }
+
+/// The company that made a model, from every word of its id: `anthropic/claude-sonnet-4-5`, a
+/// gateway's `openrouter/anthropic/claude-…`, `amazon-bedrock/anthropic.claude-…`,
+/// `github-copilot/gpt-…` (opencode.ai/docs/providers, read 2026-11-27). None where no word names
+/// one, or two name different ones: never taken for another company [bugfix-1112 D399].
+pub(super) fn maker(id: &str) -> Option<&'static str> {
+    const MAKERS: &[(&str, &[&str])] = &[
+        ("Anthropic", &["anthropic", "claude"]),
+        ("OpenAI", &["openai", "gpt", "codex"]),
+        ("Google", &["google", "gemini", "gemma"]),
+        ("xAI", &["xai", "grok"]),
+        (
+            "Mistral",
+            &[
+                "mistral",
+                "devstral",
+                "codestral",
+                "magistral",
+                "ministral",
+                "pixtral",
+            ],
+        ),
+        ("DeepSeek", &["deepseek"]),
+        ("Alibaba", &["alibaba", "qwen"]),
+        ("Meta", &["meta", "llama"]),
+        ("Moonshot", &["moonshot", "kimi"]),
+        ("Z.ai", &["zai", "zhipu", "glm"]),
+        ("MiniMax", &["minimax"]),
+    ];
+    let lower = id.to_lowercase();
+    let words = lower.split(|c: char| !c.is_ascii_alphanumeric());
+    let mut found = words.filter_map(|w| {
+        // OpenAI's reasoning models are named o1, o3, o4 alone.
+        let o = matches!(w, "o1" | "o3" | "o4");
+        (MAKERS.iter())
+            .find(|(_, names)| names.iter().any(|n| w.starts_with(n)))
+            .map(|m| m.0)
+            .or(o.then_some("OpenAI"))
+    });
+    let first = found.next()?;
+    found.all(|m| m == first).then_some(first)
+}

@@ -33,7 +33,7 @@ export const ROUTING_ROWS = {
   jobs: { label: "Jobs", description: "Your agents start each worker on the job that fits. Each job tries its models in your order: the next runs only when one is out of quota or can't run." },
   review: {
     label: "Adversarial review",
-    description: "Another agent reviews each worker's code, and each plan before it's acted on, and tries to break it: the first model in your Review job on another agent than the author's.",
+    description: "Another agent reviews each worker's code, and each plan before it's acted on, and tries to break it: the first model in your Review job on another agent and of another company than the author's.",
   },
   images: { label: "Images", description: "Images your agents are asked to make or edit go to this model first, else to another that makes images." },
   rules: { label: "Rules", description: "Every model Brigadier starts follows these" },

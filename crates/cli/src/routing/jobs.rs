@@ -347,7 +347,7 @@ pub(crate) fn said(t: &Value) -> String {
     }
     if let Some(r) = named(&jobs, REVIEW) {
         text += &format!(
-            "  {REVIEW}, for --reviewing and the Adversarial review switch, on another agent than the author's:\n    {}\n",
+            "  {REVIEW}, for --reviewing and the Adversarial review switch, on another agent and company than the author's:\n    {}\n",
             entries(r)
         );
     }

@@ -40,7 +40,7 @@ pub(super) fn plan_of(data: &Path, me: &str, mark: Value) -> Result<Plan, Value>
         brief,
         title: "Adversarial review of the plan".into(),
         base: None,
-        authors: vec![crate::models::next_agent(&spec, &f.fold).to_string()],
+        authors: super::task::authors(&spec),
         mark,
     })
 }

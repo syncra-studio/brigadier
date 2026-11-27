@@ -92,14 +92,15 @@ impl Adapter for OpenCode {
     fn label(&self) -> &'static str {
         "OpenCode"
     }
-
+    fn maker(&self, model: &str) -> Option<&'static str> {
+        models::maker(model)
+    }
     fn subagents(&self) -> super::Subagents {
         super::Subagents::Defaults
     }
     fn bin(&self) -> (&'static str, &'static [&'static str]) {
         ("opencode", &[".opencode/bin"])
     }
-
     fn install(&self) -> Option<&'static str> {
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }

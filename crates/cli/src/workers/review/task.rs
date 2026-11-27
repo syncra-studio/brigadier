@@ -61,6 +61,27 @@ pub(crate) fn at(data: &Path, id: &str) -> Value {
     json!({"": git(&cwd, &["rev-parse", "HEAD"])})
 }
 
+/// Every model a session's work may be by, each `{agent, model}`: its start's and each one an input
+/// of its log ran on, so a review is by another company than all of them [bugfix-1112 D399, D32 a].
+pub(super) fn authors(spec: &core::Spec) -> Vec<Value> {
+    let start = json!({"agent": spec.backend, "model": spec.model.as_deref().unwrap_or("")});
+    let mut out = vec![start];
+    let _ = core::read(&spec.dir, |i| {
+        if i["kind"] != "input" {
+            return;
+        }
+        let agent = i["backend"]
+            .as_str()
+            .filter(|b| !b.is_empty())
+            .unwrap_or(&spec.backend);
+        let a = json!({"agent": agent, "model": i["setup"]["model"].as_str().unwrap_or("")});
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    });
+    out
+}
+
 /// What its parent or the user asked it after `since` (ms), or after its brief where that's none.
 fn asked_since(data: &Path, wid: &str, l: &Link, since: Option<u64>) -> String {
     let mut asked = vec![];
@@ -103,7 +124,7 @@ pub(crate) fn plan(
     let named = ["--job", "--agent", "--model", "--effort", "--retry"];
     if let Some(f) = named.into_iter().find(|f| flags(f).is_some()) {
         return Err(refuse(&format!(
-            "--reviewing takes no {f}: a review runs on your Review job, on another agent than the author's."
+            "--reviewing takes no {f}: a review runs on your Review job, on another agent and company than the author's."
         )));
     }
     let switch = flags(SWITCH).is_some();
@@ -132,9 +153,8 @@ pub(crate) fn plan(
                 "`brigadier start --reviewing session \"<plan>\"` needs the plan or work to review, in quotes: your session has no brief of its own.",
             ));
         }
-        let f = core::fold(&spec.dir, true).map_err(|e| refuse(&e.to_string()))?;
-        // Its author is the session's own agent [D385, §6].
-        let authors = vec![crate::models::next_agent(&spec, &f.fold).to_string()];
+        // Its authors are every model the session ran [D385, §6, bugfix-1112 D399].
+        let authors = authors(&spec);
         let task = task.map_or(String::new(), |t| {
             format!("\n\nIts task, as it was given:\n{}", t.trim_end())
         });
@@ -197,9 +217,10 @@ pub(crate) fn plan(
         l.brief.trim_end(),
         work.trim_end()
     );
-    let authors = (l.ran["agent"].as_str().map(String::from))
-        .into_iter()
-        .collect();
+    let authors = match core::load(data, of) {
+        Ok(spec) => authors(&spec),
+        Err(_) => vec![json!({"agent": l.ran["agent"], "model": l.ran["model"]})],
+    };
     let title = format!("Adversarial review of {}", l.title);
     let heads = spans
         .iter()

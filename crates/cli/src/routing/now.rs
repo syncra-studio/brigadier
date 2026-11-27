@@ -64,7 +64,9 @@ pub(super) fn now(data: &Path, groups: &[Value], t: &Value) -> Value {
         }
         let review = j["name"] == jobs::REVIEW;
         let runs = match (runs, first) {
-            (Some(_), _) if review => "Runs the first not on the author's agent".into(),
+            (Some(_), _) if review => {
+                "Runs the first not on the author's agent or of its company".into()
+            }
             (Some(r), None) => format!("Runs {r}"),
             (Some(r), Some(passed)) => format!("{passed}, runs {r}"),
             (None, _) if entries.is_empty() => "No model yet".into(),

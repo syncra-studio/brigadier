@@ -17,14 +17,20 @@ pub(crate) struct Pick {
     pub hold: Value,
 }
 
+/// Why a Review entry is passed by as its author's [D385, bugfix-1112 D399].
+const SAME_AGENT: &str = "is on its author's agent";
+const SAME_COMPANY: &str = "is of its author's company";
+const NO_COMPANY: &str = "is of a company that can't be told from its author's";
+
 /// The pick for a worker of `parent` [D339, D387]: the agent's `--model` when it's allowed
 /// (refused with the reason otherwise, never replaced), else its `--job`'s order; the first entry
 /// with an account that has room, a later one with a note [D375]. A start naming neither is
 /// refused with the user's jobs. `--agent` takes the job's entries on it, else its
 /// default model; `--effort` applies to the entry taken [D392 P4]. Runs under the data dir's lock,
-/// so the reservation it makes is seen by the next. A review's (`review`: its authors' agents) is
-/// the Review job's first entry on another agent, at its effort, high where it names none; it never holds:
-/// none placed, it doesn't run [D385, D3026].
+/// so the reservation it makes is seen by the next. A review's (`review`: its authors, each
+/// `{agent, model}`) is the Review job's first entry on another agent and of another company, at
+/// its effort, high where it names none; it never holds: none placed, it doesn't run [D385, D3026,
+/// bugfix-1112 D399]. A company that can't be told is never taken for another one.
 /// Where the agent finds the models that make images.
 const DRAWING: &str = "`brigadier models` marks the ones that make images.";
 
@@ -35,7 +41,7 @@ pub(crate) fn resolve(
     f: &Fold,
     flags: &dyn Fn(&str) -> Option<String>,
     wid: &str,
-    review: Option<&[String]>,
+    review: Option<&[Value]>,
 ) -> Result<Pick, Value> {
     let refuse = |m: &str| workers::refuse(m);
     let (agent, model, effort) = (flags("--agent"), flags("--model"), flags("--effort"));
@@ -57,14 +63,20 @@ pub(crate) fn resolve(
     }
     let name = job.as_ref().map(|j| str_of(j, "name").to_string());
     let mine = models::next_agent(parent, f).to_string();
-    let by: Vec<String> = (review.into_iter().flatten())
-        .map(|a| {
-            adapters::get(a)
-                .map_or(a.as_str(), |x| x.short_label())
-                .to_string()
-        })
-        .collect();
+    let maker =
+        |e: &Value| adapters::get(str_of(e, "agent")).and_then(|x| x.maker(str_of(e, "model")));
+    // Its authors' companies, else their agents' names, for the why lines.
+    let mut by: Vec<String> = vec![];
+    for a in review.into_iter().flatten() {
+        let name = maker(a).or(adapters::get(str_of(a, "agent")).map(|x| x.short_label()));
+        let name = name.unwrap_or(str_of(a, "agent")).to_string();
+        if !by.contains(&name) {
+            by.push(name);
+        }
+    }
     let mut passed = false;
+    // The Review entries passed by as their author's, and why.
+    let mut own_why: Vec<(String, &str)> = vec![];
     // The switch's reviewers already tried, for the next one's why line.
     let mut tried: Vec<String> = vec![];
     let list = match &model {
@@ -88,12 +100,34 @@ pub(crate) fn resolve(
                 list.drain(..at.map_or(0, |i| i + 1));
             }
             if let Some(authors) = review {
-                // Never on its author's agent [D385]; overnight last, with nobody to ask for another.
-                let theirs = |e: &Value| authors.iter().any(|a| e["agent"] == a.as_str());
-                let (own, others): (Vec<_>, Vec<_>) = list.into_iter().partition(theirs);
+                // Never on its author's agent [D385] nor of its company, nor of one that can't be
+                // told [D399]; overnight last, with nobody to ask for another.
+                let other = |e: &Value| {
+                    let m = maker(e);
+                    let apart = |a: &Value| {
+                        a["agent"] != e["agent"]
+                            && maker(a).is_some_and(|x| m.is_some_and(|m| m != x))
+                    };
+                    m.is_some() && authors.iter().all(apart)
+                };
+                let (others, own): (Vec<_>, Vec<_>) = list.into_iter().partition(other);
                 (list, passed) = (others, !own.is_empty());
                 if crate::overnight::of(data, me).is_some() {
                     list.extend(own);
+                } else {
+                    for e in &own {
+                        let why = match maker(e).is_some()
+                            && authors.iter().all(|a| maker(a).is_some())
+                        {
+                            true if authors.iter().any(|a| a["agent"] == e["agent"]) => SAME_AGENT,
+                            true => SAME_COMPANY,
+                            false => NO_COMPANY,
+                        };
+                        let name = model_of(&groups, str_of(e, "agent"), str_of(e, "model"))
+                            .and_then(|m| m["name"].as_str())
+                            .unwrap_or(str_of(e, "model"));
+                        own_why.push((name.to_string(), why));
+                    }
                 }
                 // The switch's reviewers that failed or met their limit are passed by [D3026].
                 let gone = flags("review-tried").and_then(|t| serde_json::from_str(&t).ok());
@@ -128,7 +162,8 @@ pub(crate) fn resolve(
     let v = accounts::load(data);
     let (mut first, mut out, mut soonest) = (None, vec![], None::<u64>);
     // Every entry passed by, and why: never skipped in silence [D375].
-    let mut by_why: Vec<(String, &str)> = (tried.into_iter()).map(|m| (m, TRIED_REVIEW)).collect();
+    let mut by_why: Vec<(String, &str)> = own_why;
+    by_why.extend(tried.into_iter().map(|m| (m, TRIED_REVIEW)));
     for e in &list {
         let (a, id) = (str_of(e, "agent"), str_of(e, "model"));
         let m = match allowed(data, &groups, &rules, a, id) {
@@ -174,8 +209,8 @@ pub(crate) fn resolve(
         if images {
             pick.ran["images"] = true.into();
         }
-        if passed && !review.is_some_and(|by| by.iter().any(|x| x == a)) {
-            // Its why line: "the first in Review on another agent than Claude" [D385].
+        if passed && !review.is_some_and(|by| by.iter().any(|x| x["agent"] == a)) {
+            // Its why line: "the first in Review of another company than Anthropic" [D385, D399].
             pick.ran["other_than"] = jobs::and(&by).into();
         }
         match place(data, adapter, id, &base, &parent.cwd, wid, "\0", true) {
@@ -219,7 +254,7 @@ pub(crate) fn resolve(
             "has room"
         };
         return Err(refuse(&format!(
-            "Review didn't run: no model in your {} job on another agent than {} {room}.",
+            "Review didn't run: no model in your {} job on another agent and of another company than {} {room}.",
             jobs::REVIEW,
             jobs::and(&by)
         )));

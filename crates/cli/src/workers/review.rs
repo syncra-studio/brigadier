@@ -44,12 +44,12 @@ const SWITCH: &str = "review-switch";
 const TRIED: &str = "review-tried";
 
 /// What a review starts with: its brief and title, the commit its worktree is made at (none for
-/// `session`: the caller's head), the agents whose work it reviews, and its mark.
+/// `session`: the caller's head), the models whose work it reviews (`task::authors`), and its mark.
 pub(crate) struct Plan {
     pub brief: String,
     pub title: String,
     pub base: Option<String>,
-    pub authors: Vec<String>,
+    pub authors: Vec<Value>,
     pub mark: Value,
 }
 

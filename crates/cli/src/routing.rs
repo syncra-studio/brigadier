@@ -368,7 +368,7 @@ pub(crate) fn why(asked: &Value, ran: &Value, retry: &Value) -> String {
     };
     let named = match (asked["model"].is_string(), ran["job"].as_str()) {
         (false, Some(job)) => match ran["other_than"].as_str() {
-            Some(a) => format!("the first in {job} on another agent than {a}"),
+            Some(a) => format!("the first in {job} of another company than {a}"),
             None => format!("the first model in {job}"),
         },
         _ => "the model asked for".into(),

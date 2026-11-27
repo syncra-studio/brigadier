@@ -184,7 +184,7 @@ fn proven(data: &Path, me: &str, dir: &Path, call: &Call) -> io::Result<String> 
     })
 }
 
-/// Who proves a part: a reviewer of this session's, on another agent than the author's as Rust
+/// Who proves a part: a reviewer of this session's, on another agent and company than the author's as Rust
 /// picked it, finished, and begun at the commits the work is at now.
 fn reviewer(data: &Path, me: &str, by: &str) -> io::Result<String> {
     let l = workers::link(data, by).filter(|l| !l.review.is_null() && l.review["plan"].is_null());

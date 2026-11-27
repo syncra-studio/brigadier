@@ -18,7 +18,7 @@ all out of quota holds the worker for the user.
 effort up, or once more where it has no more, then the job's next model, at most two steps, then the user
 decides. One blocked or cut off isn't wrong: once it can go on, `brigadier send <id>` carries it on. After
 a passing failure or a cut, --retry runs on the same pick again.
---reviewing starts an adversarial review on the user's Review job, on another agent than the author's,
+--reviewing starts an adversarial review on the user's Review job, on another agent and company than the author's,
 that tries to break the work and commits nothing. <id> reviews your worker's commits against its brief; session
 your own plan or merged work, given in the brief. `brigadier help reviews` says when.
 

@@ -188,6 +188,11 @@ pub trait Adapter: Sync {
     fn accounts(&self) -> Option<Accounts> {
         None
     }
+    /// The company that made `model` as it runs here, so a review goes to another one; None where
+    /// it can't be told [bugfix-1112 D399]. Its accounts' vendor where it has them.
+    fn maker(&self, _model: &str) -> Option<&'static str> {
+        self.accounts().map(|a| a.vendor)
+    }
     /// Folders it worked in, from its own history, newest first.
     fn projects(&self) -> Vec<PathBuf> {
         vec![]
